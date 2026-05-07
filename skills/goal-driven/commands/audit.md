@@ -15,84 +15,53 @@ whether the human meant `/goal-driven bootstrap` instead.
 - The human says "things feel off" or "I'm not sure where we are"
 - Before a major decision that depends on knowing where you actually stand
 
-## Phase 1 — Collect findings
+## Phase 1 — Surface drift
 
-Run each check. Record findings in conversation; don't write to files yet.
+The point of audit is to make slow drift visible while it's still cheap
+to correct. Drift comes in recognizable patterns; for each, ask whether
+it's happening here. Record findings in conversation; don't write to
+files yet.
 
-### 1.1 OPEN-STOPS sync
+**Index sync (only if `OPEN-STOPS.md` exists).** Every line in
+OPEN-STOPS should resolve to a real STOP entry that's still open;
+every unresolved STOP entry in the journals should appear as a line in
+OPEN-STOPS. Mismatches mean the protocol was violated somewhere — the
+audit fixes the index, but also note when the violation happened so the
+underlying habit can be addressed.
 
-Cross-check `goals/OPEN-STOPS.md` against journal entries:
+**Criteria going silent.** A criterion is "stale" when it *should* be
+observable but isn't — not when a counter says "no references in N
+entries." Some criteria can't be measured early (no churn before
+customers; no recall before evaluation runs); their early silence is
+correct. For each active criterion, ask: should this be observable by
+now? If yes and recent entries are silent or all-`unclear`, surface it
+— either it's quietly going un-instrumented, or it stopped mattering. A
+criterion that's been ✓ many times without an ✗ ever is worth a sanity
+check on bar height. Surface candidates; don't classify — the human
+knows whether silence is unmeasured-yet-mattering or on-its-way-out.
 
-- Every line in OPEN-STOPS should resolve to a real STOP entry in some
-  `journal-*.md`. Flag orphan lines.
-- Every STOP entry in the journals that lacks a `→ resolved` follow-up
-  should appear as a line in OPEN-STOPS. Flag missing index entries.
+**Verdicts without evidence.** Scan recent entries for `✓` or `✗`
+without a parenthetical citing observation from that session. Many
+naked verdicts in a row mean the discipline is decaying — surface this
+prominently, since it's the leading indicator of the whole skill failing.
 
-If sync is broken, the protocol has been violated somewhere. The audit
-fixes it but should also note when the violation happened (which entry,
-which session).
+**Rotation skipped or misfiled (only if using monthly journals).** The
+most recent journal file should match the current month, and the
+month's first entry should be a carry-over summary. If neither, rotation
+happened wrong or not at all.
 
-### 1.2 Criteria observability scan
+**GOAL.md contradicting itself.** Read end-to-end as if you'd never seen
+it. Look for criteria conflicting with each other, invariants conflicting
+with criteria, non-goals contradicting the north star, recent edits
+that didn't make it into Revisions. The skill assumes GOAL.md is
+internally consistent because it changes rarely; once that assumption
+breaks, every later criteria check is judging against confused targets.
 
-A criterion is "stale" when it should be observable but isn't — not just
-when a counter says "no references in N entries." Some criteria can't be
-measured early (no churn before customers; no recall before evaluation
-runs). Their early silence is correct, not stale.
-
-For each active criterion, ask: should this be observable by now? If yes
-and recent entries are silent or all-`unclear`, surface it — either it's
-quietly going un-instrumented, or it stopped mattering. If no, leave it;
-note when it's expected to start being measured. A criterion that's been
-✓ many times without an ✗ in its history is worth a sanity check on bar
-height.
-
-Surface candidates; don't classify. The human knows whether a silent
-criterion is unmeasured-yet-mattering or genuinely on its way to retired.
-
-### 1.3 Naked verdicts
-
-Scan recent entries (last 20–30) for criteria checks. Any `✓` or `✗`
-without a parenthetical citing evidence is a violation of the evidence
-rule — flag them. Format expected: `C2 ✓ (P95 measured 320ms)` not
-`C2 ✓`.
-
-If many recent entries have naked verdicts, the protocol is decaying.
-Surface this prominently — it's the leading indicator of the skill
-failing.
-
-### 1.4 Month rotation
-
-Check the most recent `journal-YYYY-MM.md`:
-
-- Does its filename match the current month? If not, an entry was
-  appended to a previous month's file or the new month's file was never
-  created.
-- Does it start with a carry-over entry summarizing the previous month
-  (open STOPs, current path, last-month close)? If not, rotation
-  happened but the carry-over was skipped.
-
-### 1.5 GOAL.md self-consistency
-
-Read GOAL.md end-to-end as if you'd never seen it:
-
-- Do criteria contradict each other? (e.g., "C1: ship in 6 weeks" and
-  "C5: zero technical debt")
-- Do invariants conflict with criteria? (e.g., invariant "no new infra"
-  vs. C2 requiring something that needs new infra)
-- Are non-goals consistent with the north star?
-- Has the Revisions section been updated for each change?
-
-### 1.6 Cross-check with design-driven (if installed)
-
-Only if `design/` exists:
-
-- Recent `design/decisions/` adopted but not mentioned in the journal? A
-  shape change happened that the goal layer didn't notice.
-- Any design decision that would violate a GOAL invariant?
-- Any GOAL pivot logged in the journal that crossed module boundaries
-  but didn't open a `design/decisions/` proposal?
-
-These are not errors per se — sometimes they're fine — but they're worth
+**Cross-skill drift (only if design-driven is installed).** Recent
+`design/decisions/` adopted but not mentioned in the journal — a shape
+change the goal layer missed. Design decisions that would violate GOAL
+invariants. Goal pivots logged in journal that crossed module boundaries
+without opening a design proposal. None are errors per se; they're worth
 the human's attention.
 
 ## Phase 2 — Report and propose

@@ -41,11 +41,11 @@ for the project's tone:
 
 When working on this initiative, follow the goal-driven protocol:
 
-- At session start, read `goals/GOAL.md` and `goals/OPEN-STOPS.md`. List
-  open STOPs to the human before starting new work. Verify the current
-  month's journal file exists; if the month rolled over, create
-  `goals/journal-YYYY-MM.md` and propose a carry-over entry (open STOPs,
-  current path, last-month close) in chat before appending.
+- At session start, read `goals/GOAL.md` and surface any open STOPs
+  (from `OPEN-STOPS.md` if it exists, otherwise by scanning recent
+  journal entries). If the project uses monthly journals, ensure the
+  current month's file exists; on rollover, propose a carry-over entry
+  in chat before appending.
 - At session end, draft a journal entry in chat (what done, observations,
   per-criterion check with evidence, judgment) and get confirmation before
   appending.
@@ -61,11 +61,10 @@ land in the config, not a specific wording.
 
 ### 3. Directory and stub files
 
-Create:
+Default minimal scaffolding:
 
 - `goals/` directory
-- `goals/GOAL.md` — stub with a heading and a one-line note pointing to
-  `/goal-driven bootstrap`. Example body:
+- `goals/GOAL.md` — stub pointing to `/goal-driven bootstrap`:
 
   ```markdown
   # Goal
@@ -73,16 +72,13 @@ Create:
   > Run `/goal-driven bootstrap` to fill this in via interview.
   ```
 
-- `goals/OPEN-STOPS.md` — heading and empty list:
+- `goals/journal.md` — single journal file, heading only
 
-  ```markdown
-  # Open STOPs
-
-  No open STOPs.
-  ```
-
-- `goals/journal-YYYY-MM.md` for the current month — heading only, empty
-  body. The first real entry will be added at the next session end.
+Don't create `OPEN-STOPS.md` or monthly-rotation files preemptively. A
+single `journal.md` carries until the project's volume or open-STOP
+count makes it inadequate; the agent migrates to monthly journals (and
+adds `OPEN-STOPS.md`) when their absence starts hurting. See SKILL.md
+"Structure follows need."
 
 ### 4. Hook (optional)
 

@@ -15,6 +15,10 @@ description: |
   path", "plan my Q2", or when starting a months-long initiative without a
   clear technical shape.
 
+  Do NOT trigger for single-task work, bug fixes, week-long features with
+  a clear plan, or anything where a TODO list suffices — this skill is
+  overkill for those, and the protocol's overhead outweighs its value.
+
   Pairs with design-driven. Goal-driven manages why and how-far;
   design-driven manages what-shape. Use both when a project is uncertain on
   direction AND structure. Each works alone — they cross-reference but do
@@ -125,8 +129,13 @@ later") and agent drift (silent rewording into something subtly different).
 
 ## The three-moment protocol
 
-The skill imposes specific behaviors on the agent at three moments. These
-are the only mandatory rituals; everything else is the normal flow of work.
+The agent's default behavior — drafting, exploring, summarizing — is
+usually fine. But three moments bias toward silent drift if left to
+defaults: when first articulating the goal (premature commitment to fuzzy
+wording), when ending a work session (forgetting what just happened and
+why it matters to the criteria), and when evidence threatens the goal
+(rationalizing past inconvenient signals to keep moving). The protocol
+intervenes at exactly those moments. Outside them, normal work.
 
 ### Moment 1 — Bootstrap (creating GOAL.md)
 
@@ -180,19 +189,20 @@ applies — "on pace" needs an observation, not optimism. This is the same
 verdict vocabulary, used with awareness that what counts as "served"
 depends on when the criterion is supposed to land.
 
-**Identify the principal tension.** A session usually faces several
-criteria, several risks, several open questions — but attention is finite.
-At any moment one tension dominates: the one whose resolution would most
-unblock the rest. Name it in the judgment instead of treating all criteria
-symmetrically. "This week the binding constraint is C1 pace; C2 stable;
-C3 not under pressure" gives a future reader a sharper picture than a
-flat list of three verdicts, and tells the next session where to spend
-its attention first.
+**Identify the principal tension.** Attention is finite. At any moment
+one tension dominates — the one whose resolution would most unblock the
+rest. Name it in the judgment ("this week the binding constraint is C1
+pace; C2 stable; C3 not under pressure") rather than treating all
+criteria symmetrically; this tells the next session where to spend
+attention first. The dominant tension shifts as the project moves through
+phases — re-identify it each session from current observations, not
+from habit.
 
-The principal tension shifts. Last week's pace concern may give way to
-this week's sustainability question; the right focus changes as the
-project moves through phases. Re-identify it each session from current
-observations and recent entries, not from habit.
+**If a session is interrupted before the human confirms.** Append the
+draft directly with a `[unconfirmed draft]` prefix in the title; the next
+session ratifies or revises it before continuing other work. A protocol
+that breaks when sessions don't close cleanly is worse than one that
+absorbs the common case.
 
 ### Moment 3 — STOP signals
 
@@ -249,87 +259,44 @@ within weeks.
 
 ## Maintenance
 
-### Monthly rotation
+Three things rot if untended: journal volume grows unboundedly, open
+STOPs across files get forgotten, GOAL.md drifts inconsistent after
+edits. The protocol handles each — month-bounded journal files cap
+volume once the project is long enough to warrant them, OPEN-STOPS.md
+indexes unresolved STOPs across files when more than one is in flight,
+and `/goal-driven audit` periodically reconciles all three. See
+`commands/audit.md` for what audit checks; `references/templates.md` for
+journal, STOP, OPEN-STOPS, and carry-over formats.
 
-At session start, the agent checks: is today's month different from the
-highest `journal-YYYY-MM.md` in `goals/`? If yes, it creates a new file
-for the current month. The first entry of a new month is a brief
-"carry-over" summary: open STOPs, which path is being walked, what last
-month closed with.
+Audit when ≥ 2 weeks pass since the last one, ≥ 30 new entries
+accumulate, a fresh agent picks up the project, or things just feel off.
 
-File creation is automatic, but the carry-over entry itself is a journal
-entry — it goes through the same chat-review protocol as any other entry.
-The agent drafts the carry-over content in chat, gets confirmation, then
-appends. The failure mode to avoid: agent appending May entries to
-April's file, or silently writing a carry-over without surfacing it.
-Always verify the filename matches today's month before appending, and
-always echo the carry-over draft before writing.
+## Standalone vs paired with design-driven
 
-### OPEN-STOPS.md
+Goal-driven works alone. Shape decisions, when they come up in an
+exploratory project, live as observations or named alternatives in the
+journal — no separate proposal flow needed. This is the default mode and
+what the rest of this document assumes.
 
-Format (see `references/templates.md`):
+If design-driven is also installed in the project, the two divide labor:
+goal-driven owns *why* and *how-far*; design-driven owns *what-shape*.
+Each manages its own files; cross-references go by ID, not content (a
+journal entry says "adopted decision 003"; a decision says "blocks goal
+STOP 2026-05-02 if rejected").
 
-```
-- 2026-05-02 [Type B] north star questioned by user feedback → see journal-2026-05.md
-- 2026-04-27 [Type A] C2 violated 3rd time this month → see journal-2026-04.md
-```
-
-Two-way sync rule:
-- **New STOP:** add to OPEN-STOPS AND write the STOP entry in current
-  journal — both writes in the same agent action.
-- **Resolved STOP:** append `→ resolved YYYY-MM-DD: <decision>` to the
-  original journal entry AND remove the line from OPEN-STOPS — both
-  writes in the same agent action.
-
-The audit command verifies sync — every line in OPEN-STOPS resolves to a
-real journal entry; every STOP entry not yet resolved appears in
-OPEN-STOPS.
-
-### Audit cadence
-
-Run `/goal-driven audit` whenever:
-- ≥ 2 weeks since the last audit
-- ≥ 30 new entries since the last audit
-- A new agent picks up the project (sanity-check the inherited state)
-
-Audit is the only event that catches slow drift: criteria that became
-irrelevant but never retired, ✓ verdicts without evidence, OPEN-STOPS that
-quietly went stale. See `commands/audit.md` for the full procedure.
-
-## With design-driven
-
-When a project uses both, each skill manages its own files:
-
-| Concern | Lives in |
-|---|---|
-| Why we're doing this; success measure | `goals/GOAL.md` |
-| What system shape implements it | `design/DESIGN.md` |
-| Path attempted, observations, criteria check | `goals/journal-*.md` |
-| Shape decisions and tradeoffs | `design/decisions/` |
-| Per-task implementation plan | `design/blueprints/` |
-
-**Cross-references by ID, not by content.** A journal entry says "adopted
-decision 003 to switch storage"; a decision says "blocks goal STOP
-2026-05-02 if rejected". Each skill reads its own files; cross-refs are
-pointers, not embeds.
-
-**Four interaction points to watch:**
+Four interaction points to watch when both are present:
 
 1. **Goal pivot crosses design boundaries** → also open a
-   `design/decisions/NNN-*.md` proposal. The journal entry doesn't replace
-   the design proposal flow.
+   `design/decisions/NNN-*.md` proposal. The journal entry doesn't
+   replace the design proposal flow.
 2. **Design proposal would violate GOAL invariants** → trigger a goal
    Type A STOP first; don't let design adopt and then quietly fail
    criteria.
 3. **STOP resolution requires shape change** → resolve the goal STOP
-   first, then open a design decision; don't shortcut.
+   first, then open a design decision.
 4. **Audits cross-check** — goal audit notes design decisions not
    reflected in the journal; design audit notes GOAL invariants
    potentially at risk.
-
-When design-driven isn't installed, none of this applies. Goal-driven
-still works alone — shape decisions just live as journal observations,
-without a separate proposal flow.
 
 ## Structure follows need
 

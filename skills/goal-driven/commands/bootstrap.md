@@ -40,87 +40,80 @@ interview from zero.
 
 ## Phase 2 — Interview
 
-Four sections, in order. Do not skip ahead. Each section ends only when
-the human has confirmed the wording the agent will write into the file.
+Four sections, drawn out one at a time and confirmed before moving on.
+Phrasing is the agent's; the descriptions below are *why* each section
+matters and *what good answers look like*. The interview's value is the
+human's commitment to the wording — a draft the agent wrote and the
+human nodded at is not the same as a wording they confirmed.
 
-### 2.1 North star (what should be true when this is done)
+### 2.1 North star — what should be true when this is done
 
-Ask: "In one or two sentences, what should be true when this initiative is
-done? What's the world-state you're aiming at?"
+Extract one or two sentences describing the world-state at success, not
+the activity that produces it. The exact phrasing matters: every future
+criterion check, every STOP, every audit reads back to this sentence.
 
-Listen for:
-- Specific outcome (good): "users can find old conversations by meaning,
-  not just keywords"
-- Activity description (warning): "build a semantic search system" — that's
-  a means, not an end. Push: "And what does that enable for the user?"
-- Vague aspiration (warning): "improve search". Push: "Improve how, for
-  whom, by what measure?"
+Failure modes to push back on:
+- **Activity description** ("build a semantic search system") — that's a
+  means, not an end. Push toward what it enables.
+- **Vague aspiration** ("improve search") — push toward who, how, by what
+  measure.
 
-Echo back: "I'll write the north star as: '<wording>'. OK?" Wait for
-confirmation. If they edit, echo the edit. Do not move on until they say
-yes.
+Echo the wording back before moving on; if the human edits, echo the edit.
+Don't move on until they say yes.
 
-### 2.2 Success criteria (how you'd know it's done)
+### 2.2 Success criteria — how you'd know it's done
 
-Ask: "How would you know this is done? What would you measure or observe?"
+Extract 2–5 falsifiable statements with how each is measured. Soft
+answers ("users like it", "fast enough", "we learn enough") hide what
+counts; push each toward something observable. The shape of the
+follow-up question is "turn the feeling into a measurement": *like-it-how*
+becomes daily-active count or survey score or repeat usage; *fast-enough*
+becomes a P95 number; *learn-what* becomes a specific question we'd be
+able to answer that we can't now.
 
-Push every soft answer toward something falsifiable:
+If a criterion is genuinely soft (e.g., "the team feels less burned
+out"), require a paired proxy — oncall pages per week, voluntary
+overtime hours, a self-report at end-of-week. A criterion without a way
+to observe it is decoration; either find a proxy or cut it.
 
-- "Users like it" → "Like it how? Daily-active count? Survey score? Repeat
-  usage of the new feature?"
-- "It's fast enough" → "Fast enough = what? P50? P95? Under what number?"
-- "We learn enough" → "Learn what specifically? What question would we be
-  able to answer that we can't now?"
+Number criteria stably as `C1, C2, C3, ...`. **IDs are never reused** —
+if C2 is later retired, C2 stays as retired in GOAL.md; new ones become
+C5, C6. This keeps old journal entries' references resolvable.
 
-If a criterion really is soft (e.g., "the team feels less burned out"),
-require a paired proxy indicator: "oncall pages per week", "voluntary
-overtime hours", "self-reported energy at end-of-week retro". A criterion
-without a way to observe it is decoration. Either find a proxy or cut it.
+Echo each criterion back with its measurement, one at a time, before
+adding the next.
 
-Aim for **2–5 criteria.** More than that is usually a sign that some are
-secretly path-level (how) rather than goal-level (what).
+More than 5 criteria is usually a sign that some are path-level (how)
+rather than goal-level (what). Push back on bloat — it weakens the compass.
 
-Number them stably as `C1, C2, C3, ...` in the order confirmed. **These IDs
-never get reused** — if C2 is later retired, C2 stays in GOAL.md as
-retired; new criteria become C5, C6, etc.
+### 2.3 Invariants — what must stay true regardless of path
 
-Echo each criterion back individually, with its measurement: "C2 will
-read: 'P95 latency under 500ms, measured on production traffic replay.'
-OK?" One at a time.
+Extract 0–4 non-negotiables that hold every step of the way, not just at
+the end. Invariants differ from criteria: criteria are achieved by the
+end; invariants must hold throughout. Violating an invariant is a STOP
+signal even if criteria are on track.
 
-### 2.3 Invariants (what must stay true regardless of path)
+Common patterns to prompt with when the human draws a blank: data
+boundaries ("user data stays local"), process rules ("no weekends"),
+scope walls ("only contracted work"), quality floors ("test coverage
+doesn't drop").
 
-Ask: "What must stay true regardless of how we get there? Things that are
-non-negotiable, even if they slow us down or rule out clever shortcuts."
+Past 4 invariants, some are probably criteria or non-goals in disguise.
 
-Examples to prompt with:
-- "User data doesn't leave the local database"
-- "We don't add new always-on infrastructure"
-- "I don't work weekends"
-- "We only support contracts; no scope creep"
+### 2.4 Non-goals — what's tempting but isn't success
 
-Invariants differ from criteria: criteria are achieved at the end;
-invariants must hold every step of the way. Violating an invariant is a
-STOP signal even if criteria are on track.
+Extract the things the human will be tempted to call success later but
+explicitly aren't. Common patterns:
 
-Aim for **0–4 invariants.** If there are more, some are probably criteria
-or non-goals in disguise.
+- Possible "phase 2" features — name as non-goals, not delayed goals
+- Adjacent improvements the team will be tempted to make along the way
+- Metrics that will rise as a side effect but aren't the point
 
-### 2.4 Non-goals (what's tempting but isn't success)
+Most humans first say they don't have any non-goals. They do; they just
+haven't named them. Prompt with the patterns above until something
+lands.
 
-Ask: "What's tempting to call success but isn't? What might look like
-progress but actually isn't? What did you almost include that you decided
-to leave out?"
-
-Non-goals are the quiet defense against scope creep. Common patterns:
-
-- Anything that's a possible "phase 2" — name it as a non-goal, not a
-  delayed goal
-- Adjacent improvements that the team will be tempted to make along the
-  way
-- Metrics that will go up as a side effect but aren't the point
-
-Echo each non-goal back. Confirm.
+Echo each non-goal back; confirm.
 
 ## Phase 3 — Draft
 
@@ -143,8 +136,11 @@ final read catches typos and ordering issues, not substance.
 If missing (idempotent — skip what's already there):
 
 - `goals/` directory
-- `goals/OPEN-STOPS.md` (with empty list — see template)
-- `goals/journal-YYYY-MM.md` for the current month (heading only)
+- `goals/journal.md` (single journal file, heading only)
+
+Don't create `OPEN-STOPS.md` or monthly-rotation files now; they're
+added later when project volume or open-STOP count makes them
+load-bearing. See SKILL.md "Structure follows need."
 
 ### 4.2 Update agent configs
 
@@ -157,7 +153,7 @@ updated — verify and skip.
 
 ### 4.3 First journal entry
 
-Add a "kickoff" entry to the current month's journal. Format:
+Add a "kickoff" entry to the journal. Format:
 
 ```markdown
 ## YYYY-MM-DD — Kickoff
