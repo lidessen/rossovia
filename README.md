@@ -8,7 +8,7 @@ A collection of [agent skills](https://agentskills.io) — reusable methodology 
 |-------|---------|-------------|
 | [design-driven](skills/design-driven/SKILL.md) | `/design-driven` | Design-driven development methodology. The `design/` directory is the single source of architectural truth — read it before coding, update the design before changing the system's shape. |
 | [evidence-driven](skills/evidence-driven/SKILL.md) | `/evidence-driven` | Evidence-driven discipline overlay for the execution layer. Every claim of progress requires a falsifiable observation — TDD cycle as default, evidence-trail State updates, anti-cargo-cult guards. Pairs with design-driven for build-time rigor on production code. |
-| [goal-driven](skills/goal-driven/SKILL.md) | `/goal-driven` | Goal-driven methodology for strategy-layer initiatives where the destination is clearer than the path. `GOAL.md` is the stable compass (north star + falsifiable criteria); the record captures what was tried and whether each criterion is still served. Pairs with design-driven. |
+| [goal-driven](skills/goal-driven/SKILL.md) | `/goal-driven` | Goal-driven methodology for strategy-layer initiatives where the destination is clearer than the path. `GOAL.md` is the stable compass (the General Line + falsifiable criteria); the record captures what was tried and whether each criterion is still served. Pairs with design-driven. |
 | [harness](skills/harness/SKILL.md) | `/harness` | Agent harness architecture — structure a project's agent context across layers (L1 architecture → L2 design → L3 implementation) for effective AI-assisted development. |
 
 ## Which skill, when?

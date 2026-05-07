@@ -74,7 +74,7 @@ rewritten next week. Most ongoing engineering work fits.
 **Signals during design-driven work that warrant another skill:**
 
 - A criterion in goal-driven keeps failing despite shape being right
-  → may be a goal-level question (criterion wrong, north star
+  → may be a goal-level question (criterion wrong, the General Line
   questioned), not a design issue. Surface as a goal STOP.
 - "Verified" bugs still ship → build-time discipline gap; layer
   evidence-driven over the Build/Verify phase via

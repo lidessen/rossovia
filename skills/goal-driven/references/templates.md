@@ -11,7 +11,7 @@ these files.
 > One sentence: what this is. The reader should know in 10 seconds whether
 > this initiative is theirs to care about.
 
-## North star
+## General Line
 One or two sentences. The world-state when this is done. Outcome, not
 activity. Avoid "build X" — say what X enables.
 
@@ -101,17 +101,17 @@ A STOP is just a record entry with a STOP marker. Two flavors:
 - Status: open
 ```
 
-Type B (north star questioned):
+Type B (General Line questioned):
 
 ```markdown
-## YYYY-MM-DD — STOP [Type B] north star may be wrong — <one-line>
+## YYYY-MM-DD — STOP [Type B] General Line may be wrong — <one-line>
 - What I did: <whatever surfaced the doubt>
 - Observations: <new evidence>
 - Criteria check: <usually all ✓ or close>
 - Judgment: STOP Type B. Criteria served, but the goal itself may not
   matter as stated.
 - Options for human:
-  - (a) Reframe north star (deliberate GOAL change)
+  - (a) Reframe the General Line (deliberate GOAL change)
   - (b) Stay course — evidence is too weak to redirect
 - Status: open
 ```
@@ -135,7 +135,7 @@ the latest. Reading top-to-bottom, the entry tells the story.
 
 Index of unresolved STOPs across all records. Maintained by agent.
 
-- 2026-05-02 [Type B] north star questioned by user feedback → see record-2026-05.md
+- 2026-05-02 [Type B] General Line questioned by user feedback → see record-2026-05.md
 - 2026-04-27 [Type A] C2 violated 3rd time this month → see record-2026-04.md
 ```
 

@@ -13,7 +13,7 @@ done?"
 **Human:** "Users can find old conversations by meaning, not just exact
 keyword."
 
-**Agent:** "Got it. I'll write the north star as: *Users can locate
+**Agent:** "Got it. I'll write the General Line as: *Users can locate
 conversations from the last three months by meaning, without needing exact
 keywords.* OK?"
 
@@ -208,7 +208,7 @@ Audit trail follows:)
 After several more weeks of work, the feature ships to 5% of users:
 
 ```markdown
-## 2026-05-02 — STOP [Type B] north star may be wrong
+## 2026-05-02 — STOP [Type B] General Line may be wrong
 - What I did: interviewed three heavy users about how they're using the
   new search.
 - Observations: All three said they rarely use semantic search. What
@@ -223,7 +223,7 @@ After several more weeks of work, the feature ships to 5% of users:
   shape of help. Continuing to optimize semantic search may be local
   optimization on the wrong problem.
 - Options for human:
-  - (a) Reframe north star toward topic clustering. Existing semantic
+  - (a) Reframe the General Line toward topic clustering. Existing semantic
     search becomes substrate, not the product.
   - (b) Stay course — three users is a small sample; ship to more
     before redirecting.
@@ -233,7 +233,7 @@ After several more weeks of work, the feature ships to 5% of users:
 (Human picks (b) — wants more data before pivoting. Two weeks later,
 broader rollout shows the same pattern. STOP is reopened — agent surfaces
 again, this time the human picks (a). GOAL is rewritten under the new
-north star, criteria are revised; old criteria are RETIRED but kept for
+General Line, criteria are revised; old criteria are RETIRED but kept for
 reference.)
 
 After the reframe, the agent proposes a story update:
@@ -261,7 +261,7 @@ revision alone wouldn't carry.
   (criterion can't be met as stated). 2026-05-02 is goal failure
   (criteria met, but the goal solves the wrong problem). The
   resolutions look very different — Type A often gets fixed by tightening
-  a criterion; Type B requires rethinking the north star.
+  a criterion; Type B requires rethinking the General Line.
 - **GOAL.md changes are deliberate events.** Every revision is logged.
   Old IDs aren't reused. The Revisions section gives a quick scan of
   how the goal evolved.

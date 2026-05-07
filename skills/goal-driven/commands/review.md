@@ -96,7 +96,7 @@ happened wrong or not at all.
 
 **GOAL.md contradicting itself.** Read end-to-end as if you'd never seen
 it. Look for criteria conflicting with each other, invariants conflicting
-with criteria, non-goals contradicting the north star, recent edits
+with criteria, non-goals contradicting the General Line, recent edits
 that didn't make it into Revisions. The skill assumes GOAL.md is
 internally consistent because it changes rarely; once that assumption
 breaks, every later criteria check is judging against confused targets.

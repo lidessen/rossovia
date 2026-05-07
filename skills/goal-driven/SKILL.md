@@ -2,7 +2,7 @@
 name: goal-driven
 description: |
   Goal-driven methodology for initiatives where the destination is clearer
-  than the path. GOAL.md is the stable compass — north star plus falsifiable
+  than the path. GOAL.md is the stable compass — the General Line plus falsifiable
   success criteria. The record captures what was tried, what was observed,
   and whether each criterion is still served. The agent writes both files;
   the human approves edits via chat.
@@ -96,7 +96,7 @@ training plans with concrete metrics. Concrete misfits: anything where
 ```
 project/
 └── goals/
-    ├── GOAL.md                  ← Stable compass (north star, criteria, invariants)
+    ├── GOAL.md                  ← Stable compass (General Line, criteria, invariants)
     ├── OPEN-STOPS.md            ← Index of unresolved STOP signals
     ├── record-2026-04.md       ← Past month
     └── record-2026-05.md       ← Current month (auto-rotates monthly)
@@ -116,7 +116,7 @@ last week, what worked, what didn't.
 The path mutates constantly. The compass mutates only when:
 
 - A success criterion turns out to be the wrong measure (replace it)
-- The north star itself is questioned by new evidence (rethink it)
+- The General Line itself is questioned by new evidence (rethink it)
 
 Both are deliberate, human-approved events. They are NOT what happens when
 "I tried X and it didn't work, let me try Y" — that's just walking.
@@ -156,7 +156,7 @@ intervenes at exactly those moments. Outside them, normal work.
 The agent interviews the human via chat. It does **not** draft GOAL.md
 alone and present it for review. It asks, in order:
 
-1. **North star** — "In one or two sentences, what should be true when
+1. **General Line** — "In one or two sentences, what should be true when
    this is done?"
 2. **Success criteria** — for each thing implied: "How would you know
    that's achieved?" Push for falsifiable; if soft, push for a proxy
@@ -238,13 +238,13 @@ trajectory already shows wastes that room.
   - (b) Change criterion (require human-approved GOAL edit)
   - (c) Agent misjudged
 
-**Type B — North star questioned.**
+**Type B — General Line questioned.**
 Criteria are met (or close), but new evidence suggests the goal itself
 solves the wrong problem.
 - Example: criteria all green, but user research reveals users wanted
   topic clustering, not semantic search.
 - Agent surfaces in chat, proposes:
-  - (a) Reframe north star (deliberate GOAL edit)
+  - (a) Reframe the General Line (deliberate GOAL edit)
   - (b) Stay course because the evidence is weak
 
 **Critical:** STOPs are never silently logged and walked past. The agent
@@ -318,7 +318,7 @@ Each story is a topic-named markdown file (kebab-case). Typical topics:
 - Why a specific criterion is set as it is, including data or context
   that informed the number or threshold
 - What an ambiguous term in GOAL.md means in practice
-- Background on the choice of north star — what alternatives were
+- Background on the choice of General Line — what alternatives were
   considered, why this framing won
 - Trade-offs explicitly accepted (what you're giving up to chase this)
 - How understanding of a criterion has evolved through STOPs and

@@ -43,7 +43,7 @@ matters and *what good answers look like*. The interview's value is the
 human's commitment to the wording — a draft the agent wrote and the
 human nodded at is not the same as a wording they confirmed.
 
-### 2.1 North star — what should be true when this is done
+### 2.1 General Line — what should be true when this is done
 
 Extract one or two sentences describing the world-state at success, not
 the activity that produces it. The exact phrasing matters: every future
@@ -189,7 +189,7 @@ Add a "kickoff" entry to the record. Format:
 ```markdown
 ## YYYY-MM-DD — Kickoff
 - What I did: established GOAL.md via interview.
-- Observations: north star confirmed; <N> success criteria; <M> invariants.
+- Observations: General Line confirmed; <N> success criteria; <M> invariants.
 - Criteria check: all unclear — no work done yet.
 - Judgment: no change. Next session begins real work.
 ```
@@ -205,7 +205,7 @@ candidates:
 - A criterion whose number / threshold deserves explaining
 - A non-goal that's tempting to revisit later (story explains why we
   said no the first time)
-- A north star phrasing that took multiple iterations to land on
+- A phrasing of the General Line that took multiple iterations to land on
 - An invariant whose cost we explicitly accepted
 
 Propose **at most one** — the highest-value candidate. The human
@@ -239,7 +239,7 @@ GOAL.md and record scaffolding".
 
 - The compass is set. From now on, every work session ends with a record
   entry the agent will draft and ask them to confirm.
-- If a criterion fails or the north star feels wrong, the agent will STOP
+- If a criterion fails or the General Line feels wrong, the agent will STOP
   and ask before continuing.
 - They don't need to remember any of this — the agent's protocol carries
   it. Their job is to approve, redirect, and decide at STOPs.
