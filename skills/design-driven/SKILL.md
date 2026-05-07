@@ -204,8 +204,8 @@ blueprint alone. If a task blows past either, split it.
 **Build** — Code freely within design/ boundaries, following the blueprint's 
 approach. Check off TODO items as you go. If you discover a better approach 
 mid-build, update the blueprint first, then continue. **Each completed TODO 
-triggers a State update — immediately on check-off, not "as you go" 
-optionally.** State is the resumption surface; if the session dies between 
+triggers a State update — immediately on check-off, rather than being 
+deferred or optional.** State is the resumption surface; if the session dies between 
 TODO 4 and TODO 5, a fresh agent should be able to read State and pick up 
 at TODO 5 without inferring from code. When a build-time decision is 
 borderline (technically 70% but not obvious), log it in State so review 
