@@ -3,9 +3,9 @@ name: goal-driven
 description: |
   Goal-driven methodology for initiatives where the destination is clearer
   than the path. GOAL.md is the stable compass — north star plus falsifiable
-  success criteria. The journal is the living record of what was tried, what
-  was observed, and whether each criterion is still served. The agent writes
-  both files; the human approves edits via chat.
+  success criteria. The record captures what was tried, what was observed,
+  and whether each criterion is still served. The agent writes both files;
+  the human approves edits via chat.
 
   Use this skill for multi-week initiatives where upfront design is the
   wrong tool: research, exploratory features, learning projects with a
@@ -37,7 +37,7 @@ argument-hint: "[set | review | close]"
 A mini methodology for initiatives where the destination is fixed but the
 path isn't. Human owns the compass; agent walks the path and keeps the log.
 
-GOAL.md is the institutional memory of *why*. The journal is the
+GOAL.md is the institutional memory of *why*. The record is the
 institutional memory of *what was tried*. Together they let a fresh agent —
 or future-you — pick up a months-long initiative without losing direction.
 
@@ -59,7 +59,7 @@ When invoked with an argument, dispatch to the corresponding file:
 **Which command when:**
 
 - New initiative → `set`
-- ≥ 2 weeks since last review, journal feels overgrown, midpoint of an
+- ≥ 2 weeks since last review, record feels overgrown, midpoint of an
   explicit timeline, or you sense you've drifted → `review`
 - Initiative is done, abandoned, or superseded → `close`
 - Mid-work, just logging progress → no argument (normal loop)
@@ -98,13 +98,13 @@ project/
 └── goals/
     ├── GOAL.md                  ← Stable compass (north star, criteria, invariants)
     ├── OPEN-STOPS.md            ← Index of unresolved STOP signals
-    ├── journal-2026-04.md       ← Past month
-    └── journal-2026-05.md       ← Current month (auto-rotates monthly)
+    ├── record-2026-04.md       ← Past month
+    └── record-2026-05.md       ← Current month (auto-rotates monthly)
 ```
 
-Two stable files (GOAL.md, OPEN-STOPS.md) plus monthly journals. No
+Two stable files (GOAL.md, OPEN-STOPS.md) plus monthly records. No
 `archive/` directory by default — old months stay in place. If `goals/`
-becomes crowded after a year, move them under `goals/journal-archive/`
+becomes crowded after a year, move them under `goals/record-archive/`
 manually; the convention is informal.
 
 ## The compass / path asymmetry
@@ -121,7 +121,7 @@ The path mutates constantly. The compass mutates only when:
 Both are deliberate, human-approved events. They are NOT what happens when
 "I tried X and it didn't work, let me try Y" — that's just walking.
 
-This asymmetry is the whole point. If GOAL.md and the journal change at the
+This asymmetry is the whole point. If GOAL.md and the record change at the
 same rate, you don't have a compass; you have a notebook.
 
 ## Permission gradient
@@ -129,7 +129,7 @@ same rate, you don't have a compass; you have a notebook.
 | File | Who writes | When | Human's role |
 |---|---|---|---|
 | `GOAL.md` | agent | Only at initial set or explicit GOAL change | Approves each section, line by line |
-| `journal-YYYY-MM.md` | agent | End of session, or on STOP / rotation | Reviews entry draft in chat before write |
+| `record-YYYY-MM.md` | agent | End of session, or on STOP / rotation | Reviews entry draft in chat before write |
 | `OPEN-STOPS.md` | agent | When a STOP is created or resolved | Confirms the line in chat |
 | STOP signals | agent surfaces | When trigger condition hit | Decides: change path / change goal / agent misjudged |
 
@@ -170,7 +170,7 @@ moves on. GOAL.md is written only after all sections are confirmed. See
 
 ### Moment 2 — End of every work session
 
-Before the session ends, the agent drafts a journal entry **in the chat**:
+Before the session ends, the agent drafts a record entry **in the chat**:
 
 ```
 Entry draft:
@@ -185,7 +185,7 @@ Confirm and append?
 ```
 
 The human confirms or edits in chat. Only then does the agent append to
-the current month's journal.
+the current month's record.
 
 **The criteria check is the heart of the discipline.** Each ✓/✗ must cite
 a concrete observation from the session. `C1 ✓` without evidence is
@@ -249,7 +249,7 @@ solves the wrong problem.
 
 **Critical:** STOPs are never silently logged and walked past. The agent
 must surface them in chat AND wait for the human's choice before continuing
-work. A STOP entry in the journal without a chat exchange is a protocol
+work. A STOP entry in the record without a chat exchange is a protocol
 violation.
 
 ## Anti-flattery: the evidence rule
@@ -274,14 +274,14 @@ within weeks.
 
 ## Maintenance
 
-Three things rot if untended: journal volume grows unboundedly, open
+Three things rot if untended: record volume grows unboundedly, open
 STOPs across files get forgotten, GOAL.md drifts inconsistent after
-edits. The protocol handles each — month-bounded journal files cap
+edits. The protocol handles each — month-bounded record files cap
 volume once the project is long enough to warrant them, OPEN-STOPS.md
 indexes unresolved STOPs across files when more than one is in flight,
 and `/goal-driven review` periodically reconciles all three plus
 re-assesses strategy. See `commands/review.md` for what review covers;
-`references/templates.md` for journal, STOP, OPEN-STOPS, and carry-over
+`references/templates.md` for record, STOP, OPEN-STOPS, and carry-over
 formats.
 
 Review when ≥ 2 weeks pass since the last one, ≥ 30 new entries
@@ -292,19 +292,19 @@ fresh agent picks up the project, or things just feel off.
 
 Goal-driven works alone. Shape decisions, when they come up in an
 exploratory project, live as observations or named alternatives in the
-journal — no separate proposal flow needed. This is the default mode and
+record — no separate proposal flow needed. This is the default mode and
 what the rest of this document assumes.
 
 If design-driven is also installed in the project, the two divide labor:
 goal-driven owns *why* and *how-far*; design-driven owns *what-shape*.
 Each manages its own files; cross-references go by ID, not content (a
-journal entry says "adopted decision 003"; a decision says "blocks goal
+record entry says "adopted decision 003"; a decision says "blocks goal
 STOP 2026-05-02 if rejected").
 
 Four interaction points to watch when both are present:
 
 1. **Goal pivot crosses design boundaries** → also open a
-   `design/decisions/NNN-*.md` proposal. The journal entry doesn't
+   `design/decisions/NNN-*.md` proposal. The record entry doesn't
    replace the design proposal flow.
 2. **Design proposal would violate GOAL invariants** → trigger a goal
    Type A STOP first; don't let design adopt and then quietly fail
@@ -312,23 +312,23 @@ Four interaction points to watch when both are present:
 3. **STOP resolution requires shape change** → resolve the goal STOP
    first, then open a design decision.
 4. **Cross-checks during periodic inspection** — goal-driven's review
-   surfaces design decisions not reflected in the journal; design-driven's
+   surfaces design decisions not reflected in the record; design-driven's
    audit surfaces GOAL invariants potentially at risk. (The two skills
    use different command names — `review` vs `audit` — for the same
    periodic-inspection role.)
 
 ## Structure follows need
 
-The scaffolding around GOAL.md — OPEN-STOPS.md, monthly journal rotation,
+The scaffolding around GOAL.md — OPEN-STOPS.md, monthly record rotation,
 periodic reviews — earns its cost when it's load-bearing. A short, single-stream
 initiative with no STOPs in sight doesn't need an OPEN-STOPS index; the
-one STOP, if it ever appears, lives visibly in the journal. A six-week
-project doesn't need monthly rotation; a single `journal.md` carries it
+one STOP, if it ever appears, lives visibly in the record. A six-week
+project doesn't need monthly rotation; a single `record.md` carries it
 until it doesn't.
 
 Add structure when the absence starts to hurt: create OPEN-STOPS.md when
 a second open STOP exists and you can no longer hold both in mind; rotate
-to monthly files when one journal becomes too long to scan. The directory
+to monthly files when one record becomes too long to scan. The directory
 layout shown above is the mature shape, not the starting shape — start
 small and grow into it.
 
@@ -339,5 +339,5 @@ notebook.
 
 ## Example walkthrough
 
-For a concrete end-to-end example — set, several journal entries,
+For a concrete end-to-end example — set, several record entries,
 two STOP scenarios, resolution — see `references/example.md`.

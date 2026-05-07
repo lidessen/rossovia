@@ -18,7 +18,7 @@ activity. Avoid "build X" — say what X enables.
 ## Success criteria
 Each criterion has a stable ID (C1, C2, ...). IDs are never reused. When a
 criterion is retired, mark it `RETIRED YYYY-MM-DD (reason)` but leave the
-line in place — old journal entries reference it.
+line in place — old record entries reference it.
 
 - **C1** — <falsifiable statement, with how it's measured>
 - **C2** — <falsifiable statement, with how it's measured>
@@ -54,7 +54,7 @@ human readability).
 Keep total length under ~80 lines. If GOAL.md grows past that, the goal
 is probably too compound — split into separate initiatives.
 
-## Journal entry
+## Record entry
 
 Each work session ends with one entry. Format:
 
@@ -83,7 +83,7 @@ Rules:
 
 ## STOP entry
 
-A STOP is just a journal entry with a STOP marker. Two flavors:
+A STOP is just a record entry with a STOP marker. Two flavors:
 
 ```markdown
 ## YYYY-MM-DD — STOP [Type A] C<N> failing — <one-line summary>
@@ -133,10 +133,10 @@ the latest. Reading top-to-bottom, the entry tells the story.
 ```markdown
 # Open STOPs
 
-Index of unresolved STOPs across all journals. Maintained by agent.
+Index of unresolved STOPs across all records. Maintained by agent.
 
-- 2026-05-02 [Type B] north star questioned by user feedback → see journal-2026-05.md
-- 2026-04-27 [Type A] C2 violated 3rd time this month → see journal-2026-04.md
+- 2026-05-02 [Type B] north star questioned by user feedback → see record-2026-05.md
+- 2026-04-27 [Type A] C2 violated 3rd time this month → see record-2026-04.md
 ```
 
 If empty:
@@ -166,7 +166,7 @@ event):
 ```
 
 This anchors the new file so the next session has context within the
-current month's journal alone.
+current month's record alone.
 
 ## Carry-over GOAL revision (after resolved STOP)
 

@@ -11,7 +11,7 @@ whether the human meant `/goal-driven set` instead.
 ## When to run
 
 - ≥ 2 weeks since the last review
-- ≥ 30 new journal entries since the last review
+- ≥ 30 new record entries since the last review
 - The midpoint of an explicit project timeline (e.g., month 3 of a
   6-month initiative — don't wait for the end to find out you're off)
 - A new agent picks up the project (sanity-check inherited state)
@@ -20,7 +20,7 @@ whether the human meant `/goal-driven set` instead.
 
 ## Phase 1 — Strategic checkpoint
 
-Read GOAL.md and the journal in order. The point is to re-establish
+Read GOAL.md and the record in order. The point is to re-establish
 situational awareness, not to find drift (that's Phase 2). Ask:
 
 **Trajectory of each criterion.** For criteria with deadlines or pace
@@ -38,7 +38,7 @@ through phases — re-identify from current evidence.
 **The implicit theory of getting there.** Most projects start with an
 unstated theory ("if we ship 4 articles per week, organic growth
 follows"; "if we get pgvector under 500ms, the feature is viable"). Has
-the theory survived contact with reality? If not, the journal-level
+the theory survived contact with reality? If not, the record-level
 path adjustments may be patching a flawed premise — surface this even
 if no single entry shows it.
 
@@ -59,7 +59,7 @@ don't write to files yet.
 
 **Index sync (only if `OPEN-STOPS.md` exists).** Every line in
 OPEN-STOPS should resolve to a real STOP entry that's still open;
-every unresolved STOP entry in the journals should appear as a line in
+every unresolved STOP entry in the records should appear as a line in
 OPEN-STOPS. Mismatches mean the protocol was violated somewhere — the
 review fixes the index, but also note when the violation happened so the
 underlying habit can be addressed.
@@ -80,8 +80,8 @@ without a parenthetical citing observation from that session. Many
 naked verdicts in a row mean the discipline is decaying — surface this
 prominently, since it's the leading indicator of the whole skill failing.
 
-**Rotation skipped or misfiled (only if using monthly journals).** The
-most recent journal file should match the current month, and the
+**Rotation skipped or misfiled (only if using monthly records).** The
+most recent record file should match the current month, and the
 month's first entry should be a carry-over summary. If neither, rotation
 happened wrong or not at all.
 
@@ -93,9 +93,9 @@ internally consistent because it changes rarely; once that assumption
 breaks, every later criteria check is judging against confused targets.
 
 **Cross-skill drift (only if design-driven is installed).** Recent
-`design/decisions/` adopted but not mentioned in the journal — a shape
+`design/decisions/` adopted but not mentioned in the record — a shape
 change the goal layer missed. Design decisions that would violate GOAL
-invariants. Goal pivots logged in journal that crossed module boundaries
+invariants. Goal pivots logged in record that crossed module boundaries
 without opening a design proposal. None are errors per se; they're worth
 the human's attention.
 
@@ -149,7 +149,7 @@ approval in chat.
 For OPEN-STOPS sync issues:
 - If a STOP exists but isn't indexed: add the line to OPEN-STOPS.
 - If OPEN-STOPS lists a STOP that was actually resolved: append the
-  `→ resolved` follow-up to the original journal entry (date the review
+  `→ resolved` follow-up to the original record entry (date the review
   if unclear when), then remove the OPEN-STOPS line.
 - If a "STOP" entry is ambiguous (was it a real STOP or just a
   judgment?), surface it; don't guess.
@@ -160,7 +160,7 @@ Retiring a criterion is a GOAL.md change — it requires the same
 line-by-line confirmation as `set` edits.
 
 - Don't delete; mark `RETIRED YYYY-MM-DD (reason)`. Keep the ID. Old
-  journal entries reference C2; if C2 disappears, the references break.
+  record entries reference C2; if C2 disappears, the references break.
 - Add a Revisions line: `- YYYY-MM-DD: retired C<N> (reason)`.
 
 ### 4.3 Naked verdict followup
@@ -168,7 +168,7 @@ line-by-line confirmation as `set` edits.
 Don't retroactively edit old entries to add evidence — that's
 fabrication. Instead:
 
-- Note the issue in the next journal entry's Observations.
+- Note the issue in the next record entry's Observations.
 - Tighten the protocol: agent re-reads SKILL.md's evidence rule and
   states: "I'll be stricter about evidence going forward."
 - If a specific verdict was clearly wrong (e.g., "C2 ✓" three weeks ago
@@ -177,11 +177,11 @@ fabrication. Instead:
 
 ### 4.4 Rotation fix
 
-If May entries are in `journal-2026-04.md`:
+If May entries are in `record-2026-04.md`:
 - Move them to the correct file (cut from April, paste into a new
   May file).
 - Add a carry-over entry at the top of May.
-- Note in the review's own journal entry that rotation was missed.
+- Note in the review's own record entry that rotation was missed.
 
 ### 4.5 GOAL.md inconsistency
 
@@ -196,9 +196,9 @@ Type B, options for the human, wait for decision. The fact that the
 candidate came from review, not the per-session loop, doesn't change
 how it's resolved.
 
-### 4.7 Review's own journal entry
+### 4.7 Review's own record entry
 
-Review always logs a journal entry summarizing what was found and what
+Review always logs a record entry summarizing what was found and what
 was applied:
 
 ```markdown
@@ -216,7 +216,7 @@ the last one happened and what state it left things in.
 
 ### 4.8 Commit
 
-If files changed (OPEN-STOPS, GOAL.md, journals), commit them as one:
+If files changed (OPEN-STOPS, GOAL.md, records), commit them as one:
 "goal-driven: review YYYY-MM-DD — <one-line summary>".
 
 ## What review is NOT

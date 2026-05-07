@@ -27,17 +27,17 @@ before doing anything else.
 
 Load:
 - `goals/GOAL.md` (compass + Revisions history)
-- The full journal (or all monthly journals if rotated)
+- The full record (or all monthly records if rotated)
 - `goals/OPEN-STOPS.md` if present
 
-For long-running projects, the full journal can be substantial. Skim
+For long-running projects, the full record can be substantial. Skim
 for the major beats: kickoff, pivots, resolved STOPs, biggest entries.
 The retrospective is a synthesis, not a transcript.
 
 ### 2. Draft the retrospective
 
 Compose a retrospective entry **in chat** — same protocol as any
-journal entry, evidence-based, no naked claims. Suggested structure:
+record entry, evidence-based, no naked claims. Suggested structure:
 
 ```markdown
 ## YYYY-MM-DD — Retrospective (close: <achieved | abandoned | superseded>)
@@ -79,7 +79,7 @@ Get human confirmation before writing. Edit until they say yes.
 Append to the Revisions section:
 
 ```
-- YYYY-MM-DD: project closed (<state>). See retrospective in journal.
+- YYYY-MM-DD: project closed (<state>). See retrospective in record.
 ```
 
 Add a status line at the top, near the north-star paragraph:
@@ -92,7 +92,7 @@ Don't delete content. The closed GOAL.md is a historical record.
 
 ### 4. Append the retrospective entry
 
-Write the retrospective entry as the final entry in the current journal
+Write the retrospective entry as the final entry in the current record
 file (or in a new month's file if the close happens at month boundary).
 
 If `OPEN-STOPS.md` exists with unresolved entries: leave it. The
@@ -126,7 +126,7 @@ One commit, clear message: `goal-driven: close <project-name> (<state>)`.
 ## When close is wrong
 
 Don't close just because the project paused. Close is for terminal
-states; pauses go into the journal as ordinary entries (e.g.,
+states; pauses go into the record as ordinary entries (e.g.,
 `## YYYY-MM-DD — Pausing for ~6 weeks`). Closing and re-running `set`
 on resumption loses the audit trail.
 

@@ -1,7 +1,7 @@
 # Example walkthrough
 
 A concrete end-to-end run of goal-driven on one initiative, showing
-`set`, several journal entries, both STOP types, and resolution.
+`set`, several record entries, both STOP types, and resolution.
 
 The initiative: **adding semantic search to a chat application's history.**
 
@@ -75,9 +75,9 @@ I write that as a non-goal too, or note it as a stretch?"
 stretch goal, not required for success'."
 
 (Agent writes `goals/GOAL.md`, shows it in chat, gets final OK, adds
-kickoff entry to `journal-2026-04.md`.)
+kickoff entry to `record-2026-04.md`.)
 
-## journal-2026-04.md (early entries)
+## record-2026-04.md (early entries)
 
 ```markdown
 ## 2026-04-08 — Kickoff
@@ -143,7 +143,7 @@ kickoff entry to `journal-2026-04.md`.)
 (Posted to `OPEN-STOPS.md`:)
 
 ```
-- 2026-04-22 [Type A] C2 cold-start ambiguity → see journal-2026-04.md
+- 2026-04-22 [Type A] C2 cold-start ambiguity → see record-2026-04.md
 ```
 
 (Human picks option (a). GOAL.md is updated — C2 reworded with
@@ -209,5 +209,5 @@ reference.)
   Old IDs aren't reused. The Revisions section gives a quick scan of
   how the goal evolved.
 - **STOPs are not silent.** The agent surfaces them in chat, posts to
-  OPEN-STOPS, and waits. Resolution updates both the journal entry
+  OPEN-STOPS, and waits. Resolution updates both the record entry
   (append `→ resolved`) and OPEN-STOPS (remove the line).

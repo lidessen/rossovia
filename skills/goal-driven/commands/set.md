@@ -75,7 +75,7 @@ to observe it is decoration; either find a proxy or cut it.
 
 Number criteria stably as `C1, C2, C3, ...`. **IDs are never reused** —
 if C2 is later retired, C2 stays as retired in GOAL.md; new ones become
-C5, C6. This keeps old journal entries' references resolvable.
+C5, C6. This keeps old record entries' references resolvable.
 
 Echo each criterion back with its measurement, one at a time, before
 adding the next.
@@ -133,7 +133,7 @@ final read catches typos and ordering issues, not substance.
 If missing (idempotent — skip what's already there):
 
 - `goals/` directory
-- `goals/journal.md` (single journal file, heading only)
+- `goals/record.md` (single record file, heading only)
 
 Don't create `OPEN-STOPS.md` or monthly-rotation files now; they're
 added later when project volume or open-STOP count makes them
@@ -160,10 +160,10 @@ When working on this initiative, follow the goal-driven protocol:
 
 - At session start, read `goals/GOAL.md` and surface any open STOPs
   (from `OPEN-STOPS.md` if it exists, otherwise by scanning recent
-  journal entries). If the project uses monthly journals, ensure the
+  record entries). If the project uses monthly records, ensure the
   current month's file exists; on rollover, propose a carry-over entry
   in chat before appending.
-- At session end, draft a journal entry in chat (what done, observations,
+- At session end, draft a record entry in chat (what done, observations,
   per-criterion check with evidence, judgment) and get confirmation
   before appending.
 - If a criterion verdict is `✗`, or new evidence questions the north
@@ -182,9 +182,9 @@ This is opt-in and rarely necessary; the skill description usually
 carries enough weight on its own. If the human asks for it, the harness
 or hookify skill can generate the config.
 
-### 4.3 First journal entry
+### 4.3 First record entry
 
-Add a "kickoff" entry to the journal. Format:
+Add a "kickoff" entry to the record. Format:
 
 ```markdown
 ## YYYY-MM-DD — Kickoff
@@ -194,17 +194,17 @@ Add a "kickoff" entry to the journal. Format:
 - Judgment: no change. Next session begins real work.
 ```
 
-This anchors the journal so the next session has something to read.
+This anchors the record so the next session has something to read.
 
 ### 4.4 Commit
 
 Commit `goals/`, agent config updates, and any hook configs together as
 the goal-driven setup. One commit, clear message: "goal-driven: set
-GOAL.md and journal scaffolding".
+GOAL.md and record scaffolding".
 
 ### 4.5 Tell the human what's next
 
-- The compass is set. From now on, every work session ends with a journal
+- The compass is set. From now on, every work session ends with a record
   entry the agent will draft and ask them to confirm.
 - If a criterion fails or the north star feels wrong, the agent will STOP
   and ask before continuing.
