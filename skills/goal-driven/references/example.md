@@ -77,6 +77,50 @@ stretch goal, not required for success'."
 (Agent writes `goals/GOAL.md`, shows it in chat, gets final OK, adds
 kickoff entry to `record-2026-04.md`.)
 
+## Initial stories proposed at set
+
+After GOAL.md is written, the agent proposes some interpretive stories:
+
+> Three things in the GOAL feel worth interpreting beyond the terse
+> text. Want any drafted now?
+>
+> 1. `stories/why-three-months.md` — why we capped at 3 months of
+>    history. Worth anchoring the trade-off in case it gets questioned.
+> 2. `stories/what-counts-as-found.md` — what "found" means for the
+>    recall criterion (top-5 manual eval is the measure, but the user
+>    intent may need clarifying once we have query traffic).
+> 3. `stories/why-pgvector-not-sqlite-vec.md` — wait, this is shape,
+>    not goal. Skip — that belongs in design-driven decisions if it
+>    comes up.
+>
+> The first feels worth having now; the second can wait until we have
+> evidence to interpret. Should I draft (1)?
+
+Human says yes. Agent drafts (paragraph by paragraph, echoed, written):
+
+```markdown
+# Why three months of history
+
+GOAL.md C1 says "search returns relevant from last 3 months" — not
+"all history". Three months is a deliberate scope choice.
+
+The reasoning: based on usage data, 80% of meaningful searches are for
+conversations from the last 6 weeks; the 3-month cap covers ~92% of
+real queries. Going further back doubles the indexing cost without
+materially improving the experience for most users. We accept that
+the long-tail (search for an old conversation) is a non-goal — users
+who need this can fall back to existing keyword search.
+
+If we later see real demand for older history, this story is the
+reason to revisit. The criterion isn't sacred; the trade-off is.
+
+---
+_Last updated: 2026-04-08_
+```
+
+This story sits in `goals/stories/` as background. Any future STOP
+about expanding the window will load it for context.
+
 ## record-2026-04.md (early entries)
 
 ```markdown
@@ -191,6 +235,19 @@ broader rollout shows the same pattern. STOP is reopened — agent surfaces
 again, this time the human picks (a). GOAL is rewritten under the new
 north star, criteria are revised; old criteria are RETIRED but kept for
 reference.)
+
+After the reframe, the agent proposes a story update:
+
+> The pivot is the kind of decision future-you will want context on.
+> Should I add `stories/why-we-shifted-from-search-to-clustering.md`
+> capturing the user-research evidence and the reasoning?
+
+Human approves. The new story documents what the three interviews
+showed, what the broader rollout confirmed, what was given up by
+moving away from search-as-product, and why search-as-substrate
+remains useful. Future agents reading the post-pivot work pick up
+this story and immediately understand context that the GOAL.md
+revision alone wouldn't carry.
 
 ## What the example demonstrates
 
