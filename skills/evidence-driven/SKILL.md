@@ -236,7 +236,7 @@ blueprint format.
 ## With goal-driven
 
 Indirect — through design-driven. Evidence-driven doesn't read
-`goals/GOAL.md` and doesn't write to `goals/journal*`. Its loop is the
+`goals/GOAL.md` and doesn't write to `goals/record*`. Its loop is the
 build/verify cycle, which lives below the strategic layer.
 
 But: evidence-driven's discipline makes the upward feedback loop

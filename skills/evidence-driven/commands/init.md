@@ -1,10 +1,10 @@
 # evidence-driven:init — One-time scaffolding
 
 Wire up agent configs and optional tooling so evidence-driven's
-discipline applies during build sessions. Evidence-driven has no own
-artifacts (no `evidence/` directory, no log files); init's job is
-purely to make the discipline visible to AI agents working on the
-project.
+discipline applies during build sessions. Evidence-driven has no
+artifacts of its own (no `evidence/` directory, no log files); init's
+job is purely to make the discipline visible to AI agents working on
+the project.
 
 If the project doesn't have design-driven installed, evidence-driven
 still works as a standalone overlay on whatever task structure exists.
@@ -70,8 +70,6 @@ code with no clean test surface).
 
 If the human wants pre-commit hooks:
 - The harness skill covers hook configuration methodology
-- The hookify or fewer-permission-prompts skills can help generate
-  config
 - Recommended starting hooks (in rough order of value):
   1. **Source/test parity reminder** — if any file under `src/` is
      staged but no file under `test/` (or equivalent) is staged, emit
