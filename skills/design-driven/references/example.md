@@ -102,7 +102,8 @@ arg (defaulting to no limit to preserve existing callers). Route
 and handler done; validation + test still ahead.
 ```
 
-Check off TODOs as you go.
+Check off TODOs as you go — each check-off triggers a State update, 
+even when progress is small. State is the resumption surface.
 
 ## Step 5 — Verify
 

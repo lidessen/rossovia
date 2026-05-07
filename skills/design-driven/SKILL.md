@@ -203,14 +203,26 @@ blueprint alone. If a task blows past either, split it.
 
 **Build** — Code freely within design/ boundaries, following the blueprint's 
 approach. Check off TODO items as you go. If you discover a better approach 
-mid-build, update the blueprint first, then continue. Update the State 
-section with decisions made and current progress, so work can resume if 
-the session is interrupted. When a build-time decision is borderline 
-(technically 70% but not obvious), log it in State so review can catch it.
+mid-build, update the blueprint first, then continue. **Each completed TODO 
+triggers a State update — immediately on check-off, rather than being 
+deferred or optional.** State is the resumption surface; if the session dies between 
+TODO 4 and TODO 5, a fresh agent should be able to read State and pick up 
+at TODO 5 without inferring from code. When a build-time decision is 
+borderline (technically 70% but not obvious), log it in State so review 
+can catch it.
 
 **Verify** — Check the implementation against the verification criteria 
 defined in Plan. Confirm: does it stay within design/ boundaries? Is 
 the scope respected?
+
+Verification needs a *falsifiable* check, not a feeling. Automated tests 
+are the default — and TDD (write the failing test first, then the code 
+that makes it pass) is the strongest form when the task type allows. 
+Other forms are accepted when tests don't fit the work: a contract trace 
+that demonstrates the new behavior end-to-end, a manual checklist run 
+with evidence captured, a comparison against a known-good state. The 
+form depends on the task; the *falsifiability* doesn't. "Looks right to 
+me" isn't verification.
 
 A failing test (or an observation during verify) that reveals something 
 DESIGN.md doesn't account for is a **signal about design silence**, not 

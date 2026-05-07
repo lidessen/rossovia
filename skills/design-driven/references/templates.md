@@ -37,7 +37,8 @@ What's in / what's out for this task specifically.
 
 ## State                         ← Scaffolding — removed at close out
 Decisions made during build, current progress, and anything needed to 
-resume if the session is interrupted. Update this as you go.
+resume if the session is interrupted. **Update on every TODO check-off**, 
+not optionally — State is the resumption surface, useless if it lags.
 
 ## Follow-ups                    ← Kept after close out (if any)
 Items that got scope-shaved but remain worth doing. Names and one-line 
