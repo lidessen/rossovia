@@ -47,6 +47,15 @@ theory check, are there STOPs that should already have triggered? A
 silent ✗ that's been running for weeks, or ✓ verdicts that have been
 quietly ignoring the underlying theory's failure.
 
+**Stories drift (only if `goals/stories/` exists).** Stories interpret
+GOAL.md; they go stale when understanding moves on but the story
+doesn't. Look for: stories untouched for many months while related
+criteria have shifted; recent STOPs that should have triggered a story
+update but didn't; criteria that have been ambiguous through several
+STOPs but have no story to clarify. Surface candidates for refresh or
+new-story creation; don't unilaterally write — story changes go through
+the paragraph-echo protocol with human approval.
+
 Surface findings in chat. Don't write yet — the strategic findings get
 combined with Phase 2's maintenance findings in Phase 3's report.
 

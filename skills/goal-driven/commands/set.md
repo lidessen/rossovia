@@ -196,13 +196,46 @@ Add a "kickoff" entry to the record. Format:
 
 This anchors the record so the next session has something to read.
 
-### 4.4 Commit
+### 4.4 Propose initial stories (opt-in)
+
+Look at the GOAL.md just written and ask: are there choices in here
+that future-you (or a future agent) would want context on? Typical
+candidates:
+
+- A criterion whose number / threshold deserves explaining
+- A non-goal that's tempting to revisit later (story explains why we
+  said no the first time)
+- A north star phrasing that took multiple iterations to land on
+- An invariant whose cost we explicitly accepted
+
+Propose **at most one** — the highest-value candidate. The human
+just spent the interview confirming GOAL.md line by line; piling on
+2–3 more paragraph-echo cycles right after burns out the willingness
+to engage carefully:
+
+> One thing in the GOAL feels worth interpreting now beyond the terse
+> text: `stories/why-X.md` — <one-line reason>. Want me to draft it,
+> or leave for later when a STOP makes the choice live?
+
+If the human says yes, draft paragraph by paragraph in chat (same
+protocol as story updates — see SKILL.md "Stories" section), get
+approval, write to `goals/stories/<topic>.md`. Creating the first
+story brings the directory into being.
+
+If the human says no or "not now", that's fine — possibly the more
+common answer at set time. Other candidate stories will surface
+organically when a STOP resolution or review finding makes them live.
+Don't push.
+
+See `references/templates.md` for the story file template.
+
+### 4.5 Commit
 
 Commit `goals/`, agent config updates, and any hook configs together as
 the goal-driven setup. One commit, clear message: "goal-driven: set
 GOAL.md and record scaffolding".
 
-### 4.5 Tell the human what's next
+### 4.6 Tell the human what's next
 
 - The compass is set. From now on, every work session ends with a record
   entry the agent will draft and ask them to confirm.

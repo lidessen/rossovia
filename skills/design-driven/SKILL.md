@@ -53,6 +53,36 @@ When invoked with an argument, dispatch to the corresponding file:
 - `design/` exists, starting a task → no argument (normal loop)
 - `design/` exists and feels stale, or code has drifted → `audit`
 
+## When to use this skill
+
+design-driven is the right tool when the system has identifiable shape
+worth committing to — modules, mechanisms, boundaries that won't be
+rewritten next week. Most ongoing engineering work fits.
+
+**When another phase is the better starting point:**
+
+- **The destination is unclear, not just the path.** No falsifiable
+  success criteria, no deadline, no measurable target → start at the
+  strategy layer with `/goal-driven set`. design-driven becomes the
+  right tool once shape is the question, not direction.
+- **The shape is volatile** — you'd rewrite DESIGN.md weekly. The
+  project is still in exploration; goal-driven covers this phase.
+  Bring in design-driven when shape stabilizes.
+- **The work is one-off** — bug fix, script, throwaway prototype.
+  No framework needed.
+
+**Signals during design-driven work that warrant another skill:**
+
+- A criterion in goal-driven keeps failing despite shape being right
+  → may be a goal-level question (criterion wrong, north star
+  questioned), not a design issue. Surface as a goal STOP.
+- "Verified" bugs still ship → build-time discipline gap; layer
+  evidence-driven over the Build/Verify phase via
+  `/evidence-driven init`.
+- Same class of bugs recurs because shape is wrong (not the code
+  implementing it) → write a `design/decisions/NNN-*.md` proposal,
+  don't keep patching.
+
 ## Directory Structure
 
 ```
@@ -100,9 +130,9 @@ workflow; it's the skeleton every stage hangs on.
 
 ## Across the development cycle
 
-Every activity inherits the same 30% constraint and the same 70% 
-freedom. design/ doesn't dictate *how* each activity runs — it sets 
-what they all must respect.
+The 30/70 rule applies across every phase of work, but each phase
+has its own specific application — the bullets below name the
+concrete move per activity, not just the abstract principle.
 
 - **Planning** — read DESIGN.md first; scope the task against existing 
   modules and non-goals
@@ -121,9 +151,10 @@ what they all must respect.
   → proposal
 - **Onboarding** — new contributors read DESIGN.md before the code
 
-When an activity isn't listed here, the rule is the same: ask whether 
-the action stays within the shape (70% — proceed) or changes it (30% 
-— proposal).
+For activities not listed, derive the application yourself: ask
+whether the action stays within the shape (70% — proceed) or changes
+it (30% — proposal). The bullets above are common cases, not an
+exhaustive checklist.
 
 ## The Loop
 
@@ -223,6 +254,12 @@ that demonstrates the new behavior end-to-end, a manual checklist run
 with evidence captured, a comparison against a known-good state. The 
 form depends on the task; the *falsifiability* doesn't. "Looks right to 
 me" isn't verification.
+
+For projects where build-time discipline materially affects outcome 
+quality, the evidence-driven skill is a sibling overlay that deepens 
+this falsifiability rule (TDD cycle, anti-cargo-cult guards, evidence-
+trail State). Design-driven works alone without it; evidence-driven 
+adds rigor on top when the work calls for it.
 
 A failing test (or an observation during verify) that reveals something 
 DESIGN.md doesn't account for is a **signal about design silence**, not 

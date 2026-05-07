@@ -181,3 +181,39 @@ When a STOP resolution involves changing GOAL.md, the agent:
 
 All four steps happen together; partial application leaves the system
 inconsistent.
+
+## Story file (opt-in)
+
+A story is a topic-organized explanatory document that interprets one
+aspect of GOAL.md. File name is kebab-case description; content is
+narrative prose, freely editable.
+
+Filename: `goals/stories/<topic>.md`. Suggested patterns (none
+enforced — agent picks names that fit, human approves):
+
+- `why-<choice>.md` — explaining a specific choice
+- `what-<term>-means.md` — clarifying ambiguous semantics
+- `<topic>-rationale.md` — broader background
+- `<topic>-history.md` — evolution narrative
+
+```markdown
+# <Topic name as a sentence or fragment>
+
+<One paragraph: what this story explains and why it matters here.>
+
+<One or more paragraphs of explanatory prose. Cite specific criteria,
+observations, or trade-offs by name. Reference STOP dates or record
+entries that informed this understanding.>
+
+<If applicable, a paragraph on how the understanding evolved — the
+original framing vs. what's known now, and what triggered the shift.>
+
+---
+_Last updated: YYYY-MM-DD_
+```
+
+Length: typically 1–3 paragraphs. Long stories aren't wrong but suggest
+the topic might split. A story longer than ~50 lines deserves a look —
+it may be a topic that should become two stories, or an overgrown one
+that's drifted into journal-like running commentary (which belongs in
+record, not stories).
