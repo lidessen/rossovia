@@ -11,6 +11,10 @@ Load this file when you need to create one of these artifacts.
 **Status:** in-progress | done
 **Date:** YYYY-MM-DD
 **Design context:** Which design/ sections this task relates to
+**Serves:** C2, C5  ← only if goal-driven is installed; list the GOAL
+                      criteria this task moves forward, or `none` if it
+                      doesn't serve any (e.g., infra cleanup). Omit the
+                      line entirely if goals/GOAL.md doesn't exist.
 
 ## Approach
 What this task builds and the approach chosen. More detailed than design/ 
@@ -30,6 +34,11 @@ What's in / what's out for this task specifically.
 - [ ] Honors relevant Constraints and Non-goals
 - [ ] If shape changed: an adopted proposal exists in design/decisions/
 
+<!-- If evidence-driven is installed, each Verification check-off must
+     cite a falsifiable observation when ticked (e.g.,
+     "[x] tests pass — 14/14 in store.test.ts"). Bare `[x]` is rejected.
+     Record the evidence either inline next to the check or in State. -->
+
 ## TODO                          ← Scaffolding — removed at close out
 - [ ] Step 1 description
 - [ ] Step 2 description
@@ -45,6 +54,12 @@ Items that got scope-shaved but remain worth doing. Names and one-line
 intents, not full blueprints.
 - `<task-name>` — one-line intent
 ```
+
+The `Serves:` line and the evidence-discipline comment above are
+**conditional on sibling skills being installed**. If neither is
+present, the blueprint stays exactly as it was — these fields exist
+to make traceability visible when the surrounding methodology is
+already in play, not to add overhead when it isn't.
 
 ## Proposal format
 

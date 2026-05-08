@@ -222,6 +222,17 @@ DESIGN.md and the code. If those two disagree, that's drift; stop and
 run `/design-driven audit` rather than layer new work on a stale 
 skeleton.
 
+**If goal-driven is installed** (`goals/GOAL.md` exists), read it as 
+part of Plan and decide which success criteria this task moves 
+forward. Add a `**Serves:** C<n>, C<m>` line to the blueprint header 
+(or `**Serves:** none` for infra cleanup that doesn't directly serve 
+a criterion). This makes the blueprint → goal traceability visible 
+in two directions: a future reader sees why the task exists; the 
+goal-driven session-end record can cite the blueprint when checking 
+that criterion. If the task doesn't visibly serve any criterion and 
+isn't infra cleanup, that itself is a signal — pause and ask whether 
+this task belongs in this initiative.
+
 Then write `blueprints/<task-name>.md` with approach, scope, and 
 verification criteria upfront — how will you know this task is done? 
 The TODO and State sections are scaffolding: progress trackers, not 
@@ -260,6 +271,13 @@ quality, the evidence-driven skill is a sibling overlay that deepens
 this falsifiability rule (TDD cycle, anti-cargo-cult guards, evidence-
 trail State). Design-driven works alone without it; evidence-driven 
 adds rigor on top when the work calls for it.
+
+**If evidence-driven is installed** (its block is present in the 
+project's agent configs), each Verification check-off must cite a 
+falsifiable observation when ticked — `[x] tests pass — 14/14 in 
+store.test.ts`, not bare `[x]`. The evidence can sit inline next to 
+the check or be recorded in State and referenced by line. A 
+verification ticked without an observation is rejected on review.
 
 A failing test (or an observation during verify) that reveals something 
 DESIGN.md doesn't account for is a **signal about design silence**, not 
