@@ -414,35 +414,15 @@ See `references/template.md`.
 
 ## Common traps
 
-**New shoes, old path.** Skeleton is traditional, the surface is
-reskinned with paradigm vocabulary. Detection: try describing the
-system without any paradigm-specific verbs. If the description
-matches a traditional system in the same domain, the reframe is
-cosmetic.
+Five recurring anti-patterns surface across reframes — *new shoes
+on old path*, *novelty for novelty's sake*, *premature flesh*,
+*shapeless transfer*, *phantom primitives*. Each has a detection
+method and a cure path back into the relevant phase.
 
-**Novelty for novelty's sake.** Skeleton is genuinely new but does
-the essence functions worse than the traditional version. Users get
-fashionable architecture and worse outcomes. Detection: walk through
-each essence function and ask "better, worse, or sideways for the
-user?" Sideways is acceptable. Worse means the reframe has lost the
-plot.
-
-**Premature flesh.** Drawing UI before the skeleton has settled. The
-flesh then constrains skeleton revision — changing the skeleton
-breaks the UI, so the team stops changing the skeleton. Skeleton
-discipline collapses.
-
-**Shapeless transfer.** Borrowing patterns from mature domains
-without translation, ending up with a new-domain system that is
-secretly the source domain in disguise. The cure is forcing the
-"what does this become *here*?" step before the pattern enters the
-skeleton.
-
-**Phantom primitives.** Listing capabilities the new paradigm
-*could* offer but the team can't actually access (because the
-underlying tech isn't there yet, or the platform doesn't expose it).
-Skeleton then load-bears on something that doesn't exist. Calibrate
-primitives to what's available, not what's imagined.
+These are diagnostic patterns, not phase-bound. The natural places
+to check for them are Phase 4 (Stress Test) and Phase 7
+(Comprehension Test), where the skeleton and its projection are
+under test. See `references/traps.md` for the full catalog.
 
 ---
 
