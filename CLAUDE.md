@@ -12,6 +12,10 @@ Skills should help agents understand *why*, not just specify *what*. A skill tha
 
 Agent context is finite — structure it in layers: L1 (architecture, always present), L2 (design, on activation), L3 (implementation, on demand). The higher the layer, the smaller and more stable. Keep SKILL.md under 500 lines; split details into supporting files. See the [harness skill](skills/harness/SKILL.md) for the full methodology and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure) for the underlying spec.
 
+### Design for finite human bandwidth
+
+Agent throughput keeps rising; human review capacity doesn't. When designing a skill or shaping any output that lands in front of a human, treat the output like code architecture: humans review the skeleton (the 20% whose failure invalidates the rest), agents own the details within, and details should be cheap to throw out without disturbing the skeleton. Generalizes design-driven's 30/70 to all agent-human collaboration. See [harness Part III](skills/harness/SKILL.md) for the full principle and consequences.
+
 ## Project Overview
 
 This is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).

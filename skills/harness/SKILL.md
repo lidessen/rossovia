@@ -207,6 +207,75 @@ you can add to a project.
 
 ---
 
+## Part III: Designing for finite human bandwidth
+
+Agent throughput keeps rising; human review capacity doesn't. Once
+agents start producing more output than a human can scan in detail,
+the bottleneck shifts from "can the agent do it" to "can a human
+catch what matters before the wrong thing ships." Skills and outputs
+that ignore this constraint scale until exactly the moment they fail.
+
+The principle: **agent outputs intended for human review should be
+skeleton-grade, with details treated as cheaply replaceable.** Like
+code architecture, the human's job is to ensure the skeleton holds —
+not to inspect every line. Modules can be rewritten with low cost as
+long as the architecture is right.
+
+This is the meta-pattern the existing methodology skills already
+practice without naming it:
+
+- **design-driven's 30/70 split** — humans curate the 30% that
+  defines shape; agents own the 70% within. The 70% is throwable if
+  shape holds.
+- **reframe's skeleton vs flesh** — review happens at the skeleton
+  level (essence, primitives, projection logic); flesh details
+  project from the skeleton and can be redrawn cheaply if user
+  comprehension fails.
+- **goal-driven's GOAL.md / record / stories asymmetry** — humans
+  line-edit the compass; the record is append-only event log; stories
+  are opt-in narrative. Volume is asymmetric and review attention is
+  asymmetric to match.
+- **evidence-driven's State as evidence trail** — auditable on
+  demand, but agent-maintained at execution layer, not human-reviewed
+  line-by-line.
+
+### Practical consequences when designing a new skill or output
+
+1. **Identify the skeleton early.** What 20% of the output, if wrong,
+   would make the rest worthless? That's what humans must see
+   prominently. Everything else is detail.
+2. **Make details collapsible, not omitted.** Tables, append-only
+   logs, `<details>` blocks, references-on-demand. Detail is not the
+   problem — detail forced into the human's primary view is.
+3. **Make detail-level mistakes cheap.** If a detail is wrong, the
+   fix should be local. If correcting one detail forces re-review of
+   the whole output, the architecture is wrong, not the detail.
+4. **Treat thoroughness as a non-strategy at scale.** "The human
+   should review everything" predicts review fatigue, then either
+   rubber-stamping or bottleneck. Pick what humans must catch and
+   design the output's shape to surface exactly that.
+
+### The rule of thumb
+
+If agent output volume grows linearly with agent work but the *must-
+review* volume grows sub-linearly, the design is on track. If they
+grow together, the skill is preparing the human for review failure —
+sooner or later the human starts skimming the architecture too, and
+the whole collaboration loses its safety net.
+
+### Why this matters more over time
+
+The skeleton/detail split has always existed in software architecture
+(interfaces vs implementations, public APIs vs internals, design docs
+vs code). What's new is the *ratio*. When humans wrote all the code,
+the ratio of skeleton-level decisions to detail-level decisions
+roughly matched what humans could review. With agents producing the
+detail, that ratio explodes — and a discipline that was implicit
+becomes load-bearing. Skills that don't internalize this principle
+will scale only until human review caves under the volume.
+
+---
+
 ## Meta-principle
 
 ### Understand why, not just what
