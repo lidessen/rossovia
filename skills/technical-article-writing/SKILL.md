@@ -1,6 +1,6 @@
 ---
 name: technical-article-writing
-description: Methodology for writing argumentative technical articles — pieces that convince the reader of a specific claim through a chain of reasoning. Use when the user wants a technical article, essay, or book chapter that takes a position: introducing a new idea, challenging an accepted one, or arguing for a particular approach. Triggers on phrases like "write an article/essay/chapter about X," "make the case for X," "argue that Y," or structuring a multi-chapter argument about agents, architectures, systems design, or methodology. Do NOT trigger for tutorials ("how to do X"), reference or API documentation, release notes, changelogs, or pure explainers where no claim is being argued — those need a different framework.
+description: Methodology for writing argumentative technical articles — pieces that convince the reader of a specific claim through a chain of reasoning. Use when the user wants a technical article, essay, or book chapter that takes a position — introducing a new idea, challenging an accepted one, or arguing for a particular approach. Triggers on phrases like "write an article/essay/chapter about X," "make the case for X," "argue that Y," or structuring a multi-chapter argument about agents, architectures, systems design, or methodology. Do NOT trigger for tutorials ("how to do X"), reference or API documentation, release notes, changelogs, or pure explainers where no claim is being argued — those need a different framework.
 argument-hint: "[topic | brief | revise <path>]"
 ---
 

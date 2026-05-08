@@ -1,20 +1,6 @@
 ---
 name: harness
-description: |
-  Agent harness architecture — structure a project's agent context across 
-  layers for effective AI-assisted development. Covers CLAUDE.md, skills, 
-  design docs, hooks, and all artifacts that shape how an agent understands 
-  and operates in a codebase.
-
-  Use when setting up or improving a project's agent configuration, when 
-  agent context feels bloated or disorganized, when onboarding a new project 
-  for AI-assisted development, or when the agent keeps losing architectural 
-  awareness mid-task. Trigger on phrases like "set up claude", "improve 
-  CLAUDE.md", "agent keeps forgetting", "context is too long", "harness 
-  setup", "organize agent context", "how should I structure my prompts".
-
-  Supports arguments: `/harness audit` to evaluate an existing project's 
-  context architecture, `/harness init` to set up harness from scratch.
+description: Agent harness architecture — structure a project's agent context across layers for effective AI-assisted development. Covers CLAUDE.md, skills, design docs, hooks, and all artifacts that shape how an agent understands and operates in a codebase. Use when setting up or improving agent configuration, when agent context feels bloated or disorganized, when onboarding a project for AI-assisted development, or when the agent keeps losing architectural awareness mid-task. Triggers on "set up claude", "improve CLAUDE.md", "agent keeps forgetting", "context is too long", "harness setup", "organize agent context", "how should I structure my prompts". Args — `/harness audit` to evaluate an existing project's context architecture, `init` to set up harness from scratch.
 argument-hint: "[audit | init]"
 ---
 

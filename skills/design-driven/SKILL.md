@@ -1,23 +1,6 @@
 ---
 name: design-driven
-description: |
-  Design-driven development methodology. The design/ directory is the single 
-  source of architectural truth — read it before coding, stay within its 
-  boundaries, and when the system's shape needs to change, update the design 
-  first.
-
-  Use this skill whenever starting any development work on this project. Also 
-  use when the user asks to: create or update architecture docs, add a new 
-  module or feature that might cross existing boundaries, refactor system 
-  structure, or understand the codebase architecture. Trigger on phrases like 
-  "design first", "update the design", "does this change the architecture", 
-  "write a design for", "what's the current design", or when onboarding to 
-  understand a codebase's shape.
-
-  Supports arguments: `/design-driven init` to configure a project for 
-  design-driven development, `/design-driven bootstrap` to generate design 
-  from an existing codebase, `/design-driven audit` to reconcile an existing 
-  design/ against the current code.
+description: Design-driven development methodology — the design/ directory is the single source of architectural truth; read it before coding, stay within its boundaries, and update it first when the system's shape changes. Use whenever starting development on this project, or when the user asks to create/update architecture docs, add a feature that may cross existing boundaries, refactor system structure, or understand the codebase architecture. Triggers on "design first", "update the design", "does this change the architecture", "write a design for", "what's the current design", or onboarding to a codebase's shape. Args — `/design-driven init` to configure a project, `bootstrap` to generate design from existing code, `audit` to reconcile design/ against current code.
 argument-hint: "[init | bootstrap | audit]"
 ---
 

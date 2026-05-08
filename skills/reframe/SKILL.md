@@ -1,43 +1,6 @@
 ---
 name: reframe
-description: |
-  Methodology for designing in territory where the industry is still
-  groping for shape — AI-native systems, agent-first interfaces, any
-  domain whose category is forming. Strip the target to 3-5 abstract
-  functions (the essence), redraw the load-bearing skeleton from the
-  new paradigm's primitives, stress-test it without traditional
-  crutches, then add familiar flesh as a projection of the new
-  skeleton — never the other way around.
-
-  Use when the user is designing something whose conventions don't
-  yet exist and where copying the traditional reference design would
-  lead them astray. Trigger on phrases like "AI native X", "agent-
-  first X", "redefine X", "rebuild X from scratch under Y", "reframe
-  X for Y", "what should X look like in the new paradigm", "design a
-  system with no precedent", or when the user voices the tension
-  between "new shoes on the old path" and "a skeleton that holds on
-  its own".
-
-  Do NOT trigger for incremental redesigns within an existing
-  paradigm (use design-driven), for explanatory writing about a
-  paradigm (use technical-article-writing), or for vague "make it AI"
-  requests with no concrete domain to redefine.
-
-  Pairs with design-driven as upstream: reframe explores what shape a
-  system should take in a new paradigm; once the skeleton settles, it
-  graduates into design/DESIGN.md and design-driven takes over.
-  Parallel to goal-driven (which manages destination clarity, not
-  shape clarity) — multi-month explorations in unsettled territory
-  often use both: GOAL.md as compass, concepts/<target>.md as the
-  working theory of shape. Each works alone — they cross-reference
-  but do not depend on each other.
-
-  Supports arguments: `/reframe init` to set up the project's
-  `concepts/` working directory and register the skill in agent
-  configs, `/reframe close` to finalize a concept document with a
-  retrospective and archive it, `/reframe explain [for <audience>]`
-  to translate a concept document into an audience's working
-  vocabulary (output to chat; not persisted by default).
+description: Methodology for designing in territory where the industry is still groping for shape — AI-native systems, agent-first interfaces, any domain whose category is forming. Strip the target to 3-5 abstract functions, redraw the load-bearing skeleton from the new paradigm's primitives, stress-test without traditional crutches, then add familiar flesh as a projection of the new skeleton — never the other way around. Use when designing something whose conventions don't yet exist and where copying the traditional reference design would mislead. Triggers on "AI native X", "agent-first X", "redefine X", "rebuild X from scratch under Y", "reframe X for Y", "what should X look like in the new paradigm", "design a system with no precedent", or the tension between "new shoes on the old path" and "a skeleton that holds on its own". Do NOT trigger for incremental redesigns within an existing paradigm (use design-driven), explanatory writing (use technical-article-writing), or vague "make it AI" requests. Pairs with design-driven as upstream and parallel to goal-driven; each works alone. Args — `/reframe init` to set up `concepts/` and register agent configs, `close` to finalize and archive a concept document, `explain [for <audience>]` to translate a concept into an audience's vocabulary.
 argument-hint: "[init | close | explain [for <audience>]]"
 ---
 
