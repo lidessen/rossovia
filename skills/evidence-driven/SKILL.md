@@ -1,32 +1,6 @@
 ---
 name: evidence-driven
-description: |
-  Evidence-driven methodology for the execution layer — every claim of
-  progress requires a falsifiable observation supporting it. State
-  updates, Verify checks, test runs, and any "this is done" assertion
-  must carry concrete evidence; "looks right to me" is rejected.
-  
-  Use this skill when working on production code, regression-prone
-  systems, or any task where build-time discipline materially affects
-  outcome quality. Trigger on phrases like "set up TDD", "build
-  discipline", "no progress without evidence", "test-first",
-  "verify rigorously", "production code workflow".
-
-  Do NOT trigger for prototypes, exploratory spikes, throwaway scripts,
-  documentation-only changes, or work where the cost of a discipline
-  overlay outweighs the cost of occasional bugs.
-
-  Pairs with design-driven. Design-driven defines what to verify (the
-  blueprint's Verify section); evidence-driven defines how to verify
-  with discipline (TDD cycle, falsifiability, evidence collection).
-  Each works alone — they cross-reference but do not depend on each
-  other.
-
-  Supports arguments: `/evidence-driven init` to wire up agent configs
-  and optional pre-commit hooks. No periodic-audit command — evidence-
-  driven is an always-on overlay, not a phase-bounded skill; reviewing
-  evidence quality is a natural sub-pass of design-driven's audit when
-  both are installed.
+description: Evidence-driven methodology for the execution layer — every claim of progress requires a falsifiable observation; "looks right to me" is rejected. Use for production code, regression-prone systems, or any task where build-time discipline materially affects outcome quality. Triggers on "set up TDD", "build discipline", "no progress without evidence", "test-first", "verify rigorously", "production code workflow". Do NOT trigger for prototypes, exploratory spikes, throwaway scripts, or doc-only changes. Pairs with design-driven (which defines what to verify; evidence-driven defines how) — each works alone. Args — `/evidence-driven init` to wire up agent configs and optional pre-commit hooks. No periodic-audit command; it's an always-on overlay.
 argument-hint: "[init | <task description>]"
 ---
 

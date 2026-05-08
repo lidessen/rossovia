@@ -1,40 +1,6 @@
 ---
 name: goal-driven
-description: |
-  Goal-driven methodology for initiatives where the destination is clearer
-  than the path. GOAL.md is the stable compass — the General Line plus falsifiable
-  success criteria. The record captures what was tried, what was observed,
-  and whether each criterion is still served. The agent writes both files;
-  the human approves edits via chat.
-
-  Use this skill for multi-week initiatives where upfront design is the
-  wrong tool: research, exploratory features, learning projects with a
-  shippable output, writing a book or article series, job search,
-  side-business launches. Trigger on phrases like "set a goal", "track
-  my progress on X", "this is exploratory", "I know the goal but not
-  the path", or when starting a months-long initiative without a clear
-  technical shape.
-
-  Do NOT trigger for single-task work, bug fixes, week-long features
-  with a clear plan, vague aspirations ("be healthier", "write more"),
-  habit tracking, or general life management — this skill is overkill
-  for those. A TODO list, notebook, or habit tracker serves better.
-
-  Pairs with design-driven. Goal-driven manages why and how-far;
-  design-driven manages what-shape. Use both when a project is uncertain on
-  direction AND structure. Each works alone — they cross-reference but do
-  not depend on each other.
-
-  Also runs parallel to reframe when the initiative is in unsettled
-  paradigm territory (AI-native, agent-first). Goal-driven owns
-  destination clarity; reframe owns shape clarity in the new paradigm.
-  GOAL.md as compass, concepts/<target>.md as the working theory of
-  shape — neither depends on the other.
-
-  Supports arguments: `/goal-driven set` to interview-drive an initial
-  GOAL.md and scaffolding, `/goal-driven review` for strategic
-  checkpoint plus protocol maintenance, `/goal-driven close` to wrap
-  up a finished initiative with a retrospective and archive.
+description: Goal-driven methodology for initiatives where the destination is clearer than the path — GOAL.md is the stable compass (General Line plus falsifiable success criteria), and the record captures what was tried and observed. Use for multi-week initiatives where upfront design is the wrong tool — research, exploratory features, learning projects with a shippable output, book/article series, job search, side-business launches. Triggers on "set a goal", "track my progress on X", "this is exploratory", "I know the goal but not the path", or starting a months-long initiative without a clear technical shape. Do NOT trigger for single-task work, bug fixes, week-long features with a clear plan, vague aspirations ("be healthier"), habit tracking, or general life management. Pairs with design-driven (why/how-far vs what-shape) and runs parallel to reframe in unsettled paradigm territory; each works alone. Args — `/goal-driven set` to interview-drive an initial GOAL.md, `review` for strategic checkpoint, `close` to wrap up with retrospective and archive.
 argument-hint: "[set | review | close]"
 ---
 
