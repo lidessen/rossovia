@@ -60,6 +60,12 @@ For each crutch removed during testing: did the skeleton hold?
 Where did it bend? Where did it concede (i.e. functions that stay
 traditional — the boundary of the reframe)?
 
+### Comprehension verdict
+What evidence shows users can navigate the projected flesh? Cite
+specific Comprehension Tests entries. If users struggled, which of
+the three feedback paths (flesh / skeleton / essence) was walked,
+and what changed as a result?
+
 ### Lessons
 One or two paragraphs. What would future-you do differently? What
 generalizes beyond this concept? Concrete enough that a similar

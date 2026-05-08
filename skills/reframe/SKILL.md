@@ -303,6 +303,70 @@ Once the skeleton holds, plan the user-facing surface as a
 Write under `## Flesh Plan`. For each flesh element, state which
 skeleton state it projects and which user need it serves.
 
+## Phase 7: Comprehension Test
+
+Skeleton soundness does not imply flesh comprehensibility. A
+skeleton built from genuinely new primitives will project a surface
+that may *look* familiar yet behave in unfamiliar ways — and users
+may not bridge the gap on their own. Phase 7 closes the loop with
+the lightest credible evidence that the projection is legible to
+the people who will use it.
+
+This is symmetric with Phase 4: Phase 4 stress-tests the skeleton
+against removed traditional crutches; Phase 7 stress-tests the
+flesh against actual user comprehension. Without Phase 7 the
+methodology is asymmetric — we verify that the bones hold but never
+verify that the skin can be read.
+
+### How to test (lightest credible evidence)
+
+Match the artifact's fidelity to the risk:
+
+- **Lowest risk** — narrate the flow in plain language to a target
+  user; ask them to predict what happens next at each step.
+- **Medium risk** — wireframe walkthrough or paper prototype.
+- **Higher risk** — interactive mock with real interaction patterns.
+- **Highest risk** — working prototype on a thin slice of the
+  skeleton.
+
+Reframe does not prescribe research methodology. The discipline is
+"the cheapest evidence that would change your mind". Heavier
+artifacts are scope creep into UX research; lighter ones leave the
+question unanswered.
+
+### Three diagnoses, three feedback paths
+
+When users cannot navigate the flesh, the cause matters — different
+causes feed back into different earlier phases. Misdiagnosis turns
+the loop into mindless flesh iteration that drifts the skeleton.
+
+1. **Flesh problem.** Skeleton is sound; the projection is awkward.
+   *Feedback → Phase 6.* Revise how skeleton state is surfaced
+   without changing the skeleton.
+2. **Skeleton problem.** No projection of this skeleton can land in
+   the user's head — the bones are too foreign for the audience.
+   *Feedback → Phase 3.* This is also the most common signal that
+   the reframe has slipped into "novelty for novelty's sake".
+3. **Essence problem.** The flesh projects the skeleton faithfully
+   and the skeleton holds, but it doesn't serve what users actually
+   need. The wrong functions were extracted as essence.
+   *Feedback → Phase 1.* Hardest diagnosis to face, but the cheapest
+   place to learn it is here, not after launch.
+
+### Boundary: this is the last gate before graduation
+
+Phase 7 is the final check before the concept can graduate via
+`/reframe close`. It is not the start of full user research — that
+discipline belongs downstream, in design-driven's blueprint Verify
+sections and in the implementation phase. Phase 7 ends as soon as
+there's enough evidence to know which (if any) of the three feedback
+paths to walk.
+
+Capture results under `## Comprehension Tests` in the document —
+append-only, mirroring the shape of `## Stress Tests`. Each entry:
+the artifact tested, the user(s) involved, what was observed, the
+diagnosis, the feedback path taken.
+
 ---
 
 ## Common traps

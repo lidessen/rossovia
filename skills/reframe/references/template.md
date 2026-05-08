@@ -89,6 +89,16 @@ serves.
 
 - **<UI element>** — projects: <skeleton state>; serves: <user need>.
 
+## Comprehension Tests
+
+Append-only log. Each entry: artifact tested (narration / wireframe /
+mock / prototype), users involved, what was observed, diagnosis
+(flesh / skeleton / essence problem), feedback path taken.
+
+- **<artifact>** (YYYY-MM-DD) — users: <who>; observation:
+  <what happened>; diagnosis: <flesh | skeleton | essence>;
+  feedback: <revised Phase N>.
+
 ## Open Tensions
 
 Unresolved questions worth surfacing rather than papering over.
