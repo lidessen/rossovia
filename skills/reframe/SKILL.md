@@ -421,8 +421,9 @@ Reframe is the most upstream of the methodology skills — it operates
 ```
 
 - **Pairs with design-driven as predecessor.** When a concept's
-  skeleton settles (Phase 4 stress tests pass), `/reframe close`
-  graduates it into `design/DESIGN.md`. Reframe is the
+  skeleton settles (Phase 4 stress tests *and* Phase 7 comprehension
+  tests both pass), `/reframe close` graduates it into
+  `design/DESIGN.md`. Reframe is the
   *pre-architectural sketchbook*; design-driven is *post-settlement
   architecture*. Don't substitute design-driven for reframe in
   unsettled territory — design-driven assumes a shape exists to be
@@ -433,12 +434,12 @@ Reframe is the most upstream of the methodology skills — it operates
   in unsettled territory often uses both: `GOAL.md` for destination,
   `concepts/<target>.md` for shape. They reference each other but
   neither depends on the other.
-- **Light overlap with evidence-driven.** The Phase 4 stress test
-  borrows evidence-driven discipline (don't claim "skeleton holds"
-  without a falsifiable observation). But reframe is primarily
-  conceptual exploration, not execution discipline — evidence-driven
-  earns its keep later, during implementation of the settled
-  skeleton.
+- **Light overlap with evidence-driven.** Phase 4 stress tests and
+  Phase 7 comprehension tests both borrow evidence-driven discipline
+  (don't claim "skeleton holds" or "users understand it" without a
+  falsifiable observation). But reframe is primarily conceptual
+  exploration, not execution discipline — evidence-driven earns its
+  keep later, during implementation of the settled skeleton.
 
 ## When NOT to use this skill
 

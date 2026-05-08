@@ -12,9 +12,10 @@ target, stop and ask whether the user meant something else.
 
 ## Three end states
 
-- **Settled** — the skeleton holds, stress tests pass, the concept
-  is ready to graduate into the project's architecture (e.g. fold
-  into `design/DESIGN.md`). Most common.
+- **Settled** — the skeleton holds, both stress tests (Phase 4) and
+  comprehension tests (Phase 7) pass, the concept is ready to
+  graduate into the project's architecture (e.g. fold into
+  `design/DESIGN.md`). Most common.
 - **Abandoned** — the reframe didn't pay off; the team decided the
   traditional shape was the right answer for this domain. The
   reasoning matters and goes into the retrospective.
@@ -36,8 +37,9 @@ which to close.
 ### 2. Read the full document
 
 Load the entire file. Skim for the major beats: essence iterations,
-skeleton versions, stress test outcomes, transfer log entries, open
-tensions. The retrospective synthesizes — it doesn't transcribe.
+skeleton versions, stress test outcomes, transfer log entries,
+comprehension test outcomes, open tensions. The retrospective
+synthesizes — it doesn't transcribe.
 
 ### 3. Draft the retrospective
 
