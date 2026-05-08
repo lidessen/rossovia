@@ -11,10 +11,7 @@ Load this file when you need to create one of these artifacts.
 **Status:** in-progress | done
 **Date:** YYYY-MM-DD
 **Design context:** Which design/ sections this task relates to
-**Serves:** C2, C5  ← only if goal-driven is installed; list the GOAL
-                      criteria this task moves forward, or `none` if it
-                      doesn't serve any (e.g., infra cleanup). Omit the
-                      line entirely if goals/GOAL.md doesn't exist.
+**Serves:** C<n>, C<m> (or "none")
 
 ## Approach
 What this task builds and the approach chosen. More detailed than design/ 
