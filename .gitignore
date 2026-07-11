@@ -1,0 +1,5 @@
+.DS_Store
+.reasonix/
+.work-cell/
+packages/work-cell/node_modules/
+packages/work-cell/.work-cell/

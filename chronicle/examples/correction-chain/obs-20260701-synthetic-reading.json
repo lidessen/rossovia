@@ -1,0 +1,29 @@
+{
+  "id": "obs-20260701-synthetic-reading",
+  "schema": "observation-record.v1",
+  "kind": "observation",
+  "occurredAt": "2026-07-01T10:00:00Z",
+  "recordedAt": "2026-07-01T10:01:00Z",
+  "subject": { "type": "synthetic-example", "id": "correction-chain" },
+  "observations": [
+    { "name": "draft-label", "value": "north" }
+  ],
+  "method": {
+    "kind": "human-observation",
+    "name": "synthetic fixture",
+    "limitations": ["This is test data, not a project observation."]
+  },
+  "provenance": {
+    "sourceRole": "primary",
+    "sources": [
+      { "locator": "self: synthetic fixture", "role": "raw" }
+    ]
+  },
+  "quality": {
+    "status": "raw",
+    "limitations": ["The label is intentionally subject to correction."]
+  },
+  "observer": { "kind": "human", "id": "synthetic-observer" },
+  "recorder": { "kind": "tool", "id": "test-fixture" },
+  "classification": "internal"
+}

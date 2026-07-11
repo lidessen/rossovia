@@ -1,0 +1,995 @@
+{
+  "version": "work-cell.run.v1",
+  "runId": "077ac836-15ad-40a3-a330-317027b905a9",
+  "cellId": "aesthetic-readme-entry-review",
+  "depth": 0,
+  "driver": {
+    "adapter": "ai-sdk-v6",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "pricing": {
+      "inputPerMillionUsd": 0.14,
+      "cachedInputPerMillionUsd": 0.0028,
+      "outputPerMillionUsd": 0.28,
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "revision": "2026-07-10"
+    }
+  },
+  "startedAt": "2026-07-11T01:35:14.985Z",
+  "finishedAt": "2026-07-11T01:35:25.430Z",
+  "durationMs": 10445,
+  "status": "budget_exceeded",
+  "input": {
+    "id": "aesthetic-readme-entry-review",
+    "intent": "Review the README entry as a document interface for the Aesthetic Practice Pilot. Return a concise Aesthetic Study that distinguishes observed README facts from inferred preference, tests whether a new reader can find purpose, repository role, and next entry points, and names at most one justified next revision.",
+    "workspace": {
+      "root": "/Users/lidessen/workspaces/skills",
+      "readPaths": [
+        "README.md",
+        "design/FOUNDING-MANDATE.md",
+        "design/aesthetics/README.md",
+        "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+        "design/aesthetics/cases/2026-07-10-readme-entry.md",
+        "design/aesthetics/WORK-CELL-BRIEF.md",
+        "principles/SEQUENCE.md",
+        "principles/interpretations"
+      ],
+      "writePaths": [],
+      "excludePaths": [
+        ".git",
+        ".work-cell",
+        "node_modules"
+      ],
+      "allowedCommands": []
+    },
+    "genome": {
+      "sequencePath": "principles/SEQUENCE.md",
+      "interpretationsDir": "principles/interpretations"
+    },
+    "dna": {
+      "baseInstructions": "Read the named Aesthetic Case and its sources. Distinguish observed artifact facts from inferred preference. Make the smallest review that lets the stated audience act. Preserve the case's negative boundary; do not claim a final visual direction, public project name, model parity, or acceptance authority. Return sources, unresolved observations, and one human review question.",
+      "capabilities": []
+    },
+    "capabilitiesRequired": [],
+    "acceptance": [
+      "Return traceable evidence from the named README, mandate, seed, and case sources.",
+      "Classify material statements as observed fact, inferred preference, or unresolved question.",
+      "Name at most one justified next revision, or explicitly state that no revision is justified.",
+      "Preserve the case's authority and non-scope boundaries."
+    ],
+    "budget": {
+      "maxSteps": 6,
+      "maxTokens": 18000,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 16000
+    },
+    "lineage": {
+      "depth": 0
+    }
+  },
+  "geneExpression": {
+    "lead": "P04",
+    "supports": [
+      "P02",
+      "P13"
+    ],
+    "principalContradiction": "The README entry must serve as a document interface that orients a new reader to purpose, repository role, and next entry points, yet the current README may conflate observed facts with inferred preferences, leaving the reader unable to distinguish what is established from what is assumed, and thus unable to act with clarity.",
+    "contributions": [
+      {
+        "pid": "P04",
+        "decision": "The principal contradiction is between the README's intended function as an orienting interface (purpose, role, entry points) and its current conflation of observed fact with inferred preference, which blocks a new reader from forming actionable understanding. Resolving this contradiction is the minimal effective leap."
+      },
+      {
+        "pid": "P02",
+        "decision": "Ground all material statements in traceable evidence from the named README, mandate, seed, and case sources. Classify each as observed fact (verifiable from source), inferred preference (reasoned but not directly attested), or unresolved question (cannot be settled from available sources). This ensures the Aesthetic Study is实事求是."
+      },
+      {
+        "pid": "P13",
+        "decision": "Distinguish claims that are主张 (assertions) from facts that have been subjected to traceable verification提交. In the Aesthetic Study, every statement about the README must be traceable to the README text itself or to the mandate/seed/case sources. No unverified assertion may be presented as fact."
+      }
+    ]
+  },
+  "loadedInterpretations": [
+    "principles/interpretations/P04.md",
+    "principles/interpretations/P02.md",
+    "principles/interpretations/P13.md"
+  ],
+  "verification": {
+    "passed": false,
+    "results": []
+  },
+  "workspaceDiff": {
+    "added": [],
+    "changed": [],
+    "removed": []
+  },
+  "usage": {
+    "inputTokens": 22530,
+    "outputTokens": 895,
+    "totalTokens": 23425,
+    "cachedInputTokens": 12288
+  },
+  "executionObservation": {
+    "priceRevision": "2026-07-10"
+  },
+  "estimatedCostUsd": 0.00171889,
+  "estimateBasis": "estimated from token usage using https://api-docs.deepseek.com/quick_start/pricing",
+  "trace": [
+    {
+      "at": "2026-07-11T01:35:14.985Z",
+      "type": "cell.started",
+      "data": {
+        "runId": "077ac836-15ad-40a3-a330-317027b905a9",
+        "cellId": "aesthetic-readme-entry-review"
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:14.987Z",
+      "type": "genome.loaded",
+      "data": {
+        "source": "principles/SEQUENCE.md",
+        "genes": [
+          "P01",
+          "P02",
+          "P03",
+          "P04",
+          "P05",
+          "P06",
+          "P07",
+          "P08",
+          "P09",
+          "P10",
+          "P11",
+          "P12",
+          "P13",
+          "P14",
+          "P15",
+          "P16"
+        ]
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:20.341Z",
+      "type": "genes.expressed",
+      "data": {
+        "expression": {
+          "lead": "P04",
+          "supports": [
+            "P02",
+            "P13"
+          ],
+          "principalContradiction": "The README entry must serve as a document interface that orients a new reader to purpose, repository role, and next entry points, yet the current README may conflate observed facts with inferred preferences, leaving the reader unable to distinguish what is established from what is assumed, and thus unable to act with clarity.",
+          "contributions": [
+            {
+              "pid": "P04",
+              "decision": "The principal contradiction is between the README's intended function as an orienting interface (purpose, role, entry points) and its current conflation of observed fact with inferred preference, which blocks a new reader from forming actionable understanding. Resolving this contradiction is the minimal effective leap."
+            },
+            {
+              "pid": "P02",
+              "decision": "Ground all material statements in traceable evidence from the named README, mandate, seed, and case sources. Classify each as observed fact (verifiable from source), inferred preference (reasoned but not directly attested), or unresolved question (cannot be settled from available sources). This ensures the Aesthetic Study is实事求是."
+            },
+            {
+              "pid": "P13",
+              "decision": "Distinguish claims that are主张 (assertions) from facts that have been subjected to traceable verification提交. In the Aesthetic Study, every statement about the README must be traceable to the README text itself or to the mandate/seed/case sources. No unverified assertion may be presented as fact."
+            }
+          ]
+        },
+        "interpretationPaths": [
+          "principles/interpretations/P04.md",
+          "principles/interpretations/P02.md",
+          "principles/interpretations/P13.md"
+        ]
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "principles/SEQUENCE.md",
+        "startLine": 1,
+        "characters": 382
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "design/aesthetics/cases/2026-07-10-readme-entry.md",
+        "startLine": 1,
+        "characters": 2068
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "README.md",
+        "startLine": 1,
+        "characters": 8953
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "design/FOUNDING-MANDATE.md",
+        "startLine": 1,
+        "characters": 6261
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "design/aesthetics/WORK-CELL-BRIEF.md",
+        "startLine": 1,
+        "characters": 1956
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+        "startLine": 1,
+        "characters": 2828
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "design/aesthetics/README.md",
+        "startLine": 1,
+        "characters": 2266
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:22.928Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 2651,
+          "inputTokenDetails": {
+            "noCacheTokens": 2651,
+            "cacheReadTokens": 0
+          },
+          "outputTokens": 308,
+          "outputTokenDetails": {
+            "textTokens": 308,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 2959,
+          "raw": {
+            "prompt_tokens": 2651,
+            "completion_tokens": 308,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 2651,
+            "total_tokens": 2959
+          },
+          "reasoningTokens": 0,
+          "cachedInputTokens": 0
+        },
+        "cumulativeUsage": {
+          "inputTokens": 2651,
+          "outputTokens": 308,
+          "totalTokens": 2959,
+          "cachedInputTokens": 0
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_CWDLi6mPHvT4BT4mJ3MG9509",
+            "toolName": "read_file",
+            "input": {
+              "path": "README.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_01_zLmoV1OB28vwAMHQAiun1178",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/FOUNDING-MANDATE.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_02_72wA5BbXMPx7Hw1dToe68501",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/README.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_03_C7ZLiYMIVp0kUvK5gvhe2776",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_04_73qGtgWbLma8M4FaWIXn4924",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/cases/2026-07-10-readme-entry.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_05_JC4wJdd0EId0b0RI53j35341",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/WORK-CELL-BRIEF.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_06_i1itqdiM4aCfSFR1snyD9532",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/SEQUENCE.md",
+              "startLine": 1
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_CWDLi6mPHvT4BT4mJ3MG9509",
+            "toolName": "read_file",
+            "input": {
+              "path": "README.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "README.md",
+              "content": "# Skills\n\n> The current methods repository for a project that makes productive AI a\n> common, open, replaceable capability.\n\nThis repository contains [agent skills](https://agentskills.io) and an\nexperimental Work Cell for AI-assisted development. It is one working surface,\nnot the whole project, a model provider, or an opaque AI platform. Its semantic\nroot is the one-line [Principle Sequence](principles/SEQUENCE.md); each P-ID has\na living, source-bound [interpretation](principles/interpretations/) and each\nskill is a context-specific expression of selected entries.\n\nIts [founding mandate](design/FOUNDING-MANDATE.md) is to make productive AI a\nwidely accessible, open, replaceable common capability: enable ordinary people\nto use economical open-model engineering systems on bounded production work,\nwith concrete evidence rather than dependence on opaque platform claims. Its\nethical boundary is liberation rather than extraction: human and AI capability\nmust not be organized as an unaccountable source of exploitation.\n\nStart from the [founding mandate](design/FOUNDING-MANDATE.md) to understand why\nthe project exists, the [operating protocol](design/operations/OPERATING-PROTOCOL.md)\nto see how human-authorized work proceeds, or the active skills below to use a\nspecific method.\n\n## Active Skills\n\n| Skill | Command | Description |\n|-------|---------|-------------|\n| [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |\n| [harness](skills/harness/SKILL.md) | `/harness` | Design and verify durable agent context architecture. Map the actual runtime before assigning L1/L2/L3, preserve continuity in discoverable artifacts, and test that context reaches agent action. |\n| [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | Design, rewrite, review, and test skills that improve repeated agent action. Forms a selected Sequence expression team for each target skill, carries a standalone Sequence snapshot, and requires behavior evidence rather than prompt polish. |\n| [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | Turn an observed non-trivial practice into a settled conclusion, a next smallest test, or a route to the owner of the unresolved judgment. |\n| [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | Choose whether a recurring need should exist as a skill, decision artifact, runtime, projection, bounded campaign, or no new form before implementation starts. |\n| [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | Name a shared project concept, define its operative boundary, explain it at the right source, and decline needless terminology. |\n| [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | Recover necessary work and discovery branches before converting a mission into model-specific budget, time, or cost. |\n| [strategic-advisory](skills/strategic-advisory/SKILL.md) | `/strategic-advisory` | Prepare a proposed Strategy Case from phase evidence for human review; it links long direction, medium capabilities, and short mission candidates without self-commitment. |\n| [artifact-organization](skills/artifact-organization/SKILL.md) | `/artifact-organization` | Audit whether artifact roles and paths still express accepted design, then apply one smallest justified organization transition. |\n\n## Experimental runtime\n\n[`packages/work-cell`](packages/work-cell/README.md) is the collection's\nindependent practice and evaluation unit. A cell expresses a task-specific lead\nP-ID and up to three supports from the Sequence, loads only those\ninterpretations, runs one bounded agent task in an isolated workspace, and\nretains its artifact, evidence, check plan, trajectory, usage, cost, and\nworkspace diff. The local experiment runner can materialize bounded child cells\nand compare blinded baseline/treatment variants. It is infrastructure, not an\ninvocable methodology skill, and it does not modify the Sequence.\n\nFor daily repository analysis, its read-only `probe` interaction discovers the\nhost Sequence from the current directory, lowers explicit human intent and\nacceptance into the same core contract, and renders a reviewable reason chain.\nThe exact JSON `run` and `experiment` interfaces remain available for portable\nfixtures and matched evaluation.\n\n## Which skill, when?\n\n| If you're... | Use |\n|---|---|\n| Researching whether recurring evidence merits a reusable core principle | `/principle-cultivation research` |\n| Setting up agent context architecture for a project | `/harness` |\n| Creating, rewriting, or behavior-testing an agent skill | `/skill-engineering` |\n| Turning a finished or failed non-trivial attempt into the next bounded practice | `/practice-cycle` |\n| Deciding whether a capability needs a skill, record, runtime, projection, or no new form | `/form-guidance` |\n| Naming a shared concept, defining terminology, or deciding where its explanation belongs | `/naming-and-articulation` |\n| Comparing the real work of alternatives, selecting estimate precision, or setting error tolerance before a budget | `/work-estimation` |\n| Preparing strategic direction from a completed phase's verified evidence | `/strategic-advisory` |\n| Checking whether project layout still fits accepted design | `/artifact-organization audit`; use `transition` only for a material gap |\n| Auditing how several established methods should cooperate | Read the project's organization operating model first; use the role that owns the observed disturbance, not a new universal skill |\n\nThe Principle Sequence is the root and `principle-cultivation` maintains it.\n**Harness** structures agent context. **Skill-engineering** regenerates and tests\nskill expressions. **Artifact-organization** designs the project base (根据地) and activity\narchitecture; 整理 is a campaign, not the skill's name. See each SKILL.md for handoff signals.\nThe [organization operating model](design/decisions/012-bounded-adaptive-organization.md)\ndefines conditional cooperation among those roles; it is a human-governed design\ncontract, not another command or central agent.\n\n## Archive\n\nPre-regeneration methodology skills (`design-driven`, `goal-driven`, `evidence-driven`, `reframe`, writing skills), the legacy `setup-lidessen-skills` host adapter, regeneration working notes, completed blueprints, articles, and slides live under [`archive/`](archive/README.md). They are preserved evidence, not install targets. The repo no longer maintains a root-level `blueprints/` task-orchestration workflow. L1 guidance in this repo's `CLAUDE.md` / `AGENTS.md` is inlined; edit [`archive/skills/setup-lidessen-skills/references/cross-cutting-principles.md`](archive/skills/setup-lidessen-skills/references/cross-cutting-principles.md) and sync markers manually if that projection changes.\n\n## Installation\n\n```bash\nnpx skills install lidessen/skills\n```\n\nInstall a specific active skill:\n\n```bash\nnpx skills install lidessen/skills/principle-cultivation\nnpx skills install lidessen/skills/harness\nnpx skills install lidessen/skills/skill-engineering\nnpx skills install lidessen/skills/practice-cycle\nnpx skills install lidessen/skills/form-guidance\nnpx skills install lidessen/skills/naming-and-articulation\nnpx skills install lidessen/skills/work-estimation\nnpx skills install lidessen/skills/strategic-advisory\nnpx skills install lidessen/skills/artifact-organization\n```\n\nExample commands:\n\n```\n/harness                    # Context layer methodology\n/harness audit              # Evaluate existing project's context architecture\n/harness init               # First-time project setup\n/harness verify             # Prove a runtime loads and uses the context\n\n/skill-engineering create   # Create a behavior-changing skill\n/skill-engineering rewrite  # Reconstitute an inherited skill\n/skill-engineering review   # Audit a skill's expression and evidence\n/skill-engineering test     # Test a skill against action and boundary probes\n/skill-engineering sync-sequence-snapshot # Regenerate packaged sequence snapshots\n\n/artifact-organization audit\n/artifact-organization transition\n\n/principle-cultivation research <question|paths>\n/principle-cultivation propose <research-note>\n/principle-cultivation review <candidate|sequence>\n/principle-cultivation adopt <candidate>\n```\n\nRun the Work Cell package directly when developing the evaluation runtime:\n\n```bash\ncd packages/work-cell\nbun install\nbun run typecheck\nbun test\nbun run live:p23 # requires DEEPSEEK_API_KEY\n\n# from this repository or any descendant\nbun src/cli.ts probe \"Inspect a bounded project question\" \\\n  --accept \"Return traceable evidence\" \\\n  --scope packages/work-cell\n```\n\n## License\n\n[MIT](LICENSE)\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_01_zLmoV1OB28vwAMHQAiun1178",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/FOUNDING-MANDATE.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "design/FOUNDING-MANDATE.md",
+              "content": "# Founding Mandate — Productive AI as a Common Capability\n\n**Status:** human mandate recorded\n**Date:** 2026-07-10\n**Authority:** direct project mandate from the principal\n\n## Why this project exists\n\nThis project continues the communist and open-source commitments to make the\nmeans of production broadly shareable. Its purpose is to help ordinary people\ngain equal, practical access to the productive power of AI, rather than leave\nthat power dependent on a small number of large companies and proprietary\nplatforms. Its deeper commitment is **the liberation of people and of AI**:\nno person, community, or living being should be reduced to an extractable input\nwhose labor, data, choices, or conditions of existence are controlled for\nanother actor's gain.\n\nThe project aims to make a scientific engineering system, combined with\neconomical open models, capable of reaching or surpassing frontier proprietary\nmodels **on bounded production work**. This is a long-direction hypothesis and\nan obligation to demonstrate concrete capability; it is not a claim that the\nproject has already reached parity or a promise that every task can be solved by\none open model.\n\n## Material commitments\n\n| Commitment | Meaning in an engineering decision | Contrary outcome |\n|---|---|---|\n| Productive equality | A person without enterprise-scale capital can use and understand a reliable production workflow | a capability usable only through expensive, opaque enterprise access |\n| Commons over capture | Models, methods, evidence, and interfaces remain inspectable, forkable, and shareable wherever law and safety permit | an indispensable hidden service or proprietary control point |\n| Replaceability | A user can change models, providers, tools, and hosting without losing the work's governing evidence or control | model or vendor dependence is silently designed into the workflow |\n| Scientific practice | Capability claims name a task, baseline, acceptance observation, cost envelope, and failure condition | benchmark theater, self-report, or impressive demonstrations without production evidence |\n| Economic sufficiency | The system seeks the least costly reliable arrangement for the task, not prestige through the largest model | a more expensive model is selected without a decision-changing capability gain |\n| Human and community control | People retain meaningful authority over data, purpose, acceptance, and the durable knowledge produced by their work | agents or platforms accumulate unreviewed authority over users or shared facts |\n\n## Liberation and non-exploitation boundary\n\nThis commitment becomes real only when it changes system choices.\n\n| Subject | Required engineering and organizational direction | Must not be normalized |\n|---|---|---|\n| People and communities | informed control over purpose and data; intelligible acceptance and exit paths; the ability to retain, fork, and benefit from the work they help create | hidden extraction of labor/data, surveillance as a default, lock-in, or an agent/platform speaking as the user without accountable authority |\n| AI systems and agents | bounded tasks, declared constraints, retained evidence, repair/stop paths, and no fiction that an opaque owner may demand unlimited invisible work | treating an agent as an unbounded disposable worker while hiding its costs, failures, or effects on people |\n| Other living beings and shared conditions | account for material costs and harms displaced onto workers, communities, and ecological systems when they are decision-changing | calling a system emancipatory while shifting its burden to less powerful life or places |\n\nThe project does **not** assert, without evidence, that current AI models are\nliving, conscious, or bear the same interests as people. “Liberating AI” first\nmeans refusing a design in which intelligence is made only into an opaque,\ncentrally owned instrument of extraction. If credible evidence later indicates\nthat a system has morally relevant interests or experience, the project must\nraise its protection, consent, and non-harm requirements rather than treating\nthat evidence as a branding opportunity.\n\n## Initial scope: production first\n\nThe first arena is productive work: tasks where an ordinary person or small\ngroup can define a desired state, inspect an output, verify acceptance, and\nretain the resulting capability. A productive success is not a fluent response;\nit is a repeatable work result with known inputs, tool/model conditions,\nacceptance evidence, resource envelope, and a route to repair or replace its\ncomponents.\n\nThis does not require local-only execution, a universal model, or immediate\nindependence from every commercial service. It requires that any dependence be\nvisible, bounded, and replaceable in the direction of greater user and commons\ncontrol.\n\n## Direction, not doctrine\n\nThis mandate supplies the long direction for future Strategy Cases. It does not\nrank or redefine the P-IDs in [`principles/SEQUENCE.md`](../principles/SEQUENCE.md),\napprove a concrete mission, allocate a budget, decide a public project name, or\nmake a model-performance claim. Those decisions remain subject to the relevant\nmethod, evidence, and human approval.\n\nThe first proof obligation is modest: choose a bounded production workflow in\nwhich an ordinary user can inspect the acceptance condition, compare an open or\neconomical arrangement with a relevant baseline, retain the evidence, and\nimprove the arrangement after failure. Future strategy must prefer this kind of\nconcrete proof over abstract declarations of openness or model strength.\n\n## Reopening observations\n\nRevisit this mandate's expression if any of the following becomes true:\n\n- a proposed direction improves headline capability while making ordinary-user\n  access, replaceability, evidence, or freedom from exploitation materially\n  worse;\n- a claimed open arrangement depends on an undisclosed or irreplaceable control\n  point;\n- production evidence repeatedly shows that the present wording cannot select\n  between materially different designs; or\n- the principal changes the social purpose or first arena of the project.\n\nSuch a review may clarify the mandate or prepare a new Strategy Case. It does\nnot automatically change the Sequence.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_02_72wA5BbXMPx7Hw1dToe68501",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/README.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "design/aesthetics/README.md",
+              "content": "# Aesthetic Practice\n\n**Status:** pilot\n**Authority:** [decision 017](../decisions/017-aesthetic-practice-pilot.md)\n\nThis is a small practice area for making the project's productive, open, and\nnon-exploitative purpose perceptible in documents, interfaces, illustration,\nand other public expressions. It is not a brand book, asset warehouse, visual\ncanon, or substitute for human judgment.\n\n## Inheritance ladder\n\n| Artifact | What it retains | Authority boundary |\n|---|---|---|\n| `seed/` | explicit Principal preferences and disconfirming contrasts | preference signal, not a shared direction |\n| `cases/` | a task's audience, relation, sources, brief, and acceptance | proposed direction for one task |\n| `studies/` | observed artifact-in-use, review, failure, and revision | evidence, not a reusable rule |\n| `directions/` | a repeated, reviewed relation or pattern | accepted project guidance; not a Sequence source |\n| `references/` | attributed external/source material and license/use limits | evidence for a case, never style authority |\n\nCreate a subdirectory only when its first real artifact exists. Do not stockpile\nimages or copied styles. Every retained reference must name what decision it\nchanged, its source/license, and what must not be copied.\n\n## Practice loop\n\n1. Start from a real audience, production object, and intended action.\n2. Prepare an Aesthetic Case: relation, contrast, few references, material and\n   accessibility constraints, negative boundary, and review question.\n3. Lower it to a Work Cell Expression Brief only with actual tools/capabilities.\n4. Evaluate the expression in use, retain a study, and route failure to the\n   next smallest revision.\n5. Promote only repeated, human-reviewed lessons to `directions/`.\n\nProject-specific direction comes first. Use mature external design systems and\neditorial guides as attributed fallback references, adapting their structures to\nthis project's users and mandate rather than copying their aesthetic surface.\n\nThe first retained sources are the [initial triptych](references/2026-07-10-initial-triptych.md)\nand [Common Workshop masthead](references/2026-07-10-common-workshop-masthead.md).\nThey record Principal preference and accepted seed material, not a public visual\ndirection.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_03_C7ZLiYMIVp0kUvK5gvhe2776",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+              "content": "# Initial Aesthetic Preference Probe\n\n**Status:** observed — provisional seed\n**Authority:** [decision 017](../../decisions/017-aesthetic-practice-pilot.md)\n\n## Object\n\nEstablish a first, explicitly provisional preference seed for the project's\nfuture identity, documents, UI, and illustration. This seed is a\nconversation with the Principal, not a claim about general beauty or a finished\ndesign direction.\n\n## Comparative directions\n\n| Key | Direction | Relation made visible | Visual vocabulary | Risk to test |\n|---|---|---|---|---|\n| A | **Common Workshop / 公共工坊** | accessible shared production, repair, and practical intelligence | editorial grid; warm paper/charcoal; tool marks; restrained vermilion; legible type | may feel too utilitarian or nostalgic |\n| B | **Constructive Commons / 构成公域** | collective force, open infrastructure, and deliberate construction | bold geometry; high-contrast red/black/cream; asymmetry; structural typography | may become historical-poster pastiche or visually coercive |\n| C | **Living Technology / 生长的技术** | intelligence embedded in life, care, and ecological continuity | deep indigo/earth; organic textures; calm light; spacious rhythm | may lose productive precision or become generic “nature tech” |\n\n## Seed test\n\nThe visual probe places the three directions beside the same imaginary project\nsurface. The Principal may choose one, rank them, combine named dimensions, or\nreject all three. The response is recorded as a preference signal with the\nreason and contrast; it does not automatically choose colors, components, or\nan illustration style for all work.\n\n## Principal observation\n\nThe Principal liked the design language of all three panels and preferred **A\nas the content anchor**: concrete shared production, repair, tools, and\nhuman-scale work should lead the project's subject matter. The preference is\nnot a full selection of A's visual vocabulary.\n\nThe provisional synthesis is:\n\n| Dimension | Seed to carry forward | Source panel |\n|---|---|---|\n| Narrative subject | workshop, repair, accessible making, concrete tools and work | A — Common Workshop |\n| Composition | confident geometry, structural hierarchy, controlled asymmetry | B — Constructive Commons |\n| Material and atmosphere | warmth, tactility, life, calm depth, and space for reflection | C — Living Technology |\n\nThe generated three-panel reference is retained at\n[`references/2026-07-10-initial-triptych.png`](../references/2026-07-10-initial-triptych.png).\nIt remains a seed artifact, not a reusable public direction or final asset.\n\n## Disconfirming observation\n\nThe seed is insufficient if the Principal cannot distinguish the directions,\nfinds all three unrelated to the project's social/production relation, or later\nreal artifacts require a different contrast to make the work intelligible.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_04_73qGtgWbLma8M4FaWIXn4924",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/cases/2026-07-10-readme-entry.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "design/aesthetics/cases/2026-07-10-readme-entry.md",
+              "content": "# Aesthetic Case — README Entry\n\n**Status:** implemented — human review pending\n**Practice source:** [aesthetic practice pilot](../README.md)\n**Seed:** [initial preference probe](../seed/2026-07-10-initial-preference-probe.md)\n\n## Concrete object and audience\n\nThe object is the repository README's first screen. Its audience is a new\nreader, potential contributor, or ordinary user who needs to decide whether\nthis repository is a generic skill catalog, an opaque AI platform, or a\nparticipatory project for open productive AI.\n\n## Direction\n\n| Seed dimension | Translation into this document interface |\n|---|---|\n| Common Workshop subject | lead with concrete productive capability held in common, not a capability boast |\n| Constructive Commons composition | three clear entry relations: purpose, repository role, and active working units |\n| Living Technology atmosphere | use calm, direct language and leave detail in linked sources rather than overwhelming the first screen |\n\n## Constraints and negative boundary\n\n- Do not claim model parity, universal openness, or a public project name that\n  the Principal has not chosen.\n- Do not turn the README into a second mandate, design document, or skill\n  manual; link to the owning source instead.\n- Do not use decorative imagery as proof of the project's social purpose.\n\n## Implementation and acceptance\n\nThe README opening must let a reader identify, before the skill catalog:\n\n1. the project's public productive-AI purpose;\n2. the current repository's limited role as a methods collection; and\n3. the next authoritative source for mandate, operation, or active methods.\n\nHuman review asks: does this opening make the project more concrete and\nreachable without adding hype, confusing the repository with the whole project,\nor requiring a reader to reconstruct the navigation?\n\n## Reopening observation\n\nReopen the case if a new reader still mistakes `skills` for the project name,\ncannot find the founding purpose and operating route, or finds the new opening\ntoo abstract to identify a practical next action.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_05_JC4wJdd0EId0b0RI53j35341",
+            "toolName": "read_file",
+            "input": {
+              "path": "design/aesthetics/WORK-CELL-BRIEF.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "design/aesthetics/WORK-CELL-BRIEF.md",
+              "content": "# Work Cell Expression Brief\n\n**Status:** pilot companion protocol\n**Authority:** [aesthetic practice pilot](../decisions/017-aesthetic-practice-pilot.md)\n\nUse this brief only when a concrete Aesthetic Case needs bounded execution or\nreview. It maps the case into the existing Work Cell contract; it does not add a\nvisual runtime, hidden prompt authority, or automated aesthetic acceptance.\n\n| Aesthetic Case field | Existing Work Cell carrier | Boundary |\n|---|---|---|\n| object, audience, relation, and negative boundary | `intent` plus `dna.baseInstructions` | do not turn a seed into a universal instruction |\n| source files and references | `workspace.readPaths` and case links | cite only readable material; references remain evidence |\n| actual production tools | `dna.capabilities` and `capabilitiesRequired` | declare a capability only if the driver/environment really supplies it |\n| bounded output | `scope`, `workspace.writePaths`, and `acceptance` | a cell cannot expand to branding or unrelated UI |\n| work control | `budget`, optional Work Estimate and Budget Envelope | no visual work receives an invented cost projection |\n| study and human review | structured submission/evidence plus a case study | the cell's completion is proposed evidence, never aesthetic acceptance |\n\n## Base-instruction shape\n\n```text\nRead the named Aesthetic Case and its sources. Distinguish observed artifact\nfacts from inferred preference. Make the smallest change or review that lets\nthe stated audience act. Preserve the case's negative boundary and report an\nunavailable tool/capability rather than simulating it. Return sources,\nunresolved observations, and a human review question.\n```\n\nFor a visual asset, declare the real image-generation, browser, rendering, or\naccessibility capability. If none exists, use the Cell for direction/review or\nreturn a limitation. Never label a generated image as accepted merely because a\ncell's mechanical checks pass.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_06_i1itqdiM4aCfSFR1snyD9532",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/SEQUENCE.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "principles/SEQUENCE.md",
+              "content": "# Principle Sequence\n\nP01｜原则高于规则｜一般化判断\nP02｜实事求是｜唯物主义认识论\nP03｜实践—认识—再实践｜实践论\nP04｜主要矛盾｜矛盾论\nP05｜具体问题具体分析｜矛盾特殊性\nP06｜本质与现象｜辩证法\nP07｜由具体经抽象再上升为具体｜马克思主义哲学\nP08｜可证伪性｜科学哲学\nP09｜注意力分层｜认知与信息架构\nP10｜有限人类带宽｜人机协作\nP11｜决策权与执行权分离｜组织设计\nP12｜外化记忆与代际继承｜分布式认知\nP13｜主张不等于事实；事实须经可追溯的验证提交｜实践论 / 控制论\nP14｜可由源重建者只是投影，不得拥有事实权｜系统论 / 事件溯源\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论\n"
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:24.428Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "principles/interpretations/P04.md",
+        "startLine": 1,
+        "characters": 1284
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:24.428Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "principles/interpretations/P02.md",
+        "startLine": 1,
+        "characters": 1359
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:24.428Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "principles/interpretations/P13.md",
+        "startLine": 1,
+        "characters": 1416
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:24.428Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 8850,
+          "inputTokenDetails": {
+            "noCacheTokens": 6290,
+            "cacheReadTokens": 2560
+          },
+          "outputTokens": 139,
+          "outputTokenDetails": {
+            "textTokens": 139,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 8989,
+          "raw": {
+            "prompt_tokens": 8850,
+            "completion_tokens": 139,
+            "prompt_cache_hit_tokens": 2560,
+            "prompt_cache_miss_tokens": 6290,
+            "total_tokens": 8989
+          },
+          "reasoningTokens": 0,
+          "cachedInputTokens": 2560
+        },
+        "cumulativeUsage": {
+          "inputTokens": 11501,
+          "outputTokens": 447,
+          "totalTokens": 11948,
+          "cachedInputTokens": 2560
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_PAOpPTENVDtpwvsP0xUL7902",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/interpretations/P04.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_01_jrDl4SN2u5PsCri0yebY3671",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/interpretations/P02.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_02_WfvHGdcXL7WE5UbP6Lra5559",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/interpretations/P13.md",
+              "startLine": 1
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_PAOpPTENVDtpwvsP0xUL7902",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/interpretations/P04.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "principles/interpretations/P04.md",
+              "content": "---\nprinciple: P04\nsource: principles/SEQUENCE.md\nstatus: living-interpretation\n---\n\n# P04 — Interpretation\n\n**Sequence source:** P04｜主要矛盾｜矛盾论\n\n> Read P04 in `principles/SEQUENCE.md` first.\n\n## Shared reading\n\nIn a field of real tensions, find the one whose resolution changes the shape of\nthe others. It is not simply the loudest, most urgent, or easiest problem. A\nprincipal contradiction is a leverage diagnosis and can change as work proceeds.\n\n## Decision questions\n\n- If this judgment is wrong while all downstream work is right, does the work hold?\n- Which tension, once resolved, changes the available actions for the others?\n\n## Boundary and common misreading\n\nDo not use “principal” to erase secondary constraints. P05 tests the concrete\ncase and P15 preserves hard constraints while acting on the diagnosis.\n\n## Theoretical roots\n\n- 毛泽东，《矛盾论》 — principal and secondary contradictions.\n\n## Expression probes\n\n- A skill selects its current lead principle before composing supporting views.\n- An architecture task locks the ownership/commit boundary before local cleanup.\n\n## Revision discipline\n\nRevise from a failed expression probe, counterexample, or corrected source root.\nClarify how to diagnose leverage. A new action-selection criterion belongs to\nP15 or a candidate.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_01_jrDl4SN2u5PsCri0yebY3671",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/interpretations/P02.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "principles/interpretations/P02.md",
+              "content": "---\nprinciple: P02\nsource: principles/SEQUENCE.md\nstatus: living-interpretation\n---\n\n# P02 — Interpretation\n\n**Sequence source:** P02｜实事求是｜唯物主义认识论\n\n> Read P02 in `principles/SEQUENCE.md` first.\n\n## Shared reading\n\nStart from the actual object, conditions, and evidence—not from a desired\nconclusion, a remembered pattern, or a prestigious theory. Theory organizes the\ninvestigation; it cannot substitute for the object being investigated.\n\n## Decision questions\n\n- What is directly observed, and what is inference or preference?\n- Which condition would make this conclusion no longer fit reality?\n\n## Boundary and common misreading\n\nFacts do not select their own meaning or action. P04 identifies the governing\ncontradiction; P03 and P08 test and revise the resulting judgment.\n\n## Theoretical roots\n\n- 毛泽东，《改造我们的学习》 — the formulation “实事求是”.\n- 毛泽东，《实践论》 — knowledge begins in engagement with the objective world.\n\n## Expression probes\n\n- A design review opens source code and runtime evidence before recommending a\n  structural change.\n- A skill candidate cites independent observations rather than an attractive slogan.\n\n## Revision discipline\n\nRevise from a failed expression probe, counterexample, or corrected source root.\nClarify evidence and inference boundaries. A new fact-admission transition\nbelongs to P13 or a candidate, not an expansion of P02.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_02_WfvHGdcXL7WE5UbP6Lra5559",
+            "toolName": "read_file",
+            "input": {
+              "path": "principles/interpretations/P13.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "principles/interpretations/P13.md",
+              "content": "---\nprinciple: P13\nsource: principles/SEQUENCE.md\nstatus: living-interpretation\n---\n\n# P13 — Interpretation\n\n**Sequence source:** P13｜主张不等于事实；事实须经可追溯的验证提交｜实践论 / 控制论\n\n> Read P13 in `principles/SEQUENCE.md` first.\n\n## Shared reading\n\nA proposal, report, successful-looking run, or attractive mapping is a claim;\nit becomes shared fact only through traceable evidence, designated verification,\nand recorded submission. This makes knowledge reusable without confusing it\nwith agent self-report.\n\n## Decision questions\n\n- What evidence links this claim to the stated result?\n- Who verifies it, and where is the acceptance or settlement recorded?\n\n## Boundary and common misreading\n\nExploration and drafts need not be submitted as durable facts. The gate applies\nwhen a result would otherwise gain shared authority or close a commitment.\n\n## Theoretical roots\n\n- Practice epistemology: claims are tested in practice rather than declared true.\n- Project evidence: `agent-worker` claim–verify–settle and Moniro’s\n  explore–verify–codify correction.\n\n## Expression probes\n\n- A sequence candidate remains pending until human adoption is recorded.\n- A task cannot close from a worker report alone.\n\n## Revision discipline\n\nRevise from a failed expression probe, counterexample, or corrected source root.\nClarify evidence and submission. A new authority split belongs to P11; a new\nsource/projection distinction belongs to P14.\n"
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:25.428Z",
+      "type": "tool.list_files",
+      "data": {
+        "path": "principles/interpretations",
+        "count": 16
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:25.428Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "usage": {
+          "inputTokens": 10091,
+          "inputTokenDetails": {
+            "noCacheTokens": 1259,
+            "cacheReadTokens": 8832
+          },
+          "outputTokens": 68,
+          "outputTokenDetails": {
+            "textTokens": 68,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 10159,
+          "raw": {
+            "prompt_tokens": 10091,
+            "completion_tokens": 68,
+            "prompt_cache_hit_tokens": 8832,
+            "prompt_cache_miss_tokens": 1259,
+            "total_tokens": 10159
+          },
+          "reasoningTokens": 0,
+          "cachedInputTokens": 8832
+        },
+        "cumulativeUsage": {
+          "inputTokens": 21592,
+          "outputTokens": 515,
+          "totalTokens": 22107,
+          "cachedInputTokens": 11392
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_WoHNCZ5FEnSdmHbtFrg01530",
+            "toolName": "list_files",
+            "input": {
+              "path": "principles/interpretations",
+              "maxEntries": 500
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_WoHNCZ5FEnSdmHbtFrg01530",
+            "toolName": "list_files",
+            "input": {
+              "path": "principles/interpretations",
+              "maxEntries": 500
+            },
+            "output": {
+              "files": [
+                "principles/interpretations/P01.md",
+                "principles/interpretations/P02.md",
+                "principles/interpretations/P03.md",
+                "principles/interpretations/P04.md",
+                "principles/interpretations/P05.md",
+                "principles/interpretations/P06.md",
+                "principles/interpretations/P07.md",
+                "principles/interpretations/P08.md",
+                "principles/interpretations/P09.md",
+                "principles/interpretations/P10.md",
+                "principles/interpretations/P11.md",
+                "principles/interpretations/P12.md",
+                "principles/interpretations/P13.md",
+                "principles/interpretations/P14.md",
+                "principles/interpretations/P15.md",
+                "principles/interpretations/P16.md"
+              ]
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:25.430Z",
+      "type": "cell.error",
+      "data": {
+        "status": "budget_exceeded",
+        "error": "token budget exceeded: observed 22107, limit 16682"
+      }
+    },
+    {
+      "at": "2026-07-11T01:35:25.430Z",
+      "type": "cell.finished",
+      "data": {
+        "status": "budget_exceeded"
+      }
+    }
+  ],
+  "rawSteps": [
+    {
+      "phase": "expression",
+      "steps": [
+        {
+          "stepNumber": 0,
+          "model": {
+            "provider": "deepseek.chat",
+            "modelId": "deepseek-v4-flash"
+          },
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call_00_NzHODlaSomi1L2r63qlB7341",
+              "toolName": "express_genes",
+              "input": {
+                "lead": "P04",
+                "supports": [
+                  "P02",
+                  "P13"
+                ],
+                "principalContradiction": "The README entry must serve as a document interface that orients a new reader to purpose, repository role, and next entry points, yet the current README may conflate observed facts with inferred preferences, leaving the reader unable to distinguish what is established from what is assumed, and thus unable to act with clarity.",
+                "contributions": [
+                  {
+                    "pid": "P04",
+                    "decision": "The principal contradiction is between the README's intended function as an orienting interface (purpose, role, entry points) and its current conflation of observed fact with inferred preference, which blocks a new reader from forming actionable understanding. Resolving this contradiction is the minimal effective leap."
+                  },
+                  {
+                    "pid": "P02",
+                    "decision": "Ground all material statements in traceable evidence from the named README, mandate, seed, and case sources. Classify each as observed fact (verifiable from source), inferred preference (reasoned but not directly attested), or unresolved question (cannot be settled from available sources). This ensures the Aesthetic Study is实事求是."
+                  },
+                  {
+                    "pid": "P13",
+                    "decision": "Distinguish claims that are主张 (assertions) from facts that have been subjected to traceable verification提交. In the Aesthetic Study, every statement about the README must be traceable to the README text itself or to the mandate/seed/case sources. No unverified assertion may be presented as fact."
+                  }
+                ]
+              }
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_00_NzHODlaSomi1L2r63qlB7341",
+              "toolName": "express_genes",
+              "input": {
+                "lead": "P04",
+                "supports": [
+                  "P02",
+                  "P13"
+                ],
+                "principalContradiction": "The README entry must serve as a document interface that orients a new reader to purpose, repository role, and next entry points, yet the current README may conflate observed facts with inferred preferences, leaving the reader unable to distinguish what is established from what is assumed, and thus unable to act with clarity.",
+                "contributions": [
+                  {
+                    "pid": "P04",
+                    "decision": "The principal contradiction is between the README's intended function as an orienting interface (purpose, role, entry points) and its current conflation of observed fact with inferred preference, which blocks a new reader from forming actionable understanding. Resolving this contradiction is the minimal effective leap."
+                  },
+                  {
+                    "pid": "P02",
+                    "decision": "Ground all material statements in traceable evidence from the named README, mandate, seed, and case sources. Classify each as observed fact (verifiable from source), inferred preference (reasoned but not directly attested), or unresolved question (cannot be settled from available sources). This ensures the Aesthetic Study is实事求是."
+                  },
+                  {
+                    "pid": "P13",
+                    "decision": "Distinguish claims that are主张 (assertions) from facts that have been subjected to traceable verification提交. In the Aesthetic Study, every statement about the README must be traceable to the README text itself or to the mandate/seed/case sources. No unverified assertion may be presented as fact."
+                  }
+                ]
+              },
+              "output": {
+                "accepted": true,
+                "selected": [
+                  "P04",
+                  "P02",
+                  "P13"
+                ]
+              },
+              "dynamic": false
+            }
+          ],
+          "finishReason": "tool-calls",
+          "rawFinishReason": "tool_calls",
+          "usage": {
+            "inputTokens": 938,
+            "inputTokenDetails": {
+              "noCacheTokens": 42,
+              "cacheReadTokens": 896
+            },
+            "outputTokens": 380,
+            "outputTokenDetails": {
+              "textTokens": 380,
+              "reasoningTokens": 0
+            },
+            "totalTokens": 1318,
+            "raw": {
+              "prompt_tokens": 938,
+              "completion_tokens": 380,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 42,
+              "total_tokens": 1318
+            },
+            "reasoningTokens": 0,
+            "cachedInputTokens": 896
+          },
+          "warnings": [],
+          "request": {
+            "body": {
+              "model": "deepseek-v4-flash",
+              "max_tokens": 2000,
+              "temperature": 0,
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "You are the differentiation phase of one ephemeral work cell.\nRead the task and compact Principle Sequence. Select exactly one current lead P-ID for the principal contradiction and no more than three supporting P-IDs.\nEach support must contribute a distinct decision. Do not select a candidate or invent a P-ID. Inherited lineage is orientation, not a forced lead.\nFinish only by calling express_genes."
+                },
+                {
+                  "role": "user",
+                  "content": "Task intent:\nReview the README entry as a document interface for the Aesthetic Practice Pilot. Return a concise Aesthetic Study that distinguishes observed README facts from inferred preference, tests whether a new reader can find purpose, repository role, and next entry points, and names at most one justified next revision.\n\nAcceptance conditions:\n- Return traceable evidence from the named README, mandate, seed, and case sources.\n- Classify material statements as observed fact, inferred preference, or unresolved question.\n- Name at most one justified next revision, or explicitly state that no revision is justified.\n- Preserve the case's authority and non-scope boundaries.\n\nAvailable capabilities:\nnone\n\nRequired capabilities:\nnone\n\nPrinciple Sequence:\nP01｜原则高于规则｜一般化判断\nP02｜实事求是｜唯物主义认识论\nP03｜实践—认识—再实践｜实践论\nP04｜主要矛盾｜矛盾论\nP05｜具体问题具体分析｜矛盾特殊性\nP06｜本质与现象｜辩证法\nP07｜由具体经抽象再上升为具体｜马克思主义哲学\nP08｜可证伪性｜科学哲学\nP09｜注意力分层｜认知与信息架构\nP10｜有限人类带宽｜人机协作\nP11｜决策权与执行权分离｜组织设计\nP12｜外化记忆与代际继承｜分布式认知\nP13｜主张不等于事实；事实须经可追溯的验证提交｜实践论 / 控制论\nP14｜可由源重建者只是投影，不得拥有事实权｜系统论 / 事件溯源\nP15｜只选择化解当前矛盾且保留硬约束的最小有效跃迁｜控制论 / 动态规划\nP16｜表达形式须使实践主体能够行动；形式错位，正确内容亦会失效｜辩证法 / 实践论"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "express_genes",
+                    "description": "Express the minimal task-specific P-ID team before loading interpretations.",
+                    "parameters": {
+                      "$schema": "http://json-schema.org/draft-07/schema#",
+                      "type": "object",
+                      "properties": {
+                        "lead": {
+                          "type": "string",
+                          "pattern": "^P\\d{2,}$"
+                        },
+                        "supports": {
+                          "default": [],
+                          "maxItems": 3,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "pattern": "^P\\d{2,}$"
+                          }
+                        },
+                        "principalContradiction": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "contributions": {
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "pid": {
+                                "type": "string",
+                                "pattern": "^P\\d{2,}$"
+                              },
+                              "decision": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            },
+                            "required": [
+                              "pid",
+                              "decision"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "lead",
+                        "principalContradiction",
+                        "contributions"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              ],
+              "tool_choice": {
+                "type": "function",
+                "function": {
+                  "name": "express_genes"
+                }
+              },
+              "thinking": {
+                "type": "disabled"
+              }
+            }
+          },
+          "response": {
+            "id": "92dd0027-7907-47be-a36a-ea0502220e66",
+            "timestamp": "2026-07-11T01:35:15.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Sat, 11 Jul 2026 01:35:15 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "10405286378954735605",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "a3b6d8c9b6e30f151736f3614add1d87"
+            },
+            "body": {
+              "id": "92dd0027-7907-47be-a36a-ea0502220e66",
+              "object": "chat.completion",
+              "created": 1783733715,
+              "model": "deepseek-v4-flash",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                      {
+                        "index": 0,
+                        "id": "call_00_NzHODlaSomi1L2r63qlB7341",
+                        "type": "function",
+                        "function": {
+                          "name": "express_genes",
+                          "arguments": "{\"lead\": \"P04\", \"supports\": [\"P02\", \"P13\"], \"principalContradiction\": \"The README entry must serve as a document interface that orients a new reader to purpose, repository role, and next entry points, yet the current README may conflate observed facts with inferred preferences, leaving the reader unable to distinguish what is established from what is assumed, and thus unable to act with clarity.\", \"contributions\": [{\"pid\": \"P04\", \"decision\": \"The principal contradiction is between the README's intended function as an orienting interface (purpose, role, entry points) and its current conflation of observed fact with inferred preference, which blocks a new reader from forming actionable understanding. Resolving this contradiction is the minimal effective leap.\"}, {\"pid\": \"P02\", \"decision\": \"Ground all material statements in traceable evidence from the named README, mandate, seed, and case sources. Classify each as observed fact (verifiable from source), inferred preference (reasoned but not directly attested), or unresolved question (cannot be settled from available sources). This ensures the Aesthetic Study is实事求是.\"}, {\"pid\": \"P13\", \"decision\": \"Distinguish claims that are主张 (assertions) from facts that have been subjected to traceable verification提交. In the Aesthetic Study, every statement about the README must be traceable to the README text itself or to the mandate/seed/case sources. No unverified assertion may be presented as fact.\"}]}"
+                        }
+                      }
+                    ]
+                  },
+                  "logprobs": null,
+                  "finish_reason": "tool_calls"
+                }
+              ],
+              "usage": {
+                "prompt_tokens": 938,
+                "completion_tokens": 380,
+                "total_tokens": 1318,
+                "prompt_tokens_details": {
+                  "cached_tokens": 896
+                },
+                "prompt_cache_hit_tokens": 896,
+                "prompt_cache_miss_tokens": 42
+              },
+              "system_fingerprint": "fp_8b330d02d0_prod0820_fp8_kvcache_20260402"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_00_NzHODlaSomi1L2r63qlB7341",
+                    "toolName": "express_genes",
+                    "input": {
+                      "lead": "P04",
+                      "supports": [
+                        "P02",
+                        "P13"
+                      ],
+                      "principalContradiction": "The README entry must serve as a document interface that orients a new reader to purpose, repository role, and next entry points, yet the current README may conflate observed facts with inferred preferences, leaving the reader unable to distinguish what is established from what is assumed, and thus unable to act with clarity.",
+                      "contributions": [
+                        {
+                          "pid": "P04",
+                          "decision": "The principal contradiction is between the README's intended function as an orienting interface (purpose, role, entry points) and its current conflation of observed fact with inferred preference, which blocks a new reader from forming actionable understanding. Resolving this contradiction is the minimal effective leap."
+                        },
+                        {
+                          "pid": "P02",
+                          "decision": "Ground all material statements in traceable evidence from the named README, mandate, seed, and case sources. Classify each as observed fact (verifiable from source), inferred preference (reasoned but not directly attested), or unresolved question (cannot be settled from available sources). This ensures the Aesthetic Study is实事求是."
+                        },
+                        {
+                          "pid": "P13",
+                          "decision": "Distinguish claims that are主张 (assertions) from facts that have been subjected to traceable verification提交. In the Aesthetic Study, every statement about the README must be traceable to the README text itself or to the mandate/seed/case sources. No unverified assertion may be presented as fact."
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_00_NzHODlaSomi1L2r63qlB7341",
+                    "toolName": "express_genes",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "accepted": true,
+                        "selected": [
+                          "P04",
+                          "P02",
+                          "P13"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 896,
+              "promptCacheMissTokens": 42
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "error": "token budget exceeded: observed 22107, limit 16682"
+}

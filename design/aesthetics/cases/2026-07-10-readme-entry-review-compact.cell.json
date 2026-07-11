@@ -1,0 +1,49 @@
+{
+  "id": "aesthetic-readme-entry-review-compact",
+  "intent": "Review the README entry as a document interface for the Aesthetic Practice Pilot. Return a concise Aesthetic Study that distinguishes observed README facts from inferred preference, tests whether a new reader can find purpose, repository role, and next entry points, and names at most one justified next revision.",
+  "workspace": {
+    "root": "../../..",
+    "readPaths": [
+      "README.md",
+      "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+      "design/aesthetics/cases/2026-07-10-readme-entry.md",
+      "principles/SEQUENCE.md",
+      "principles/interpretations/P02.md",
+      "principles/interpretations/P04.md",
+      "principles/interpretations/P06.md",
+      "principles/interpretations/P13.md"
+    ],
+    "writePaths": [],
+    "excludePaths": [
+      ".git",
+      ".work-cell",
+      "node_modules"
+    ],
+    "allowedCommands": []
+  },
+  "genome": {
+    "sequencePath": "principles/SEQUENCE.md",
+    "interpretationsDir": "principles/interpretations",
+    "inheritedLineage": {
+      "primary": "P04",
+      "supporting": ["P02", "P13", "P06"]
+    }
+  },
+  "dna": {
+    "baseInstructions": "This compact review uses a case-bound team: select P04 as lead with P02, P13, and P06 as supports. Read only the named sources. Distinguish observed artifact facts from inferred preference. Preserve the case's negative boundary; do not claim a final visual direction, public project name, model parity, or acceptance authority. Return sources, unresolved observations, and one human review question.",
+    "capabilities": []
+  },
+  "capabilitiesRequired": [],
+  "acceptance": [
+    "Return traceable evidence from the named README, seed, and case sources.",
+    "Classify material statements as observed fact, inferred preference, or unresolved question.",
+    "Name at most one justified next revision, or explicitly state that no revision is justified.",
+    "Preserve the case's authority and non-scope boundaries."
+  ],
+  "budget": {
+    "maxSteps": 5,
+    "maxTokens": 26000,
+    "maxDurationMs": 180000,
+    "maxCommandOutputBytes": 16000
+  }
+}

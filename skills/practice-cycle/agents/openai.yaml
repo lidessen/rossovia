@@ -1,0 +1,4 @@
+interface:
+  display_name: "Practice Cycle"
+  short_description: "Turn observed work into the next smallest test."
+  default_prompt: "Use $practice-cycle to turn the observed result of this non-trivial task into a bounded next practice or a settled conclusion."

@@ -1,0 +1,40 @@
+{
+  "id": "obs-20260711-workcell-readme-review-6k-budget-exceeded",
+  "schema": "observation-record.v1",
+  "kind": "run",
+  "occurredAt": "2026-07-11T01:34:19.928Z",
+  "recordedAt": "2026-07-11T02:07:21Z",
+  "subject": {
+    "type": "work-cell-run",
+    "id": "91fe35fc-cf36-45e2-891e-9054eb206695"
+  },
+  "observations": [
+    { "name": "terminal-status", "value": "budget_exceeded" },
+    { "name": "configured-max-tokens", "value": 6000, "unit": "tokens" },
+    { "name": "reported-total-tokens", "value": 13951, "unit": "tokens" },
+    { "name": "reported-policy-limit", "value": 4687, "unit": "tokens" }
+  ],
+  "method": {
+    "kind": "normalization",
+    "name": "Work Cell run record adapter",
+    "version": "v1",
+    "limitations": ["Values are reported by the source runtime and normalized without an independent token recount."]
+  },
+  "provenance": {
+    "sourceRole": "derived",
+    "sources": [
+      {
+        "locator": "design/aesthetics/cases/2026-07-10-readme-entry-review-budget-exceeded.cell.run.json",
+        "role": "raw",
+        "sha256": "00c76b1570d5b695f35cff8f2438bc62cfeecddbbce308af05950d8fe9079c0d"
+      }
+    ]
+  },
+  "quality": {
+    "status": "raw",
+    "limitations": ["This does not establish that the review task lacks value, that another model would consume the same budget, or what envelope would succeed."]
+  },
+  "observer": { "kind": "system", "id": "work-cell-runner" },
+  "recorder": { "kind": "agent", "id": "codex-root" },
+  "classification": "internal"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@lidessen/work-cell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "cell": "bun src/cli.ts run",
+    "experiment": "bun src/cli.ts experiment",
+    "live:p23": "bun src/cli.ts experiment experiments/p23-bounded-autonomy.json"
+  },
+  "dependencies": {
+    "@ai-sdk/deepseek": "2.0.47",
+    "ai": "6.0.223",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,32 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Verify sequence snapshots
+        run: python3 scripts/sync-sequence-snapshot.py --all --dry-run
+      - name: Validate Observation Chronicle
+        run: python3 scripts/validate-observation-chronicle.py
+      - name: Test Observation Chronicle validator
+        run: python3 scripts/test-observation-chronicle.py
+      - name: Install Work Cell dependencies
+        working-directory: packages/work-cell
+        run: bun install --frozen-lockfile
+      - name: Typecheck Work Cell
+        working-directory: packages/work-cell
+        run: bun run typecheck
+      - name: Test Work Cell
+        working-directory: packages/work-cell
+        run: bun test

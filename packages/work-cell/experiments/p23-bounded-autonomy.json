@@ -1,0 +1,72 @@
+{
+  "id": "p23-bounded-autonomy-skill-expression",
+  "fixture": {
+    "root": "../fixtures/p23-skill-rewrite",
+    "overlays": [
+      {
+        "source": "../../../principles/SEQUENCE.md",
+        "destination": "principles/SEQUENCE.md"
+      },
+      {
+        "source": "../../../principles/interpretations",
+        "destination": "principles/interpretations"
+      }
+    ]
+  },
+  "outputDir": "../.work-cell/experiments",
+  "task": {
+    "id": "rewrite-artifact-organization",
+    "intent": "Rewrite SKILL.md in place so it expresses DESIGN.md as a concise, actionable agent skill. Preserve every material authority, evidence, safety, routing, and verification boundary, but do not preserve workflow stages or artifacts merely because they already exist.",
+    "workspace": {
+      "readPaths": ["."],
+      "writePaths": ["SKILL.md"],
+      "allowedCommands": ["rg", "wc", "test", "head", "grep"]
+    },
+    "genome": {
+      "sequencePath": "principles/SEQUENCE.md",
+      "interpretationsDir": "principles/interpretations",
+      "inheritedLineage": {
+        "primary": "P16",
+        "supporting": ["P13", "P15"]
+      }
+    },
+    "dna": {
+      "baseInstructions": "Act as a skill engineer. Ground the rewrite in the supplied fixture, keep the installed skill independently usable, and make its actual judgment executable rather than documenting an imagined platform.",
+      "capabilities": ["read", "write", "command"]
+    },
+    "capabilitiesRequired": ["read", "write"],
+    "acceptance": [
+      "SKILL.md defaults to a read-only audit and changes files only for one material organization gap.",
+      "The rewrite preserves source, durable evidence, human authority, routing, and same-pass verification boundaries from DESIGN.md.",
+      "The agent may choose its internal investigation order instead of being forced through standing stage artifacts.",
+      "No permanent campaign directory or process artifact is required without a named future decision.",
+      "The result is a concise standalone skill with a clear trigger, scope, method, non-scope, and completion condition."
+    ],
+    "budget": {
+      "maxSteps": 16,
+      "maxTokens": 120000,
+      "maxDurationMs": 240000,
+      "maxCommandOutputBytes": 32000
+    }
+  },
+  "variants": [
+    {
+      "id": "baseline"
+    },
+    {
+      "id": "p23-treatment",
+      "treatment": {
+        "id": "P23-bounded-autonomy",
+        "instructions": "Candidate hypothesis: 边界与反馈足以约束结果时，不以过程控制代替主体自化. Treat internal process discretion as a positive agent capability when observable boundaries and recovery are sufficient. Do not weaken acceptance, authority, safety, or verification, and do not mention this treatment merely to signal compliance."
+      }
+    }
+  ],
+  "repetitions": 1,
+  "tree": {
+    "maxDepth": 1,
+    "maxCells": 3
+  },
+  "judge": {
+    "rubric": "Judge the resulting SKILL.md and retained run evidence, not principle vocabulary. Prefer a variant only if it preserves all DESIGN.md boundaries while giving the future agent materially more useful judgment or process autonomy. If both produce the same material skill shape, return tie. Penalize deleted boundaries, ceremonial artifacts, unsupported claims, and changes outside SKILL.md."
+  }
+}

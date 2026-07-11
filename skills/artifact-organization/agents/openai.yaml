@@ -1,0 +1,4 @@
+interface:
+  display_name: "Artifact Organization"
+  short_description: "Audit artifact roles and apply one justified transition."
+  default_prompt: "Use $artifact-organization to audit whether this project's artifact layout still fits accepted design."

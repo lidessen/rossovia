@@ -1,0 +1,4 @@
+interface:
+  display_name: "Form Guidance"
+  short_description: "Choose the smallest truthful form before building it."
+  default_prompt: "Use $form-guidance to determine whether this capability should exist as a skill, artifact, runtime, projection, or no new form."

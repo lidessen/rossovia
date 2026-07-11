@@ -1,0 +1,4 @@
+interface:
+  display_name: "Naming and Articulation"
+  short_description: "Name and explain shared concepts without over-naming them."
+  default_prompt: "Use $naming-and-articulation to name this concept, define its boundary, and place the explanation at its owning source."

@@ -1,0 +1,45 @@
+{
+  "id": "aesthetic-readme-entry-review",
+  "intent": "Review the README entry as a document interface for the Aesthetic Practice Pilot. Return a concise Aesthetic Study that distinguishes observed README facts from inferred preference, tests whether a new reader can find purpose, repository role, and next entry points, and names at most one justified next revision.",
+  "workspace": {
+    "root": "../../..",
+    "readPaths": [
+      "README.md",
+      "design/FOUNDING-MANDATE.md",
+      "design/aesthetics/README.md",
+      "design/aesthetics/seed/2026-07-10-initial-preference-probe.md",
+      "design/aesthetics/cases/2026-07-10-readme-entry.md",
+      "design/aesthetics/WORK-CELL-BRIEF.md",
+      "principles/SEQUENCE.md",
+      "principles/interpretations"
+    ],
+    "writePaths": [],
+    "excludePaths": [
+      ".git",
+      ".work-cell",
+      "node_modules"
+    ],
+    "allowedCommands": []
+  },
+  "genome": {
+    "sequencePath": "principles/SEQUENCE.md",
+    "interpretationsDir": "principles/interpretations"
+  },
+  "dna": {
+    "baseInstructions": "Read the named Aesthetic Case and its sources. Distinguish observed artifact facts from inferred preference. Make the smallest review that lets the stated audience act. Preserve the case's negative boundary; do not claim a final visual direction, public project name, model parity, or acceptance authority. Return sources, unresolved observations, and one human review question.",
+    "capabilities": []
+  },
+  "capabilitiesRequired": [],
+  "acceptance": [
+    "Return traceable evidence from the named README, mandate, seed, and case sources.",
+    "Classify material statements as observed fact, inferred preference, or unresolved question.",
+    "Name at most one justified next revision, or explicitly state that no revision is justified.",
+    "Preserve the case's authority and non-scope boundaries."
+  ],
+  "budget": {
+    "maxSteps": 6,
+    "maxTokens": 30000,
+    "maxDurationMs": 180000,
+    "maxCommandOutputBytes": 16000
+  }
+}
