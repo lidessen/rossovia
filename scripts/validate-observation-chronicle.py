@@ -8,6 +8,7 @@ import datetime as dt
 import hashlib
 import json
 import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,8 @@ DEFAULT_PATHS = [ROOT / "chronicle" / "records", ROOT / "chronicle" / "examples"
 METADATA = re.compile(r"\A<!-- observation-record\n(?P<body>.*?)\n-->\n", re.DOTALL)
 ID_PATTERN = re.compile(r"^obs-[a-z0-9][a-z0-9-]*$")
 DIGEST_PATTERN = re.compile(r"^[a-f0-9]{64}$")
+WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+MAX_LOCAL_SOURCE_BYTES = 25 * 1024 * 1024
 
 REQUIRED = {
     "id", "schema", "kind", "occurredAt", "recordedAt", "subject", "observations",
@@ -99,6 +102,36 @@ def validate_actor(value: Any, path: Path, field: str, allowed_kinds: set[str]) 
     as_nonempty_string(actor["id"], path, f"{field}.id")
 
 
+def local_source_path(locator: str, record_path: Path, field: str) -> Path | None:
+    """Return a safe repository-local source path, or None for a non-file locator."""
+    if "://" in locator or locator.startswith("self:"):
+        return None
+    candidate = Path(locator)
+    if candidate.is_absolute() or locator.startswith("\\") or WINDOWS_ABSOLUTE_PATH.match(locator):
+        fail(record_path, f"{field} must be repository-relative or a URI-style locator")
+    if ".." in candidate.parts:
+        fail(record_path, f"{field} must not traverse outside the repository")
+    resolved = (ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(ROOT.resolve())
+    except ValueError:
+        fail(record_path, f"{field} resolves outside the repository")
+    return resolved
+
+
+def sha256_file(path: Path) -> str:
+    metadata = path.stat()
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValidationError(f"{path}: local source must be a regular file")
+    if metadata.st_size > MAX_LOCAL_SOURCE_BYTES:
+        raise ValidationError(f"{path}: local source exceeds {MAX_LOCAL_SOURCE_BYTES} byte digest limit")
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def validate_record(record: dict[str, Any], path: Path) -> dt.datetime:
     missing = REQUIRED - set(record)
     extra = set(record) - ROOT_KEYS
@@ -167,13 +200,14 @@ def validate_record(record: dict[str, Any], path: Path) -> dt.datetime:
         actual_source_roles.add(item["role"])
         if "sha256" in item and (not isinstance(item["sha256"], str) or not DIGEST_PATTERN.fullmatch(item["sha256"])):
             fail(path, f"provenance.sources[{index}].sha256 must be lowercase SHA-256")
-        local_source = ROOT / item["locator"]
-        if local_source.is_file():
+        locator = item["locator"]
+        local_source = local_source_path(locator, path, f"provenance.sources[{index}].locator")
+        if local_source and local_source.exists():
             if "sha256" not in item:
-                fail(path, f"provenance.sources[{index}] needs sha256 for local source {item['locator']}")
-            actual_digest = hashlib.sha256(local_source.read_bytes()).hexdigest()
+                fail(path, f"provenance.sources[{index}] needs sha256 for local source {locator!r}")
+            actual_digest = sha256_file(local_source)
             if item["sha256"] != actual_digest:
-                fail(path, f"provenance.sources[{index}].sha256 does not match local source {item['locator']}")
+                fail(path, f"provenance.sources[{index}].sha256 does not match local source {locator!r}")
     if source_role == "primary" and "raw" not in actual_source_roles:
         fail(path, "a primary record needs a raw source")
     if source_role == "derived" and not actual_source_roles & {"raw", "derived-from"}:

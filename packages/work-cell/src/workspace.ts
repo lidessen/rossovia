@@ -83,6 +83,11 @@ export class Workspace {
     signal?: AbortSignal,
   ): Promise<CommandResult> {
     if (argv.length === 0 || !argv[0]) throw new Error("argv must not be empty");
+    // Reject argv[0] containing a path separator: the allow-list is based on
+    // the bare command name, so a path-qualified executable would bypass it.
+    if (argv[0].includes("/") || argv[0].includes("\\")) {
+      throw new Error(`command argv[0] must not contain a path separator: ${argv[0]}`);
+    }
     const executable = basename(argv[0]);
     if (!this.policy.allowedCommands.includes(executable)) {
       throw new Error(`command not allowed: ${executable}`);

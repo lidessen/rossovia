@@ -91,6 +91,7 @@ operations documents look complete.
 | Signal retained in evidence | First route | What may change only after review |
 |---|---|---|
 | an acceptance/check failure or a forecast-envelope miss | `practice-cycle` | later practice or continuation decision |
+| a decision-changing anomaly retained in the Chronicle | [event-triggered reflection sidecar](../decisions/019-event-triggered-reflection-sidecar.md) | one routed next practice; never an automatic retry or self-amendment |
 | a recurring decision has no truthful carrier | `form-guidance` | a new artifact, skill, or runtime |
 | an agent repeatedly misuses a method | `skill-engineering` | the owning Skill expression |
 | context omits a governing boundary | `harness` | context architecture |
@@ -100,4 +101,6 @@ operations documents look complete.
 
 The system senses retained observations, not agent self-descriptions. A single
 signal starts a probe or routes a decision; it never automatically rewrites
-the protocol, a Skill, or the Sequence.
+the protocol, a Skill, or the Sequence. The reflection sidecar consumes only
+the attention required to retain and route one anomaly after a main-task safe
+point; it is not a standing self-analysis loop.

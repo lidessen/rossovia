@@ -49,6 +49,7 @@ def encoded(value: dict) -> str:
 def main() -> None:
     valid = primary("obs-20260701-valid")
     run_case("valid", {"valid.json": encoded(valid)}, 0, "passed")
+
     run_case("malformed", {"bad.json": "not JSON"}, 1, "invalid JSON")
     run_case("duplicate", {"one.json": encoded(valid), "two.json": encoded(valid)}, 1, "duplicate id")
     ungrounded = primary("obs-20260701-derived")
@@ -73,6 +74,46 @@ def main() -> None:
     forward["kind"] = "correction"
     forward["correctionOf"] = "obs-20260703-later"
     run_case("forward correction", {"later.json": encoded(later), "forward.json": encoded(forward)}, 1, "earlier recordedAt")
+
+    absolute = primary("obs-20260704-absolute")
+    absolute["provenance"] = {
+        "sourceRole": "derived",
+        "sources": [{"locator": "/etc/passwd", "role": "raw", "sha256": "0" * 64}],
+    }
+    run_case("absolute locator rejected", {"absolute.json": encoded(absolute)}, 1, "must be repository-relative")
+
+    traverse = primary("obs-20260705-traverse")
+    traverse["provenance"] = {
+        "sourceRole": "derived",
+        "sources": [{"locator": "../../etc/passwd", "role": "raw", "sha256": "0" * 64}],
+    }
+    run_case("traversing locator rejected", {"traverse.json": encoded(traverse)}, 1, "must not traverse")
+
+    uri = primary("obs-20260706-uri")
+    uri["provenance"] = {
+        "sourceRole": "derived",
+        "sources": [{"locator": "file:///etc/passwd", "role": "raw", "sha256": "0" * 64}],
+    }
+    run_case("URI locator not opened", {"uri.json": encoded(uri)}, 0, "passed")
+
+    self_loc = primary("obs-20260707-self")
+    self_loc["provenance"] = {
+        "sourceRole": "derived",
+        "sources": [{"locator": "self: observation", "role": "raw", "sha256": "0" * 64}],
+    }
+    run_case("self locator not opened", {"self.json": encoded(self_loc)}, 0, "passed")
+
+    safe = primary("obs-20260708-safe-relative")
+    safe["provenance"] = {
+        "sourceRole": "derived",
+        "sources": [{
+            "locator": "chronicle/records/2026/07/obs-20260711-workcell-readme-review-6k-budget-exceeded.json",
+            "role": "raw",
+            "sha256": "0" * 64,
+        }],
+    }
+    run_case("safe relative with digest mismatch", {"safe.json": encoded(safe)}, 1, "does not match local source")
+
     print("Observation Chronicle validator tests passed")
 
 

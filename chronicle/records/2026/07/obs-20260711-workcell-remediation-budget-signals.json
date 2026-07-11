@@ -1,0 +1,39 @@
+{
+  "id": "obs-20260711-workcell-remediation-budget-signals",
+  "schema": "observation-record.v1",
+  "kind": "observation",
+  "occurredAt": "2026-07-11T03:15:45Z",
+  "recordedAt": "2026-07-11T03:15:45Z",
+  "subject": {
+    "type": "work-cell-remediation",
+    "id": "pr13-review-comments"
+  },
+  "observations": [
+    { "name": "budget-exceeded-runs", "value": 4, "unit": "runs" },
+    { "name": "terminal-status", "value": "budget_exceeded" },
+    { "name": "reported-total-token-range", "value": "31078-47866", "unit": "tokens" },
+    { "name": "structured-submission-produced", "value": false }
+  ],
+  "method": {
+    "kind": "calculation",
+    "name": "Work Cell remediation trace comparison",
+    "version": "v1",
+    "limitations": ["All four runs used one model family and a no-command write scope; this is not a general model-cost or task-difficulty estimate."]
+  },
+  "provenance": {
+    "sourceRole": "derived",
+    "sources": [
+      { "locator": "workcell://run/4d523243-920e-4717-b925-2699e84003fd", "role": "raw" },
+      { "locator": "workcell://run/1d44bd43-500f-4eb1-93fe-41b481b5fb66", "role": "raw" },
+      { "locator": "workcell://run/eef6e6e2-53b3-4479-ae41-69c015a24708", "role": "raw" },
+      { "locator": "workcell://run/bed4994e-9b55-49a0-a57a-f372af9d9238", "role": "raw" }
+    ]
+  },
+  "quality": {
+    "status": "raw",
+    "limitations": ["Raw run traces are local execution residue; this receipt preserves their IDs and measured outcome but does not independently reproduce the model trajectory."]
+  },
+  "observer": { "kind": "system", "id": "work-cell-runner" },
+  "recorder": { "kind": "agent", "id": "codex-root" },
+  "classification": "internal"
+}

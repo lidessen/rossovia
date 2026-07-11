@@ -15,7 +15,7 @@ export interface CellTreeResult {
   status: "completed" | "partial";
   records: CellRunRecord[];
   unresolvedChildren: Array<{
-    parentRunId: string;
+    parentRunId?: string;
     child: ChildCellSpec;
     reason: "max_depth" | "max_cells" | "no_write_scope" | "budget_envelope";
   }>;
@@ -63,13 +63,11 @@ export async function runCellTree(
     if (!next) break;
     const remainingTokens = envelope ? Math.max(0, envelope.maxTotalTokens - consumedTokens) : undefined;
     if (envelope && remainingTokens === 0) {
-      if (next.parent && next.child) {
-        unresolvedChildren.push({
-          parentRunId: next.parent.runId,
-          child: next.child,
-          reason: "budget_envelope",
-        });
-      }
+      unresolvedChildren.push({
+        ...(next.parent ? { parentRunId: next.parent.runId } : {}),
+        child: next.child ?? childFromInput(next.input),
+        reason: "budget_envelope",
+      });
       continue;
     }
     const allocatedTokens = envelope
@@ -154,6 +152,17 @@ export async function runCellTree(
     records,
     unresolvedChildren,
     ...(budget ? { budget } : {}),
+  };
+}
+
+function childFromInput(input: CellInput): ChildCellSpec {
+  return {
+    id: input.id,
+    intent: input.intent,
+    scope: input.workspace.readPaths,
+    capabilitiesRequired: input.capabilitiesRequired,
+    acceptance: input.acceptance,
+    budget: input.budget,
   };
 }
 

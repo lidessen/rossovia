@@ -164,6 +164,28 @@ describe("Workspace containment", () => {
     );
     await expect(workspace.runCommand(["rm", "-rf", "."])).rejects.toThrow("command not allowed");
   });
+
+  test("rejects path-qualified argv[0] even when its basename is allow-listed", async () => {
+    const root = await fixture();
+    const parsed = input(root);
+    // allowedCommands contains "true" — the basename of "./true"
+    const workspace = await Workspace.create(parsed.workspace, parsed.budget);
+
+    // POSIX-style path separator
+    await expect(workspace.runCommand(["./true"])).rejects.toThrow(
+      "command argv[0] must not contain a path separator",
+    );
+    // Windows-style path separator
+    await expect(workspace.runCommand([".\\true"])).rejects.toThrow(
+      "command argv[0] must not contain a path separator",
+    );
+    // Multi-component path
+    await expect(workspace.runCommand(["subdir/true"])).rejects.toThrow(
+      "command argv[0] must not contain a path separator",
+    );
+    // Plain basename still works
+    await expect(workspace.runCommand(["true"])).resolves.toMatchObject({ exitCode: 0 });
+  });
 });
 
 describe("Differentiation tree", () => {
@@ -278,6 +300,34 @@ describe("Differentiation tree", () => {
     expect(tree.budget?.allocations).toHaveLength(2);
     expect(tree.unresolvedChildren).toEqual([
       expect.objectContaining({ child: expect.objectContaining({ id: "child-b" }), reason: "budget_envelope" }),
+    ]);
+  });
+
+  test("retains an exhausted root envelope as partial evidence for direct callers", async () => {
+    const root = await fixture();
+    const rootInput = input(root);
+    rootInput.budgetEnvelope = {
+      id: "exhausted-root-budget",
+      version: "budget-envelope.v1",
+      maxTotalTokens: 0,
+      onExhaustion: "partial",
+    };
+    let driverCalls = 0;
+
+    const tree = await runCellTree(rootInput, {
+      limits: { maxDepth: 1, maxCells: 2 },
+      createDriver: () => {
+        driverCalls += 1;
+        return new ScriptedDriver(geneExpression("P04", []), completedSubmission());
+      },
+    });
+
+    expect(driverCalls).toBe(0);
+    expect(tree.records).toEqual([]);
+    expect(tree.status).toBe("partial");
+    expect(tree.budget).toMatchObject({ status: "partial", remainingTokens: 0 });
+    expect(tree.unresolvedChildren).toEqual([
+      expect.objectContaining({ child: expect.objectContaining({ id: rootInput.id }), reason: "budget_envelope" }),
     ]);
   });
 });

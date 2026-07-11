@@ -147,6 +147,11 @@ discarded.
   and tolerances follow the decision horizon; calibration views are rebuildable
   projections of observed execution, never budget authority. See
   [decision 014](decisions/014-work-estimation-and-calibrated-budgeting.md).
+- **Event-triggered reflection sidecar** — A decision-changing anomaly becomes
+  a Chronicle observation and may route, at a main-task safe point, to one
+  existing corrective owner. It is not a default reflection skill, scheduled
+  agent, automatic retry, or authority to change the project; see
+  [decision 019](decisions/019-event-triggered-reflection-sidecar.md).
 - **Stable selection** — Every methodology skill names one primary sequence ID
   and at most three supporting IDs. A changed selection is a shape change to
   that skill.
