@@ -71,6 +71,13 @@ principles/SEQUENCE.md ──► interpretations ──► selected P-ID express
   no semantic or adoption authority. Its project interaction shell discovers a host
   Sequence and lowers explicit human intent and acceptance into a read-only
   probe; it is a convenience projection, not a second runtime contract.
+  For an approved material-decision pilot, its bounded `deliberate` CLI may run
+  three to five independent read-only members from one docket and retain their
+  structured positions. Its tally and dissent list are a projection, never a
+  vote that accepts a proposal; see [decision 020](decisions/020-bounded-work-cell-deliberation.md).
+  Its project-facing `deliberate-probe` adapter lowers a concise docket into a
+  capped evidence packet and exact manifest for human inspection before a model
+  call; see [decision 022](decisions/022-project-first-deliberation-interaction.md).
 
 ## Data Flow
 
@@ -245,6 +252,7 @@ The carrier is organized as a **根据地** (base area), not a folder tree to ti
 | 纲领 / semantic source | `principles/SEQUENCE.md`, adopted `design/decisions/` |
 | 根据地章程 | `design/DESIGN.md` (+ adopted organization section) |
 | 常备制度 / durable evidence | `principles/adopted/`, `principles/reviews/`, `regeneration/evaluations/` |
+| 运行连续性 / active operational source | `operations/missions/*.json` — one Git-tracked, active mission record; settled state is retained in Git history then pruned |
 | 专业工作队 / living expression | `skills/*/`, `principles/interpretations/` |
 | 领导班子 | Human adoption authority; `COUNCIL.md` as governance projection only |
 | 活动 / sessions | `design/organization/*` — campaign artifacts, not top-level modules |
@@ -305,6 +313,12 @@ resources, accept a result, or mutate `main` merely by triggering an agent.
 The first formalization is a finite founding campaign, so the present
 uncommitted transition is divided into reviewable baseline tranches rather than
 silently treated as a release.
+
+For a material mission that forks across sessions, a Git-tracked Mission Record
+holds only the current mainline, open branches, and their return contracts. It
+does not duplicate Git/PR history or Chronicle observations, and it is pruned
+after its settled state is committed. [`decision 021`](decisions/021-git-tracked-mission-continuity.md)
+defines the boundary and local validation surface.
 
 ## Founding mandate
 

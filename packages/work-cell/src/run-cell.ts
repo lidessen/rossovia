@@ -49,7 +49,7 @@ export async function runCell(
       const context = {
         workspace,
         signal,
-        maxTokens: input.budget.maxTokens,
+        maxTokens: input.budget.tokenControl === "hard" ? input.budget.maxTokens : Number.MAX_SAFE_INTEGER,
         emit(type: string, data: unknown) {
           trace.push(traceEvent(type, data));
         },
@@ -74,7 +74,9 @@ export async function runCell(
       );
       driverResult = await driver.run(input, expressed, {
         ...context,
-        maxTokens: Math.max(1, input.budget.maxTokens - selectionResult.usage.totalTokens),
+        maxTokens: input.budget.tokenControl === "hard"
+          ? Math.max(1, input.budget.maxTokens - selectionResult.usage.totalTokens)
+          : Number.MAX_SAFE_INTEGER,
       });
       if (!driverResult.submission) {
         status = "protocol_error";

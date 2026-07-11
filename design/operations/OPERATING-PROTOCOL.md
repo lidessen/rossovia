@@ -40,6 +40,13 @@ outside shared integration. The moment work must survive a session, affect an
 accepted source, involve another reviewer, or be shared remotely, use the
 branch/PR path below.
 
+For a material mission that can survive multiple sessions or fork into more
+than one line of work, create one Git-tracked [Mission Record](../../operations/missions/README.md)
+before opening the first side branch. It records the mainline contradiction,
+acceptance, and each branch's source, return condition, and eventual mainline
+delta. It is not required for the local edit above and does not create a task
+queue.
+
 ## Worktree and branch protocol
 
 1. Start from an updated `main` in a **clean integration worktree**. Do not
@@ -70,6 +77,22 @@ branch/PR path below.
 No two mission worktrees may edit the same accepted source without an explicit
 scope split and named integration order. If that split cannot be stated, keep
 the work serial.
+
+## Mission continuity safe points
+
+After a material branch settles, before switching to another branch, and before
+presenting a phase-complete or merge decision, inspect the active record:
+
+```text
+python3 scripts/mission-record.py status <mission-id>
+python3 scripts/mission-record.py check <mission-id> --git
+```
+
+A branch returns only through `integrate`, `no-change`, or `abandon`, each with
+a recorded mainline delta. A useful but unfinished branch stays `suspended`
+with a reactivation signal. Do not call a material mission complete while an
+open, integrating, or suspended branch remains. When the record's final settled
+state is committed, prune it rather than retaining a permanent task archive.
 
 ## Planning, naming, and budget
 

@@ -8,6 +8,8 @@
     "test": "bun test",
     "cell": "bun src/cli.ts run",
     "experiment": "bun src/cli.ts experiment",
+    "deliberate": "bun src/cli.ts deliberate",
+    "deliberate:probe": "bun src/cli.ts deliberate-probe",
     "live:p23": "bun src/cli.ts experiment experiments/p23-bounded-autonomy.json"
   },
   "dependencies": {

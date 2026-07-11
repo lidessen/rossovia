@@ -5,6 +5,7 @@ export const WORK_CELL_RECORD_VERSION = "work-cell.run.v1" as const;
 export const BudgetSchema = z.object({
   maxSteps: z.number().int().positive().default(20),
   maxTokens: z.number().int().positive().default(100_000),
+  tokenControl: z.enum(["audit", "hard"]).optional(),
   maxDurationMs: z.number().int().positive().default(300_000),
   maxCommandOutputBytes: z.number().int().positive().default(64_000),
 });
@@ -141,6 +142,11 @@ export const EvidenceSchema = z.object({
   source: z.string().min(1),
 });
 
+export const StructuredResultSchema = z.object({
+  schema: z.string().min(1),
+  value: z.unknown(),
+});
+
 export const ChildCellSpecSchema = z.object({
   id: z.string().min(1),
   intent: z.string().min(1),
@@ -161,6 +167,7 @@ export const CellSubmissionSchema = z
     checkPlan: CheckPlanSchema.default({ steps: [] }),
     children: z.array(ChildCellSpecSchema).default([]),
     blockers: z.array(z.string().min(1)).default([]),
+    result: StructuredResultSchema.optional(),
   })
   .superRefine((value, context) => {
     if (value.outcome === "split" && value.children.length === 0) {
@@ -237,6 +244,7 @@ export type WorkspacePolicy = z.infer<typeof WorkspacePolicySchema>;
 export type CellInput = z.infer<typeof CellInputSchema>;
 export type GeneExpression = z.infer<typeof GeneExpressionSchema>;
 export type CellSubmission = z.infer<typeof CellSubmissionSchema>;
+export type StructuredResult = z.infer<typeof StructuredResultSchema>;
 export type ChildCellSpec = z.infer<typeof ChildCellSpecSchema>;
 export type CheckStep = z.infer<typeof CheckStepSchema>;
 export type CheckResult = z.infer<typeof CheckResultSchema>;

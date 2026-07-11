@@ -272,6 +272,7 @@ describe("Differentiation tree", () => {
     const rootInput = input(root);
     rootInput.workspace.writePaths = ["."];
     rootInput.budget.maxTokens = 100;
+    rootInput.budget.tokenControl = "hard";
     rootInput.budgetEnvelope = {
       id: "tree-budget",
       version: "budget-envelope.v1",

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CellRunRecord } from "../src/contracts";
@@ -12,6 +12,7 @@ import {
 import { renderRunSummary } from "../src/presentation";
 import { Workspace } from "../src/workspace";
 import { submissionToolSchema } from "../src/ai-sdk-driver";
+import { prepareProjectDeliberation } from "../src/project-deliberation";
 
 const temporaryRoots: string[] = [];
 
@@ -57,6 +58,62 @@ describe("Project interaction", () => {
     expect(output).toContain(`${root}/.work-cell/runs/`);
     expect(await latestProjectRun(root)).toBe(output);
   });
+
+  test("lowers a concise docket into compact packet workspaces instead of broad project scopes", async () => {
+    const root = await projectFixture();
+    await mkdir(join(root, "design"), { recursive: true });
+    await writeFile(join(root, "design", "source.md"), `${"evidence ".repeat(2_000)}TAIL-MUST-NOT-REACH-CELL\n`);
+
+    const prepared = await prepareProjectDeliberation({
+      startDir: root,
+      id: "priority",
+      question: "Which bounded option should proceed?",
+      options: [{ id: "A", summary: "Proceed" }, { id: "B", summary: "Hold" }],
+      sources: ["design/source.md"],
+      seats: [
+        { pid: "P04", role: "contradiction" },
+        { pid: "P11", role: "authority" },
+        { pid: "P15", role: "preservation" },
+      ],
+      budget: {
+        envelope: { id: "priority-allocation", version: "budget-envelope.v1", maxTotalTokens: 30_000, onExhaustion: "partial" },
+        source: "test human approval",
+        memberMaxTokens: 10_000,
+      },
+      maxSourceChars: 500,
+      maxPacketChars: 1_000,
+    });
+
+    expect(prepared.directory).toContain(`${root}/.work-cell/deliberations/`);
+    expect(prepared.manifest.members).toHaveLength(3);
+    expect(prepared.manifest.members.every((member) => member.input.workspace.readPaths.join(",") === "docket,principles")).toBe(true);
+    expect(prepared.manifest.members.every((member) => member.input.workspace.root !== root)).toBe(true);
+    expect(prepared.manifest.members.map((member) => member.input.budget.maxTokens)).toEqual([10_000, 10_000, 10_000]);
+    const evidence = await readFile(prepared.evidencePath, "utf8");
+    expect(evidence).toContain("Excerpt: first 500");
+    expect(evidence).toContain("Evidence boundary: this packet contains bounded excerpts");
+    expect(evidence).not.toContain("TAIL-MUST-NOT-REACH-CELL");
+    expect(prepared.manifest.members[0]!.input.dna.baseInstructions).toContain("may be incomplete");
+
+    const second = await prepareProjectDeliberation({
+      startDir: root,
+      id: "priority",
+      question: "Which bounded option should proceed?",
+      options: [{ id: "A", summary: "Proceed" }, { id: "B", summary: "Hold" }],
+      sources: ["design/source.md"],
+      seats: [
+        { pid: "P04", role: "contradiction" },
+        { pid: "P11", role: "authority" },
+        { pid: "P15", role: "preservation" },
+      ],
+      budget: {
+        envelope: { id: "priority-allocation", version: "budget-envelope.v1", maxTotalTokens: 30_000, onExhaustion: "partial" },
+        source: "test human approval",
+        memberMaxTokens: 10_000,
+      },
+    });
+    expect(second.directory).not.toBe(prepared.directory);
+  });
 });
 
 describe("Workspace exclusions and summaries", () => {
@@ -79,6 +136,26 @@ describe("Workspace exclusions and summaries", () => {
       ...base,
       checkSteps: [{ id: "allowed-shape", argv: ["true"] }],
     }).checkSteps).toHaveLength(1);
+  });
+
+  test("accepts a caller-defined structured result without importing a domain into the Cell contract", () => {
+    const base = {
+      outcome: "completed",
+      artifactSummary: "Independent position",
+      artifactFiles: [],
+      evidence: [],
+      checkSteps: [],
+      children: [],
+      blockers: [],
+    };
+
+    expect(submissionToolSchema(false).parse({
+      ...base,
+      result: {
+        schema: "example.audit.v1",
+        value: { status: "needs-more-evidence" },
+      },
+    }).result).toEqual({ schema: "example.audit.v1", value: { status: "needs-more-evidence" } });
   });
 
   test("excludes generated paths from listing, direct reads, and read-only snapshots", async () => {
@@ -135,9 +212,10 @@ async function projectFixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "work-cell-project-"));
   temporaryRoots.push(root);
   await mkdir(join(root, "principles", "interpretations"), { recursive: true });
-  await writeFile(join(root, "principles", "SEQUENCE.md"), "P15｜Minimum valid transition｜source\nP16｜Form enables action｜source\n");
-  await writeFile(join(root, "principles", "interpretations", "P15.md"), "# P15\n");
-  await writeFile(join(root, "principles", "interpretations", "P16.md"), "# P16\n");
+  await writeFile(join(root, "principles", "SEQUENCE.md"), "P04｜Principal contradiction｜source\nP11｜Separate decision and execution｜source\nP15｜Minimum valid transition｜source\nP16｜Form enables action｜source\n");
+  for (const pid of ["P04", "P11", "P15", "P16"]) {
+    await writeFile(join(root, "principles", "interpretations", `${pid}.md`), `# ${pid}\n`);
+  }
   return root;
 }
 

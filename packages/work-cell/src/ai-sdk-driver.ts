@@ -12,6 +12,7 @@ import {
   type CellUsage,
   type DriverDescriptor,
   type GeneExpression,
+  StructuredResultSchema,
 } from "./contracts";
 import {
   CellBudgetExceededError,
@@ -43,16 +44,17 @@ const SubmissionToolSchema = z.object({
   checkSteps: z.array(CheckStepSchema).default([]),
   children: z.array(ChildCellSpecSchema).default([]),
   blockers: z.array(z.string().min(1)).default([]),
+  result: StructuredResultSchema.optional(),
 });
 
 export function submissionToolSchema(canRunCommands: boolean) {
-  if (canRunCommands) return SubmissionToolSchema;
-  return SubmissionToolSchema.extend({
+  const capabilityBoundSchema = canRunCommands ? SubmissionToolSchema : SubmissionToolSchema.extend({
     checkSteps: z
       .array(CheckStepSchema)
       .length(0, "checkSteps must be empty when this cell has no command authority")
       .default([]),
   });
+  return capabilityBoundSchema;
 }
 
 export class AiSdkDeepSeekDriver implements CellDriver {
@@ -128,7 +130,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
 
     if (!selection) throw new Error("gene expression protocol failed: express_genes was not accepted");
     const expressionUsage = normalizeUsage(expressionResult.totalUsage, expressionResult.providerMetadata);
-    if (expressionUsage.totalTokens > input.budget.maxTokens) {
+    if (input.budget.tokenControl === "hard" && expressionUsage.totalTokens > input.budget.maxTokens) {
       throw new CellBudgetExceededError(
         expressionUsage.totalTokens,
         input.budget.maxTokens,
@@ -158,7 +160,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       instructions: renderExecutionInstructions(input, expressed),
       tools,
       stopWhen: [hasToolCall("submit_result"), stepCountIs(input.budget.maxSteps)],
-      maxOutputTokens: Math.min(16_000, input.budget.maxTokens),
+      maxOutputTokens: 16_000,
       temperature: 0,
       providerOptions: deepSeekNonThinking,
     });
@@ -180,7 +182,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
             toolCalls: sanitize(toolCalls),
             toolResults: sanitize(toolResults),
           });
-          if (observedUsage.totalTokens > context.maxTokens) budgetAbort.abort();
+          if (input.budget.tokenControl === "hard" && observedUsage.totalTokens > context.maxTokens) budgetAbort.abort();
         },
       });
     } catch (error) {
@@ -190,7 +192,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       throw error;
     }
     const usage = normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata);
-    if (usage.totalTokens > context.maxTokens) {
+    if (input.budget.tokenControl === "hard" && usage.totalTokens > context.maxTokens) {
       throw new CellBudgetExceededError(usage.totalTokens, context.maxTokens, usage);
     }
 
@@ -245,6 +247,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
             checkPlan: { steps: value.checkSteps },
             children: value.children,
             blockers: value.blockers,
+            result: value.result,
           });
           acceptSubmission(submission);
           context.emit("cell.submitted", submission);

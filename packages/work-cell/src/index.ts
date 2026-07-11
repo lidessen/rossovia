@@ -9,3 +9,5 @@ export * from "./judge";
 export * from "./ai-sdk-driver";
 export * from "./project";
 export * from "./presentation";
+export * from "./deliberation";
+export * from "./project-deliberation";

@@ -5,8 +5,9 @@ description: >-
   in evidence, choose the smallest valid change, test before claiming done, and
   analyze the specific situation before applying a pattern. Triggers on "be more
   disciplined", "professional habits", "stop overengineering", "check your work",
-  "don't guess", "bad habits", or when an agent shows overconfidence, untested
-  claims, or repetitive overengineering across tasks.
+  "don't guess", "bad habits", "test strategy", "meaningful tests", or "avoid
+  test bloat"; also when an agent shows overconfidence, untested claims, or
+  repetitive overengineering across tasks.
 ---
 
 # Disciplined Development
@@ -91,6 +92,33 @@ without verification.
    disciplined.
    → P15: the transition is not complete until avoidable residue is removed.
 
+### Select tests for decision value, not assertion count
+
+Before adding or retaining a test, name all four parts in one short sentence:
+the behavior claim, the realistic defect it would expose, the decision that
+would change if it failed, and the smallest observation that can expose it. If
+one is missing, the test is not yet justified.
+
+- Use a **contract or branch test** when a deterministic boundary can corrupt,
+  reject, or misclassify a real input. Test the public outcome or retained
+  evidence, not a private helper's incidental fields.
+- Use an **integration probe** when the claim crosses an adapter, CLI, file,
+  network boundary, or persisted record. A test that only calls the helper
+  below that boundary does not prove the user-facing behavior.
+- Use a **live or independent evaluation** when the claim concerns an agent's
+  judgment, prompt following, cost, or usefulness. Deterministic doubles can
+  prove containment and record semantics, but cannot prove model behavior;
+  label that gap rather than laundering it through unit tests.
+- Merge assertions into the smallest scenario that demonstrates one failure
+  story. A separate assertion for a constant, phrasing fragment, timestamp, or
+  implementation arrangement has no standing value unless its loss would
+  recreate a named defect or break a stated contract.
+
+Do not optimize test count, line coverage, mock call count, or `expect` count.
+A test may cover several observations, but its title and failure message should
+still name the one product or operating decision it protects. Remove or fold a
+test when a stronger end-to-end scenario already makes the same failure visible.
+
 ## Operating boundaries
 
 - This skill is a behavioral standard, not a workflow. It has no commands,
@@ -99,6 +127,8 @@ without verification.
   the behavioral gaps that methodology skills assume but do not teach.
 - Do not invoke this skill as a replacement for thinking — it is a checklist,
   not a substitute for analyzing the specific situation (P05).
+- Do not turn this gate into a mandatory test plan or a ban on unit tests. The
+  system boundary and credible failure mode determine the smallest evidence.
 - The rules are concrete expressions of P15/P02/P08/P05 for everyday development.
   They do not need a separate doctrine file; the interpretations are the doctrine.
 
