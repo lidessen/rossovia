@@ -12,7 +12,7 @@
 | **Founding review committee** | project content: mandate, Sequence, methods, runtime, evidence carriers, public/aesthetic expression, and their coherence | substantive opinion on whether the proposed project baseline is faithful and usable | execute patches, operate the PR process, vote facts into existence, or merge |
 | **Preparation group** | project operation and maintenance: worktree/branch route, PR completeness, CI, review-thread handling, handoff, records, and recovery | operational-readiness report and remaining gates | redefine project content, substitute its opinion for the committee, or merge |
 
-The committee is a temporary content-review formation projected from the [Principle Council](../../../principles/COUNCIL.md); it is not a permanent board or a second semantic source. The preparation group is the temporary formation of the [formal operations campaign](2026-07-10-formal-operations-preparation.md); it ends after the founding transition. This report contains isolated role-separated passes by the current session, so it remains evidence—not the independent human review or Principal merge decision.
+The committee is a temporary content-review formation projected from the [Principle Council](../../../principles/COUNCIL.md); it is not a permanent board or a second semantic source. The preparation group is the temporary formation of the [formal operations campaign](2026-07-10-formal-operations-preparation.md); it ends after the founding transition. This report contains isolated role-separated passes by the current session, so it remains evidence—not independent AI review evidence or a Principal merge decision.
 
 ## Committee content review
 
@@ -53,12 +53,12 @@ At the reviewed commit, remote `verify` passed. Local snapshot validation, Chron
 The baseline is **operationally prepared but not yet ready for merge**:
 
 1. Three external review threads need an evidence-backed reply and explicit resolve/reject action.
-2. A named independent human reviewer must record a review observation; this report is not a substitute.
+2. Independent AI review evidence must be retained as a compact, traceable packet; this report is not a substitute.
 3. The Principal must then decide merge, return-to-work, or hold. Branch protection, project naming, F3 shadow missions, and F4 remote settings stay outside this disposition.
 
 ## Joint recommendation to the Principal
 
-**Continue review; do not merge yet.** The committee supports the content of the founding baseline. The preparation group reports that the operational path is ready for the final review steps but has not completed them. When the three threads have explicit dispositions and an independent human review is recorded, the integration steward may present the ordinary merge/return decision.
+**Continue review; do not merge yet.** The committee supports the content of the founding baseline. The preparation group reports that the operational path is ready for the final review steps but has not completed them. When the three threads have explicit dispositions and independent AI review evidence is retained, the integration steward may present the ordinary merge/return decision to the Principal.
 
 ## Reopening observation
 
