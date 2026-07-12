@@ -191,10 +191,17 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       if (budgetAbort.signal.aborted) {
         throw new CellBudgetExceededError(observedUsage.totalTokens, context.maxTokens, observedUsage);
       }
-      throw new CellExecutionError(
-        error instanceof Error ? error.message : String(error),
-        observedUsage,
-      );
+      if (terminalSatisfied() && !outputSchema) {
+        executionResult = terminalOnlyResult(terminalNames, observedUsage, "execution");
+      } else {
+        throw new CellExecutionError(
+          error instanceof Error ? error.message : String(error),
+          observedUsage,
+        );
+      }
+    }
+    if (terminalSatisfied() && !outputSchema && !executionResult.text.trim()) {
+      executionResult = terminalOnlyResult(terminalNames, normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata), "execution");
     }
     if (input.terminalTools?.length && !terminalSatisfied()) {
       context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
@@ -217,11 +224,36 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         temperature: 0,
         providerOptions: deepSeekNonThinking,
       });
-      closureResult = await closureAgent.generate({
-        prompt: `${renderTaskPrompt(input)}\n\nPrevious unfinished response:\n${executionResult.text}`,
-        abortSignal: executionSignal,
-        timeout: { totalMs: input.budget.maxDurationMs },
-      });
+      let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+      try {
+        closureResult = await closureAgent.generate({
+          prompt: `${renderTaskPrompt(input)}\n\nPrevious unfinished response:\n${executionResult.text}`,
+          abortSignal: executionSignal,
+          timeout: { totalMs: input.budget.maxDurationMs },
+          onStepFinish: ({ usage, finishReason, toolCalls, toolResults }) => {
+            closureUsage = addUsage(closureUsage, normalizeUsage(usage, undefined));
+            context.emit("terminal.recovery.step.finished", {
+              finishReason,
+              usage,
+              cumulativeUsage: closureUsage,
+              toolCalls: sanitize(toolCalls),
+              toolResults: sanitize(toolResults),
+            });
+          },
+        });
+      } catch (error) {
+        if (terminalSatisfied() && !outputSchema) {
+          closureResult = terminalOnlyResult(terminalNames, closureUsage, "recovery");
+        } else {
+          throw new CellExecutionError(
+            error instanceof Error ? error.message : String(error),
+            addUsage(observedUsage, closureUsage),
+          );
+        }
+      }
+      if (closureResult && terminalSatisfied() && !outputSchema && !closureResult.text.trim()) {
+        closureResult = terminalOnlyResult(terminalNames, normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata), "recovery");
+      }
     }
     const usage = addUsage(
       normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata),
@@ -329,6 +361,16 @@ function finalOutputStep(
   };
 }
 
+function terminalOnlyResult(names: string[], usage: CellUsage, phase: "execution" | "recovery") {
+  return {
+    text: `Terminal contract satisfied during ${phase} through ${names.join(", ")}; no final text was generated.`,
+    output: undefined,
+    totalUsage: usage,
+    providerMetadata: undefined,
+    steps: [],
+  };
+}
+
 function renderExecutionInstructions(input: CellInput, expressed: ExpressedGenome): string {
   const treatment = input.treatment
     ? `\n\n## Separately labelled treatment\nTreatment ${input.treatment.id} is an experimental hypothesis outside the expressed P-ID team. Apply it only where it changes the task decision and retain evidence that could disconfirm it.\n${input.treatment.instructions}`
@@ -399,11 +441,10 @@ function numberValue(value: unknown): number {
 }
 
 function sanitize(value: unknown): unknown {
-  return JSON.parse(
-    JSON.stringify(value, (_key, item) => {
-      if (typeof item === "bigint") return item.toString();
-      if (item instanceof Error) return { name: item.name, message: item.message };
-      return item;
-    }),
-  );
+  const serialized = JSON.stringify(value, (_key, item) => {
+    if (typeof item === "bigint") return item.toString();
+    if (item instanceof Error) return { name: item.name, message: item.message };
+    return item;
+  });
+  return serialized === undefined ? undefined : JSON.parse(serialized);
 }

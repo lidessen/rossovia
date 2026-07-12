@@ -24,7 +24,7 @@ through its caller-defined `finish_probe` tool. The retained local run record is
 |---|---|
 | Independent Work Cell disposition | `passed`; `finish_probe` called; recommendation: **merge** |
 | Observed review use | 428,192 total tokens; estimated $0.02123887 at the driver price revision |
-| Package verification | `bun run typecheck` and `bun test`: 26 pass, 0 fail |
+| Package verification | `bun run typecheck` and `bun test`: 27 pass, 0 fail |
 | Binding verification | `python3 scripts/test-intervention-reconciliation.py`: 2 pass; `.codex/hooks.json` parses as JSON |
 | Repository hygiene | `git diff --check`: passed |
 
@@ -40,14 +40,15 @@ results, and the source paths needed to reopen the claims.
 | A terminal invocation previously could end the SDK loop without a final report. | A first live review reached `finish_probe` but failed with `No output generated`; the trace also exposed lost failure usage. The driver now reserves a final output step and reports observed usage through [`CellExecutionError`](../../../packages/work-cell/src/driver.ts). | corrected and live-retried |
 | The repaired terminal path is covered by both a live read-only review and deterministic regressions. | [terminal-step regression](../../../packages/work-cell/test/work-cell.test.ts) rejects an impossible one-step terminal contract; the live retry completed after terminal invocation. | confirmed |
 | Failure-path usage must survive an adapter failure. | [failure-usage regression](../../../packages/work-cell/test/work-cell.test.ts) verifies selection usage plus execution usage are retained after `CellExecutionError`. | confirmed |
+| Natural terminal recovery must not depend on provider metadata or a final text response. | [driver recovery regression](../../../packages/work-cell/test/ai-sdk-driver.test.ts) drives gene expression, natural finish without a terminal call, terminal recovery, and an empty final provider response through the actual AI SDK adapter. | confirmed |
 | The correction binding is advisory only. | [decision 024](../../decisions/024-platform-neutral-intervention-reconciliation.md), [Codex projection](../../../.codex/hooks.json), and [local binding guide](../../../.codex/README.md) state shadow/assist only and retain no prompt text. | confirmed |
 
 ## Residual uncertainty
 
-- The driver's natural-finish recovery branch has not yet been forced through a
-  deterministic adapter simulation or a separate live provider run. It is not
-  a merge blocker because the normal terminal path has now been exercised live;
-  reopen if a provider ends naturally before calling a declared terminal tool.
+- A real provider's naturally finishing path has not been deliberately forced
+  after the recovery repair. The adapter-level mock covers that shape; the
+  live provider has revalidated normal terminal settlement. Reopen if a live
+  provider produces a recovery trace that disagrees with the retained test.
 - The Codex project hook has deterministic adapter coverage only. A fresh,
   trusted interactive Codex session must still run the acceptance steps in
   [the binding guide](../../../.codex/README.md) before any stronger lifecycle
