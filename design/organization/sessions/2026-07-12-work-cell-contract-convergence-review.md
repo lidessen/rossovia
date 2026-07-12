@@ -1,6 +1,6 @@
 # Work Cell Contract Convergence — Independent AI Review Packet
 
-**Status:** reviewed — Principal commit/push/merge decision pending
+**Status:** integrated — Principal-confirmed merge complete
 **Date:** 2026-07-12
 **Authority:** [decision 023](../../decisions/023-ai-review-evidence-and-principal-confirmation.md)
 **Scope:** the current uncommitted Work Cell contract convergence and the
@@ -58,15 +58,10 @@ results, and the source paths needed to reopen the claims.
   deterministic current-head checks; it is not evidence that no unrelated
   changed file exists.
 
-## Principal Decision Brief
+## Integration disposition
 
-**Recommendation: commit this reviewed checkpoint, push it to the founding
-baseline PR, then review the normal AI packet before deciding whether to merge.**
-No agent may perform those durable actions from this recommendation alone.
-
-| Reply | Immediate consequence | Tradeoff / reopening signal |
-|---|---|---|
-| `commit` | create one checkpoint commit on `founding/regenerated-baseline`; no push or merge | a later PR review may still return it |
-| `push` | push the reviewed commit and refresh remote CI | exposes the current checkpoint for external review |
-| `merge` | only after current-head CI and your confirmation | accepts the stated residual uncertainties |
-| `return <topic>` | keep the branch open for the named correction | delays the integration gate but preserves the review record |
+The Principal confirmed merge after the current-head `verify` check passed and
+all three retained external review threads were resolved. [PR #13](https://github.com/lidessen/skills/pull/13)
+merged into `main` as `fa571ae615400c8c2c30444e13cde0039dba2e73` on 2026-07-12.
+This packet remains review evidence; the merge does not erase the residual
+uncertainties above or grant a later agent acceptance authority.

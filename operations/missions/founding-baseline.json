@@ -7,7 +7,7 @@
     "design/organization/sessions/2026-07-12-work-cell-contract-convergence-review.md"
   ],
   "createdAt": "2026-07-11T04:00:28Z",
-  "updatedAt": "2026-07-12T13:30:00Z",
+  "updatedAt": "2026-07-12T17:06:10Z",
   "mainline": {
     "contradiction": "Turn the regenerated baseline into one reviewable, human-governed starting point without losing unresolved review, runtime, or continuity work.",
     "acceptance": [
@@ -26,7 +26,9 @@
       "sources": [
         "https://github.com/lidessen/skills/pull/13"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "All three retained external review threads were resolved before Principal-confirmed PR #13 merge commit fa571ae615400c8c2c30444e13cde0039dba2e73."
     },
     {
       "id": "bounded-deliberation",
@@ -110,8 +112,10 @@
         "design/organization/sessions/2026-07-12-work-cell-contract-convergence-review.md",
         "design/decisions/024-platform-neutral-intervention-reconciliation.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "The reviewed checkpoint, deterministic verification, and Principal-confirmed PR #13 merge are retained in the integration disposition."
     }
   ],
-  "currentFocus": "contract-convergence-review"
+  "currentFocus": "mainline"
 }
