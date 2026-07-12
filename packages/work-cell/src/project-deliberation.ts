@@ -103,6 +103,7 @@ export async function prepareProjectDeliberation(unparsed: unknown): Promise<Pre
           capabilities: ["read compact docket evidence", "analyze selected Sequence interpretation", "submit independent position"],
         },
         capabilitiesRequired: ["read compact docket evidence", "analyze selected Sequence interpretation"],
+        terminalTools: ["submit_result"],
         acceptance: [
           "Read docket/evidence.md and return a position grounded in its source snippets.",
           "Return the structured deliberation position without requesting wider repository access.",

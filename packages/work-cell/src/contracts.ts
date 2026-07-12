@@ -153,6 +153,7 @@ export const ChildCellSpecSchema = z.object({
   scope: z.array(z.string().min(1)).min(1),
   capabilitiesRequired: z.array(z.string().min(1)).default([]),
   acceptance: z.array(z.string().min(1)).min(1),
+  terminalTools: z.array(z.string().min(1)).min(1).optional(),
   budget: BudgetSchema.partial().optional(),
 });
 
@@ -194,6 +195,7 @@ export const CellInputSchema = z.object({
   dna: DnaSchema,
   capabilitiesRequired: z.array(z.string().min(1)).default([]),
   acceptance: z.array(z.string().min(1)).min(1),
+  terminalTools: z.array(z.string().min(1)).min(1).optional(),
   budget: BudgetSchema.default({
     maxSteps: 20,
     maxTokens: 100_000,

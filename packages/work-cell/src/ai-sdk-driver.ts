@@ -168,6 +168,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     const executionSignal = AbortSignal.any([context.signal, budgetAbort.signal]);
     let observedUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
     let executionResult;
+    let closureResult: { text: string; totalUsage: unknown; providerMetadata: unknown; steps: unknown[] } | undefined;
     try {
       executionResult = await executionAgent.generate({
         prompt: renderTaskPrompt(input),
@@ -191,16 +192,37 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       }
       throw error;
     }
-    const usage = normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata);
+    if (!submission && input.terminalTools?.includes("submit_result")) {
+      context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
+      const closureAgent = new ToolLoopAgent({
+        model: this.model,
+        instructions: "The previous work ended without satisfying its terminal-tool contract. Do not continue analysis. You must now call submit_result exactly once using the review/work evidence already produced.",
+        tools: { submit_result: tools.submit_result },
+        toolChoice: { type: "tool", toolName: "submit_result" },
+        stopWhen: hasToolCall("submit_result"),
+        maxOutputTokens: 4_000,
+        temperature: 0,
+        providerOptions: deepSeekNonThinking,
+      });
+      closureResult = await closureAgent.generate({
+        prompt: `${renderTaskPrompt(input)}\n\nPrevious unfinished response:\n${executionResult.text}`,
+        abortSignal: executionSignal,
+        timeout: { totalMs: input.budget.maxDurationMs },
+      });
+    }
+    const usage = addUsage(
+      normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata),
+      closureResult ? normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata) : { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+    );
     if (input.budget.tokenControl === "hard" && usage.totalTokens > context.maxTokens) {
       throw new CellBudgetExceededError(usage.totalTokens, context.maxTokens, usage);
     }
 
     return {
       ...(submission ? { submission } : {}),
-      finalText: executionResult.text,
+      finalText: closureResult ? `${executionResult.text}\n\n${closureResult.text}` : executionResult.text,
       usage,
-      rawSteps: sanitize(executionResult.steps) as unknown[],
+      rawSteps: sanitize([...executionResult.steps, ...(closureResult?.steps ?? [])]) as unknown[],
       providerMetadata: sanitize(executionResult.providerMetadata),
     };
   }

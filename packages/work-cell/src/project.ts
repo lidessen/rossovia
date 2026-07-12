@@ -81,6 +81,7 @@ export async function lowerProjectProbe(unparsed: unknown): Promise<CellInput> {
       capabilities: ["read repository files", "analyze project evidence", "submit evidence-backed findings"],
     },
     capabilitiesRequired: ["read repository files", "analyze project evidence"],
+    terminalTools: ["submit_result"],
     acceptance: request.acceptance,
     budget,
     lineage: { depth: 0 },
