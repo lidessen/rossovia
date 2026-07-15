@@ -1,0 +1,340 @@
+{
+  "id": "project-naming-scale-probe",
+  "root": "../../..",
+  "outputDir": ".work-cell/activation-fields",
+  "candidateSeedLibrary": "seed-libraries/chinese-classics.v1.json",
+  "candidateRetrievalEstimatedTokens": 360000,
+  "namingExpressionProbe": {
+    "candidateLimit": 6,
+    "materialPerOperator": 2,
+    "randomSeed": "project-naming-expression-2026-07-13-v2",
+    "estimatedTokens": 20000,
+    "contrastiveCases": [
+      {
+        "accepted": {
+          "surface": "Sikong / 司空",
+          "observation": "Principal 认为它作为既有项目名自然、紧凑且可日常称呼；这只是一项观察，不构成中文、拼音、官职或双音节模板。"
+        },
+        "rejected": {
+          "surface": "Gongqi / 公器",
+          "observation": "Principal 明确拒绝它；表面直接承载项目的公共使命和古典制度意味，需要理念解释来支撑。"
+        },
+        "contrast": "文化根系只有在整个表面已经像一个可生活的称呼时才有帮助；直接编码使命会让解释变成承重结构。"
+      },
+      {
+        "accepted": {
+          "surface": "Shilu / 实录",
+          "observation": "Principal 认可它作为自然项目名实例；既有词的语言生活先成立，项目关系可以在使用中继续生长。"
+        },
+        "rejected": {
+          "surface": "脉阶 / 修承",
+          "observation": "实验生成的概念压缩可以逐字分析，却没有形成自然的整体词感，显得人为拼装。"
+        },
+        "contrast": "可解释的语素组合不等于自然词；整体的口耳经验先于逐字释义。"
+      },
+      {
+        "accepted": {
+          "surface": "Deno / Vite",
+          "observation": "它们是值得研究的成功案例，说明借用或变形可以轻巧自然；不构成英文、短词或技术项目标准。"
+        },
+        "rejected": {
+          "surface": "Kaili / Oikia / Veld / Ghoti",
+          "observation": "实验从正例表面模仿出任意借词、异域感或拼写趣味，没有建立与具体项目共同生长的关系。"
+        },
+        "contrast": "成功案例的价值在形成关系而非表面类型；陌生语源和聪明拼写本身不是创造力。"
+      }
+    ]
+  },
+  "stimulus": "为这个完整项目探索一个长期项目名。Principal 已拒绝 Gongqi / 公器，不要把现有候选、中文形式、英文形式、字数、古典出处或技术词当成约束。不要从功能标签直接枚举名字；从项目的本质关系、历史动机、审美、矛盾和未来可能性形成局部意象，让后续层发现原始意象之间此前没有明说的关系。最终表达应给出少量真正有生命力的候选、形成路径和仍未解决的张力，而不是宣称已经定名。",
+  "sources": [
+    { "path": "design/FOUNDING-MANDATE.md", "maxChars": 10000 },
+    { "path": "README.md", "maxChars": 5000 },
+    { "path": "principles/SEQUENCE.md", "maxChars": 3000 }
+  ],
+  "population": {
+    "version": "work-cell.population.v1",
+    "id": "project-naming-cognitive-population",
+    "size": 256,
+    "seed": "naming-field-population-2026-07-13",
+    "traits": [
+      { "id": "concrete-abstract", "low": "具体生活和物质实践", "high": "抽象结构和本质关系" },
+      { "id": "analytic-associative", "low": "分析、分解和辨别", "high": "远距联想和自由连接" },
+      { "id": "preserve-mutate", "low": "保存历史含义和连续性", "high": "倒置前提和生成突变" },
+      { "id": "literal-metaphoric", "low": "直接、朴素和可解释", "high": "感官、隐喻和多义" },
+      { "id": "inward-audience", "low": "对象自身的内在一致性", "high": "受众记忆、传播和行动" }
+    ],
+    "facets": [
+      {
+        "id": "source-domain",
+        "options": [
+          { "id": "workshop", "prompt": "从制作、修理、工具和手艺的现场感受关系。" },
+          { "id": "ecology", "prompt": "从共生、演替、种子和生态循环感受关系。" },
+          { "id": "physics", "prompt": "从场、相变、共振和能量传递感受关系。" },
+          { "id": "music", "prompt": "从节奏、复调、和声和静默感受关系。" },
+          { "id": "navigation", "prompt": "从星图、航路、方向和未知地带感受关系。" },
+          { "id": "language", "prompt": "从词源、声音、翻译和意义迁移感受关系。" },
+          { "id": "social-history", "prompt": "从集体行动、制度传承和生产关系感受关系。" },
+          { "id": "play", "prompt": "从游戏、儿童探索和无功利试验感受关系。" }
+        ]
+      },
+      {
+        "id": "temporal-horizon",
+        "options": [
+          { "id": "present", "prompt": "观察普通人今天即可遭遇的具体时刻。" },
+          { "id": "generational", "prompt": "观察跨一代人的保存、教育和传承。" },
+          { "id": "long-future", "prompt": "观察载体和技术已改变后仍然成立的东西。" }
+        ]
+      },
+      {
+        "id": "operation",
+        "options": [
+          { "id": "preserve", "prompt": "寻找不可因创新而被抹去的核心。" },
+          { "id": "invert", "prompt": "倒置一个看似自然的前提，观察显露之物。" },
+          { "id": "bridge", "prompt": "连接两个通常分离的经验领域。" },
+          { "id": "estrange", "prompt": "把熟悉事物陌生化，重新感受而暂不命名。" }
+        ]
+      }
+    ],
+    "components": [
+      {
+        "id": "material-practice",
+        "share": 1,
+        "instructions": "从普通人的劳动、控制、修复和长期占有能力出发；拒绝脱离具体实践的漂亮答案。",
+        "principleAlpha": { "P02": 5, "P05": 4, "P08": 1, "P13": 2, "P15": 2 },
+        "activePrinciples": { "min": 1, "max": 3 },
+        "traits": {
+          "concrete-abstract": { "mean": 0.2, "spread": 0.16 },
+          "analytic-associative": { "mean": 0.28, "spread": 0.2 },
+          "preserve-mutate": { "mean": 0.3, "spread": 0.2 },
+          "literal-metaphoric": { "mean": 0.25, "spread": 0.2 },
+          "inward-audience": { "mean": 0.58, "spread": 0.2 }
+        },
+        "facets": {
+          "source-domain": { "workshop": 7, "ecology": 2, "social-history": 3, "play": 1 },
+          "temporal-horizon": { "present": 6, "generational": 3, "long-future": 1 },
+          "operation": { "preserve": 5, "invert": 1, "bridge": 3, "estrange": 1 }
+        },
+        "temperature": { "mean": 0.82, "spread": 0.12 }
+      },
+      {
+        "id": "dialectical-relation",
+        "share": 1,
+        "instructions": "只追踪主要矛盾、表象与本质、具体之间的新关系；允许保留不可消除的张力。",
+        "principleAlpha": { "P03": 2, "P04": 5, "P06": 4, "P07": 4, "P15": 1 },
+        "activePrinciples": { "min": 1, "max": 3 },
+        "traits": {
+          "concrete-abstract": { "mean": 0.68, "spread": 0.2 },
+          "analytic-associative": { "mean": 0.45, "spread": 0.22 },
+          "preserve-mutate": { "mean": 0.62, "spread": 0.2 },
+          "literal-metaphoric": { "mean": 0.48, "spread": 0.22 },
+          "inward-audience": { "mean": 0.28, "spread": 0.18 }
+        },
+        "facets": {
+          "source-domain": { "physics": 5, "ecology": 3, "language": 2, "social-history": 4 },
+          "temporal-horizon": { "present": 2, "generational": 4, "long-future": 4 },
+          "operation": { "preserve": 1, "invert": 5, "bridge": 4, "estrange": 2 }
+        },
+        "temperature": { "mean": 0.98, "spread": 0.16 }
+      },
+      {
+        "id": "commons-continuity",
+        "share": 1,
+        "instructions": "感受共同占有、可替换、可传承的生产能力，以及人和 AI 不被工具化的共同解放。避免复述政治口号。",
+        "principleAlpha": { "P10": 2, "P11": 2, "P12": 5, "P14": 3, "P16": 4 },
+        "activePrinciples": { "min": 1, "max": 3 },
+        "traits": {
+          "concrete-abstract": { "mean": 0.48, "spread": 0.2 },
+          "analytic-associative": { "mean": 0.48, "spread": 0.2 },
+          "preserve-mutate": { "mean": 0.36, "spread": 0.18 },
+          "literal-metaphoric": { "mean": 0.42, "spread": 0.2 },
+          "inward-audience": { "mean": 0.72, "spread": 0.17 }
+        },
+        "facets": {
+          "source-domain": { "social-history": 6, "workshop": 2, "ecology": 3, "navigation": 1 },
+          "temporal-horizon": { "present": 2, "generational": 6, "long-future": 3 },
+          "operation": { "preserve": 5, "invert": 1, "bridge": 5, "estrange": 1 }
+        },
+        "temperature": { "mean": 0.92, "spread": 0.14 }
+      },
+      {
+        "id": "aesthetic-association",
+        "share": 1,
+        "instructions": "允许声音、形状、动作、文化记忆和远距离结构同构自由相遇；不要因可解释性而过早收敛。",
+        "principleAlpha": { "P01": 1, "P06": 3, "P07": 3, "P09": 2, "P16": 5 },
+        "activePrinciples": { "min": 1, "max": 3 },
+        "traits": {
+          "concrete-abstract": { "mean": 0.62, "spread": 0.24 },
+          "analytic-associative": { "mean": 0.88, "spread": 0.1 },
+          "preserve-mutate": { "mean": 0.78, "spread": 0.16 },
+          "literal-metaphoric": { "mean": 0.9, "spread": 0.09 },
+          "inward-audience": { "mean": 0.38, "spread": 0.22 }
+        },
+        "facets": {
+          "source-domain": { "music": 5, "language": 5, "navigation": 3, "physics": 2, "play": 4, "ecology": 2 },
+          "temporal-horizon": { "present": 2, "generational": 2, "long-future": 5 },
+          "operation": { "preserve": 1, "invert": 3, "bridge": 5, "estrange": 6 }
+        },
+        "temperature": { "mean": 1.32, "spread": 0.2 }
+      }
+    ]
+  },
+  "scales": [16, 64, 256],
+  "concurrency": 64,
+  "groupSize": 8,
+  "workingSetByScale": {
+    "16": 4,
+    "64": 8,
+    "256": 16
+  },
+  "maxLayers": 4,
+  "propagateShapes": false,
+  "layerWidthsByScale": {
+    "16": [16, 8, 4],
+    "64": [64, 32, 16, 8],
+    "256": [256, 128, 64, 16]
+  },
+  "estimatedTokensByScale": {
+    "16": 180000,
+    "64": 1000000,
+    "256": 4000000
+  },
+  "residualReadout": {
+    "id": "project-naming-residual-readout",
+    "heads": [
+      {
+        "id": "material-practice",
+        "instructions": "Read for concrete relations in which ordinary people use, repair, control, and pass on productive capability. Prefer sources whose material conditions change what a name must carry.",
+        "routeLimit": 8
+      },
+      {
+        "id": "dialectical-relation",
+        "instructions": "Read for unresolved contradictions and for relations that transform when opposing images meet. Do not resolve tension by choosing the most frequent metaphor.",
+        "routeLimit": 8
+      },
+      {
+        "id": "commons-continuity",
+        "instructions": "Read for common possession, repairable inheritance, liberation from capture, and continuity across changing technical carriers without repeating political slogans.",
+        "routeLimit": 8
+      },
+      {
+        "id": "aesthetic-association",
+        "instructions": "Read for remote structural analogies, sound, movement, cultural memory, estrangement, and underrepresented images that could give a name life beyond a functional label.",
+        "routeLimit": 8
+      }
+    ],
+    "finalInstructions": "Return 3 to 5 actual long-term project-name proposals, not merely themes or descriptive categories. Each proposal label must be a usable name; explain its formation path and the project relation it carries. Preserve genuinely different source basins, include unresolved risks, and do not claim that a name has been adopted.",
+    "minProposals": 3,
+    "maxProposals": 5,
+    "concurrency": 4,
+    "estimatedTokens": 180000
+  },
+  "candidateField": {
+    "id": "project-naming-candidate-field",
+    "emitters": [
+      {
+        "id": "remote-transfer",
+        "instructions": "Move one structural relation into a genuinely distant material or cultural domain, then emit whatever object survives the transfer. Do not retain the project's familiar nouns or assume the object is a name.",
+        "count": 8
+      },
+      {
+        "id": "phonetic-first",
+        "instructions": "Begin from breath, stress, rhythm, mouth movement, and sound rather than denotation. Let meaning remain partly latent; the result need not be a word.",
+        "count": 8
+      },
+      {
+        "id": "script-shape",
+        "instructions": "Attend to written shape, stroke, spacing, symmetry, visual interruption, and marks before they become definitions or names.",
+        "count": 8
+      },
+      {
+        "id": "productive-misreading",
+        "instructions": "Create a fertile mistranslation, homophone, false etymology, or category error whose mistake opens a truer relation. Do not correct, classify, or finalize the error.",
+        "count": 8
+      },
+      {
+        "id": "material-action",
+        "instructions": "Start from a specific bodily or material action rather than an abstract value. Follow its motion without deciding what artifact form it should become.",
+        "count": 8
+      },
+      {
+        "id": "constructed-morpheme",
+        "instructions": "Invent or alter expressive material without assuming Chinese, English, a word, a phrase, a character count, classical quotation, or a technical register.",
+        "count": 8
+      },
+      {
+        "id": "cultural-afterimage",
+        "instructions": "Let the retrieved craft, phrase, ritual, story, argument, or image leave an afterimage, then transform it far enough that the output is not a quotation or costume.",
+        "count": 8
+      },
+      {
+        "id": "negative-space",
+        "instructions": "Attend to what disappears, becomes unnecessary, remains unsaid, or is made possible at the edge of the project without naming the project mission directly.",
+        "count": 8
+      }
+    ],
+    "mutators": [
+      {
+        "id": "collision",
+        "instructions": "Force incompatible parent surfaces through one another. Preserve the interference pattern, not a hyphenated or sequential compound.",
+        "count": 8
+      },
+      {
+        "id": "subtraction",
+        "instructions": "Remove the parents' most obvious semantic explanation and keep only the smallest sound, stroke, motion, or ambiguity that still feels alive.",
+        "count": 8
+      },
+      {
+        "id": "translation-drift",
+        "instructions": "Pass the parents through another language or register and back, retaining a productive distortion rather than a correct translation.",
+        "count": 8
+      },
+      {
+        "id": "weathering",
+        "instructions": "Imagine the parents repeatedly spoken, forked, misremembered, and repaired across generations. Emit the worn form that remains usable.",
+        "count": 8
+      }
+    ],
+    "archives": [
+      {
+        "id": "aesthetic-force",
+        "instructions": "Within sound-, script-, and invented-form operators, preserve objects with force that is felt before it is fully explained. Reject decorative obscurity and polished generic branding.",
+        "capacity": 3,
+        "operatorIds": ["phonetic-first", "script-shape", "constructed-morpheme"]
+      },
+      {
+        "id": "relational-depth",
+        "instructions": "Within remote, cultural, and negative-space transfers, preserve objects capable of opening several project relations without directly listing values or functions. Prefer productive ambiguity over vagueness.",
+        "capacity": 3,
+        "operatorIds": ["remote-transfer", "cultural-afterimage", "negative-space"]
+      },
+      {
+        "id": "durable-handle",
+        "instructions": "Within productive errors and concrete actions, preserve objects people could perceive, recall, transform, and continue after models, runtimes, and current project structure change.",
+        "capacity": 3,
+        "operatorIds": ["productive-misreading", "material-action"]
+      },
+      {
+        "id": "estranged-fit",
+        "instructions": "Within second-generation mutations, preserve objects that initially estrange but become more exact after contact with the project's concrete history. Reject both literal recombination and arbitrary novelty.",
+        "capacity": 3,
+        "operatorIds": ["collision", "subtraction", "translation-drift", "weathering"]
+      }
+    ],
+    "seedRetrieval": {
+      "randomSeed": "project-naming-classics-retrieval-2026-07-13",
+      "shelfSize": 12,
+      "selectCount": 2,
+      "balancedParticipationSeats": 1
+    },
+    "inhibitions": [
+      "forge, workshop, hearth, smithy, or furnace as generic making-place metaphors",
+      "repair, inheritance, return, relay, fissure, gap, or continuity used as literal mission vocabulary",
+      "common, shared, open, public, or liberation used as direct virtue labels",
+      "a Chinese compound that merely joins two project concepts without transforming either"
+    ],
+    "sourceNodesPerEmission": 4,
+    "mutationParentCount": 2,
+    "concurrency": 16,
+    "estimatedTokens": 180000
+  }
+}

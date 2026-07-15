@@ -131,6 +131,6 @@ diagnostics. The raw record remains the evidence-bearing source.
 The [project probe evaluation](../../regeneration/evaluations/2026-07-10-work-cell-project-probe.md)
 records the initial dogfood failures, the resulting boundary changes, and two
 successful live probes. The accepted interface is implemented by
-[`project.ts`](../../packages/work-cell/src/project.ts),
-[`presentation.ts`](../../packages/work-cell/src/presentation.ts), and the
+[`project.ts`](../../packages/work-cell/src/adapters/sequence/project.ts),
+[`presentation.ts`](../../packages/work-cell/src/adapters/sequence/presentation.ts), and the
 `probe` / `review` branches in [`cli.ts`](../../packages/work-cell/src/cli.ts).

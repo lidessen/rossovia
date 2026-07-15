@@ -22,7 +22,7 @@ description: >-
 This is a lightweight behavioral layer, not a methodology. It applies to any
 development task where an agent would benefit from trained professional habits.
 It does not own a workflow, domain, or artifact class. When a task already has a
-governing methodology skill (harness, skill-engineering, artifact-organization,
+governing methodology skill (context-engineering, skill-engineering, artifact-organization,
 principle-cultivation), that skill's rules take precedence; this skill supplies
 the baseline behavioral standard underneath.
 

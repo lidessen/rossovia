@@ -1,4 +1,0 @@
-interface:
-  display_name: "Harness Architecture"
-  short_description: "Design agent context that reaches runtime"
-  default_prompt: "Use $harness to audit whether this project context reaches agents and changes decisions."

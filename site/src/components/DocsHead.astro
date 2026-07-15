@@ -1,0 +1,32 @@
+---
+const { head } = Astro.locals.starlightRoute;
+const presentationEntry = head.find(
+  (entry) =>
+    entry.tag === 'meta' &&
+    entry.attrs &&
+    'name' in entry.attrs &&
+    entry.attrs.name === 'skills-presentation',
+);
+const presentation =
+  presentationEntry?.attrs && 'content' in presentationEntry.attrs
+    ? presentationEntry.attrs.content
+    : undefined;
+const headWithoutPlaceholderFavicon = head.filter(
+  (entry) =>
+    !(
+      entry.tag === 'link' &&
+      entry.attrs &&
+      'rel' in entry.attrs &&
+      entry.attrs.rel === 'shortcut icon'
+    ),
+);
+---
+
+<script is:inline define:vars={{ presentation }}>
+  document.documentElement.dataset.theme = 'light';
+  if (presentation) document.documentElement.dataset.presentation = presentation;
+</script>
+
+{headWithoutPlaceholderFavicon.map(({ tag: Tag, attrs, content }) => (
+  <Tag {...attrs} set:html={content} />
+))}

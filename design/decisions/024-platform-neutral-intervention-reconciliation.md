@@ -52,7 +52,7 @@ syntax:
 | Capability | Required effect | Fallback when absent |
 |---|---|---|
 | `prompt_observation` | observe a new Principal message with session/turn identity | agent evaluates normal conversation context |
-| `context_injection` | place a pending-reconciliation reminder in agent context | harness instruction only |
+| `context_injection` | place a pending-reconciliation reminder in agent context | ordinary agent instruction only |
 | `mutation_gate` | prevent a declared mutation while a receipt is incomplete | advisory warning; never claim enforcement |
 | `stop_continuation` | request another pass when a mutation leaves a receipt incomplete | retain explicit unresolved state for the next turn |
 | `session_state` | retain active anchor and receipt status outside project source | session-local ephemeral state |
@@ -86,7 +86,7 @@ Principal message remains authority; later summaries are projections.
 | Role | Owns | Does not own |
 |---|---|---|
 | Principal | correction, target, acceptance | mechanical state bookkeeping |
-| Harness / agent | semantic comparison of active anchor and new message; invoking `practice-cycle continue` | self-acceptance of changed work |
+| Context-equipped agent | semantic comparison of active anchor and new message; invoking `practice-cycle continue` | self-acceptance of changed work or ownership of context delivery mechanics |
 | `practice-cycle` | receipt, next smallest practice, disconfirming observation | hooks or tool configuration |
 | Hook binding | observation, injection, state persistence, conditional mutation gate | interpreting corrections, accepting design, choosing strategy |
 | Verifier | checks resulting change against the receipt | changing the Principal constraint |

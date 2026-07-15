@@ -1,0 +1,31 @@
+{
+  "id": "idea-development-first-probe",
+  "root": "../../..",
+  "outputDir": ".work-cell/idea-development",
+  "question": "Given the observed activation-field evidence, what previously unstated mechanism most plausibly explains why high surface diversity did not improve creative quality, and what smallest architecture experiment would distinguish it from the strongest alternative?",
+  "sources": [
+    {
+      "path": "regeneration/evaluations/2026-07-13-activation-field-scale-probe.md",
+      "startLine": 245,
+      "endLine": 590
+    },
+    {
+      "path": "packages/work-cell/src/research/activation-field.ts",
+      "startLine": 180,
+      "endLine": 430
+    },
+    {
+      "path": "packages/work-cell/src/research/ai-sdk-activation-field.ts",
+      "startLine": 84,
+      "endLine": 153
+    },
+    {
+      "path": "principles/SEQUENCE.md",
+      "startLine": 1,
+      "endLine": 20
+    }
+  ],
+  "baselineSamples": 9,
+  "developmentWidth": 3,
+  "estimatedTokens": 300000
+}

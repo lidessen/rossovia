@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const WORK_CELL_RECORD_VERSION = "work-cell.run.v2" as const;
+export const WORK_CELL_RECORD_VERSION = "work-cell.run.v3" as const;
 
 export const BudgetSchema = z.object({
   maxSteps: z.number().int().positive().default(20),
@@ -48,83 +48,12 @@ export const ExecutionProfileSchema = z.object({
   priceRevision: z.string().min(1).optional(),
 });
 
-export const BudgetEnvelopeSchema = z.object({
-  id: z.string().min(1),
-  version: z.literal("budget-envelope.v1"),
-  maxTotalTokens: z.number().int().positive(),
-  onExhaustion: z.literal("partial").default("partial"),
-});
-
 export const WorkspacePolicySchema = z.object({
   root: z.string().min(1),
   readPaths: z.array(z.string().min(1)).default(["."]),
   writePaths: z.array(z.string().min(1)).default([]),
   excludePaths: z.array(z.string().min(1)).default([]),
   allowedCommands: z.array(z.string().min(1)).default([]),
-});
-
-export const DnaSchema = z.object({
-  baseInstructions: z.string().min(1),
-  capabilities: z.array(z.string().min(1)).default([]),
-});
-
-const PidSchema = z.string().regex(/^P\d{2,}$/, "expected a P-ID such as P04");
-
-export const GenomeSchema = z.object({
-  sequencePath: z.string().min(1),
-  interpretationsDir: z.string().min(1),
-  inheritedLineage: z
-    .object({
-      primary: PidSchema,
-      supporting: z.array(PidSchema).max(3).default([]),
-    })
-    .optional(),
-});
-
-export const GeneExpressionSchema = z
-  .object({
-    lead: PidSchema,
-    supports: z.array(PidSchema).max(3).default([]),
-    principalContradiction: z.string().min(1),
-    contributions: z
-      .array(
-        z.object({
-          pid: PidSchema,
-          decision: z.string().min(1),
-        }),
-      )
-      .min(1)
-      .max(4),
-  })
-  .superRefine((value, context) => {
-    const selected = [value.lead, ...value.supports];
-    if (new Set(selected).size !== selected.length) {
-      context.addIssue({ code: "custom", path: ["supports"], message: "selected P-IDs must be unique" });
-    }
-    const contributed = new Set(value.contributions.map((item) => item.pid));
-    for (const pid of selected) {
-      if (!contributed.has(pid)) {
-        context.addIssue({
-          code: "custom",
-          path: ["contributions"],
-          message: `missing decision contribution for ${pid}`,
-        });
-      }
-    }
-    for (const pid of contributed) {
-      if (!selected.includes(pid)) {
-        context.addIssue({
-          code: "custom",
-          path: ["contributions"],
-          message: `contribution references unselected ${pid}`,
-        });
-      }
-    }
-  });
-
-export const TreatmentSchema = z.object({
-  id: z.string().min(1),
-  instructions: z.string().min(1),
 });
 
 // A serializable JSON Schema is the portable boundary for a cell's final
@@ -146,12 +75,38 @@ export const TerminalToolSchema = z.object({
   inputSchema: OutputSchemaSchema,
 });
 
+export const UsageSchema = z.object({
+  inputTokens: z.number().nonnegative().default(0),
+  outputTokens: z.number().nonnegative().default(0),
+  totalTokens: z.number().nonnegative().default(0),
+  cachedInputTokens: z.number().nonnegative().default(0),
+});
+
+export const CellContextSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  content: z.string().min(1),
+  sources: z.array(z.string().min(1)).default([]),
+}).strict();
+
+/**
+ * Evidence retained when an adapter prepares a generic executable Cell.
+ * The core records this envelope but does not interpret adapter-specific data.
+ */
+export const CellPreparationSchema = z.object({
+  adapter: z.string().min(1),
+  usage: UsageSchema,
+  rawSteps: z.array(z.unknown()).default([]),
+  evidence: z.unknown().optional(),
+}).strict();
+
 export const CellInputSchema = z.object({
   id: z.string().min(1),
   intent: z.string().min(1),
   workspace: WorkspacePolicySchema,
-  genome: GenomeSchema,
-  dna: DnaSchema,
+  instructions: z.array(z.string().min(1)).min(1),
+  capabilities: z.array(z.string().min(1)).default([]),
+  context: z.array(CellContextSchema).default([]),
   capabilitiesRequired: z.array(z.string().min(1)).default([]),
   acceptance: z.array(z.string().min(1)).min(1),
   terminalTools: z.array(TerminalToolSchema).min(1).optional(),
@@ -164,16 +119,7 @@ export const CellInputSchema = z.object({
   }),
   workEstimate: WorkEstimateSchema.optional(),
   executionProfile: ExecutionProfileSchema.optional(),
-  budgetEnvelope: BudgetEnvelopeSchema.optional(),
-  treatment: TreatmentSchema.optional(),
-});
-
-export const UsageSchema = z.object({
-  inputTokens: z.number().nonnegative().default(0),
-  outputTokens: z.number().nonnegative().default(0),
-  totalTokens: z.number().nonnegative().default(0),
-  cachedInputTokens: z.number().nonnegative().default(0),
-});
+}).strict();
 
 export const WorkspaceDiffSchema = z.object({
   added: z.array(z.string()),
@@ -190,10 +136,10 @@ export const ArtifactRecordSchema = z.object({
 export type Budget = z.infer<typeof BudgetSchema>;
 export type WorkEstimate = z.infer<typeof WorkEstimateSchema>;
 export type ExecutionProfile = z.infer<typeof ExecutionProfileSchema>;
-export type BudgetEnvelope = z.infer<typeof BudgetEnvelopeSchema>;
 export type WorkspacePolicy = z.infer<typeof WorkspacePolicySchema>;
 export type CellInput = z.infer<typeof CellInputSchema>;
-export type GeneExpression = z.infer<typeof GeneExpressionSchema>;
+export type CellContext = z.infer<typeof CellContextSchema>;
+export type CellPreparation = z.infer<typeof CellPreparationSchema>;
 export type OutputSchema = z.infer<typeof OutputSchemaSchema>;
 export type ArtifactRequirement = z.infer<typeof ArtifactRequirementSchema>;
 export type ArtifactRecord = z.infer<typeof ArtifactRecordSchema>;
@@ -225,8 +171,7 @@ export interface CellRunRecord {
   durationMs: number;
   status: CellTerminalStatus;
   input: CellInput;
-  geneExpression?: GeneExpression;
-  loadedInterpretations: string[];
+  preparation?: CellPreparation;
   finalText: string;
   output?: unknown;
   artifacts: ArtifactRecord[];
@@ -239,7 +184,7 @@ export interface CellRunRecord {
   workspaceDiff: WorkspaceDiff;
   usage: CellUsage;
   usageByPhase: {
-    expression: CellUsage;
+    preparation: CellUsage;
     execution: CellUsage;
   };
   executionObservation: {
@@ -282,3 +227,73 @@ export interface DriverDescriptor {
     revision?: string;
   };
 }
+
+export const CellRunRecordSchema = z.object({
+  version: z.literal(WORK_CELL_RECORD_VERSION),
+  runId: z.string().min(1),
+  cellId: z.string().min(1),
+  driver: z.object({
+    adapter: z.string().min(1),
+    provider: z.string().min(1),
+    model: z.string().min(1),
+    pricing: z.object({
+      inputPerMillionUsd: z.number().nonnegative(),
+      cachedInputPerMillionUsd: z.number().nonnegative().optional(),
+      outputPerMillionUsd: z.number().nonnegative(),
+      source: z.string().min(1),
+      revision: z.string().min(1).optional(),
+    }).strict().optional(),
+  }).strict(),
+  startedAt: z.string().min(1),
+  finishedAt: z.string().min(1),
+  durationMs: z.number().nonnegative(),
+  status: z.enum([
+    "passed",
+    "failed",
+    "verification_failed",
+    "protocol_error",
+    "capability_mismatch",
+    "cancelled",
+  ]),
+  input: CellInputSchema,
+  preparation: CellPreparationSchema.optional(),
+  finalText: z.string(),
+  output: z.unknown().optional(),
+  artifacts: z.array(ArtifactRecordSchema),
+  verification: z.object({
+    passed: z.boolean(),
+    terminal: z.object({
+      passed: z.boolean(),
+      required: z.array(z.string()),
+      called: z.array(z.string()),
+    }).strict(),
+    output: z.object({
+      passed: z.boolean(),
+      errors: z.array(z.string()),
+    }).strict().optional(),
+    artifacts: z.object({
+      passed: z.boolean(),
+      errors: z.array(z.string()),
+    }).strict().optional(),
+  }).strict(),
+  workspaceDiff: WorkspaceDiffSchema,
+  usage: UsageSchema,
+  usageByPhase: z.object({
+    preparation: UsageSchema,
+    execution: UsageSchema,
+  }).strict(),
+  executionObservation: z.object({
+    workEstimateId: z.string().min(1).optional(),
+    executionProfileId: z.string().min(1).optional(),
+    priceRevision: z.string().min(1).optional(),
+  }).strict(),
+  estimatedCostUsd: z.number().nonnegative().optional(),
+  estimateBasis: z.string().min(1).optional(),
+  trace: z.array(z.object({
+    at: z.string().min(1),
+    type: z.string().min(1),
+    data: z.unknown(),
+  }).strict()),
+  rawSteps: z.array(z.unknown()),
+  error: z.string().min(1).optional(),
+}).strict();

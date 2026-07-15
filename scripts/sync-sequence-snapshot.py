@@ -6,7 +6,7 @@ canonical source into skills/<name>/references/sequence-snapshot/. Never edit
 snapshots by hand; re-run this script when the Sequence or interpretations change.
 
 Usage:
-  python3 scripts/sync-sequence-snapshot.py harness principle-cultivation
+  python3 scripts/sync-sequence-snapshot.py context-engineering principle-cultivation
   python3 scripts/sync-sequence-snapshot.py --all
   python3 scripts/sync-sequence-snapshot.py skill-engineering --full-interpretations
 """
@@ -29,7 +29,7 @@ INTERPRETATIONS_DIR = PRINCIPLES_DIR / "interpretations"
 CANONICAL_UPSTREAM = "https://github.com/lidessen/skills.git"
 REFRESH_REF = "main"
 SNAPSHOT_SKILLS = (
-    "harness",
+    "context-engineering",
     "principle-cultivation",
     "skill-engineering",
     "artifact-organization",
@@ -39,6 +39,7 @@ SNAPSHOT_SKILLS = (
     "naming-and-articulation",
     "work-estimation",
     "strategic-advisory",
+    "structural-refactoring",
 )
 FULL_INTERPRETATION_SKILLS = frozenset({"skill-engineering"})
 

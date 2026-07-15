@@ -50,7 +50,7 @@ poller, or automated merger would collapse their authority boundaries.
 
 The only active trigger is a **human-authorized agent session**: the principal
 asks Codex or another capable agent to work in this repository. The agent reads
-the project harness, accepted design, and only the skills relevant to the live
+the project instructions, accepted design, and only the skills relevant to the live
 contradiction; it then forms a temporary team under the organization contract.
 
 Future triggers, including scheduled runs and GitHub Issue or event adapters,

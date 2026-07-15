@@ -118,7 +118,7 @@ operations documents look complete.
 | a decision-changing anomaly retained in the Chronicle | [event-triggered reflection sidecar](../decisions/019-event-triggered-reflection-sidecar.md) | one routed next practice; never an automatic retry or self-amendment |
 | a recurring decision has no truthful carrier | `form-guidance` | a new artifact, skill, or runtime |
 | an agent repeatedly misuses a method | `skill-engineering` | the owning Skill expression |
-| context omits a governing boundary | `harness` | context architecture |
+| context omits a governing boundary | `context-engineering` | context delivery; not source doctrine or runtime mechanics |
 | source, lifetime, or projection is confused | `artifact-organization` | carrier layout or campaign transition |
 | a phase settles or conditions materially change | `strategic-advisory` | proposed direction/capability/mission |
 | existing P-IDs cannot bear a necessary decision | `principle-cultivation` | Sequence, by human adoption only |

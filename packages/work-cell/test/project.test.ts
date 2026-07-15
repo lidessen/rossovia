@@ -8,10 +8,10 @@ import {
   latestProjectRun,
   lowerProjectProbe,
   persistProjectRun,
-} from "../src/project";
-import { renderRunSummary } from "../src/presentation";
+} from "../src/adapters/sequence/project";
+import { renderRunSummary } from "../src/adapters/sequence/presentation";
 import { Workspace } from "../src/workspace";
-import { prepareProjectDeliberation } from "../src/project-deliberation";
+import { prepareProjectDeliberation } from "../src/adapters/deliberation/project";
 
 const temporaryRoots: string[] = [];
 
@@ -182,7 +182,7 @@ async function projectFixture(): Promise<string> {
 
 function recordFixture(root: string, status: CellRunRecord["status"] = "passed"): CellRunRecord {
   return {
-    version: "work-cell.run.v2",
+    version: "work-cell.run.v3",
     runId: "run-1",
     cellId: "probe-interaction",
     driver: { adapter: "test", provider: "test", model: "test" },
@@ -200,8 +200,14 @@ function recordFixture(root: string, status: CellRunRecord["status"] = "passed")
         excludePaths: [],
         allowedCommands: [],
       },
-      genome: { sequencePath: "principles/SEQUENCE.md", interpretationsDir: "principles/interpretations" },
-      dna: { baseInstructions: "Read only", capabilities: ["read repository files", "analyze project evidence"] },
+      instructions: ["Read only"],
+      capabilities: ["read repository files", "analyze project evidence"],
+      context: [{
+        id: "sequence-expression",
+        title: "Selected Sequence interpretations",
+        content: "P16 and P15",
+        sources: ["principles/interpretations/P16.md", "principles/interpretations/P15.md"],
+      }],
       capabilitiesRequired: ["read repository files", "analyze project evidence"],
       acceptance: ["Return evidence"],
       budget: {
@@ -212,16 +218,24 @@ function recordFixture(root: string, status: CellRunRecord["status"] = "passed")
         maxCommandOutputBytes: 64_000,
       },
     },
-    geneExpression: {
-      lead: "P16",
-      supports: ["P15"],
-      principalContradiction: "The form prevents action",
-      contributions: [
-        { pid: "P16", decision: "Make the interaction actionable" },
-        { pid: "P15", decision: "Keep the change small" },
-      ],
+    preparation: {
+      adapter: "sequence.v1",
+      usage: { inputTokens: 5_000, outputTokens: 100, totalTokens: 5_100, cachedInputTokens: 0 },
+      rawSteps: [],
+      evidence: {
+        sequencePath: "principles/SEQUENCE.md",
+        geneExpression: {
+          lead: "P16",
+          supports: ["P15"],
+          principalContradiction: "The form prevents action",
+          contributions: [
+            { pid: "P16", decision: "Make the interaction actionable" },
+            { pid: "P15", decision: "Keep the change small" },
+          ],
+        },
+        loadedInterpretations: ["principles/interpretations/P16.md", "principles/interpretations/P15.md"],
+      },
     },
-    loadedInterpretations: ["principles/interpretations/P16.md", "principles/interpretations/P15.md"],
     finalText: "Found the interaction gap",
     output: { recommendation: "Inspect the interaction gap" },
     artifacts: [],
@@ -229,7 +243,7 @@ function recordFixture(root: string, status: CellRunRecord["status"] = "passed")
     workspaceDiff: { added: [], changed: [], removed: [] },
     usage: { inputTokens: 250_000, outputTokens: 1_000, totalTokens: 251_000, cachedInputTokens: 200_000 },
     usageByPhase: {
-      expression: { inputTokens: 5_000, outputTokens: 100, totalTokens: 5_100, cachedInputTokens: 0 },
+      preparation: { inputTokens: 5_000, outputTokens: 100, totalTokens: 5_100, cachedInputTokens: 0 },
       execution: { inputTokens: 245_000, outputTokens: 900, totalTokens: 245_900, cachedInputTokens: 200_000 },
     },
     executionObservation: {},

@@ -3,10 +3,12 @@ name: skill-engineering
 description: >-
   Design, rewrite, review, and test agent skills that improve a repeated agent
   action or judgment. Use when creating a skill, rewriting a SKILL.md, improving
-  agent instructions or harness behavior, reducing context bloat, or checking
-  whether an instruction actually changes behavior. Triggers include "create a
-  skill", "rewrite this skill", "improve agent behavior", "skill design",
-  "test this prompt", "agent keeps ignoring", and "agent context is bloated".
+  a known skill trigger or action layer, reducing skill-context bloat, or
+  checking whether a skill instruction actually changes behavior. Triggers
+  include "create a skill", "rewrite this skill", "review this SKILL.md",
+  "improve this project skill", "skill design", and "test this skill prompt".
+  If an agent-work failure has not yet been localized to a skill, let an
+  agent-workflow diagnostic method identify the owning surface first.
 ---
 
 # Skill Engineering
@@ -111,6 +113,11 @@ report the lineage difference. Do not merge, edit, or silently reconcile them.
   route the result back to principle cultivation.
 - Do not turn a successful local prompt into a general rule without a second
   context or a failure boundary.
+- When a project-wide agent-work failure has not yet been localized to a skill,
+  let an agent-workflow diagnostic owner identify the surface first when one is
+  available. Once evidence selects skill trigger, expression, context layering,
+  or behavior evaluation, this skill owns that work; do not keep both methods as
+  parallel coordinators.
 - Keep the review surface small enough for a human to inspect: target action,
   selected P-IDs, trigger/boundary, test evidence, and the changed files.
 

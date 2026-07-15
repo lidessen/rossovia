@@ -2,16 +2,16 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CellInputSchema, type CellInput, type CellUsage, type GeneExpression } from "../src/contracts";
+import { CellInputSchema, type CellInput, type CellUsage } from "../src/contracts";
 import type {
   CellDriver,
   DriverContext,
   DriverResult,
-  GeneSelectionResult,
 } from "../src/driver";
 import { CellExecutionError } from "../src/driver";
-import type { ExpressedGenome, Genome } from "../src/genome";
+import type { GeneExpression, GeneSelectionResult, Genome, SequenceCellInput } from "../src/adapters/sequence/genome";
 import { runCell } from "../src/run-cell";
+import { runSequenceCell, sequencePreparation, type SequenceSelector } from "../src/adapters/sequence/runtime";
 import { Workspace } from "../src/workspace";
 
 const temporaryRoots: string[] = [];
@@ -20,34 +20,51 @@ afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-describe("Work Cell core", () => {
+describe("Sequence adapter", () => {
   test("expresses a task-specific P-ID team and loads only selected interpretations", async () => {
     const root = await fixture();
     const expression = geneExpression("P04", ["P15"]);
     const driver = new ScriptedDriver(expression);
 
-    const record = await runCell(input(root), driver);
+    const record = await runSequenceCell(sequenceInput(root), driver);
+    const preparation = sequencePreparation(record);
 
     expect(record.status).toBe("passed");
-    expect(record.geneExpression).toEqual(expression);
-    expect(record.loadedInterpretations.map((path) => path.split("/").at(-1))).toEqual([
+    expect(preparation?.geneExpression).toEqual(expression);
+    expect(preparation?.loadedInterpretations.map((path) => path.split("/").at(-1))).toEqual([
       "P04.md",
       "P15.md",
     ]);
-    expect(record.loadedInterpretations).not.toContain(expect.stringContaining("P03.md"));
+    expect(preparation?.loadedInterpretations).not.toContain(expect.stringContaining("P03.md"));
     expect(record.verification.passed).toBe(true);
-    expect(record.trace.some((event) => event.type === "genes.expressed")).toBe(true);
+    expect(record.preparation?.adapter).toBe("sequence.v1");
   });
 
   test("rejects an expression that selects a P-ID outside the Sequence", async () => {
     const root = await fixture();
     const driver = new ScriptedDriver(geneExpression("P99", []));
 
-    const record = await runCell(input(root), driver);
+    const record = await runSequenceCell(sequenceInput(root), driver);
 
     expect(record.status).toBe("failed");
     expect(record.error).toContain("unknown P-ID: P99");
-    expect(record.loadedInterpretations).toEqual([]);
+    expect(sequencePreparation(record)).toBeUndefined();
+  });
+});
+
+describe("Work Cell core", () => {
+  test("rejects Sequence and experiment vocabulary at the generic input boundary", async () => {
+    const root = await fixture();
+    const base = input(root);
+
+    expect(() => CellInputSchema.parse({
+      ...base,
+      genome: { sequencePath: "principles/SEQUENCE.md", interpretationsDir: "principles/interpretations" },
+    })).toThrow("genome");
+    expect(() => CellInputSchema.parse({
+      ...base,
+      treatment: { id: "candidate", instructions: "Change the decision" },
+    })).toThrow("treatment");
   });
 
   test("settles an independent output and artifact after a caller-defined terminal tool", async () => {
@@ -66,7 +83,7 @@ describe("Work Cell core", () => {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     }];
 
-    const record = await runCell(base, new ContractDriver(geneExpression("P04", []), true));
+    const record = await runCell(base, new ContractDriver(true));
 
     expect(record.status).toBe("passed");
     expect(record.output).toEqual({ status: "ready" });
@@ -79,7 +96,7 @@ describe("Work Cell core", () => {
     const base = input(root);
     base.artifacts = [{ path: "output/report.md", instructions: "Write the bounded report." }];
 
-    const record = await runCell(base, new ContractDriver(geneExpression("P04", []), false));
+    const record = await runCell(base, new ContractDriver(false));
 
     expect(record.status).toBe("verification_failed");
     expect(record.verification.artifacts).toMatchObject({ passed: false });
@@ -101,7 +118,7 @@ describe("Work Cell core", () => {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     }];
 
-    const record = await runCell(base, new ContractDriver(geneExpression("P04", []), true, false));
+    const record = await runCell(base, new ContractDriver(true, false));
 
     expect(record.status).toBe("protocol_error");
     expect(record.output).toEqual({ status: "ready" });
@@ -133,11 +150,11 @@ describe("Work Cell core", () => {
       run: usage(40, 20),
     });
 
-    const record = await runCell(base, driver);
+    const record = await runSequenceCell(sequenceInput(root, base), driver);
 
     expect(record.status).toBe("passed");
     expect(record.usage.totalTokens).toBe(100);
-    expect(record.usageByPhase).toEqual({ expression: usage(30, 10), execution: usage(40, 20) });
+    expect(record.usageByPhase).toEqual({ preparation: usage(30, 10), execution: usage(40, 20) });
   });
 
   test("rejects the retired maxTokens field instead of silently dropping it", async () => {
@@ -155,7 +172,7 @@ describe("Work Cell core", () => {
     const driver = new ScriptedDriver(geneExpression("P04", []));
     driver.runError = new CellExecutionError("provider ended without a final output", usage(100, 40));
 
-    const record = await runCell(input(root), driver);
+    const record = await runSequenceCell(sequenceInput(root), driver);
 
     expect(record.status).toBe("failed");
     expect(record.error).toContain("provider ended without a final output");
@@ -167,7 +184,7 @@ describe("Work Cell core", () => {
     const base = input(root);
     base.budget.maxDurationMs = 20;
     const driver = new ScriptedDriver(geneExpression("P04", []));
-    driver.selectionDelayMs = 200;
+    driver.runDelayMs = 200;
 
     const record = await runCell(base, driver);
 
@@ -243,7 +260,7 @@ describe("Workspace containment", () => {
   });
 });
 
-class ScriptedDriver implements CellDriver {
+class ScriptedDriver implements CellDriver, SequenceSelector {
   readonly descriptor = {
     adapter: "scripted-test",
     provider: "deterministic",
@@ -251,7 +268,7 @@ class ScriptedDriver implements CellDriver {
   };
   selectionError?: Error;
   runError?: Error;
-  selectionDelayMs = 0;
+  runDelayMs = 0;
 
   constructor(
     private readonly expression: GeneExpression,
@@ -261,25 +278,12 @@ class ScriptedDriver implements CellDriver {
     },
   ) {}
 
-  async selectGenes(
-    _input: CellInput,
+  async selectSequenceGenes(
+    _input: SequenceCellInput,
     _genome: Genome,
     _context: DriverContext,
   ): Promise<GeneSelectionResult> {
     if (this.selectionError) throw this.selectionError;
-    if (this.selectionDelayMs > 0) {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, this.selectionDelayMs);
-        _context.signal.addEventListener(
-          "abort",
-          () => {
-            clearTimeout(timer);
-            reject(new DOMException("Aborted", "AbortError"));
-          },
-          { once: true },
-        );
-      });
-    }
     return {
       expression: this.expression,
       usage: this.usages.selection,
@@ -289,10 +293,21 @@ class ScriptedDriver implements CellDriver {
 
   async run(
     _input: CellInput,
-    expressed: ExpressedGenome,
-    _context: DriverContext,
+    context: DriverContext,
   ): Promise<DriverResult> {
-    expect(expressed.expression).toEqual(this.expression);
+    if (this.runDelayMs > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, this.runDelayMs);
+        context.signal.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    }
     if (this.runError) throw this.runError;
     return {
       terminalToolsCalled: [],
@@ -307,16 +322,11 @@ class ContractDriver implements CellDriver {
   readonly descriptor = { adapter: "scripted-contract", provider: "deterministic", model: "fixture" };
 
   constructor(
-    private readonly expression: GeneExpression,
     private readonly writeArtifact: boolean,
     private readonly signalTerminal = true,
   ) {}
 
-  async selectGenes(): Promise<GeneSelectionResult> {
-    return { expression: this.expression, usage: usage(1, 1), rawSteps: [] };
-  }
-
-  async run(input: CellInput, _expressed: ExpressedGenome, context: DriverContext): Promise<DriverResult> {
+  async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
     if (this.writeArtifact) await context.workspace.writeText("output/report.md", "# Report\n");
     return {
       terminalToolsCalled: this.signalTerminal ? input.terminalTools?.map((terminal) => terminal.name) ?? [] : [],
@@ -339,14 +349,9 @@ function input(root: string): CellInput {
       excludePaths: [],
       allowedCommands: ["true"],
     },
-    genome: {
-      sequencePath: "principles/SEQUENCE.md",
-      interpretationsDir: "principles/interpretations",
-    },
-    dna: {
-      baseInstructions: "Ground decisions in the fixture.",
-      capabilities: ["read", "write"],
-    },
+    instructions: ["Ground decisions in the fixture."],
+    capabilities: ["read", "write"],
+    context: [],
     capabilitiesRequired: ["read"],
     acceptance: ["Return an evidence-backed result"],
     budget: {
@@ -354,6 +359,21 @@ function input(root: string): CellInput {
       estimatedTokens: 10_000,
       maxDurationMs: 10_000,
       maxCommandOutputBytes: 4_000,
+    },
+  };
+}
+
+function sequenceInput(root: string, base = input(root)): SequenceCellInput {
+  const { instructions: _instructions, capabilities: _capabilities, context: _context, ...common } = base;
+  return {
+    ...common,
+    genome: {
+      sequencePath: "principles/SEQUENCE.md",
+      interpretationsDir: "principles/interpretations",
+    },
+    dna: {
+      baseInstructions: base.instructions.join("\n\n"),
+      capabilities: base.capabilities,
     },
   };
 }

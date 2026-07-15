@@ -1,22 +1,18 @@
 import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
-import { Output, ToolLoopAgent, hasToolCall, stepCountIs, tool } from "ai";
+import { Output, ToolLoopAgent, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import {
-  GeneExpressionSchema,
   type CellInput,
   type CellUsage,
   type DriverDescriptor,
-  type GeneExpression,
 } from "./contracts";
 import {
   CellExecutionError,
   type CellDriver,
   type DriverContext,
   type DriverResult,
-  type GeneSelectionResult,
 } from "./driver";
 // AI SDK and provider types remain confined to this adapter.
-import { renderGenomeForSelection, type ExpressedGenome, type Genome } from "./genome";
 import { compileOutputSchema } from "./output-schema";
 
 export interface AiSdkDriverOptions {
@@ -33,7 +29,7 @@ const deepSeekNonThinking = {
 
 export class AiSdkDeepSeekDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
-  private readonly model;
+  protected readonly model;
 
   constructor(options: AiSdkDriverOptions = {}) {
     const modelId = options.model ?? "deepseek-v4-flash";
@@ -56,66 +52,8 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     };
   }
 
-  async selectGenes(
-    input: CellInput,
-    genome: Genome,
-    context: DriverContext,
-  ): Promise<GeneSelectionResult> {
-    let selection: GeneExpression | undefined;
-    const expressionAgent = new ToolLoopAgent({
-      model: this.model,
-      instructions: [
-        "You are the differentiation phase of one ephemeral work cell.",
-        "Read the task and compact Principle Sequence. Select exactly one current lead P-ID for the principal contradiction and no more than three supporting P-IDs.",
-        "Each support must contribute a distinct decision. Do not select a candidate or invent a P-ID. Inherited lineage is orientation, not a forced lead.",
-        "Finish only by calling express_genes.",
-      ].join("\n"),
-      tools: {
-        express_genes: tool({
-          description: "Express the minimal task-specific P-ID team before loading interpretations.",
-          inputSchema: GeneExpressionSchema,
-          execute: async (value) => {
-            selection = GeneExpressionSchema.parse(value);
-            return {
-              accepted: true,
-              selected: [selection.lead, ...selection.supports],
-            };
-          },
-        }),
-      },
-      toolChoice: { type: "tool", toolName: "express_genes" },
-      stopWhen: hasToolCall("express_genes"),
-      maxOutputTokens: 2_000,
-      temperature: 0,
-      providerOptions: deepSeekNonThinking,
-    });
-
-    const expressionResult = await expressionAgent.generate({
-      prompt: [
-        `Task intent:\n${input.intent}`,
-        `Acceptance conditions:\n${input.acceptance.map((item) => `- ${item}`).join("\n")}`,
-        `Available capabilities:\n${input.dna.capabilities.join(", ") || "none"}`,
-        `Required capabilities:\n${input.capabilitiesRequired.join(", ") || "none"}`,
-        `Principle Sequence:\n${renderGenomeForSelection(genome)}`,
-      ].join("\n\n"),
-      abortSignal: context.signal,
-      timeout: { totalMs: Math.min(60_000, input.budget.maxDurationMs) },
-    });
-
-    if (!selection) throw new Error("gene expression protocol failed: express_genes was not accepted");
-    const expressionUsage = normalizeUsage(expressionResult.totalUsage, expressionResult.providerMetadata);
-
-    return {
-      expression: selection,
-      usage: expressionUsage,
-      rawSteps: sanitize(expressionResult.steps) as unknown[],
-      providerMetadata: sanitize(expressionResult.providerMetadata),
-    };
-  }
-
   async run(
     input: CellInput,
-    expressed: ExpressedGenome,
     context: DriverContext,
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
@@ -125,7 +63,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     const terminalSatisfied = () => terminalNames.some((name) => terminalToolsCalled.has(name));
     const executionAgent = new ToolLoopAgent({
       model: this.model,
-      instructions: renderExecutionInstructions(input, expressed),
+      instructions: renderExecutionInstructions(input),
       tools,
       stopWhen: stepCountIs(input.budget.maxSteps),
       ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
@@ -133,7 +71,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         ? {
             prepareStep: ({ stepNumber }) => {
               if (terminalSatisfied()) {
-                return finalOutputStep(input, expressed);
+                return finalOutputStep(input);
               }
               // Reserve the final model turn for the report after a terminal
               // tool call. Otherwise a tool-only final step makes AI SDK reject
@@ -146,7 +84,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
                   // tool-set inference.
                   activeTools: terminalNames as never[],
                   toolChoice: "required",
-                  system: `${renderExecutionInstructions(input, expressed)}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
+                  system: `${renderExecutionInstructions(input)}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
                 };
               }
               return undefined;
@@ -158,8 +96,9 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       providerOptions: deepSeekNonThinking,
     });
     let observedUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+    let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
     let executionResult;
-    let closureResult: { text: string; totalUsage: unknown; providerMetadata: unknown; steps: unknown[] } | undefined;
+    let closureResult: { text: string; output?: unknown; totalUsage: unknown; providerMetadata: unknown; steps: unknown[] } | undefined;
     try {
       executionResult = await executionAgent.generate({
         prompt: renderTaskPrompt(input),
@@ -196,8 +135,9 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         instructions: `The previous work ended without satisfying its terminal-tool contract. Do not continue analysis. You must now invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
         tools,
         stopWhen: stepCountIs(2),
+        ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
         prepareStep: ({ stepNumber }) => {
-          if (terminalSatisfied()) return finalOutputStep(input, expressed);
+          if (terminalSatisfied()) return finalOutputStep(input);
           if (stepNumber === 0) {
             return {
               activeTools: terminalNames as Array<keyof typeof tools>,
@@ -210,7 +150,6 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         temperature: 0,
         providerOptions: deepSeekNonThinking,
       });
-      let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
       try {
         closureResult = await closureAgent.generate({
           prompt: `${renderTaskPrompt(input)}\n\nPrevious unfinished response:\n${executionResult.text}`,
@@ -241,6 +180,15 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         closureResult = terminalOnlyResult(terminalNames, normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata), "recovery");
       }
     }
+    let output: unknown;
+    try {
+      output = (closureResult ?? executionResult).output;
+    } catch (error) {
+      throw new CellExecutionError(
+        error instanceof Error ? error.message : String(error),
+        addUsage(observedUsage, closureUsage),
+      );
+    }
     const usage = addUsage(
       normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata),
       closureResult ? normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata) : { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
@@ -248,7 +196,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     return {
       terminalToolsCalled: [...terminalToolsCalled],
       finalText: closureResult ? `${executionResult.text}\n\n${closureResult.text}` : executionResult.text,
-      ...(executionResult.output === undefined ? {} : { output: executionResult.output }),
+      ...(output === undefined ? {} : { output }),
       usage,
       rawSteps: sanitize([...executionResult.steps, ...(closureResult?.steps ?? [])]) as unknown[],
       providerMetadata: sanitize(executionResult.providerMetadata),
@@ -334,12 +282,11 @@ export class AiSdkDeepSeekDriver implements CellDriver {
 
 function finalOutputStep(
   input: CellInput,
-  expressed: ExpressedGenome,
 ) {
   return {
     activeTools: [],
     toolChoice: "none" as const,
-    system: `${renderExecutionInstructions(input, expressed)}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${input.outputSchema ? "structured output" : "concise report"} now.`,
+    system: `${renderExecutionInstructions(input)}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${input.outputSchema ? "structured output" : "concise report"} now.`,
   };
 }
 
@@ -353,10 +300,7 @@ function terminalOnlyResult(names: string[], usage: CellUsage, phase: "execution
   };
 }
 
-function renderExecutionInstructions(input: CellInput, expressed: ExpressedGenome): string {
-  const treatment = input.treatment
-    ? `\n\n## Separately labelled treatment\nTreatment ${input.treatment.id} is an experimental hypothesis outside the expressed P-ID team. Apply it only where it changes the task decision and retain evidence that could disconfirm it.\n${input.treatment.instructions}`
-    : "";
+function renderExecutionInstructions(input: CellInput): string {
   const terminalInstruction = input.terminalTools?.length
     ? `Finish by invoking exactly one declared terminal tool: ${input.terminalTools.map((terminal) => terminal.name).join(", ")}.`
     : "A terminal tool is not required. Leave a concise final response after completing the work.";
@@ -373,10 +317,8 @@ function renderExecutionInstructions(input: CellInput, expressed: ExpressedGenom
     terminalInstruction,
     outputInstruction,
     artifactInstruction,
-    input.dna.baseInstructions,
-    `## Expressed genes\nLead: ${expressed.expression.lead}\nSupports: ${expressed.expression.supports.join(", ") || "none"}\nPrincipal contradiction: ${expressed.expression.principalContradiction}`,
-    `## Selected interpretations\n${expressed.context}`,
-    treatment,
+    ...input.instructions,
+    ...input.context.map((section) => `## ${section.title}\n${section.content}`),
   ].filter((section): section is string => Boolean(section)).join("\n\n");
 }
 

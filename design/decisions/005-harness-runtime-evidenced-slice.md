@@ -1,6 +1,6 @@
 # 005 — Harness as Runtime-Evidenced Context Architecture
 
-**Status:** adopted
+**Status:** superseded by [decision 026](026-context-engineering-reconstitutes-harness.md)
 
 ## Context
 

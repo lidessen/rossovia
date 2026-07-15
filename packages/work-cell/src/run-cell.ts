@@ -9,17 +9,17 @@ import {
   type ArtifactRecord,
   type ArtifactVerification,
   type OutputVerification,
+  type CellPreparation,
 } from "./contracts";
 import type { CellDriver } from "./driver";
 import { CellExecutionError, traceEvent } from "./driver";
-import { expressGenome, loadGenome } from "./genome";
 import { Workspace } from "./workspace";
 import { compileOutputSchema } from "./output-schema";
 
 export async function runCell(
   unparsedInput: unknown,
   driver: CellDriver,
-  externalSignal?: AbortSignal,
+  options: { signal?: AbortSignal; preparation?: CellPreparation } = {},
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
   if (input.terminalTools?.length && input.budget.maxSteps < 2) {
@@ -32,17 +32,14 @@ export async function runCell(
   const workspace = await Workspace.create(input.workspace, input.budget);
   const before = await workspace.snapshot();
   const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
-  const signal = externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal;
+  const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
   const missingCapabilities = input.capabilitiesRequired.filter(
-    (capability) => !input.dna.capabilities.includes(capability),
+    (capability) => !input.capabilities.includes(capability),
   );
 
   let status: CellTerminalStatus = "failed";
   let error: string | undefined;
   let driverResult: Awaited<ReturnType<CellDriver["run"]>> | undefined;
-  let selectionResult: Awaited<ReturnType<CellDriver["selectGenes"]>> | undefined;
-  let geneExpression: CellRunRecord["geneExpression"];
-  let loadedInterpretations: string[] = [];
   let failureUsage = emptyUsage();
   let verification = { passed: false, terminal: { passed: false, required: [] as string[], called: [] as string[] } };
   let outputVerification: OutputVerification | undefined;
@@ -63,25 +60,13 @@ export async function runCell(
           trace.push(traceEvent(type, data));
         },
       };
-      const genome = await loadGenome(input, workspace);
-      trace.push(
-        traceEvent("genome.loaded", {
-          source: genome.source,
-          genes: genome.genes.map((gene) => gene.pid),
-          inheritedLineage: genome.inheritedLineage,
-        }),
-      );
-      selectionResult = await driver.selectGenes(input, genome, context);
-      const expressed = await expressGenome(input, workspace, genome, selectionResult.expression);
-      geneExpression = expressed.expression;
-      loadedInterpretations = expressed.interpretationPaths;
-      trace.push(
-        traceEvent("genes.expressed", {
-          expression: geneExpression,
-          interpretationPaths: loadedInterpretations,
-        }),
-      );
-      driverResult = await driver.run(input, expressed, context);
+      if (options.preparation) {
+        trace.push(traceEvent("cell.prepared", {
+          adapter: options.preparation.adapter,
+          usage: options.preparation.usage,
+        }));
+      }
+      driverResult = await driver.run(input, context);
       const terminalTools = input.terminalTools ?? [];
       const terminalSatisfied = terminalTools.length === 0 || terminalTools.some(
         (terminal) => driverResult!.terminalToolsCalled.includes(terminal.name),
@@ -133,7 +118,7 @@ export async function runCell(
   after ??= await workspace.snapshot();
   const finishedAt = new Date();
   const usage = addUsage(
-    selectionResult?.usage ?? emptyUsage(),
+    options.preparation?.usage ?? emptyUsage(),
     driverResult?.usage ?? failureUsage,
   );
   const estimate = estimateCost(usage, driver.descriptor.pricing);
@@ -156,8 +141,7 @@ export async function runCell(
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     status,
     input,
-    ...(geneExpression ? { geneExpression } : {}),
-    loadedInterpretations,
+    ...(options.preparation ? { preparation: options.preparation } : {}),
     finalText: driverResult?.finalText ?? "",
     ...(driverResult?.output === undefined ? {} : { output: driverResult.output }),
     artifacts,
@@ -169,14 +153,14 @@ export async function runCell(
     workspaceDiff: workspace.diff(before, after),
     usage,
     usageByPhase: {
-      expression: selectionResult?.usage ?? emptyUsage(),
+      preparation: options.preparation?.usage ?? emptyUsage(),
       execution: driverResult?.usage ?? failureUsage,
     },
     executionObservation,
     ...(estimate ? { estimatedCostUsd: estimate.value, estimateBasis: estimate.basis } : {}),
     trace,
     rawSteps: [
-      ...(selectionResult ? [{ phase: "expression", steps: selectionResult.rawSteps }] : []),
+      ...(options.preparation ? [{ phase: "preparation", adapter: options.preparation.adapter, steps: options.preparation.rawSteps }] : []),
       ...(driverResult ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
     ],
     ...(error ? { error } : {}),

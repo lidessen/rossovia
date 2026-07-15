@@ -1,0 +1,28 @@
+{
+  "id": "chinese-classics-title-catalog",
+  "version": "2026-07-13.v2",
+  "entries": [
+    { "id": "dao-de-jing", "title": "《道德经》" },
+    { "id": "zhuangzi", "title": "《庄子》" },
+    { "id": "analects", "title": "《论语》" },
+    { "id": "book-of-changes", "title": "《周易》" },
+    { "id": "book-of-poetry", "title": "《诗经》" },
+    { "id": "xunzi", "title": "《荀子》" },
+    { "id": "mozi", "title": "《墨子》" },
+    { "id": "art-of-war", "title": "《孙子兵法》" },
+    { "id": "records-of-the-grand-historian", "title": "《史记》" },
+    { "id": "zizhi-tongjian", "title": "《资治通鉴》" },
+    { "id": "complete-tang-poems", "title": "《全唐诗》" },
+    { "id": "complete-song-ci", "title": "《全宋词》" },
+    { "id": "romance-of-the-three-kingdoms", "title": "《三国演义》" },
+    { "id": "water-margin", "title": "《水浒传》" },
+    { "id": "journey-to-the-west", "title": "《西游记》" },
+    { "id": "dream-of-the-red-chamber", "title": "《红楼梦》" },
+    { "id": "call-to-arms", "title": "《呐喊》" },
+    { "id": "wild-grass", "title": "《野草》" },
+    { "id": "selected-works-of-mao-1", "title": "《毛泽东选集》第一卷" },
+    { "id": "selected-works-of-mao-2", "title": "《毛泽东选集》第二卷" },
+    { "id": "selected-works-of-mao-3", "title": "《毛泽东选集》第三卷" },
+    { "id": "selected-works-of-mao-4", "title": "《毛泽东选集》第四卷" }
+  ]
+}

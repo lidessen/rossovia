@@ -15,12 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: site/package-lock.json
       - name: Verify sequence snapshots
         run: python3 scripts/sync-sequence-snapshot.py --all --dry-run
       - name: Validate Observation Chronicle
         run: python3 scripts/validate-observation-chronicle.py
       - name: Test Observation Chronicle validator
         run: python3 scripts/test-observation-chronicle.py
+      - name: Test mission continuity
+        run: python3 scripts/test-mission-record.py
+      - name: Test skill installation safety
+        run: python3 scripts/test-probe-skill-installation.py
       - name: Install Work Cell dependencies
         working-directory: packages/work-cell
         run: bun install --frozen-lockfile
@@ -30,3 +39,12 @@ jobs:
       - name: Test Work Cell
         working-directory: packages/work-cell
         run: bun test
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+      - name: Build site projection
+        working-directory: site
+        run: npm run build
+      - name: Verify site links
+        working-directory: site
+        run: npm run verify:links

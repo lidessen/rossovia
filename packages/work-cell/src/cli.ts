@@ -2,14 +2,17 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { AiSdkDeepSeekDriver } from "./ai-sdk-driver";
+import { AiSdkDeepSeekSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
 import { CellInputSchema, type CellRunRecord } from "./contracts";
-import { persistDeliberationRecord, runDeliberation } from "./deliberation";
-import { runExperimentFromFile } from "./experiment";
-import { AiSdkDeepSeekJudge } from "./judge";
-import { latestProjectRun, lowerProjectProbe, persistProjectRun } from "./project";
-import { prepareProjectDeliberation } from "./project-deliberation";
-import { renderRunSummary } from "./presentation";
+import { persistDeliberationRecord, runDeliberation } from "./adapters/deliberation/runtime";
+import { runExperimentFromFile } from "./adapters/experiment/runtime";
+import { AiSdkDeepSeekJudge } from "./adapters/experiment/judge";
+import { latestProjectRun, lowerProjectProbe, persistProjectRun } from "./adapters/sequence/project";
+import { prepareProjectDeliberation } from "./adapters/deliberation/project";
+import { renderRunSummary } from "./adapters/sequence/presentation";
 import { runCell } from "./run-cell";
+import { runSequenceCell } from "./adapters/sequence/runtime";
+import { persistSwarmRecord, runSwarm } from "./swarm";
 
 await main(process.argv.slice(2)).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
@@ -35,11 +38,36 @@ async function main(args: string[]): Promise<void> {
     return;
   }
 
+  if (command === "swarm") {
+    const path = requiredPath(rest, "swarm");
+    const absolutePath = resolve(path);
+    const raw = JSON.parse(await readFile(absolutePath, "utf8"));
+    if (Array.isArray(raw.cells)) {
+      for (const cell of raw.cells) {
+        if (cell?.workspace?.root && !isAbsolute(cell.workspace.root)) {
+          cell.workspace.root = resolve(dirname(absolutePath), cell.workspace.root);
+        }
+      }
+    }
+    const record = await runSwarm(raw, () => new AiSdkDeepSeekDriver());
+    const persisted = await persistSwarmRecord(absolutePath, record);
+    console.log(JSON.stringify({
+      output: persisted.indexPath,
+      directory: persisted.directory,
+      runId: record.runId,
+      swarmId: record.swarmId,
+      concurrency: record.concurrency,
+      cells: record.outcomes.length,
+      summary: persisted.index.summary,
+    }, null, 2));
+    return;
+  }
+
   if (command === "experiment") {
     const path = requiredPath(rest, "experiment");
     const record = await runExperimentFromFile(
       path,
-      () => new AiSdkDeepSeekDriver(),
+      () => new AiSdkDeepSeekSequenceDriver(),
       new AiSdkDeepSeekJudge(),
     );
     console.log(
@@ -76,7 +104,7 @@ async function main(args: string[]): Promise<void> {
     const receipt = `${absolutePath.replace(/\.json$/, "")}.${attemptId}.attempt.json`;
     await writeFile(receipt, `${JSON.stringify({ version: "work-cell.deliberation-attempt.v1", attemptId, manifest: absolutePath, pid: process.pid, status: "started", startedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
     try {
-      const record = await runDeliberation(manifest, () => new AiSdkDeepSeekDriver());
+      const record = await runDeliberation(manifest, () => new AiSdkDeepSeekSequenceDriver());
       const output = await persistDeliberationRecord(absolutePath, record);
       await writeFile(receipt, `${JSON.stringify({ version: "work-cell.deliberation-attempt.v1", attemptId, manifest: absolutePath, status: "settled", startedAt: record.startedAt, finishedAt: record.finishedAt, record: output }, null, 2)}\n`, "utf8");
       console.log(JSON.stringify({ output, receipt, docketId: record.docket.id, summary: record.summary }, null, 2));
@@ -102,7 +130,7 @@ async function main(args: string[]): Promise<void> {
       }, null, 2));
       return;
     }
-    const record = await runDeliberation(prepared.manifest, () => new AiSdkDeepSeekDriver());
+    const record = await runDeliberation(prepared.manifest, () => new AiSdkDeepSeekSequenceDriver());
     const output = resolve(prepared.directory, `record-${record.runId}.json`);
     await writeFile(output, `${JSON.stringify(record, null, 2)}\n`, "utf8");
     console.log(JSON.stringify({ output, evidence: prepared.evidencePath, docketId: record.docket.id, summary: record.summary }, null, 2));
@@ -111,7 +139,7 @@ async function main(args: string[]): Promise<void> {
 
   if (command === "probe") {
     const input = await lowerProjectProbe(parseProbeArguments(rest));
-    const record = await runCell(input, new AiSdkDeepSeekDriver());
+    const record = await runSequenceCell(input, new AiSdkDeepSeekSequenceDriver());
     const output = await persistProjectRun(record, input.workspace.root);
     console.log(renderRunSummary(record, output));
     if (record.status !== "passed") process.exitCode = 1;
@@ -294,6 +322,7 @@ function usage(): never {
   console.error([
     "Usage:",
     "  bun src/cli.ts run <cell.json>",
+    "  bun src/cli.ts swarm <swarm.json>",
     "  bun src/cli.ts experiment <experiment.json>",
     "  bun src/cli.ts deliberate <deliberation.json>",
     "  bun src/cli.ts deliberate-probe <question> --option A=<summary> --option B=<summary> --seat P04=<role> --seat P11=<role> --seat P15=<role> --source <path> --budget-tokens <n> --member-estimated-tokens <n> --budget-source <approval> [--execute]",

@@ -32,7 +32,7 @@ still be lost.
 
 **Observed action:**
 
-- [`persistDeliberationRecord`](../../packages/work-cell/src/deliberation.ts)
+- [`persistDeliberationRecord`](../../packages/work-cell/src/adapters/deliberation/runtime.ts)
   now writes each direct invocation to a run-ID-bearing path.
 - The regression scenario in
   [`deliberation.test.ts`](../../packages/work-cell/test/deliberation.test.ts)

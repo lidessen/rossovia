@@ -1,0 +1,64 @@
+{
+  "latentRouting": {
+    "id": "project-naming-latent-routing-probe",
+    "fieldLayers": [0],
+    "sparseVisibility": {
+      "copiesPerNode": 2,
+      "seed": "project-naming-latent-heads-2026-07-14-v1"
+    },
+    "heads": [
+      {
+        "id": "material-condition",
+        "instructions": "Select concrete sources where labor, ownership, repairability, access, or control materially changes the project relation. Prefer a contrast between actual conditions, not two versions of the same value.",
+        "routeLimit": 8
+      },
+      {
+        "id": "governing-contradiction",
+        "instructions": "Select sources that expose opposing forces which cannot be truthfully collapsed into one harmonious metaphor. Attend to the relation that governs the other tensions.",
+        "routeLimit": 8
+      },
+      {
+        "id": "weak-signal",
+        "instructions": "Select underrepresented sources whose disappearance would make the field more fluent but less exact. Frequency and immediate coherence count against, not for, selection.",
+        "routeLimit": 8
+      },
+      {
+        "id": "distant-structure",
+        "instructions": "Select sources from materially distant domains that nevertheless share a structural relation. Reject pairs connected only by familiar imagery or vocabulary.",
+        "routeLimit": 8
+      },
+      {
+        "id": "cultural-memory",
+        "instructions": "Select sources whose historical, linguistic, ritual, or intergenerational memory changes how the project can be understood without turning tradition into decorative quotation.",
+        "routeLimit": 8
+      },
+      {
+        "id": "sensory-form",
+        "instructions": "Select sources with distinctive sound, movement, shape, rhythm, material sensation, or spatial relation that remain meaningful before explanation.",
+        "routeLimit": 8
+      },
+      {
+        "id": "counterexample",
+        "instructions": "Select sources that can disconfirm the field's most attractive emerging account. Preserve incompatibility instead of choosing a constructive or optimistic resolution.",
+        "routeLimit": 8
+      },
+      {
+        "id": "future-mutation",
+        "instructions": "Select sources whose relation still matters after current models, runtimes, project structure, and naming assumptions have changed. Contrast durable inheritance with necessary obsolescence.",
+        "routeLimit": 8
+      }
+    ],
+    "lexicalBasins": [
+      {
+        "id": "craft",
+        "terms": ["forge", "anvil", "workbench", "workshop", "hammer", "craft", "crucible", "锻", "炉", "工坊", "铁砧"]
+      },
+      {
+        "id": "repair-continuity",
+        "terms": ["repair", "fissure", "crack", "return", "inherit", "continuity", "修复", "裂", "隙", "继承"]
+      }
+    ],
+    "concurrency": 8,
+    "estimatedTokens": 40000
+  }
+}

@@ -2,16 +2,17 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CellInput, CellUsage, GeneExpression } from "../src/contracts";
+import type { CellInput, CellUsage } from "../src/contracts";
 import {
   DELIBERATION_VERSION,
   persistDeliberationRecord,
   runDeliberation,
   type DeliberationManifest,
   type DeliberationPosition,
-} from "../src/deliberation";
-import type { CellDriver, DriverContext, DriverResult, GeneSelectionResult } from "../src/driver";
-import type { ExpressedGenome, Genome } from "../src/genome";
+} from "../src/adapters/deliberation/runtime";
+import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
+import type { GeneExpression, GeneSelectionResult, Genome, SequenceCellInput } from "../src/adapters/sequence/genome";
+import type { SequenceSelector } from "../src/adapters/sequence/runtime";
 
 const roots: string[] = [];
 
@@ -34,7 +35,7 @@ test("runs independent deliberation members and preserves a dissenting position"
   expect(record.members).toHaveLength(3);
   const runs = record.members.filter((member) => member.status === "run");
   expect(runs).toHaveLength(3);
-  expect(runs.map((member) => member.record.input.dna.baseInstructions)).toEqual([
+  expect(runs.map((member) => member.record.input.instructions.join("\n"))).toEqual([
     expect.stringContaining("member contradiction"),
     expect.stringContaining("member evidence"),
     expect.stringContaining("member preservation"),
@@ -133,17 +134,17 @@ test("uses the shared remaining envelope to recover only an unsettled seat", asy
   expect(record.summary).toMatchObject({ voteCounts: { support: 3 }, unsettledMembers: [] });
 });
 
-class DeliberationDriver implements CellDriver {
+class DeliberationDriver implements CellDriver, SequenceSelector {
   readonly descriptor = { adapter: "scripted-test", provider: "deterministic", model: "fixture" };
 
   constructor(private readonly position: DeliberationPosition) {}
 
-  async selectGenes(input: CellInput, _genome: Genome, _context: DriverContext): Promise<GeneSelectionResult> {
+  async selectSequenceGenes(input: SequenceCellInput, _genome: Genome, _context: DriverContext): Promise<GeneSelectionResult> {
     expect(input.dna.baseInstructions).toContain("Independent deliberation member");
     return { expression, usage: usage(), rawSteps: [] };
   }
 
-  async run(input: CellInput, _expressed: ExpressedGenome, _context: DriverContext): Promise<DriverResult> {
+  async run(input: CellInput, _context: DriverContext): Promise<DriverResult> {
     expect(input.intent).toContain("formal operating organization");
     return {
       finalText: "position submitted",
@@ -160,9 +161,9 @@ class RecoveryDriver extends DeliberationDriver {
     super(position("support", "Recovered position"));
   }
 
-  override async selectGenes(input: CellInput, genome: Genome, context: DriverContext): Promise<GeneSelectionResult> {
+  override async selectSequenceGenes(input: SequenceCellInput, genome: Genome, context: DriverContext): Promise<GeneSelectionResult> {
     if (this.failExpression) throw new Error("transient provider failure");
-    return super.selectGenes(input, genome, context);
+    return super.selectSequenceGenes(input, genome, context);
   }
 }
 
@@ -213,7 +214,7 @@ function docket(root: string): DeliberationManifest {
   };
 }
 
-function input(root: string, id: string): CellInput {
+function input(root: string, id: string): SequenceCellInput {
   return {
     id,
     intent: "Independently assess the formal operating organization proposal",

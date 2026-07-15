@@ -1,6 +1,6 @@
 # Decision 022 — Project-first deliberation interaction
 
-**Status:** proposed implementation decision
+**Status:** implemented and verified
 
 ## Context
 

@@ -30,9 +30,14 @@ The run compared three concrete alternatives:
 It made separate necessary-work graphs and discovery branches for each, chose
 the **capability** horizon, and selected alternative 2 as the minimum valid
 transition. The record names an explicit branch for parent-envelope debit after
-observing that [`run-tree.ts`](../../packages/work-cell/src/run-tree.ts) copies
-per-cell limits instead of debiting a shared total. It did not represent a work
-node as a token, dollar, person-day, or fixed point.
+observing the then-working-tree `run-tree.ts` behavior. That exact source state
+was not retained in Git; later committed tree code added aggregate envelope
+handling, and the subsequent
+[general-core reconstitution](../../design/decisions/027-general-work-cell-core-and-sequence-adapter.md)
+retired cell-tree decomposition from the current runtime. The historical tree
+diagnosis therefore cannot support a claim about the current implementation.
+The retained output still demonstrates that it did not represent a work node as
+a token, dollar, person-day, or fixed point.
 
 ## Boundary, tolerance, and context
 

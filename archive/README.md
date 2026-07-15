@@ -22,7 +22,7 @@ Repo-level `blueprints/` and design-driven's blueprint workflow came from the
 same attention-allocation / task-scaffolding habit used in attention-driven
 workflows elsewhere in the ecosystem. This collection no longer maintains that
 pattern at the repo root. Useful observations should eventually land as
-expression probes (P09, P10, P15) or harness handoff artifacts — not as a
+expression probes (P09, P10, P15) or context-delivery evidence — not as a
 parallel blueprint canon. `attention-driven` itself is still being transformed
 outside this repo.
 

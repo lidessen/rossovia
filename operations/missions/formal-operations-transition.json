@@ -1,0 +1,78 @@
+{
+  "version": "mission-record.v1",
+  "id": "formal-operations-transition",
+  "title": "Converge the current stage and retire the preparation campaign",
+  "sources": [
+    "design/organization/sessions/2026-07-15-formal-operations-transition-strategy-case.md",
+    "design/organization/sessions/2026-07-10-formal-operations-preparation.md"
+  ],
+  "createdAt": "2026-07-15T13:29:02Z",
+  "updatedAt": "2026-07-15T14:49:26Z",
+  "mainline": {
+    "contradiction": "Turn accumulated post-founding work into reviewable accepted or explicitly returned lines, then retire the temporary preparation formation without losing unique evidence.",
+    "acceptance": [
+      "The current experiment receives content review, operational review, current verification, and a Principal PR disposition.",
+      "PR #16 and every staged legacy-experiment line receive an explicit return disposition.",
+      "F3 is evidenced and recorded, F4 receives a Principal decision, and F5 archives the campaign or names one remaining gate."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "current-stage-integration",
+      "parent": "mainline",
+      "kind": "review",
+      "purpose": "Determine whether experiment/activation-field-scale at d66a125 is a coherent, verified stage fit for one integration PR.",
+      "returnCondition": "A content committee report, preparation operational report, current deterministic evidence, and Principal integrate/return/hold disposition are retained.",
+      "sources": [
+        "git:experiment/activation-field-scale@d66a125d04ad8294dbfe6742ba007ab9a5f3015b",
+        "design/organization/sessions/2026-07-15-formal-operations-transition-strategy-case.md",
+        "design/organization/sessions/2026-07-15-current-stage-review-packet.md",
+        "design/organization/sessions/2026-07-15-current-stage-review-work-estimate.md",
+        "design/organization/sessions/2026-07-15-current-stage-content-committee-review.md",
+        "design/organization/sessions/2026-07-15-current-stage-preparation-operational-review.md",
+        "chronicle/records/2026/07/obs-20260715-current-stage-review-output-recovery-failure.json",
+        "chronicle/records/2026/07/obs-20260715-current-stage-independent-review-rerun.json",
+        "https://github.com/lidessen/skills/pull/17"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "public-expression-return",
+      "parent": "mainline",
+      "kind": "review",
+      "purpose": "Return PR #16 against the settled stage through rebase/integrate, no-change, or abandon without losing its Chinese README and Sequence-presentation work.",
+      "returnCondition": "The post-stage direct diff is reviewed and PR #16 has an explicit disposition and mainline delta.",
+      "sources": [
+        "https://github.com/lidessen/skills/pull/16",
+        "git:mission/public-expression-readme@84346d65992fd76fcc2c7b58fb393d39e481fc75"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "legacy-experiment-return",
+      "parent": "mainline",
+      "kind": "investigation",
+      "purpose": "Partition the 129 staged side-worktree entries by durable evidence, later mission candidate, duplicate/superseded material, or abandonment.",
+      "returnCondition": "Every staged path is covered by a source/value/status partition and any retained implementation names a separate acceptance and review route.",
+      "sources": [
+        "worktree:/Users/lidessen/workspaces/skills-worktrees/public-expression-readme",
+        "design/organization/sessions/2026-07-15-formal-operations-transition-strategy-case.md"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "preparation-exit",
+      "parent": "mainline",
+      "kind": "review",
+      "purpose": "Record the F3 evidence, prepare the F4 remote-rule decision, and obtain the Principal F5 disposition that either archives preparation or names one missing gate.",
+      "returnCondition": "The campaign contains an evidence-backed F3 disposition, the actual F4 Principal choice and effect, and an F5 archive or explicit continuation reason.",
+      "sources": [
+        "design/organization/sessions/2026-07-10-formal-operations-preparation.md",
+        "design/operations/GITHUB-SETTINGS.md"
+      ],
+      "status": "open"
+    }
+  ],
+  "currentFocus": "current-stage-integration"
+}

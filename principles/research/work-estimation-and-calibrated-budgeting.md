@@ -33,21 +33,24 @@ error tolerance?
 
 ## Evidence
 
-The current [Work Cell budget contract](../../packages/work-cell/src/contracts.ts)
-enforces per-cell token, step, duration, and command-output caps, then its
-[run record](../../packages/work-cell/src/run-cell.ts) retains actual usage,
-duration, and a price-derived cost. Neither artifact carries a work estimate,
-conversion confidence, error tolerance, or forecast.
+The current [Work Cell contract](../../packages/work-cell/src/contracts.ts)
+retains an executor-independent `WorkEstimate`, an executor-specific
+`ExecutionProfile`, a caller token estimate and tolerance, step/duration limits,
+and command-output caps. Its [run record](../../packages/work-cell/src/run-cell.ts)
+retains those inputs beside actual usage, duration, and price-derived cost. It
+still does not infer a time/cost forecast, conversion confidence, or calibrated
+reference class; those remain external projections rather than core facts.
 
 The current [Strategy Case](../../skills/strategic-advisory/references/strategy-case.md)
 compares capability cost and irreversible surface, but has no place to compare
 the same work under different executor profiles, state forecast uncertainty, or
 approve a budget envelope.
 
-The current [cell-tree merger](../../packages/work-cell/src/run-tree.ts)
-lets a child inherit or override its parent's per-cell budget. It does not debit
-children from a parent-wide resource envelope, so a split tree cannot currently
-be treated as one controlled budget.
+The earlier cell-tree mechanism examined by the first probe is no longer a
+current runtime contract. The general-core reconstitution keeps aggregate
+allocation rules with the adapter or caller that introduces the collection;
+the core does not infer a parent-wide budget or work decomposition. See
+[decision 027](../../design/decisions/027-general-work-cell-core-and-sequence-adapter.md).
 
 The [practice-cycle](../../skills/practice-cycle/SKILL.md) already supplies the
 required empirical loop: observed practice revises the next smallest practice.

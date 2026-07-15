@@ -39,7 +39,7 @@ the Chronicle record remains available without consuming further attention.
 | failed acceptance, budget mismatch, or ambiguous execution | `practice-cycle` | silently retry, enlarge a budget, or declare success |
 | recurring missing carrier or visibility gap | `form-guidance` | create a skill, runtime, dashboard, or agent by itself |
 | repeated method misuse | `skill-engineering` | amend the owning skill without review |
-| context omission | `harness` | rewrite project doctrine |
+| context omission | `context-engineering` | rewrite project doctrine or own runtime mechanics |
 | irreducible principle pressure | `principle-cultivation` | alter the Sequence without human adoption |
 
 ## Boundary

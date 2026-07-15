@@ -1,5 +1,12 @@
 .DS_Store
 .reasonix/
 .work-cell/
+.vercel/
 packages/work-cell/node_modules/
 packages/work-cell/.work-cell/
+site/node_modules/
+site/dist/
+site/.astro/
+site/.vercel/
+site/src/content/docs/
+site/src/data/skills.json

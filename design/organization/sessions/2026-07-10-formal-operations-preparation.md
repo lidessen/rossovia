@@ -1,6 +1,6 @@
 # Formal Operations Preparation Campaign
 
-**Status:** active — operating design approved; founding gates pending
+**Status:** active — reconvened for stage convergence and formal disposition
 **Authority:** [decision 015](../../decisions/015-human-initiated-formal-operations.md)
 **Principal contradiction:** the collection has enough methods and evidence to
 undertake shared work, but its current large uncommitted transition cannot yet
@@ -66,6 +66,34 @@ The Principal selected this founding baseline route. A clean sibling worktree
 may now be created from `origin/main`, populated only with the ledger's retained
 contents, checked, and prepared as a PR. It does not authorize a push to
 `main`, merge, remote setting change, or unreviewed scope expansion.
+
+## 2026-07-15 reconvening
+
+The founding baseline transition above completed through
+[PR #13](https://github.com/lidessen/skills/pull/13), and its
+[Mission Record](../../../operations/missions/founding-baseline.json) is
+settled. [PR #14](https://github.com/lidessen/skills/pull/14) and
+[PR #15](https://github.com/lidessen/skills/pull/15) subsequently used bounded
+`mission/*` branches and passed the remote `verify` workflow. They are candidate
+evidence for F3, not an implicit gate disposition; the preparation group must
+still record whether the separate-worktree, PR-template, correction, and return
+requirements were actually met.
+
+The Principal reconvened the preparation group after the project accumulated a
+new 12-commit experiment, open PR #16, and a separate dirty worktree containing
+material not represented by either line. The agent staged that worktree's 129
+entries as a recovery checkpoint without committing, pushing, accepting, or
+mixing them into PR #16. The accepted convergence direction and evidence cutoff
+are retained in the
+[formal-operations transition Strategy Case](2026-07-15-formal-operations-transition-strategy-case.md);
+the active return obligations live in the
+[`formal-operations-transition` Mission Record](../../../operations/missions/formal-operations-transition.json).
+
+The current order is: review and disposition the coherent current stage;
+return PR #16 against that settled substrate; partition the staged legacy
+experiments without bulk promotion; then present F4 and F5 to the Principal.
+No new capability line, remote rule, merge, or worktree deletion is authorized
+by reconvening alone.
 
 ## Exit and disconfirmation
 

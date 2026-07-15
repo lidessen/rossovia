@@ -1,0 +1,140 @@
+---
+import SiteNav from '../components/SiteNav.astro';
+import SiteWordmark from '../components/SiteWordmark.astro';
+import skills from '../data/skills.json';
+import '../styles/home.css';
+
+const visibleSkills = skills.slice(0, 5);
+const description =
+  '一个让 AI 生产方法可检查、可替换、可共同改进的开放工程项目。';
+const canonicalUrl = new URL('/', Astro.site ?? Astro.url);
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f3eddf" />
+    <link rel="canonical" href={canonicalUrl} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content="Skills · 开放的 AI 生产方法" />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary" />
+    <title>Skills · 开放的 AI 生产方法</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到正文</a>
+    <header class="site-header">
+      <SiteWordmark />
+      <SiteNav />
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">开放方法 · 有界任务 · 可追溯证据</p>
+          <h1 id="hero-title">
+            让 AI 的生产能力<br />
+            成为<span>共同的工具</span>
+          </h1>
+          <p class="hero-lede">
+            这里不是模型榜单，也不是不透明的 AI 平台。这个仓库把原则、方法、执行单元和验证证据放在一起，让普通人和小团队能够检查、修复、替换并继续改进自己的工作系统。
+          </p>
+          <div class="hero-actions">
+            <a class="primary-action" href="/docs/skills/">选择一个方法 <span aria-hidden="true">→</span></a>
+            <a class="text-action" href="https://github.com/lidessen/skills/blob/main/design/FOUNDING-MANDATE.md">阅读建构使命</a>
+          </div>
+        </div>
+
+        <div class="workshop-figure" aria-label="原则、方法、实践与证据构成的开放工作台">
+          <div class="figure-axis" aria-hidden="true"></div>
+          <p class="figure-label">共同工作台 / COMMON WORKBENCH</p>
+          <ol>
+            <li><span>01</span><strong>Principles</strong><small>判断从何而来</small></li>
+            <li><span>02</span><strong>Methods</strong><small>判断如何行动</small></li>
+            <li><span>03</span><strong>Practice</strong><small>行动如何受检验</small></li>
+            <li><span>04</span><strong>Evidence</strong><small>经验如何被继承</small></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="orientation" aria-labelledby="orientation-title">
+        <div class="section-index">01</div>
+        <div class="section-heading">
+          <p class="eyebrow">从具体问题开始</p>
+          <h2 id="orientation-title">先从一个真实问题开始</h2>
+        </div>
+        <div class="orientation-copy">
+          <p>
+            这个仓库中的活动技能可以分别安装。先选择一个与当前问题相符的方法，在真实任务中观察它是否改变行动；任何模型、供应商和运行时依赖都应当保持可见、有限并可替换。
+          </p>
+          <a href="/docs/">查看使用入口 <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+
+      <section class="methods" aria-labelledby="methods-title">
+        <div class="methods-intro">
+          <div>
+            <p class="eyebrow">当前方法</p>
+            <h2 id="methods-title">每个技能只负责一种可辨认的判断</h2>
+          </div>
+          <p><strong>{skills.length}</strong> 个活动技能由同一原则序列表达，但不共享一个万能工作流。</p>
+        </div>
+
+        <ol class="method-list">
+          {visibleSkills.map((skill, index) => (
+            <li>
+              <span class="method-number">{String(index + 1).padStart(2, '0')}</span>
+              <div>
+                <h3>{skill.name}</h3>
+                <p lang="en">{skill.description}</p>
+              </div>
+              <a href={skill.publicPath ?? skill.sourceUrl} aria-label={`查看 ${skill.name}`}>
+                <span aria-hidden="true">↗</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+
+        <a class="all-methods" href="/docs/skills/">浏览全部 {skills.length} 个方法 <span aria-hidden="true">→</span></a>
+      </section>
+
+      <section class="sequence" aria-labelledby="sequence-title">
+        <div class="sequence-statement">
+          <p class="eyebrow">唯一语义根</p>
+          <h2 id="sequence-title">原则不是墙上的口号。<br />它要在行动中留下差异。</h2>
+        </div>
+        <div class="sequence-detail">
+          <p>
+            Principle Sequence 每行只保留一个稳定原则。解释、技能和项目规则都是下游表达；能够从源重建的页面，只是投影。
+          </p>
+          <blockquote>实践—认识—再实践</blockquote>
+          <a href="/docs/principles/sequence/">阅读完整序列 <span aria-hidden="true">→</span></a>
+        </div>
+      </section>
+
+      <section class="boundary" aria-labelledby="boundary-title">
+        <p class="eyebrow">当前证明义务</p>
+        <h2 id="boundary-title">先在有界生产任务上，证明更经济的开放组合能够交付可检查的结果。</h2>
+        <p>
+          这是一项需要持续证据的长期工作，不是已经兑现的模型优越性声明。人保留目的、数据和验收权；运行时保留成本、失败和修复路径。
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <div>
+        <strong>Skills</strong>
+        <span>当前方法仓库，不是尚未命名的整个项目。</span>
+      </div>
+      <div class="footer-links">
+        <a href="/docs/">文档</a>
+        <a href="https://github.com/lidessen/skills">源代码</a>
+        <a href="https://github.com/lidessen/skills/blob/main/LICENSE">MIT License</a>
+      </div>
+    </footer>
+  </body>
+</html>

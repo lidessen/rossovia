@@ -10,9 +10,9 @@ The project needs a durable way to direct illustration, documentation, UI, and
 public expression. It must not invent an aesthetic bureaucracy from scratch or
 turn visual polish into a false proof of openness, accessibility, or capability.
 
-The source-bound [research](../../principles/research/aesthetic-cultivation.md)
-finds no Sequence gap. It recommends absorbing proven forms before creating a
-new method or runtime. The [U.S. Web Design System design principles](https://designsystem.digital.gov/design-principles/)
+The available evidence does not establish a Sequence gap; it supports absorbing
+proven forms before creating a new method or runtime. The
+[U.S. Web Design System design principles](https://designsystem.digital.gov/design-principles/)
 provide a user-needs-first evaluative lens; its [maturity model](https://designsystem.digital.gov/maturity-model/)
 separates principles, guidance, tokens, components, and contributions. The
 [GOV.UK contribution criteria](https://design-system.service.gov.uk/community/contribution-criteria/)
@@ -61,13 +61,22 @@ If the capability is absent, it returns the limitation and a next practice,
 not a fabricated visual result. Runtime extension is reconsidered only after a
 real case proves that this contract is insufficient.
 
-## Graduation rule
+## Direction formation and graduation
 
-A direction, editorial pattern, UI pattern, or visual token enters the shared
-area only when it has appeared in at least two independent real cases, has a
-named use/contrast, retains attributed references and accessibility/production
-constraints, and is accepted by the Principal or named reviewer. A single seed
-or generated image remains a provisional preference signal.
+A source-bearing **provisional direction** may be formed before production when
+the project has compared a small attributed source field, recorded named human
+preference evidence, stated a negative boundary, and named representative cases
+that could revise or reject it. This gives later work one organizing visual
+proposition without pretending that an untested preference is established
+style.
+
+Its status changes to **accepted** only when it has appeared in at least two
+independent real cases, has a named use/contrast, retains attributed references
+and accessibility/production constraints, and is accepted by the Principal or
+named reviewer. A single seed or generated image remains a provisional
+preference signal and cannot establish a direction by itself. Editorial
+patterns, UI patterns, and visual tokens follow the same evidence and human
+review boundary before becoming shared guidance.
 
 ## Acceptance
 
@@ -77,5 +86,5 @@ or generated image remains a provisional preference signal.
   objective or universal aesthetic truth.
 - One document/UI and one visual-asset case test the seed under real tasks;
   one superficial-polish task declines the practice.
-- A future `aesthetic-cultivation` skill is considered only if these cases show
+- A future `visual-design` skill is considered only if these cases show
   a repeated agent-facing judgment that project-local references do not teach.

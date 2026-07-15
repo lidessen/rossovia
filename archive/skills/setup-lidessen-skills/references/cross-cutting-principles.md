@@ -1,5 +1,5 @@
 <!--
-This file is the deployable L1 expression of P01, P04, P09, and P10 from `principles/SEQUENCE.md`. It is not the semantic source of the principles: do not introduce, rename, or redefine a sequence item here. The content from below this comment is what `setup-lidessen-skills` copies verbatim into target-project harness configs between paired `<!-- lidessen-setup:* -->` markers. Edits to this expression propagate to all consumers on next `/setup-lidessen-skills sync`. The lidessen/skills repo itself dogfoods this — its own CLAUDE.md "Guiding Principles" section is injected from this file.
+This file is the deployable always-present expression of P01, P04, P09, and P10 from `principles/SEQUENCE.md`. It is not the semantic source of the principles: do not introduce, rename, or redefine a sequence item here. The content from below this comment is what the archived `setup-lidessen-skills` adapter copies verbatim into target-project instruction surfaces between paired `<!-- lidessen-setup:* -->` markers. Edits to this expression propagate to legacy consumers on their next sync. The lidessen/skills repo itself dogfoods this — its own CLAUDE.md "Guiding Principles" section is projected from this file.
 
 When adding or modifying a principle: keep each one self-contained (a downstream consumer must be able to act on it without further context), and bump the version marker that `setup-lidessen-skills` tracks so consumers know to sync. Section heads are at `###` (h3) level, intended to nest under a user-owned `## Guiding Principles` (h2). Adjust depth at copy time only if the consumer's layout demands it.
 -->
@@ -10,11 +10,17 @@ Skills should help agents understand *why*, not just specify *what*. A skill tha
 
 ### Hierarchical context management
 
-Agent context is finite — structure it in layers: L1 (architecture, always present), L2 (design, on activation), L3 (implementation, on demand). The higher the layer, the smaller and more stable. Keep SKILL.md under 500 lines; split details into supporting files. See the [harness skill](../../../../skills/harness/SKILL.md) for the full methodology and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure) for the underlying spec.
+Agent context is finite — place stable orientation before scoped action,
+task-specific methods on activation, and volatile detail on demand, then map
+those timings to the actual runtime surfaces rather than assuming universal
+L1/L2/L3 containers. Keep SKILL.md under 500 lines; split details into supporting
+files. See [context-engineering](../../../../skills/context-engineering/SKILL.md)
+for the delivery method and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure)
+for the underlying progressive-disclosure surface.
 
 ### Design for finite human bandwidth
 
-Agent throughput keeps rising; human review capacity doesn't. When designing a skill or shaping any output that lands in front of a human, treat the output like code architecture: humans review the skeleton (the 20% whose failure invalidates the rest), agents own the details within, and details should be cheap to throw out without disturbing the skeleton. Generalizes design-driven's 30/70 to all agent-human collaboration. See the current [harness](../../../../skills/harness/SKILL.md) expression for the active context architecture.
+Agent throughput keeps rising; human review capacity doesn't. When designing a skill or shaping any output that lands in front of a human, treat the output like code architecture: humans review the skeleton (the 20% whose failure invalidates the rest), agents own the details within, and details should be cheap to throw out without disturbing the skeleton. Generalizes design-driven's 30/70 to all agent-human collaboration. See the [P10 interpretation](../../../../principles/interpretations/P10.md) for the active source-bound reading.
 
 ### Principal contradiction first
 

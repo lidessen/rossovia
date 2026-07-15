@@ -12,5 +12,7 @@ not a second semantic source or a permanent agent headquarters.
 | [GITHUB-SETTINGS.md](GITHUB-SETTINGS.md) | Evidence-gated manual configuration for the remote repository | Does not change remote settings by itself |
 | [Mission Records](../../operations/missions/README.md) | Git-tracked continuity source for one material mission and its return branches | Does not create a queue, accept facts, or schedule work |
 
-The current founding transition is a finite campaign at
+The first founding transition is retained as a completed finite campaign at
 [`design/organization/sessions/2026-07-10-formal-operations-preparation.md`](../organization/sessions/2026-07-10-formal-operations-preparation.md).
+Future material work opens a new mission only when its side branches need a
+durable return contract.

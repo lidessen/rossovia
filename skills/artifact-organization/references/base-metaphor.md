@@ -12,7 +12,7 @@ expression rules live in `skill-engineering` → `references/expression-layers.m
 | **根据地章程** | Stable shape of the base | `design/DESIGN.md`, adopted organization section |
 | **领导班子** | Who may approve a durable authority change when that risk exists | Host-designated human authority; not a mandatory table for every audit |
 | **常备制度** | Institutions that outlive one campaign | `principles/`, `skills/`, `interpretations/` |
-| **专业工作队** | Living expressions that carry out specialized judgment | Individual skills, review teams, harness layers |
+| **专业工作队** | Living expressions that carry out specialized judgment | Individual skills, review teams, context-delivery layers |
 | **活动** | Bounded campaigns with a start, end, and deliverable | Transition waves, one-off regens, probe runs |
 | **活动架构** | Rules that keep one campaign from becoming permanent bureaucracy | One bounded transition and settlement |
 | **通报 / 投影** | Copies and summaries regenerable from source | Snapshots, symlinks, L1 markers |

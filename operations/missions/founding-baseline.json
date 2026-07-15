@@ -7,14 +7,19 @@
     "design/organization/sessions/2026-07-12-work-cell-contract-convergence-review.md"
   ],
   "createdAt": "2026-07-11T04:00:28Z",
-  "updatedAt": "2026-07-12T17:06:10Z",
+  "updatedAt": "2026-07-14T16:47:54Z",
   "mainline": {
     "contradiction": "Turn the regenerated baseline into one reviewable, human-governed starting point without losing unresolved review, runtime, or continuity work.",
     "acceptance": [
       "Every active side branch has an explicit return record.",
       "The baseline receives content review, operational review, and a Principal disposition."
     ],
-    "status": "active"
+    "status": "settled",
+    "closureSources": [
+      "https://github.com/lidessen/skills/pull/13",
+      "design/organization/sessions/2026-07-12-work-cell-contract-convergence-review.md",
+      "design/organization/sessions/2026-07-11-founding-baseline-next-strategy-case.md"
+    ]
   },
   "branches": [
     {
@@ -39,7 +44,9 @@
       "sources": [
         "design/decisions/020-bounded-work-cell-deliberation.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "The bounded deliberation pilot is implemented and verified in decisions 020 and 022, with its tally and authority limits retained."
     },
     {
       "id": "mission-continuity",
@@ -50,7 +57,9 @@
       "sources": [
         "design/decisions/021-git-tracked-mission-continuity.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "The first Git-tracked Mission Record, validator, lifecycle commands, and operational boundary were integrated; this record itself demonstrated the return contract."
     },
     {
       "id": "organization-constitution",
@@ -63,7 +72,9 @@
         "design/decisions/015-human-initiated-formal-operations.md",
         "design/FOUNDING-MANDATE.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Decisions 012 and 015 plus the founding identity and operating model retain direction, administration, execution, observation, correction, and human commitment boundaries without creating a permanent controller."
     },
     {
       "id": "deliberation-usability",
@@ -75,7 +86,9 @@
         "chronicle/records/2026/07/obs-20260711-deliberation-docket-usability-budget-failure.json",
         "design/decisions/022-project-first-deliberation-interaction.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Decision 022 added the bounded project-facing docket, unique invocation records, allocation inspection, and verified no-authority boundary."
     },
     {
       "id": "verification-method",
@@ -87,7 +100,9 @@
         "skills/disciplined-development/SKILL.md",
         "regeneration/evaluations/2026-07-11-disciplined-development-test-value-gate.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Disciplined-development now carries the test-value gate and the retained deliberation scenarios verify the user-facing persistence boundary."
     },
     {
       "id": "founding-baseline-vote",
@@ -100,7 +115,9 @@
         "design/organization/sessions/2026-07-11-founding-baseline-vote-docket.md",
         "design/organization/sessions/2026-07-11-founding-baseline-vote-work-estimate.md"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "The prepared vote, independent positions, protocol-gap dissent, and Principal Option A resolution are retained in the founding strategy case; the result guided review and integration without becoming commitment authority."
     },
     {
       "id": "contract-convergence-review",

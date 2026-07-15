@@ -47,7 +47,8 @@ here for any skill whose form was abstracted from inherited surface layout.
 - **Commands:** stable English API names (`model`, `create`, `verify`). One-line
   gloss in the command file is enough; do not alternate slogans in headings.
 - **SKILL.md body:** one operational register (match sibling skills such as
-  `harness`). Triggers may include non-English phrases in `description` only.
+  `context-engineering`). Triggers may include non-English phrases in
+  `description` only.
 - **Session artifacts:** use the target skill's domain vocabulary consistently.
 - **Metaphor:** optional layer; map every term back to domain vocabulary before
   writing gates or verify tables.

@@ -10,7 +10,13 @@ Skills should help agents understand *why*, not just specify *what*. A skill tha
 
 ### Hierarchical context management
 
-Agent context is finite — structure it in layers: L1 (architecture, always present), L2 (design, on activation), L3 (implementation, on demand). The higher the layer, the smaller and more stable. Keep SKILL.md under 500 lines; split details into supporting files. See the [harness skill](skills/harness/SKILL.md) for the full methodology and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure) for the underlying spec.
+Agent context is finite — place stable orientation before scoped action,
+task-specific methods on activation, and volatile detail on demand, then map
+those timings to the actual runtime surfaces rather than assuming universal
+L1/L2/L3 containers. Keep SKILL.md under 500 lines; split details into supporting
+files. See [context-engineering](skills/context-engineering/SKILL.md) for the
+delivery method and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure)
+for the underlying progressive-disclosure surface.
 
 ## Project Overview
 
@@ -97,3 +103,24 @@ The `description` field is critical — it determines when the agent auto-trigge
 - Subcommand files in `commands/` should be self-contained instructions — SKILL.md dispatches to them, they don't reference each other. Reference material goes in `references/`.
 - Frontmatter `description` is multi-line and acts as the trigger classifier. Include both the methodology description and concrete trigger phrases/argument hints.
 - When referencing another skill, use concept references: describe the *goal* first, then mention the skill as one way to achieve it. E.g., "Set up architectural documentation for the project — the design-driven skill can help with this." This keeps the skill functional even when the referenced skill isn't installed.
+
+## Safe installation verification
+
+Never run `npx skills add .` from this repository or install a local checkout
+back into the same worktree. `.agents/skills` is a symlink to `../skills`, so a
+self-install can make the installer's target alias its source and destroy the
+source tree. To verify packaging, use:
+
+```bash
+python3 scripts/probe-skill-installation.py <skill-name>
+```
+
+The probe copies one skill into a disposable source snapshot, installs it into
+a separate disposable project, compares file hashes, and removes both. Do not
+replace this with a direct local-source install merely to save setup time.
+
+Before running an unfamiliar or potentially mutating external CLI, inspect the
+working tree. Stage or commit any validated work—especially untracked artifacts
+that would be costly to reconstruct—before the probe. A staged checkpoint makes
+recovery possible; it does not make an unsafe source/target relation safe, so
+the disposable probe remains mandatory.

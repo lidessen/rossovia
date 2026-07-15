@@ -29,10 +29,10 @@ Those failures changed the implementation rather than being discarded:
   generated/dependency paths during listing and direct access. A read-only,
   command-free cell skips snapshots; a command-capable cell retains a full
   non-excluded diff surface because commands can have side effects.
-- [`project.ts`](../../packages/work-cell/src/project.ts) discovers the host
+- [`project.ts`](../../packages/work-cell/src/adapters/sequence/project.ts) discovers the host
   Sequence, lowers explicit intent and acceptance into the existing contract,
   grants no writes or commands, and persists the full record.
-- [`presentation.ts`](../../packages/work-cell/src/presentation.ts) renders the
+- [`presentation.ts`](../../packages/work-cell/src/adapters/sequence/presentation.ts) renders the
   selected P-IDs, principal contradiction, and each decision contribution with
   artifact, evidence, verification, cost, and record location. It is a
   rebuildable projection of the raw record.

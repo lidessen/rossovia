@@ -1,16 +1,19 @@
 # Work Cell
 
-An independent experimental runtime for testing whether a Sequence expression,
-skill, or candidate principle changes real agent behavior.
+An independent runtime for executing bounded agent work and retaining evidence.
 
 One cell is ephemeral. It receives an intent, isolated workspace, capability
-surface, acceptance conditions, budget, and the host Principle Sequence. It
-first expresses one lead P-ID and up to three supports, loads only those
-interpretations, then executes with bounded file and command tools. A caller
-may independently declare terminal tools, a structured final output schema, and
-required output artifacts. The runtime records the final output and verifies
-declared artifacts without making any of those conditions part of another's
-tool schema.
+surface, prepared instructions and context, acceptance conditions, and budget,
+then executes with bounded file and command tools. A caller may independently
+declare terminal tools, a structured final output schema, and required output
+artifacts. The runtime records the final output and verifies declared artifacts
+without making any of those conditions part of another's tool schema.
+
+The core does not require a Principle Sequence, genome, experiment treatment,
+proposal role, or vote. Adapters prepare those domain-specific forms into the
+generic `CellInput` contract. The Sequence adapter selects one lead P-ID and up
+to three supports, loads only their interpretations, and retains the expression
+as typed preparation evidence before invoking the unchanged core.
 
 The package does not depend on an external agent engine. AI SDK is the first
 driver adapter; `deepseek-v4-flash` is the default model. The core contract can
@@ -56,7 +59,7 @@ comparable observations; see [decision 014](../../design/decisions/014-work-esti
 
 `budget.estimatedTokens` is a post-run estimate, not a token stop condition.
 When present, the final summary compares it with actual total, input/output,
-expression/execution use, and read volume. A caller may declare
+preparation/execution use, and read volume. A caller may declare
 `estimatedTokensTolerance` as a relative absolute-error tolerance (for example,
 `0.5` means ±50%); only then can the summary label a variance as requiring
 review. No tolerance is silently invented. Provider context limits, step limits,
@@ -79,16 +82,59 @@ bun src/cli.ts probe "Find the current interaction friction" \
 bun src/cli.ts review
 ```
 
-`probe` discovers `principles/SEQUENCE.md` and its interpretations, lowers the
-intent and human-provided acceptance conditions into the unchanged core
-contract, and remains read-only. It excludes `.git`, `.work-cell`, and
-`node_modules` from the cell's readable surface. Full records are retained in
-the host project's `.work-cell/runs/`; the terminal summary is only a readable
-projection of that record.
+`probe` discovers `principles/SEQUENCE.md` and its interpretations, prepares a
+generic executable Cell through the Sequence adapter, and remains read-only. It
+excludes `.git`, `.work-cell`, and `node_modules` from the cell's readable
+surface. Full records are retained in the host project's `.work-cell/runs/`;
+the terminal summary is only a readable projection of that record.
 
 The first interaction deliberately does not infer acceptance, write authority,
-commands, treatments, or principle adoption. Use the exact interfaces below
-when those details must be supplied explicitly.
+commands, experiment treatments, or principle adoption. Use the exact
+interfaces below when those details must be supplied explicitly.
+
+## Work Cell Swarm
+
+A Swarm releases between one and 256 already-defined ordinary Cells under one
+bounded concurrency value. It adds execution scale, failure isolation, stable
+manifest-order records, and compact persistence; it does not add a shared mind,
+task generation, communication, synthesis, voting, or semantic acceptance.
+The input must declare `concurrency` explicitly; the runtime never turns an
+omitted resource decision into a hidden 32-way release.
+
+```json
+{
+  "version": "work-cell.swarm-input.v1",
+  "id": "bounded-read-only-audit",
+  "concurrency": 64,
+  "cells": [
+    { "...": "CellInput" }
+  ]
+}
+```
+
+Each Cell keeps its own prepared instructions, context, skills, tools, output
+contracts, budget, and workspace policy. The runtime creates a fresh driver for
+every Cell and retains one outcome for every manifest entry even when a sibling
+fails. Result identity follows manifest order rather than completion order.
+
+Cells may share a workspace root only when every Cell sharing it has empty
+`writePaths` and `allowedCommands`. A writable or command-capable Cell must have
+its own root in this first slice; the runtime does not infer safe disjoint write
+scopes or create Git worktrees.
+
+Each invocation creates `<manifest>.<run-id>.swarm/` beside the manifest. The
+`cells/` directory contains one full outcome per Cell, while `index.json`
+contains hashes, statuses, aggregate usage, and a post-run estimate audit. The
+index is explicitly a rebuildable projection with no acceptance authority, so
+callers can inspect or load only the results they need instead of injecting all
+child output into one context.
+
+The serialized boundaries are deliberately distinct. Input uses
+`work-cell.swarm-input.v1`, each retained outcome uses
+`work-cell.swarm-outcome.v1`, and the compact index uses
+`work-cell.swarm-index.v1`. The in-memory `SwarmRun` has no serialization
+version or stored summary; it keeps execution facts as `Date` values and derives
+the non-authoritative summary only when a caller or persistence adapter needs it.
 
 ## Bounded deliberation
 
@@ -97,12 +143,12 @@ independent members sequentially. Members share one question, option set,
 source list, and complete Sequence-coverage declaration, but do not receive one
 another's results. Every member is forced to be read-only and command-free.
 
-The manifest carries full `CellInput` objects whose `workspace.root` values are
-absolute paths. The CLI adds the docket and member-role instructions to the
-Cell's ordinary prompt surface. The deliberation adapter supplies its own
-`outputSchema` for a position with `support`, `oppose`, `reserve`, or
-`discover`, plus a decision delta, strongest counterargument, and unchanged
-alternative; that schema is not a terminal-tool payload.
+The manifest carries full Sequence-adapter input objects whose `workspace.root`
+values are absolute paths. The adapter adds the docket and member-role
+instructions before preparing each generic Cell. The deliberation adapter
+supplies its own `outputSchema` for a position with `support`, `oppose`,
+`reserve`, or `discover`, plus a decision delta, strongest counterargument, and
+unchanged alternative; that schema is not a terminal-tool payload.
 
 ```json
 {
@@ -122,7 +168,7 @@ alternative; that schema is not a terminal-tool payload.
     { "pid": "P04", "status": "seat", "rationale": "Names the principal contradiction" },
     { "pid": "P11", "status": "guardrail", "rationale": "Protects authority separation" }
   ],
-  "members": [{ "id": "strategy", "role": "strategy seat", "input": { "...": "CellInput" } }]
+  "members": [{ "id": "strategy", "role": "strategy seat", "input": { "...": "SequenceCellInput" } }]
 }
 ```
 
@@ -147,7 +193,7 @@ record exposes any `allocationOverrunTokens`; it never retries or expands the en
 
 `deliberate` remains the exact portable interface for adapters and fixtures.
 For a Sequence-bearing project, use `deliberate-probe` to lower the human-sized
-decision surface instead of hand-writing member `CellInput` JSON. It accepts a
+decision surface instead of hand-writing member `SequenceCellInput` JSON. It accepts a
 question, two to four options, three to five P-ID seats, project-relative
 evidence paths, and a human-authorized allocation. It makes a unique ignored
 directory containing a compact evidence packet, a copied Sequence/interpretation
@@ -177,10 +223,23 @@ scope. See [decision 022](../../design/decisions/022-project-first-deliberation-
 
 ## Generic-core promotion rule
 
-Work Cell is a general runtime. Prompts, selected skills, tools, and adapter
-schemas differentiate it for a concrete practice. A proposal-specific role,
-vote, workflow, or doctrine belongs in an adapter such as `deliberation.ts`,
-not in `CellInput`, the driver, or `runCell`.
+Work Cell is a general runtime. Prepared instructions and context, selected
+skills, tools, and adapter schemas differentiate it for a concrete practice. A
+Sequence expression, experiment treatment, proposal-specific role, vote,
+workflow, or doctrine belongs in an adapter, not in `CellInput`, `CellDriver`,
+or `runCell`.
+
+The public core barrel exports contracts, the driver interface, workspace,
+`runCell`, the AI SDK driver, and the general Swarm runtime. Optional carriers
+are explicit adapter entry points:
+
+- `src/adapters/sequence/`
+- `src/adapters/experiment/`
+- `src/adapters/deliberation/`
+
+Creative-field, naming, latent-routing, and idea-development code lives under
+`src/research/`. Package scripts may execute those probes, but neither the main
+barrel nor an adapter entry point promotes them into the stable runtime API.
 
 Only a capability demonstrated by at least two independent adapters may be
 considered for the core contract, and only if it names an execution invariant
@@ -195,8 +254,11 @@ bun install
 bun run typecheck
 bun test
 
-# One cell input JSON
+# One already-prepared generic Cell input JSON
 bun src/cli.ts run path/to/cell.json
+
+# Bounded concurrent release of ordinary independent Cells
+bun src/cli.ts swarm path/to/swarm.json
 
 # Matched baseline/treatment experiment
 bun src/cli.ts experiment experiments/p23-bounded-autonomy.json
@@ -219,6 +281,9 @@ traces and workspace diffs. Promote a reviewed result deliberately into
 
 - No external task board, scheduler, memory, daemon, or agent process.
 - No cell-to-cell messaging, child-cell expansion, or implicit task tree.
+- `swarm` releases one to 256 already-defined ordinary Cells with bounded
+  concurrency. It preserves independent records but does not synthesize them,
+  retry work, or decide whether any result is semantically good.
 - `deliberate` runs three to five read-only, command-free member Cells from one
   docket. Each member must state a structured position; the CLI preserves raw
   member records and emits a non-authoritative vote-and-dissent projection. It

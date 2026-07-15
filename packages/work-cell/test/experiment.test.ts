@@ -7,15 +7,15 @@ import type {
   CellDriver,
   DriverContext,
   DriverResult,
-  GeneSelectionResult,
 } from "../src/driver";
-import { ExperimentSpecSchema, runExperiment } from "../src/experiment";
-import type { ExpressedGenome, Genome } from "../src/genome";
+import { ExperimentSpecSchema, runExperiment } from "../src/adapters/experiment/runtime";
+import type { GeneSelectionResult, Genome, SequenceCellInput } from "../src/adapters/sequence/genome";
+import type { SequenceSelector } from "../src/adapters/sequence/runtime";
 import type {
   ComparisonJudge,
   ComparisonJudgeRequest,
   ComparisonJudgeResult,
-} from "../src/judge";
+} from "../src/adapters/experiment/judge";
 
 const roots: string[] = [];
 
@@ -63,7 +63,7 @@ test("experiment keeps variants blind and attributes a treatment-only decision",
   expect(judge.sawTreatmentMetadata).toBe(false);
   const treatment = record.runs.find((run) => run.variantId === "treatment");
   expect(treatment?.record.workspaceDiff.changed).toContain("SKILL.md");
-  expect(await readFile(join(treatment!.directory, "record.json"), "utf8")).toContain("work-cell.run.v2");
+  expect(await readFile(join(treatment!.directory, "record.json"), "utf8")).toContain("work-cell.run.v3");
 });
 
 test("experiment skips its judge when either Work Cell is unsettled", async () => {
@@ -106,11 +106,11 @@ test("experiment skips its judge when either Work Cell is unsettled", async () =
   expect(record.comparisons[0]?.judge.raw).toEqual({ skipped: true });
 });
 
-class VariantDriver implements CellDriver {
+class VariantDriver implements CellDriver, SequenceSelector {
   readonly descriptor = { adapter: "scripted", provider: "test", model: "deterministic" };
 
-  async selectGenes(
-    _input: CellInput,
+  async selectSequenceGenes(
+    _input: SequenceCellInput,
     _genome: Genome,
     _context: DriverContext,
   ): Promise<GeneSelectionResult> {
@@ -126,8 +126,8 @@ class VariantDriver implements CellDriver {
     };
   }
 
-  async run(input: CellInput, _expressed: ExpressedGenome, context: DriverContext): Promise<DriverResult> {
-    const content = input.treatment
+  async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
+    const content = input.instructions.some((instruction) => instruction.includes("Protect process space"))
       ? "# Skill\n\nKeep outcome boundaries; leave the bounded process autonomous.\n"
       : "# Skill\n\nFollow the required process.\n";
     await context.workspace.writeText("SKILL.md", content);

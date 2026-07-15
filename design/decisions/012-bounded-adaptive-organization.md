@@ -81,7 +81,7 @@ source/projection conflict.
 It is **self-adaptive** when a signal selects the smallest existing response:
 practice evidence routes to `practice-cycle`; a carrier mismatch to
 `form-guidance`; expression failure to `skill-engineering`; context failure to
-`harness`; authority/lifetime drift to `artifact-organization`; phase direction
+`context-engineering`; authority/lifetime drift to `artifact-organization`; phase direction
 to `strategic-advisory`; and possible semantic insufficiency to
 `principle-cultivation`. One observation is evidence for a probe, not an
 automatic amendment.
