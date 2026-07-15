@@ -25,7 +25,7 @@ npm run dev
 npm run build
 ```
 
-The checked-in canonical origin is `https://lidessen-skills.vercel.app`; set
+The checked-in canonical origin is `https://skills.angineer.dev`; set
 `SITE_URL` only to override it for an alternate deployment. Vercel deploys from
 the repository root so the build can read the authoritative sources outside
 this package while publishing only `site/dist`. The projector uses

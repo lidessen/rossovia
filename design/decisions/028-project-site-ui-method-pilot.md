@@ -78,9 +78,9 @@ The first public target is [Vercel](https://vercel.com/docs/deployments), using
 its static Astro output rather than a Vercel-only runtime capability. Preview
 deployment precedes production aliasing. The public domain has the form
 `skills.<existing-primary-domain>`. The Principal initially selected an owned
-subdomain, then chose `lidessen-skills.vercel.app` for this pilot to avoid a DNS
-control dependency. This provider-owned hostname identifies the repository
-surface, not the still-unresolved project name; a future owned domain remains a
+subdomain, then chose `skills.angineer.dev` from an existing Vercel-managed
+domain family to avoid an additional DNS control path. The subdomain identifies
+the repository surface, not the still-unresolved project name, and remains a
 replaceable routing decision. Domain purchase, nameserver transfer, analytics,
 and automatic production deployment are outside this pilot unless separately
 approved.
