@@ -1,0 +1,49 @@
+---
+const { stacked = false } = Astro.props;
+---
+
+<nav class:list={['site-nav', { stacked }]} aria-label="主导航">
+  <a href="/docs/">文档</a>
+  <a href="/docs/skills/">方法</a>
+  <a href="https://github.com/lidessen/skills">GitHub</a>
+</nav>
+
+<style>
+  .site-nav {
+    display: flex;
+    align-items: center;
+    gap: clamp(1rem, 3vw, 2.5rem);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 0.86rem;
+  }
+
+  .site-nav.stacked {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0;
+    padding-block: 1rem 2rem;
+    border-top: 1px solid var(--line);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+    text-underline-offset: 0.22em;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  .stacked a {
+    width: 100%;
+    padding-block: 0.7rem;
+  }
+
+  @media (max-width: 620px) {
+    .site-nav:not(.stacked) a:last-child {
+      display: none;
+    }
+  }
+</style>

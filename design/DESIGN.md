@@ -355,6 +355,23 @@ practice. Its static implementation lives under [`site/`](../site/). A declared
 manifest projects repository sources into public routes during the build; the
 generated pages, navigation, and catalog cannot acquire source authority.
 
+After the shared shell and a contrasting-context behavior probe exposed a
+compact repeated judgment, [decision 029](decisions/029-visual-design-skill.md)
+admits `visual-design` as the portable `cultivate`, `shape`, `design`, and `review`
+method. It carries no palette, typography, grid, component language, or other
+fixed style from this site; each direction remains specific to its object,
+audience, action, inherited identity, and material conditions.
+
+For external projects that need one adoptable entry rather than prior knowledge
+of this collection's internal role map,
+[decision 030](decisions/030-improve-agent-workflow.md) admits
+`improve-agent-workflow`. It starts from one observed agent-action gap, locates
+the owning skill, instruction, context path, tool surface, verification gate,
+or handoff, and changes only the smallest owner required by the real runtime.
+It is a domain improvement method, not a central orchestrator: generic task
+learning remains with `practice-cycle`, skill expression with
+`skill-engineering`, and project truth and acceptance with their host owners.
+
 Vercel is the first hosting target, not a runtime dependency. The public
 `skills.<primary-domain>` subdomain names this repository surface rather than
 the unresolved whole-project identity. Human review retains aesthetic and

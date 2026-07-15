@@ -43,6 +43,7 @@ specific method.
 |-------|---------|-------------|
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | Decide how authoritative project information reaches an agent at the moment it changes action, using the actual runtime rather than a fixed layer or filename convention. |
+| [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | Diagnose a real agent-work failure in an existing project, change the smallest owning surface, and verify the improvement through the ordinary agent entry path. |
 | [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | Design, rewrite, review, and test skills that improve repeated agent action. Forms a selected Sequence expression team for each target skill, carries a standalone Sequence snapshot, and requires behavior evidence rather than prompt polish. |
 | [disciplined-development](skills/disciplined-development/SKILL.md) | `/disciplined-development` | Apply lightweight evidence, scope, and test-value discipline underneath a development task without creating another methodology workflow. |
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | Turn an observed non-trivial practice into a settled conclusion, a next smallest test, or a route to the owner of the unresolved judgment. |
@@ -52,6 +53,7 @@ specific method.
 | [strategic-advisory](skills/strategic-advisory/SKILL.md) | `/strategic-advisory` | Prepare a proposed Strategy Case from phase evidence for human review; it links long direction, medium capabilities, and short mission candidates without self-commitment. |
 | [artifact-organization](skills/artifact-organization/SKILL.md) | `/artifact-organization` | Audit whether artifact roles and paths still express accepted design, then apply one smallest justified organization transition. |
 | [structural-refactoring](skills/structural-refactoring/SKILL.md) | `/structural-refactoring` | Reconstitute code across meaningful boundaries while preserving declared behavior, caller impact, and verification authority. |
+| [visual-design](skills/visual-design/SKILL.md) | `/visual-design` | Design or review content-led visual work, inheriting or forming a project direction without imposing a portable fixed style or claiming human acceptance. |
 
 ## Experimental runtime
 
@@ -76,6 +78,7 @@ deliberation; see [decision 027](design/decisions/027-general-work-cell-core-and
 |---|---|
 | Researching whether recurring evidence merits a reusable core principle | `/principle-cultivation research` |
 | Designing, auditing, or verifying how project context reaches an agent | `/context-engineering` |
+| Installing one entry into an existing project to improve its agent skills, instructions, tools, verification, or handoffs from observed behavior | `/improve-agent-workflow` |
 | Creating, rewriting, or behavior-testing an agent skill | `/skill-engineering` |
 | Applying a lightweight evidence, scope, completion, or meaningful-test discipline to ordinary development | `/disciplined-development` |
 | Turning a finished or failed non-trivial attempt into the next bounded practice | `/practice-cycle` |
@@ -85,6 +88,7 @@ deliberation; see [decision 027](design/decisions/027-general-work-cell-core-and
 | Preparing strategic direction from a completed phase's verified evidence | `/strategic-advisory` |
 | Checking whether project layout still fits accepted design | `/artifact-organization audit`; use `transition` only for a material gap |
 | Splitting modules, extracting responsibilities, or untangling dependencies without intended behavior change | `/structural-refactoring` |
+| Establishing, shaping, implementing, or reviewing a visual direction for an interface, document, illustration, or related product family | `/visual-design` |
 | Auditing how several established methods should cooperate | Read the project's organization operating model first; use the role that owns the observed disturbance, not a new universal skill |
 
 The Principle Sequence is the root and `principle-cultivation` maintains it.
@@ -101,29 +105,74 @@ Pre-regeneration methodology skills (`design-driven`, `goal-driven`, `evidence-d
 
 ## Installation
 
+> Maintainers: do not test installation by running `npx skills add .` inside
+> this checkout. Its local agent-skill path aliases the source tree. Use
+> `python3 scripts/probe-skill-installation.py <skill-name>` for a disposable,
+> hash-checked packaging probe.
+
+List the skills in this repository before choosing one:
+
 ```bash
-npx skills install lidessen/skills
+npx skills add lidessen/skills --list
 ```
 
-Install a specific active skill:
+Install one skill into the current project (the default scope):
 
 ```bash
-npx skills install lidessen/skills/principle-cultivation
-npx skills install lidessen/skills/context-engineering
-npx skills install lidessen/skills/skill-engineering
-npx skills install lidessen/skills/disciplined-development
-npx skills install lidessen/skills/practice-cycle
-npx skills install lidessen/skills/form-guidance
-npx skills install lidessen/skills/naming-and-articulation
-npx skills install lidessen/skills/work-estimation
-npx skills install lidessen/skills/strategic-advisory
-npx skills install lidessen/skills/artifact-organization
-npx skills install lidessen/skills/structural-refactoring
+npx skills add lidessen/skills --skill improve-agent-workflow
 ```
 
-Example commands:
+Add `-g` for a personal installation available across projects, or `-a codex`
+(or another supported agent) when automatic agent detection is not the target.
+The default project installation can be committed and shared with the project.
+See the current [`skills` CLI reference](https://www.skills.sh/docs/cli) for
+agent names, installation methods, updates, and removal.
 
+## Daily use
+
+Skills are normally selected from the user's intent: after installation, ask
+the agent for the outcome in ordinary language. Internal operation names are
+optional controls, not a workflow the user must memorize. For example:
+
+```text
+Redesign this settings page so the account state and primary action are clear.
+Review the rendered docs site and explain why the pages do not feel coherent.
+Establish a visual direction for this new product before implementing its site.
+Our coding agent keeps missing this repository's scope boundary. Inspect the
+actual path and make the smallest verified improvement.
+This project skill produces plausible output but ignores its verification
+source. Fix the owning surface and test it through the normal agent entry.
 ```
+
+For an explicit Codex activation, name the skill with `$` and optionally state
+the operation:
+
+```text
+$visual-design redesign this settings page and verify it in the browser
+$visual-design review the rendered docs experience; do not edit yet
+$visual-design cultivate a reusable direction for this new product
+$improve-agent-workflow audit why agents miss this project instruction
+$improve-agent-workflow improve this repository's release-note skill and verify it
+```
+
+Other agents may expose explicit activation through a slash command, mention,
+menu, or only model-driven selection. Those invocation forms belong to the
+agent, not to this repository's portable command protocol. If a newly installed
+skill is not discovered in an existing session, start a new agent session.
+
+Within `visual-design`, `design` and `review` are the common paths.
+`cultivate` is a low-frequency project-formation path, and `shape` is useful
+when a direction is required without implementation. The skill uses browser,
+rendering, image, and accessibility tools only when the host agent supplies
+them; it does not pretend that prose is a rendered or tested artifact.
+
+## Advanced operation controls
+
+The following forms describe the skill argument convention. Replace `/` with
+the explicit activation form supported by the chosen agent, or state the same
+intent in natural language.
+
+```text
 /context-engineering design # Design one source-to-agent delivery path
 /context-engineering audit  # Audit context delivery against the actual runtime
 /context-engineering verify # Prove a task receives and uses the context
@@ -134,10 +183,18 @@ Example commands:
 /skill-engineering test     # Test a skill against action and boundary probes
 /skill-engineering sync-sequence-snapshot # Regenerate packaged sequence snapshots
 
+/improve-agent-workflow audit   # Read-only localization of one agent-work gap
+/improve-agent-workflow improve # Apply and verify the smallest owning change
+
 /artifact-organization audit
 /artifact-organization transition
 
 /structural-refactoring       # Behavior-preserving structural code change
+
+/visual-design design    # Common: create or redesign a real artifact/system
+/visual-design review    # Common: review the rendered whole
+/visual-design cultivate # Infrequent: establish a provisional project direction
+/visual-design shape     # Advanced: form a direction without implementation
 
 /principle-cultivation research <question|paths>
 /principle-cultivation propose <research-note>

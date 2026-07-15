@@ -1,0 +1,39 @@
+---
+import Search from '@astrojs/starlight/components/Search.astro';
+import SiteNav from './SiteNav.astro';
+import SiteWordmark from './SiteWordmark.astro';
+---
+
+<div class="docs-header">
+  <SiteWordmark />
+  <div class="docs-search print:hidden"><Search /></div>
+  <div class="docs-primary-nav sl-hidden md:sl-block print:hidden"><SiteNav /></div>
+</div>
+
+<style>
+  .docs-header {
+    display: grid;
+    height: 100%;
+    grid-template-columns: minmax(13rem, 1fr) minmax(14rem, 22rem) minmax(13rem, 1fr);
+    gap: clamp(1rem, 3vw, 2.5rem);
+    align-items: center;
+  }
+
+  .docs-search {
+    min-width: 0;
+  }
+
+  .docs-primary-nav {
+    justify-self: end;
+  }
+
+  @media (max-width: 49.99rem) {
+    .docs-header {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .docs-search {
+      justify-self: end;
+    }
+  }
+</style>

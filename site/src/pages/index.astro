@@ -1,4 +1,6 @@
 ---
+import SiteNav from '../components/SiteNav.astro';
+import SiteWordmark from '../components/SiteWordmark.astro';
 import skills from '../data/skills.json';
 import '../styles/home.css';
 
@@ -26,16 +28,8 @@ const canonicalUrl = new URL('/', Astro.site ?? Astro.url);
   <body>
     <a class="skip-link" href="#main">跳到正文</a>
     <header class="site-header">
-      <a class="wordmark" href="/" aria-label="Skills 首页">
-        <span class="wordmark-mark" aria-hidden="true"></span>
-        <span>Skills</span>
-        <small>方法仓库</small>
-      </a>
-      <nav aria-label="主导航">
-        <a href="/docs/">文档</a>
-        <a href="/docs/skills/">方法</a>
-        <a href="https://github.com/lidessen/skills">GitHub</a>
-      </nav>
+      <SiteWordmark />
+      <SiteNav />
     </header>
 
     <main id="main">

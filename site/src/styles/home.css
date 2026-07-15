@@ -1,16 +1,4 @@
-:root {
-  color-scheme: light;
-  --paper: #f3eddf;
-  --paper-deep: #e7ddca;
-  --ink: #20221f;
-  --muted: #62645d;
-  --line: #b8ad99;
-  --red: #a3392f;
-  --red-deep: #7f2a23;
-  --green: #243e35;
-  --serif: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
-  --sans: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
-}
+@import './tokens.css';
 
 * {
   box-sizing: border-box;
@@ -27,7 +15,7 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    linear-gradient(90deg, transparent calc(100% - 1px), rgba(32, 34, 31, 0.045) 1px) 0 0 / 8.333vw 100%,
+    linear-gradient(90deg, transparent calc(100% - 1px), var(--grid-line) 1px) 0 0 / 8.333vw 100%,
     var(--paper);
 }
 
@@ -71,44 +59,16 @@ footer {
   border-bottom: 1px solid var(--ink);
 }
 
-.wordmark {
-  display: flex;
-  align-items: baseline;
-  gap: 0.65rem;
-  text-decoration: none;
-  font-family: var(--serif);
-  font-size: 1.45rem;
-  font-weight: 700;
-}
-
-.wordmark-mark {
-  width: 0.75rem;
-  height: 0.75rem;
-  background: var(--red);
-  border-radius: 50%;
-}
-
-.wordmark small {
-  color: var(--muted);
-  font-family: var(--sans);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-}
-
-nav,
 .footer-links {
   display: flex;
   gap: clamp(1rem, 3vw, 2.5rem);
   font-size: 0.86rem;
 }
 
-nav a,
 .footer-links a {
   text-decoration: none;
 }
 
-nav a:hover,
 .footer-links a:hover {
   text-decoration: underline;
 }
@@ -509,11 +469,6 @@ footer span {
 
   .site-header {
     min-height: 76px;
-  }
-
-  .wordmark small,
-  nav a:last-child {
-    display: none;
   }
 
   .hero {

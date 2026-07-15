@@ -1,7 +1,17 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { readFileSync } from 'node:fs';
 
 const publicSite = process.env.SITE_URL ?? 'https://skills.atthis.run';
+const contentManifest = JSON.parse(
+  readFileSync(new URL('./content-manifest.json', import.meta.url), 'utf8'),
+);
+const skillGuideItems = contentManifest.pages
+  .filter((page) => page.presentation === 'skill-guide' && page.route)
+  .map((page) => ({
+    label: page.title,
+    slug: page.route.replace(/^\//, '').replace(/\/$/, ''),
+  }));
 
 export default defineConfig({
   site: publicSite,
@@ -21,6 +31,9 @@ export default defineConfig({
       customCss: ['./src/styles/starlight.css'],
       components: {
         Head: './src/components/DocsHead.astro',
+        Header: './src/components/DocsHeader.astro',
+        MobileMenuFooter: './src/components/DocsMobileMenuFooter.astro',
+        ThemeProvider: './src/components/DocsThemeProvider.astro',
       },
       social: [
         {
@@ -41,10 +54,7 @@ export default defineConfig({
           label: '方法',
           items: [
             { label: '技能目录', slug: 'docs/skills' },
-            {
-              label: 'Context Engineering',
-              slug: 'docs/skills/context-engineering',
-            },
+            ...skillGuideItems,
           ],
         },
       ],

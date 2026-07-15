@@ -1,4 +1,8 @@
-:root {
+@import './tokens.css';
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
   --sl-font: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   --sl-font-system-mono: ui-monospace, 'SFMono-Regular', monospace;
   --sl-color-accent-low: #ead1c6;
@@ -11,26 +15,27 @@
   --sl-color-gray-4: #aaa396;
   --sl-color-gray-5: #d7cdbb;
   --sl-color-gray-6: #e9e1d2;
-  --sl-color-black: #f5efe3;
-}
-
-:root[data-theme='dark'] {
-  --sl-color-accent-low: #421d1a;
-  --sl-color-accent: #e08b78;
-  --sl-color-accent-high: #f6d8cc;
-  --sl-color-white: #f4edde;
-  --sl-color-gray-1: #ded7c9;
-  --sl-color-gray-2: #c7c0b3;
-  --sl-color-gray-3: #9e988e;
-  --sl-color-gray-4: #6e6b65;
-  --sl-color-gray-5: #3c3d39;
-  --sl-color-gray-6: #292b28;
-  --sl-color-black: #191b19;
+  --sl-color-gray-7: #f3eddf;
+  --sl-color-black: #f3eddf;
+  --sl-color-bg: var(--paper);
+  --sl-color-bg-nav: color-mix(in srgb, var(--paper) 96%, white);
+  --sl-color-bg-sidebar: color-mix(in srgb, var(--paper) 92%, var(--paper-deep));
+  --sl-color-bg-inline-code: var(--paper-deep);
+  --sl-color-bg-accent: var(--red);
+  --sl-color-hairline-light: #d7cdbb;
+  --sl-color-hairline: #d7cdbb;
+  --sl-color-hairline-shade: var(--line);
+  --sl-color-text: var(--muted);
+  --sl-color-text-accent: var(--red-deep);
+  --sl-color-text-invert: var(--paper);
+  --sl-nav-height: 6rem;
+  --sl-nav-pad-x: 1.5rem;
 }
 
 body {
-  background-image: linear-gradient(rgba(120, 95, 70, 0.035) 1px, transparent 1px);
-  background-size: 100% 2rem;
+  background:
+    linear-gradient(90deg, transparent calc(100% - 1px), var(--grid-line) 1px) 0 0 / 8.333vw 100%,
+    var(--paper);
 }
 
 h1,
@@ -46,6 +51,140 @@ h3 {
 
 .sl-markdown-content a:not([class]) {
   text-underline-offset: 0.22em;
+}
+
+html[data-presentation='skill-guide'] {
+  --sl-content-width: 54rem;
+}
+
+html[data-presentation='skill-guide'] .hero {
+  position: relative;
+  min-height: 22rem;
+  align-content: end;
+  padding: clamp(3rem, 8vw, 6.5rem) 0 2rem;
+  border-bottom: 1px solid var(--sl-color-gray-4);
+}
+
+html[data-presentation='skill-guide'] .hero::before {
+  position: absolute;
+  top: 1.25rem;
+  left: 0;
+  color: var(--sl-color-accent-high);
+  content: 'METHOD GUIDE';
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+html[data-presentation='skill-guide'] .hero .stack,
+html[data-presentation='skill-guide'] .hero .copy {
+  align-items: flex-start;
+  text-align: left;
+}
+
+html[data-presentation='skill-guide'] .hero h1 {
+  max-width: 12ch;
+  font-family: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
+  font-size: clamp(3rem, 8vw, 6.25rem);
+  font-weight: 600;
+  letter-spacing: -0.055em;
+  line-height: 0.96;
+}
+
+html[data-presentation='skill-guide'] .hero .tagline {
+  max-width: 38rem;
+  color: var(--sl-color-gray-2);
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+  line-height: 1.8;
+}
+
+html[data-presentation='skill-guide'] .hero .actions {
+  justify-content: flex-start;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content {
+  counter-reset: guide-section;
+  font-size: 1rem;
+  line-height: 1.85;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > blockquote:first-child {
+  margin-bottom: clamp(3rem, 7vw, 5rem);
+  padding: 1rem 1.25rem;
+  border-inline-start: 3px solid var(--sl-color-accent);
+  background: color-mix(in srgb, var(--sl-color-accent-low) 45%, transparent);
+  color: var(--sl-color-gray-2);
+  font-size: 0.86rem;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > h2 {
+  counter-increment: guide-section;
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: baseline;
+  margin-top: clamp(4rem, 8vw, 6rem);
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--sl-color-gray-4);
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > h2::before {
+  color: var(--sl-color-accent);
+  content: '0' counter(guide-section);
+  font-family: var(--sl-font);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > h3 {
+  margin-top: 2.75rem;
+  color: var(--sl-color-accent-high);
+  font-family: var(--sl-font);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > ol {
+  padding-inline-start: 0;
+  list-style: none;
+  counter-reset: method-step;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > ol > li {
+  counter-increment: method-step;
+  position: relative;
+  margin: 0;
+  padding: 1.2rem 0 1.2rem 3.5rem;
+  border-top: 1px solid var(--sl-color-gray-5);
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > ol > li::before {
+  position: absolute;
+  top: 1.45rem;
+  inset-inline-start: 0;
+  width: 2.5rem;
+  color: var(--sl-color-accent);
+  content: counter(method-step, decimal-leading-zero);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+html[data-presentation='skill-guide'] .sl-markdown-content > ol > li::marker {
+  content: '';
+}
+
+@media (max-width: 49.99rem) {
+  html[data-presentation='skill-guide'] .hero {
+    min-height: 18rem;
+  }
+
+  html[data-presentation='skill-guide'] .sl-markdown-content > h2 {
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

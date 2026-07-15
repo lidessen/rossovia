@@ -1,0 +1,50 @@
+---
+const { href = '/' } = Astro.props;
+---
+
+<a class="site-wordmark" {href} aria-label="Skills 首页">
+  <span class="site-wordmark__mark" aria-hidden="true"></span>
+  <span>Skills</span>
+  <small>方法仓库</small>
+</a>
+
+<style>
+  .site-wordmark {
+    display: flex;
+    align-items: baseline;
+    gap: 0.65rem;
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 1.45rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .site-wordmark__mark {
+    width: 0.75rem;
+    height: 0.75rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--red);
+  }
+
+  small {
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+  }
+
+  .site-wordmark:hover span:not(.site-wordmark__mark) {
+    text-decoration: underline;
+    text-underline-offset: 0.22em;
+  }
+
+  @media (max-width: 620px) {
+    small {
+      display: none;
+    }
+  }
+</style>
