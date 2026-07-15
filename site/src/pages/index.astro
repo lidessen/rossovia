@@ -5,6 +5,7 @@ import '../styles/home.css';
 const visibleSkills = skills.slice(0, 5);
 const description =
   '一个让 AI 生产方法可检查、可替换、可共同改进的开放工程项目。';
+const canonicalUrl = new URL('/', Astro.site ?? Astro.url);
 ---
 
 <!doctype html>
@@ -14,7 +15,9 @@ const description =
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content={description} />
     <meta name="theme-color" content="#f3eddf" />
+    <link rel="canonical" href={canonicalUrl} />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
     <meta property="og:title" content="Skills · 开放的 AI 生产方法" />
     <meta property="og:description" content={description} />
     <meta name="twitter:card" content="summary" />
