@@ -55,6 +55,62 @@ test("recovers a natural finish without a terminal tool when provider metadata i
   expect(calls).toBe(3);
 });
 
+test("recovers structured output after a terminal tool and retains all usage", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls <= 4) return response([{
+        type: "tool-call",
+        toolCallId: `read-${calls}`,
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 5) return response([{ type: "tool-call", toolCallId: "terminal", toolName: "submit_review", input: "{}" }], "tool-calls");
+      if (calls === 6) return response([{ type: "text", text: JSON.stringify({ recommendation: "hold", reason: "One boundary remains unverified." }) }], "stop");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkDeepSeekDriver({ apiKey: "not-used", model: "mock-structured-recovery" });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "structured-recovery-rehearsal",
+    intent: "Exercise structured output after terminal recovery.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the review decision."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The recovered result satisfies both contracts."],
+    terminalTools: [{
+      name: "submit_review",
+      description: "Signal review completion.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    outputSchema: {
+      type: "object",
+      properties: {
+        recommendation: { type: "string", enum: ["proceed", "hold"] },
+        reason: { type: "string" },
+      },
+      required: ["recommendation", "reason"],
+      additionalProperties: false,
+    },
+    budget: { maxSteps: 4, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.output).toEqual({ recommendation: "hold", reason: "One boundary remains unverified." });
+  expect(record.verification).toMatchObject({
+    passed: true,
+    terminal: { passed: true, called: ["submit_review"] },
+    output: { passed: true },
+  });
+  expect(record.usage).toEqual({ inputTokens: 6, outputTokens: 6, totalTokens: 12, cachedInputTokens: 0 });
+  expect(calls).toBe(6);
+});
+
 test("activation adapter retries one malformed structured impulse and retains its usage", async () => {
   let calls = 0;
   const model = new MockLanguageModelV3({

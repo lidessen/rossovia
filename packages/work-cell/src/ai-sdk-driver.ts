@@ -96,8 +96,9 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       providerOptions: deepSeekNonThinking,
     });
     let observedUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+    let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
     let executionResult;
-    let closureResult: { text: string; totalUsage: unknown; providerMetadata: unknown; steps: unknown[] } | undefined;
+    let closureResult: { text: string; output?: unknown; totalUsage: unknown; providerMetadata: unknown; steps: unknown[] } | undefined;
     try {
       executionResult = await executionAgent.generate({
         prompt: renderTaskPrompt(input),
@@ -134,6 +135,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         instructions: `The previous work ended without satisfying its terminal-tool contract. Do not continue analysis. You must now invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
         tools,
         stopWhen: stepCountIs(2),
+        ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
         prepareStep: ({ stepNumber }) => {
           if (terminalSatisfied()) return finalOutputStep(input);
           if (stepNumber === 0) {
@@ -148,7 +150,6 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         temperature: 0,
         providerOptions: deepSeekNonThinking,
       });
-      let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
       try {
         closureResult = await closureAgent.generate({
           prompt: `${renderTaskPrompt(input)}\n\nPrevious unfinished response:\n${executionResult.text}`,
@@ -179,6 +180,15 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         closureResult = terminalOnlyResult(terminalNames, normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata), "recovery");
       }
     }
+    let output: unknown;
+    try {
+      output = (closureResult ?? executionResult).output;
+    } catch (error) {
+      throw new CellExecutionError(
+        error instanceof Error ? error.message : String(error),
+        addUsage(observedUsage, closureUsage),
+      );
+    }
     const usage = addUsage(
       normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata),
       closureResult ? normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata) : { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
@@ -186,7 +196,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     return {
       terminalToolsCalled: [...terminalToolsCalled],
       finalText: closureResult ? `${executionResult.text}\n\n${closureResult.text}` : executionResult.text,
-      ...(executionResult.output === undefined ? {} : { output: executionResult.output }),
+      ...(output === undefined ? {} : { output }),
       usage,
       rawSteps: sanitize([...executionResult.steps, ...(closureResult?.steps ?? [])]) as unknown[],
       providerMetadata: sanitize(executionResult.providerMetadata),
