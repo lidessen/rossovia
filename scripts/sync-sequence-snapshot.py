@@ -30,6 +30,7 @@ CANONICAL_UPSTREAM = "https://github.com/lidessen/skills.git"
 REFRESH_REF = "main"
 SNAPSHOT_SKILLS = (
     "context-engineering",
+    "improve-agent-workflow",
     "principle-cultivation",
     "skill-engineering",
     "artifact-organization",
@@ -40,6 +41,7 @@ SNAPSHOT_SKILLS = (
     "work-estimation",
     "strategic-advisory",
     "structural-refactoring",
+    "visual-design",
 )
 FULL_INTERPRETATION_SKILLS = frozenset({"skill-engineering"})
 

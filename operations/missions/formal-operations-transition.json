@@ -7,7 +7,7 @@
     "design/organization/sessions/2026-07-10-formal-operations-preparation.md"
   ],
   "createdAt": "2026-07-15T13:29:02Z",
-  "updatedAt": "2026-07-15T15:10:05Z",
+  "updatedAt": "2026-07-15T15:22:16Z",
   "mainline": {
     "contradiction": "Turn accumulated post-founding work into reviewable accepted or explicitly returned lines, then retire the temporary preparation formation without losing unique evidence.",
     "acceptance": [
@@ -76,5 +76,5 @@
       "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "public-expression-return"
 }

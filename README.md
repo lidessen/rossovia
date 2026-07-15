@@ -1,5 +1,7 @@
 # Skills
 
+[简体中文](README.zh-CN.md)
+
 > The current methods repository for a project that makes productive AI a
 > common, open, replaceable capability.
 
