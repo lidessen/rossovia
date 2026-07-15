@@ -161,13 +161,37 @@ def format_pid_list(pids: list[str]) -> str:
     return ", ".join(pids[:-1]) + f", and {pids[-1]}"
 
 
+def fence_marker(line: str) -> tuple[str, int, str] | None:
+    stripped = line.lstrip(" ")
+    if len(line) - len(stripped) > 3 or not stripped or stripped[0] not in {"`", "~"}:
+        return None
+    marker = stripped[0]
+    length = len(stripped) - len(stripped.lstrip(marker))
+    if length < 3:
+        return None
+    return marker, length, stripped[length:]
+
+
 def demote_headings(text: str, levels: int) -> str:
     rendered: list[str] = []
+    active_fence: tuple[str, int] | None = None
     for line in text.rstrip().splitlines():
-        match = re.match(r"^(#{1,6})(\s+.*)$", line)
-        if match:
-            depth = min(6, len(match.group(1)) + levels)
-            line = "#" * depth + match.group(2)
+        fence = fence_marker(line)
+        if fence is not None:
+            marker, length, remainder = fence
+            if active_fence is None:
+                active_fence = (marker, length)
+            elif (
+                marker == active_fence[0]
+                and length >= active_fence[1]
+                and not remainder.strip()
+            ):
+                active_fence = None
+        elif active_fence is None:
+            match = re.match(r"^(#{1,6})(\s+.*)$", line)
+            if match:
+                depth = min(6, len(match.group(1)) + levels)
+                line = "#" * depth + match.group(2)
         rendered.append(line)
     return "\n".join(rendered)
 
