@@ -33,7 +33,7 @@ writing, skill-expression engineering, or a change to Sequence meaning.
 ## Principle source
 
 Use a host Sequence and matching interpretations when present. Otherwise use
-this package's read-only fallback under `references/sequence-snapshot/`. Read
+this package's read-only fallback in `references/sequence.md`. Read
 only P06, P07, P16, and P15 for this skill's stable lineage.
 
 ## Start

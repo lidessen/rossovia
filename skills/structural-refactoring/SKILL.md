@@ -29,8 +29,8 @@ behavior or accept its own result.
 ## Principle source
 
 Use a host Sequence and matching interpretations when the host declares them.
-Otherwise use this skill's read-only fallback under
-`references/sequence-snapshot/`. Read only P07, P02, P13, and P15. A live task
+Otherwise use this skill's read-only fallback in `references/sequence.md`.
+Read only P07, P02, P13, and P15. A live task
 may select a different current lead, but it does not create co-primary doctrine.
 
 ## Start

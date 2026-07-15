@@ -32,8 +32,8 @@ own facts, execute missions, schedule work, or modify the Sequence.
 ## Principle source
 
 Use a host Sequence and its matching interpretations when the host declares
-them. Otherwise use this skill's read-only fallback under
-`references/sequence-snapshot/`. Read only P07, P04, P13, and P15 for this
+them. Otherwise use this skill's read-only fallback in `references/sequence.md`.
+Read only P07, P04, P13, and P15 for this
 skill's stable lineage. The human approval boundary remains explicit even when
 the host expresses it through another P-ID or governance artifact.
 

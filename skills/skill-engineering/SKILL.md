@@ -32,8 +32,9 @@ truer form. Do not create, interpret, or revise Sequence entries here; route a
 possible new principle to principle-cultivation.
 
 This package is independently usable. It carries a read-only Sequence snapshot
-and source-bound interpretations under references/sequence-snapshot. The
-snapshot is a portable lineage baseline, not a second semantic source.
+in `references/sequence.md` and source-bound interpretations under
+`references/sequence-interpretations/`. The package is a portable lineage
+baseline, not a second semantic source.
 
 ## Dispatch
 
@@ -53,8 +54,8 @@ Resolve the target's lineage before selecting an expression team.
 1. If the host project contains principles/SEQUENCE.md and its corresponding
    interpretations directory, treat that declared local source as authoritative
    for the current task.
-2. Otherwise use this package's references/sequence-snapshot/SEQUENCE.md and
-   only the selected interpretation files beneath it. This fallback must be
+2. Otherwise use this package's `references/sequence.md` and only the selected
+   files under `references/sequence-interpretations/`. This fallback must be
    sufficient for offline use.
 3. If freshness materially affects the decision, use refresh-sequence to obtain
    a temporary, verified remote comparison. Never overwrite the packaged

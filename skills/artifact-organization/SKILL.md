@@ -19,7 +19,7 @@ argument-hint: "[audit | transition]"
 ## Principle source
 
 Use a host Sequence and interpretations when the host declares them. Otherwise
-use this package's read-only fallback under references/sequence-snapshot.
+use this package's read-only fallback in `references/sequence.md`.
 
 ## Scope
 

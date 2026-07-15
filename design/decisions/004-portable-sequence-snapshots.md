@@ -18,6 +18,13 @@ the source-bound interpretations that its runtime selection requires. A skill
 that chooses teams for other skills, such as skill-engineering, bundles the
 complete current interpretation set but loads only selected P-IDs.
 
+The default carrier is one generated `references/sequence.md` containing
+provenance, the full Sequence, and that skill's selected interpretations. A
+skill that must choose arbitrary teams keeps its complete interpretation set
+split under `references/sequence-interpretations/`; flattening that set would
+force every activation to load irrelevant context. This is one distribution
+projection with two disclosure shapes, not two authorities.
+
 Resolve lineage in this order:
 
 1. A declared host Sequence and interpretations directory, if present.
@@ -38,6 +45,9 @@ ephemerally; a new upstream package release is the only durable refresh route.
 - A network path improves freshness but is never a hidden hard dependency.
 - Packaging gains a snapshot-consistency check whenever a selected principle or
   interpretation changes.
+- Ordinary skill packages avoid a repeated metadata/Sequence/interpretation
+  directory tree, while team-selecting skills preserve file-level selective
+  loading.
 
 ## Human approval
 

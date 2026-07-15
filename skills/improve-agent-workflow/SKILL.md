@@ -44,17 +44,17 @@ diagnosis selects an owner, hand off the domain judgment rather than keeping a
 second coordinating layer active.
 
 This package is independently usable. It carries a read-only Sequence snapshot
-under `references/sequence-snapshot/`; the target project does not need this
+in `references/sequence.md`; the target project does not need this
 repository or its other skills.
 
 ## Principle source
 
 Use a host `principles/SEQUENCE.md` and matching interpretations when the host
 declares them. Otherwise use this package's snapshot. Before diagnosing the
-owner, read `SEQUENCE.md` first and then exactly the P04, P02, P08, and P15
-interpretation files from the same source. Do not load the other
-interpretations by default. A host source governs its project; do not merge it
-with or overwrite it from the snapshot.
+owner, read the Sequence and exactly the P04, P02, P08, and P15 interpretation
+sections from the same source. Do not load other interpretations by default. A
+host source governs its project; do not merge it with or overwrite it from the
+snapshot.
 
 ## Start
 

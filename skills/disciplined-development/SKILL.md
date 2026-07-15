@@ -17,6 +17,12 @@ description: >-
 **Primary:** P15
 **Supporting:** P02, P08, P05
 
+## Principle source
+
+Use a host Sequence and matching interpretations when the host declares them.
+Otherwise use this skill's read-only fallback in `references/sequence.md`.
+Read only P15, P02, P08, and P05.
+
 ## Scope
 
 This is a lightweight behavioral layer, not a methodology. It applies to any

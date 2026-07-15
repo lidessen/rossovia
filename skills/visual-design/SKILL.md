@@ -39,7 +39,7 @@ skill may interpret and extend it for the present case; it does not replace it.
 First detect whether the host declares a Sequence and matching interpretations.
 When it does, read only host P16, P07, P05, and P09; do not inspect the packaged
 snapshot. Only when the host lacks that source may you use the read-only fallback
-under `references/sequence-snapshot/`. A live task may select a different
+in `references/sequence.md`. A live task may select a different
 current lead, but it does not create co-primary doctrine.
 
 ## Domain vocabulary

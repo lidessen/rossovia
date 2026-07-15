@@ -32,8 +32,8 @@ selector, task board, or acceptance authority.
 ## Principle source
 
 Use a host Sequence and its matching interpretations when the host declares
-them. Otherwise use this skill's read-only fallback under
-`references/sequence-snapshot/`. Read only P03, P02, P08, and P15 for this
+them. Otherwise use this skill's read-only fallback in `references/sequence.md`.
+Read only P03, P02, P08, and P15 for this
 skill's stable lineage. A live task may select a different current lead, but it
 does not create co-primary doctrine.
 

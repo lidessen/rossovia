@@ -34,8 +34,8 @@ its result. Route those responsibilities after the form decision and stop.
 ## Principle source
 
 Use a host Sequence and its matching interpretations when the host declares
-them. Otherwise use this skill's read-only fallback under
-`references/sequence-snapshot/`. Read only P16, P04, P14, and P15 for this
+them. Otherwise use this skill's read-only fallback in `references/sequence.md`.
+Read only P16, P04, P14, and P15 for this
 skill's stable lineage. A host task may select a different current lead, but it
 does not create co-primary doctrine.
 

@@ -35,8 +35,8 @@ or memory mechanism exists in another runtime. Investigate the actual target.
 ## Principle source
 
 Use a host Sequence and matching interpretations when the host declares them.
-Otherwise use this skill's read-only fallback under
-`references/sequence-snapshot/`. Read only P09, P02, P14, and P08.
+Otherwise use this skill's read-only fallback in `references/sequence.md`.
+Read only P09, P02, P14, and P08.
 
 ## Start
 

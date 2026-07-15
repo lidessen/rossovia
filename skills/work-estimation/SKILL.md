@@ -31,7 +31,7 @@ calibration belong to their respective owners.
 ## Principle source
 
 Use a host Sequence and matching interpretations when present. Otherwise use
-this package's read-only fallback under `references/sequence-snapshot/`. Read
+this package's read-only fallback in `references/sequence.md`. Read
 only P07, P02, P08, and P15 for this skill's stable lineage.
 
 ## Start

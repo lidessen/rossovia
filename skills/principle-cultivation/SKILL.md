@@ -19,7 +19,7 @@ description: >-
 ## Principle source
 
 Use a host Sequence and interpretations when the host declares them. Otherwise
-use this package's read-only fallback under references/sequence-snapshot. It
+use this package's read-only fallback in `references/sequence.md`. It
 contains the full one-line Sequence and the readings for P03, P04, P12, and
 P15, so this skill remains usable when installed alone. The fallback is a
 versioned projection, not a source to edit from a target project.
