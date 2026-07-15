@@ -1,6 +1,6 @@
 # Current Stage Preparation Group Operational Review
 
-**Status:** locally prepared for an integration PR — not push, PR, or merge authorization
+**Status:** [draft PR #17](https://github.com/lidessen/skills/pull/17) opened — awaiting remote verification and review
 **Content opinion:** [current-stage committee review](2026-07-15-current-stage-content-committee-review.md)
 **Reviewed target:** `d66a125d04ad8294dbfe6742ba007ab9a5f3015b`
 **Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json), branch `current-stage-integration`
@@ -75,15 +75,13 @@ PR containing the complete current head.
 
 ## Operational opinion and next gate
 
-The `current-stage-integration` branch is **ready to be committed and proposed
-as one integration PR**. It is not ready to merge yet. The next authorized
-movement would:
+The `current-stage-integration` branch was committed, pushed, and proposed as
+[draft PR #17](https://github.com/lidessen/skills/pull/17). It is not ready to
+merge yet. The remaining movement is:
 
-1. commit this review evidence and update the Mission Record source set;
-2. push `experiment/activation-field-scale` and open one PR into `main`;
-3. wait for current-head remote verification and AI review comments;
-4. disposition every material comment with evidence;
-5. present a compact merge / return / hold brief to the Principal.
+1. wait for current-head remote verification and AI review comments;
+2. disposition every material comment with evidence;
+3. present a compact merge / return / hold brief to the Principal.
 
 PR #16, the 129 staged sibling-worktree entries, preparation F4, and preparation
 F5 remain separate open return obligations. Opening the integration PR does not
