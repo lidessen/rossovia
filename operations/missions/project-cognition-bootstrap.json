@@ -1,0 +1,40 @@
+{
+  "version": "mission-record.v1",
+  "id": "project-cognition-bootstrap",
+  "title": "Probe rebuildable project cognition before selecting a durable form",
+  "sources": [
+    "design/organization/sessions/2026-07-16-project-cognition-bootstrap-strategy-case.md",
+    "regeneration/evaluations/2026-07-15-project-cognition-scale-control.md",
+    "regeneration/evaluations/2026-07-15-typed-coverage-ledger-probe.md",
+    "design/decisions/031-extensible-work-cell-orchestration.md"
+  ],
+  "createdAt": "2026-07-16T12:08:08Z",
+  "updatedAt": "2026-07-16T12:08:08Z",
+  "mainline": {
+    "contradiction": "The project can construct useful temporary source-linked models, but it cannot yet preserve and selectively refresh project cognition across tasks without creating a second canon or leaking domain semantics into Work Cell and Swarm.",
+    "acceptance": [
+      "A fixed-revision second-project comparison distinguishes a strong single-agent temporary model from semantically partitioned Work Cell cognition using withheld downstream questions and source-backed relation coverage.",
+      "A typed coverage ledger preserves authority, licensed-derivation, reconstructible-projection, causal, execution-evidence, and acceptance relations through synthesis.",
+      "One bounded revision delta invalidates and refreshes only affected packets while reconnecting cross-packet boundaries and reporting missed or uncertain impact.",
+      "All cognition artifacts remain rebuildable, non-authoritative projections over named sources; no source, Work Cell core, Swarm kernel, or sibling project is mutated or made a dependency.",
+      "The result produces a form decision or an explicit no-change disposition; it does not infer a Skill or runtime from model output alone."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "cross-project-bootstrap-probe",
+      "parent": "mainline",
+      "kind": "investigation",
+      "purpose": "Compare temporary and semantically partitioned cognition on a fixed second-project source tree, then test one typed, bounded incremental refresh without selecting durable storage or runtime form.",
+      "returnCondition": "Source revisions, packet boundaries, accepted local records, typed synthesis, withheld-question comparison, delta invalidation audit, observed work/cost, privacy limits, and disconfirming results are retained for independent form review.",
+      "sources": [
+        "design/organization/sessions/2026-07-16-project-cognition-bootstrap-strategy-case.md",
+        "skills/code-review/references/review-model.md",
+        "regeneration/evaluations/2026-07-15-project-cognition-scale-control.md"
+      ],
+      "status": "open"
+    }
+  ],
+  "currentFocus": "cross-project-bootstrap-probe"
+}
