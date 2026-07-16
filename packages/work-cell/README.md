@@ -78,7 +78,9 @@ Use only the conditions the task actually needs. They are orthogonal:
 `terminalTools` dynamically become callable tools and require one declared tool
 to be called exactly once. Without `outputSchema`, that call ends the model loop;
 with `outputSchema`, one tool-free step may still produce the independent
-logical result. The terminal input remains trace evidence and is not silently
+logical result. Terminal names must be unique, and a driver must reject names
+that collide with its ordinary execution tools before dispatch. The terminal
+input remains trace evidence and is not silently
 treated as that result. `outputSchema` validates the final logical result. `artifacts`
 require a regular file in write scope that this run added or changed; the record
 retains its SHA-256 and byte size. None implies the schema or payload of another.

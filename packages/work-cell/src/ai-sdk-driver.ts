@@ -27,6 +27,13 @@ const deepSeekNonThinking = {
   } satisfies DeepSeekLanguageModelOptions,
 };
 
+const EXECUTION_TOOL_NAMES = new Set([
+  "list_files",
+  "read_file",
+  "write_file",
+  "run_command",
+]);
+
 export class AiSdkDeepSeekDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
   protected readonly model;
@@ -166,7 +173,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
           renderExecutionInstructions(input),
           "## Terminal recovery phase",
           "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
-          "The complete prior transcript is present. Successful tool results remain usable evidence. A later rejected tool call does not erase earlier results or prove that no files were read.",
+          "Only the original task context and a compact projection of successful tool results are present; prior assistant reasoning, prose, rejected calls, and other transcript messages are absent. Retained results remain usable evidence, and a later rejected tool call does not erase them or prove that no files were read.",
           "Use the retained evidence, bound only genuinely missing facts, and invoke exactly one declared terminal tool now.",
           `You must invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
         ].join("\n"),
@@ -276,6 +283,15 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     markTerminalTool: (name: string) => boolean,
     terminalOnly: () => boolean,
   ) {
+    const conflictingTerminalNames = (input.terminalTools ?? [])
+      .map((terminal) => terminal.name)
+      .filter((name) => EXECUTION_TOOL_NAMES.has(name));
+    if (conflictingTerminalNames.length > 0) {
+      throw new Error(
+        `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,
+      );
+    }
+
     const tools = {
       list_files: tool({
         description: "List files inside the declared workspace read scope.",

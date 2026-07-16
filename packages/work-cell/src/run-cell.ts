@@ -68,9 +68,17 @@ export async function runCell(
       }
       driverResult = await runWithSignal(() => driver.run(input, context), signal);
       const terminalTools = input.terminalTools ?? [];
-      const terminalSatisfied = terminalTools.length === 0 || terminalTools.some(
-        (terminal) => driverResult!.terminalToolsCalled.includes(terminal.name),
+      const terminalResult = verifyTerminalContract(
+        terminalTools.map((terminal) => terminal.name),
+        driverResult.terminalToolsCalled,
       );
+      if (terminalResult.error) {
+        trace.push(traceEvent("terminal.contract.violation", {
+          error: terminalResult.error,
+          required: terminalResult.verification.required,
+          called: terminalResult.verification.called,
+        }));
+      }
       after = await workspace.snapshot();
       const diff = workspace.diff(before, after);
       if (outputSchema) {
@@ -82,19 +90,15 @@ export async function runCell(
       artifacts = artifactResult.artifacts;
       artifactVerification = artifactResult.verification;
       verification = {
-        passed: terminalSatisfied
+        passed: terminalResult.verification.passed
           && (outputVerification?.passed ?? true)
           && artifactVerification.passed,
-        terminal: {
-          passed: terminalSatisfied,
-          required: terminalTools.map((terminal) => terminal.name),
-          called: driverResult.terminalToolsCalled,
-        },
+        terminal: terminalResult.verification,
       };
 
-      if (!terminalSatisfied) {
+      if (!terminalResult.verification.passed) {
         status = "protocol_error";
-        error = `driver completed without one required terminal tool: ${terminalTools.map((terminal) => terminal.name).join(", ")}`;
+        error = terminalResult.error;
       } else if (outputVerification && !outputVerification.passed) {
         status = driverResult.output === undefined ? "protocol_error" : "verification_failed";
         error = outputVerification.errors.join("; ");
@@ -163,6 +167,29 @@ export async function runCell(
       ...(options.preparation ? [{ phase: "preparation", adapter: options.preparation.adapter, steps: options.preparation.rawSteps }] : []),
       ...(driverResult ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
     ],
+    ...(error ? { error } : {}),
+  };
+}
+
+function verifyTerminalContract(required: string[], called: string[]) {
+  if (required.length === 0) {
+    const error = called.length > 0
+      ? `driver reported terminal tool calls without a declared contract: ${called.join(", ")}`
+      : undefined;
+    return {
+      verification: { passed: error === undefined, required, called },
+      ...(error ? { error } : {}),
+    };
+  }
+
+  const declared = new Set(required);
+  const error = called.length !== 1
+    ? `expected exactly one declared terminal tool call; received ${called.length}${called.length > 0 ? `: ${called.join(", ")}` : ""}`
+    : !declared.has(called[0]!)
+      ? `driver reported undeclared terminal tool call: ${called[0]}`
+      : undefined;
+  return {
+    verification: { passed: error === undefined, required, called },
     ...(error ? { error } : {}),
   };
 }

@@ -74,8 +74,13 @@ evidence before accepting the review.
 - A deterministic driver probe shows that the sole terminal tool is explicitly
   selected during the action phase, an attempted late read is not executed, and
   the loop stops immediately after the terminal call.
-- A second probe calls two terminal tools in one step and observes a protocol
-  failure plus `terminal.contract.violation` evidence.
+- An AI SDK probe calls two terminal tools in one step and observes an immediate
+  failure plus `terminal.contract.violation` evidence. An independent generic
+  driver returns both calls and `runCell` settles `protocol_error`, confirming
+  that final contract authority does not belong to the adapter.
+- Input validation rejects duplicate terminal names, and the AI SDK adapter
+  rejects a terminal name that collides with an ordinary execution tool before
+  model dispatch.
 - Existing recovery and simultaneous `terminalTools + outputSchema` probes pass
   while retaining usage from both loops.
 - A provider-behavior probe repeats an ordinary read despite a terminal-only

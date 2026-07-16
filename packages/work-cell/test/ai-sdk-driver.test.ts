@@ -178,10 +178,13 @@ test("terminal recovery preserves successful evidence after a provider repeats a
   expect(record.status).toBe("passed");
   expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(3);
   expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(true);
-  expect(JSON.stringify(recoveryRequest)).toContain("Successful tool results remain usable evidence");
-  expect(JSON.stringify(recoveryRequest)).toContain("Read, then submit the bounded result");
-  expect(JSON.stringify(recoveryRequest)).toContain("P04｜主要矛盾｜矛盾论");
-  expect(JSON.stringify(recoveryRequest).split("P04｜主要矛盾｜矛盾论")).toHaveLength(2);
+  const serializedRecoveryRequest = JSON.stringify(recoveryRequest);
+  expect(serializedRecoveryRequest).toContain("compact projection of successful tool results");
+  expect(serializedRecoveryRequest).toContain("prior assistant reasoning");
+  expect(serializedRecoveryRequest).not.toContain("complete prior transcript");
+  expect(serializedRecoveryRequest).toContain("Read, then submit the bounded result");
+  expect(serializedRecoveryRequest).toContain("P04｜主要矛盾｜矛盾论");
+  expect(serializedRecoveryRequest.split("P04｜主要矛盾｜矛盾论")).toHaveLength(2);
   expect(calls).toBe(5);
 });
 
@@ -214,6 +217,39 @@ test("rejects more than one terminal tool call", async () => {
   expect(record.status).toBe("failed");
   expect(record.error).toContain("expected exactly one terminal tool call");
   expect(record.trace.some((event) => event.type === "terminal.contract.violation")).toBe(true);
+});
+
+test("rejects terminal tools that collide with AI SDK execution tools before model dispatch", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      throw new Error("model dispatch should not occur");
+    },
+  });
+  const driver = new AiSdkDeepSeekDriver({ apiKey: "not-used", model: "mock-terminal-collision" });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "terminal-tool-collision",
+    intent: "Reject an ambiguous execution and terminal tool surface.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Do not dispatch the model."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["Tool-name collisions fail before model dispatch."],
+    terminalTools: [{
+      name: "read_file",
+      description: "Ambiguous terminal action.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    budget: { maxSteps: 2, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("failed");
+  expect(record.error).toContain("terminal tool names conflict with AI SDK execution tools: read_file");
+  expect(calls).toBe(0);
 });
 
 test("stops the main loop after one structured output step following a terminal call", async () => {

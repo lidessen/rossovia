@@ -75,6 +75,20 @@ export const TerminalToolSchema = z.object({
   inputSchema: OutputSchemaSchema,
 });
 
+const TerminalToolsSchema = z.array(TerminalToolSchema).min(1).superRefine((value, context) => {
+  const names = new Set<string>();
+  for (const [index, terminal] of value.entries()) {
+    if (names.has(terminal.name)) {
+      context.addIssue({
+        code: "custom",
+        path: [index, "name"],
+        message: `duplicate terminal tool name: ${terminal.name}`,
+      });
+    }
+    names.add(terminal.name);
+  }
+});
+
 export const UsageSchema = z.object({
   inputTokens: z.number().nonnegative().default(0),
   outputTokens: z.number().nonnegative().default(0),
@@ -109,7 +123,7 @@ export const CellInputSchema = z.object({
   context: z.array(CellContextSchema).default([]),
   capabilitiesRequired: z.array(z.string().min(1)).default([]),
   acceptance: z.array(z.string().min(1)).min(1),
-  terminalTools: z.array(TerminalToolSchema).min(1).optional(),
+  terminalTools: TerminalToolsSchema.optional(),
   outputSchema: OutputSchemaSchema.optional(),
   artifacts: z.array(ArtifactRequirementSchema).min(1).optional(),
   budget: BudgetSchema.default({
