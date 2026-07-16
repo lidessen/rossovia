@@ -96,6 +96,20 @@ test("one Cell runner error cannot erase passing siblings or reorder their recor
   });
 });
 
+test("cancellation retains one manifest-order outcome for every undispatched Cell", async () => {
+  const root = await fixture();
+  const manifest = swarm(root, ["first", "second", "third"]);
+  const controller = new AbortController();
+  controller.abort(new Error("cancel before release"));
+
+  const record = await runSwarm(manifest, () => new SwarmDriver(), controller.signal);
+
+  expect(record.outcomes.map((outcome) => outcome.cellId)).toEqual(["first", "second", "third"]);
+  expect(record.outcomes.every((outcome) =>
+    outcome.kind === "runner_error" && outcome.error.includes("cancelled before")
+  )).toBe(true);
+});
+
 test("shared roots allow read-only Cells but reject write or command authority before execution", async () => {
   const root = await fixture();
   const readOnly = swarm(root, ["reader-a", "reader-b"]);

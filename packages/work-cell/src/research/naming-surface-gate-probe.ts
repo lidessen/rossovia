@@ -90,7 +90,7 @@ async function main(args: string[]): Promise<void> {
   const results = candidates.length === 0 ? [] : await Promise.all(seats.map(async (seat) => {
     const result = await generateText({
       model,
-      system: [
+      instructions: [
         "You are an independent aesthetic surface gate, not a naming generator, explainer, marketer, or final authority.",
         "You see only names and spoken forms. Judge the surface that a person actually encounters; do not invent a favorable story or guess the hidden treatment.",
         "You may reject every candidate. There is no quota, diversity target, politeness requirement, or obligation to identify a best available option.",
@@ -227,7 +227,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     inputTokens,
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

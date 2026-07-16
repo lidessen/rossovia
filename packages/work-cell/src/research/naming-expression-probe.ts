@@ -206,7 +206,7 @@ async function generatePrivateNamingSet(input: {
   const hasRelations = input.relations !== undefined;
   return runStructuredProbe((correction) => generateText({
     model: input.model,
-    system: [
+    instructions: [
       "You privately form possible names for one actual long-lived open-source project. This is generation evidence, not a human review packet or naming decision.",
       "Creativity is a true relation made memorable, not maximal distance from ordinary language. Associative fragments are private inputs, never public candidates merely because they are novel.",
       "A name may be borrowed, transformed, translated, compressed, inverted, invented, culturally rooted, or found through a private association. No language, length, cultural register, or formation path is preferred in advance.",
@@ -261,7 +261,7 @@ async function extractProjectionRelations(input: {
 }): Promise<{ output: z.infer<typeof ProjectionRelationsSchema>; usage: CellUsage }> {
   const result = await runStructuredProbe((correction) => generateText({
     model: input.model,
-    system: [
+    instructions: [
       "You convert private associative material into zero to six plain relations grounded in a concrete project.",
       "You are not a naming agent. Do not propose, preserve, evaluate, or hint at any name, word, phrase, sound, spelling, translation, historical costume, or metaphorical object.",
       "Strip away distinctive surface material. Retain only a relation that changes how the project can be understood and state the boundary that keeps it from collapsing into a slogan.",
@@ -349,7 +349,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     inputTokens,
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

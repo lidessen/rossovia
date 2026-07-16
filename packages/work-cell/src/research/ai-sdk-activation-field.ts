@@ -52,7 +52,7 @@ export class AiSdkActivationFieldDriver implements ActivationFieldDriver {
   ): Promise<FieldDriverResult<ActivationDraft>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You are one brief activation in a larger cognitive field, not an agent, reviewer, or final answer writer.",
         "Return one local impulse that this receptor genuinely detects. Do not summarize the task, recommend a complete solution, rank alternatives, or infer consensus.",
         "Do not coin or propose a project name. Describe the local image or relation in ordinary language so that any eventual name must arise later from interaction.",
@@ -87,7 +87,7 @@ export class AiSdkActivationFieldDriver implements ActivationFieldDriver {
   ): Promise<FieldDriverResult<CoalitionDraft>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You form one temporary local coalition from a sparse neighborhood of field nodes.",
         "Select at least two listed node IDs whose interaction yields a relation not fully stated by either node alone.",
         "Preserve a real tension when present. Do not coin a candidate name or slogan, vote, choose a winner, write the final answer, or cite an ID outside this neighborhood.",
@@ -125,7 +125,7 @@ export class AiSdkActivationFieldDriver implements ActivationFieldDriver {
   ): Promise<FieldDriverResult<FieldExpression>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You are the language projection of a completed activation field.",
         "Compose one useful response from the supplied working-set nodes. You may order and articulate them, but may not claim an unsupported source or hide an unresolved tension.",
         "An emergent relation must cite at least two supplied node IDs and must not be a mere restatement of one node.",
@@ -159,7 +159,7 @@ export class AiSdkActivationFieldDriver implements ActivationFieldDriver {
   ): Promise<FieldDriverResult<{ response: string }>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You are the direct single-loop baseline for an experiment.",
         "Use the supplied evidence to answer the stimulus fully. Do not assume or imitate an activation-field process.",
       ].join("\n"),
@@ -257,7 +257,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
     cachedInputTokens:
-      numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+      numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

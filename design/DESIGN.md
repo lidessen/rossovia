@@ -66,7 +66,17 @@ principles/SEQUENCE.md ──► interpretations ──► selected P-ID express
   caller-declared terminal tools, independently validated structured output and
   artifacts, and trace/usage/cost capture. It can link executor-independent Work
   Estimates to executor/profile-specific observations. It does not require or
-  interpret a Sequence, experiment, proposal role, or vote.
+  interpret a Sequence, experiment, proposal role, or vote. A terminal call is
+  a caller-defined one-of action; it ends the model loop unless an independent
+  structured output is also required. See
+  [decision 033](decisions/033-work-cell-terminal-contract.md).
+- **Work Cell orchestration** — Owns the mechanics for releasing more than one
+  already-prepared Cell: eligible-work leases, bounded admission, fresh
+  attempts, cancellation, isolated settlements, and raw lifecycle events.
+  Execution forms such as Swarm, an open in-memory queue, and future graph or
+  durable carriers own ordering and eligibility policy. They cannot invent
+  semantic work, accept results, or move scheduling vocabulary into the Cell
+  contract; see [decision 031](decisions/031-extensible-work-cell-orchestration.md).
 - **Work Cell adapters** — Lower domain-specific inputs into the unchanged core
   contract. The Sequence adapter selects and retains a task-specific expression;
   the experiment adapter owns blinded comparison; and the deliberation adapter
@@ -164,6 +174,11 @@ discarded.
   existing corrective owner. It is not a default reflection skill, scheduled
   agent, automatic retry, or authority to change the project; see
   [decision 019](decisions/019-event-triggered-reflection-sidecar.md).
+- **Execution-form separation** — One Cell remains the unit of execution and
+  evidence. The orchestration kernel runs leases and returns settlements;
+  Swarm, Queue, Graph, or a domain adapter decides only which already-defined
+  Cell is eligible next. Indexes and readiness views remain projections, and a
+  model-shaped task proposal cannot enqueue itself without an explicit adapter.
 - **Stable selection** — Every methodology skill names one primary sequence ID
   and at most three supporting IDs. A changed selection is a shape change to
   that skill.

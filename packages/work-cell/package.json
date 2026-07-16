@@ -22,8 +22,8 @@
     "live:p23": "bun src/cli.ts experiment experiments/p23-bounded-autonomy.json"
   },
   "dependencies": {
-    "@ai-sdk/deepseek": "2.0.47",
-    "ai": "6.0.223",
+    "@ai-sdk/deepseek": "3.0.11",
+    "ai": "7.0.28",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -4,6 +4,10 @@
 **Date:** 2026-07-13
 **Approved by:** principal
 
+Decision [031](031-extensible-work-cell-orchestration.md) later preserves this
+Swarm contract while moving its shared dispatch and settlement mechanics into
+the general orchestration runtime.
+
 ## Concrete need
 
 The activation-field experiment executed 256 independent model calls with

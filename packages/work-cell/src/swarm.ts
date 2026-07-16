@@ -1,8 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { mapConcurrent } from "./concurrency";
 import {
   CellInputSchema,
   CellRunRecordSchema,
@@ -12,7 +11,8 @@ import {
   type CellUsage,
 } from "./contracts";
 import type { CellDriver } from "./driver";
-import { runCell } from "./run-cell";
+import { assertMultiCellWorkspaceBoundary } from "./multi-cell-workspace";
+import { InMemoryCellQueue, runOrchestration } from "./orchestration";
 
 export const SWARM_INPUT_VERSION = "work-cell.swarm-input.v1" as const;
 export const SWARM_OUTCOME_VERSION = "work-cell.swarm-outcome.v1" as const;
@@ -137,54 +137,53 @@ export async function runSwarm(
 ): Promise<SwarmRun> {
   const manifest = SwarmInputSchema.parse(unparsedManifest);
   await assertSwarmWorkspaceBoundary(manifest.cells);
-  const runId = randomUUID();
-  const startedAt = new Date();
-  const outcomes = await mapConcurrent(manifest.cells, manifest.concurrency, async (input, index): Promise<SwarmCellOutcome> => {
-    const cellStartedAt = new Date();
-    try {
-      const record = await runCell(input, createDriver(), signal ? { signal } : undefined);
-      return { index, cellId: input.id, kind: "settled", record };
-    } catch (error) {
-      return {
-        index,
-        cellId: input.id,
-        kind: "runner_error",
-        input,
-        startedAt: cellStartedAt,
-        finishedAt: new Date(),
-        error: message(error),
-      };
-    }
+  const source = new InMemoryCellQueue("Swarm cells");
+  for (const input of manifest.cells) await source.submit(input, input.id);
+  source.close();
+  const orchestration = await runOrchestration(source, createDriver, {
+    concurrency: manifest.concurrency,
+    ...(signal === undefined ? {} : { signal }),
   });
-  const finishedAt = new Date();
+  const outcomes: SwarmCellOutcome[] = source.settlements().map((settlement): SwarmCellOutcome => {
+    const { input, sequence } = settlement.lease.item;
+    if (settlement.kind === "settled") {
+      return { index: sequence, cellId: input.id, kind: "settled", record: settlement.record };
+    }
+    return {
+      index: sequence,
+      cellId: input.id,
+      kind: "runner_error",
+      input,
+      startedAt: settlement.startedAt,
+      finishedAt: settlement.finishedAt,
+      error: settlement.error,
+    };
+  });
+  for (const item of source.pendingItems()) {
+    outcomes.push({
+      index: item.sequence,
+      cellId: item.input.id,
+      kind: "runner_error",
+      input: item.input,
+      startedAt: orchestration.finishedAt,
+      finishedAt: orchestration.finishedAt,
+      error: "Swarm cancelled before this Cell was dispatched",
+    });
+  }
+  outcomes.sort((left, right) => left.index - right.index);
   return {
-    runId,
+    runId: orchestration.runId,
     swarmId: manifest.id,
-    startedAt,
-    finishedAt,
-    durationMs: finishedAt.getTime() - startedAt.getTime(),
+    startedAt: orchestration.startedAt,
+    finishedAt: orchestration.finishedAt,
+    durationMs: orchestration.durationMs,
     concurrency: manifest.concurrency,
     outcomes,
   };
 }
 
 export async function assertSwarmWorkspaceBoundary(cells: CellInput[]): Promise<void> {
-  const roots = await Promise.all(cells.map(async (cell) => ({
-    cell,
-    root: await realpath(cell.workspace.root),
-  })));
-  const grouped = new Map<string, CellInput[]>();
-  for (const entry of roots) {
-    const group = grouped.get(entry.root) ?? [];
-    group.push(entry.cell);
-    grouped.set(entry.root, group);
-  }
-  for (const [root, group] of grouped) {
-    if (group.length < 2 || group.every(isReadOnlyCell)) continue;
-    throw new Error(
-      `Swarm cells sharing workspace ${root} must all be read-only and command-free; conflicting cells: ${group.map((cell) => cell.id).join(", ")}`,
-    );
-  }
+  await assertMultiCellWorkspaceBoundary(cells, "Swarm cells");
 }
 
 export async function persistSwarmRecord(
@@ -267,10 +266,6 @@ export function projectSwarm(record: SwarmRun): SwarmSummary {
   };
 }
 
-function isReadOnlyCell(cell: CellInput): boolean {
-  return cell.workspace.writePaths.length === 0 && cell.workspace.allowedCommands.length === 0;
-}
-
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
 }
@@ -287,8 +282,4 @@ function addUsage(left: CellUsage, right: CellUsage): CellUsage {
 function safe(value: string): string {
   const normalized = value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized || "cell";
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

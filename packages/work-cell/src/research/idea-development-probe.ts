@@ -381,7 +381,7 @@ async function generateBaselineDraft(
 ): Promise<StructuredResult<Idea>> {
   return runStructured((correction) => generateText({
     model,
-    system: [
+    instructions: [
       "You independently propose one complete idea from concrete evidence. You cannot see or inherit another proposal.",
       "A good idea must explain several observations through one relation, make a risky prediction, change an architecture decision, and expose how it could fail.",
       `Local operation: ${baselineOperations[index % baselineOperations.length]}`,
@@ -404,7 +404,7 @@ async function generateObservation(
 ): Promise<StructuredResult<z.infer<typeof ObservationDraftSchema>>> {
   return runStructured((correction) => generateText({
     model,
-    system: [
+    instructions: [
       "You contribute one observation to a shared idea-development field. Do not propose, imply, or rank a solution.",
       observationLenses[index % observationLenses.length],
       "Distinguish an observed result from your interpretation and expose one contradiction that a later hypothesis must explain.",
@@ -428,7 +428,7 @@ async function generateHypothesis(
 ): Promise<StructuredResult<z.infer<typeof HypothesisDraftSchema>>> {
   return runStructured((correction) => generateText({
     model,
-    system: [
+    instructions: [
       "You form one unfinished causal hypothesis from a shared observation field. Do not write a final recommendation.",
       hypothesisOperations[index % hypothesisOperations.length],
       "The hypothesis must connect observations, make a prediction, and state a failure condition rather than merely summarize them.",
@@ -457,7 +457,7 @@ async function developHypothesis(
 ): Promise<StructuredResult<z.infer<typeof DevelopmentDraftSchema>>> {
   return runStructured((correction) => generateText({
     model,
-    system: [
+    instructions: [
       "You develop one hypothesis through opposition and inheritance. Preserve what survives evidence, attack its strongest weakness, and revise it materially.",
       "Do not average all hypotheses or reward novelty. The revised thesis must discriminate itself from the strongest alternative through a risky prediction and smallest practical probe.",
       ...(correction ? ["## Structured-output correction", correction] : []),
@@ -530,7 +530,7 @@ async function challengeClaim(
 ): Promise<StructuredResult<z.infer<typeof EvidenceChallengeSchema>>> {
   return runStructured((correction) => generateText({
     model,
-    system: [
+    instructions: [
       "You are an adversarial claim-level evidence verifier, not an idea generator, editor, or judge of novelty.",
       "Separate what the supplied evidence explicitly shows from a plausible mechanism the claim merely invents. A valid evidence ID is not support by itself.",
       "For every finding, copy one short exact quotation from the cited evidence chunk. Classify the core mechanism as supported only when the quotations establish it, not merely its observed outcome.",
@@ -564,7 +564,7 @@ async function synthesizeFinal(input: {
 }): Promise<StructuredResult<FinalIdea>> {
   return runStructured((correction) => generateText({
     model: input.model,
-    system: [
+    instructions: [
       `You synthesize one final idea from ${input.treatment}.`,
       "Do not select impressive prose. Preserve only a relation that explains concrete evidence, changes a decision, makes a risky prediction, and supports a smallest discriminating probe.",
       "You may reject all lineage when none clears that boundary. Do not invent a compromise merely to return an idea.",
@@ -594,7 +594,7 @@ async function judgeFinals(
 ): Promise<StructuredResult<z.infer<typeof JudgeSchema>>> {
   return runStructured((correction) => generateText({
     model,
-    system: [
+    instructions: [
       "You are one blind comparison seat, not an idea generator or acceptance authority.",
       seat,
       "You may choose neither. Do not infer which treatment produced either result, and do not reward length or polish.",
@@ -825,7 +825,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     inputTokens,
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

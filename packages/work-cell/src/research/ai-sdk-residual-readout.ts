@@ -43,7 +43,7 @@ export class AiSdkResidualReadoutDriver implements ResidualReadoutDriver {
   ): Promise<FieldDriverResult<ResidualRoute>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You are one query-key routing head over an append-only residual field.",
         "Select sources only; do not synthesize an answer, choose a winner, or rewrite their content.",
         "Prefer a small set whose interaction fits this head and contains a real contrast. You may read any layer; selecting an early source directly is a valid skip path around later compression.",
@@ -73,7 +73,7 @@ export class AiSdkResidualReadoutDriver implements ResidualReadoutDriver {
   ): Promise<FieldDriverResult<ResidualHeadDelta>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You are one output-value read head. The router has already selected what you may read.",
         "Write one new delta into the residual field: preserve source differences, expose a relation not stated by one source alone, and do not summarize the whole project.",
         "Proposal seeds are local possibilities, not a vote or final selection. Cite only routed node IDs.",
@@ -104,7 +104,7 @@ export class AiSdkResidualReadoutDriver implements ResidualReadoutDriver {
   ): Promise<FieldDriverResult<ResidualProjection>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You are a task-conditioned output head, not another consensus layer.",
         "Fulfill the caller's explicit output contract. Preserve materially distinct read-head basins and provenance; recurrence is not a vote.",
         "Every proposal must cite the read heads and original residual nodes that support it. Do not invent an unavailable source.",
@@ -202,7 +202,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     inputTokens,
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

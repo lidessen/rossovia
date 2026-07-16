@@ -1,0 +1,67 @@
+{
+  "version": "mission-record.v1",
+  "id": "work-cell-orchestration",
+  "title": "Generalize Work Cell execution without enlarging the Cell",
+  "sources": [
+    "design/decisions/025-general-work-cell-swarm-runtime.md",
+    "design/decisions/027-general-work-cell-core-and-sequence-adapter.md"
+  ],
+  "createdAt": "2026-07-15T17:32:13Z",
+  "updatedAt": "2026-07-16T02:01:15Z",
+  "mainline": {
+    "contradiction": "The generic Cell executes well in isolation, but execution modes beyond the fixed Swarm would duplicate scheduling, settlement, and evidence logic or leak orchestration vocabulary into CellInput.",
+    "acceptance": [
+      "CellInput, CellDriver, and runCell remain free of queue, graph, priority, retry, and domain-planning vocabulary.",
+      "A common orchestration protocol can express current Swarm behavior and has explicit extension seams for bounded queues and dependency graphs.",
+      "Raw CellRunRecord and orchestration events remain sources while indexes, summaries, and queue views are rebuildable projections.",
+      "The current Swarm public behavior remains verified after the smallest kernel extraction."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "orchestration-kernel",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Design the orchestration boundary and migrate current Swarm onto the smallest reusable execution kernel.",
+      "returnCondition": "An adopted design candidate, preserved Swarm behavior, and action/boundary/context evidence are ready for independent review.",
+      "sources": [
+        "packages/work-cell/src/swarm.ts",
+        "packages/work-cell/src/concurrency.ts"
+      ],
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Decision 031, the WorkSource kernel, open in-memory queue, Swarm projection, fatal-protocol evidence retention, and deterministic probes passed independent correction review."
+    },
+    {
+      "id": "ai-sdk-7-probe",
+      "parent": "mainline",
+      "kind": "investigation",
+      "purpose": "Probe AI SDK 7 migration and identify scoped context, observation, timeout, artifact projection, and terminal-semantics deltas without changing the core Cell contract.",
+      "returnCondition": "A bounded migration result records API changes, deterministic compatibility, one low-cost live observation, and a separate disposition for terminal semantics.",
+      "sources": [
+        "https://vercel.com/blog/ai-sdk-7"
+      ],
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Decision 032 migrated the replaceable adapter to AI SDK 7 and DeepSeek provider 3, retained performance evidence, and passed deterministic plus low-cost live provider probes."
+    },
+    {
+      "id": "terminal-semantics",
+      "parent": "mainline",
+      "kind": "investigation",
+      "purpose": "Resolve whether a caller-defined terminal tool ends the Cell immediately when terminalTools, outputSchema, and artifacts remain independent completion contracts.",
+      "returnCondition": "A contract decision and real adapter probe define simultaneous terminal/output behavior without a hardcoded final tool or an unnecessary recovery loop.",
+      "sources": [
+        "packages/work-cell/src/ai-sdk-driver.ts",
+        "design/decisions/032-ai-sdk-7-work-cell-driver.md",
+        "design/decisions/033-work-cell-terminal-contract.md",
+        "regeneration/evaluations/2026-07-15-work-cell-orchestration-independent-review.md"
+      ],
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Decision 033 defines orthogonal terminal, structured-output, and artifact semantics; live reviewer runs exposed and then verified primary-loop terminal submission, context-bearing recovery, and exactly-one output-step behavior."
+    }
+  ],
+  "currentFocus": "mainline"
+}

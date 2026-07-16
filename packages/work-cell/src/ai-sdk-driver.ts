@@ -1,5 +1,5 @@
 import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
-import { Output, ToolLoopAgent, stepCountIs, tool } from "ai";
+import { Output, ToolLoopAgent, hasToolCall, isStepCount, tool } from "ai";
 import { z } from "zod";
 import {
   type CellInput,
@@ -39,7 +39,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     });
     this.model = provider(modelId);
     this.descriptor = {
-      adapter: "ai-sdk-v6",
+      adapter: "ai-sdk-v7",
       provider: "deepseek",
       model: modelId,
       pricing: {
@@ -57,20 +57,41 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     context: DriverContext,
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
+    let terminalProtocolError: string | undefined;
+    let terminalOnly = false;
     const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
-    const tools = this.createExecutionTools(input, context, (name) => terminalToolsCalled.add(name));
+    const tools = this.createExecutionTools(
+      input,
+      context,
+      (name) => {
+        if (terminalToolsCalled.size > 0) {
+          terminalProtocolError = `expected exactly one terminal tool call; received ${[
+            ...terminalToolsCalled,
+            name,
+          ].join(", ")}`;
+          context.emit("terminal.contract.violation", { error: terminalProtocolError });
+          return false;
+        }
+        terminalToolsCalled.add(name);
+        return true;
+      },
+      () => terminalOnly,
+    );
     const terminalNames = input.terminalTools?.map((terminal) => terminal.name) ?? [];
     const terminalSatisfied = () => terminalNames.some((name) => terminalToolsCalled.has(name));
     const executionAgent = new ToolLoopAgent({
       model: this.model,
       instructions: renderExecutionInstructions(input),
       tools,
-      stopWhen: stepCountIs(input.budget.maxSteps),
+      stopWhen: terminalNames.length > 0 && !outputSchema
+        ? [isStepCount(input.budget.maxSteps), hasToolCall(...terminalNames)]
+        : isStepCount(input.budget.maxSteps),
       ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
       ...(input.terminalTools?.length
         ? {
             prepareStep: ({ stepNumber }) => {
               if (terminalSatisfied()) {
+                terminalOnly = true;
                 return finalOutputStep(input);
               }
               // Reserve the final model turn for the report after a terminal
@@ -78,15 +99,17 @@ export class AiSdkDeepSeekDriver implements CellDriver {
               // the run as having no output, even though the terminal contract
               // was actually satisfied.
               if (stepNumber >= input.budget.maxSteps - 2) {
+                terminalOnly = true;
                 return {
                   // Terminal tools are dynamically registered from the caller's
                   // contract, so their names are not visible to AI SDK's static
                   // tool-set inference.
                   activeTools: terminalNames as never[],
-                  toolChoice: "required",
-                  system: `${renderExecutionInstructions(input)}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
+                  toolChoice: terminalToolChoice(terminalNames) as never,
+                  instructions: `${renderExecutionInstructions(input)}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
                 };
               }
+              terminalOnly = false;
               return undefined;
             },
           }
@@ -104,10 +127,11 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         prompt: renderTaskPrompt(input),
         abortSignal: context.signal,
         timeout: { totalMs: input.budget.maxDurationMs },
-        onStepFinish: ({ usage, finishReason, toolCalls, toolResults }) => {
+        onStepEnd: ({ usage, finishReason, performance, toolCalls, toolResults }) => {
           observedUsage = addUsage(observedUsage, normalizeUsage(usage, undefined));
           context.emit("agent.step.finished", {
             finishReason,
+            performance: sanitize(performance),
             usage,
             cumulativeUsage: observedUsage,
             toolCalls: sanitize(toolCalls),
@@ -116,7 +140,9 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         },
       });
     } catch (error) {
-      if (terminalSatisfied() && !outputSchema) {
+      if (terminalProtocolError) {
+        throw new CellExecutionError(terminalProtocolError, observedUsage);
+      } else if (terminalSatisfied() && !outputSchema) {
         executionResult = terminalOnlyResult(terminalNames, observedUsage, "execution");
       } else {
         throw new CellExecutionError(
@@ -134,14 +160,20 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         model: this.model,
         instructions: `The previous work ended without satisfying its terminal-tool contract. Do not continue analysis. You must now invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
         tools,
-        stopWhen: stepCountIs(2),
+        stopWhen: outputSchema
+          ? isStepCount(2)
+          : [isStepCount(2), hasToolCall(...terminalNames)],
         ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
         prepareStep: ({ stepNumber }) => {
-          if (terminalSatisfied()) return finalOutputStep(input);
+          if (terminalSatisfied()) {
+            terminalOnly = true;
+            return finalOutputStep(input);
+          }
           if (stepNumber === 0) {
+            terminalOnly = true;
             return {
               activeTools: terminalNames as Array<keyof typeof tools>,
-              toolChoice: "required",
+              toolChoice: terminalToolChoice(terminalNames) as never,
             };
           }
           return undefined;
@@ -152,13 +184,21 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       });
       try {
         closureResult = await closureAgent.generate({
-          prompt: `${renderTaskPrompt(input)}\n\nPrevious unfinished response:\n${executionResult.text}`,
+          messages: [
+            { role: "user", content: renderTaskPrompt(input) },
+            ...("response" in executionResult ? executionResult.response.messages : []),
+            {
+              role: "user",
+              content: "The work above ended without satisfying its terminal-tool contract. Use the retained investigation context and invoke exactly one declared terminal tool now. Do not restart the task.",
+            },
+          ],
           abortSignal: context.signal,
           timeout: { totalMs: input.budget.maxDurationMs },
-          onStepFinish: ({ usage, finishReason, toolCalls, toolResults }) => {
+          onStepEnd: ({ usage, finishReason, performance, toolCalls, toolResults }) => {
             closureUsage = addUsage(closureUsage, normalizeUsage(usage, undefined));
             context.emit("terminal.recovery.step.finished", {
               finishReason,
+              performance: sanitize(performance),
               usage,
               cumulativeUsage: closureUsage,
               toolCalls: sanitize(toolCalls),
@@ -167,7 +207,12 @@ export class AiSdkDeepSeekDriver implements CellDriver {
           },
         });
       } catch (error) {
-        if (terminalSatisfied() && !outputSchema) {
+        if (terminalProtocolError) {
+          throw new CellExecutionError(
+            terminalProtocolError,
+            addUsage(observedUsage, closureUsage),
+          );
+        } else if (terminalSatisfied() && !outputSchema) {
           closureResult = terminalOnlyResult(terminalNames, closureUsage, "recovery");
         } else {
           throw new CellExecutionError(
@@ -179,6 +224,12 @@ export class AiSdkDeepSeekDriver implements CellDriver {
       if (closureResult && terminalSatisfied() && !outputSchema && !closureResult.text.trim()) {
         closureResult = terminalOnlyResult(terminalNames, normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata), "recovery");
       }
+    }
+    if (terminalProtocolError) {
+      throw new CellExecutionError(
+        terminalProtocolError,
+        addUsage(observedUsage, closureUsage),
+      );
     }
     let output: unknown;
     try {
@@ -206,7 +257,8 @@ export class AiSdkDeepSeekDriver implements CellDriver {
   private createExecutionTools(
     input: CellInput,
     context: DriverContext,
-    markTerminalTool: (name: string) => void,
+    markTerminalTool: (name: string) => boolean,
+    terminalOnly: () => boolean,
   ) {
     const tools = {
       list_files: tool({
@@ -216,6 +268,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
           maxEntries: z.number().int().positive().max(2_000).default(500),
         }),
         execute: async ({ path, maxEntries }) => {
+          if (terminalOnly()) return terminalActionRequired();
           const files = await context.workspace.listFiles(path, maxEntries);
           context.emit("tool.list_files", { path, count: files.length });
           return { files };
@@ -229,6 +282,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
           endLine: z.number().int().positive().optional(),
         }),
         execute: async ({ path, startLine, endLine }) => {
+          if (terminalOnly()) return terminalActionRequired();
           const content = await context.workspace.readText(path, startLine, endLine);
           context.emit("tool.read_file", { path, startLine, endLine, characters: content.length });
           return { path, content };
@@ -240,6 +294,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
               description: "Write a complete UTF-8 file inside the declared workspace write scope.",
               inputSchema: z.object({ path: z.string().min(1), content: z.string() }),
               execute: async ({ path, content }) => {
+                if (terminalOnly()) return terminalActionRequired();
                 await context.workspace.writeText(path, content);
                 context.emit("tool.write_file", { path, characters: content.length });
                 return { path, characters: content.length };
@@ -257,6 +312,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
                 timeoutMs: z.number().int().positive().max(input.budget.maxDurationMs).default(60_000),
               }),
               execute: async ({ argv, cwd, timeoutMs }) => {
+                if (terminalOnly()) return terminalActionRequired();
                 const result = await context.workspace.runCommand(argv, cwd, timeoutMs, context.signal);
                 context.emit("tool.run_command", { argv, cwd, ...result });
                 return result;
@@ -271,7 +327,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         description: terminal.description,
         inputSchema: z.fromJSONSchema(terminal.inputSchema),
         execute: async (value) => {
-          markTerminalTool(terminal.name);
+          if (!markTerminalTool(terminal.name)) return { accepted: false };
           context.emit("terminal.tool.called", { name: terminal.name, input: value });
           return { accepted: true };
         },
@@ -280,13 +336,26 @@ export class AiSdkDeepSeekDriver implements CellDriver {
   }
 }
 
+function terminalToolChoice(names: string[]) {
+  return names.length === 1
+    ? { type: "tool" as const, toolName: names[0]! }
+    : "required" as const;
+}
+
+function terminalActionRequired() {
+  return {
+    accepted: false,
+    error: "The action phase is closed. Invoke one declared terminal tool now.",
+  };
+}
+
 function finalOutputStep(
   input: CellInput,
 ) {
   return {
     activeTools: [],
     toolChoice: "none" as const,
-    system: `${renderExecutionInstructions(input)}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${input.outputSchema ? "structured output" : "concise report"} now.`,
+    instructions: `${renderExecutionInstructions(input)}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${input.outputSchema ? "structured output" : "concise report"} now.`,
   };
 }
 
@@ -343,7 +412,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
     cachedInputTokens:
-      numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+      numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

@@ -80,7 +80,7 @@ export class AiSdkDeepSeekJudge implements ComparisonJudge {
     const result = await generateText({
       model: this.model,
       output: Output.object({ schema: BlindJudgementSchema }),
-      system: [
+      instructions: [
         "You are an independent blind evaluator of two Work Cell executions.",
         "You do not know which candidate is baseline or treatment. Judge only retained evidence against the same acceptance conditions.",
         "Prefer a candidate only for a material decision or artifact improvement. If both make the same material decision, return tie. If evidence is insufficient, return inconclusive.",
@@ -123,7 +123,7 @@ function normalizeUsage(value: unknown): CellUsage {
     inputTokens,
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue(record.cachedInputTokens),
+    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens),
   };
 }
 

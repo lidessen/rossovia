@@ -15,9 +15,44 @@ generic `CellInput` contract. The Sequence adapter selects one lead P-ID and up
 to three supports, loads only their interpretations, and retains the expression
 as typed preparation evidence before invoking the unchanged core.
 
-The package does not depend on an external agent engine. AI SDK is the first
-driver adapter; `deepseek-v4-flash` is the default model. The core contract can
-support another adapter without changing run records or experiment semantics.
+The package does not depend on an external agent engine. AI SDK 7 is the first
+driver adapter; `deepseek-v4-flash` is the default model. The driver retains
+per-step usage and performance in the ordinary Cell trace. The core contract
+can support another adapter without changing run records or experiment
+semantics; see [decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md).
+
+## Orchestration runtime
+
+`runCell` remains the atomic execution boundary. Multi-Cell execution is built
+above it through a small `WorkSource` protocol: a source yields one eligible
+lease, the orchestration kernel runs that ordinary Cell with a fresh driver,
+and the source receives the retained settlement. The kernel owns bounded
+capacity, attempt identity, cancellation propagation, failure conversion, and
+raw lifecycle events. It does not invent tasks, interpret a result, retry work,
+or accept semantic quality.
+
+An `InMemoryCellQueue` is the first open source implementation. It may begin
+empty, accept already-prepared Cells while execution is running, and finishes
+only after its producer explicitly closes it and every dispatched Cell settles:
+
+```ts
+const queue = new InMemoryCellQueue();
+const running = runOrchestration(queue, createDriver, { concurrency: 4 });
+
+await queue.submit(firstCell);
+await queue.submit(secondCell);
+queue.close();
+
+const run = await running;
+```
+
+The queue is currently in-process and ephemeral. It is a runtime API rather
+than a static CLI manifest: a closed static list is already a Swarm. A future
+durable queue, dependency graph, pipeline, or remote worker carrier implements
+the same source/settlement boundary and separately declares leases,
+idempotency, persistence, retry, and workspace-allocation policy. Those
+concerns do not enter `CellInput`, `CellDriver`, or `runCell`; see
+[decision 031](../../design/decisions/031-extensible-work-cell-orchestration.md).
 
 ## Completion contracts
 
@@ -41,9 +76,13 @@ Use only the conditions the task actually needs. They are orthogonal:
 ```
 
 `terminalTools` dynamically become callable tools and require one declared tool
-to be called. `outputSchema` validates the final logical result. `artifacts`
+to be called exactly once. Without `outputSchema`, that call ends the model loop;
+with `outputSchema`, one tool-free step may still produce the independent
+logical result. The terminal input remains trace evidence and is not silently
+treated as that result. `outputSchema` validates the final logical result. `artifacts`
 require a regular file in write scope that this run added or changed; the record
 retains its SHA-256 and byte size. None implies the schema or payload of another.
+See [decision 033](../../design/decisions/033-work-cell-terminal-contract.md).
 
 ## Work and budget boundary
 
@@ -98,6 +137,8 @@ A Swarm releases between one and 256 already-defined ordinary Cells under one
 bounded concurrency value. It adds execution scale, failure isolation, stable
 manifest-order records, and compact persistence; it does not add a shared mind,
 task generation, communication, synthesis, voting, or semantic acceptance.
+It is the closed fixed-manifest execution form over the common orchestration
+kernel, not a second Cell runtime.
 The input must declare `concurrency` explicitly; the runtime never turns an
 omitted resource decision into a hidden 32-way release.
 
@@ -230,8 +271,9 @@ workflow, or doctrine belongs in an adapter, not in `CellInput`, `CellDriver`,
 or `runCell`.
 
 The public core barrel exports contracts, the driver interface, workspace,
-`runCell`, the AI SDK driver, and the general Swarm runtime. Optional carriers
-are explicit adapter entry points:
+`runCell`, the AI SDK driver, the orchestration protocol and in-memory queue,
+and the general Swarm runtime. Optional carriers are explicit adapter entry
+points:
 
 - `src/adapters/sequence/`
 - `src/adapters/experiment/`
@@ -281,6 +323,8 @@ traces and workspace diffs. Promote a reviewed result deliberately into
 
 - No external task board, scheduler, memory, daemon, or agent process.
 - No cell-to-cell messaging, child-cell expansion, or implicit task tree.
+- The in-process queue dispatches already-prepared Cells only. It is not durable,
+  does not poll for work, and cannot grant itself retry or acceptance authority.
 - `swarm` releases one to 256 already-defined ordinary Cells with bounded
   concurrency. It preserves independent records but does not synthesize them,
   retry work, or decide whether any result is semantically good.

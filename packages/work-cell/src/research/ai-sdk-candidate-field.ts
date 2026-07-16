@@ -50,7 +50,7 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
   ): Promise<FieldDriverResult<SeedSelection>> {
     const activation = await runStructured<SeedActivationDraft>(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You activate remembered source material for one activation in an open association field.",
         `Select exactly ${request.selectCount} book titles from the supplied random shelf. Do not generate an artifact, summarize the catalog, or invent an entry ID.`,
         "Recall fallibly and paraphrase rather than fabricate an exact quotation. The runtime, not you, records whether external evidence is later retrieved.",
@@ -114,7 +114,7 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
 
     const grounded = await runStructured<{ resonance: string }>(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You form one source-grounded resonance for an open association field.",
         "Use only the supplied runtime evidence. Do not quote beyond it, repair its wording from memory, generate an artifact, or rank the books.",
         "State the live image, operation, rhythm, contradiction, or productive mismatch that the evidence introduces into the local material.",
@@ -164,7 +164,7 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
   ): Promise<FieldDriverResult<CandidateDraft>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You emit one object into an open association field. You are not a critic, explainer, naming agent, or final-answer writer.",
         "Do not decide or label what kind of object it is. Any expressive form and any length that fits the output field are allowed; do not assume it must be a name, word, phrase, or candidate.",
         "Let the activated memories disturb the local project material. Return the resulting object itself, without justification, classification, ranking, or summary.",
@@ -205,7 +205,7 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
   ): Promise<FieldDriverResult<CandidateDraft>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You perform one mutation in an open association field. You are not a critic, naming agent, or explainer.",
         "Transform the supplied objects into one materially new object. Do not merely concatenate them, choose one, classify the result, or write an explanation.",
         "No output form, language, length, or artifact category is preferred. Preserve whichever relation becomes active and discard the parents' literal form when useful.",
@@ -237,7 +237,7 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
   ): Promise<FieldDriverResult<ArchiveSelection>> {
     return runStructured(() => generateText({
       model: this.model,
-      system: [
+      instructions: [
         "You maintain one independent niche in an association archive. You do not generate, rewrite, merge, classify, or globally rank artifacts.",
         `Select exactly ${request.archive.capacity} supplied artifact IDs that are strongest and materially different within this niche.`,
         "Provenance and generating operator are hidden. Judge the object itself against the concrete project and this niche; frequency and resemblance to a conventional name are not evidence.",
@@ -320,7 +320,7 @@ function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
     inputTokens,
     outputTokens,
     totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue(record.cachedInputTokens) || numberValue(provider.promptCacheHitTokens),
+    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
   };
 }
 

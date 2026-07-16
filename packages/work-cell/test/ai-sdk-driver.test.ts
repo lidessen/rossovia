@@ -51,15 +51,167 @@ test("recovers a natural finish without a terminal tool when provider metadata i
   expect(record.status).toBe("passed");
   expect(record.verification.terminal).toMatchObject({ passed: true, called: ["finish_review"] });
   expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(true);
+  expect(record.trace.find((event) => event.type === "agent.step.finished")?.data).toMatchObject({
+    performance: expect.objectContaining({ stepTimeMs: expect.any(Number) }),
+  });
   expect(record.finalText).toContain("Terminal contract satisfied during recovery");
-  expect(calls).toBe(3);
+  expect(calls).toBe(2);
+});
+
+test("forces the sole terminal tool before the step limit and blocks late ordinary actions", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const observedToolChoices: unknown[] = [];
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      observedToolChoices.push(options.toolChoice);
+      if (calls <= 3) {
+        return response([{
+          type: "tool-call",
+          toolCallId: `read-${calls}`,
+          toolName: "read_file",
+          input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+        }], "tool-calls");
+      }
+      if (calls === 4) {
+        return response([{
+          type: "tool-call",
+          toolCallId: "terminal",
+          toolName: "submit_review",
+          input: JSON.stringify({ verdict: "ready" }),
+        }], "tool-calls");
+      }
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkDeepSeekDriver({ apiKey: "not-used", model: "mock-terminal-action" });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "terminal-action-rehearsal",
+    intent: "Exercise the bounded terminal action phase.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Submit the review after investigating."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["Late ordinary actions are rejected and one terminal tool ends the loop."],
+    terminalTools: [{
+      name: "submit_review",
+      description: "Submit the review verdict.",
+      inputSchema: {
+        type: "object",
+        properties: { verdict: { type: "string", enum: ["ready", "hold"] } },
+        required: ["verdict"],
+        additionalProperties: false,
+      },
+    }],
+    budget: { maxSteps: 4, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.verification.terminal).toMatchObject({ passed: true, called: ["submit_review"] });
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(2);
+  expect(observedToolChoices.slice(2)).toEqual([
+    { type: "tool", toolName: "submit_review" },
+    { type: "tool", toolName: "submit_review" },
+  ]);
+  expect(record.finalText).toContain("Terminal contract satisfied during execution");
+  expect(calls).toBe(4);
+});
+
+test("rejects more than one terminal tool call", async () => {
+  const root = await fixture();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => response([
+      { type: "tool-call", toolCallId: "first", toolName: "approve", input: "{}" },
+      { type: "tool-call", toolCallId: "second", toolName: "reject", input: "{}" },
+    ], "tool-calls"),
+  });
+  const driver = new AiSdkDeepSeekDriver({ apiKey: "not-used", model: "mock-terminal-one-of" });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "terminal-one-of-rehearsal",
+    intent: "Exercise exactly-one terminal semantics.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Choose one terminal disposition."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["Calling two terminal tools is a protocol failure."],
+    terminalTools: [
+      { name: "approve", description: "Approve.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+      { name: "reject", description: "Reject.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+    ],
+    budget: { maxSteps: 2, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("failed");
+  expect(record.error).toContain("expected exactly one terminal tool call");
+  expect(record.trace.some((event) => event.type === "terminal.contract.violation")).toBe(true);
+});
+
+test("stops the main loop after one structured output step following a terminal call", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response([{
+          type: "tool-call",
+          toolCallId: "terminal",
+          toolName: "submit_review",
+          input: "{}",
+        }], "tool-calls");
+      }
+      if (calls === 2) {
+        return response([{
+          type: "text",
+          text: JSON.stringify({ recommendation: "proceed" }),
+        }], "stop");
+      }
+      throw new Error(`unexpected extra main-loop call ${calls}`);
+    },
+  });
+  const driver = new AiSdkDeepSeekDriver({ apiKey: "not-used", model: "mock-main-output" });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "main-terminal-output-rehearsal",
+    intent: "Exercise simultaneous terminal and structured-output contracts.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Submit, then return the independent recommendation."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["One terminal action is followed by exactly one output step."],
+    terminalTools: [{
+      name: "submit_review",
+      description: "Submit the completed review.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    outputSchema: {
+      type: "object",
+      properties: { recommendation: { type: "string", enum: ["proceed", "hold"] } },
+      required: ["recommendation"],
+      additionalProperties: false,
+    },
+    budget: { maxSteps: 6, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.output).toEqual({ recommendation: "proceed" });
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
+  expect(calls).toBe(2);
 });
 
 test("recovers structured output after a terminal tool and retains all usage", async () => {
   const root = await fixture();
   let calls = 0;
+  let recoveryPrompt: unknown;
   const model = new MockLanguageModelV3({
-    doGenerate: async () => {
+    doGenerate: async (options) => {
       calls += 1;
       if (calls <= 4) return response([{
         type: "tool-call",
@@ -67,7 +219,10 @@ test("recovers structured output after a terminal tool and retains all usage", a
         toolName: "read_file",
         input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
       }], "tool-calls");
-      if (calls === 5) return response([{ type: "tool-call", toolCallId: "terminal", toolName: "submit_review", input: "{}" }], "tool-calls");
+      if (calls === 5) {
+        recoveryPrompt = options.prompt;
+        return response([{ type: "tool-call", toolCallId: "terminal", toolName: "submit_review", input: "{}" }], "tool-calls");
+      }
       if (calls === 6) return response([{ type: "text", text: JSON.stringify({ recommendation: "hold", reason: "One boundary remains unverified." }) }], "stop");
       throw new Error(`unexpected mock call ${calls}`);
     },
@@ -108,6 +263,8 @@ test("recovers structured output after a terminal tool and retains all usage", a
     output: { passed: true },
   });
   expect(record.usage).toEqual({ inputTokens: 6, outputTokens: 6, totalTokens: 12, cachedInputTokens: 0 });
+  expect(JSON.stringify(recoveryPrompt)).toContain("read_file");
+  expect(JSON.stringify(recoveryPrompt)).toContain("principles/SEQUENCE.md");
   expect(calls).toBe(6);
 });
 
