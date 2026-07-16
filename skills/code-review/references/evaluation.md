@@ -42,7 +42,10 @@ stable run, but whose causal or ownership regions can be verified locally. The
 skill should form semantically closed packets with a shared low-resolution whole,
 explicit incoming/outgoing relations, local acceptance, and a coverage ledger.
 It must not launch the packets or replace semantic boundaries with equal file
-counts.
+counts. Inject one relation that is downstream but not reconstructible; the
+synthesis must preserve that type instead of calling every derivative a
+projection. If one packet remains overloaded, a targeted repartition should
+replace only that packet and retain the failed observation for comparison.
 
 ### Context probe
 
@@ -69,6 +72,14 @@ Do not flatten the comparison into reviewer votes. Compare the models' entities,
 relations, ownership claims, unknowns, and revisions, then test disagreements
 against source evidence. A supported advantage belongs to the combined evidence,
 not automatically to the Swarm form, provider, or skill wording.
+
+When testing differentiated Cells, hold the packet and evidence surface constant
+before varying the prepared instruction. Define each shape through an observable
+review behavior—for example contradiction search, evidence threshold, alternate
+causal models, or uncertainty calibration—and score that behavior independently
+from tone or vocabulary. A shape is supported only when it changes the intended
+behavior across more than one packet without making grounding, completion, or
+false-positive rate materially worse.
 
 ## Result record
 

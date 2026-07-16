@@ -160,3 +160,10 @@ The next behavioral test should first identify a real change that exceeds a
 comparable single Cell's stable envelope, then compare it with semantic packets
 plus one synthesis Cell. Until that comparison is retained, the skill is
 structurally usable, but the scale-control claim remains open empirical work.
+
+That comparison is now retained in the
+[project-cognition scale-control probe](2026-07-15-project-cognition-scale-control.md).
+It supports targeted semantic partitioning for stable local completion, while
+disconfirming lower-cost and automatic semantic-fidelity claims. It also opens a
+separate controlled inquiry into individual Cell stability and behaviorally
+measurable cognitive differentiation.

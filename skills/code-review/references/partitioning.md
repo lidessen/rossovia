@@ -62,6 +62,11 @@ Required compact model/report shape:
 Maintain a coverage ledger from changed behaviors and load-bearing relations to
 packet IDs. A path outside one packet is a named outgoing relation, not evidence
 that the path is safe and not permission for the Cell to expand its authority.
+Type every boundary relation explicitly. At minimum distinguish semantic
+authority, licensed derivation, reconstructible projection, causal dependency,
+execution evidence, and acceptance authority. "Downstream of" does not imply
+"reconstructible from": synthesis must not normalize these relation types merely
+because several packets describe the same artifacts.
 
 ## Release and adapt
 
@@ -70,6 +75,19 @@ orchestration carrier, which chooses concurrency and retains independent
 settlements. If a Cell reports that its packet still exceeds its working scale,
 retain that result and let the caller repartition; the Cell does not schedule
 its own descendants.
+
+Treat these as observed scale-pressure signals even when the mechanical run
+passes: terminal recovery contradicts retained reads, the report claims no
+evidence after a large investigation, repeated context dominates usage, or a
+packet cannot state its outgoing relations. Repartition only the failing packet
+and compare the replacement's completion, evidence quality, and work usage with
+the retained failure.
+
+Do not add reviewer personas merely to make siblings sound different. Keep the
+review method constant unless the caller is running an explicit differentiation
+treatment. A proposed shape such as rigorous, deliberative, adversarial, or
+exploratory must name an observable behavior and local acceptance measure; prose
+variance alone is not evidence that the Cell inspected or judged differently.
 
 Concurrency controls resource pressure across packets. Partitioning controls
 cognitive and verification scale inside each packet. They are related but not
@@ -87,5 +105,12 @@ records. It checks:
 4. no packet's missing context was silently converted into safety; and
 5. the combined result still answers the original acceptance question.
 
+Also verify that relation types survive reconnection. In particular, a semantic
+source may constrain a licensed interpretation or contextual method without
+making either one a reconstructible projection.
+
 The synthesis may reveal a new cross-packet relation. That is a reason for one
 targeted follow-up packet, not a reason to rerun every Cell automatically.
+Evaluate a large synthesized model with the same scale discipline: partition
+independent question families when one evaluator cannot retain candidate
+reports, authoritative sources, and all disconfirming checks coherently.
