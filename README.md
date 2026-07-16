@@ -57,6 +57,7 @@ specific method.
 | [structural-refactoring](skills/structural-refactoring/SKILL.md) | `/structural-refactoring` | Reconstitute code across meaningful boundaries while preserving declared behavior, caller impact, and verification authority. |
 | [visual-design](skills/visual-design/SKILL.md) | `/visual-design` | Design or review content-led visual work, inheriting or forming a project direction without imposing a portable fixed style or claiming human acceptance. |
 | [code-review](skills/code-review/SKILL.md) | `/code-review` | Review a proposed code change against its accepted intent and actual impact field, reporting only source-backed failure stories while leaving orchestration and merge authority external. |
+| [project-cognition](skills/project-cognition/SKILL.md) | `/project-cognition` | Build or selectively refresh a source-linked, non-authoritative working model when later agents need reusable project understanding across substantial tasks. |
 
 ## Experimental runtime
 
@@ -92,6 +93,7 @@ deliberation; see [decision 027](design/decisions/027-general-work-cell-core-and
 | Checking whether project layout still fits accepted design | `/artifact-organization audit`; use `transition` only for a material gap |
 | Splitting modules, extracting responsibilities, or untangling dependencies without intended behavior change | `/structural-refactoring` |
 | Establishing, shaping, implementing, or reviewing a visual direction for an interface, document, illustration, or related product family | `/visual-design` |
+| Building or refreshing reusable source-linked project understanding across substantial future tasks | `/project-cognition bootstrap` or `/project-cognition refresh` |
 | Auditing how several established methods should cooperate | Read the project's organization operating model first; use the role that owns the observed disturbance, not a new universal skill |
 
 The Principle Sequence is the root and `principle-cultivation` maintains it.
@@ -145,6 +147,9 @@ Our coding agent keeps missing this repository's scope boundary. Inspect the
 actual path and make the smallest verified improvement.
 This project skill produces plausible output but ignores its verification
 source. Fix the owning surface and test it through the normal agent entry.
+We keep reconstructing this project's architecture and change-impact model.
+Build reusable project cognition from the current source without creating a new
+source of truth.
 ```
 
 For an explicit Codex activation, name the skill with `$` and optionally state
@@ -156,6 +161,8 @@ $visual-design review the rendered docs experience; do not edit yet
 $visual-design cultivate a reusable direction for this new product
 $improve-agent-workflow audit why agents miss this project instruction
 $improve-agent-workflow improve this repository's release-note skill and verify it
+$project-cognition bootstrap this repository for future architecture and impact work
+$project-cognition refresh the retained model across this revision
 ```
 
 Other agents may expose explicit activation through a slash command, mention,
@@ -198,6 +205,10 @@ intent in natural language.
 /visual-design review    # Common: review the rendered whole
 /visual-design cultivate # Infrequent: establish a provisional project direction
 /visual-design shape     # Advanced: form a direction without implementation
+
+/project-cognition bootstrap # Create a justified reusable source-linked projection
+/project-cognition refresh   # Refresh only changed semantic relations
+/project-cognition verify    # Independently check a projection's decision field
 
 /principle-cultivation research <question|paths>
 /principle-cultivation propose <research-note>

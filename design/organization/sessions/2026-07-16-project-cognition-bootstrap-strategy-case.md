@@ -58,7 +58,34 @@ not a dependency or accepted implementation baseline.
 - **Secondary constraints:** Work Cell remains generic; Swarm remains a scale
   carrier; source owners retain authority; AI output cannot self-admit facts;
   private traces are not published; total cost is observed rather than enforced
-  by a low runtime ceiling.
+  by a low runtime ceiling. Usable cognition is carried by a small index and
+  bounded question-owned shards; large raw records remain cold evidence and no
+  final monolithic model may collapse the earlier divide-and-conquer boundary.
+
+## Mechanism, strategy, and selection boundary
+
+Project decomposition is deliberately not one Work Cell or Swarm capability:
+
+| Layer | Owns | Does not own |
+|---|---|---|
+| Work Cell | bounded tools, workspace, completion contracts, artifacts, verification, and one execution record | semantic packet selection or whole-project truth |
+| Orchestration / Swarm | release, concurrency, isolation, settlement, and compact outcome identity | task generation, domain cuts, synthesis, retry policy, or acceptance |
+| Domain Skill or method | decomposition principles, candidate boundaries, local acceptance questions, result and synthesis method | one fixed partition for every project |
+| Context engineering | delivery of the selected source/model slice at the moment it changes action | source content or decomposition doctrine |
+| Agent / caller | inspect the actual project and named decision, choose this activation's partition plan, prepare Cells and a coverage ledger, and revise only the failed or invalidated part | durable acceptance or silent runtime expansion |
+| Project cognition projection | expose responsibility, causal, state, authority, evidence, and change relations that inform the cut | choose or execute work by itself |
+
+The same project may therefore use different decompositions: ownership/state
+boundaries for structural work, causal and impact closure for review, source and
+authority boundaries for governance, audience/action paths for documentation,
+and changed-relation clusters for incremental refresh. The strategy is selected
+from the current object and task; names such as `authority` or `lifecycle` are
+probe instances, not runtime presets or a universal taxonomy.
+
+After execution, a packet that exceeds stable Cell scale or loses a boundary is
+repartitioned locally. Successful siblings are retained. This adaptive return
+belongs to the caller/domain method, while the orchestration kernel continues to
+transport ordinary prepared Cells unchanged.
 
 ## Alternatives
 
@@ -118,8 +145,15 @@ overloaded, repartition only that packet; do not rerun successful siblings.
   accepted fact.
 - Start without a database or vector index. Use compact typed artifacts and
   source hashes so failure is cheap and the authority boundary is visible.
+- Keep the default cognition surface as a small index plus bounded authority,
+  state, lifecycle, public-contract, conflict, and impact shards. Split a shard
+  when one Cell can no longer read and revise it locally; never require an agent
+  to load one integrated whole-model file.
 - Compare against a strong single-agent temporary-model baseline. More Cells,
   more tokens, successful search, or a visually rich graph are not acceptance.
+- Require the agent/caller to record why the selected decomposition fits the
+  current project and decision. Work Cell and Swarm remain neutral carriers;
+  fixed facet names and packet counts never become core presets.
 - A useful result must improve source/edge coverage or a withheld downstream
   judgment and refresh a bounded delta without silently losing boundary
   relations.

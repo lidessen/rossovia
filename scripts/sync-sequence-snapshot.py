@@ -30,22 +30,6 @@ SEQUENCE_PATH = PRINCIPLES_DIR / "SEQUENCE.md"
 INTERPRETATIONS_DIR = PRINCIPLES_DIR / "interpretations"
 CANONICAL_UPSTREAM = "https://github.com/lidessen/skills.git"
 REFRESH_REF = "main"
-SNAPSHOT_SKILLS = (
-    "context-engineering",
-    "improve-agent-workflow",
-    "principle-cultivation",
-    "skill-engineering",
-    "artifact-organization",
-    "disciplined-development",
-    "practice-cycle",
-    "form-guidance",
-    "naming-and-articulation",
-    "work-estimation",
-    "strategic-advisory",
-    "structural-refactoring",
-    "visual-design",
-    "code-review",
-)
 FULL_INTERPRETATION_SKILLS = frozenset({"skill-engineering"})
 
 PRIMARY_RE = re.compile(r"^\*\*Primary:\*\*\s*(P\d+)\s*$", re.MULTILINE)
@@ -64,12 +48,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "skills",
         nargs="*",
-        help="Skill directory names under skills/ (default: packaged snapshot skills)",
+        help="Skill directory names under skills/ (default: all discovered skills)",
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help=f"Sync packaged skills: {', '.join(SNAPSHOT_SKILLS)}",
+        help="Sync every active skill discovered under skills/",
     )
     parser.add_argument(
         "--full-interpretations",
@@ -88,6 +72,15 @@ def parse_args() -> argparse.Namespace:
         help="Fail when generated package files differ from the canonical source",
     )
     return parser.parse_args()
+
+
+def discover_snapshot_skills(skills_dir: Path = SKILLS_DIR) -> tuple[str, ...]:
+    """Return every active direct child that exposes a Skill entrypoint."""
+    return tuple(
+        path.parent.name
+        for path in sorted(skills_dir.glob("*/SKILL.md"))
+        if path.is_file()
+    )
 
 
 def read_text(path: Path) -> str:
@@ -393,9 +386,9 @@ def sync_skill(
 
 def main() -> int:
     args = parse_args()
-    skill_names = list(SNAPSHOT_SKILLS) if args.all else args.skills
+    skill_names = list(discover_snapshot_skills()) if args.all else args.skills
     if not skill_names:
-        skill_names = list(SNAPSHOT_SKILLS)
+        skill_names = list(discover_snapshot_skills())
 
     sequence_lines = load_sequence_lines()
     sequence_hash = sha256_file(SEQUENCE_PATH)
