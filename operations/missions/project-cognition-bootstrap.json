@@ -9,7 +9,7 @@
     "design/decisions/031-extensible-work-cell-orchestration.md"
   ],
   "createdAt": "2026-07-16T12:08:08Z",
-  "updatedAt": "2026-07-16T12:20:00Z",
+  "updatedAt": "2026-07-16T12:39:15Z",
   "mainline": {
     "contradiction": "The project can construct useful temporary source-linked models, but it cannot yet preserve and selectively refresh project cognition across tasks without creating a second canon or leaking domain semantics into Work Cell and Swarm.",
     "acceptance": [
@@ -17,6 +17,7 @@
       "A typed coverage ledger preserves authority, licensed-derivation, reconstructible-projection, causal, execution-evidence, and acceptance relations through synthesis.",
       "One bounded revision delta invalidates and refreshes only affected packets while reconnecting cross-packet boundaries and reporting missed or uncertain impact.",
       "All cognition artifacts remain rebuildable, non-authoritative projections over named sources; no source, Work Cell core, Swarm kernel, or sibling project is mutated or made a dependency.",
+      "The default cognition surface is a small index plus bounded question-owned shards; large run records remain referenced cold evidence and no monolithic integrated model is required for agent use.",
       "The result produces a form decision or an explicit no-change disposition; it does not infer a Skill or runtime from model output alone."
     ],
     "status": "active"

@@ -58,7 +58,9 @@ not a dependency or accepted implementation baseline.
 - **Secondary constraints:** Work Cell remains generic; Swarm remains a scale
   carrier; source owners retain authority; AI output cannot self-admit facts;
   private traces are not published; total cost is observed rather than enforced
-  by a low runtime ceiling.
+  by a low runtime ceiling. Usable cognition is carried by a small index and
+  bounded question-owned shards; large raw records remain cold evidence and no
+  final monolithic model may collapse the earlier divide-and-conquer boundary.
 
 ## Alternatives
 
@@ -118,6 +120,10 @@ overloaded, repartition only that packet; do not rerun successful siblings.
   accepted fact.
 - Start without a database or vector index. Use compact typed artifacts and
   source hashes so failure is cheap and the authority boundary is visible.
+- Keep the default cognition surface as a small index plus bounded authority,
+  state, lifecycle, public-contract, conflict, and impact shards. Split a shard
+  when one Cell can no longer read and revise it locally; never require an agent
+  to load one integrated whole-model file.
 - Compare against a strong single-agent temporary-model baseline. More Cells,
   more tokens, successful search, or a visually rich graph are not acceptance.
 - A useful result must improve source/edge coverage or a withheld downstream

@@ -35,7 +35,7 @@ is requested by this estimate
 | W3 — strong whole-project baseline | observe what one capable Cell can reconstruct without partitioning | W2 | source-linked model, natural settlement state, usage, reads, unsupported claims, and answers are retained | the Cell cannot access the fixed source at all |
 | W4 — semantic packet and typed-ledger preparation | lower the same field into locally closed work without giving Swarm semantic authority | W2 | every required subsystem and cross-boundary relation has one declared packet owner or explicit shared edge | never |
 | W5 — partitioned execution | obtain independently grounded local models at stable Cell scale | W4 | each accepted packet retains sources, relations, unknown exterior edges, settlement, and usage | W3 already answers every question with no material error and the Principal ends the comparison |
-| W6 — typed reconstruction | reconnect local models without averaging or treating agreement as truth | W5 | synthesis preserves relation types, source anchors, conflicts, missing edges, and coverage ledger identity | no packet is accepted |
+| W6 — faceted typed reconstruction | reconnect local models into a small index and bounded question-owned shards without averaging or treating agreement as truth | W5 | authority, state/persistence, lifecycle, public-contract, conflict, and impact shards preserve relation types, source anchors, missing edges, and coverage identity; no integrated monolith is required | no packet is accepted |
 | W7 — withheld evaluation | determine whether the treatment changes downstream cognition quality | W3, W6 | source-checked answers compare coverage, relation recovery, uncertainty, unsupported claims, and material errors | never |
 | W8 — delta invalidation plan | predict which packets and boundary edges the committed change affects before refresh | W6 | selected and preserved packets have source-backed reasons; uncertain impact is explicit | W7 rejects partitioned cognition outright |
 | W9 — selective refresh | revise affected cognition without reconstructing all successful packets | W8 | changed packets settle, untouched packet records remain reused by identity/hash, and boundary synthesis is updated | W8 shows the delta truthfully affects every packet |
@@ -97,6 +97,7 @@ not pass either gate.
 | D3 — harness failure | reproduce terminal/tool/source-access failure without interpreting semantic output | trace contradicts terminal result or fixed source was unavailable | deterministic/runtime correction or explicit blocked result | retry only the affected run |
 | D4 — unbounded delta | inspect changed symbols and packet edges before running refresh | every packet appears affected or selection has no evidence | a bounded affected set is justified, or incremental claim is rejected | W9 selective refresh or W11 no-change |
 | D5 — promising result | independent source/authority review of W7 and W10 | both cognition and locality gates appear to pass | findings are corrected or upheld | later `form-guidance` decision |
+| D6 — oversized cognition artifact | split one facet along its live decision question while retaining the same source hashes and coverage edges | one default-context file can no longer be read and revised locally by one Cell | every shard has one named question and the small index can reconstruct its references | W7 evaluation and W9 refresh |
 
 ## Resolution and tolerances
 
@@ -104,7 +105,9 @@ not pass either gate.
   model design, core/operations, storage/events, indexing/search, processor,
   runtime/job/source, CLI, MCP, and tests at relation-changing resolution.
   Examples and shell demos may remain low resolution; an omitted subsystem must
-  be named rather than silently absent.
+  be named rather than silently absent. Raw records may be large cold evidence;
+  the usable cognition surface must be a small index plus bounded shards, each
+  owning one decision question and independently readable/revisable by one Cell.
 - **Forecast tolerance:** no calibrated token interval exists for Shilu. Record
   estimates only as non-controlling diagnostics and audit actual usage by Cell,
   phase, reads, duration, and retry. The model context window is the high safety
