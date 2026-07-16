@@ -208,6 +208,54 @@ test("falls back inside one agent loop without replaying an earlier tool action"
   expect(fallbackCalls).toBe(1);
 });
 
+test("retains provider-metadata cache usage when a later model step fails", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return {
+          ...response([{
+            type: "tool-call",
+            toolCallId: "read-before-failure",
+            toolName: "read_file",
+            input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+          }], "tool-calls"),
+          providerMetadata: {
+            arbitraryProvider: { promptCacheHitTokens: 1 },
+          },
+        };
+      }
+      throw new Error("provider failed after the retained step");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    deepSeekApiKey: "not-used",
+    model: "mock-provider-metadata-usage",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "provider-metadata-usage-on-error",
+    intent: "Retain observed cache usage if a later model step fails.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read once, then continue."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The failed Cell retains usage from its completed model step."],
+    budget: { maxSteps: 3, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("failed");
+  expect(record.usage).toMatchObject({
+    inputTokens: 1,
+    outputTokens: 1,
+    totalTokens: 2,
+    cachedInputTokens: 1,
+  });
+});
+
 test("terminal recovery preserves successful evidence after a provider repeats an ordinary tool", async () => {
   const root = await fixture();
   let calls = 0;

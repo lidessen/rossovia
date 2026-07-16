@@ -12,7 +12,7 @@ actions?
 
 ## Deterministic evidence
 
-`bun run typecheck` passed. `bun test` passed 90 tests across 16 files with 388
+`bun run typecheck` passed. `bun test` passed 91 tests across 16 files with 390
 expectations.
 
 The added probes establish:
@@ -123,6 +123,14 @@ declared ±75% tolerance. Terminal recovery was still needed after a natural
 finish, but the compact payload parsed and submitted successfully. This supports
 the smaller projection form while leaving voluntary primary-loop termination as
 an observed runtime weakness rather than declaring it solved.
+
+GitHub's AI review of the first commit then found a narrower usage path: the
+driver's step callbacks destructured provider metadata but passed `undefined`
+to the normalizer. Final successful runs still used aggregate metadata, and
+standard cache details kept the large OpenCode run accurate, but an error after
+a completed step could lose provider-metadata-only cache evidence. Both primary
+and terminal-recovery callbacks now pass their metadata, and a deterministic
+failure-path test retains that completed step's cache usage.
 
 ## Finding
 
