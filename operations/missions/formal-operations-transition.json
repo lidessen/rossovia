@@ -7,7 +7,7 @@
     "design/organization/sessions/2026-07-10-formal-operations-preparation.md"
   ],
   "createdAt": "2026-07-15T13:29:02Z",
-  "updatedAt": "2026-07-16T11:06:11Z",
+  "updatedAt": "2026-07-16T11:38:53Z",
   "mainline": {
     "contradiction": "Turn accumulated post-founding work into reviewable accepted or explicitly returned lines, then retire the temporary preparation formation without losing unique evidence.",
     "acceptance": [
@@ -75,11 +75,13 @@
       "purpose": "Inspect the protected 129-path legacy index for private or sensitive material and repository-weight cost, then propose one bounded local retention, remote archive, or deletion action without publishing or removing it prematurely.",
       "returnCondition": "A source-backed privacy and repository-weight report identifies sensitive paths, compares retention carriers, and returns one final disposal action for Principal confirmation while the protected index remains unchanged.",
       "sources": [
-        "worktree:/Users/lidessen/workspaces/skills-worktrees/public-expression-readme",
         "design/organization/sessions/2026-07-15-legacy-experiment-return-partition.md",
-        "design/organization/2026-07-16-legacy-index-retention.md"
+        "design/organization/sessions/2026-07-16-legacy-index-retention.md",
+        "archive:~/.local/share/lidessen/archives/skills/legacy-index-d2f00eae-2026-07-16.tar.gz#sha256=96ccff47e67799f45c15ef3128e0d3e6df25922b13dd17bed3bf8c1ee81ed5dc"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Principal selected sealed local retention. Archive and patch restoration independently reproduced the accepted staged tree before the live worktree was removed; raw evidence remains local and outside the public repository, while the obsolete public-expression-readme and legacy-experiment-return branches were retired."
     },
     {
       "id": "preparation-exit",
@@ -94,5 +96,5 @@
       "status": "open"
     }
   ],
-  "currentFocus": "legacy-index-retention"
+  "currentFocus": "preparation-exit"
 }

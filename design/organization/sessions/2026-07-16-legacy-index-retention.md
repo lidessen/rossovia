@@ -1,13 +1,13 @@
 # Legacy Index Retention
 
-**Status:** proposed — read-only probe complete; final carrier action pending Principal confirmation
-**Accepted design:** [accepted source/value/status partition](sessions/2026-07-15-legacy-experiment-return-partition.md), [formal operations mission](../../operations/missions/formal-operations-transition.json)
+**Status:** pass — sealed local archive restored successfully; live carrier retired
+**Accepted design:** [accepted source/value/status partition](2026-07-15-legacy-experiment-return-partition.md), [formal operations mission](../../../operations/missions/formal-operations-transition.json)
 
 ## Audit
 
-The protected source remains the staged index in the local
-`public-expression-readme` worktree. The probe did not modify, unstage, commit,
-publish, or delete it. Its identity still matches the accepted partition:
+The protected source was the staged index in the local
+`public-expression-readme` worktree. The read-only probe first established that
+its identity matched the accepted partition:
 
 ```text
 index tree:        d2f00eae727720ffd141f0ef734e1e81a9315db6
@@ -65,8 +65,8 @@ failure mode.
 
 ## Transition
 
-**Recommendation: A — create one sealed local archive, verify restoration, then
-remove the live worktree and its merged branch.**
+**Approved A — create one sealed local archive, verify restoration, then remove
+the live worktree and its merged branch.**
 
 The archive should live outside the repository and contain only:
 
@@ -83,9 +83,8 @@ not justified by the current evidence. Do not reconstruct selected future
 candidates during this transition; they retain their own later acceptance
 routes.
 
-The transition requires a final Principal confirmation because archive creation
-followed by worktree deletion changes the only current carrier of unique raw
-evidence.
+The Principal selected A on 2026-07-16, authorizing archive creation followed by
+worktree deletion only after restoration passed.
 
 **Falsifiable acceptance:** restore the archive into a disposable directory and
 reproduce both index tree
@@ -103,15 +102,34 @@ If either differs, retain the original worktree and mark the transition failed.
 - Scanned changed staged blobs for high-confidence credential prefixes, private
   key markers, emails, local paths, and transcript-shaped fields.
 - Confirmed repository visibility through GitHub as `PUBLIC`.
+- Created `~/.local/share/lidessen/archives/skills/legacy-index-d2f00eae-2026-07-16.tar.gz`
+  with file mode `0600`; its SHA-256 is
+  `96ccff47e67799f45c15ef3128e0d3e6df25922b13dd17bed3bf8c1ee81ed5dc`.
+- The archive contains a manifest, the exact staged binary patch, and a Git
+  bundle rooted at synthetic commit
+  `c19b2b05c4f1a8e54cd62838d850f4b8dceb77d3`; the bundle SHA-256 is
+  `c63ee4e7335040e22513ca7fdd3e80848819abc0f06d822e249d30d5f913506d`.
+- A first restore command failed before fetching because an unbraced zsh
+  variable corrupted the refspec. No deletion occurred. The corrected complete
+  rerun verified the bundle and continued to both reconstruction paths.
+- Restoring the bundle into an empty repository produced tree
+  `d2f00eae727720ffd141f0ef734e1e81a9315db6`.
+- Replaying the archived patch from source head
+  `84346d65992fd76fcc2c7b58fb393d39e481fc75` changed 129 paths and independently
+  produced the same tree. Its SHA-256 remained
+  `e745285f45fc3e07efb0b5d49fd8d6f03f72f047c9e1ab1880cd6a82dd06440e`.
+- Only after both reconstructions passed, removed the live
+  `public-expression-readme` worktree and deleted its local and remote branch.
+  The merged `legacy-experiment-return` local and remote branch was also
+  retired.
 
-The audit passes as a carrier decision input. It does not certify that every
-raw model output is safe to publish, and it does not authorize deletion.
+The transition passes its carrier, authority, inheritance, and necessity
+checks. It does not certify that every raw model output is safe to publish; the
+archive remains local and must not be pushed to the public repository.
 
 ## Disposition
 
-No carrier transition has been executed. Keep the protected worktree unchanged
-until the Principal accepts or rejects the sealed-local-archive recommendation.
-On successful archive/restore verification, record the archive manifest and
-worktree removal here, settle `legacy-index-retention`, and move this campaign
-record to `design/organization/sessions/` because its evidence remains relevant
-to later source recovery.
+The sealed archive is now the only retained raw carrier. The live worktree and
+its obsolete branches no longer survive as process headquarters. This settled
+record remains under `design/organization/sessions/` because a later approved
+research return may need its archive identity and reconstruction procedure.
