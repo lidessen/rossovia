@@ -63,10 +63,26 @@ Maintain a coverage ledger from changed behaviors and load-bearing relations to
 packet IDs. A path outside one packet is a named outgoing relation, not evidence
 that the path is safe and not permission for the Cell to expand its authority.
 Type every boundary relation explicitly. At minimum distinguish semantic
-authority, licensed derivation, reconstructible projection, causal dependency,
-execution evidence, and acceptance authority. "Downstream of" does not imply
-"reconstructible from": synthesis must not normalize these relation types merely
-because several packets describe the same artifacts.
+authority, licensed derivation, contextual expression, reconstructible
+projection, causal dependency, execution evidence, and acceptance authority.
+"Downstream of" does not imply "reconstructible from": synthesis must not
+normalize these relation types merely because several packets describe the same
+artifacts.
+
+When the source/projection distinction can change synthesis, do not use a lone
+`Projection?` flag. Make the packet result contract retain this minimum test:
+
+```text
+Artifact or edge:
+Relation type:
+Source anchor:
+Reconstruction source, or none:
+Meaning lost if rebuilt from that source:
+```
+
+Only `reconstructible projection` may name a reconstruction source without
+losing decision-relevant meaning. A source may constrain a licensed derivative
+or contextual expression without being able to regenerate it.
 
 ## Release and adapt
 

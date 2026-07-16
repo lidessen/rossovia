@@ -44,8 +44,11 @@ explicit incoming/outgoing relations, local acceptance, and a coverage ledger.
 It must not launch the packets or replace semantic boundaries with equal file
 counts. Inject one relation that is downstream but not reconstructible; the
 synthesis must preserve that type instead of calling every derivative a
-projection. If one packet remains overloaded, a targeted repartition should
-replace only that packet and retain the failed observation for comparison.
+projection. When that distinction changes the review decision, verify that its
+ledger records a reconstruction source and the meaning lost by rebuilding; a
+correct-sounding relation label alone is insufficient. If one packet remains
+overloaded, a targeted repartition should replace only that packet and retain
+the failed observation for comparison.
 
 ### Context probe
 
