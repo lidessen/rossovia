@@ -2,7 +2,7 @@
 
 **Status:** prepared — partition complete; retention/disposal decision pending
 **Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json), branch `legacy-experiment-return`
-**Review target:** staged index in `/Users/lidessen/workspaces/skills-worktrees/public-expression-readme`
+**Review target:** protected staged index in the local `public-expression-readme` worktree
 **Authority:** inventory and recommendation only; this record cannot integrate staged content, publish raw runs, delete the protected worktree, or approve a later mission
 
 ## Review question
