@@ -1,4 +1,3 @@
-import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
 import { generateText, NoObjectGeneratedError, NoOutputGeneratedError, Output } from "ai";
 import { z } from "zod";
 import type { FieldDriverResult } from "./activation-field";
@@ -16,17 +15,16 @@ import {
   type SeedSelection,
 } from "./candidate-field";
 import type { CellUsage } from "../contracts";
+import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
+import {
+  createValidationModel,
+  validationProviderName,
+  type ValidationModelOptions,
+} from "../validation-model";
 
-export interface AiSdkCandidateFieldOptions {
-  apiKey?: string;
-  baseURL?: string;
-  model?: string;
+export interface AiSdkCandidateFieldOptions extends ValidationModelOptions {
   seedRetriever?: SeedMaterialRetriever;
 }
-
-const deepSeekNonThinking = {
-  deepseek: { thinking: { type: "disabled" } } satisfies DeepSeekLanguageModelOptions,
-};
 
 export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
   readonly descriptor;
@@ -35,13 +33,10 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
 
   constructor(options: AiSdkCandidateFieldOptions = {}) {
     const modelId = options.model ?? "deepseek-v4-flash";
-    const provider = createDeepSeek({
-      apiKey: options.apiKey ?? process.env.DEEPSEEK_API_KEY ?? "",
-      ...(options.baseURL ? { baseURL: options.baseURL } : {}),
-    });
-    this.model = provider(modelId);
+    const selection = createValidationModel(options);
+    this.model = selection.model;
     this.seedRetriever = options.seedRetriever;
-    this.descriptor = { provider: "deepseek", model: modelId };
+    this.descriptor = { provider: validationProviderName(selection), model: modelId };
   }
 
   async retrieve(
@@ -81,7 +76,6 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
       maxOutputTokens: 500,
       temperature: 0.8,
       topP: 0.95,
-      providerOptions: deepSeekNonThinking,
       ...(signal ? { abortSignal: signal } : {}),
     }));
     if (!this.seedRetriever) {
@@ -138,7 +132,6 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
       maxOutputTokens: 500,
       temperature: 0.75,
       topP: 0.95,
-      providerOptions: deepSeekNonThinking,
       ...(signal ? { abortSignal: signal } : {}),
     }));
     const basis = evidence.length === activation.value.titleIds.length ? "retrieval" : "mixed";
@@ -194,7 +187,6 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
       maxOutputTokens: 120,
       temperature: 1.25,
       topP: 0.98,
-      providerOptions: deepSeekNonThinking,
       ...(signal ? { abortSignal: signal } : {}),
     }));
   }
@@ -226,7 +218,6 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
       maxOutputTokens: 120,
       temperature: 1.3,
       topP: 0.98,
-      providerOptions: deepSeekNonThinking,
       ...(signal ? { abortSignal: signal } : {}),
     }));
   }
@@ -259,7 +250,6 @@ export class AiSdkCandidateFieldDriver implements CandidateFieldDriver {
       maxOutputTokens: 900,
       temperature: 0.35,
       topP: 0.9,
-      providerOptions: deepSeekNonThinking,
       ...(signal ? { abortSignal: signal } : {}),
     }));
   }
@@ -309,27 +299,6 @@ function fieldResult<T>(result: StructuredResult<T>, recoveredUsage: CellUsage, 
       providerMetadata: result.providerMetadata,
     },
   };
-}
-
-function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
-  const record = asRecord(usage);
-  const provider = asRecord(asRecord(metadata).deepseek);
-  const inputTokens = numberValue(record.inputTokens) || numberValue(record.promptTokens);
-  const outputTokens = numberValue(record.outputTokens) || numberValue(record.completionTokens);
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
-  };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? value as Record<string, unknown> : {};
-}
-
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function emptyUsage(): CellUsage {

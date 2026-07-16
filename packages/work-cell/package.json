@@ -23,6 +23,8 @@
   },
   "dependencies": {
     "@ai-sdk/deepseek": "3.0.11",
+    "@ai-sdk/openai-compatible": "3.0.11",
+    "@ai-sdk/provider": "4.0.3",
     "ai": "7.0.28",
     "zod": "4.4.3"
   },

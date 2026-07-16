@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { z } from "zod";
+import { requireValidationCredentials } from "../validation-model";
 import { runActivationField } from "./activation-field";
 import { AiSdkActivationFieldDriver } from "./ai-sdk-activation-field";
 import { compilePhenotypePrompts, PopulationSpecSchema, samplePopulation } from "./population-shape";
@@ -47,7 +48,7 @@ async function main(args: string[]): Promise<void> {
   if (workingSetOverride !== undefined && (!Number.isInteger(workingSetOverride) || workingSetOverride < 2 || workingSetOverride > 16)) {
     throw new Error("--working-set must be an integer from 2 through 16");
   }
-  if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is required for a live activation probe");
+  requireValidationCredentials("a live activation probe");
 
   const manifestPath = resolve(manifestArg);
   const spec = ProbeSpecSchema.parse(JSON.parse(await readFile(manifestPath, "utf8")));

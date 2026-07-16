@@ -212,7 +212,7 @@ cd packages/work-cell
 bun install
 bun run typecheck
 bun test
-bun run live:p23 # requires DEEPSEEK_API_KEY
+bun run live:p23 # prefers OPENCODE_API_KEY; DEEPSEEK_API_KEY is the fallback
 
 # from this repository or any descendant
 bun src/cli.ts probe "Inspect a bounded project question" \

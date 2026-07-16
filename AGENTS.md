@@ -18,6 +18,22 @@ files. See [context-engineering](skills/context-engineering/SKILL.md) for the
 delivery method and the [Agent Skills Specification](https://agentskills.io/specification#progressive-disclosure)
 for the underlying progressive-disclosure surface.
 
+### Separate mechanism, adapter, and policy
+
+When an implementation claims to be reusable, keep three decisions distinct:
+the mechanism owns invariant control flow and evidence, an adapter owns one
+external system's protocol and error semantics, and policy owns today's
+ordering, defaults, credentials, budgets, and product choice. Do not force this
+split onto a one-off implementation that has no demonstrated variation.
+
+Before accepting a reusable mechanism, run a substitution probe: replace one
+current provider, model, artifact kind, or default strategy with a plausible
+alternative. If the mechanism must change only because an identifier, endpoint,
+request shape, pricing rule, or preference changed, move that knowledge into an
+adapter or policy. Verify the boundary at all three levels: mechanism tests use
+neutral identities, adapter tests retain concrete quirks, and one integration
+probe proves the current policy solves the actual project problem.
+
 ## Project Overview
 
 This is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).

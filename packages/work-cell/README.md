@@ -16,10 +16,22 @@ to three supports, loads only their interpretations, and retains the expression
 as typed preparation evidence before invoking the unchanged core.
 
 The package does not depend on an external agent engine. AI SDK 7 is the first
-driver adapter; `deepseek-v4-flash` is the default model. The driver retains
-per-step usage and performance in the ordinary Cell trace. The core contract
-can support another adapter without changing run records or experiment
-semantics; see [decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md).
+driver adapter; `deepseek-v4-flash` is the default model. Validation calls
+prefer OpenCode Go when `OPENCODE_API_KEY` is present and fall back at the
+individual model-call boundary to the official DeepSeek API when
+`DEEPSEEK_API_KEY` is also present. This does not restart a Cell or replay its
+tools. The driver retains the actual serving route, per-step usage, and
+performance in the ordinary Cell trace. The core contract can support another
+adapter without changing run records or experiment semantics; see
+[decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md) and
+[decision 034](../../design/decisions/034-validation-model-routing.md).
+
+Model routing has three extension points. `model-route.ts` executes an ordered
+provider-neutral route and retains attempts; `providers/` owns each external
+API's construction, request translation, error meaning, and pricing; and
+`validation-model.ts` declares the current credential and provider-ordering
+policy. Adding or replacing a validation provider should change the latter two
+surfaces, not the generic route executor.
 
 ## Orchestration runtime
 
@@ -334,10 +346,16 @@ bun src/cli.ts deliberate-probe "Question" --option A="..." --option B="..." \
   --budget-tokens 60000 --member-estimated-tokens 20000 --budget-source "Principal approval"
 ```
 
-Live commands require `DEEPSEEK_API_KEY`. Generated evidence is written beneath
-`.work-cell/`, which is intentionally ignored because it may contain full model
-traces and workspace diffs. Promote a reviewed result deliberately into
-`regeneration/evaluations/`; do not treat raw output as accepted project fact.
+Live commands require `OPENCODE_API_KEY` or `DEEPSEEK_API_KEY`. With both set,
+OpenCode Go is preferred and the official DeepSeek API is the fallback. The
+runtime reacts to provider availability rather than trying to mirror OpenCode
+Go's mutable five-hour, weekly, and monthly allowance counters locally. Set only
+`DEEPSEEK_API_KEY` to run directly through DeepSeek.
+
+Generated evidence is written beneath `.work-cell/`, which is intentionally
+ignored because it may contain full model traces and workspace diffs. Promote a
+reviewed result deliberately into `regeneration/evaluations/`; do not treat raw
+output as accepted project fact.
 
 ## Independence boundary
 

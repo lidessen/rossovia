@@ -1,12 +1,12 @@
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { AiSdkDeepSeekDriver } from "./ai-sdk-driver";
-import { AiSdkDeepSeekSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
+import { AiSdkValidationDriver } from "./ai-sdk-driver";
+import { AiSdkValidationSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
 import { CellInputSchema, type CellRunRecord } from "./contracts";
 import { persistDeliberationRecord, runDeliberation } from "./adapters/deliberation/runtime";
 import { runExperimentFromFile } from "./adapters/experiment/runtime";
-import { AiSdkDeepSeekJudge } from "./adapters/experiment/judge";
+import { AiSdkValidationJudge } from "./adapters/experiment/judge";
 import { latestProjectRun, lowerProjectProbe, persistProjectRun } from "./adapters/sequence/project";
 import { prepareProjectDeliberation } from "./adapters/deliberation/project";
 import { renderRunSummary } from "./adapters/sequence/presentation";
@@ -31,7 +31,7 @@ async function main(args: string[]): Promise<void> {
       raw.workspace.root = resolve(dirname(absolutePath), raw.workspace.root);
     }
     const input = CellInputSchema.parse(raw);
-    const record = await runCell(input, new AiSdkDeepSeekDriver());
+    const record = await runCell(input, new AiSdkValidationDriver());
     const output = `${absolutePath.replace(/\.json$/, "")}.run.json`;
     await writeFile(output, `${JSON.stringify(record, null, 2)}\n`, "utf8");
     console.log(JSON.stringify({ output, runId: record.runId, status: record.status, usage: record.usage }, null, 2));
@@ -49,7 +49,7 @@ async function main(args: string[]): Promise<void> {
         }
       }
     }
-    const record = await runSwarm(raw, () => new AiSdkDeepSeekDriver());
+    const record = await runSwarm(raw, () => new AiSdkValidationDriver());
     const persisted = await persistSwarmRecord(absolutePath, record);
     console.log(JSON.stringify({
       output: persisted.indexPath,
@@ -67,8 +67,8 @@ async function main(args: string[]): Promise<void> {
     const path = requiredPath(rest, "experiment");
     const record = await runExperimentFromFile(
       path,
-      () => new AiSdkDeepSeekSequenceDriver(),
-      new AiSdkDeepSeekJudge(),
+      () => new AiSdkValidationSequenceDriver(),
+      new AiSdkValidationJudge(),
     );
     console.log(
       JSON.stringify(
@@ -104,7 +104,7 @@ async function main(args: string[]): Promise<void> {
     const receipt = `${absolutePath.replace(/\.json$/, "")}.${attemptId}.attempt.json`;
     await writeFile(receipt, `${JSON.stringify({ version: "work-cell.deliberation-attempt.v1", attemptId, manifest: absolutePath, pid: process.pid, status: "started", startedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
     try {
-      const record = await runDeliberation(manifest, () => new AiSdkDeepSeekSequenceDriver());
+      const record = await runDeliberation(manifest, () => new AiSdkValidationSequenceDriver());
       const output = await persistDeliberationRecord(absolutePath, record);
       await writeFile(receipt, `${JSON.stringify({ version: "work-cell.deliberation-attempt.v1", attemptId, manifest: absolutePath, status: "settled", startedAt: record.startedAt, finishedAt: record.finishedAt, record: output }, null, 2)}\n`, "utf8");
       console.log(JSON.stringify({ output, receipt, docketId: record.docket.id, summary: record.summary }, null, 2));
@@ -130,7 +130,7 @@ async function main(args: string[]): Promise<void> {
       }, null, 2));
       return;
     }
-    const record = await runDeliberation(prepared.manifest, () => new AiSdkDeepSeekSequenceDriver());
+    const record = await runDeliberation(prepared.manifest, () => new AiSdkValidationSequenceDriver());
     const output = resolve(prepared.directory, `record-${record.runId}.json`);
     await writeFile(output, `${JSON.stringify(record, null, 2)}\n`, "utf8");
     console.log(JSON.stringify({ output, evidence: prepared.evidencePath, docketId: record.docket.id, summary: record.summary }, null, 2));
@@ -139,7 +139,7 @@ async function main(args: string[]): Promise<void> {
 
   if (command === "probe") {
     const input = await lowerProjectProbe(parseProbeArguments(rest));
-    const record = await runSequenceCell(input, new AiSdkDeepSeekSequenceDriver());
+    const record = await runSequenceCell(input, new AiSdkValidationSequenceDriver());
     const output = await persistProjectRun(record, input.workspace.root);
     console.log(renderRunSummary(record, output));
     if (record.status !== "passed") process.exitCode = 1;

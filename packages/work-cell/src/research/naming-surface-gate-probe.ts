@@ -1,10 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { CellUsage } from "../contracts";
+import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
+import {
+  createValidationModel,
+  requireValidationCredentials,
+  validationProviderName,
+} from "../validation-model";
 
 (globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
 
@@ -75,7 +80,7 @@ async function main(args: string[]): Promise<void> {
   if (!expressionArg || !manifestArg) {
     throw new Error("usage: bun src/research/naming-surface-gate-probe.ts <naming-expression.json> <manifest.json>");
   }
-  if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is required for a live naming surface gate");
+  requireValidationCredentials("a live naming surface gate");
   const expressionPath = resolve(expressionArg);
   const expressionContent = await readFile(expressionPath, "utf8");
   const expression = ExpressionEnvelopeSchema.parse(JSON.parse(expressionContent));
@@ -84,8 +89,8 @@ async function main(args: string[]): Promise<void> {
   const candidates = mergeCandidates(expression.treatment);
   const allowedNames = new Set(candidates.map((candidate) => candidate.name));
   const modelId = "deepseek-v4-flash";
-  const provider = createDeepSeek({ apiKey: process.env.DEEPSEEK_API_KEY });
-  const model = provider(modelId);
+  const selection = createValidationModel({ model: modelId });
+  const model = selection.model;
   const startedAt = new Date();
   const results = candidates.length === 0 ? [] : await Promise.all(seats.map(async (seat) => {
     const result = await generateText({
@@ -109,9 +114,6 @@ async function main(args: string[]): Promise<void> {
       maxOutputTokens: 2_000,
       temperature: 0.35,
       topP: 0.9,
-      providerOptions: {
-        deepseek: { thinking: { type: "disabled" } } satisfies DeepSeekLanguageModelOptions,
-      },
     });
     const value = SurfaceJudgmentSchema.parse(result.output);
     assertCompleteJudgments(value, allowedNames, seat.id);
@@ -135,7 +137,7 @@ async function main(args: string[]): Promise<void> {
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),
-      driver: { provider: "deepseek", model: modelId },
+      driver: { provider: validationProviderName(selection), model: modelId },
       source: {
         path: expressionPath,
         sha256: createHash("sha256").update(expressionContent).digest("hex"),
@@ -218,19 +220,6 @@ function assertCompleteJudgments(
   }
 }
 
-function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
-  const record = asRecord(usage);
-  const provider = asRecord(asRecord(metadata).deepseek);
-  const inputTokens = numberValue(record.inputTokens) || numberValue(record.promptTokens);
-  const outputTokens = numberValue(record.outputTokens) || numberValue(record.completionTokens);
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
-  };
-}
-
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
 }
@@ -242,12 +231,4 @@ function addUsage(left: CellUsage, right: CellUsage): CellUsage {
     totalTokens: left.totalTokens + right.totalTokens,
     cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? value as Record<string, unknown> : {};
-}
-
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }

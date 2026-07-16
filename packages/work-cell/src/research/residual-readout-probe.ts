@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
+import { requireValidationCredentials } from "../validation-model";
 import type { ActivationFieldRecord } from "./activation-field";
 import { AiSdkResidualReadoutDriver } from "./ai-sdk-residual-readout";
 import { ResidualReadoutSpecSchema, runResidualReadout } from "./residual-readout";
@@ -21,7 +22,7 @@ async function main(args: string[]): Promise<void> {
   if (!sourceArg || !manifestArg) {
     throw new Error("usage: bun src/research/residual-readout-probe.ts <activation-record.json> <manifest.json> [--layers 0,1,2,3]");
   }
-  if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is required for a live residual-readout probe");
+  requireValidationCredentials("a live residual-readout probe");
   const sourcePath = resolve(sourceArg);
   const sourceContent = await readFile(sourcePath, "utf8");
   const stored = JSON.parse(sourceContent) as { record?: ActivationFieldRecord };

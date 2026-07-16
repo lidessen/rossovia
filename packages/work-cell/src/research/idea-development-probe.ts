@@ -1,10 +1,15 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
 import { generateText, NoObjectGeneratedError, NoOutputGeneratedError, Output } from "ai";
 import { z } from "zod";
 import type { CellUsage } from "../contracts";
+import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
+import {
+  createValidationModel,
+  requireValidationCredentials,
+  validationProviderName,
+} from "../validation-model";
 
 (globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
 
@@ -99,7 +104,7 @@ const EvidenceChallengeSchema = z.object({
 
 type Idea = z.infer<typeof IdeaSchema>;
 type FinalIdea = z.infer<typeof FinalIdeaSchema>;
-type Model = ReturnType<ReturnType<typeof createDeepSeek>>;
+type Model = ReturnType<typeof createValidationModel>["model"];
 
 interface EvidenceChunk {
   id: string;
@@ -115,10 +120,6 @@ interface StructuredResult<T> {
   recovered: boolean;
   audit?: unknown;
 }
-
-const nonThinking = {
-  deepseek: { thinking: { type: "disabled" } } satisfies DeepSeekLanguageModelOptions,
-};
 
 const baselineOperations = [
   "trace the narrowest causal bottleneck",
@@ -160,7 +161,7 @@ if (import.meta.main) {
 async function main(args: string[]): Promise<void> {
   const specArg = args[0];
   if (!specArg) throw new Error("usage: bun src/research/idea-development-probe.ts <spec.json>");
-  if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY is required for a live idea-development probe");
+  requireValidationCredentials("a live idea-development probe");
   const specPath = resolve(specArg);
   const specContent = await readFile(specPath, "utf8");
   const spec = ProbeSpecSchema.parse(JSON.parse(specContent));
@@ -170,8 +171,8 @@ async function main(args: string[]): Promise<void> {
   const evidenceById = new Map(evidence.map((entry) => [entry.id, entry]));
   const evidencePayload = JSON.stringify(evidence);
   const modelId = "deepseek-v4-flash";
-  const provider = createDeepSeek({ apiKey: process.env.DEEPSEEK_API_KEY });
-  const model = provider(modelId);
+  const selection = createValidationModel({ model: modelId });
+  const model = selection.model;
   const startedAt = new Date();
 
   const baselineDraftResults = await Promise.all(Array.from({ length: spec.baselineSamples }, (_, index) =>
@@ -294,7 +295,7 @@ async function main(args: string[]): Promise<void> {
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
-    driver: { provider: "deepseek", model: modelId },
+    driver: { provider: validationProviderName(selection), model: modelId },
     question: spec.question,
     specEvidence: { path: specPath, sha256: createHash("sha256").update(specContent).digest("hex") },
     evidence: evidence.map(({ content, ...entry }) => ({ ...entry, sha256: createHash("sha256").update(content).digest("hex") })),
@@ -392,7 +393,6 @@ async function generateBaselineDraft(
     maxOutputTokens: 1_400,
     temperature: 0.9,
     topP: 0.95,
-    providerOptions: nonThinking,
   }), "Return every required idea field and at least two supplied evidence IDs.", `baseline-${index + 1}`);
 }
 
@@ -415,7 +415,6 @@ async function generateObservation(
     maxOutputTokens: 900,
     temperature: 0.5,
     topP: 0.9,
-    providerOptions: nonThinking,
   }), "Return every required observation field and cite only supplied evidence IDs.", `observation-${index + 1}`);
 }
 
@@ -443,7 +442,6 @@ async function generateHypothesis(
     maxOutputTokens: 1_200,
     temperature: 0.85,
     topP: 0.95,
-    providerOptions: nonThinking,
   }), "Return every required hypothesis field and only supplied observation and evidence IDs.", `hypothesis-${index + 1}`);
 }
 
@@ -476,7 +474,6 @@ async function developHypothesis(
     maxOutputTokens: 1_400,
     temperature: 0.75,
     topP: 0.92,
-    providerOptions: nonThinking,
   }), "Return every required development field and cite only supplied evidence IDs.", `development-${target.id}`);
 }
 
@@ -550,7 +547,6 @@ async function challengeClaim(
     maxOutputTokens: 1_500,
     temperature: 0.2,
     topP: 0.85,
-    providerOptions: nonThinking,
   }), "Return every challenge field, cite only supplied evidence IDs, and copy exact source quotations.", `challenge-${claimId}`);
 }
 
@@ -580,7 +576,6 @@ async function synthesizeFinal(input: {
     maxOutputTokens: 1_800,
     temperature: 0.45,
     topP: 0.9,
-    providerOptions: nonThinking,
   }), "Keep disposition and idea consistent and use only supplied lineage and evidence IDs.", `synthesis-${input.treatment}`);
 }
 
@@ -605,7 +600,6 @@ async function judgeFinals(
     maxOutputTokens: 1_100,
     temperature: 0.25,
     topP: 0.85,
-    providerOptions: nonThinking,
   }), "Return one allowed preference and every required finding field.", `judge-${judgeSeats.indexOf(seat as typeof judgeSeats[number]) + 1}`);
 }
 
@@ -816,19 +810,6 @@ function recoverable(error: unknown): error is Error {
   return NoObjectGeneratedError.isInstance(error) || NoOutputGeneratedError.isInstance(error);
 }
 
-function normalizeUsage(usage: unknown, metadata: unknown): CellUsage {
-  const record = asRecord(usage);
-  const provider = asRecord(asRecord(metadata).deepseek);
-  const inputTokens = numberValue(record.inputTokens) || numberValue(record.promptTokens);
-  const outputTokens = numberValue(record.outputTokens) || numberValue(record.completionTokens);
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens: numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens) || numberValue(provider.promptCacheHitTokens),
-  };
-}
-
 function sumUsage(usages: CellUsage[]): CellUsage {
   return usages.reduce(addUsage, emptyUsage());
 }
@@ -844,12 +825,4 @@ function addUsage(left: CellUsage, right: CellUsage): CellUsage {
 
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? value as Record<string, unknown> : {};
-}
-
-function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
