@@ -94,11 +94,11 @@ export class AiSdkDeepSeekDriver implements CellDriver {
                 terminalOnly = true;
                 return finalOutputStep(input);
               }
-              // Reserve the final model turn for the report after a terminal
-              // tool call. Otherwise a tool-only final step makes AI SDK reject
-              // the run as having no output, even though the terminal contract
-              // was actually satisfied.
-              if (stepNumber >= input.budget.maxSteps - 2) {
+              // A terminal-only Cell needs one final action turn. When an
+              // independent structured output is also required, reserve a
+              // second tool-free turn for that result.
+              const reservedSteps = outputSchema ? 2 : 1;
+              if (stepNumber >= input.budget.maxSteps - reservedSteps) {
                 terminalOnly = true;
                 return {
                   // Terminal tools are dynamically registered from the caller's
@@ -156,10 +156,21 @@ export class AiSdkDeepSeekDriver implements CellDriver {
     }
     if (input.terminalTools?.length && !terminalSatisfied()) {
       context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
+      const availableTools = tools as Record<string, (typeof tools)[keyof typeof tools]>;
+      const closureTools = Object.fromEntries(
+        terminalNames.map((name) => [name, availableTools[name]!]),
+      );
       const closureAgent = new ToolLoopAgent({
         model: this.model,
-        instructions: `The previous work ended without satisfying its terminal-tool contract. Do not continue analysis. You must now invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
-        tools,
+        instructions: [
+          renderExecutionInstructions(input),
+          "## Terminal recovery phase",
+          "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
+          "The complete prior transcript is present. Successful tool results remain usable evidence. A later rejected tool call does not erase earlier results or prove that no files were read.",
+          "Use the retained evidence, bound only genuinely missing facts, and invoke exactly one declared terminal tool now.",
+          `You must invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
+        ].join("\n"),
+        tools: closureTools,
         stopWhen: outputSchema
           ? isStepCount(2)
           : [isStepCount(2), hasToolCall(...terminalNames)],
@@ -172,7 +183,7 @@ export class AiSdkDeepSeekDriver implements CellDriver {
           if (stepNumber === 0) {
             terminalOnly = true;
             return {
-              activeTools: terminalNames as Array<keyof typeof tools>,
+              activeTools: terminalNames,
               toolChoice: terminalToolChoice(terminalNames) as never,
             };
           }
@@ -186,7 +197,10 @@ export class AiSdkDeepSeekDriver implements CellDriver {
         closureResult = await closureAgent.generate({
           messages: [
             { role: "user", content: renderTaskPrompt(input) },
-            ...("response" in executionResult ? executionResult.response.messages : []),
+            {
+              role: "user",
+              content: `Retained successful tool evidence from the execution trace:\n${renderRecoveryEvidence(executionResult.steps)}`,
+            },
             {
               role: "user",
               content: "The work above ended without satisfying its terminal-tool contract. Use the retained investigation context and invoke exactly one declared terminal tool now. Do not restart the task.",
@@ -369,6 +383,37 @@ function terminalOnlyResult(names: string[], usage: CellUsage, phase: "execution
     providerMetadata: undefined,
     steps: [],
   };
+}
+
+function renderRecoveryEvidence(steps: readonly unknown[]): string {
+  const evidence: unknown[] = [];
+  const seen = new Set<string>();
+  for (const [stepIndex, value] of steps.entries()) {
+    const step = asRecord(value);
+    const results = Array.isArray(step.toolResults) ? step.toolResults : [];
+    for (const value of results) {
+      const result = asRecord(value);
+      const output = result.output;
+      if (asRecord(output).accepted === false) continue;
+      const retained = {
+        step: stepIndex + 1,
+        tool: result.toolName,
+        input: result.input,
+        output,
+      };
+      const identity = JSON.stringify({
+        tool: retained.tool,
+        input: retained.input,
+        output: retained.output,
+      });
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      evidence.push(retained);
+    }
+  }
+  return evidence.length > 0
+    ? JSON.stringify(evidence)
+    : "No successful tool result was retained; submit only the bounded facts available from the task contract.";
 }
 
 function renderExecutionInstructions(input: CellInput): string {

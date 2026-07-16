@@ -204,6 +204,13 @@ packet and source visibility with at least these treatments:
 - a label-only control whose role name changes but whose operative method does
   not.
 
+Keep each treatment to one attention-changing bias, not an embedded workflow or
+long personality description. Agent attention is finite: a complex role prompt
+changes context load and execution burden at the same time as the intended
+phenotype, making the comparison uninterpretable. Put shared procedure in the
+task structure, evidence packet, and result contract; let the treatment change
+only the one observation tendency under test.
+
 Hold model, source revision, tools, report contract, and acceptance owner
 constant. Score source selection, relation recovery, disconfirming checks,
 uncertainty calibration, false positives, natural settlement, and downstream
@@ -224,6 +231,16 @@ runtime presets until behavioral evidence distinguishes them.
 Prepared instructions, skills, and adapters may express experimental shapes.
 The general Work Cell and Swarm contracts should continue to transport those
 Cells without owning a taxonomy of cognitive personalities.
+
+The follow-up
+[stability and sparse-differentiation probe](2026-07-15-cell-stability-and-sparse-differentiation.md)
+found that even one short role label can materially redirect source order, but
+neither a rigor label nor compact rigor/deliberation biases improved this
+authority-and-causality packet over the neutral control. It also rejected long
+phenotype prompts as a valid comparison because they consume the attention they
+claim to shape. Cell function should therefore be expressed first through task,
+evidence, acceptance, and result boundaries; sparse attention bias remains a
+local, falsifiable treatment.
 
 ## Disposition
 

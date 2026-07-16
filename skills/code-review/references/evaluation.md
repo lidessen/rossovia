@@ -81,6 +81,11 @@ from tone or vocabulary. A shape is supported only when it changes the intended
 behavior across more than one packet without making grounding, completion, or
 false-positive rate materially worse.
 
+Express one shape as one compact attention bias. Do not embed a second review
+workflow or long personality description in the treatment: that confounds
+differentiation with instruction load and consumes the same finite attention the
+review must spend on source relations.
+
 ## Result record
 
 ```text

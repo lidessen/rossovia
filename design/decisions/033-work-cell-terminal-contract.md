@@ -35,12 +35,21 @@ runtime meaning:
 - Artifacts remain workspace evidence verified by `runCell`; neither a terminal
   input nor a structured output implies that a file exists.
 
-The last two main-loop steps are an action phase. Ordinary tools are disabled
-there, and a sole terminal tool is explicitly selected rather than merely
-requesting an unspecified tool. If the main loop still ends naturally, a
-bounded recovery loop receives the original response messages, including tool
-results, and asks only for the missing terminal action. It must not restart the
-task from an empty summary.
+The main loop reserves one final action step for a terminal-only Cell and a
+second tool-free result step when `outputSchema` is also declared. Ordinary
+tools are disabled during that phase, and a sole terminal tool is explicitly
+selected rather than merely requesting an unspecified tool. If a provider
+still repeats a previously visible ordinary tool or the main loop otherwise
+ends without the action, a bounded recovery loop receives a compact projection
+of every successful tool result from the original trace, retains the prepared
+task instructions and context that give those results meaning, and exposes only
+the declared terminal tools. It does not replay old tool-call messages that the
+provider could imitate, and it folds exact duplicate tool results without
+discarding distinct partial reads. A rejected late action does not erase earlier
+evidence; the recovery must not restart the task from an empty summary, invent a
+new meaning for the terminal schema, or claim that retained reads never occurred.
+The original trace and Cell input remain the evidence sources; the recovery
+context is their rebuildable action-oriented projection.
 
 This is protocol completion, not semantic acceptance. A `submit_review` payload
 may still be unsupported or false; the host or committee must inspect its file
@@ -69,6 +78,10 @@ evidence before accepting the review.
   failure plus `terminal.contract.violation` evidence.
 - Existing recovery and simultaneous `terminalTools + outputSchema` probes pass
   while retaining usage from both loops.
+- A provider-behavior probe repeats an ordinary read despite a terminal-only
+  final tool surface. The read is not executed, recovery retains the three
+  earlier successful results, and the terminal action settles from that
+  evidence instead of reporting an empty investigation.
 - A live terminal-only review retained a valid tool payload but AI SDK's absent
   structured-output getter raised `No output generated`. The adapter now reads
   structured output only when `outputSchema` is declared; a live replay settles

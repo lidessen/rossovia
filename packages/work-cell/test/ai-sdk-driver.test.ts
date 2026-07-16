@@ -112,13 +112,77 @@ test("forces the sole terminal tool before the step limit and blocks late ordina
   expect(record.status).toBe("passed");
   expect(record.verification.terminal).toMatchObject({ passed: true, called: ["submit_review"] });
   expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
-  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(2);
-  expect(observedToolChoices.slice(2)).toEqual([
-    { type: "tool", toolName: "submit_review" },
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(3);
+  expect(observedToolChoices.slice(3)).toEqual([
     { type: "tool", toolName: "submit_review" },
   ]);
   expect(record.finalText).toContain("Terminal contract satisfied during execution");
   expect(calls).toBe(4);
+});
+
+test("terminal recovery preserves successful evidence after a provider repeats an ordinary tool", async () => {
+  const root = await fixture();
+  let calls = 0;
+  let recoveryRequest: unknown;
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      if (calls <= 3) return response([{
+        type: "tool-call",
+        toolCallId: `read-${calls}`,
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 4) return response([{
+        type: "tool-call",
+        toolCallId: "late-read",
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 5) {
+        recoveryRequest = options;
+        return response([{
+          type: "tool-call",
+          toolCallId: "terminal",
+          toolName: "submit_review",
+          input: JSON.stringify({ verdict: "bounded" }),
+        }], "tool-calls");
+      }
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkDeepSeekDriver({ apiKey: "not-used", model: "mock-late-action-recovery" });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "late-action-recovery",
+    intent: "Retain evidence when the provider ignores the terminal-only tool surface.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read, then submit the bounded result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["Earlier successful reads remain available during terminal recovery."],
+    terminalTools: [{
+      name: "submit_review",
+      description: "Submit the review verdict.",
+      inputSchema: {
+        type: "object",
+        properties: { verdict: { type: "string", enum: ["bounded"] } },
+        required: ["verdict"],
+        additionalProperties: false,
+      },
+    }],
+    budget: { maxSteps: 4, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(3);
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(true);
+  expect(JSON.stringify(recoveryRequest)).toContain("Successful tool results remain usable evidence");
+  expect(JSON.stringify(recoveryRequest)).toContain("Read, then submit the bounded result");
+  expect(JSON.stringify(recoveryRequest)).toContain("P04｜主要矛盾｜矛盾论");
+  expect(JSON.stringify(recoveryRequest).split("P04｜主要矛盾｜矛盾论")).toHaveLength(2);
+  expect(calls).toBe(5);
 });
 
 test("rejects more than one terminal tool call", async () => {

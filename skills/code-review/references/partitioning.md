@@ -89,6 +89,12 @@ treatment. A proposed shape such as rigorous, deliberative, adversarial, or
 exploratory must name an observable behavior and local acceptance measure; prose
 variance alone is not evidence that the Cell inspected or judged differently.
 
+Differentiate in this order: local question, semantic scope, evidence access,
+acceptance condition, result contract, then—only if still necessary—one compact
+attention bias. The first five make a Cell's work function concrete. A role
+description competes with that work for finite attention and may redirect source
+order without improving judgment.
+
 Concurrency controls resource pressure across packets. Partitioning controls
 cognitive and verification scale inside each packet. They are related but not
 interchangeable: lowering concurrency cannot make an oversized Cell coherent,

@@ -161,6 +161,17 @@ contracts, budget, and workspace policy. The runtime creates a fresh driver for
 every Cell and retains one outcome for every manifest entry even when a sibling
 fails. Result identity follows manifest order rather than completion order.
 
+Differentiate Cells primarily through their bounded intent, semantic packet,
+evidence surface, local acceptance question, and result contract. These fields
+shape what the Cell must notice without spending active context on a simulated
+personality. Add at most one compact attention bias only when a controlled probe
+shows that the local task needs it. A verbose role or "think harder" prompt can
+push the same packet outside its stable working envelope, while even a short
+label can redirect source order and worsen a mismatched authority judgment.
+Stability therefore belongs to the whole prepared Cell shape, not to the model
+name or token count alone; see the
+[stability and sparse-differentiation probe](../../regeneration/evaluations/2026-07-15-cell-stability-and-sparse-differentiation.md).
+
 Cells may share a workspace root only when every Cell sharing it has empty
 `writePaths` and `allowedCommands`. A writable or command-capable Cell must have
 its own root in this first slice; the runtime does not infer safe disjoint write
