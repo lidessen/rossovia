@@ -106,18 +106,24 @@ Code-review instructions follow the same boundary. The installable
 [`code-review` skill](../../skills/code-review/SKILL.md) owns how one reviewer
 constructs an evidence-linked project or subsystem model, recovers an impact
 field, qualifies findings, and reports residual risk. A host may apply that
-unchanged method to one Cell or many caller-created packets, but the
+unchanged method to one Cell or lower its semantic partition plan into many
+prepared Cells, but the
 orchestration runtime owns only release and settlement and never embeds a
 reviewer role, cognitive model, risk rubric, report doctrine, or merge verdict.
 
-In review and other knowledge work, a Swarm may outperform one large Cell by
-forming independent local or whole models that expose incompatible ownership,
-causal, constraint, and change relations. That is a domain-level cognitive
-effect, not a kernel guarantee. The kernel retains each model as an independent
-result. If reconciliation is needed, the caller prepares a later Cell or stage
-that receives those records and resolves conflicts against source evidence;
-the kernel neither concatenates them into one hidden context nor converts
-agreement into truth.
+In review and other large tasks, the primary value of a Swarm is scale control.
+A domain method decomposes work that exceeds one Cell's supported working scale
+into semantically closed, locally verifiable packets; the kernel releases those
+prepared Cells under bounded resource concurrency and isolated settlement.
+Independent local models may expose incompatible ownership, causal, constraint,
+or change relations, but that is a secondary benefit of sound partitioning, not
+a kernel guarantee or the definition of Swarm.
+
+If the whole must be reconstructed, the caller prepares a later Cell or stage
+that receives a coverage ledger and the independent records, reconnects packet
+boundaries, and resolves conflicts against source evidence. The kernel neither
+chooses semantic cuts, concatenates all output into one hidden context, nor
+converts agreement into truth.
 
 Dynamic expansion is allowed only through a named source or adapter that
 constructs and validates a new `CellInput` and records its provenance. A model

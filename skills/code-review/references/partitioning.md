@@ -1,0 +1,91 @@
+# Scale-Controlled Review Partitioning
+
+Partition a review to keep every packet inside a scale where one reviewer can
+form a coherent model, investigate the relevant relations, verify material
+claims, and submit a bounded report. The objective is stable local performance,
+not reviewer count or maximum parallelism.
+
+## Detect scale pressure
+
+Prefer one whole-change review while it remains coherent. Consider partitioning
+when observed or estimated work has several of these properties:
+
+- governing design, changed code, callers, and verification evidence cannot
+  remain available together without material context eviction;
+- the change crosses several independent state, effect, lifecycle, protocol, or
+  capability owners;
+- investigation branches have locally testable outcomes and little shared
+  volatile state;
+- navigation consumes the turns needed for reasoning and verification;
+- one report would be too large to inspect or synthesize without hiding its
+  source relations; or
+- comparable retained runs show incomplete models, forced recovery, or large
+  variance at this scale.
+
+Do not infer the stable envelope from model prestige, a raw token limit, or file
+count. Use the work's relation structure and comparable execution observations.
+If no baseline exists, make the first partition conservative and retain what
+would justify merging or splitting packets next time.
+
+## Partition by semantic closure
+
+Choose boundaries that let one packet answer a consequential question and
+verify it locally. Useful cuts include:
+
+- one public contract and its producers/consumers;
+- one end-to-end causal path;
+- one state or effect owner and its lifecycle;
+- one compatibility or migration boundary; or
+- one verification surface tied to a concrete failure class.
+
+Do not split by equal file counts, diff line ranges, or arbitrary directory
+chunks when behavior crosses those cuts. Duplicate a small boundary contract in
+two packets when that overlap is necessary to test both sides independently.
+
+## Packet contract
+
+Every packet carries enough of the whole to remain interpretable:
+
+```text
+Shared intent and exact source revision:
+Whole system at low resolution:
+Packet question and detailed scope:
+State/effect or contract owner:
+Source anchors and available checks:
+Incoming relations:
+Outgoing relations:
+Deliberate overlap with other packets:
+Hard constraints and local acceptance:
+Required compact model/report shape:
+```
+
+Maintain a coverage ledger from changed behaviors and load-bearing relations to
+packet IDs. A path outside one packet is a named outgoing relation, not evidence
+that the path is safe and not permission for the Cell to expand its authority.
+
+## Release and adapt
+
+The partition plan does not launch work. Give prepared packets to the caller or
+orchestration carrier, which chooses concurrency and retains independent
+settlements. If a Cell reports that its packet still exceeds its working scale,
+retain that result and let the caller repartition; the Cell does not schedule
+its own descendants.
+
+Concurrency controls resource pressure across packets. Partitioning controls
+cognitive and verification scale inside each packet. They are related but not
+interchangeable: lowering concurrency cannot make an oversized Cell coherent,
+and making packets smaller does not authorize unbounded release.
+
+## Reconstruct the whole
+
+A later synthesis packet receives the coverage ledger and compact source-linked
+records. It checks:
+
+1. every load-bearing relation is covered;
+2. duplicated boundaries agree or retain an explicit conflict;
+3. local findings remain reachable when reconnected to external callers;
+4. no packet's missing context was silently converted into safety; and
+5. the combined result still answers the original acceptance question.
+
+The synthesis may reveal a new cross-packet relation. That is a reason for one
+targeted follow-up packet, not a reason to rerun every Cell automatically.

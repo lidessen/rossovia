@@ -134,9 +134,12 @@ interfaces below when those details must be supplied explicitly.
 ## Work Cell Swarm
 
 A Swarm releases between one and 256 already-defined ordinary Cells under one
-bounded concurrency value. It adds execution scale, failure isolation, stable
-manifest-order records, and compact persistence; it does not add a shared mind,
-task generation, communication, synthesis, voting, or semantic acceptance.
+bounded concurrency value. Its value is scale control: a caller or domain skill
+first decomposes oversized work until each Cell has a coherent, locally
+verifiable task; the runtime then controls concurrent resource pressure, failure
+isolation, stable manifest-order records, and compact persistence. It does not
+add a shared mind, task generation, communication, synthesis, voting, or
+semantic acceptance, and it never infers semantic partitions itself.
 It is the closed fixed-manifest execution form over the common orchestration
 kernel, not a second Cell runtime.
 The input must declare `concurrency` explicitly; the runtime never turns an

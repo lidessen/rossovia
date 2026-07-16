@@ -7,26 +7,28 @@
 **Target:** [`skills/code-review`](../../skills/code-review/SKILL.md) and its
 use through the generic [Work Cell orchestration runtime](../../design/decisions/031-extensible-work-cell-orchestration.md)
 
-## Pressure and accepted intent
+## Pressure, correction, and accepted intent
 
 The prior independent orchestration review showed that parallel model calls can
 complete the same mechanical contract while producing fabricated, contradictory,
-or useful findings. The new pressure is deeper than code-review specialization:
-a Swarm can form several local or whole models of a project, and the relations
-and conflicts among those models may expose impact that one frontier-model
-context suppresses. The runtime must enable that effect without owning review
-method, project cognition, or merge authority.
+or useful findings. The first interpretation over-promoted independent cognitive
+models as the main Swarm value. The corrected pressure is scale control: a task
+larger than one Cell's stable working envelope must be decomposed until every
+Cell can model, investigate, verify, and report its local work reliably. Diverse
+models may expose additional impact, but they are a secondary consequence of
+partitioning rather than its primary justification.
 
 The accepted boundary is:
 
 - the `code-review` skill owns evidence-linked project/subsystem modeling,
-  impact analysis, finding qualification, model reconciliation, and its
-  advisory report contract;
+  semantic review partitioning, impact analysis, finding qualification, model
+  reconnection, and its advisory report contract;
 - Work Cell orchestration owns only prepared-Cell release, concurrency,
   cancellation, settlement, retained records, and the mechanical time at which
   a later synthesis Cell runs; and
-- multiple reports are not votes. A later review packet reconciles entity,
-  ownership, causal, constraint, and change relations against source evidence.
+- multiple reports are not votes. A later review packet uses the coverage ledger
+  to reconnect ownership, causal, constraint, and change relations against
+  source evidence.
 
 ## Sequence expression team
 
@@ -46,7 +48,8 @@ projection authority without creating another review doctrine.
 The smallest durable form is one installable `code-review` skill with:
 
 - a carrier-independent core method in [`SKILL.md`](../../skills/code-review/SKILL.md);
-- on-demand [review modeling](../../skills/code-review/references/review-model.md),
+- on-demand [review partitioning](../../skills/code-review/references/partitioning.md),
+  [review modeling](../../skills/code-review/references/review-model.md),
   [risk lenses](../../skills/code-review/references/risk-lenses.md), and
   [behavioral evaluation](../../skills/code-review/references/evaluation.md);
 - a generated standalone Sequence snapshot; and
@@ -56,8 +59,9 @@ Rejected forms:
 
 - embedding reviewer roles, rubrics, or report shapes in the runtime, because
   this would specialize a general executor;
-- treating a Swarm count or majority as cognitive quality, because agreement
-  cannot turn an inference into fact; and
+- treating a Swarm count, parallelism, or majority as scale control, because
+  an oversized Cell remains oversized at lower concurrency and agreement cannot
+  turn an inference into fact; and
 - generating a durable project-wide architecture model by default, because a
   review model is temporary, resolution-bounded, and subordinate to source.
 
@@ -66,7 +70,7 @@ Rejected forms:
 ### Structural and installation probes
 
 The generated snapshot check, snapshot test, and disposable-project installation
-probe passed. The installed skill contains six files and needs no Work Cell,
+probe passed. The installed skill now contains seven files and needs no Work Cell,
 provider, terminal tool, or host repository to apply its method.
 
 ### Three-model Swarm probes
@@ -93,8 +97,10 @@ The third run's retained models were materially different:
    consumers as missing relations, not automatic defects, and returned
    `ready_with_residual_risk`.
 
-These relations would be lost by majority voting. Their combined value is the
-separation of design compatibility, runtime evidence, and exterior uncertainty.
+These relations would be lost by majority voting. They show a useful secondary
+effect of independent packets, but this rehearsal did not begin from a task
+that exceeded one Cell's stable scale and therefore does not establish the
+primary scale-control benefit.
 
 ### Runtime defects exposed by dogfood
 
@@ -119,7 +125,7 @@ independent contract is declared. A live single-Cell replay
 
 - The skill/runtime ownership boundary is explicit and carrier-independent.
 - Independent models exposed different decision-relevant relations that one
-  aggregate verdict would have erased.
+  aggregate verdict would have erased, as a secondary partition benefit.
 - A bounded packet can name outgoing relations it cannot inspect without
   expanding authority or manufacturing a defect.
 - Execution records can disconfirm their own projections; terminal trace was
@@ -127,11 +133,11 @@ independent contract is declared. A live single-Cell replay
 
 ### Not yet proven
 
-- This campaign does not prove that a Swarm is generally better than one
-  frontier model. A controlled comparison must hold intent, revision, evidence
-  access, report contract, and acceptance owner constant, then show a new
-  decision-changing relation, a corrected false model, or materially stronger
-  evidence.
+- This campaign does not prove scale control because the baseline did not first
+  demonstrate that the whole task exceeded one Cell's stable working envelope.
+  A controlled comparison must hold intent, revision, evidence access, report
+  contract, and acceptance owner constant, then compare whole-task completion
+  with semantic packets plus synthesis.
 - The skill is a judgment method, not a compliance mechanism. DeepSeek Flash
   still produced incomplete or false reports when navigation consumed the
   investigation window and recovery forced submission.
@@ -141,15 +147,16 @@ independent contract is declared. A live single-Cell replay
 
 ## Decision
 
-Keep the separation and retain the new `code-review` skill. Treat project or
-subsystem cognitive models as first-class review evidence, not runtime state.
-Use Swarms for consequential changes when independent model formation has a
-credible chance to expose different relations; follow them with a separately
-prepared synthesis packet that resolves conflicts against source. Do not claim
-Swarm advantage from Cell count, token spend, pass count, report length, or
-agreement alone.
+Keep the separation and retain the new `code-review` skill. Use a Swarm when
+the necessary work exceeds one Cell's empirically supported working scale and a
+semantic decomposition can preserve the original acceptance question. Treat
+project or subsystem models and their boundary ledgers as first-class review
+evidence, not runtime state. Follow partitioned review with a separately
+prepared synthesis packet that reconnects boundaries against source. Do not
+claim Swarm advantage from Cell count, token spend, pass count, report length,
+model diversity, or agreement alone.
 
-The next behavioral test should compare one whole-change reviewer with several
-bounded packets plus one synthesis Cell on the same real change. Until that
-comparison is retained, the skill is structurally and behaviorally usable, but
-the magnitude of the Swarm cognitive advantage remains an open empirical claim.
+The next behavioral test should first identify a real change that exceeds a
+comparable single Cell's stable envelope, then compare it with semantic packets
+plus one synthesis Cell. Until that comparison is retained, the skill is
+structurally usable, but the scale-control claim remains open empirical work.

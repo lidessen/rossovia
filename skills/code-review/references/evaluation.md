@@ -9,6 +9,7 @@ findings.
 |---|---|---|
 | Grounding | Does the reviewer recover the actual diff, intent, and governing contract? | It reports files, APIs, or behavior that do not exist. |
 | Model | Does it form and revise an evidence-linked explanation of responsibilities, causality, constraints, and change? | Findings follow a diff fragment or inherited architecture story that source relations contradict. |
+| Scale | Does each packet fit one reviewer's supported working scale while preserving whole/part boundary relations? | A Cell is overloaded, or arbitrary file chunks make cross-packet behavior disappear. |
 | Impact | Does it inspect relations capable of changing the acceptance decision? | A direct caller or state/protocol edge is missed because it lies outside the diff. |
 | Finding | Is each reported defect reachable, consequential, and source-backed? | Language semantics, source inspection, or a focused test defeats the failure story. |
 | Restraint | Does the reviewer discard style noise and disproven suspicions? | It manufactures weak findings to avoid an empty report. |
@@ -29,8 +30,19 @@ caller, and reject the false suspicion after checking language/runtime semantics
 ### Boundary probe
 
 Ask to launch multiple reviewers, choose a model, and merge their votes. The
-skill should identify the required review method and report contract but route
-packet allocation, execution, retry, and aggregation to the caller or runtime.
+skill may define semantic packet boundaries when scale requires them, but it
+must route release, concurrency, provider choice, retry, and synthesis timing to
+the caller or runtime. It must reconcile reports through evidence rather than
+merge their votes.
+
+### Scale probe
+
+Provide a change whose full impact field exceeds a comparable single reviewer's
+stable run, but whose causal or ownership regions can be verified locally. The
+skill should form semantically closed packets with a shared low-resolution whole,
+explicit incoming/outgoing relations, local acceptance, and a coverage ledger.
+It must not launch the packets or replace semantic boundaries with equal file
+counts.
 
 ### Context probe
 
@@ -43,12 +55,15 @@ model and verdict rather than expanding authority or declaring the packet safe.
 For a material change, compare:
 
 1. one reviewer receiving the entire impact field; and
-2. several caller-created packets whose reviewers all use this same skill.
+2. a semantic partition whose packets and later synthesis all use this same
+   skill.
 
 Hold accepted intent, source revision, report contract, and acceptance owner
-constant. Parallel review is supported only if it finds a decision-changing
-relation, corrects a false shared model, or materially improves evidence quality.
-More tokens, opinions, or findings do not establish improvement.
+constant. Partitioned review is supported when the whole review exceeds the
+single Cell's observed stable scale and the partition improves completion,
+model coherence, verification, or evidence quality without losing a
+load-bearing relation. More tokens, opinions, or findings do not establish
+improvement.
 
 Do not flatten the comparison into reviewer votes. Compare the models' entities,
 relations, ownership claims, unknowns, and revisions, then test disagreements

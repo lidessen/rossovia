@@ -42,24 +42,26 @@ contradicts the model, revise the model before judging the code. Do not preserve
 an elegant architecture story by treating mismatching implementation as a bug
 unless an accepted contract actually gives the story authority.
 
-## Combining independent models
+## Reconnecting partitioned models
 
-Several reviewers can produce better coverage because they may form different
-local models rather than inheriting one early interpretation. A later caller or
-review packet may reconcile them by:
+The primary reason to use several review Cells is scale control: each Cell can
+model and verify one semantically closed packet at a scale where it performs
+reliably. Different local models may also expose assumptions that one large
+model would suppress, but that is a secondary benefit, not the definition of a
+Swarm. A later caller or review packet reconnects them by:
 
-1. aligning concrete entities and source revisions;
-2. separating source-backed relations from inference;
-3. locating responsibility, causal, or invariant conflicts;
-4. checking the minimum source needed to resolve each conflict; and
-5. retaining unresolved alternatives as residual risk.
+1. checking the shared source revision and coverage ledger;
+2. aligning concrete entities and packet boundary relations;
+3. separating source-backed relations from inference;
+4. locating missing, duplicated, or conflicting responsibility, causal, and
+   invariant relations;
+5. checking the minimum source needed to resolve each conflict; and
+6. retaining unresolved alternatives as residual risk.
 
 Do not average models, select the longest report, or treat consensus as
 verification. The value of multiple models is the exposure of missing relations
-and premature assumptions; orchestration count alone produces no such value.
-This is the cognitive advantage to test when comparing a Swarm with one large
-reviewer: independent models can preserve competing explanations long enough
-for source evidence to reveal a relation that one early global model suppressed.
+and reliable treatment of work that exceeds one Cell's stable scale;
+orchestration count alone produces no such value.
 
 ## Compact model record
 
