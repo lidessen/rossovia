@@ -9,7 +9,7 @@
     "design/decisions/031-extensible-work-cell-orchestration.md"
   ],
   "createdAt": "2026-07-16T12:08:08Z",
-  "updatedAt": "2026-07-16T12:50:00Z",
+  "updatedAt": "2026-07-16T13:05:00Z",
   "mainline": {
     "contradiction": "The project can construct useful temporary source-linked models, but it cannot yet preserve and selectively refresh project cognition across tasks without creating a second canon or leaking domain semantics into Work Cell and Swarm.",
     "acceptance": [
@@ -34,10 +34,27 @@
         "design/organization/sessions/2026-07-16-project-cognition-bootstrap-strategy-case.md",
         "design/organization/sessions/2026-07-16-project-cognition-bootstrap-work-estimate.md",
         "skills/code-review/references/review-model.md",
-        "regeneration/evaluations/2026-07-15-project-cognition-scale-control.md"
+        "regeneration/evaluations/2026-07-15-project-cognition-scale-control.md",
+        "regeneration/evaluations/2026-07-16-project-cognition-bootstrap-and-refresh.md"
+      ],
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "The fixed-revision Shilu probe supports semantic bootstrap value and source-audited selective refresh, rejects monolithic cognition and strict mechanical chunking, separates caller/domain decomposition strategy from generic Work Cell/Swarm mechanics, and retains runtime/AX failures without selecting a durable cognition form."
+    },
+    {
+      "id": "cognition-form-decision",
+      "parent": "mainline",
+      "kind": "review",
+      "purpose": "Select the smallest truthful durable form for source-backed project cognition after the cross-project bootstrap and incremental-refresh evidence.",
+      "returnCondition": "A form-guidance review compares no new form, domain Skill, local source/ledger adapter, runtime carrier, and optional Shilu protocol; preserves source and execution boundaries; names triggers, lifecycle, installation, and disconfirming observations; and returns one Principal decision without implementing the selected form.",
+      "sources": [
+        "design/organization/sessions/2026-07-16-project-cognition-bootstrap-strategy-case.md",
+        "regeneration/evaluations/2026-07-16-project-cognition-bootstrap-and-refresh.md",
+        "design/decisions/026-context-engineering-reconstitutes-harness.md",
+        "design/decisions/031-extensible-work-cell-orchestration.md"
       ],
       "status": "open"
     }
   ],
-  "currentFocus": "cross-project-bootstrap-probe"
+  "currentFocus": "cognition-form-decision"
 }
