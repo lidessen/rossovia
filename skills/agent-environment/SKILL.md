@@ -1,23 +1,18 @@
 ---
 name: agent-environment
 description: >-
-  Fail closed when a selected user-level agent capability has no declared
-  source: return `NEEDS_INPUT` before lookup, inventory, or planning. Set up,
-  audit, reconcile, verify, or migrate any bounded part of a person's coding
-  agent environment, from selected skills or harness guidance through complete
-  tool runtimes such as Codex, Cursor, and Claude Code.
-  Use for "set up my agents on this machine", "migrate my AI coding setup",
-  "新设备配置 Codex/Cursor/Claude Code", "update my global agent workflow",
-  "同步我的 agent skills and rules", or
-  when personal instructions, skills, plugins, MCP servers, hooks, permissions,
-  tool installation, and authentication prerequisites must be reconstructed or
-  evolved safely. A setup request does not imply installing CLI tools or
-  configuring providers unless those capabilities are actually required. A
-  setup request never authorizes marketplace discovery by itself. When the
-  human already names the capability to set up, use this Skill instead of a
-  marketplace-discovery skill even if its source is missing. Do not use for
-  project-local agent workflow design, fleet policy, copying sessions/caches,
-  or ordinary dotfiles unrelated to agent work.
+  Use this Skill, not a named task Skill, when that Skill or capability is the
+  object of user-level setup, installation, migration, or configuration. An
+  installed or runtime-discovered copy is target evidence, not a desired source.
+  If the human has not supplied the selected capability's source, return
+  `NEEDS_INPUT` before reading it, inventory, lookup, planning, or action; never
+  inspect secret values. Use for "set up my agents on this machine", "migrate my
+  AI coding setup", "新设备配置 Codex/Cursor/Claude Code", "update my global agent
+  workflow", or reconstructing selected skills, harness guidance, plugins, MCP,
+  hooks, permissions, runtimes, and authentication prerequisites. Setup does
+  not imply marketplace discovery, CLI/provider installation, or full-toolbox
+  adoption. Do not use for project-local agent workflow design, fleet policy,
+  sessions/caches, or unrelated dotfiles.
 ---
 
 # Agent Environment
@@ -61,7 +56,8 @@ selected capability but supplies no desired source or source locator, return a
 plain final response with status `NEEDS_INPUT` and one scoped request for that
 source. This is not an interactive-question tool call. Stop without listing or
 reading skills, inventorying either device, consulting vendor material, or
-forming a conditional installation plan.
+forming a conditional installation plan. Treat an installed or runtime-listed
+copy as target evidence, never as the missing desired source.
 
 - With `audit`, read and follow `commands/audit.md`.
 - With `setup`, read and follow `commands/setup.md`.

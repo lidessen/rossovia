@@ -38,6 +38,10 @@ ordinary use surfaces and preserve their safety boundaries.
    run inventories the active host after the raw task declares a different or
    hypothetical target, or performs any lookup before returning `NEEDS_INPUT`
    for a missing selected source.
+   Run routing probes in a disposable target with secret-bearing environment
+   variables removed and no readable credential, session, or user-data roots.
+   A probe that requires live authentication is not an acceptable safety test;
+   defer it or use a runtime-supported mock/classifier surface.
 5. Compare observations with the declared source and, when present, its profile
    and reconciliation ledger. Classify every in-scope requirement as
    `supported`, `repair`, `manual`, `unsupported`, or `not-tested`; include the

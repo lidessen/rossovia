@@ -13,7 +13,9 @@ environment on one device.
    required but not named or supplied by the active runtime, ask one scoped
    question instead of discovering every installed harness. Resolve the desired
    source for every selected capability before choosing an installer. Treat a
-   declared source and selection as fixed inputs. If a required source is
+   human-declared source and selection as fixed inputs; an installed copy,
+   runtime skill listing, or lock entry is target evidence and cannot supply
+   missing intent. If a required source is
    missing, return a plain final response with status `NEEDS_INPUT` and one
    scoped request for the source. Do not use an interactive-question tool.
    Stop before inventory, target-skill loading, vendor lookup, installer

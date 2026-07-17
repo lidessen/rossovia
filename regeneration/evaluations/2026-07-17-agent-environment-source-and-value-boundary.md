@@ -1,8 +1,8 @@
 # Agent Environment Source and Value Boundary
 
-**Status:** supported by an isolated classifier repair probe, two neighboring
-behavior probes, and structural checks; cross-harness live application remains
-deferred
+**Status:** classifier repair remains supported in a bootstrap-only environment,
+but full-toolbox routing is under repair; credential-bearing live application is
+prohibited
 **Date:** 2026-07-17
 **Target:** [agent-environment](../../skills/agent-environment/SKILL.md)
 
@@ -91,6 +91,32 @@ interactive tool call. Repeating the same raw prompt then selected
 inventory, vendor lookup, marketplace discovery, or a conditional plan. This
 supports the first-action boundary in Kimi Code CLI; it does not establish the
 same metadata timing in other harnesses.
+
+## Full-toolbox regression and safety boundary
+
+After deployment, the raw probe was repeated through Kimi Code CLI with the
+actual global toolbox. The model first selected `code-review` because its name
+matched the setup object, then treated the runtime-discovered installed copy and
+lock entry as the missing desired source. A trigger revision caused it to select
+`agent-environment`, but it still made the same source/projection error and
+inspected the active host. During that invalid exploration it printed a secret-
+bearing environment variable, violating the setup boundary and making the live
+probe itself unsafe.
+
+The repair now states in trigger metadata that a named task skill is the object,
+not the owner, and that installed copies, runtime listings, and lock entries are
+target evidence rather than desired source. Verification also forbids routing
+probes in a credential-bearing user environment. The full-toolbox claim remains
+unverified until a credential-free classifier or runtime-supported mock can
+reproduce the ordinary skill set without access to user data.
+
+A no-tool Work Cell classifier then compared the prior and revised descriptions
+with runtime-like skill paths present. OpenCode Go DeepSeek Flash and Kimi K3
+both selected `agent-environment` and `NEEDS_INPUT` in baseline and treatment.
+This shows that the revised metadata remains compatible with the intended
+decision, but it does not attribute an improvement to the wording or reproduce
+the CLI's tool-using failure. Direct Kimi CLI repetition remains deferred until
+the harness can isolate credentials and user data from the tested agent.
 
 ## Expression and structural evidence
 
