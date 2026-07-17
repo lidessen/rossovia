@@ -5,14 +5,6 @@ import type { ModelRouteFailure } from "../model-route";
 export const OPENCODE_GO_PROVIDER_ID = "opencode-go";
 export const OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1";
 
-export const openCodeGoFlashPricing = {
-  inputPerMillionUsd: 0.14,
-  cachedInputPerMillionUsd: 0.0028,
-  outputPerMillionUsd: 0.28,
-  source: "https://opencode.ai/docs/go/",
-  revision: "2026-07-16",
-};
-
 export function createOpenCodeGoModel(options: {
   apiKey: string;
   model: string;

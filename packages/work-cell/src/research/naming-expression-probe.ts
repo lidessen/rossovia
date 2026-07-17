@@ -8,7 +8,8 @@ import type { CellUsage } from "../contracts";
 import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
 import {
   createValidationModel,
-  requireValidationCredentials,
+  requireValidationConfiguration,
+  validationModelName,
   validationProviderName,
 } from "../validation-model";
 
@@ -104,7 +105,7 @@ async function main(args: string[]): Promise<void> {
   if (!candidateArg || !manifestArg) {
     throw new Error("usage: bun src/research/naming-expression-probe.ts <candidate-field.json> <manifest.json>");
   }
-  requireValidationCredentials("a live naming-expression probe");
+  requireValidationConfiguration("a live naming-expression probe");
 
   const candidatePath = resolve(candidateArg);
   const candidateContent = await readFile(candidatePath, "utf8");
@@ -165,7 +166,10 @@ async function main(args: string[]): Promise<void> {
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
-    driver: { provider: validationProviderName(selection), model: modelId },
+    driver: {
+      provider: validationProviderName(selection),
+      model: validationModelName(selection),
+    },
     sourceEvidence,
     candidateField: {
       path: candidatePath,

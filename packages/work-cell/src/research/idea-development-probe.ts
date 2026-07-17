@@ -7,7 +7,8 @@ import type { CellUsage } from "../contracts";
 import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
 import {
   createValidationModel,
-  requireValidationCredentials,
+  requireValidationConfiguration,
+  validationModelName,
   validationProviderName,
 } from "../validation-model";
 
@@ -161,7 +162,7 @@ if (import.meta.main) {
 async function main(args: string[]): Promise<void> {
   const specArg = args[0];
   if (!specArg) throw new Error("usage: bun src/research/idea-development-probe.ts <spec.json>");
-  requireValidationCredentials("a live idea-development probe");
+  requireValidationConfiguration("a live idea-development probe");
   const specPath = resolve(specArg);
   const specContent = await readFile(specPath, "utf8");
   const spec = ProbeSpecSchema.parse(JSON.parse(specContent));
@@ -295,7 +296,10 @@ async function main(args: string[]): Promise<void> {
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
-    driver: { provider: validationProviderName(selection), model: modelId },
+    driver: {
+      provider: validationProviderName(selection),
+      model: validationModelName(selection),
+    },
     question: spec.question,
     specEvidence: { path: specPath, sha256: createHash("sha256").update(specContent).digest("hex") },
     evidence: evidence.map(({ content, ...entry }) => ({ ...entry, sha256: createHash("sha256").update(content).digest("hex") })),

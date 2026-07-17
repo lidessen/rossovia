@@ -12,6 +12,10 @@ import type { SeedMaterialRetriever } from "../src/research/candidate-field";
 import { runCell } from "../src/run-cell";
 
 const roots: string[] = [];
+const explicitDeepSeekRoute = () => [{
+  provider: "deepseek" as const,
+  credential: { source: "env" as const, name: "DEEPSEEK_TEST_KEY" },
+}];
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -29,7 +33,7 @@ test("recovers a natural finish without a terminal tool when provider metadata i
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-recovery" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-recovery" });
   // The adapter owns the model handle; the mock replaces only the provider edge.
   Object.defineProperty(driver, "model", { value: model });
 
@@ -86,7 +90,7 @@ test("forces the sole terminal tool before the step limit and blocks late ordina
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-terminal-action" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-terminal-action" });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -157,6 +161,7 @@ test("falls back inside one agent loop without replaying an earlier tool action"
     },
   });
   const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
     deepSeekApiKey: "not-used",
     opencodeApiKey: "not-used",
     model: "mock-failover",
@@ -231,6 +236,7 @@ test("retains provider-metadata cache usage when a later model step fails", asyn
     },
   });
   const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
     deepSeekApiKey: "not-used",
     model: "mock-provider-metadata-usage",
   });
@@ -287,7 +293,7 @@ test("terminal recovery preserves successful evidence after a provider repeats a
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-late-action-recovery" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-late-action-recovery" });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -332,7 +338,7 @@ test("rejects more than one terminal tool call", async () => {
       { type: "tool-call", toolCallId: "second", toolName: "reject", input: "{}" },
     ], "tool-calls"),
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-terminal-one-of" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-terminal-one-of" });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -364,7 +370,7 @@ test("rejects terminal tools that collide with AI SDK execution tools before mod
       throw new Error("model dispatch should not occur");
     },
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-terminal-collision" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-terminal-collision" });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -411,7 +417,7 @@ test("stops the main loop after one structured output step following a terminal 
       throw new Error(`unexpected extra main-loop call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-main-output" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-main-output" });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -463,7 +469,7 @@ test("recovers structured output after a terminal tool and retains all usage", a
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ deepSeekApiKey: "not-used", model: "mock-structured-recovery" });
+  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-structured-recovery" });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -519,7 +525,7 @@ test("activation adapter retries one malformed structured impulse and retains it
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkActivationFieldDriver({ deepSeekApiKey: "not-used", model: "mock-activation-recovery" });
+  const driver = new AiSdkActivationFieldDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-activation-recovery" });
   Object.defineProperty(driver, "model", { value: model });
 
   const result = await driver.activate({
@@ -545,7 +551,7 @@ test("candidate adapter recovers one malformed artifact without losing observed 
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkCandidateFieldDriver({ deepSeekApiKey: "not-used", model: "mock-candidate-recovery" });
+  const driver = new AiSdkCandidateFieldDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-candidate-recovery" });
   Object.defineProperty(driver, "model", { value: model });
 
   const result = await driver.emit({
@@ -591,7 +597,7 @@ test("candidate adapter grounds a selected title in injected runtime evidence", 
       };
     },
   };
-  const driver = new AiSdkCandidateFieldDriver({ deepSeekApiKey: "not-used", model: "mock-retrieval", seedRetriever });
+  const driver = new AiSdkCandidateFieldDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-retrieval", seedRetriever });
   Object.defineProperty(driver, "model", { value: model });
 
   const result = await driver.retrieve({

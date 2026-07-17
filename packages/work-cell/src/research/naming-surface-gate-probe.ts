@@ -7,7 +7,8 @@ import type { CellUsage } from "../contracts";
 import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
 import {
   createValidationModel,
-  requireValidationCredentials,
+  requireValidationConfiguration,
+  validationModelName,
   validationProviderName,
 } from "../validation-model";
 
@@ -80,7 +81,7 @@ async function main(args: string[]): Promise<void> {
   if (!expressionArg || !manifestArg) {
     throw new Error("usage: bun src/research/naming-surface-gate-probe.ts <naming-expression.json> <manifest.json>");
   }
-  requireValidationCredentials("a live naming surface gate");
+  requireValidationConfiguration("a live naming surface gate");
   const expressionPath = resolve(expressionArg);
   const expressionContent = await readFile(expressionPath, "utf8");
   const expression = ExpressionEnvelopeSchema.parse(JSON.parse(expressionContent));
@@ -137,7 +138,10 @@ async function main(args: string[]): Promise<void> {
       startedAt: startedAt.toISOString(),
       finishedAt: finishedAt.toISOString(),
       durationMs: finishedAt.getTime() - startedAt.getTime(),
-      driver: { provider: validationProviderName(selection), model: modelId },
+      driver: {
+        provider: validationProviderName(selection),
+        model: validationModelName(selection),
+      },
       source: {
         path: expressionPath,
         sha256: createHash("sha256").update(expressionContent).digest("hex"),

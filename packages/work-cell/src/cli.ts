@@ -1,5 +1,7 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { AiSdkValidationDriver } from "./ai-sdk-driver";
 import { AiSdkValidationSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
@@ -13,6 +15,19 @@ import { renderRunSummary } from "./adapters/sequence/presentation";
 import { runCell } from "./run-cell";
 import { runSequenceCell } from "./adapters/sequence/runtime";
 import { persistSwarmRecord, runSwarm } from "./swarm";
+import { queryKimiCodingQuota, renderKimiCodingQuota } from "./providers/kimi-coding-quota";
+import { observeCodex } from "./providers/codex-observer";
+import {
+  captureClaudeStatusline,
+  observeClaude,
+} from "./providers/claude-observer";
+import { renderProviderObservation } from "./provider-observation";
+import {
+  defaultProviderProfilePath,
+  discoverProviderCredentials,
+  ProviderProfileSchema,
+  type ProviderCredentialCandidate,
+} from "./provider-profile";
 
 await main(process.argv.slice(2)).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
@@ -151,6 +166,11 @@ async function main(args: string[]): Promise<void> {
     const path = requested ? resolve(requested) : await latestProjectRun();
     const record = JSON.parse(await readFile(path, "utf8")) as CellRunRecord;
     console.log(renderRunSummary(record, path));
+    return;
+  }
+
+  if (command === "provider") {
+    await providerCommand(rest);
     return;
   }
 
@@ -328,6 +348,188 @@ function usage(): never {
     "  bun src/cli.ts deliberate-probe <question> --option A=<summary> --option B=<summary> --seat P04=<role> --seat P11=<role> --seat P15=<role> --source <path> --budget-tokens <n> --member-estimated-tokens <n> --budget-source <approval> [--execute]",
     "  bun src/cli.ts probe <intent> --accept <condition> [--scope <path> ...] [--estimated-tokens <n>] [--estimated-tokens-tolerance <ratio>]",
     "  bun src/cli.ts review [record.json]",
+    "  bun src/cli.ts provider discover [--json]",
+    "  bun src/cli.ts provider configure [--route <provider,...>] [--output <path>] [--yes]",
+    "  bun src/cli.ts provider observe <kimi-coding|codex|claude> [--quota-file <path>] [--json]",
+    "  bun src/cli.ts provider capture claude [--output <path>] [--forward <statusline-command>]",
   ].join("\n"));
   process.exit(2);
+}
+
+async function providerCommand(args: string[]): Promise<void> {
+  const [action, ...rest] = args;
+  if (action === "discover") {
+    if (rest.length > 1 || (rest[0] && rest[0] !== "--json")) {
+      throw new Error(`unknown provider discover option: ${rest[0]}`);
+    }
+    const candidates = discoverProviderCredentials();
+    if (rest[0] === "--json") {
+      console.log(JSON.stringify({ candidates }, null, 2));
+      return;
+    }
+    for (const candidate of candidates) {
+      console.log(`${candidate.present ? "found" : "missing"}\t${candidate.provider}\t${candidate.credential.name}`);
+    }
+    console.log("Discovery reports credential references only; it does not select or contact a provider.");
+    return;
+  }
+
+  if (action === "configure") {
+    await configureProviders(rest);
+    return;
+  }
+
+  if (action === "observe") {
+    const provider = rest[0];
+    if (!provider) throw new Error("provider observe requires a provider id");
+    let json = false;
+    let quotaFile: string | undefined;
+    for (let index = 1; index < rest.length; index += 1) {
+      const flag = rest[index];
+      if (flag === "--json") json = true;
+      else if (flag === "--quota-file") quotaFile = requiredOptionValue(rest, index, flag), index += 1;
+      else throw new Error(`unknown provider observe option: ${flag}`);
+    }
+    const observation = provider === "kimi-coding"
+      ? await queryKimiCodingQuota()
+      : provider === "codex"
+        ? await observeCodex()
+        : provider === "claude"
+          ? await observeClaude({ ...(quotaFile ? { rateLimitsPath: resolve(quotaFile) } : {}) })
+          : undefined;
+    if (!observation) throw new Error(`provider observer is not implemented for ${provider}`);
+    console.log(json ? JSON.stringify(observation, null, 2) : provider === "kimi-coding"
+      ? renderKimiCodingQuota(observation)
+      : renderProviderObservation(observation));
+    return;
+  }
+
+  if (action === "capture") {
+    const provider = rest[0];
+    if (provider !== "claude") throw new Error("provider capture currently requires claude");
+    let output: string | undefined;
+    let forward: string | undefined;
+    for (let index = 1; index < rest.length; index += 1) {
+      const flag = rest[index];
+      if (flag === "--output") output = resolve(requiredOptionValue(rest, index, flag)), index += 1;
+      else if (flag === "--forward") forward = resolve(requiredOptionValue(rest, index, flag)), index += 1;
+      else throw new Error(`unknown provider capture option: ${flag}`);
+    }
+    const raw = await readStandardInput();
+    await captureClaudeStatusline(JSON.parse(raw), { ...(output ? { path: output } : {}) });
+    if (forward) process.stdout.write(await forwardStatusline(forward, raw));
+    return;
+  }
+
+  throw new Error("provider requires discover, configure, observe, or capture");
+}
+
+async function configureProviders(args: string[]): Promise<void> {
+  let routeArgument: string | undefined;
+  let output = defaultProviderProfilePath();
+  let assumeYes = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const flag = args[index];
+    if (flag === "--route") routeArgument = requiredOptionValue(args, index, flag), index += 1;
+    else if (flag === "--output") output = resolve(requiredOptionValue(args, index, flag)), index += 1;
+    else if (flag === "--yes") assumeYes = true;
+    else throw new Error(`unknown provider configure option: ${flag}`);
+  }
+  const candidates = discoverProviderCredentials().filter((candidate) => candidate.present);
+  if (candidates.length === 0) {
+    throw new Error("no supported provider credential references were discovered");
+  }
+  const selected = routeArgument
+    ? selectRoute(routeArgument.split(","), candidates)
+    : await promptForRoute(candidates);
+  const profile = ProviderProfileSchema.parse({
+    version: "work-cell.provider-profile.v1",
+    routes: {
+      validation: selected.map(({ provider, credential }) => ({ provider, credential })),
+    },
+  });
+  console.log("Validation route:");
+  for (const [index, target] of profile.routes.validation.entries()) {
+    console.log(`  ${index + 1}. ${target.provider} via ${target.credential.name}`);
+  }
+  console.log(`Target: ${output}`);
+  if (!assumeYes) {
+    const prompt = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = (await prompt.question("Save this non-secret provider profile? [y/N] ")).trim().toLowerCase();
+    prompt.close();
+    if (answer !== "y" && answer !== "yes") {
+      console.log("Provider profile was not changed.");
+      return;
+    }
+  }
+  await mkdir(dirname(output), { recursive: true });
+  const temporary = `${output}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(profile, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, output);
+  console.log(`Saved ${output}`);
+}
+
+async function promptForRoute(
+  candidates: ProviderCredentialCandidate[],
+): Promise<ProviderCredentialCandidate[]> {
+  console.log("Discovered credential references (no provider has been contacted):");
+  candidates.forEach((candidate, index) => {
+    console.log(`  ${index + 1}. ${candidate.label} (${candidate.credential.name})`);
+  });
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await prompt.question("Validation route in desired order (for example 1,3): ");
+  prompt.close();
+  const indexes = answer.split(",").map((value) => Number(value.trim()) - 1);
+  if (indexes.some((index) => !Number.isInteger(index) || !candidates[index])) {
+    throw new Error("route selection contains an invalid candidate number");
+  }
+  return selectRoute(indexes.map((index) => candidates[index]!.provider), candidates);
+}
+
+function selectRoute(
+  providers: string[],
+  candidates: ProviderCredentialCandidate[],
+): ProviderCredentialCandidate[] {
+  const byProvider = new Map(candidates.map((candidate) => [candidate.provider, candidate]));
+  const selected: ProviderCredentialCandidate[] = [];
+  const seen = new Set<string>();
+  for (const raw of providers) {
+    const provider = raw.trim();
+    if (!provider) continue;
+    if (seen.has(provider)) throw new Error(`provider route repeats ${provider}`);
+    const candidate = byProvider.get(provider as ProviderCredentialCandidate["provider"]);
+    if (!candidate) throw new Error(`provider ${provider} was not discovered with an available credential reference`);
+    seen.add(provider);
+    selected.push(candidate);
+  }
+  if (selected.length === 0) throw new Error("provider route must select at least one discovered provider");
+  return selected;
+}
+
+function requiredOptionValue(args: string[], index: number, flag: string): string {
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+  return value;
+}
+
+async function readStandardInput(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function forwardStatusline(command: string, input: string): Promise<string> {
+  return new Promise((resolveOutput, reject) => {
+    const child = spawn(command, [], { stdio: ["pipe", "pipe", "pipe"] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) resolveOutput(Buffer.concat(stdout).toString("utf8"));
+      else reject(new Error(`forwarded statusline exited with ${code}: ${Buffer.concat(stderr).toString("utf8").trim()}`));
+    });
+    child.stdin.end(input);
+  });
 }

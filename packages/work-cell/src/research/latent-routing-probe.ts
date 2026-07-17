@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
-import { requireValidationCredentials } from "../validation-model";
+import { requireValidationConfiguration } from "../validation-model";
 import type { ActivationFieldRecord } from "./activation-field";
 import { AiSdkResidualReadoutDriver } from "./ai-sdk-residual-readout";
 import { LatentRoutingSpecSchema, runLatentRouting } from "./latent-routing";
@@ -22,7 +22,7 @@ async function main(args: string[]): Promise<void> {
   if (!sourceArg || !manifestArg) {
     throw new Error("usage: bun src/research/latent-routing-probe.ts <activation-record.json> <manifest.json>");
   }
-  requireValidationCredentials("a live latent-routing probe");
+  requireValidationConfiguration("a live latent-routing probe");
   const sourcePath = resolve(sourceArg);
   const sourceContent = await readFile(sourcePath, "utf8");
   const stored = JSON.parse(sourceContent) as { record?: ActivationFieldRecord };

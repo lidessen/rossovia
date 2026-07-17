@@ -42,6 +42,7 @@ export function createRoutedLanguageModel(route: ModelRoute): LanguageModelV4 {
           return withRouteMetadata(result, {
             routeId: route.id,
             servedBy: target.id,
+            model: target.model.modelId,
             mode: route.targets.length === 1
               ? "direct"
               : index === 0 ? "preferred" : "fallback",
@@ -97,6 +98,7 @@ function withRouteMetadata(
   route: {
     routeId: string;
     servedBy: string;
+    model: string;
     mode: "preferred" | "fallback" | "direct";
     attempts: Array<{ target: string; reason: string }>;
   },

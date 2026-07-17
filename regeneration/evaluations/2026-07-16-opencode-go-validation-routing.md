@@ -26,7 +26,8 @@ The added probes establish:
   request visible;
 - after one successful `read_file`, a second-call 429 uses DeepSeek inside the
   same AI SDK loop and the read remains executed exactly once;
-- the validation policy exposes only credentials that are actually configured;
+- the validation policy executes only the human-confirmed profile targets whose
+  referenced credentials are available;
 - the OpenCode adapter's JSON Schema lowering retains the schema instruction,
   JSON-object response mode, and disabled-thinking setting.
 
@@ -132,12 +133,15 @@ a completed step could lose provider-metadata-only cache evidence. Both primary
 and terminal-recovery callbacks now pass their metadata, and a deterministic
 failure-path test retains that completed step's cache usage.
 
-## Finding
+## Revised finding
 
-The routing mechanism is ready for validation use. OpenCode Go is the preferred
-provider when its key is present; the official DeepSeek API is a real fallback
-only when its key is also present. The fallback boundary is one model call, not
-one Cell. The generic mechanism, concrete provider adapters, current policy, and
-project-level prevention gate now have separate owners. AI SDK Harnesses remain
-a separate, experimental future adapter for delegating to complete coding
-runtimes and are not part of this provider route.
+The routing mechanism is ready for validation use after an explicit provider
+profile selects its targets. Credential presence alone does not prefer or
+authorize OpenCode Go. The fallback boundary is one model call, not one Cell.
+OpenCode Go's published token tariffs measure the fixed-price subscription's
+allowance consumption rather than marginal spend, so subscription and mixed
+routes no longer emit a dollar cost estimate. The generic mechanism, concrete
+provider adapters, current policy, and project-level prevention gate have
+separate owners. AI SDK Harnesses remain a separate, experimental future
+adapter for delegating to complete coding runtimes and are not part of this
+provider route.

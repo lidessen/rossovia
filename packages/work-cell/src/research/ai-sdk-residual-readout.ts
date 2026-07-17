@@ -3,6 +3,7 @@ import type { CellUsage } from "../contracts";
 import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
 import {
   createValidationModel,
+  validationModelName,
   validationProviderName,
   type ValidationModelOptions,
 } from "../validation-model";
@@ -25,10 +26,12 @@ export class AiSdkResidualReadoutDriver implements ResidualReadoutDriver {
   private readonly model;
 
   constructor(options: AiSdkResidualReadoutOptions = {}) {
-    const modelId = options.model ?? "deepseek-v4-flash";
     const selection = createValidationModel(options);
     this.model = selection.model;
-    this.descriptor = { provider: validationProviderName(selection), model: modelId };
+    this.descriptor = {
+      provider: validationProviderName(selection),
+      model: validationModelName(selection),
+    };
   }
 
   async route(

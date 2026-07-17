@@ -1,35 +1,248 @@
 import { expect, test } from "bun:test";
-import { APICallError, type LanguageModelV4GenerateResult } from "@ai-sdk/provider";
-import { generateText } from "ai";
+import {
+  APICallError,
+  type LanguageModelV4CallOptions,
+  type LanguageModelV4GenerateResult,
+} from "@ai-sdk/provider";
+import { generateText, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import { z } from "zod";
 import { createRoutedLanguageModel } from "../src/model-route";
 import { normalizeAiSdkUsage } from "../src/ai-sdk-usage";
 import {
   adaptOpenCodeGoRequestBody,
   classifyOpenCodeGoFailure,
 } from "../src/providers/opencode-go";
-import { createValidationModel } from "../src/validation-model";
+import {
+  adaptKimiCodingToolChoice,
+  adaptKimiCodingRequest,
+  classifyKimiCodingFailure,
+  createKimiCodingModel,
+} from "../src/providers/kimi-coding";
+import {
+  createValidationModel,
+  validationModelName,
+} from "../src/validation-model";
+import {
+  ProviderProfileSchema,
+  type ValidationProviderId,
+} from "../src/provider-profile";
 
-test("the validation policy declares only routes backed by configured credentials", () => {
+const routeTarget = (provider: ValidationProviderId) => ({
+  provider,
+  credential: { source: "env" as const, name: `${provider.toUpperCase().replaceAll("-", "_")}_TEST_KEY` },
+});
+
+test("global credentials do not authorize a route when the provider profile is absent", () => {
   expect(() => createValidationModel({
-    opencodeApiKey: "",
-    deepSeekApiKey: "",
-  })).toThrow("OPENCODE_API_KEY or DEEPSEEK_API_KEY is required for validation");
+    providerProfilePath: `/tmp/missing-provider-profile-${crypto.randomUUID()}.json`,
+    environment: {
+      OPENCODE_API_KEY: "globally-present-but-not-authorized",
+      KIMI_CODE_API_KEY: "globally-present-but-not-authorized",
+      DEEPSEEK_API_KEY: "globally-present-but-not-authorized",
+    },
+  })).toThrow("provider profile not found");
+});
 
-  expect(createValidationModel({
+test("provider profiles reject misspelled execution settings instead of silently using defaults", () => {
+  expect(() => ProviderProfileSchema.parse({
+    version: "work-cell.provider-profile.v1",
+    routes: {
+      validation: [{
+        provider: "deepseek",
+        credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+        modle: "deepseek-reasoner",
+      }],
+    },
+  })).toThrow("Unrecognized key");
+});
+
+test("the validation policy requires an explicit route backed by its referenced credentials", () => {
+  expect(() => createValidationModel({
+    route: [routeTarget("opencode-go")],
+    opencodeApiKey: "",
+  })).toThrow("selected provider opencode-go requires credential");
+
+  const openCodeOnly = createValidationModel({
+    route: [routeTarget("opencode-go")],
     opencodeApiKey: "go-key",
-    deepSeekApiKey: "",
-  }).route).toEqual(["opencode-go"]);
+  });
+  expect(openCodeOnly.route).toEqual(["opencode-go"]);
+  expect(openCodeOnly.pricing).toBeUndefined();
 
   expect(createValidationModel({
-    opencodeApiKey: "",
+    route: [routeTarget("deepseek")],
     deepSeekApiKey: "deepseek-key",
-  }).route).toEqual(["deepseek"]);
+  }).pricing).toEqual(expect.objectContaining({
+    inputPerMillionUsd: 0.14,
+    outputPerMillionUsd: 0.28,
+  }));
 
   expect(createValidationModel({
+    route: [routeTarget("opencode-go"), routeTarget("deepseek")],
     opencodeApiKey: "go-key",
     deepSeekApiKey: "deepseek-key",
   }).route).toEqual(["opencode-go", "deepseek"]);
+
+  const kimiOnly = createValidationModel({
+    route: [routeTarget("kimi-coding")],
+    kimiApiKey: "kimi-key",
+  });
+  expect(kimiOnly.route).toEqual(["kimi-coding"]);
+  expect(kimiOnly.models).toEqual(["kimi-for-coding"]);
+  expect(validationModelName(kimiOnly)).toBe("kimi-for-coding");
+  expect(kimiOnly.pricing).toBeUndefined();
+
+  const fullRoute = createValidationModel({
+    route: [routeTarget("opencode-go"), routeTarget("kimi-coding"), routeTarget("deepseek")],
+    opencodeApiKey: "go-key",
+    kimiApiKey: "kimi-key",
+    deepSeekApiKey: "deepseek-key",
+  });
+  expect(fullRoute.route).toEqual(["opencode-go", "kimi-coding", "deepseek"]);
+  expect(validationModelName(fullRoute)).toBe(
+    "opencode-go/deepseek-v4-flash->kimi-coding/kimi-for-coding->deepseek/deepseek-v4-flash",
+  );
+  expect(fullRoute.pricing).toBeUndefined();
+});
+
+test("an unpriced model cannot inherit the default model's dollar estimate", () => {
+  const selection = createValidationModel({
+    route: [{ ...routeTarget("deepseek"), model: "unpriced-model" }],
+    deepSeekApiKey: "deepseek-key",
+  });
+
+  expect(selection.models).toEqual(["unpriced-model"]);
+  expect(selection.pricing).toBeUndefined();
+});
+
+test("the Kimi Coding adapter keeps its real provider identity and required reasoning settings", async () => {
+  const requests: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+  const model = createKimiCodingModel({
+    apiKey: "kimi-key",
+    fetch: (async (input, init) => {
+      requests.push({
+        url: String(input),
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return jsonResponse({
+        id: "response-1",
+        object: "chat.completion",
+        created: 1,
+        model: "kimi-for-coding",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "ok", reasoning_content: "checked" },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      });
+    }) as typeof fetch,
+  });
+
+  const result = await generateText({
+    model,
+    prompt: "Finish the check.",
+    tools: {
+      finish_check: tool({
+        description: "Finish the deterministic provider check.",
+        inputSchema: z.object({}),
+      }),
+    },
+    toolChoice: { type: "tool", toolName: "finish_check" },
+    maxRetries: 0,
+  });
+
+  expect(result.text).toBe("ok");
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.url).toBe("https://api.kimi.com/coding/v1/chat/completions");
+  expect(requests[0]?.headers.get("authorization")).toBe("Bearer kimi-key");
+  expect(requests[0]?.headers.get("user-agent")).toContain("ai/7.");
+  expect(requests[0]?.body.temperature).toBe(1);
+  expect(requests[0]?.headers.get("user-agent")).toContain("runtime/bun/");
+  expect(requests[0]?.body).toMatchObject({
+    model: "kimi-for-coding",
+    thinking: { type: "enabled" },
+    reasoning_history: "interleaved",
+    tool_choice: "auto",
+  });
+});
+
+test("the Kimi Coding adapter lowers unsupported forced tool choice without weakening terminal verification", () => {
+  const named = adaptKimiCodingToolChoice({
+    toolChoice: { type: "tool", toolName: "finish_review" },
+  } as LanguageModelV4CallOptions);
+  const required = adaptKimiCodingToolChoice({
+    toolChoice: { type: "required" },
+  } as LanguageModelV4CallOptions);
+  const automatic = { toolChoice: { type: "auto" } } as LanguageModelV4CallOptions;
+
+  expect(named.toolChoice).toEqual({ type: "auto" });
+  expect(required.toolChoice).toEqual({ type: "auto" });
+  expect(adaptKimiCodingToolChoice(automatic)).toBe(automatic);
+});
+
+test("the stable Kimi Coding alias owns its fixed temperature compatibility", () => {
+  expect(adaptKimiCodingRequest({ temperature: 0 } as LanguageModelV4CallOptions, "kimi-for-coding").temperature).toBe(1);
+  expect(adaptKimiCodingRequest({ temperature: 0.4 } as LanguageModelV4CallOptions, "another-model").temperature).toBe(0.4);
+});
+
+test("Kimi plan exhaustion can fall through but request-shape defects remain visible", () => {
+  expect(classifyKimiCodingFailure(apiError(402), {})).toEqual({
+    reason: "membership_unavailable",
+  });
+  expect(classifyKimiCodingFailure(apiError(403), {})).toEqual({
+    reason: "quota_or_rate_limit",
+  });
+  expect(classifyKimiCodingFailure(apiError(429), {})).toEqual({
+    reason: "quota_or_rate_limit",
+  });
+  expect(classifyKimiCodingFailure(apiError(400), {})).toBeUndefined();
+  expect(classifyKimiCodingFailure(apiError(404), {})).toBeUndefined();
+});
+
+test("Kimi quota exhaustion advances one model call and retains the provider-specific model", async () => {
+  let reserveCalls = 0;
+  const result = await generateText({
+    model: createRoutedLanguageModel({
+      id: "validation-test",
+      targets: [
+        {
+          id: "kimi-coding",
+          model: new MockLanguageModelV4({
+            modelId: "kimi-for-coding",
+            doGenerate: async () => {
+              throw apiError(429);
+            },
+          }),
+          fallbackOn: classifyKimiCodingFailure,
+        },
+        {
+          id: "deepseek",
+          model: new MockLanguageModelV4({
+            modelId: "deepseek-v4-flash",
+            doGenerate: async () => {
+              reserveCalls += 1;
+              return response("fallback");
+            },
+          }),
+        },
+      ],
+    }),
+    prompt: "route once",
+    maxRetries: 0,
+  });
+
+  expect(result.text).toBe("fallback");
+  expect(reserveCalls).toBe(1);
+  expect(result.providerMetadata).toMatchObject({
+    workCellRoute: {
+      servedBy: "deepseek",
+      model: "deepseek-v4-flash",
+      attempts: [{ target: "kimi-coding", reason: "quota_or_rate_limit" }],
+    },
+  });
 });
 
 test("the OpenCode adapter lowers JSON Schema without losing the schema instruction", () => {
@@ -93,6 +306,7 @@ test("a generic route does not touch its reserve target when the preferred targe
     workCellRoute: {
       routeId: "test-route",
       servedBy: "preferred",
+      model: "mock-model-id",
       mode: "preferred",
       attempts: [],
     },
@@ -249,4 +463,10 @@ function response(text: string): LanguageModelV4GenerateResult {
     },
     warnings: [],
   };
+}
+
+function jsonResponse(value: unknown): Response {
+  return new Response(JSON.stringify(value), {
+    headers: { "content-type": "application/json" },
+  });
 }

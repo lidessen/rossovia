@@ -1,6 +1,6 @@
 # 034 — Validation Model Routing
 
-**Status:** implemented and verified
+**Status:** Superseded in preference ownership by decision 036; provider route mechanism retained
 **Date:** 2026-07-16
 **Approved by:** principal
 
@@ -12,29 +12,48 @@ wants validation to consume its DeepSeek V4 Flash capacity first, then continue
 through the official DeepSeek API when that service is unavailable or its
 allowance is exhausted.
 
+The principal later added a Kimi Coding Plan subscription. Skills are easy to
+update through package provenance; model subscriptions are different execution
+capacity and must enter the provider route without turning a coding harness into
+the Work Cell runtime.
+
 [OpenCode Go documents](https://opencode.ai/docs/go/) a DeepSeek V4 Flash model
 through an OpenAI-compatible endpoint. Its allowance is governed by separate
 five-hour, weekly, and monthly dollar-value limits, so the runtime must not
 pretend that one locally knowable counter determines availability.
 
+[Kimi Code documents a third-party API](https://www.kimi.com/code/docs/en/)
+with stable Coding Plan model IDs and both OpenAI- and Anthropic-compatible
+endpoints. It requires clients to preserve their real identity, and its
+membership quota is not a token-priced API tariff. The
+[official AI SDK Moonshot provider](https://ai-sdk.dev/providers/ai-sdk-providers/moonshotai)
+already preserves reasoning history needed by Kimi thinking models, so the
+project does not reimplement that protocol.
+
 ## Decision
 
-Route each non-streaming validation model call independently:
+Route each non-streaming validation model call independently through the
+human-confirmed targets in the selected provider profile:
 
-1. When `OPENCODE_API_KEY` is present, call OpenCode Go's
-   `deepseek-v4-flash` model first.
-2. When that provider reports quota, authentication, timeout, rate-limit,
-   server, or transport unavailability, retry the same model request through
-   the official DeepSeek API using `DEEPSEEK_API_KEY`.
-3. When no OpenCode Go key is present, use the official DeepSeek API directly.
-4. Do not fall back after caller cancellation, or for a valid provider response
+1. When the route includes OpenCode Go, resolve its referenced credential and
+   call its configured `deepseek-v4-flash` model.
+2. When the route next includes Kimi, route an unavailable OpenCode call to
+   Kimi Coding Plan's `kimi-for-coding` model. OpenCode and Kimi have independent
+   model IDs; the route may not reuse one global ID across providers.
+3. When Kimi reports membership, plan access, quota, authentication, timeout,
+   rate-limit, server, or transport unavailability, route that model call to
+   the official DeepSeek API only when it is a later selected target.
+4. A route with one selected target uses that provider directly. Credential
+   presence alone never selects or orders a target.
+5. Do not fall back after caller cancellation, malformed requests, unsupported
+   model names, or for a valid provider response
    that later fails a Work Cell tool, output, terminal, or verification
    contract. Those are not provider-availability failures.
 
 Failover lives at the model-call boundary inside the existing AI SDK agent
 loop. It does not restart a Cell or replay its prior tools. Each successful
-call records the serving route in provider metadata; a fallback record also
-retains a bounded classification of the primary failure.
+call records the serving provider and provider-specific model in metadata; a
+fallback record also retains a bounded classification of earlier failures.
 
 The implementation has three owners:
 
@@ -42,16 +61,39 @@ The implementation has three owners:
   target-owned fallback decisions, aggregate failure, and route evidence;
 - `providers/` owns concrete model construction, request translation, provider
   error meaning, and provider pricing;
-- `validation-model.ts` owns this project's present credential discovery and
-  OpenCode Go → DeepSeek ordering.
+- `provider-profile.ts` owns the human-confirmed provider order and named
+  credential references;
+- `validation-model.ts` resolves that explicit profile into provider-specific
+  model targets and fails closed when the profile or a referenced secret is
+  absent.
 
 Changing today's provider choice must not change the generic route mechanism.
 Changing an endpoint or provider-specific response form must not change the
-validation policy. The current pair has matching token prices, so the existing
-aggregate cost estimator remains truthful. The validation policy fails closed
-if these prices diverge; heterogeneous route pricing requires a separate
-route-aware cost-audit change rather than silently applying one target's price
-to another target's usage.
+validation policy. [Decision 036](036-provider-observation-and-explicit-preference.md)
+defines discovery, preference, and observation as separate forms. OpenCode Go
+and Kimi Coding Plan are fixed-price subscriptions. Their published token
+tariffs determine allowance consumption, not the marginal money spent by one
+Cell. Any route containing either subscription therefore omits a dollar
+estimate. A mixed route can also serve different calls from different
+providers, and aggregate usage cannot assign them truthfully. Per-call
+route-aware cost audit is a later capability, not permission to report
+allowance-equivalent tariffs as actual spend or call subscription usage free.
+
+Kimi's [experimental `/coding/v1/usages` endpoint](https://forum.moonshot.ai/t/error-code-429-were-receiving-too-many-requests-at-the-moment/191/7)
+is admitted only as a provider adapter behind the generic read-only observer.
+It may report the weekly and rolling
+windows for a human or status integration, but it does not pre-empt a call,
+trigger fallback, or become an execution dependency. Its normalized output is
+explicitly marked experimental and fails visibly when the response shape
+changes. The runtime does not infer a monthly window when the endpoint does not
+name and reset one.
+
+OpenCode Go's [published usage limits](https://opencode.ai/docs/go/#usage-limits)
+have no documented quota API. Dashboard HTML scraping needs a workspace ID and
+browser auth cookie, so it is not admitted into this provider observer: it
+widens credential authority and couples execution tooling to a mutable page.
+Per-call token usage remains evidence, but cannot truthfully represent account
+allowance shared with other clients.
 
 OpenCode Go accepts tool calls and JSON-object responses but its upstream does
 not accept OpenAI's native `json_schema` response form. The provider adapter
@@ -69,6 +111,35 @@ provider/model abstraction. Work Cell deliberately retains direct control of
 its tool loop, contracts, and custom architecture. A future harness-backed Cell
 adapter is a separate decision, especially while the Harness API is
 experimental.
+
+Kimi thinking mode introduces one provider constraint that the runtime cannot
+wish away. [Kimi's tool-use documentation](https://platform.kimi.com/docs/guide/migrating-from-openai-to-kimi)
+admits only `auto` and `none` tool choice, while Work Cell may request a named
+terminal tool during recovery. The Kimi adapter lowers `required` or named
+selection to `auto`; the model still receives the terminal-only instruction,
+and the unchanged runtime verifies that exactly one declared terminal tool was
+actually called. A missing call remains a failed contract. The adapter also
+enables thinking and interleaved reasoning history so later tool steps retain
+the `reasoning_content` required by Kimi's documented protocol.
+
+The provider uses the official AI SDK package's truthful AI SDK/runtime
+User-Agent. It does not impersonate Kimi CLI, Claude Code, or another approved
+client to obtain subscription access.
+
+## Development-skill form
+
+Three provider integrations now expose a reusable judgment: determine protocol
+ownership, model identity, error meaning, tool and structured-output
+compatibility, economic semantics, and the smallest live probe before declaring
+support. That is a plausible future agent-facing `model-provider-integration`
+Skill, not a new runtime.
+
+Do not create it in this implementation slice. First complete a live Kimi
+terminal-tool probe and retain the actual incompatibilities; then extract the
+method from DeepSeek, OpenCode Go, and Kimi without copying Work Cell-specific
+paths into a falsely generic Skill. Reopen this form decision earlier only if a
+fresh agent cannot add Kimi correctly from this decision and the existing
+provider extension points.
 
 ## Institutional prevention
 
@@ -100,6 +171,12 @@ or a second variation makes the boundary real.
   Work Cell boundaries this change is meant to preserve.
 - **Fall back on every error.** Cancellation and local protocol failures must
   remain visible rather than being misclassified as provider exhaustion.
+- **Treat Kimi Coding Plan as another DeepSeek endpoint.** Its stable model IDs,
+  reasoning history, tool-choice restriction, identity requirement, and
+  subscription economics are provider-owned differences.
+- **Use Kimi CLI or Kimi Agent SDK as the model driver.** Those own a coding
+  harness and agent loop. Work Cell only needs the documented model endpoint
+  and retains its own tools, workspace, completion contracts, and evidence.
 
 ## Verification
 
@@ -113,11 +190,18 @@ or a second variation makes the boundary real.
 - Adapter tests must keep OpenCode's JSON and error behavior outside the generic
   route tests, while the validation-policy test retains today's credential
   ordering.
+- Kimi adapter tests must retain the real AI SDK client identity, thinking and
+  reasoning-history settings, tool-choice translation, provider-specific model
+  ID, and fail-closed handling of malformed requests.
 - A low-cost live OpenCode Go call must exercise a real Work Cell terminal tool
   and retain the selected route in its record.
 - A low-cost live structured call must return an AI SDK-validated object through
   the OpenCode route after the request-shape translation.
 - Package typecheck and the full Work Cell test suite must remain green.
+- Before Kimi is called live-verified, a low-cost Cell must call a terminal tool
+  through the Coding Plan endpoint and retain `kimi-coding` plus the actual
+  model in route metadata. A structured-output probe is separately required
+  before claiming that capability through the stable Coding Plan alias.
 
 The retained [validation evaluation](../../regeneration/evaluations/2026-07-16-opencode-go-validation-routing.md)
 records deterministic failover and non-replay probes, the live terminal call,

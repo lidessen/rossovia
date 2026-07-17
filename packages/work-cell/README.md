@@ -16,11 +16,12 @@ to three supports, loads only their interpretations, and retains the expression
 as typed preparation evidence before invoking the unchanged core.
 
 The package does not depend on an external agent engine. AI SDK 7 is the first
-driver adapter; `deepseek-v4-flash` is the default model. Validation calls
-prefer OpenCode Go when `OPENCODE_API_KEY` is present and fall back at the
-individual model-call boundary to the official DeepSeek API when
-`DEEPSEEK_API_KEY` is also present. This does not restart a Cell or replay its
-tools. The driver retains the actual serving route, per-step usage, and
+driver adapter; `deepseek-v4-flash` is the default model. Validation calls use
+only an explicitly supplied route or a human-confirmed provider profile. A
+globally available credential is discoverable capacity, not permission to
+spend it. Every configured fallback occurs at the individual model-call
+boundary. It does not restart a Cell or replay its tools.
+The driver retains the actual serving provider and model, per-step usage, and
 performance in the ordinary Cell trace. The core contract can support another
 adapter without changing run records or experiment semantics; see
 [decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md) and
@@ -29,9 +30,40 @@ adapter without changing run records or experiment semantics; see
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
 API's construction, request translation, error meaning, and pricing; and
-`validation-model.ts` declares the current credential and provider-ordering
-policy. Adding or replacing a validation provider should change the latter two
-surfaces, not the generic route executor.
+`provider-profile.ts` owns explicit preference and credential references while
+`validation-model.ts` resolves that selection into provider-specific models.
+Adding or replacing a validation provider should change these policy and
+adapter surfaces, not the generic route executor. OpenCode Go and Kimi Coding
+Plan are fixed-price subscriptions: their token tariffs measure allowance
+consumption, not marginal money spent by one Cell. Any subscription or mixed
+route therefore retains usage and serving evidence but omits a dollar estimate
+until cost audit can attribute usage per served call and distinguish allowance
+from actual spend.
+
+Provider observation is separate from execution preference. The generic
+observation result keeps availability, quota freshness, normalized windows, and
+source authority distinct. Codex is observed through its local app-server
+without opening a model turn. Claude availability comes from `claude auth
+status`; quota is captured from Claude Code's documented statusline input into
+Work Cell's own cache. `provider capture claude` may forward the unchanged input
+to any existing statusline command, but that command and its storage are never
+dependencies.
+
+Kimi exposes a separate, experimental read-only usage endpoint, described by a
+[Kimi developer-support response](https://forum.moonshot.ai/t/error-code-429-were-receiving-too-many-requests-at-the-moment/191/7).
+It is an observer, not part of model execution or fallback: `bun run
+provider:observe:kimi` shows weekly and rolling-window percentages and reset
+times, while `bun src/cli.ts provider observe kimi-coding --json` emits the normalized status for a
+status bar or another tool. If this undocumented response changes, quota
+display fails visibly without disabling Kimi model calls. The endpoint does not
+currently expose a separately named monthly window, so Work Cell does not
+invent one from the plan's total quota field.
+
+[OpenCode Go documents](https://opencode.ai/docs/go/#usage-limits) 5-hour,
+weekly, and monthly limits, but currently directs users to its console rather
+than publishing a quota API. Work Cell does not copy the community workaround
+of scraping an authenticated workspace page. Model response usage remains
+available per call; it is not mislabeled as the account's remaining allowance.
 
 ## Orchestration runtime
 
@@ -340,17 +372,38 @@ bun src/cli.ts experiment experiments/p23-bounded-autonomy.json
 # Bounded independent deliberation; the result is evidence, never a vote that commits work.
 bun src/cli.ts deliberate path/to/deliberation.json
 
+# Inventory known credential references without exposing values, probing, or selecting.
+bun src/cli.ts provider discover
+
+# Confirm and store an explicit validation route; omit --route for an interactive prompt.
+bun src/cli.ts provider configure \
+  --route opencode-go,kimi-coding,deepseek
+
+# Read-only provider observations; add --json for integrations.
+bun src/cli.ts provider observe kimi-coding
+bun src/cli.ts provider observe codex
+bun src/cli.ts provider observe claude
+
+# Configure this as a Claude Code statusline sink. It reads statusline JSON from stdin.
+# --forward may preserve an existing statusline, but is never an observation dependency.
+bun src/cli.ts provider capture claude
+
 # Prepare a compact project-facing deliberation packet; add --execute only after inspection.
 bun src/cli.ts deliberate-probe "Question" --option A="..." --option B="..." \
   --seat P04="..." --seat P11="..." --seat P15="..." --source design/decision.md \
   --budget-tokens 60000 --member-estimated-tokens 20000 --budget-source "Principal approval"
 ```
 
-Live commands require `OPENCODE_API_KEY` or `DEEPSEEK_API_KEY`. With both set,
-OpenCode Go is preferred and the official DeepSeek API is the fallback. The
-runtime reacts to provider availability rather than trying to mirror OpenCode
-Go's mutable five-hour, weekly, and monthly allowance counters locally. Set only
-`DEEPSEEK_API_KEY` to run directly through DeepSeek.
+Live model commands require an explicit route and every credential referenced
+by that route. The default profile is
+`$XDG_CONFIG_HOME/work-cell/providers.json` (or
+`~/.config/work-cell/providers.json`); `WORK_CELL_PROVIDER_PROFILE` can select
+another file. Credential discovery never creates this profile. Kimi uses
+`kimi-for-coding` by default; callers
+may explicitly select another model admitted by their membership through the
+profile's model field. The runtime reacts to provider responses rather than
+mirroring remote allowance counters. To use one provider directly, configure a
+one-target route; merely setting one key does not authorize it.
 
 Generated evidence is written beneath `.work-cell/`, which is intentionally
 ignored because it may contain full model traces and workspace diffs. Promote a

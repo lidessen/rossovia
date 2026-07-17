@@ -6,6 +6,7 @@
       "name": "@lidessen/work-cell",
       "dependencies": {
         "@ai-sdk/deepseek": "3.0.11",
+        "@ai-sdk/moonshotai": "3.0.14",
         "@ai-sdk/openai-compatible": "3.0.11",
         "@ai-sdk/provider": "4.0.3",
         "ai": "7.0.28",
@@ -21,6 +22,8 @@
     "@ai-sdk/deepseek": ["@ai-sdk/deepseek@3.0.11", "", { "dependencies": { "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.10" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-QhJTD6SAIAtdwsneKbkdsq6dL6KMJdnjUrA4jry/QAK4YQsLJw5Bw3CZLQhnU3L2IwtjAksr+qp1NY+gOI6Nfw=="],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@4.0.20", "", { "dependencies": { "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.10", "@vercel/oidc": "3.2.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-m3PdYs0yqSxswsrEhVj64wDLgFs35Zxl8liLNuWGzE7bwBLF6Mhu0E5rPpDNJbIjyQpA4aMKOOWBfjERw2zvPw=="],
+
+    "@ai-sdk/moonshotai": ["@ai-sdk/moonshotai@3.0.14", "", { "dependencies": { "@ai-sdk/openai-compatible": "3.0.11", "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.10" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-CcbX0LhMH5ke2+YQ76lDhmAN3CiUN3af15igh/qGffSZ+6CrvMtvZQoXmZPU1M+zgHrytKSm5giJpj4h9Wejig=="],
 
     "@ai-sdk/openai-compatible": ["@ai-sdk/openai-compatible@3.0.11", "", { "dependencies": { "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.10" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-PKLyt5PfjV2maWJPZpm3W29vCc+BbyqSPAcghXhl+iIxzFNjpGPa6UD/8J0b9l7w/lJCZKuhcef9q+Gp5WqUvw=="],
 

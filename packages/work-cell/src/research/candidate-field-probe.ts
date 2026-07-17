@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
-import { requireValidationCredentials } from "../validation-model";
+import { requireValidationConfiguration } from "../validation-model";
 import type { ActivationFieldRecord } from "./activation-field";
 import { AiSdkCandidateFieldDriver } from "./ai-sdk-candidate-field";
 import { CandidateFieldSpecSchema, SeedLibrarySchema, runCandidateField } from "./candidate-field";
@@ -29,7 +29,7 @@ async function main(args: string[]): Promise<void> {
     throw new Error("usage: bun src/research/candidate-field-probe.ts <activation-record.json> <manifest.json> [memory|wikisource]");
   }
   if (treatment !== "memory" && treatment !== "wikisource") throw new Error(`unknown candidate-field treatment: ${treatment}`);
-  requireValidationCredentials("a live candidate-field probe");
+  requireValidationConfiguration("a live candidate-field probe");
   const sourcePath = resolve(sourceArg);
   const sourceContent = await readFile(sourcePath, "utf8");
   const stored = JSON.parse(sourceContent) as { record?: ActivationFieldRecord };

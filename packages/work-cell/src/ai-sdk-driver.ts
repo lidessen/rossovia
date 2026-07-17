@@ -16,6 +16,7 @@ import { compileOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import {
   createValidationModel,
+  validationModelName,
   validationProviderName,
   type ValidationModelOptions,
 } from "./validation-model";
@@ -34,14 +35,13 @@ export class AiSdkValidationDriver implements CellDriver {
   protected readonly model;
 
   constructor(options: AiSdkDriverOptions = {}) {
-    const modelId = options.model ?? "deepseek-v4-flash";
     const selection = createValidationModel(options);
     this.model = selection.model;
     this.descriptor = {
       adapter: "ai-sdk-v7",
       provider: validationProviderName(selection),
-      model: modelId,
-      pricing: selection.pricing,
+      model: validationModelName(selection),
+      ...(selection.pricing ? { pricing: selection.pricing } : {}),
     };
   }
 
