@@ -23,8 +23,8 @@ hooks/interventions, agent roles, verification, and install provenance.
 
 ## Portable components
 
-| ID | Capability or agreement | Desired source / provenance | Scope | Target projection | Apply method | Verification |
-|---|---|---|---|---|---|---|
+| ID | Capability or agreement | Desired source / provenance | Scope | Target projection | Benefit observation | Added burden | Apply method | Disposition |
+|---|---|---|---|---|---|---|---|---|
 
 ## Tool-specific commitments
 
@@ -65,7 +65,7 @@ command or key blank when its status is `lookup-required`.
 - Prior applied revision and receipt:
 - Target device and tool versions:
 - Applied and preserved:
-- Deliberate no-ops and added burdens:
+- Per-projection benefit, burden, and disposition:
 - Deferred, unsupported, or failed:
 - Interactive authorization still required:
 - Rollback locations:

@@ -14,11 +14,15 @@ environment on one device.
    question instead of discovering every installed harness. Resolve the desired
    source for every selected capability before choosing an installer. Treat a
    declared source and selection as fixed inputs. If a required source is
-   missing, ask for it; do not search a marketplace or substitute a recommended
-   third-party capability. Marketplace discovery requires a separate explicit
-   request to discover or compare candidates. For each proposed projection,
+   missing, return a plain final response with status `NEEDS_INPUT` and one
+   scoped request for the source. Do not use an interactive-question tool.
+   Stop before inventory, target-skill loading, vendor lookup, installer
+   selection, conditional planning, or device action; do not search a
+   marketplace or substitute a recommended third-party capability. Marketplace
+   discovery requires a separate explicit request to discover or compare
+   candidates. For each proposed projection,
    name the recurring action it should improve, the ordinary-use observation
-   that would show that gain, and its persistent-context, dependency, update,
+   that would show that gain, and its persistent context, dependency, update,
    duplication, and maintenance burden. If the unchanged environment already
    supports the action or the expected gain is not material, record a no-op and
    do not configure that surface. Keep user-level setup thin: concise
@@ -42,7 +46,10 @@ environment on one device.
    other tool homes, sessions, caches, or provider state. When only classifying
    or proposing an installer-managed setup, do not fetch or read the target
    skill body unless a named compatibility or safety question requires it. Keep
-   device-specific receipts outside any shared desired source.
+   device-specific receipts outside any shared desired source. Do not inspect
+   the active host as a proxy for a fresh, remote, or hypothetical target. When
+   target access is absent, plan from declared facts and leave target
+   observations unresolved.
 3. Separate desired source, tool projections, secret prerequisites,
    machine-local state, and local overrides. When a profile is actually used,
    obtain human confirmation before destructive replacement or before promoting
@@ -75,7 +82,11 @@ environment on one device.
 8. Write a setup receipt alongside the chosen source or return it in chat when
    no durable carrier was authorized. Include relevant source revision,
    observed versions, applied and preserved items, rollback paths, manual work,
-   deliberate no-ops, added burdens, and reopening signals.
+   deliberate no-ops, added burdens, and reopening signals. For more than one
+   target projection, retain a compact row per capability and harness with its
+   benefit observation, burden, and `applied`, `no-op`, `deferred`, or `failed`
+   disposition. Group rows only when their ordinary path, evidence, burden, and
+   independent removal boundary are the same.
 
 Setup is incomplete when an in-scope file exists but the intended agent or
 runtime has not loaded it, or when required interactive authorization remains

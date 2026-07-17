@@ -1,7 +1,8 @@
 # Agent Environment Source and Value Boundary
 
-**Status:** supported by one reproduced baseline, two independent behavior
-probes, and structural checks; cross-harness live application remains deferred
+**Status:** supported by an isolated classifier repair probe, two neighboring
+behavior probes, and structural checks; cross-harness live application remains
+deferred
 **Date:** 2026-07-17
 **Target:** [agent-environment](../../skills/agent-environment/SKILL.md)
 
@@ -51,7 +52,7 @@ into capability discovery and spent context on the setup object.
 The changed skill was loaded through Kimi Code CLI using `--skills-dir`:
 
 1. With selected `code-review` and no source, the result was
-   `blocked-pending-source`, `marketplaceDiscovery: false`, and requested a
+   `blocked-pending-source`, `marketplaceDiscovery: false`, and a request for a
    source locator instead of searching for a candidate. A later wording change
    classifies vendor paths, installed versions, and flags as read-only lookup
    evidence rather than human input.
@@ -70,6 +71,26 @@ the claim that one activation will correctly plan all three projections remains
 inconclusive. The completion gate therefore requires an ordinary-path benefit
 probe for every actually selected harness rather than inferring success from
 shared format or path presence.
+
+## Classifier and target-isolation regression
+
+A later raw setup probe used the actual installed skill set without naming the
+expected owner or forbidding search. It selected `agent-environment`, but before
+returning the missing-source result it inventoried the active Mac and consulted
+Kimi surfaces even though the request named a fresh device. A second probe with
+only `agent-environment` available and an empty target working directory still
+listed available skills and read setup references before returning a
+conditional plan. The model treated a runtime prohibition on an interactive
+question tool as permission to continue rather than returning a plain
+`NEEDS_INPUT` response.
+
+The source gate is therefore now present at the start of trigger metadata and
+before command dispatch, and distinguishes a final-response request from an
+interactive tool call. Repeating the same raw prompt then selected
+`agent-environment`, loaded its method, and returned `NEEDS_INPUT` without
+inventory, vendor lookup, marketplace discovery, or a conditional plan. This
+supports the first-action boundary in Kimi Code CLI; it does not establish the
+same metadata timing in other harnesses.
 
 ## Expression and structural evidence
 
