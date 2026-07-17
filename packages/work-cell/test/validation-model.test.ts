@@ -184,9 +184,9 @@ test("the Kimi Coding adapter lowers unsupported forced tool choice without weak
   expect(adaptKimiCodingToolChoice(automatic)).toBe(automatic);
 });
 
-test("the stable Kimi Coding alias owns its fixed temperature compatibility", () => {
-  expect(adaptKimiCodingRequest({ temperature: 0 } as LanguageModelV4CallOptions, "kimi-for-coding").temperature).toBe(1);
-  expect(adaptKimiCodingRequest({ temperature: 0.4 } as LanguageModelV4CallOptions, "another-model").temperature).toBe(0.4);
+test("the Kimi Coding endpoint owns its fixed temperature compatibility", () => {
+  expect(adaptKimiCodingRequest({ temperature: 0 } as LanguageModelV4CallOptions).temperature).toBe(1);
+  expect(adaptKimiCodingRequest({ temperature: 0.4 } as LanguageModelV4CallOptions).temperature).toBe(1);
 });
 
 test("Kimi plan exhaustion can fall through but request-shape defects remain visible", () => {

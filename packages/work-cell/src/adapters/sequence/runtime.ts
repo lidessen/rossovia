@@ -38,6 +38,18 @@ export interface SequenceSelector {
   ): Promise<GeneSelectionResult>;
 }
 
+/** A preparation failure that still carries completed model work for audit. */
+export class SequencePreparationError extends Error {
+  constructor(
+    message: string,
+    readonly preparation: Pick<CellPreparation, "usage" | "rawSteps">,
+    cause?: unknown,
+  ) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "SequencePreparationError";
+  }
+}
+
 export interface PreparedSequenceCell {
   input: CellInput;
   preparation: CellPreparation;
@@ -138,8 +150,12 @@ export async function runSequenceCell(
       prepared = lowerSequenceInput(input);
       preparation = {
         adapter: SEQUENCE_PREPARATION_ADAPTER,
-        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
-        rawSteps: [],
+        usage: caught instanceof SequencePreparationError
+          ? caught.preparation.usage
+          : { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+        rawSteps: caught instanceof SequencePreparationError
+          ? caught.preparation.rawSteps
+          : [],
         evidence: { error: error.message },
       };
       executionDriver = {

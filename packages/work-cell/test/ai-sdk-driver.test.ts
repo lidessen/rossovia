@@ -7,9 +7,11 @@ import { MockLanguageModelV3, MockLanguageModelV4 } from "ai/test";
 import { AiSdkActivationFieldDriver } from "../src/research/ai-sdk-activation-field";
 import { AiSdkCandidateFieldDriver } from "../src/research/ai-sdk-candidate-field";
 import { AiSdkValidationDriver } from "../src/ai-sdk-driver";
+import { AiSdkValidationSequenceDriver } from "../src/adapters/sequence/ai-sdk-driver";
 import { createRoutedLanguageModel } from "../src/model-route";
 import type { SeedMaterialRetriever } from "../src/research/candidate-field";
 import { runCell } from "../src/run-cell";
+import { runSequenceCell } from "../src/adapters/sequence/runtime";
 
 const roots: string[] = [];
 const explicitDeepSeekRoute = () => [{
@@ -19,6 +21,75 @@ const explicitDeepSeekRoute = () => [{
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("recovers one gene-expression natural finish before executing the Cell", async () => {
+  const root = await fixture();
+  let calls = 0;
+  let recoveryRequest: unknown;
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "I should analyze this first." }], "stop");
+      if (calls === 2) {
+        recoveryRequest = options;
+        return response([{
+          type: "tool-call",
+          toolCallId: "express-after-recovery",
+          toolName: "express_genes",
+          input: JSON.stringify({
+            lead: "P04",
+            supports: [],
+            principalContradiction: "The required gene expression was not submitted.",
+            contributions: [{ pid: "P04", decision: "Recover the required selection before execution." }],
+          }),
+        }], "tool-calls");
+      }
+      if (calls === 3) return response([{ type: "text", text: "Execution completed." }], "stop");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkValidationSequenceDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-sequence-recovery",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runSequenceCell(sequenceInput(root), driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.preparation?.usage.totalTokens).toBe(4);
+  expect(record.preparation?.rawSteps).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: "sequence.expression.recovery" }),
+  ]));
+  expect(JSON.stringify(recoveryRequest)).toContain("## Gene-expression recovery");
+  expect(calls).toBe(3);
+});
+
+test("retains gene-expression usage when the bounded recovery is exhausted", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      return response([{ type: "text", text: "No tool call." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationSequenceDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-sequence-recovery-exhausted",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runSequenceCell(sequenceInput(root), driver);
+
+  expect(record.status).toBe("failed");
+  expect(record.error).toContain("after one recovery");
+  expect(record.preparation?.usage.totalTokens).toBe(4);
+  expect(record.preparation?.rawSteps.length).toBe(2);
+  expect(calls).toBe(2);
 });
 
 test("retries an invalid terminal payload during recovery before settlement", async () => {
@@ -677,6 +748,36 @@ function responseV4(
       outputTokens: { total: 1, text: 1, reasoning: 0 },
     },
     warnings: [],
+  };
+}
+
+function sequenceInput(root: string) {
+  return {
+    id: "sequence-expression-recovery",
+    intent: "Select the smallest principle expression, then complete the bounded task.",
+    workspace: {
+      root,
+      readPaths: ["."],
+      writePaths: [],
+      excludePaths: [],
+      allowedCommands: [],
+    },
+    genome: {
+      sequencePath: "principles/SEQUENCE.md",
+      interpretationsDir: "principles/interpretations",
+    },
+    dna: {
+      baseInstructions: "Complete the task without changing files.",
+      capabilities: ["read"],
+    },
+    capabilitiesRequired: ["read"],
+    acceptance: ["The task completes after a valid principle expression."],
+    budget: {
+      maxSteps: 3,
+      estimatedTokens: 1_000,
+      maxDurationMs: 10_000,
+      maxCommandOutputBytes: 4_000,
+    },
   };
 }
 

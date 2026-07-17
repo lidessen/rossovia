@@ -39,21 +39,19 @@ export function adaptKimiCodingToolChoice(
 
 export function adaptKimiCodingRequest(
   params: LanguageModelV4CallOptions,
-  model: string,
 ): LanguageModelV4CallOptions {
   const adapted = adaptKimiCodingToolChoice(params);
-  // The stable Coding Plan alias currently rejects every other temperature.
-  // Keep this provider-owned transport constraint outside generic callers,
-  // many of which deliberately request temperature 0 for validation work.
-  return model === KIMI_CODING_DEFAULT_MODEL
-    ? { ...adapted, temperature: 1 }
-    : adapted;
+  // The Coding Plan endpoint currently rejects every other temperature for
+  // both its stable aliases and explicitly selected models such as k3. Keep
+  // this endpoint-owned transport constraint outside generic callers, many of
+  // which deliberately request temperature 0 for validation work.
+  return { ...adapted, temperature: 1 };
 }
 
-function kimiCodingRequestMiddleware(model: string): LanguageModelV4Middleware {
+function kimiCodingRequestMiddleware(): LanguageModelV4Middleware {
   return {
     specificationVersion: "v4",
-    transformParams: async ({ params }) => adaptKimiCodingRequest(params, model),
+    transformParams: async ({ params }) => adaptKimiCodingRequest(params),
   };
 }
 
@@ -75,7 +73,7 @@ export function createKimiCodingModel(options: {
       defaultSettingsMiddleware({
         settings: { providerOptions: kimiCodingProviderOptions },
       }),
-      kimiCodingRequestMiddleware(model),
+      kimiCodingRequestMiddleware(),
     ],
   });
 }

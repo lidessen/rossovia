@@ -55,8 +55,8 @@ an injected local fetch boundary and observed:
 - the User-Agent truthfully identifies AI SDK 7 and Bun rather than Kimi CLI,
   Claude Code, or another client;
 - thinking is enabled and `reasoning_history` is `interleaved`;
-- the stable alias receives its required temperature of `1`, even when a
-  generic validation caller requests temperature `0`;
+- the Coding Plan endpoint receives its required temperature of `1`, even when
+  a generic validation caller requests temperature `0` or selects `k3`;
 - named and required tool choice are translated to `auto`, while ordinary
   `auto` remains unchanged;
 - 402, 403, and 429 failures admit fallback, while 400 and 404 remain visible;
@@ -83,10 +83,9 @@ its value. All other validation credentials were disabled for the model probes.
 
 The first terminal probe failed before execution with `invalid temperature:
 only 1 is allowed for this model`. This disconfirmed the deterministic adapter:
-generic validation callers request temperature 0, while the stable Kimi Coding
-alias owns a fixed provider constraint. The adapter now translates only that
-alias to temperature 1 and retains caller temperature for explicitly selected
-other models. A focused regression test covers both branches.
+generic validation callers request temperature 0, while the Kimi Coding
+endpoint owns a fixed provider constraint. The adapter translates validation
+temperature to 1 before transport.
 
 After repair, terminal run `0e7bffa5-eba7-4165-9b46-9172303c43ac` passed through
 `kimi-coding/kimi-for-coding`. It called the sole `finish_probe` tool exactly
@@ -104,6 +103,38 @@ The read-only quota command returned a weekly window, a 5-hour rolling window,
 and concurrency 20 from the experimental Kimi endpoint. Both reported 100%
 remaining during the probe. The response did not expose a separately named
 monthly window, so the observer does not infer one from `totalQuota`.
+
+## K3 and bounded tool recovery follow-up
+
+The authenticated read-only [Coding Plan model catalog](https://api.kimi.com/coding/v1/models)
+exposed `kimi-for-coding` as K2.7 Coding, a high-speed sibling, and `k3` with a
+1,048,576-token context window. This catalog is live provider evidence, not a
+portable promise that the same models remain available to every account.
+
+The first K3 structured and terminal probes both failed before token use with
+`invalid temperature: only 1 is allowed for this model`. This disproved the
+earlier claim that explicitly selected models should retain caller
+temperature. Fixed-temperature translation therefore belongs to the Coding
+Plan endpoint, not the stable alias. After that repair:
+
+- structured run `a77579d5-f3c5-4474-b473-e29b4f54f4f1` passed through
+  `kimi-coding/k3` with 671 tokens;
+- terminal run `1ccd4947-35a3-46e3-b187-2189961860a0` called `finish_probe`
+  exactly once and passed with 646 tokens; and
+- Sequence project probe `643a970a-cb25-40cd-87fe-3377ca978759` selected its
+  P-ID team, read the declared README scope, called `finish_probe`, and passed
+  through K3 without fallback with 9,455 tokens, within its declared 8,000 ±50%
+  estimate.
+
+Separately, two stable-alias Sequence probes ended naturally without calling
+`express_genes`. Because Kimi thinking models accept only automatic or disabled
+tool choice, translating a forced tool call to `auto` had removed the transport
+guarantee. Sequence preparation now permits one explicit system-level recovery
+call, then fails closed. Deterministic adapter tests show that a natural finish
+can recover without replaying execution and that an exhausted recovery retains
+both calls' actual usage instead of reporting zero. The later live K2.7 and K3
+project probes passed without entering recovery, so live recovery frequency
+remains unmeasured rather than inferred from the deterministic test.
 
 This third provider case now supplies the concrete incompatibilities needed for
 a later provider-integration Skill: endpoint and credential identity, model-ID
