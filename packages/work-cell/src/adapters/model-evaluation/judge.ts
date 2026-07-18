@@ -41,7 +41,7 @@ export interface BlindModelCandidate {
 
 export interface ModelEvaluationJudgeRequest {
   intent: string;
-  acceptance: string[];
+  referenceCriteria: string[];
   rubric: string;
   failureClasses: Array<{ id: string; description: string }>;
   a: BlindModelCandidate;
@@ -82,7 +82,7 @@ export class AiSdkModelEvaluationJudge implements ModelEvaluationJudge {
       output: Output.object({ schema: ModelEvaluationJudgementSchema }),
       instructions: [
         "You are an independent blind evaluator of two execution profiles across repeated runs of the same real task.",
-        "Candidate identity, provider, model, and schedule are hidden. Judge only the retained task evidence against the supplied acceptance conditions and failure classes.",
+        "Candidate identity, provider, model, and schedule are hidden. Judge only the retained task evidence against the evaluator-only reference criteria and failure classes.",
         "Prefer a candidate only for a material and repeated difference. Treat within-candidate inconsistency as evidence against a confident preference.",
         "Do not reward verbosity, style, principle vocabulary, or low usage by itself. Return tie when the material result is the same and inconclusive when the evidence cannot support a comparison.",
         "Report every acceptance condition exactly once. Treat the named failure classes only as diagnostic questions; do not classify or count them. Their admission belongs to later evidence review.",
@@ -91,7 +91,7 @@ export class AiSdkModelEvaluationJudge implements ModelEvaluationJudge {
       ].join("\n"),
       prompt: JSON.stringify({
         intent: request.intent,
-        acceptance: request.acceptance,
+        referenceCriteria: request.referenceCriteria,
         rubric: request.rubric,
         failureClasses: request.failureClasses,
         candidateA: request.a,
@@ -103,7 +103,7 @@ export class AiSdkModelEvaluationJudge implements ModelEvaluationJudge {
     });
     if (!result.output) throw new Error("model-evaluation judge returned no structured output");
     const judgement = ModelEvaluationJudgementSchema.parse(result.output);
-    assertAcceptanceCoverage(judgement, request.acceptance);
+    assertAcceptanceCoverage(judgement, request.referenceCriteria);
     return {
       descriptor: this.descriptor,
       judgement,

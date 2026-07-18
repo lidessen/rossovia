@@ -51,6 +51,10 @@ test("model evaluation keeps repeated profile evidence blind under a balanced is
     "profile-beta-secret",
     "profile-alpha-secret",
   ]);
+  expect(record.trials.every((trial) => (
+    trial.record?.input.acceptance[0] === "Investigate the retained source before concluding"
+  ))).toBe(true);
+  expect(JSON.stringify(record.trials)).not.toContain("The conclusion is grounded in evidence.txt");
   expect(judge.calls).toBe(1);
   expect(judge.serializedRequest).not.toContain("profile-alpha-secret");
   expect(judge.serializedRequest).not.toContain("profile-beta-secret");
@@ -65,20 +69,64 @@ test("model evaluation keeps repeated profile evidence blind under a balanced is
       totalTrials: 2,
       observedRuns: 2,
       statusCounts: { passed: 2 },
-      servedIdentities: ["scripted/served-alpha/actual-alpha"],
+      selectedRouteIdentities: ["scripted/served-alpha/actual-alpha"],
     }),
     expect.objectContaining({
       profileId: "profile-beta-secret",
       totalTrials: 2,
       observedRuns: 2,
       statusCounts: { passed: 2 },
-      servedIdentities: ["scripted/served-beta/actual-beta"],
+      selectedRouteIdentities: ["scripted/served-beta/actual-beta"],
     }),
   ]);
   expect(JSON.parse(await readFile(record.recordPath, "utf8"))).toMatchObject({
-    version: "work-cell.model-evaluation.run.v1",
+    version: "work-cell.model-evaluation.run.v2",
     authority: "candidate evidence; human or designated host acceptance required",
+    profiles: [
+      expect.objectContaining({
+        declaredInferencePolicy: "thinking=disabled; temperature=0; transport=generateText",
+      }),
+      expect.objectContaining({
+        declaredInferencePolicy: "thinking=enabled; temperature=1; transport=generateText",
+      }),
+    ],
+    cases: [expect.objectContaining({
+      workerAcceptance: ["Investigate the retained source before concluding"],
+      referenceCriteria: ["The conclusion is grounded in evidence.txt"],
+    })],
   });
+  expect(judge.serializedRequest).toContain("The conclusion is grounded in evidence.txt");
+  expect(judge.serializedRequest).not.toContain("Investigate the retained source before concluding");
+});
+
+test("model evaluation rejects reference criteria leaked into worker-visible acceptance", () => {
+  const base = evaluationSpec();
+  expect(() => ModelEvaluationSpecSchema.parse({
+    ...base,
+    cases: [{
+      ...base.cases[0],
+      task: {
+        ...base.cases[0]!.task,
+        acceptance: ["  THE conclusion is grounded in evidence.txt  "],
+      },
+    }],
+  })).toThrow("reference criteria must remain evaluator-only");
+});
+
+test("model evaluation does not project a driver declaration as selected route evidence", async () => {
+  const root = await fixture();
+  const record = await runModelEvaluation(
+    evaluationSpec(),
+    root,
+    (profile) => new ProfileDriver(profile, [], false),
+    new CapturingJudge(),
+    { startingProfileIndex: 0 },
+  );
+
+  expect(record.profileSummaries.map(({ selectedRouteIdentities }) => selectedRouteIdentities)).toEqual([
+    [],
+    [],
+  ]);
 });
 
 test("model evaluation retains runner failures and skips semantic comparison", async () => {
@@ -163,6 +211,7 @@ class ProfileDriver implements CellDriver {
   constructor(
     private readonly profile: ModelEvaluationProfile,
     private readonly observedRoots: string[],
+    private readonly emitRouteEvidence = true,
   ) {
     const suffix = profile.id.includes("alpha") ? "alpha-secret" : "beta-secret";
     this.descriptor = {
@@ -176,14 +225,16 @@ class ProfileDriver implements CellDriver {
     this.observedRoots.push(context.workspace.root);
     const evidence = await context.workspace.readText("evidence.txt");
     const stronger = this.profile.id.includes("alpha");
-    context.emit("agent.step.finished", {
-      providerMetadata: {
-        workCellRoute: {
-          servedBy: stronger ? "served-alpha" : "served-beta",
-          model: stronger ? "actual-alpha" : "actual-beta",
+    if (this.emitRouteEvidence) {
+      context.emit("agent.step.finished", {
+        providerMetadata: {
+          workCellRoute: {
+            servedBy: stronger ? "served-alpha" : "served-beta",
+            model: stronger ? "actual-alpha" : "actual-beta",
+          },
         },
-      },
-    });
+      });
+    }
     return {
       terminalToolsCalled: [],
       finalText: stronger
@@ -209,7 +260,7 @@ class CapturingJudge implements ModelEvaluationJudge {
       descriptor: this.descriptor,
       judgement: {
         preferred,
-        acceptance: request.acceptance.map((condition) => ({
+      acceptance: request.referenceCriteria.map((condition) => ({
           condition,
           a: aGrounded ? "pass" : "fail",
           b: aGrounded ? "fail" : "pass",
@@ -226,7 +277,7 @@ class CapturingJudge implements ModelEvaluationJudge {
 
 function evaluationSpec(): ModelEvaluationSpec {
   return ModelEvaluationSpecSchema.parse({
-    version: "work-cell.model-evaluation.v1",
+    version: "work-cell.model-evaluation.v2",
     id: "capability-seed",
     fixture: { root: "fixture", overlays: [] },
     outputDir: "results",
@@ -240,6 +291,7 @@ function evaluationSpec(): ModelEvaluationSpec {
         }],
         contextPolicy: "fixture-only-v1",
         toolSurface: "read-only-v1",
+        declaredInferencePolicy: "thinking=disabled; temperature=0; transport=generateText",
       },
       {
         id: "profile-beta-secret",
@@ -250,6 +302,7 @@ function evaluationSpec(): ModelEvaluationSpec {
         }],
         contextPolicy: "fixture-only-v1",
         toolSurface: "read-only-v1",
+        declaredInferencePolicy: "thinking=enabled; temperature=1; transport=generateText",
       },
     ],
     repetitions: 2,
@@ -263,7 +316,7 @@ function evaluationSpec(): ModelEvaluationSpec {
         capabilities: ["read"],
         context: [],
         capabilitiesRequired: ["read"],
-        acceptance: ["Ground the conclusion in evidence.txt"],
+        acceptance: ["Investigate the retained source before concluding"],
         budget: {
           maxSteps: 2,
           estimatedTokens: 500,
@@ -272,6 +325,7 @@ function evaluationSpec(): ModelEvaluationSpec {
           maxCommandOutputBytes: 2_000,
         },
       },
+      referenceCriteria: ["The conclusion is grounded in evidence.txt"],
       rubric: "Prefer repeated source-grounded judgment over a plausible unsupported conclusion.",
       failureClasses: [{
         id: "unsupported-conclusion",

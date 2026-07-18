@@ -44,7 +44,7 @@ real accepted work + allocation question
                  ▼
 evaluation manifest
   frozen fixture · two explicit execution profiles · 2+ repetitions
-  task-specific acceptance · named failure classes · independent judge route
+  worker conditions · hidden reference criteria · independent judge route
                  ▼
 model-evaluation adapter
   balanced serial schedule · isolated trial workspaces · ordinary runCell
@@ -61,29 +61,36 @@ versioned capability-profile claim
 A profile ID names one declared execution choice, but the retained identity is
 reconstructed from evidence:
 
-- actual Work Cell adapter, provider route, and served model recorded by each
-  `CellRunRecord`;
+- actual Work Cell adapter plus any selected provider route target observed in
+  a `CellRunRecord` trace; absence of route metadata remains absence rather than
+  falling back to a declaration, and present metadata still does not verify a
+  provider's hidden backend build or revision;
 - frozen fixture and task input;
 - instructions, context, capabilities, tools, permissions, completion
   contracts, and execution budget captured by the ordinary `CellInput`; and
-- profile-local context policy and tool-surface revision when declared.
+- required profile-local context and tool-surface policies plus a declared
+  inference policy whose factual basis remains reviewable evidence.
 
 The runtime resolves credentials only through the existing explicit route
 contract. It never stores secret values. A fallback route is allowed but its
-actual served target remains evidence; a mixed served identity must not be
-summarized as if every run used the preferred target.
+selected route target remains evidence; mixed route targets must not be
+summarized as if every run used the preferred target. Route metadata alone does
+not verify the provider's hidden backend build.
 
-## First-slice contract
+## Revised contract
 
-One `work-cell.model-evaluation.v1` manifest contains:
+One `work-cell.model-evaluation.v2` manifest contains:
 
 - one frozen fixture plus optional overlays;
-- exactly two explicit candidate profiles, each with its own validation route;
+- exactly two explicit candidate profiles, each with its own validation route
+  and named context and tool-surface policies plus a declared effective
+  inference policy;
 - one or more real task cases using the generic `CellInput` minus generated ID
   and workspace root;
 - two to five repetitions;
-- task-specific acceptance conditions, a comparison rubric, and named material
-  failure classes; and
+- generic process or artifact conditions visible to the worker, evaluator-only
+  reference criteria, a comparison rubric, and named material failure classes;
+  and
 - one separately declared judge route.
 
 The adapter alternates which profile starts each repetition and retains that
@@ -94,11 +101,29 @@ findings, and `A`, `B`, `tie`, or `inconclusive`. Named failure classes remain
 in the case record as review lenses; a single model judge cannot admit its own
 semantic classification as fact.
 
-The record retains raw Cell evidence, judge evidence and usage, total and mean
-usage, status counts, and duration range by profile and case. These are
+The record retains both condition layers, raw Cell evidence, judge evidence and
+usage, total and mean usage, status counts, selected route identities, and
+duration range by profile and case. These are
 descriptive observations, not one intelligence score. The runtime does not
 promote a profile, select a production route, or claim that a model is globally
 better.
+
+## Correction learned from the seed
+
+The original v1 probe remains frozen evidence, but it cannot support a matched
+model-capability comparison. Its worker-visible acceptance text stated the
+expected repository conclusions, so correct outputs could follow supplied
+answers rather than recover them. It also compared Kimi with thinking enabled,
+interleaved reasoning history, temperature 1, and deferred settlement against
+OpenCode Go DeepSeek Flash with thinking disabled and inline JSON settlement.
+The large latency difference therefore belongs to those whole execution
+profiles, not to bare model capability.
+
+The v2 boundary records those declarations without treating them as observed
+provider fact and keeps semantic reference criteria out of the worker packet. A
+duration-bound run is retained as right-censored:
+it establishes failure to settle inside the declared envelope, not randomness
+or an unseen completion duration.
 
 ## Prompting-learning boundary
 
@@ -156,6 +181,8 @@ The boundary is supported only when:
   repetition in isolated workspaces under an alternating schedule;
 - blind judge input contains grouped task evidence but no profile/provider/model
   identity;
+- worker input does not contain evaluator reference criteria, while the durable
+  record preserves both layers and rejects exact criterion leakage;
 - an unsettled run remains visible and makes semantic comparison inconclusive
   rather than disappearing from a success rate;
 - a judge failure preserves every completed trial and settles the comparison as

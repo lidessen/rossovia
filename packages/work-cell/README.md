@@ -158,6 +158,12 @@ preparation/execution use, and read volume. A caller may declare
 review. No tolerance is silently invented. Provider context limits, step limits,
 duration, and workspace limits remain separate execution boundaries.
 
+Drivers report completed provider-step usage incrementally as well as in their
+final result. The final result remains authoritative on success; incremental
+observations are the audit fallback when cancellation or failure wins before a
+result returns. A timeout therefore does not turn already-observed model work
+into zero usage.
+
 ## Project interaction
 
 For a Sequence-bearing project, start with a read-only probe rather than a full
@@ -351,6 +357,13 @@ points:
 - `src/adapters/experiment/`
 - `src/adapters/model-evaluation/`
 - `src/adapters/deliberation/`
+
+The model-evaluation v2 adapter compares whole execution profiles, not bare
+model names. Its manifest explicitly records context and tool-surface policies
+plus a declared inference policy; separates procedural worker acceptance from
+evaluator-only reference criteria; and reports selected route identities
+without claiming to verify a provider's hidden backend build or inference
+settings.
 
 Creative-field, naming, latent-routing, and idea-development code lives under
 `src/research/`. Package scripts may execute those probes, but neither the main

@@ -61,7 +61,7 @@ an injected local fetch boundary and observed:
   `auto` remains unchanged;
 - 402, 403, and 429 failures admit fallback, while 400 and 404 remain visible;
 - a simulated Kimi 429 advances exactly one model call to DeepSeek and retains
-  `kimi-coding`, `deepseek`, and the actual served model in route metadata;
+  `kimi-coding`, `deepseek`, and the selected route target in route metadata;
 - an explicit profile can select Kimi alone or OpenCode Go -> Kimi Coding ->
   DeepSeek, while globally present credentials with no profile remain
   unauthorized;

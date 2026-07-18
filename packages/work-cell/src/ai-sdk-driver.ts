@@ -128,7 +128,9 @@ export class AiSdkValidationDriver implements CellDriver {
         abortSignal: context.signal,
         timeout: { totalMs: input.budget.maxDurationMs },
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
-          observedUsage = addUsage(observedUsage, normalizeUsage(usage, providerMetadata));
+          const stepUsage = normalizeUsage(usage, providerMetadata);
+          observedUsage = addUsage(observedUsage, stepUsage);
+          context.observeUsage(stepUsage);
           context.emit("agent.step.finished", {
             finishReason,
             performance: sanitize(performance),
@@ -212,7 +214,9 @@ export class AiSdkValidationDriver implements CellDriver {
           abortSignal: context.signal,
           timeout: { totalMs: input.budget.maxDurationMs },
           onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
-            closureUsage = addUsage(closureUsage, normalizeUsage(usage, providerMetadata));
+            const stepUsage = normalizeUsage(usage, providerMetadata);
+            closureUsage = addUsage(closureUsage, stepUsage);
+            context.observeUsage(stepUsage);
             context.emit("terminal.recovery.step.finished", {
               finishReason,
               performance: sanitize(performance),

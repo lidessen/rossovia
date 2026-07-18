@@ -143,3 +143,11 @@ runs are development evidence rather than held-out confirmation. Do not yet
 admit a general K3 repository-cognition capability, change automatic routing,
 or derive a degradation canary. The next capability probe must use new retained
 cases and a budget appropriate to the two-phase profile.
+
+The subsequent
+[held-out run](2026-07-18-model-capability-heldout.md) shows that the revised
+profile now reads and answers new source-grounded cases. It supports the
+compatibility mechanism, but its capability comparison is invalid because the
+worker packet disclosed the semantic reference answers and the profiles used
+different inference policies. One K3 run reached the five-minute boundary; that
+is right-censored envelope evidence, not proof of random instability.

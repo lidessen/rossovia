@@ -58,6 +58,31 @@ If there is no allocation decision, real task population, or traceable
 acceptance evidence, do not manufacture a benchmark. Return the missing evidence
 and the smallest probe that could obtain it.
 
+## Comparison validity gate
+
+Apply this gate before interpreting pass rates, latency, judge preference, or
+output quality. A later good result cannot repair an invalid comparison design.
+
+1. Name the attribution target: the whole execution profile, one deliberately
+   changed profile member, or a bare model claim. Enumerate every other material
+   difference between candidates. If several members differ, report only a
+   whole-profile observation; do not attribute it to the model.
+2. Compare the worker-visible packet with evaluator-only references. If the
+   worker can see an expected conclusion, seeded defect, reference answer, or a
+   semantic criterion that states what it must discover, invalidate capability
+   comparison. Judge content, not the field label: “inspect every source,”
+   “cite evidence,” and “produce this artifact shape” are procedural; “X owns
+   Y,” “A cannot substitute for B,” or “the seeded defect is Z” disclose domain
+   answers even when placed in an `acceptance` field. Source-citation work does
+   not make a disclosed answer held out. Preserve only protocol or
+   answer-following evidence.
+3. Check whether the cases can discriminate the claimed allocation and whether
+   an execution boundary dominates the outcomes. If all viable profiles can
+   pass by extraction, or all runs merely hit a cutoff, redesign the field.
+
+State which gate passed or failed in the Capability Case. Continue to outcome
+analysis only for the evidence layers that remain valid.
+
 ## Core method
 
 1. **Bound the claim.** State the task shape, risk, and decision the profile may
@@ -66,21 +91,38 @@ and the smallest probe that could obtain it.
 2. **Freeze the compared conditions.** Record every identity member and keep
    task packet, fixture revision, skills, tools, permissions, completion
    contract, and execution policy matched unless that member is the variable
-   under evaluation. Record actual served identities when fallback is possible.
+   under evaluation. Make the declared effective inference policy explicit:
+   thinking or
+   reasoning mode and effort, temperature, streaming, context/history handling,
+   step and duration boundaries, and completion protocol. A selected route
+   target is not proof of the provider's hidden backend build or revision; name
+   it as route evidence unless the provider supplies stronger provenance. The
+   declaration remains a claim until source or provider evidence supports it.
 3. **Select cases from practice.** Prefer previously completed production or
    project tasks with independent acceptance evidence. Include materially
    different cases inside the claimed task population and at least one case
    likely to expose a characteristic failure. Public benchmarks may supplement
-   this field but cannot replace it.
+   this field but cannot replace it. Remove cases so easy that every viable
+   profile passes without exercising the claimed capability, and cases so hard
+   that every run only hits the execution boundary; neither distinguishes the
+   allocation decision.
 4. **Name decision-changing evidence before running.** For each case state its
    acceptance conditions, material failure classes, and the observation that
    would defeat the proposed allocation claim. Avoid criteria that reward
-   verbosity, stylistic resemblance, or test-count inflation.
+   verbosity, stylistic resemblance, or test-count inflation. Keep worker-visible
+   acceptance procedural and artifact-oriented. Expected conclusions, seeded
+   defects, reference answers, and semantic comparison criteria remain visible
+   only to the evaluator; otherwise the task measures answer following rather
+   than discovery.
 5. **Run matched repetitions.** Execute each profile more than once in isolated
    workspaces. Balance order and avoid parallelism when provider load would add
    an uncontrolled variable. Retain unsettled runs, retries, latency, usage,
-   actual served identity, artifacts, verification, and interventions; never
+   selected route identity and any stronger provider provenance, artifacts,
+   verification, and interventions; never
    discard a failure to make the sample comparable.
+   A run stopped at a declared duration boundary is right-censored evidence: it
+   proves only that the profile did not settle within that envelope. Do not call
+   one boundary hit random instability or estimate its unseen completion time.
 6. **Judge blind where judgment is necessary.** Hide profile/provider/model
    identity from the evaluator. Mechanical acceptance may settle deterministic
    conditions; semantic judgment reports evidence but cannot admit the profile
@@ -112,7 +154,7 @@ task input, isolation, repeated outcomes, and raw evidence; the method does not
 depend on Work Cell.
 
 When this repository's Work Cell is available, a prepared
-`work-cell.model-evaluation.v1` manifest can be executed with:
+`work-cell.model-evaluation.v2` manifest can be executed with:
 
 ```bash
 bun packages/work-cell/src/cli.ts model evaluate path/to/model-evaluation.json
@@ -120,8 +162,11 @@ bun packages/work-cell/src/cli.ts model evaluate path/to/model-evaluation.json
 
 The adapter compares exactly two explicit profiles, runs two to five serial
 repetitions over a frozen fixture, uses task-local failure classes and an
-independent judge route, and emits candidate evidence. Inspect the retained
-record; the compact CLI summary intentionally does not name a winner.
+independent judge route, and emits candidate evidence. Each profile must name
+its context, tool-surface, and inference policies. Each case separates generic
+worker-visible acceptance from evaluator-only reference criteria; exact leakage
+between the two is rejected. Inspect the retained record; the compact CLI
+summary intentionally does not name a winner.
 
 When the next question is specifically whether one prompt or skill treatment
 improves the same execution profile, use a matched baseline/treatment experiment

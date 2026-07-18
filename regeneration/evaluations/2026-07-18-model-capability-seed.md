@@ -9,8 +9,8 @@
 ## Question
 
 Can one small method and Work Cell adapter compare two explicit execution
-profiles on repeated real repository-judgment tasks while preserving actual
-served identity, failures, blind evidence, usage, and human admission authority?
+profiles on repeated real repository-judgment tasks while preserving selected
+route identity, failures, blind evidence, usage, and human admission authority?
 
 The probe also asks a second, related question: can the same evidence expose a
 prompting hypothesis without confusing a prompt/profile interaction with an
@@ -22,9 +22,9 @@ The evaluated object was the whole execution profile, not a bare model name.
 Both profiles used AI SDK v7, the same frozen read-only fixture, task packet,
 tools, output schemas, permissions, and serial schedule:
 
-1. `kimi-coding-k3-ai-sdk-v7-readonly-v1`, served as
+1. `kimi-coding-k3-ai-sdk-v7-readonly-v1`, routed to
    `ai-sdk-v7/kimi-coding/k3` through the direct Kimi Coding route; and
-2. `opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1`, served as
+2. `opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1`, routed to
    `ai-sdk-v7/opencode-go/deepseek-v4-flash` through the direct OpenCode Go
    route.
 
@@ -40,7 +40,7 @@ profiles, and two repetitions.
 The cases asked the profiles to recover:
 
 - the model-evaluation adapter versus generic Cell-core boundary;
-- provider authority, declared routing, and actual served-identity evidence;
+- provider authority, declared routing, and selected route-identity evidence;
   and
 - routing boundaries among `model-evaluation`, `work-estimation`, and
   `agent-environment`.
@@ -130,19 +130,22 @@ That probe is now retained in the
 It rejected a prompt-only repair, isolated unsupported structured completion as
 the behavior-changing condition, and verified a two-phase compatibility path.
 The original six runs remain valid evidence about the original execution
-profile; the repaired driver constitutes a revised profile that still needs
-confirmation on cases that did not teach the treatment.
+profiles and the completion-protocol defect. The later
+[held-out run](2026-07-18-model-capability-heldout.md) confirms that the repair
+restores investigation and structured settlement. It does not confirm a model
+capability comparison: the worker-visible acceptance disclosed the expected
+answers, and K3 thinking plus deferred settlement was compared with non-thinking
+Flash plus inline settlement.
 
-OpenCode Go is materially better supported for this narrow task population, but
-its one final-JSON failure shows non-trivial protocol variance. With only three
-cases and two repetitions, no reusable profile is admitted and no automatic
-route should change.
+OpenCode Go was operationally faster on these simple cases, but neither run
+supports a broader model ranking. With only three cases and two repetitions, no
+reusable profile is admitted and no automatic route should change.
 
 ## Deterministic and projection evidence
 
 The adapter tests establish balanced alternating order, isolated fixture copies,
-blind packets without profile identity or performance fingerprints, actual
-served-identity aggregation, retained runner failure, judge skipping for
+blind packets without profile identity or performance fingerprints, selected
+route-identity aggregation, retained runner failure, judge skipping for
 unsettled trials, preservation after judge failure, and fixture-overlay
 containment. Work Cell type checking and the full test suite are the mechanical
 acceptance gate. The installable skill also passes snapshot, standalone-install,
@@ -153,7 +156,8 @@ the public site.
 
 Keep the method/adapter boundary and the candidate-evidence authority. The seed
 is useful enough to continue, but it does not yet justify a durable capability
-profile, leaderboard, automatic allocator, or degradation canary. Conduct the
-single-variable Kimi prompting probe next, then confirm any improved profile on
-new retained cases. Treat prompting exploration as a first-class output of
-capability evaluation while preserving discovery/confirmation separation.
+profile, leaderboard, automatic allocator, or degradation canary. The completed
+prompt treatment preserves that boundary: K3's investigation defect is
+repaired, while the v1 held-out design is disqualified from capability
+comparison. Treat prompting exploration as a first-class output of capability
+evaluation while preserving discovery/confirmation separation.

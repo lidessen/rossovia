@@ -66,7 +66,9 @@ export async function settleStructuredOutput(options: {
         abortSignal: options.context.signal,
         timeout: { totalMs: options.maxDurationMs },
         onStepEnd: ({ usage: stepUsage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
-          usage = addUsage(usage, normalizeUsage(stepUsage, providerMetadata));
+          const observed = normalizeUsage(stepUsage, providerMetadata);
+          usage = addUsage(usage, observed);
+          options.context.observeUsage(observed);
           options.context.emit("structured.settlement.step.finished", {
             attempt,
             finishReason,

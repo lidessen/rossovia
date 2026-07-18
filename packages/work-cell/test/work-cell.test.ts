@@ -253,6 +253,25 @@ describe("Work Cell core", () => {
     expect(record.error?.toLowerCase()).toContain("timed out");
   });
 
+  test("retains incrementally observed usage when the Cell timeout wins the driver race", async () => {
+    const root = await fixture();
+    const uncooperative: CellDriver = {
+      descriptor: { adapter: "uncooperative-usage-test", provider: "deterministic", model: "fixture" },
+      async run(_input, context) {
+        context.observeUsage(usage(40, 10));
+        return new Promise<DriverResult>(() => {});
+      },
+    };
+    const base = input(root);
+    base.budget.maxDurationMs = 20;
+
+    const record = await runCell(base, uncooperative);
+
+    expect(record.status).toBe("cancelled");
+    expect(record.usage).toEqual(usage(40, 10));
+    expect(record.usageByPhase.execution).toEqual(usage(40, 10));
+  });
+
   test("retains work and execution references as an observation without treating them as a forecast", async () => {
     const root = await fixture();
     const base = input(root);

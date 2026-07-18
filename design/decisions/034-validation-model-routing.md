@@ -217,6 +217,9 @@ or a second variation makes the boundary real.
   response-format pressure out of the investigation loop, retain its tool
   evidence, and settle through the independently validated internal schema
   tool; inline-capable routes must keep their existing path.
+- A Cell timeout that wins during a later provider phase must retain usage from
+  every completed model step through the driver's incremental audit channel;
+  cancellation cannot project observed work as zero.
 - A low-cost live OpenCode Go call must exercise a real Work Cell terminal tool
   and retain the selected route in its record.
 - A low-cost live structured call must return an AI SDK-validated object through

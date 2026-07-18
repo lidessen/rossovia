@@ -28,7 +28,7 @@ Repeated run evidence:
   pass, unsettled, retry, and intervention observations:
   within-profile variation:
   between-profile difference, when compared:
-  actual served identities:
+  selected route identities and any verified backend provenance:
   latency and usage:
   observed money or plan consumption, when available:
 

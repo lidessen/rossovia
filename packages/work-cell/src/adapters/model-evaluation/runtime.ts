@@ -31,8 +31,9 @@ const CellTemplateSchema = CellInputSchema.omit({
 export const ModelEvaluationProfileSchema = z.object({
   id: z.string().min(1),
   route: ValidationRouteSchema,
-  contextPolicy: z.string().min(1).optional(),
-  toolSurface: z.string().min(1).optional(),
+  contextPolicy: z.string().min(1),
+  toolSurface: z.string().min(1),
+  declaredInferencePolicy: z.string().min(1),
   priceRevision: z.string().min(1).optional(),
 }).strict();
 
@@ -42,6 +43,7 @@ export const ModelEvaluationCaseSchema = z.object({
   id: z.string().min(1),
   dimension: z.string().min(1),
   task: CellTemplateSchema,
+  referenceCriteria: z.array(z.string().min(1)).min(1),
   rubric: z.string().min(1),
   failureClasses: z.array(z.object({
     id: z.string().min(1),
@@ -49,12 +51,28 @@ export const ModelEvaluationCaseSchema = z.object({
   }).strict()).min(1),
 }).strict().superRefine((value, context) => {
   addDuplicateIssues(value.failureClasses.map(({ id }) => id), context, ["failureClasses"]);
+  addDuplicateValueIssues(
+    value.referenceCriteria.map(normalizeCriterion),
+    context,
+    ["referenceCriteria"],
+    "criterion",
+  );
+  const visible = new Set(value.task.acceptance.map(normalizeCriterion));
+  for (const [index, criterion] of value.referenceCriteria.entries()) {
+    if (visible.has(normalizeCriterion(criterion))) {
+      context.addIssue({
+        code: "custom",
+        message: "reference criteria must remain evaluator-only; do not duplicate worker-visible acceptance",
+        path: ["referenceCriteria", index],
+      });
+    }
+  }
 });
 
 export type ModelEvaluationCase = z.infer<typeof ModelEvaluationCaseSchema>;
 
 export const ModelEvaluationSpecSchema = z.object({
-  version: z.literal("work-cell.model-evaluation.v1"),
+  version: z.literal("work-cell.model-evaluation.v2"),
   id: z.string().min(1),
   fixture: z.object({
     root: z.string().min(1),
@@ -90,7 +108,7 @@ export interface ModelEvaluationProfileSummary {
   totalTrials: number;
   observedRuns: number;
   statusCounts: Record<string, number>;
-  servedIdentities: string[];
+  selectedRouteIdentities: string[];
   durationMs: { min: number; mean: number; max: number } | null;
   usage: { total: CellUsage; meanPerObservedRun: CellUsage };
   estimatedCostUsd: { knownRuns: number; total: number };
@@ -103,7 +121,7 @@ export interface ModelEvaluationComparison {
 }
 
 export interface ModelEvaluationRecord {
-  version: "work-cell.model-evaluation.run.v1";
+  version: "work-cell.model-evaluation.run.v2";
   id: string;
   sourceSha256?: string;
   startedAt: string;
@@ -113,14 +131,16 @@ export interface ModelEvaluationRecord {
   profiles: Array<{
     id: string;
     declaredRoute: Array<{ provider: string; model?: string; baseURL?: string }>;
-    contextPolicy?: string;
-    toolSurface?: string;
+    contextPolicy: string;
+    toolSurface: string;
+    declaredInferencePolicy: string;
     priceRevision?: string;
   }>;
   cases: Array<{
     id: string;
     dimension: string;
-    acceptance: string[];
+    workerAcceptance: string[];
+    referenceCriteria: string[];
     rubric: string;
     failureClasses: Array<{ id: string; description: string }>;
   }>;
@@ -236,7 +256,7 @@ export async function runModelEvaluation(
       try {
         result = await judge.judge({
           intent: evaluationCase.task.intent,
-          acceptance: evaluationCase.task.acceptance,
+          referenceCriteria: evaluationCase.referenceCriteria,
           rubric: evaluationCase.rubric,
           failureClasses: evaluationCase.failureClasses,
           a: { label: "A", records: a.trials.map(blindRunEvidence) },
@@ -252,7 +272,7 @@ export async function runModelEvaluation(
 
   const recordPath = join(directory, "evaluation.json");
   const record: ModelEvaluationRecord = {
-    version: "work-cell.model-evaluation.run.v1",
+    version: "work-cell.model-evaluation.run.v2",
     id: spec.id,
     ...(options.sourceSha256 ? { sourceSha256: options.sourceSha256 } : {}),
     startedAt: startedAt.toISOString(),
@@ -262,14 +282,16 @@ export async function runModelEvaluation(
     profiles: spec.profiles.map((profile) => ({
       id: profile.id,
       declaredRoute: profile.route.map(sanitizeRouteTarget),
-      ...(profile.contextPolicy ? { contextPolicy: profile.contextPolicy } : {}),
-      ...(profile.toolSurface ? { toolSurface: profile.toolSurface } : {}),
+      contextPolicy: profile.contextPolicy,
+      toolSurface: profile.toolSurface,
+      declaredInferencePolicy: profile.declaredInferencePolicy,
       ...(profile.priceRevision ? { priceRevision: profile.priceRevision } : {}),
     })),
     cases: spec.cases.map((evaluationCase) => ({
       id: evaluationCase.id,
       dimension: evaluationCase.dimension,
-      acceptance: evaluationCase.task.acceptance,
+      workerAcceptance: evaluationCase.task.acceptance,
+      referenceCriteria: evaluationCase.referenceCriteria,
       rubric: evaluationCase.rubric,
       failureClasses: evaluationCase.failureClasses,
     })),
@@ -300,8 +322,8 @@ function materializeInput(
       version: "execution-profile.v1",
       provider: descriptor.provider,
       model: descriptor.model,
-      ...(profile.contextPolicy ? { contextPolicy: profile.contextPolicy } : {}),
-      ...(profile.toolSurface ? { toolSurface: profile.toolSurface } : {}),
+      contextPolicy: profile.contextPolicy,
+      toolSurface: profile.toolSurface,
       parallelism: "serial",
       ...(profile.priceRevision ? { priceRevision: profile.priceRevision } : {}),
     },
@@ -331,7 +353,7 @@ function skippedJudgeResult(
 ): ModelEvaluationJudgeResult {
   const judgement: ModelEvaluationJudgement = {
     preferred: "inconclusive",
-    acceptance: evaluationCase.task.acceptance.map((condition) => ({
+    acceptance: evaluationCase.referenceCriteria.map((condition) => ({
       condition,
       a: "unknown",
       b: "unknown",
@@ -360,7 +382,7 @@ function failedJudgeResult(
     descriptor,
     judgement: {
       preferred: "inconclusive",
-      acceptance: evaluationCase.task.acceptance.map((condition) => ({
+      acceptance: evaluationCase.referenceCriteria.map((condition) => ({
         condition,
         a: "unknown",
         b: "unknown",
@@ -390,7 +412,7 @@ function summarizeProfile(profileId: string, trials: ModelEvaluationTrial[]): Mo
     totalTrials: selected.length,
     observedRuns: records.length,
     statusCounts,
-    servedIdentities: [...new Set(records.flatMap(observedServedIdentities))],
+    selectedRouteIdentities: [...new Set(records.flatMap(observedSelectedRouteIdentities))],
     durationMs: durations.length === 0 ? null : {
       min: Math.min(...durations),
       mean: mean(durations),
@@ -419,7 +441,7 @@ function sanitizeRouteTarget(target: ProviderRouteTarget): {
   };
 }
 
-function observedServedIdentities(record: CellRunRecord): string[] {
+function observedSelectedRouteIdentities(record: CellRunRecord): string[] {
   const observed: string[] = [];
   for (const event of record.trace) {
     if (!event.data || typeof event.data !== "object") continue;
@@ -437,9 +459,11 @@ function observedServedIdentities(record: CellRunRecord): string[] {
       observed.push(`${record.driver.adapter}/${servedBy}/${model}`);
     }
   }
-  return observed.length > 0
-    ? observed
-    : [`${record.driver.adapter}/${record.driver.provider}/${record.driver.model}`];
+  return observed;
+}
+
+function normalizeCriterion(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function trialStates(trials: ModelEvaluationTrial[]): string[] {
@@ -515,6 +539,25 @@ function addDuplicateIssues(
       context.addIssue({ code: "custom", path: [...path, index, "id"], message: `duplicate id: ${id}` });
     }
     seen.add(id);
+  }
+}
+
+function addDuplicateValueIssues(
+  values: string[],
+  context: z.RefinementCtx,
+  path: Array<string | number>,
+  label: string,
+): void {
+  const seen = new Set<string>();
+  for (const [index, value] of values.entries()) {
+    if (seen.has(value)) {
+      context.addIssue({
+        code: "custom",
+        path: [...path, index],
+        message: `duplicate ${label}: ${value}`,
+      });
+    }
+    seen.add(value);
   }
 }
 
