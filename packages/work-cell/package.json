@@ -9,6 +9,7 @@
     "cell": "bun src/cli.ts run",
     "swarm": "bun src/cli.ts swarm",
     "experiment": "bun src/cli.ts experiment",
+    "model:evaluate": "bun src/cli.ts model evaluate",
     "deliberate": "bun src/cli.ts deliberate",
     "deliberate:probe": "bun src/cli.ts deliberate-probe",
     "provider:observe:kimi": "bun src/cli.ts provider observe kimi-coding",

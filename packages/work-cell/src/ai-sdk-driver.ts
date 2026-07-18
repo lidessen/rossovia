@@ -14,6 +14,7 @@ import {
 // AI SDK and provider types remain confined to this adapter.
 import { compileOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
+import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import {
   createValidationModel,
   validationModelName,
@@ -35,10 +36,12 @@ const MAX_AGENT_OUTPUT_TOKENS = 16_000;
 export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
   protected readonly model;
+  private readonly structuredOutputMode: "inline" | "tool-settlement";
 
   constructor(options: AiSdkDriverOptions = {}) {
     const selection = createValidationModel(options);
     this.model = selection.model;
+    this.structuredOutputMode = selection.structuredOutputMode;
     this.descriptor = {
       adapter: "ai-sdk-v7",
       provider: validationProviderName(selection),
@@ -55,6 +58,8 @@ export class AiSdkValidationDriver implements CellDriver {
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
     const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
+    const inlineOutputSchema = this.structuredOutputMode === "inline" ? outputSchema : undefined;
+    const deferredStructuredOutput = outputSchema !== undefined && inlineOutputSchema === undefined;
     const tools = this.createExecutionTools(
       input,
       context,
@@ -77,23 +82,23 @@ export class AiSdkValidationDriver implements CellDriver {
     const stopAfterAcceptedTerminal = () => terminalSatisfied();
     const executionAgent = new ToolLoopAgent({
       model: this.model,
-      instructions: renderExecutionInstructions(input),
+      instructions: renderExecutionInstructions(input, { deferStructuredOutput: deferredStructuredOutput }),
       tools,
-      stopWhen: terminalNames.length > 0 && !outputSchema
+      stopWhen: terminalNames.length > 0 && !inlineOutputSchema
         ? [isStepCount(input.budget.maxSteps), stopAfterAcceptedTerminal]
         : isStepCount(input.budget.maxSteps),
-      ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
+      ...(inlineOutputSchema ? { output: Output.object({ schema: inlineOutputSchema.forAiSdk() }) } : {}),
       ...(input.terminalTools?.length
         ? {
             prepareStep: ({ stepNumber }) => {
               if (terminalSatisfied()) {
                 terminalOnly = true;
-                return finalOutputStep(input);
+                return finalOutputStep(input, inlineOutputSchema !== undefined);
               }
               // A terminal-only Cell needs one final action turn. When an
               // independent structured output is also required, reserve a
               // second tool-free turn for that result.
-              const reservedSteps = outputSchema ? 2 : 1;
+              const reservedSteps = inlineOutputSchema ? 2 : 1;
               if (stepNumber >= input.budget.maxSteps - reservedSteps) {
                 terminalOnly = true;
                 return {
@@ -102,7 +107,7 @@ export class AiSdkValidationDriver implements CellDriver {
                   // tool-set inference.
                   activeTools: terminalNames as never[],
                   toolChoice: terminalToolChoice(terminalNames) as never,
-                  instructions: `${renderExecutionInstructions(input)}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
+                  instructions: `${renderExecutionInstructions(input, { deferStructuredOutput: deferredStructuredOutput })}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
                 };
               }
               terminalOnly = false;
@@ -123,7 +128,9 @@ export class AiSdkValidationDriver implements CellDriver {
         abortSignal: context.signal,
         timeout: { totalMs: input.budget.maxDurationMs },
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
-          observedUsage = addUsage(observedUsage, normalizeUsage(usage, providerMetadata));
+          const stepUsage = normalizeUsage(usage, providerMetadata);
+          observedUsage = addUsage(observedUsage, stepUsage);
+          context.observeUsage(stepUsage);
           context.emit("agent.step.finished", {
             finishReason,
             performance: sanitize(performance),
@@ -138,7 +145,7 @@ export class AiSdkValidationDriver implements CellDriver {
     } catch (error) {
       if (terminalProtocolError) {
         throw new CellExecutionError(terminalProtocolError, observedUsage);
-      } else if (terminalSatisfied() && !outputSchema) {
+      } else if (terminalSatisfied() && !inlineOutputSchema) {
         executionResult = terminalOnlyResult(terminalNames, observedUsage, "execution");
       } else {
         throw new CellExecutionError(
@@ -147,8 +154,11 @@ export class AiSdkValidationDriver implements CellDriver {
         );
       }
     }
-    if (terminalSatisfied() && !outputSchema && !executionResult.text.trim()) {
-      executionResult = terminalOnlyResult(terminalNames, normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata), "execution");
+    if (terminalSatisfied() && !inlineOutputSchema && !executionResult.text.trim()) {
+      executionResult = {
+        ...executionResult,
+        text: terminalOnlyResult(terminalNames, emptyUsage(), "execution").text,
+      };
     }
     if (input.terminalTools?.length && !terminalSatisfied()) {
       context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
@@ -159,7 +169,7 @@ export class AiSdkValidationDriver implements CellDriver {
       const closureAgent = new ToolLoopAgent({
         model: this.model,
         instructions: [
-          renderExecutionInstructions(input),
+          renderExecutionInstructions(input, { deferStructuredOutput: deferredStructuredOutput }),
           "## Terminal recovery phase",
           "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
           "Only the original task context and a compact projection of successful tool results are present; prior assistant reasoning, prose, rejected calls, and other transcript messages are absent. Retained results remain usable evidence, and a later rejected tool call does not erase them or prove that no files were read.",
@@ -167,14 +177,14 @@ export class AiSdkValidationDriver implements CellDriver {
           `You must invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`,
         ].join("\n"),
         tools: closureTools,
-        stopWhen: outputSchema
+        stopWhen: inlineOutputSchema
           ? isStepCount(3)
           : [isStepCount(2), stopAfterAcceptedTerminal],
-        ...(outputSchema ? { output: Output.object({ schema: outputSchema.forAiSdk() }) } : {}),
+        ...(inlineOutputSchema ? { output: Output.object({ schema: inlineOutputSchema.forAiSdk() }) } : {}),
         prepareStep: () => {
           if (terminalSatisfied()) {
             terminalOnly = true;
-            return finalOutputStep(input);
+            return finalOutputStep(input, inlineOutputSchema !== undefined);
           }
           terminalOnly = true;
           return {
@@ -204,7 +214,9 @@ export class AiSdkValidationDriver implements CellDriver {
           abortSignal: context.signal,
           timeout: { totalMs: input.budget.maxDurationMs },
           onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
-            closureUsage = addUsage(closureUsage, normalizeUsage(usage, providerMetadata));
+            const stepUsage = normalizeUsage(usage, providerMetadata);
+            closureUsage = addUsage(closureUsage, stepUsage);
+            context.observeUsage(stepUsage);
             context.emit("terminal.recovery.step.finished", {
               finishReason,
               performance: sanitize(performance),
@@ -222,7 +234,7 @@ export class AiSdkValidationDriver implements CellDriver {
             terminalProtocolError,
             addUsage(observedUsage, closureUsage),
           );
-        } else if (terminalSatisfied() && !outputSchema) {
+        } else if (terminalSatisfied() && !inlineOutputSchema) {
           closureResult = terminalOnlyResult(terminalNames, closureUsage, "recovery");
         } else {
           throw new CellExecutionError(
@@ -231,8 +243,11 @@ export class AiSdkValidationDriver implements CellDriver {
           );
         }
       }
-      if (closureResult && terminalSatisfied() && !outputSchema && !closureResult.text.trim()) {
-        closureResult = terminalOnlyResult(terminalNames, normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata), "recovery");
+      if (closureResult && terminalSatisfied() && !inlineOutputSchema && !closureResult.text.trim()) {
+        closureResult = {
+          ...closureResult,
+          text: terminalOnlyResult(terminalNames, emptyUsage(), "recovery").text,
+        };
       }
     }
     if (terminalProtocolError) {
@@ -241,8 +256,13 @@ export class AiSdkValidationDriver implements CellDriver {
         addUsage(observedUsage, closureUsage),
       );
     }
+    const executionUsage = addUsage(
+      normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata),
+      closureResult ? normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata) : emptyUsage(),
+    );
+    let settlement: StructuredSettlementResult | undefined;
     let output: unknown;
-    if (outputSchema) {
+    if (inlineOutputSchema) {
       try {
         output = (closureResult ?? executionResult).output;
       } catch (error) {
@@ -251,17 +271,42 @@ export class AiSdkValidationDriver implements CellDriver {
           addUsage(observedUsage, closureUsage),
         );
       }
+    } else if (outputSchema) {
+      context.emit("structured.settlement.started", { mode: "tool-settlement" });
+      settlement = await settleStructuredOutput({
+        model: this.model,
+        schema: outputSchema,
+        intent: input.intent,
+        acceptance: input.acceptance,
+        retainedEvidence: [
+          executionResult.text,
+          closureResult?.text,
+          renderRecoveryEvidence([...executionResult.steps, ...(closureResult?.steps ?? [])]),
+        ].filter((part): part is string => Boolean(part?.trim())).join("\n\n"),
+        context,
+        maxDurationMs: input.budget.maxDurationMs,
+        maxOutputTokens: MAX_AGENT_OUTPUT_TOKENS,
+      });
+      if (settlement.output === undefined) {
+        throw new CellExecutionError(
+          settlement.error ?? "structured settlement produced no output",
+          addUsage(executionUsage, settlement.usage),
+        );
+      }
+      output = settlement.output;
+      context.emit("structured.settlement.finished", { mode: "tool-settlement" });
     }
-    const usage = addUsage(
-      normalizeUsage(executionResult.totalUsage, executionResult.providerMetadata),
-      closureResult ? normalizeUsage(closureResult.totalUsage, closureResult.providerMetadata) : { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
-    );
+    const usage = settlement ? addUsage(executionUsage, settlement.usage) : executionUsage;
     return {
       terminalToolsCalled: [...terminalToolsCalled],
       finalText: closureResult ? `${executionResult.text}\n\n${closureResult.text}` : executionResult.text,
       ...(output === undefined ? {} : { output }),
       usage,
-      rawSteps: sanitize([...executionResult.steps, ...(closureResult?.steps ?? [])]) as unknown[],
+      rawSteps: sanitize([
+        ...executionResult.steps,
+        ...(closureResult?.steps ?? []),
+        ...(settlement?.rawSteps ?? []),
+      ]) as unknown[],
       providerMetadata: sanitize(executionResult.providerMetadata),
     };
   }
@@ -370,13 +415,13 @@ function terminalActionRequired() {
   };
 }
 
-function finalOutputStep(
-  input: CellInput,
-) {
+function finalOutputStep(input: CellInput, inlineStructuredOutput: boolean) {
   return {
     activeTools: [],
     toolChoice: "none" as const,
-    instructions: `${renderExecutionInstructions(input)}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${input.outputSchema ? "structured output" : "concise report"} now.`,
+    instructions: `${renderExecutionInstructions(input, {
+      deferStructuredOutput: input.outputSchema !== undefined && !inlineStructuredOutput,
+    })}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${inlineStructuredOutput ? "structured output" : "concise report"} now.`,
   };
 }
 
@@ -421,12 +466,18 @@ function renderRecoveryEvidence(steps: readonly unknown[]): string {
     : "No successful tool result was retained; submit only the bounded facts available from the task contract.";
 }
 
-function renderExecutionInstructions(input: CellInput): string {
+function renderExecutionInstructions(
+  input: CellInput,
+  options: { deferStructuredOutput?: boolean } = {},
+): string {
   const terminalInstruction = input.terminalTools?.length
     ? `Finish by invoking exactly one declared terminal tool: ${input.terminalTools.map((terminal) => terminal.name).join(", ")}.`
     : "A terminal tool is not required. Leave a concise final response after completing the work.";
-  const outputInstruction = input.outputSchema
+  const outputInstruction = input.outputSchema && !options.deferStructuredOutput
     ? `Return a final structured output that conforms exactly to this JSON Schema. This is independent of every tool input:\n${JSON.stringify(input.outputSchema)}`
+    : undefined;
+  const deferredOutputInstruction = input.outputSchema && options.deferStructuredOutput
+    ? "A separate structured settlement phase will follow. Complete the necessary investigation first and leave a source-grounded report; do not guess schema fields or stop at placeholders."
     : undefined;
   const artifactInstruction = input.artifacts?.length
     ? `Create each declared artifact in the workspace write scope. Their paths and instructions are binding:\n${input.artifacts.map((artifact) => `- ${artifact.path}: ${artifact.instructions}`).join("\n")}`
@@ -437,6 +488,7 @@ function renderExecutionInstructions(input: CellInput): string {
     "If the task exceeds your scope or capability, state the bounded blocker in the final response. Do not invoke another agent yourself.",
     terminalInstruction,
     outputInstruction,
+    deferredOutputInstruction,
     artifactInstruction,
     ...input.instructions,
     ...input.context.map((section) => `## ${section.title}\n${section.content}`),
@@ -461,6 +513,10 @@ function addUsage(left: CellUsage, right: CellUsage): CellUsage {
     totalTokens: left.totalTokens + right.totalTokens,
     cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
   };
+}
+
+function emptyUsage(): CellUsage {
+  return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

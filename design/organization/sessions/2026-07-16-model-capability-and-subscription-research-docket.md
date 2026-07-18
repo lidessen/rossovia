@@ -1,6 +1,7 @@
 # Model Capability and Subscription Harness Research Docket
 
-**Status:** proposed inquiries; not an approved mission or task queue
+**Status:** capability seed activated by decision 037; harness and canary
+inquiries remain proposed
 
 **Date:** 2026-07-16
 
@@ -8,6 +9,11 @@
 
 **Form decision:** retain one source-linked research docket until a concrete
 probe is authorized; do not create active mission records for unstarted work
+
+**Activation:** on 2026-07-18 the principal authorized the capability seed.
+[Decision 037](../../decisions/037-model-capability-evaluation-seed.md) governs
+the first method and Work Cell adapter slice; it does not activate the harness
+runner or rapid-degradation canary.
 
 ## Why these inquiries belong together
 
@@ -24,6 +30,13 @@ harness + harness version + prompt/skill/tool profile + execution policy**.
 Changing any member can change the observed capability. The eventual allocator
 may consume this evidence, but it must not infer capability from price, public
 leaderboards, or one successful run.
+
+The same runs can expose prompting failures and treatment hypotheses because
+prompt, skill, context, tools, and completion policy are members of the profile.
+Attribution still requires a controlled follow-up: change one prompting member
+while holding the remaining profile fixed, then confirm the revised profile on
+cases that did not teach the treatment. Otherwise prompt tuning and capability
+measurement would be the same sample and the claimed evidence would be circular.
 
 ## Inquiry A — model capability cognition
 

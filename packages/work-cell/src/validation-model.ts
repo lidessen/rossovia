@@ -21,6 +21,7 @@ import {
   createKimiCodingModel,
   KIMI_CODING_DEFAULT_MODEL,
   KIMI_CODING_PROVIDER_ID,
+  kimiCodingSupportsNativeStructuredOutput,
 } from "./providers/kimi-coding";
 
 const DEFAULT_MODEL = "deepseek-v4-flash";
@@ -44,6 +45,7 @@ export interface ValidationModelSelection {
   model: ReturnType<typeof createRoutedLanguageModel>;
   route: readonly string[];
   models: readonly string[];
+  structuredOutputMode: "inline" | "tool-settlement";
   pricing?: NonNullable<DriverDescriptor["pricing"]>;
 }
 
@@ -120,6 +122,10 @@ export function createValidationModel(
     }),
     route,
     models,
+    structuredOutputMode: resolvedRoute.every((target) => (
+      target.provider !== KIMI_CODING_PROVIDER_ID
+      || kimiCodingSupportsNativeStructuredOutput(target.model)
+    )) ? "inline" : "tool-settlement",
     ...validationPricing(route, models),
   };
 }

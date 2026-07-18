@@ -52,6 +52,7 @@ specific method.
 | [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | Choose whether a recurring need should exist as a skill, decision artifact, runtime, projection, bounded campaign, or no new form before implementation starts. |
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | Name a shared project concept, define its operative boundary, explain it at the right source, and decline needless terminology. |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | Recover necessary work and discovery branches before converting a mission into model-specific budget, time, or cost. |
+| [model-evaluation](skills/model-evaluation/SKILL.md) | `/model-evaluation` | Build evidence-linked, task-specific capability profiles from matched repeated runs without turning model labels or one result into fact. |
 | [strategic-advisory](skills/strategic-advisory/SKILL.md) | `/strategic-advisory` | Prepare a proposed Strategy Case from phase evidence for human review; it links long direction, medium capabilities, and short mission candidates without self-commitment. |
 | [artifact-organization](skills/artifact-organization/SKILL.md) | `/artifact-organization` | Audit whether artifact roles and paths still express accepted design, then apply one smallest justified organization transition. |
 | [structural-refactoring](skills/structural-refactoring/SKILL.md) | `/structural-refactoring` | Reconstitute code across meaningful boundaries while preserving declared behavior, caller impact, and verification authority. |
@@ -66,7 +67,7 @@ specific method.
 independent practice and evaluation unit. Its core runs one caller-prepared,
 bounded agent task and retains declared output artifacts, structured output,
 terminal evidence, usage, cost, and workspace diff. Optional adapters lower
-Sequence expressions, experiments, and deliberations into that generic
+Sequence expressions, experiments, model evaluations, and deliberations into that generic
 contract; research implementations remain outside the stable runtime surface.
 It is infrastructure, not an invocable methodology skill, and it has no
 planning, semantic, or acceptance authority.
@@ -90,6 +91,7 @@ deliberation; see [decision 027](design/decisions/027-general-work-cell-core-and
 | Deciding whether a capability needs a skill, record, runtime, projection, or no new form | `/form-guidance` |
 | Naming a shared concept, defining terminology, or deciding where its explanation belongs | `/naming-and-articulation` |
 | Comparing the real work of alternatives, selecting estimate precision, or setting error tolerance before a budget | `/work-estimation` |
+| Comparing model, provider, plan, harness, or prompt/tool execution profiles on representative real tasks | `/model-evaluation` |
 | Preparing strategic direction from a completed phase's verified evidence | `/strategic-advisory` |
 | Checking whether project layout still fits accepted design | `/artifact-organization audit`; use `transition` only for a material gap |
 | Splitting modules, extracting responsibilities, or untangling dependencies without intended behavior change | `/structural-refactoring` |
@@ -152,6 +154,8 @@ source. Fix the owning surface and test it through the normal agent entry.
 We keep reconstructing this project's architecture and change-impact model.
 Build reusable project cognition from the current source without creating a new
 source of truth.
+Compare these two model execution profiles on retained real tasks and prepare a
+bounded capability claim; do not produce a universal score.
 ```
 
 For an explicit Codex activation, name the skill with `$` and optionally state
@@ -165,6 +169,7 @@ $improve-agent-workflow audit why agents miss this project instruction
 $improve-agent-workflow improve this repository's release-note skill and verify it
 $project-cognition bootstrap this repository for future architecture and impact work
 $project-cognition refresh the retained model across this revision
+$model-evaluation compare these two execution profiles for repository review work
 ```
 
 Other agents may expose explicit activation through a slash command, mention,

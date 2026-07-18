@@ -47,6 +47,7 @@ skill 则是在具体语境中对所选条目的表达。
 | [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | 在实施前判断一个重复性需求应以 skill、决策记录、运行时、投影、有限期任务还是无需新增形式来存在。 |
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | 为共享项目概念命名，定义其可操作边界，将解释放在正确的来源处，并拒绝不必要的术语。 |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | 在将任务转换为模型预算、时间或成本前，恢复必要工作及其探索分支。 |
+| [model-evaluation](skills/model-evaluation/SKILL.md) | `/model-evaluation` | 通过条件匹配的重复真实任务，形成带证据、特定于任务的能力画像，不把模型名称或单次结果当成事实。 |
 | [strategic-advisory](skills/strategic-advisory/SKILL.md) | `/strategic-advisory` | 基于阶段证据准备供人审议的 Strategy Case；它连接长期方向、中期能力和短期任务候选，但不自行作出承诺。 |
 | [artifact-organization](skills/artifact-organization/SKILL.md) | `/artifact-organization` | 审计工件的角色和路径是否仍体现已接受的设计；只有存在实质缺口时才执行一次最小的组织转换。 |
 | [structural-refactoring](skills/structural-refactoring/SKILL.md) | `/structural-refactoring` | 在保留已声明行为、调用方影响和验证权威的前提下，跨有意义的边界重新组织代码。 |
@@ -60,7 +61,7 @@ skill 则是在具体语境中对所选条目的表达。
 [`packages/work-cell`](packages/work-cell/README.md) 是本集合独立的实践与评估
 单元。其核心会运行一个由调用方准备的、有边界的 Agent 任务，并保留已声明的
 输出工件、结构化输出、终结证据、用量、成本和工作区差异。可选适配器会将原则
-序列表达、实验和审议转换为符合这一通用契约的形式；研究性实现则留在稳定运行时界面
+序列表达、实验、模型评测和审议转换为符合这一通用契约的形式；研究性实现则留在稳定运行时界面
 之外。它是基础设施，不是可直接调用的方法论 skill，也没有规划、语义或验收权。
 
 对于携带原则序列的仓库，只读 `probe` 适配器会发现宿主序列，选择并加载任务
@@ -81,6 +82,7 @@ skill 则是在具体语境中对所选条目的表达。
 | 判断一项能力需要 skill、记录、运行时、投影，还是无需新增形式 | `/form-guidance` |
 | 为共享概念命名、定义术语，或决定解释应放在哪里 | `/naming-and-articulation` |
 | 比较替代方案的真实工作、选择估计精度，或在预算前设定误差容忍度 | `/work-estimation` |
+| 在代表性的真实任务上比较模型、provider、套餐、harness 或 prompt/tool 执行画像 | `/model-evaluation` |
 | 从已完成阶段的已验证证据中准备战略方向 | `/strategic-advisory` |
 | 检查项目布局是否仍符合既定设计 | `/artifact-organization audit`；仅在有实质缺口时使用 `transition` |
 | 拆分模块、抽取职责或解开依赖，同时不改变预期行为 | `/structural-refactoring` |
@@ -141,6 +143,7 @@ Skills 通常依据用户意图来选择：安装后，用自然语言向 Agent 
 在实施新产品网站前，先建立其视觉方向。
 我们的编码 Agent 总是遗漏这个仓库的范围边界。检查真实路径，并作出最小的、经过验证的改进。
 这个项目 skill 产生的输出看似合理，却忽略了验证来源。修复责任界面，并通过普通 Agent 入口测试它。
+在保留的真实任务上比较这两个模型执行画像，并形成有边界的能力主张；不要生成通用总分。
 ```
 
 在 Codex 中显式激活时，用 `$` 指定 skill，并可选地说明操作：
@@ -151,6 +154,7 @@ $visual-design review the rendered docs experience; do not edit yet
 $visual-design cultivate a reusable direction for this new product
 $improve-agent-workflow audit why agents miss this project instruction
 $improve-agent-workflow improve this repository's release-note skill and verify it
+$model-evaluation compare these two execution profiles for repository review work
 ```
 
 其他 Agent 可能通过斜杠命令、提及、菜单或仅由模型选择来提供显式激活。调用形式

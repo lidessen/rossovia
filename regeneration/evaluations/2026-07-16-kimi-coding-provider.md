@@ -61,7 +61,7 @@ an injected local fetch boundary and observed:
   `auto` remains unchanged;
 - 402, 403, and 429 failures admit fallback, while 400 and 404 remain visible;
 - a simulated Kimi 429 advances exactly one model call to DeepSeek and retains
-  `kimi-coding`, `deepseek`, and the actual served model in route metadata;
+  `kimi-coding`, `deepseek`, and the selected route target in route metadata;
 - an explicit profile can select Kimi alone or OpenCode Go -> Kimi Coding ->
   DeepSeek, while globally present credentials with no profile remain
   unauthorized;
@@ -142,3 +142,20 @@ ownership, request translation, reasoning continuity, tool-choice support,
 structured-output claims, error taxonomy, economics, quota observation, and
 live probes. Extract that method separately; do not make Work Cell depend on a
 development Skill at runtime.
+
+## Tool-grounded structured settlement correction
+
+The earlier K3 structured probe proved only that a small no-tool object could
+parse. It did not prove that native schema pressure and repository tools compose.
+The later [completion-treatment evaluation](2026-07-18-kimi-structured-settlement.md)
+disconfirmed that broader reading: K3 skipped every file read when the AI SDK
+output schema was present, even under a stronger evidence-first prompt.
+
+The corrected route now declares whether all selected targets support native
+structured responses. An unsupported route investigates first and settles the
+caller's schema through a separate internal tool. Two live K3 repetitions using
+the original prompt each read all three required skill files and returned a
+valid source-grounded object. They required about 18.6k tokens and 130–137
+seconds, so the old 4k-token and 120-second profile assumptions are rejected for
+this two-phase repository task. These are discovery results, not a newly
+admitted general K3 capability profile.

@@ -43,6 +43,15 @@
       "presentation": "skill-guide",
       "title": "Visual Design",
       "description": "从内容、注意力和行动设计真实视觉系统，而不是套用固定风格。"
+    },
+    {
+      "kind": "source",
+      "source": "skills/model-evaluation/SKILL.md",
+      "output": "docs/skills/model-evaluation.md",
+      "route": "/docs/skills/model-evaluation/",
+      "presentation": "skill-guide",
+      "title": "Model Evaluation",
+      "description": "用重复的真实任务证据形成有边界的模型执行能力画像。"
     }
   ],
   "catalog": {
@@ -57,6 +66,7 @@
       "skills/form-guidance/SKILL.md",
       "skills/naming-and-articulation/SKILL.md",
       "skills/work-estimation/SKILL.md",
+      "skills/model-evaluation/SKILL.md",
       "skills/strategic-advisory/SKILL.md",
       "skills/artifact-organization/SKILL.md",
       "skills/structural-refactoring/SKILL.md",

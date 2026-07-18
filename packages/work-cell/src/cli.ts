@@ -9,6 +9,11 @@ import { CellInputSchema, type CellRunRecord } from "./contracts";
 import { persistDeliberationRecord, runDeliberation } from "./adapters/deliberation/runtime";
 import { runExperimentFromFile } from "./adapters/experiment/runtime";
 import { AiSdkValidationJudge } from "./adapters/experiment/judge";
+import {
+  ModelEvaluationSpecSchema,
+  runModelEvaluationFromFile,
+} from "./adapters/model-evaluation/runtime";
+import { AiSdkModelEvaluationJudge } from "./adapters/model-evaluation/judge";
 import { latestProjectRun, lowerProjectProbe, persistProjectRun } from "./adapters/sequence/project";
 import { prepareProjectDeliberation } from "./adapters/deliberation/project";
 import { renderRunSummary } from "./adapters/sequence/presentation";
@@ -107,6 +112,31 @@ async function main(args: string[]): Promise<void> {
         2,
       ),
     );
+    return;
+  }
+
+  if (command === "model") {
+    const [action, ...modelRest] = rest;
+    if (action !== "evaluate") usage();
+    const path = requiredPath(modelRest, "model evaluate");
+    const absolutePath = resolve(path);
+    const spec = ModelEvaluationSpecSchema.parse(JSON.parse(await readFile(absolutePath, "utf8")));
+    const record = await runModelEvaluationFromFile(
+      absolutePath,
+      (profile) => new AiSdkValidationDriver({ route: profile.route }),
+      new AiSdkModelEvaluationJudge({ route: spec.judge.route }),
+    );
+    console.log(JSON.stringify({
+      id: record.id,
+      output: record.recordPath,
+      trials: record.trials.length,
+      comparisons: record.comparisons.map(({ caseId, result }) => ({
+        caseId,
+        status: result.judgement.preferred === "inconclusive" ? "inconclusive" : "recorded",
+      })),
+      profiles: record.profileSummaries,
+      authority: record.authority,
+    }, null, 2));
     return;
   }
 
@@ -344,6 +374,7 @@ function usage(): never {
     "  bun src/cli.ts run <cell.json>",
     "  bun src/cli.ts swarm <swarm.json>",
     "  bun src/cli.ts experiment <experiment.json>",
+    "  bun src/cli.ts model evaluate <model-evaluation.json>",
     "  bun src/cli.ts deliberate <deliberation.json>",
     "  bun src/cli.ts deliberate-probe <question> --option A=<summary> --option B=<summary> --seat P04=<role> --seat P11=<role> --seat P15=<role> --source <path> --budget-tokens <n> --member-estimated-tokens <n> --budget-source <approval> [--execute]",
     "  bun src/cli.ts probe <intent> --accept <condition> [--scope <path> ...] [--estimated-tokens <n>] [--estimated-tokens-tolerance <ratio>]",

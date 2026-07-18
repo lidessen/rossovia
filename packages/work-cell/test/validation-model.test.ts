@@ -69,12 +69,15 @@ test("the validation policy requires an explicit route backed by its referenced 
     opencodeApiKey: "go-key",
   });
   expect(openCodeOnly.route).toEqual(["opencode-go"]);
+  expect(openCodeOnly.structuredOutputMode).toBe("inline");
   expect(openCodeOnly.pricing).toBeUndefined();
 
-  expect(createValidationModel({
+  const deepSeekOnly = createValidationModel({
     route: [routeTarget("deepseek")],
     deepSeekApiKey: "deepseek-key",
-  }).pricing).toEqual(expect.objectContaining({
+  });
+  expect(deepSeekOnly.structuredOutputMode).toBe("inline");
+  expect(deepSeekOnly.pricing).toEqual(expect.objectContaining({
     inputPerMillionUsd: 0.14,
     outputPerMillionUsd: 0.28,
   }));
@@ -92,6 +95,7 @@ test("the validation policy requires an explicit route backed by its referenced 
   expect(kimiOnly.route).toEqual(["kimi-coding"]);
   expect(kimiOnly.models).toEqual(["kimi-for-coding"]);
   expect(validationModelName(kimiOnly)).toBe("kimi-for-coding");
+  expect(kimiOnly.structuredOutputMode).toBe("tool-settlement");
   expect(kimiOnly.pricing).toBeUndefined();
 
   const fullRoute = createValidationModel({
@@ -101,6 +105,7 @@ test("the validation policy requires an explicit route backed by its referenced 
     deepSeekApiKey: "deepseek-key",
   });
   expect(fullRoute.route).toEqual(["opencode-go", "kimi-coding", "deepseek"]);
+  expect(fullRoute.structuredOutputMode).toBe("tool-settlement");
   expect(validationModelName(fullRoute)).toBe(
     "opencode-go/deepseek-v4-flash->kimi-coding/kimi-for-coding->deepseek/deepseek-v4-flash",
   );

@@ -9,6 +9,8 @@ import type { Workspace } from "./workspace";
 export interface DriverContext {
   workspace: Workspace;
   signal: AbortSignal;
+  /** Retain completed provider-step usage even if the outer Cell timeout wins the driver race. */
+  observeUsage(usage: CellUsage): void;
   emit(type: string, data: unknown): void;
 }
 

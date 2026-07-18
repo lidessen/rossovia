@@ -18,6 +18,11 @@ const explicitDeepSeekRoute = () => [{
   provider: "deepseek" as const,
   credential: { source: "env" as const, name: "DEEPSEEK_TEST_KEY" },
 }];
+const explicitKimiRoute = () => [{
+  provider: "kimi-coding" as const,
+  credential: { source: "env" as const, name: "KIMI_TEST_KEY" },
+  model: "k3",
+}];
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -532,6 +537,82 @@ test("stops the main loop after one structured output step following a terminal 
   expect(record.output).toEqual({ recommendation: "proceed" });
   expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
   expect(calls).toBe(2);
+});
+
+test("defers unsupported structured output until after tool-grounded investigation", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const responseFormats: unknown[] = [];
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      responseFormats.push(options.responseFormat);
+      if (calls === 1) return response([{
+        type: "tool-call",
+        toolCallId: "read-evidence",
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 2) return response([{
+        type: "tool-call",
+        toolCallId: "submit-investigation",
+        toolName: "submit_review",
+        input: "{}",
+      }], "tool-calls");
+      if (calls === 3) return response([{
+        type: "text",
+        text: "I should format this before calling the settlement tool.",
+      }], "stop");
+      if (calls === 4) return response([{
+        type: "tool-call",
+        toolCallId: "settle-output",
+        toolName: "emit_structured_output",
+        input: JSON.stringify({ decision: "P04", evidence: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "deferred-structured-output",
+    intent: "Investigate before structured settlement.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read the source before deciding."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The output is grounded in the retained source."],
+    terminalTools: [{
+      name: "submit_review",
+      description: "Signal that source investigation is complete.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    outputSchema: {
+      type: "object",
+      properties: {
+        decision: { type: "string", enum: ["P04"] },
+        evidence: { type: "string" },
+      },
+      required: ["decision", "evidence"],
+      additionalProperties: false,
+    },
+    budget: { maxSteps: 3, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.output).toEqual({ decision: "P04", evidence: "principles/SEQUENCE.md" });
+  expect(record.verification.terminal).toMatchObject({ passed: true, called: ["submit_review"] });
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(1);
+  expect(record.trace.some((event) => event.type === "structured.settlement.started")).toBe(true);
+  expect(record.trace.some((event) => event.type === "structured.settlement.attempt.failed")).toBe(true);
+  expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(true);
+  expect(responseFormats).toEqual([undefined, undefined, undefined, undefined]);
+  expect(calls).toBe(4);
 });
 
 test("recovers structured output after a terminal tool and retains all usage", async () => {

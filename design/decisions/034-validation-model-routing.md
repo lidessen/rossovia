@@ -122,6 +122,26 @@ actually called. A missing call remains a failed contract. The adapter also
 enables thinking and interleaved reasoning history so later tool steps retain
 the `reasoning_content` required by Kimi's documented protocol.
 
+Structured output has a second, independent capability boundary. The official
+Moonshot AI SDK provider advertises native response-format support only for
+model IDs beginning with `kimi-k`; Coding Plan's current `k3` and stable aliases
+do not cross that gate. A minimal no-tool JSON probe can still happen to parse,
+but the retained [K3 completion-treatment probe](../../regeneration/evaluations/2026-07-18-kimi-structured-settlement.md)
+showed that attaching unsupported response-format/schema pressure to a
+repository task caused zero file reads, schema failures, placeholders, and one
+schema-valid hallucination. Stronger instructions did not repair it.
+
+`validation-model.ts` therefore projects a route-level structured-output mode.
+If every selected target supports the inline response form, whether directly
+or through its provider adapter, the existing single-loop path remains
+unchanged. If any selected target does not, the driver
+defers the output schema: the ordinary tool loop investigates without schema or
+response-format pressure, then a separate internal schema tool projects only
+retained evidence into the caller's validated output. This tool is an adapter
+implementation detail, not a public `terminalTools` member or a second output
+contract. The route, trace, usage, raw steps, and final Work Cell verification
+remain visible across both phases.
+
 The provider uses the official AI SDK package's truthful AI SDK/runtime
 User-Agent. It does not impersonate Kimi CLI, Claude Code, or another approved
 client to obtain subscription access.
@@ -193,6 +213,13 @@ or a second variation makes the boundary real.
 - Kimi adapter tests must retain the real AI SDK client identity, thinking and
   reasoning-history settings, tool-choice translation, provider-specific model
   ID, and fail-closed handling of malformed requests.
+- A route containing a target without native structured output must keep
+  response-format pressure out of the investigation loop, retain its tool
+  evidence, and settle through the independently validated internal schema
+  tool; inline-capable routes must keep their existing path.
+- A Cell timeout that wins during a later provider phase must retain usage from
+  every completed model step through the driver's incremental audit channel;
+  cancellation cannot project observed work as zero.
 - A low-cost live OpenCode Go call must exercise a real Work Cell terminal tool
   and retain the selected route in its record.
 - A low-cost live structured call must return an AI SDK-validated object through

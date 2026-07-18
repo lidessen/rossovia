@@ -16,6 +16,11 @@ export const KIMI_CODING_PROVIDER_ID = "kimi-coding";
 export const KIMI_CODING_BASE_URL = "https://api.kimi.com/coding/v1";
 export const KIMI_CODING_DEFAULT_MODEL = "kimi-for-coding";
 
+/** Mirrors the Moonshot provider's native response-format capability gate. */
+export function kimiCodingSupportsNativeStructuredOutput(model: string): boolean {
+  return model.startsWith("kimi-k");
+}
+
 const kimiCodingProviderOptions = {
   moonshotai: {
     thinking: { type: "enabled" },

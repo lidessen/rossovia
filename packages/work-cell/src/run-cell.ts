@@ -41,6 +41,7 @@ export async function runCell(
   let error: string | undefined;
   let driverResult: Awaited<ReturnType<CellDriver["run"]>> | undefined;
   let failureUsage = emptyUsage();
+  let observedExecutionUsage = emptyUsage();
   let verification = { passed: false, terminal: { passed: false, required: [] as string[], called: [] as string[] } };
   let outputVerification: OutputVerification | undefined;
   let artifactVerification: ArtifactVerification | undefined;
@@ -56,6 +57,9 @@ export async function runCell(
       const context = {
         workspace,
         signal,
+        observeUsage(usage: CellUsage) {
+          observedExecutionUsage = addUsage(observedExecutionUsage, usage);
+        },
         emit(type: string, data: unknown) {
           trace.push(traceEvent(type, data));
         },
@@ -112,8 +116,10 @@ export async function runCell(
       error = caught instanceof Error ? caught.message : String(caught);
       if (caught instanceof CellExecutionError) {
         failureUsage = caught.usage;
+      } else {
+        failureUsage = observedExecutionUsage;
       }
-      else if (signal.aborted) status = "cancelled";
+      if (signal.aborted) status = "cancelled";
       else status = "failed";
       trace.push(traceEvent("cell.error", { status, error }));
     }

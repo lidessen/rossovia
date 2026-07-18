@@ -130,6 +130,14 @@ require a regular file in write scope that this run added or changed; the record
 retains its SHA-256 and byte size. None implies the schema or payload of another.
 See [decision 033](../../design/decisions/033-work-cell-terminal-contract.md).
 
+The AI SDK driver may change how it obtains `outputSchema` when a selected
+provider does not support native structured responses. It first completes the
+ordinary investigation without response-format pressure, then uses a private
+schema tool to project the retained evidence. The internal tool is not added to
+`terminalTools`; the caller still declares one output contract and Work Cell
+still validates it independently. Trace and usage expose the extra settlement
+phase instead of pretending it was one provider-native response.
+
 ## Work and budget boundary
 
 A Cell may carry a versioned **Work Estimate** and **Execution Profile**. The
@@ -149,6 +157,12 @@ preparation/execution use, and read volume. A caller may declare
 `0.5` means ±50%); only then can the summary label a variance as requiring
 review. No tolerance is silently invented. Provider context limits, step limits,
 duration, and workspace limits remain separate execution boundaries.
+
+Drivers report completed provider-step usage incrementally as well as in their
+final result. The final result remains authoritative on success; incremental
+observations are the audit fallback when cancellation or failure wins before a
+result returns. A timeout therefore does not turn already-observed model work
+into zero usage.
 
 ## Project interaction
 
@@ -341,7 +355,15 @@ points:
 
 - `src/adapters/sequence/`
 - `src/adapters/experiment/`
+- `src/adapters/model-evaluation/`
 - `src/adapters/deliberation/`
+
+The model-evaluation v2 adapter compares whole execution profiles, not bare
+model names. Its manifest explicitly records context and tool-surface policies
+plus a declared inference policy; separates procedural worker acceptance from
+evaluator-only reference criteria; and reports selected route identities
+without claiming to verify a provider's hidden backend build or inference
+settings.
 
 Creative-field, naming, latent-routing, and idea-development code lives under
 `src/research/`. Package scripts may execute those probes, but neither the main
@@ -368,6 +390,9 @@ bun src/cli.ts swarm path/to/swarm.json
 
 # Matched baseline/treatment experiment
 bun src/cli.ts experiment experiments/p23-bounded-autonomy.json
+
+# Repeated real-task evidence for two explicit execution profiles.
+bun src/cli.ts model evaluate path/to/model-evaluation.json
 
 # Bounded independent deliberation; the result is evidence, never a vote that commits work.
 bun src/cli.ts deliberate path/to/deliberation.json
@@ -425,6 +450,10 @@ output as accepted project fact.
   docket. Each member must state a structured position; the CLI preserves raw
   member records and emits a non-authoritative vote-and-dissent projection. It
   cannot create consensus, accept a proposal, allocate budget, or merge work.
+- `model evaluate` runs one frozen task field through two explicit profiles,
+  retains repeated and blind-judge evidence, and emits descriptive observations.
+  It cannot admit a capability profile, rank models globally, or alter provider
+  preference.
 - No Sequence mutation or automatic candidate adoption.
 - Workspace containment is for local evaluation, not a hardened hostile-code
   sandbox. Commands use argv arrays, no shell, and an explicit executable list.
