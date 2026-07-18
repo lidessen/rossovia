@@ -1,7 +1,8 @@
 # Shape a Visual Direction
 
-Use this path when the visual relation is unresolved or the request names only
-a surface preference such as “modern,” “beautiful,” or “more polished.”
+Use this path when the visual relation is unresolved, later agents need guidance
+before implementation, or the request names only a surface preference such as
+“modern,” “hand-drawn doodle,” “beautiful,” or “more polished.”
 
 1. Inspect the actual object, neighboring surfaces, product/content sources,
    existing design system, and delivery constraints. Render or open the object
@@ -20,19 +21,76 @@ a surface preference such as “modern,” “beautiful,” or “more polished.
    such as “blue-green” or “editorial” is not a token inventory: do not infer
    forbidden colors, exact typefaces, component rules, or accessibility
    conformance that the source does not establish. Mark those details unknown.
+   When the phrase names a perceptual family rather than a grounded direction,
+   read `references/visual-language.md`. Treat the phrase as a style cue,
+   expand its materially different readings, and prepare a choice rather than
+   asking the user to define the field unaided.
+   If no supplied or inherited source grounds the cue, read
+   `references/design-sources/index.md` and one expressive-process detail whose
+   decision lens fits the project. The source must change or reject a candidate;
+   it is not permission to borrow its appearance.
+   For a direction-only request, use the provisional visual-language return
+   below and stop; do not expand it into the general Aesthetic Case.
 5. Form two or three meaningful contrasts. Vary relations such as density,
    hierarchy, atmosphere, temporality, materiality, or interaction posture—not
    arbitrary mood-board labels. For every reference, state what decision it
    changes and what must not be copied.
-   If local evidence cannot form those contrasts, read
-   `references/design-sources/index.md` and only the one to three selected
-   detail files. Read `references/concepts.md` only when relation, direction,
+   If local evidence still cannot form those contrasts, select at most two
+   additional sources through `references/design-sources/index.md`. Read
+   `references/concepts.md` only when relation, direction,
    system, treatment, or fixed style are actually being conflated.
 6. Select or synthesize one provisional direction. Separate:
    - invariants shared by the related surfaces;
+   - the visual-language tendencies and expression allocation needed by later
+     agents, when more than one surface is involved;
    - treatment dimensions that remain free for this case; and
    - a negative boundary that rejects a plausible but unfit result.
-7. Return the smallest Aesthetic Case that can guide making:
+7. Before returning the case, remove decisions that the evidence has not earned.
+   Without an inherited source or inspected artifact, omit exact font families
+   or examples, color values, pixel sizes, token names, grid values, component
+   treatments, production technologies, and invented logo or illustration
+   motifs. State relations, selection criteria, and open variables instead.
+
+For an unresolved style cue, return only:
+
+```text
+Project, audience, and intended relation:
+Style cue and the ambiguity it leaves:
+Inspected sources, decision changed, and transfer boundary:
+Two or three candidate relations:
+  - relation-led formal tendencies that distinguish each candidate;
+  - suitable content and artifact conditions;
+  - expression strength across representative surfaces;
+  - plausible wrong reading, cost, and maintenance consequence.
+Recommended provisional visual language and why:
+Cross-surface expression allocation:
+Asset transformation dimensions, with identity content unresolved:
+Smallest shared invariants:
+Dimensions deliberately left open:
+Negative boundary:
+First fragments that could test the choice:
+Human selection question and rejection observation:
+```
+
+This is a choice among relations, not a miniature specification. State relative
+formal tendencies, but do not settle one treatment or present a candidate as a
+mock specification. Name candidates by the project relation they make present,
+never by a medium, period, genre, or physical-object metaphor. If no source or
+artifact earns a concrete decision, leave it open. Stop after presenting the
+recommendation and human decision.
+
+Before returning, ask three questions and revise any failing passage:
+
+1. Does every candidate name a project relation rather than a look or object?
+2. Could a downstream agent preserve this guide through materially different
+   treatments? If not, it is already a specification.
+3. Does every concrete tendency trace to project evidence, an ambiguity in the
+   supplied cue, or an inspected source? Does the recommendation name how that
+   source changed or rejected a candidate and what must not be copied? Remove
+   unsupported choices or turn them into comparison criteria or open variables.
+
+For other direction-shaping work, return the smallest Aesthetic Case that can
+guide making:
 
 ```text
 Object and source boundary:
@@ -44,9 +102,11 @@ Perceptual relation to make present:
 Inherited identity and hard constraints:
 Contrasts considered:
 Provisional direction:
+Provisional visual language and expression allocation, when material:
 Shared invariants:
 Treatment dimensions left open:
-Repeated semantic roles that may warrant tokens:
+Logo, illustration, type, color, and motion implications, when material:
+Repeated relations to observe in later practice, without tokens or values:
 Unknowns requiring source or artifact inspection:
 Negative boundary:
 Available production and inspection capabilities:
@@ -56,5 +116,6 @@ Observation that would reject this direction:
 ```
 
 Do not include a token set or component inventory unless the selected direction
-and real implementation require one. A shaped case proposes a relation; it does
-not accept its own aesthetic result.
+and real implementation require one. A shaped case or provisional visual-
+language guide proposes a relation for later making; it does not accept its own
+aesthetic result or silently become a design specification.

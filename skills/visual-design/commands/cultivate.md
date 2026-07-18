@@ -9,8 +9,11 @@ instead.
    material constraints, and decisions that visual form must enable. Separate
    declared identity from personal taste and from current implementation
    accidents.
-2. Assemble a small **source field** by role rather than fame or visual
-   similarity:
+2. When a named style cue or expressive cross-surface relation materially
+   shapes the project, read `references/visual-language.md` before retaining
+   sources. Use its formal lenses to expose different readings without turning
+   the source field into a style catalogue. Then assemble a small **source
+   field** by role rather than fame or visual similarity:
    - inherited project work and accepted/rejected human preference evidence;
    - direct exemplars that perform a comparable job well;
    - adjacent exemplars whose hierarchy, rhythm, materiality, interaction, or
@@ -61,6 +64,7 @@ Comparative readings and tensions:
 Human preference evidence:
 Provisional generative stance:
 Perceptual relation to preserve:
+Provisional visual language and cross-surface expression allocation, when material:
 Smallest project invariants:
 Dimensions intentionally left variable:
 Negative boundary:
@@ -77,5 +81,6 @@ Status, owner, and review date:
    record contrary evidence rather than editing history into consensus.
 
 The result is the project's first organizing visual proposition, not a finished
-brand book. Tokens, components, illustration rules, and motion language arise
+brand book. A provisional visual language may guide later agents, but tokens,
+components, illustration rules, logo derivatives, and motion language arise
 only where later design practice proves they are needed.

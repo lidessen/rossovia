@@ -17,6 +17,7 @@ asset decision:
 
 ```text
 Asset role and audience action:
+Owning direction or provisional visual language:
 Surfaces and states that consume it:
 Smallest and largest consequential use:
 Background, crop, and theme conditions:
@@ -93,6 +94,13 @@ forcing one to imitate the other. Simplifying the asset and strengthening the
 surrounding system may produce a more coherent relation than adding decoration
 everywhere. Review ordinary data, reading, and control surfaces so expressive
 identity does not consume task attention.
+
+When a provisional visual-language guide exists, translate its relation and
+formal tendencies into the asset's actual production role. Do not turn “hand-
+drawn,” “retro,” or another cue into a texture pass applied to a stable logo or
+icon. Test whether silhouette, construction, contour, mass, color role, or
+motion must change, and preserve recognition and functional meaning where the
+consumer matrix requires them.
 
 ## Promote deliberately
 

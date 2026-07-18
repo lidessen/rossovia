@@ -5,13 +5,18 @@ deliverable is a real interface, document, illustration, or visual-system
 slice. It may shape a missing case locally, but it does not run project-level
 cultivation unless the caller asks to establish a continuing project direction.
 
-1. Read the owning content/product sources, existing direction or Aesthetic
-   Case, design system, and actual implementation. Confirm that requested tools
+1. Read the owning content/product sources, existing direction, provisional
+   visual-language guide or Aesthetic Case, design system, and actual
+   implementation. Confirm that requested tools
    and write paths are available. Report a missing capability instead of
    simulating completion. When a logo, icon, illustration, repeated scene, or
    motion asset is a primary production object, read
    `references/visual-asset-production.md`; do not load it for ordinary
    interface work merely because the interface contains icons or imagery.
+   If the request supplies only an unresolved style cue and design must proceed,
+   read `references/visual-language.md` and form the smallest local candidate
+   comparison needed before implementation. Do not silently choose the most
+   familiar treatment.
 2. When content hierarchy, attention, layout, or a token system is unresolved,
    read `references/presentation-model.md`. Inventory content, actions,
    relationships, variability, and states. Define the attention path:
@@ -22,10 +27,13 @@ cultivation unless the caller asks to establish a continuing project direction.
    read `references/design-sources/index.md`, select one to three complementary
    sources, and read only their detail files. Record the decision each changes
    and what must not be copied.
-3. Translate the direction into decisions for this object. Classify each choice
-   as inherited invariant, case-specific treatment, functional requirement, or
-   experiment. Reject choices justified only by trend or the surface of an
-   unrelated successful artifact.
+3. Translate the direction and any provisional visual language into decisions
+   for this object. Preserve its intended relation, expression allocation,
+   shared invariants, open dimensions, and negative boundary. Classify each
+   choice as inherited invariant, case-specific treatment, functional
+   requirement, or experiment. Reject choices justified only by trend or the
+   surface of an unrelated successful artifact. Do not promote an open formal
+   tendency into an exact project rule merely to make implementation easier.
 4. Derive layout from content relationships and the attention path. Establish
    reading order, grouping, hierarchy, density, responsive behavior, and the
    smallest identity layer shared by in-scope surfaces. Let page archetypes and
@@ -53,6 +61,8 @@ cultivation unless the caller asks to establish a continuing project direction.
 Object, audience, and intended action:
 Content hierarchy and attention path:
 Relation embodied and negative boundary:
+Visual language inherited or locally shaped, with open dimensions:
+Expression allocation across in-scope surfaces:
 Inherited invariants preserved:
 Layout and responsive relations:
 Semantic tokens introduced or reused, with two consumers or substitution:

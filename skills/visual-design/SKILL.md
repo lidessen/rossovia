@@ -6,7 +6,8 @@ description: >-
   existing project direction. Use when creating UI, improving visual hierarchy
   or coherence, reviewing a rendered artifact, or when "the page works but
   feels generic/inconsistent". Also use to establish a continuing project's
-  visual direction from selected references when none exists. Triggers include
+  visual direction from selected references when none exists, or to turn an
+  ambiguous style cue into provisional guidance for later design. Triggers include
   "design this interface", "redesign this page", "review the UI", "make these
   pages feel unified", "align this logo or illustration with the product",
   "art direction", and "审美/视觉设计/插画或品牌视觉统一/确立风格". Do not use
@@ -47,6 +48,12 @@ current lead, but it does not create co-primary doctrine.
 
 - **Direction:** a generative stance with contrasts and a negative boundary,
   not a palette preset.
+- **Style cue:** a person's provisional phrase for a desired perceptual family,
+  such as “hand-drawn” or “editorial”; it opens inquiry and is not yet a
+  direction, preset, or specification.
+- **Visual language:** a provisional project-local relation between direction
+  and formal tendencies—gesture, shape, rhythm, material, type, imagery, and
+  motion—plus how strongly they appear across different surfaces.
 - **Attention path:** the intended order and relative force of orientation,
   primary action, supporting judgment, context, and recovery signals.
 - **System:** the smallest shared invariants that keep related surfaces
@@ -59,12 +66,13 @@ current lead, but it does not create co-primary doctrine.
 ## Governing dependency
 
 ```text
-content and actions
-  -> attention path
-     -> visual hierarchy and layout
-        -> repeated semantic roles and tokens
-           -> case-specific treatment
-              -> observed comprehension and action
+content and actions -> attention path -> visual hierarchy and layout
+project relation and sources -> provisional visual language
+                         \       /
+                   surface expression allocation
+                         -> repeated semantic roles and tokens
+                            -> case-specific treatment
+                               -> observed comprehension and action
 ```
 
 Color, type, spacing, grid, depth, imagery, and motion allocate attention and
@@ -80,6 +88,7 @@ Establish only enough state to select the operation:
 Object and artifact state:
 Audience and intended action:
 Existing direction or design system:
+Named style cue or supplied references, if any:
 Requested outcome: establish | direction-only | design | review
 Available production and inspection capabilities:
 ```
@@ -119,8 +128,9 @@ Less frequent:
 
 - `cultivate` — read `commands/cultivate.md` to establish a continuing
   project's provisional direction.
-- `shape` — read `commands/shape.md` only when a direction or Aesthetic Case is
-  required without implementation.
+- `shape` — read `commands/shape.md` when a direction or Aesthetic Case is
+  required without implementation, including when a named style cue must be
+  expanded into guidance for later agents.
 
 With no argument, infer the smallest matching operation. Default to `design`
 for a requested change and `review` for critique.
@@ -132,10 +142,10 @@ exactly one command:
 
 | Operation | Required next context | Conditional retrieval |
 |---|---|---|
-| `design` | command, host content/direction/system | presentation model when content hierarchy, attention, layout, or a token system is unresolved; visual-asset production when a logo, icon, illustration, or motion asset is a primary object; source index and 1–3 detail files only when local interface guidance is insufficient |
+| `design` | command, host content/direction/system | visual-language reference when a style cue remains unresolved or provisional guidance must be translated across surfaces; presentation model when content hierarchy, attention, layout, or a token system is unresolved; visual-asset production when a logo, icon, illustration, or motion asset is a primary object; source index and 1–3 detail files only when local interface guidance is insufficient |
 | `review` | command, owning direction, rendered evidence | presentation model only for an attention/hierarchy diagnosis; visual-asset production only when reviewing a production visual asset; never the source index by default |
-| `cultivate` | command, presentation model | source index only when the host source field is insufficient; 1–3 selected source files plus live official and host-local sources needed by the source field |
-| `shape` | command, host content/direction, presentation model | concepts only when domain terms are conflated; selective source entries only when contrasts lack local evidence |
+| `cultivate` | command, presentation model | visual-language reference when a named style cue or expressive cross-surface relation is material; source index only when the host source field is insufficient; 1–3 selected source files plus live official and host-local sources needed by the source field |
+| `shape` | command, host content/direction, presentation model | visual-language reference when a style cue is ambiguous or later agents need a cross-surface guide; one expressive-process source through the source index when no supplied or inherited source grounds the cue; concepts only when domain terms are conflated; other source entries only when contrasts lack local evidence |
 
 The paths above are complete for routing; do not list the skill directory when
 the operation is known. Never load sibling command files to complete a formal
@@ -150,13 +160,16 @@ Whichever operation is selected:
 2. Allocate attention before choosing layout or treatment. Balance means
    unequal emphasis proportional to the user's current decision, not equal
    visual weight.
-3. Use references for the decision they change and state what must not be
+3. Treat a named style as a cue to expand, compare, and situate. When it affects
+   more than one surface, form a provisional visual language and allocate its
+   expressive strength without turning open dimensions into a specification.
+4. Use references for the decision they change and state what must not be
    copied. Prefer host sources; built-in references are fallback context.
-4. Derive tokens from repeated semantic roles. Admit one only when it has at
+5. Derive tokens from repeated semantic roles. Admit one only when it has at
    least two independent consumers or a declared theme/context substitution;
    otherwise keep the value local. Raw values, trends, and component kits
    cannot establish content priority.
-5. Inspect the real artifact across representative content, states, themes, and
+6. Inspect the real artifact across representative content, states, themes, and
    viewports. Mechanical checks admit work to human aesthetic review but cannot
    accept it.
 
