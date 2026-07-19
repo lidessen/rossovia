@@ -7,10 +7,11 @@ design through supporting detail, not to disguise a weak structure with polish.
 
 This command and `references/component-expression.md` are the complete method
 for this path. An accepted direction is input, not a style cue to reopen. Do not
-load sibling commands, visual-language formation, presentation, seed, or source
-references. If evidence reveals a material structural or direction defect, stop
-and report the route change instead of continuing another operation in the same
-activation.
+load sibling commands, `references/visual-language.md`,
+`references/presentation-model.md`, `references/visual-seeds/`, or
+`references/design-sources/`. If evidence reveals a material structural or
+direction defect, stop and report the route change instead of continuing another
+operation in the same activation.
 
 1. Read the owning direction or design system, the real implementation, rendered
    evidence, and `references/component-expression.md`. Reconstruct the content

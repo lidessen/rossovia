@@ -98,6 +98,6 @@ survives representative components and states; aesthetic acceptance remains
 with the designated human.
 
 When no rendered evidence is available, stop before treatment selection. Return
-the specimen set, relations to inspect, owning implementation surfaces, and the
-observations that would justify or reject a change. Do not convert an inspection
-plan into fabricated visual findings.
+only the no-render fallback block defined in `commands/refine.md`; do not rename
+its fields, append the ordinary refine result, or fill treatment fields. Do not
+convert an inspection plan into fabricated visual findings.
