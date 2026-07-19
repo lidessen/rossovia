@@ -61,7 +61,8 @@ Required compact model/report shape:
 
 Maintain a coverage ledger from changed behaviors and load-bearing relations to
 packet IDs. A path outside one packet is a named outgoing relation, not evidence
-that the path is safe and not permission for the Cell to expand its authority.
+that the path is safe or missing, and not permission for the Cell to expand its
+authority.
 Type every boundary relation explicitly. At minimum distinguish semantic
 authority, licensed derivation, contextual expression, reconstructible
 projection, causal dependency, execution evidence, and acceptance authority.

@@ -1,10 +1,12 @@
-# Skills
+# 在此（Atthis）— Skills
 
 [English](README.md)
 
-> 本项目致力于让生产性 AI 成为共同、开放、可替换的能力；本仓库收录其当前方法。
+> **在此 / Atthis** 致力于让生产性 AI 成为共同、开放、可替换的能力；
+> 本仓库收录其当前方法。
 
-本仓库包含用于 AI 辅助开发的 [Agent Skills](https://agentskills.io) 和实验性
+“在此 / Atthis”是当前采用、仍可修订的项目名称；`skills` 仓库仍只是它的一个
+工作界面。本仓库包含用于 AI 辅助开发的 [Agent Skills](https://agentskills.io) 和实验性
 Work Cell。它只是项目的一个工作界面，而不是整个项目、模型提供商或不透明的
 AI 平台。它的语义根是单行的[原则序列](principles/SEQUENCE.md)；每个 P-ID
 都有一份持续演进、来源可追溯的[解读](principles/interpretations/)，每个
@@ -19,6 +21,21 @@ skill 则是在具体语境中对所选条目的表达。
 [运行协议](design/operations/OPERATING-PROTOCOL.md)，可以了解经人授权的工作
 如何推进；也可以直接从下方活跃 skills 中选择一种具体方法。
 
+## 使用“在此”
+
+- 在本仓库中完整实践项目的运行、验证与演进体系；
+- 向其他项目独立安装一个 Skill，针对性采用一种方法；
+- 把本仓库作为工作台入口，先用 `python3 scripts/atthis.py resolve <名称>`
+  定位已登记的外部项目，再继续其中的工作。
+
+初始化时可以执行 `python3 scripts/atthis.py init --workspace-root ~/workspaces`
+建立可删除重建的快速索引；中途也可以用
+`python3 scripts/atthis.py root add ~/workspaces` 补充。扫描不会把文件夹名或
+仓库名自动升级为持久项目身份。
+
+工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它不会把本仓库变成
+全局任务板，也不会仅凭定位结果取得另一个项目的执行权。
+
 ## 仓库地图
 
 | 路径 | 负责 | 不负责 |
@@ -26,6 +43,8 @@ skill 则是在具体语境中对所选条目的表达。
 | [`principles/`](principles/) | 单行原则序列、解读、研究、候选及审议/采纳证据 | skill 工作流或项目执行 |
 | [`skills/`](skills/) | 当前可安装的方法论与行为表达 | 它们所表达的语义来源 |
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
+| [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
+| [`scripts/atthis.py`](scripts/atthis.py) | 可迁移的项目身份与经验证的本机工作区定位 | 任务调度、目标项目事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |
@@ -48,6 +67,8 @@ skill 则是在具体语境中对所选条目的表达。
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | 为共享项目概念命名，定义其可操作边界，将解释放在正确的来源处，并拒绝不必要的术语。 |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | 在将任务转换为模型预算、时间或成本前，恢复必要工作及其探索分支。 |
 | [model-evaluation](skills/model-evaluation/SKILL.md) | `/model-evaluation` | 通过条件匹配的重复真实任务，形成带证据、特定于任务的能力画像，不把模型名称或单次结果当成事实。 |
+| [task-shaping](skills/task-shaping/SKILL.md) | `/task-shaping` | 判断单项任务是否适合保守的 Agent 执行包络、需要保护、能够在不丢失整体的情况下转换，或应当升级处理。 |
+| [systems-engineering](skills/systems-engineering/SKILL.md) | `/systems-engineering` | 在具体约束和可接受剩余风险下，把会犯错的人、Agent、软件与组织部件组成并持续修正为足够可靠的整体。 |
 | [strategic-advisory](skills/strategic-advisory/SKILL.md) | `/strategic-advisory` | 基于阶段证据准备供人审议的 Strategy Case；它连接长期方向、中期能力和短期任务候选，但不自行作出承诺。 |
 | [artifact-organization](skills/artifact-organization/SKILL.md) | `/artifact-organization` | 审计工件的角色和路径是否仍体现已接受的设计；只有存在实质缺口时才执行一次最小的组织转换。 |
 | [structural-refactoring](skills/structural-refactoring/SKILL.md) | `/structural-refactoring` | 在保留已声明行为、调用方影响和验证权威的前提下，跨有意义的边界重新组织代码。 |
@@ -69,6 +90,13 @@ skill 则是在具体语境中对所选条目的表达。
 用于通用运行、适配器 fixtures、配对评估和有边界的审议；参见
 [决策 027](design/decisions/027-general-work-cell-core-and-sequence-adapter.md)。
 
+[`packages/cognition`](packages/cognition/README.md) 是第一版通用渐进认知机制实验。
+领域定义的形成方案把不可变来源材料经过显式、可验证的层次形成认知工件，也能
+让实践结果回到较早层次重新认识。目录只是可重建的检索投影；项目、工作区、
+Git、prompt、模型和任务定位都不进入核心。项目认知和 Atthis 恢复入口是其上的
+后续领域方法，而不是它的定义性 schema；参见
+[决策 039](design/decisions/039-general-cognition-experiment.md)。
+
 ## 何时使用哪个 Skill？
 
 | 如果你正在…… | 使用 |
@@ -83,6 +111,8 @@ skill 则是在具体语境中对所选条目的表达。
 | 为共享概念命名、定义术语，或决定解释应放在哪里 | `/naming-and-articulation` |
 | 比较替代方案的真实工作、选择估计精度，或在预算前设定误差容忍度 | `/work-estimation` |
 | 在代表性的真实任务上比较模型、provider、套餐、harness 或 prompt/tool 执行画像 | `/model-evaluation` |
+| 判断任务对 Flash 级 Agent loop 是否可靠、是否需要验证保护、能否在保全整体的前提下转换，或应当升级处理 | `/task-shaping` |
+| 设计端到端工作系统，使其在人、Agent、工具和审查部件都会犯错时仍能达到足够可靠的整体结果 | `/systems-engineering` |
 | 从已完成阶段的已验证证据中准备战略方向 | `/strategic-advisory` |
 | 检查项目布局是否仍符合既定设计 | `/artifact-organization audit`；仅在有实质缺口时使用 `transition` |
 | 拆分模块、抽取职责或解开依赖，同时不改变预期行为 | `/structural-refactoring` |
@@ -144,6 +174,7 @@ Skills 通常依据用户意图来选择：安装后，用自然语言向 Agent 
 我们的编码 Agent 总是遗漏这个仓库的范围边界。检查真实路径，并作出最小的、经过验证的改进。
 这个项目 skill 产生的输出看似合理，却忽略了验证来源。修复责任界面，并通过普通 Agent 入口测试它。
 在保留的真实任务上比较这两个模型执行画像，并形成有边界的能力主张；不要生成通用总分。
+判断这项全仓库审计是否适合我们的 Flash 级参考 Agent；如果不适合，把它转换成不丢失整体覆盖的可靠任务原语。
 ```
 
 在 Codex 中显式激活时，用 `$` 指定 skill，并可选地说明操作：
@@ -155,6 +186,7 @@ $visual-design cultivate a reusable direction for this new product
 $improve-agent-workflow audit why agents miss this project instruction
 $improve-agent-workflow improve this repository's release-note skill and verify it
 $model-evaluation compare these two execution profiles for repository review work
+$task-shaping decide whether this task is reliable, guarded, transformable, or should escalate
 ```
 
 其他 Agent 可能通过斜杠命令、提及、菜单或仅由模型选择来提供显式激活。调用形式

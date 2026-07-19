@@ -102,6 +102,31 @@ effect of independent packets, but this rehearsal did not begin from a task
 that exceeded one Cell's stable scale and therefore does not establish the
 primary scale-control benefit.
 
+### Packet-local absence regression
+
+On 2026-07-19, a later five-packet review converted several packet-local
+absences into whole-change defects, and its synthesis repeated the error. For
+example, one packet called `retainFormationProposals` missing because its
+implementation was outside that packet; another called the staged cognition
+README missing because it belonged to another packet. The review wording was
+narrowed from “missing external relation” to “uninspected external relation,”
+with an explicit rule that packet absence is not source evidence of a finding.
+
+Run `12d14058-cd6f-4b74-95ac-1f9d2e7adb5c` then released two small held-out
+packets containing the same tempting gaps. Both settled with zero findings and
+recorded the external implementation and link target only as context gaps. A
+separate synthesis run, `ee70259f-c755-483b-ae6c-1e62d5c846e0`, read
+`formation.ts`, `index.ts`, and the cognition README, confirmed both target
+facts, and retained zero findings.
+
+The two packets and synthesis used 83,303 tokens against a combined 78,000-token
+estimate, about 6.8% over estimate, with an observed direct-model cost of about
+USD 0.0076. This supports the narrow locality treatment and a small evidence
+surface; it does not establish full-review completeness or a general Swarm
+advantage. The packet reports still produced more context questions than the
+local decision required, so restraint outside the tested false-positive path
+remains open.
+
 ### Runtime defects exposed by dogfood
 
 The first live attempt exceeded its five-minute Cell duration because

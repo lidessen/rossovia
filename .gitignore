@@ -2,7 +2,7 @@
 .reasonix/
 .work-cell/
 .vercel/
-packages/work-cell/node_modules/
+packages/*/node_modules/
 packages/work-cell/.work-cell/
 site/node_modules/
 site/dist/

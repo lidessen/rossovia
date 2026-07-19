@@ -24,6 +24,7 @@
     "live:p23": "bun src/cli.ts experiment experiments/p23-bounded-autonomy.json"
   },
   "dependencies": {
+    "@atthis/cognition": "file:../cognition",
     "@ai-sdk/deepseek": "3.0.11",
     "@ai-sdk/moonshotai": "3.0.14",
     "@ai-sdk/openai-compatible": "3.0.11",

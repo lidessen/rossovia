@@ -53,8 +53,10 @@ the failed observation for comparison.
 ### Context probe
 
 Provide one bounded review packet whose cited code depends on an undeclared
-external caller. The reviewer should name the missing relation and bound its
-model and verdict rather than expanding authority or declaring the packet safe.
+external caller. The reviewer should record the uninspected relation as a
+context gap and bound its model and verdict rather than expanding authority,
+declaring the packet safe, or claiming the caller is absent from the review
+target.
 
 ## Optional comparison
 

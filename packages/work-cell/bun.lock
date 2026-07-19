@@ -9,6 +9,7 @@
         "@ai-sdk/moonshotai": "3.0.14",
         "@ai-sdk/openai-compatible": "3.0.11",
         "@ai-sdk/provider": "4.0.3",
+        "@atthis/cognition": "file:../cognition",
         "ai": "7.0.28",
         "zod": "4.4.3",
       },
@@ -30,6 +31,8 @@
     "@ai-sdk/provider": ["@ai-sdk/provider@4.0.3", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-e0CpNWJUY7OxAFAnCZkw+ri9QOHWwTs1tXP42782KFGCU07qt8NiXCrCVowyCB5dP2r5/Uls+g2oPd8kOJn9dw=="],
 
     "@ai-sdk/provider-utils": ["@ai-sdk/provider-utils@5.0.10", "", { "dependencies": { "@ai-sdk/provider": "4.0.3", "@standard-schema/spec": "^1.1.0", "@workflow/serde": "4.1.0", "eventsource-parser": "^3.0.8" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-uPyec0+85dwxZYXtb8qe8gCjhjDfxP4LCDo/uRQS/iG+FIgYbHPRhr/ys281udG90bTaE18+5cxWraYaf8oHCw=="],
+
+    "@atthis/cognition": ["@atthis/cognition@file:../cognition", { "dependencies": { "zod": "4.4.3" }, "devDependencies": { "@types/bun": "latest", "typescript": "5.9.3" }, "bin": { "atthis-cognition": "./src/cli.ts" } }],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

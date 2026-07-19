@@ -357,6 +357,12 @@ points:
 - `src/adapters/experiment/`
 - `src/adapters/model-evaluation/`
 - `src/adapters/deliberation/`
+- `src/adapters/cognition/`
+
+The cognition adapter lowers one caller-prepared formation move into a generic
+Cell and remains an explicit adapter entry point. It does not enter the main
+core barrel or grant Work Cell scheme selection, memory state, semantic truth,
+or admission authority.
 
 The model-evaluation v2 adapter compares whole execution profiles, not bare
 model names. Its manifest explicitly records context and tool-surface policies

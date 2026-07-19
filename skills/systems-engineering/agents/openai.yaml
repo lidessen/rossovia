@@ -1,0 +1,4 @@
+interface:
+  display_name: "Systems Engineering"
+  short_description: "Build reliable systems from fallible parts"
+  default_prompt: "Use $systems-engineering to design a reliable whole from fallible agents, checks, budgets, and feedback."

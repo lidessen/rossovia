@@ -1,11 +1,12 @@
-# Skills
+# Atthis — Skills
 
 [简体中文](README.zh-CN.md)
 
-> The current methods repository for a project that makes productive AI a
-> common, open, replaceable capability.
+> The current methods repository for **Atthis / 在此**, a project that makes
+> productive AI a common, open, replaceable capability.
 
-This repository contains [agent skills](https://agentskills.io) and an
+Atthis is the current, revisable project name; this `skills` repository remains
+one of its working surfaces. It contains [agent skills](https://agentskills.io) and an
 experimental Work Cell for AI-assisted development. It is one working surface,
 not the whole project, a model provider, or an opaque AI platform. Its semantic
 root is the one-line [Principle Sequence](principles/SEQUENCE.md); each P-ID has
@@ -24,6 +25,23 @@ the project exists, the [operating protocol](design/operations/OPERATING-PROTOCO
 to see how human-authorized work proceeds, or the active skills below to use a
 specific method.
 
+## Ways to use Atthis
+
+- Develop Atthis itself through this repository's full operating and evidence
+  system.
+- Install one self-contained Skill into another project for a specific method.
+- Enter this checkout as a workbench and resolve a registered external project
+  with `python3 scripts/atthis.py resolve <name>` before continuing its work.
+
+During setup, `python3 scripts/atthis.py init --workspace-root ~/workspaces`
+builds a disposable quick index; the same root can be supplied later with
+`python3 scripts/atthis.py root add ~/workspaces`. Scanning never turns a
+folder or repository name into durable project identity.
+
+The workbench keeps stable project identity separate from repository names,
+spoken aliases, and machine-local paths. It does not turn this repository into
+a global task board or grant authority to execute in another project.
+
 ## Repository map
 
 | Path | Owns | Does not own |
@@ -31,6 +49,8 @@ specific method.
 | [`principles/`](principles/) | the one-line Sequence, interpretations, inquiries, candidates, and review/adoption evidence | skill workflows or project execution |
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
+| [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
+| [`scripts/atthis.py`](scripts/atthis.py) | relocatable project identity and verified machine-local workspace resolution | task scheduling, target-project facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
@@ -53,6 +73,8 @@ specific method.
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | Name a shared project concept, define its operative boundary, explain it at the right source, and decline needless terminology. |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | Recover necessary work and discovery branches before converting a mission into model-specific budget, time, or cost. |
 | [model-evaluation](skills/model-evaluation/SKILL.md) | `/model-evaluation` | Build evidence-linked, task-specific capability profiles from matched repeated runs without turning model labels or one result into fact. |
+| [task-shaping](skills/task-shaping/SKILL.md) | `/task-shaping` | Judge whether one task fits a conservative Agent execution envelope, needs guards, can be transformed without losing the whole, or should escalate. |
+| [systems-engineering](skills/systems-engineering/SKILL.md) | `/systems-engineering` | Compose and revise fallible human, Agent, software, and organizational parts into a sufficiently reliable whole under concrete constraints and accepted residual risk. |
 | [strategic-advisory](skills/strategic-advisory/SKILL.md) | `/strategic-advisory` | Prepare a proposed Strategy Case from phase evidence for human review; it links long direction, medium capabilities, and short mission candidates without self-commitment. |
 | [artifact-organization](skills/artifact-organization/SKILL.md) | `/artifact-organization` | Audit whether artifact roles and paths still express accepted design, then apply one smallest justified organization transition. |
 | [structural-refactoring](skills/structural-refactoring/SKILL.md) | `/structural-refactoring` | Reconstitute code across meaningful boundaries while preserving declared behavior, caller impact, and verification authority. |
@@ -78,6 +100,15 @@ and renders a reviewable reason chain. Exact JSON interfaces remain available
 for generic runs, adapter fixtures, matched evaluation, and bounded
 deliberation; see [decision 027](design/decisions/027-general-work-cell-core-and-sequence-adapter.md).
 
+[`packages/cognition`](packages/cognition/README.md) is the first general
+progressive-cognition mechanism experiment. Domain-defined formation schemes
+turn immutable source material through explicit, verified stages into cognitive
+artifacts and can return practice outcomes to an earlier stage. A catalog is
+only a rebuildable retrieval projection; projects, workspaces, Git, prompts,
+models, and task routing stay outside the core. Project cognition and Atthis
+resume are future domain methods over this mechanism, not its defining schema; see
+[decision 039](design/decisions/039-general-cognition-experiment.md).
+
 ## Which skill, when?
 
 | If you're... | Use |
@@ -92,6 +123,8 @@ deliberation; see [decision 027](design/decisions/027-general-work-cell-core-and
 | Naming a shared concept, defining terminology, or deciding where its explanation belongs | `/naming-and-articulation` |
 | Comparing the real work of alternatives, selecting estimate precision, or setting error tolerance before a budget | `/work-estimation` |
 | Comparing model, provider, plan, harness, or prompt/tool execution profiles on representative real tasks | `/model-evaluation` |
+| Deciding whether a task is reliable for a Flash-class agent loop, needs guards, can be transformed without losing the whole, or should escalate | `/task-shaping` |
+| Designing an end-to-end workflow that remains sufficiently reliable when its human, Agent, tool, and review components make mistakes | `/systems-engineering` |
 | Preparing strategic direction from a completed phase's verified evidence | `/strategic-advisory` |
 | Checking whether project layout still fits accepted design | `/artifact-organization audit`; use `transition` only for a material gap |
 | Splitting modules, extracting responsibilities, or untangling dependencies without intended behavior change | `/structural-refactoring` |
@@ -156,6 +189,8 @@ Build reusable project cognition from the current source without creating a new
 source of truth.
 Compare these two model execution profiles on retained real tasks and prepare a
 bounded capability claim; do not produce a universal score.
+Judge whether this repository-wide audit fits our Flash-class reference agent;
+if not, reshape it into reliable primitives without losing whole-task coverage.
 ```
 
 For an explicit Codex activation, name the skill with `$` and optionally state
@@ -170,6 +205,7 @@ $improve-agent-workflow improve this repository's release-note skill and verify 
 $project-cognition bootstrap this repository for future architecture and impact work
 $project-cognition refresh the retained model across this revision
 $model-evaluation compare these two execution profiles for repository review work
+$task-shaping decide whether this task is reliable, guarded, transformable, or should escalate
 ```
 
 Other agents may expose explicit activation through a slash command, mention,

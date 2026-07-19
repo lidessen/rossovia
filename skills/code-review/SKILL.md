@@ -89,8 +89,10 @@ does not exist.
 5. **Allocate attention by risk, not file size.** Identify the principal failure
    mode whose truth would change the merge decision, then inspect secondary hard
    constraints. Load [risk lenses](references/risk-lenses.md) only for boundaries
-   the change actually touches. Within a bounded packet, name a missing external
-   relation instead of silently expanding scope or assuming it is safe.
+   the change actually touches. Within a bounded packet, record an uninspected
+   external relation as a context gap instead of silently expanding scope or
+   assuming it is safe. Do not report the related code or artifact as missing
+   unless a check against the declared review target establishes that fact.
 6. **Trace credible failure paths.** Exercise relevant success, error,
    cancellation, concurrency, compatibility, capability, migration, and resource
    paths. A category has no standing merely because it appears on a checklist;
@@ -102,6 +104,7 @@ does not exist.
    - severity based on impact and reachability, not rhetorical confidence; and
    - the smallest correction that closes the failure without redesigning the task.
 
+   Absence from supplied packet context is not source evidence of a defect.
    Disprove and discard a suspicion when source behavior, language semantics,
    or a focused check defeats its failure story.
 8. **Use verification for decisions.** Run the smallest check capable of
@@ -164,9 +167,10 @@ the source code, diff, test output, or terminal records from which it was built.
 When several review reports exist, a caller may ask another application of this
 skill to reconcile their review models, cited evidence, and disagreements. The
 reconciliation must preserve incompatible models until source evidence resolves
-them; majority agreement cannot turn an inference into fact. This is a new
-review packet, not authority to vote facts into existence or an instruction to
-launch more agents.
+them; majority agreement cannot turn an inference into fact. Recheck every
+retained finding against the declared review target rather than treating a
+packet report as its own evidence. This is a new review packet, not authority
+to vote facts into existence or an instruction to launch more agents.
 
 ## Verification
 

@@ -146,13 +146,17 @@ async function renderSkillGuide(page, parsed) {
   const start = section(['Start', 'Starting point', 'Entry']);
   const dispatch = section(['Dispatch', 'Operations', 'Commands']);
   const vocabulary = section(['Domain vocabulary', 'Vocabulary']);
+  const sourceDeclaresBoundaries = [...sections.keys()].some((heading) =>
+    /\b(boundary|boundaries|ownership)\b/i.test(heading),
+  );
   const boundaries = section([
     'Boundaries',
+    'Boundaries and routing',
     'Operating boundaries',
     'Ownership boundaries',
     'Ownership and routing',
     'Ownership and non-scope',
-  ]);
+  ], sourceDeclaresBoundaries);
   const agentUse = [
     renderGuidePart('启动信息', start, 3),
     renderGuidePart('调度入口', dispatch, 3),

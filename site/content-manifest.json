@@ -52,6 +52,15 @@
       "presentation": "skill-guide",
       "title": "Model Evaluation",
       "description": "用重复的真实任务证据形成有边界的模型执行能力画像。"
+    },
+    {
+      "kind": "source",
+      "source": "skills/systems-engineering/SKILL.md",
+      "output": "docs/skills/systems-engineering.md",
+      "route": "/docs/skills/systems-engineering/",
+      "presentation": "skill-guide",
+      "title": "Systems Engineering",
+      "description": "把会犯错的部件组成可观察、可纠正且风险可接受的可靠整体。"
     }
   ],
   "catalog": {
@@ -67,6 +76,8 @@
       "skills/naming-and-articulation/SKILL.md",
       "skills/work-estimation/SKILL.md",
       "skills/model-evaluation/SKILL.md",
+      "skills/task-shaping/SKILL.md",
+      "skills/systems-engineering/SKILL.md",
       "skills/strategic-advisory/SKILL.md",
       "skills/artifact-organization/SKILL.md",
       "skills/structural-refactoring/SKILL.md",

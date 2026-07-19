@@ -55,6 +55,19 @@ principles/SEQUENCE.md ──► interpretations ──► selected P-ID express
   synthesis as evidence. Do not interpret, extend, or supersede the sequence.
 - **Skill corpus** — Owns context-specific methods and artifacts. Does not
   define a second principle system.
+- **Task shaping method** — Owns the conservative Flash-class task-primitive
+  map and the semantic transformation from a requested task into direct,
+  guarded, transformable, or escalated work relative to an evidenced reference
+  profile. It preserves whole-task obligations and reconstruction but does not
+  measure model capability, launch prepared units, choose resources, or accept
+  results; see [decision 040](decisions/040-task-shaping-core-skill.md).
+- **Systems engineering method** — Owns the whole-system judgment that relates
+  desired behavior, disturbances, observable signals, control actions,
+  recovery, authority, resources, and accepted residual risk so fallible parts
+  can produce sufficiently reliable operation. It hands local Agent
+  contributions to task shaping and domain methods, execution to Work Cell or
+  another carrier, and fact/risk settlement to designated human or host
+  authority; see [decision 041](decisions/041-systems-engineering-core-skill.md).
 - **L1 projections** — Own the concise, tool-targeted expression of selected
   principles. Do not introduce or redefine sequence entries.
 - **Portable sequence snapshots** — Let an independently installed
@@ -81,8 +94,10 @@ principles/SEQUENCE.md ──► interpretations ──► selected P-ID express
   contract. The Sequence adapter selects and retains a task-specific expression;
   the experiment adapter owns blinded comparison; and the deliberation adapter
   owns independent positions plus non-authoritative tally and dissent
-  projections. Project-facing probe commands are convenience projections over
-  those adapters, not a second runtime contract. See
+  projections. The cognition adapter lowers one already-selected formation move
+  and returns proposals without choosing a scheme or admitting memory.
+  Project-facing probe commands are convenience projections over those adapters,
+  not a second runtime contract. See
   [decision 027](decisions/027-general-work-cell-core-and-sequence-adapter.md),
   [decision 020](decisions/020-bounded-work-cell-deliberation.md), and
   [decision 022](decisions/022-project-first-deliberation-interaction.md).
@@ -90,6 +105,20 @@ principles/SEQUENCE.md ──► interpretations ──► selected P-ID express
   naming, idea, and source-retrieval mechanisms under `src/research/`. These
   implementations may produce evidence but are not exported as stable core or
   adapter contracts.
+- **Cognition kernel** — Owns immutable captured sources, domain-declared and
+  versioned formation schemes, source-linked proposed or admitted artifacts,
+  explicit use and supersession, integrity, lineage, and rebuildable retrieval
+  projections. It owns no universal cognition stages, semantic interpretation,
+  model execution, or admission authority. Domain methods prepare formation;
+  Work Cell may execute one move; a host verifies and admits. See
+  [decision 039](decisions/039-general-cognition-experiment.md).
+- **Atthis workbench** — Owns relocatable user-level project identity and
+  verified machine-local workspace resolution through separately versioned
+  portable configuration, local state, and rebuildable discovery cache. Its
+  resolution output routes an agent but never owns task state, target-project
+  facts, or execution authority. Empty mission, memory, cognition, and receipt
+  directories are future ownership boundaries, not inferred schemas. See
+  [decision 038](decisions/038-atthis-workbench-entry.md).
 
 ## Data Flow
 

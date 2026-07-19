@@ -38,6 +38,29 @@ probe proves the current policy solves the actual project problem.
 
 This is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).
 
+## Atthis workbench entry
+
+When the human enters this repository and asks to continue or resume a named
+external project or task, extract the smallest intended name and run:
+
+```text
+python3 scripts/atthis.py resolve <name>
+```
+
+Treat the result as a verified routing projection, not task authority. Confirm
+the returned Git status, then read the target's returned instruction files and
+only the orientation files needed to recover the requested work. Do not infer
+task completion from an alias, copy target facts into global memory, search a
+Skill marketplace, or silently choose another project when resolution fails.
+If the current harness cannot write the returned workspace, state that runtime
+boundary rather than claiming the task has resumed.
+
+If no explicit registration matches and the person has supplied a workspace
+root, run `python3 scripts/atthis.py root add <path>` when the root is first
+given, or `python3 scripts/atthis.py scan` to refresh existing roots, then retry
+resolution. A result marked `discovered` is a verified current location, not a
+stable project identity or durable alias.
+
 ## Principle Sequence
 
 `principles/SEQUENCE.md` is the collection's only semantic root of core principles. It contains one stable, unexplained principle per line. `principles/interpretations/P<id>.md` is that P-ID's living, source-bound reading: it reduces agent interpretation drift but cannot redefine or extend the source line. Skills and target-project guidance are downstream expressions.

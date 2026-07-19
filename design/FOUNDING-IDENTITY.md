@@ -1,71 +1,98 @@
-# Founding Identity — Project Name
+# Founding Identity — 在此 / Atthis
 
-**Status:** rejected proposal — project name unresolved
-**Authority:** [founding mandate](FOUNDING-MANDATE.md) and
-[formal-operations preparation](organization/sessions/2026-07-10-formal-operations-preparation.md)
-**Rejection evidence:** [project naming expression study](aesthetics/studies/2026-07-13-project-naming-expression.md)
+**Status:** provisionally adopted current project name
+**Date:** 2026-07-18
+**Approved by:** principal
+**Authority:** [founding mandate](FOUNDING-MANDATE.md)
+**Prior inquiry evidence:** [project naming expression study](aesthetics/studies/2026-07-13-project-naming-expression.md)
 
-## Concrete naming need
+## Current name
 
-The object is the whole project that develops open, economical, verifiable AI
-production capability as a common good. It includes the principle collection,
-methods, Work Cell, and future tools; it is not identical to the current
-repository directory, an individual agent, or one model provider.
+The whole project is currently named **在此 / Atthis**. `Atthis` is the machine
+and URL form; `在此` is the Chinese display name. This is an adopted working
+identity, not a claim that the naming inquiry is permanently closed.
 
-The Principal needs a durable project identity for future public explanation,
-cross-repository references, and a coherent founding release. The current name
-`skills` is a useful descriptive repository handle, but it cannot distinguish
-this project from a generic skill catalog or carry the mandate's commons and
-productive-capability relation.
+Atthis develops open, economical, verifiable AI production capability as a
+common good. It includes the Principle Sequence, independently usable methods,
+Work Cell and orchestration infrastructure, project operations, and future
+working surfaces. It is not identical to this `skills` repository, a personal
+task manager, one agent, one model provider, or one local directory.
 
-The strongest leave-as-is case is that a public name is not needed before the
-first baseline PR. That remains valid for the Git repository: no rename is
-needed to complete F2. A project-level name is still useful now because the
-founding mandate has a shared, cross-session identity that future projects and
-contributors must be able to distinguish from this implementation carrier.
+The name is a compact handle for acting from the concrete situation at hand. It
+does not encode the whole mandate, and the mandate does not depend on retaining
+this name. Meaning may accrue through practice; the name must not become a
+second doctrine.
 
-## Relation and contrast recovered
+## Current projections
 
-The project does include a productive capability held in common: a system
-people can inspect, use, replace, and improve. It excludes a proprietary AI
-platform, a generic prompt library, a claim that an AI or a person is merely an
-instrument, and a promise of universal model superiority.
+| Surface | Current form | Authority boundary |
+|---|---|---|
+| Project display name | `在此 / Atthis` | current human-adopted identity |
+| Machine namespace | `atthis` | lowercase technical projection |
+| Methods repository | `skills` | repository handle, not the whole-project name |
+| Public methods site | `skills.atthis.run` | public projection of this repository |
+| Future user-level home | `~/.atthis` by default | relocatable local carrier, not project identity |
 
-That relation is source evidence, not a requirement that a public name directly
-encode `common`, `public`, `instrument`, production, or any other mission word.
-A name may reach the project through another true relation and accrue fuller
-meaning through use. People and possibly morally relevant AI systems are not
-the instrument being named.
+Repository, package, command, domain, and user-directory changes remain
+separate migrations. Adopting the project name does not silently authorize any
+of them.
 
-## Rejected candidate set
+## Rename and relocation contract
 
-| Key | Name | Relation it preserves | Main limitation |
-|---|---|---|---|
-| A | **Gongqi / 公器** | a public/common instrument: productive capability belongs in common use rather than private capture | rejected by the Principal; the public mission and historical register are carried too directly and need explanation to sustain the surface |
-| B | **Gongsheng / 共生** | mutual flourishing of people, AI, and living conditions; directly carries the non-exploitation boundary | does not immediately communicate productive engineering capability |
-| C | **Zhongqi / 众器** | tools of the many: accessible, plural, composable production means | easily confused in sound and script with `重器`; weaker commons/governance relation |
-| D | Keep **Skills** as the only project name | no naming/transition work now | remains a directory description and cannot distinguish the broader project |
+The first implementation of the Atthis workbench must make a later project or
+namespace rename ordinary rather than destructive:
 
-The table is retained as inquiry history, not as a live ballot or candidate
-packet. None of A–C is currently nominated. `skills` remains only the repository
-handle; no public project identity has been adopted.
+1. **Names and paths are not identity.** Persist an explicit stable project ID.
+   Treat display names, spoken aliases, repository names, local checkout paths,
+   and worktree paths as independently changeable attributes.
+2. **Repository identity is source-linked.** Prefer a provider's immutable
+   repository ID, accompanied by its current canonical locator, or an explicitly
+   assigned stable ID over a repository name or folder basename. A renamed
+   repository may retain old aliases without retaining its old local path.
+3. **Resolve the home once.** A default such as `~/.atthis` must pass through one
+   home-resolution boundary and support an explicit override. Code and records
+   must not scatter or depend on the literal directory name.
+4. **Keep stored references relocatable.** Use stable IDs and paths relative to
+   the resolved home when they preserve meaning. Absolute machine paths belong
+   only in the machine-local project mapping.
+5. **Version durable records.** Configuration, mission, and mapping sources must
+   declare a schema version. Rebuildable indexes and caches remain projections.
+6. **Migrate by reconciliation.** A rename reads the prior source, writes the
+   new carrier, verifies ordinary task recovery, and retains a receipt. The old
+   namespace may remain a temporary read-only locator; it must not become a
+   second writable source.
 
-## Current naming boundary
+The observed `survey` checkout demonstrates the required distinction: GitHub
+repository `1304098496` is currently located at `lidessen/meowask`, its package
+and product name are `meowask`, and its local folder was renamed from `survey`
+to `meowask` without changing repository identity. A project registry should
+therefore be able to represent, for example:
 
-Future generation begins from the mandate and concrete project history without
-receiving this candidate set, approved examples, or rejected surfaces. Such
-cases belong only in an independent, contrastive rejection step. Associative
-field artifacts remain private working material until a later expression step
-forms a name that can be said and heard before its story is revealed.
+```text
+projectId: github-repository:1304098496
+repository: github:lidessen/meowask
+aliases: survey, meowask
+localPath: <machine-local>/meowask
+```
 
-The Principal may reject every surfaced item. A machine gate can protect human
-bandwidth but cannot accept or adopt a name. A future approved name and its
-smallest operative explanation belong here; repository, package, and URL
-migration still require a separate decision.
+Changing any one of those fields must not silently create a second project or
+make `继续 survey` unable to find the current worktree.
 
-## Disconfirming observation
+## Superseded proposal history
 
-A future identity is wrong if its surface depends on its formation story, if it
-imitates the language or mechanism of observed examples, or if the intended
-contributor cannot distinguish the project from a proprietary AI platform or a
-generic skills catalog after the smallest operative explanation.
+Earlier proposals such as `Gongqi / 公器`, `Gongsheng / 共生`, and
+`Zhongqi / 众器` remain rejected inquiry evidence. They are not aliases or live
+candidates. `skills` remains a useful repository handle but is no longer the
+project's only public label.
+
+## Reopening observations
+
+Reopen the name when the principal decides its mouth-and-ear fit is wrong, when
+ordinary users consistently mistake Atthis for a proprietary AI platform or a
+task manager, or when another identity grows more naturally from practice.
+
+Reopen the migration design if a repository rename, local-folder move, user-home
+relocation, or project-name change breaks task recovery; requires editing many
+unrelated files; duplicates writable state; or cannot preserve a traceable
+rollback. A future replacement name must preserve the founding mandate and
+stable IDs without requiring old names or paths to remain authoritative.

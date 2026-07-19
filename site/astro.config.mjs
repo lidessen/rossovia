@@ -19,7 +19,7 @@ export default defineConfig({
   integrations: [
     starlight({
       disable404Route: true,
-      title: 'Skills',
+      title: 'Atthis',
       description: '让可验证、可替换的 AI 生产方法成为公共能力。',
       defaultLocale: 'root',
       locales: {

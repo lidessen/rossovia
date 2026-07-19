@@ -32,6 +32,8 @@ jobs:
         run: python3 scripts/test-observation-chronicle.py
       - name: Test mission continuity
         run: python3 scripts/test-mission-record.py
+      - name: Test Atthis workbench resolution
+        run: python3 scripts/test-atthis.py
       - name: Test skill installation safety
         run: python3 scripts/test-probe-skill-installation.py
       - name: Install Work Cell dependencies
@@ -43,6 +45,18 @@ jobs:
       - name: Test Work Cell
         working-directory: packages/work-cell
         run: bun test
+      - name: Install Cognition dependencies
+        working-directory: packages/cognition
+        run: bun install --frozen-lockfile
+      - name: Typecheck Cognition
+        working-directory: packages/cognition
+        run: bun run typecheck
+      - name: Test Cognition
+        working-directory: packages/cognition
+        run: bun test
+      - name: Smoke-test Cognition CLI
+        working-directory: packages/cognition
+        run: ./src/cli.ts --help
       - name: Install site dependencies
         working-directory: site
         run: npm ci
