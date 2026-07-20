@@ -1,0 +1,23 @@
+{
+  "version": "mission-record.v1",
+  "id": "task-continuity-entry",
+  "title": "Make active task continuity discoverable without turning observations into commitments",
+  "sources": [
+    "human mandate, 2026-07-19: trial the proposed continuity trigger",
+    "design/decisions/021-git-tracked-mission-continuity.md",
+    "design/operations/OPERATING-PROTOCOL.md"
+  ],
+  "createdAt": "2026-07-20T00:07:51Z",
+  "updatedAt": "2026-07-20T00:07:51Z",
+  "mainline": {
+    "contradiction": "The project has a validated Mission Record state machine, but ordinary agents neither enumerate active missions nor reliably decide at continuity safe points which unresolved obligations deserve durable task state.",
+    "acceptance": [
+      "A project-level command lists every active Mission from its authoritative records and fails closed on invalid records.",
+      "Always-loaded agent guidance records only authorized obligations that cross a safe point and have a return condition, while leaving local steps and unapproved ideas outside task state.",
+      "A real agent can answer which missions are active from the ordinary entry path, and a nearby low-consequence idea does not create a Mission."
+    ],
+    "status": "active"
+  },
+  "branches": [],
+  "currentFocus": "mainline"
+}
