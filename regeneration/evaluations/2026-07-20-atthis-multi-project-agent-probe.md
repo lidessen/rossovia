@@ -1,7 +1,9 @@
 # Atthis Multi-Project Agent Probe
 
-**Status:** accepted bounded probe  
-**Date:** 2026-07-20  
+**Status:** accepted bounded probe
+
+**Date:** 2026-07-20
+
 **Carrier:** native read-only sub-agent with disposable Git fixtures
 
 ## Claim
