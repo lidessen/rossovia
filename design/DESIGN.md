@@ -25,6 +25,45 @@ principles/SEQUENCE.md ──► interpretations ──► selected P-ID express
                                              CLAUDE.md / AGENTS.md
 ```
 
+## Generative system model
+
+The architecture is a generative and returning relation, not only a module
+taxonomy:
+
+```text
+reality / practice (道)
+        ↓ inquiry and human admission
+Principle Sequence (一)
+        ↓ interpretation and selected expression
+domain-general methods (二)
+        ↓ method × domain material × present contradiction
+temporary situated formation (三)
+        ↓ differentiated Work Cells and orchestration
+artifacts, decisions, products, and effects (万物)
+        └──► verified practice evidence ──► cognition and revision
+```
+
+The Sequence alone is the semantic root. Interpretations are its first
+source-bound unfolding, not a coequal canon. Skills are methods rather than
+authorities. A domain Skill remains reusable professional capacity; a concrete
+formation arises only when a method meets actual domain evidence, a present
+contradiction, bounded actors, and acceptance. Work Cell is the minimum
+differentiable execution unit, while orchestration supplies execution forms
+without inventing work or accepting results.
+
+The desired long direction is operational autonomy under human governance:
+retained signals may eventually form proposals and execute pre-authorized,
+bounded work, while purpose, doctrine, authority enlargement, consequential
+commitment, and residual-risk acceptance remain with their designated human or
+host owners. Human-led governance, administrative operation, execution, and
+independent verification stay distinct. The durable center is inspectable
+state, evidence, authority, and recovery—not a resident omniscient Agent.
+
+This target does not describe current runtime capability. Formal operation
+remains human-initiated until a separate supervised-autonomy Strategy Case,
+implementation decision, and representative pilot justify reopening that
+boundary. See [decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
+
 ## Modules
 
 - **Principle sequence** — Owns the stable, one-line principle identifiers and

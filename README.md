@@ -13,6 +13,14 @@ root is the one-line [Principle Sequence](principles/SEQUENCE.md); each P-ID has
 a living, source-bound [interpretation](principles/interpretations/) and each
 skill is a context-specific expression of selected entries.
 
+The project's [generative system model](design/decisions/043-generative-system-and-human-governed-autonomy.md)
+relates those parts as `reality and practice → principles → general methods →
+situated formations → concrete work and effects`, with verified practice
+returning to cognition and revision. Its long direction is operational autonomy
+under human governance: Agents may eventually sense, propose, organize, and
+execute within accepted envelopes, but they do not grant themselves purpose,
+authority, fact admission, or consequential acceptance.
+
 Its [founding mandate](design/FOUNDING-MANDATE.md) is to make productive AI a
 widely accessible, open, replaceable common capability: enable ordinary people
 to use economical open-model engineering systems on bounded production work,
