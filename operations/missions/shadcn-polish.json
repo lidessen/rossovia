@@ -4,10 +4,11 @@
   "title": "Make shadcn polish comparison-driven",
   "sources": [
     "human report, 2026-07-20: repeated shadcn polish remains ugly",
-    "baseline Work Cell run 4f3d84b5-c253-4c51-8b84-19dd5779ebab"
+    "baseline Work Cell run 4f3d84b5-c253-4c51-8b84-19dd5779ebab",
+    "regeneration/evaluations/2026-07-20-shadcn-polish-method.md"
   ],
   "createdAt": "2026-07-20T08:07:15Z",
-  "updatedAt": "2026-07-20T08:07:15Z",
+  "updatedAt": "2026-07-20T08:22:54Z",
   "mainline": {
     "contradiction": "The visual-design refine path can diagnose component drift but responds by inventing and uniformly propagating style values, so repeated shadcn polish converges on a coherent but ugly caricature instead of a selected visual relation.",
     "acceptance": [
