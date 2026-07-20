@@ -10,7 +10,7 @@
     "regeneration/evaluations/2026-07-20-review-integration-entry.md"
   ],
   "createdAt": "2026-07-20T04:34:11Z",
-  "updatedAt": "2026-07-20T04:42:05Z",
+  "updatedAt": "2026-07-20T05:26:32Z",
   "mainline": {
     "contradiction": "The accepted operating protocol requires independent review and a principal decision before merge, but the ordinary publish path can treat an absent asynchronous review as completed, bypass the repository PR handoff, merge, and prune its Mission before late findings arrive.",
     "acceptance": [
@@ -19,7 +19,10 @@
       "Every late inline comment on PR 39 is source-triaged, with only reproduced or contract-backed defects corrected and rejected suggestions given a concise reason.",
       "An ordinary publish-path probe preserves the full repository handoff and blocks a deliberately incomplete review, while a local non-publish task remains outside the integration ceremony."
     ],
-    "status": "active"
+    "status": "settled",
+    "closureSources": [
+      "https://github.com/lidessen/skills/pull/41"
+    ]
   },
   "branches": [],
   "currentFocus": "mainline"
