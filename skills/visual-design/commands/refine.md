@@ -129,6 +129,7 @@ polish does not override this gate.
 
 ```text
 Object, direction, and attention path preserved:
+Evidence trace:
 Mismatch classification and evidence:
 Leading detail mismatch:
 Representative components and states inspected:
