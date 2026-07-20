@@ -156,7 +156,7 @@ exactly one command:
 | Operation | Required next context | Conditional retrieval |
 |---|---|---|
 | `design` | command, host content/direction/system | component-expression reference when a direction must be realized across recurring interface elements; visual-language reference when a style cue remains unresolved or provisional guidance must be translated across surfaces; presentation model when content hierarchy, attention, layout, or a token system is unresolved; visual-asset production when a logo, icon, illustration, or motion asset is a primary object; source index and 1–3 detail files only when local interface guidance is insufficient |
-| `refine` | command, host direction/system, rendered evidence, component-expression reference | none; report a route change when structure, direction, or a primary production asset must be reconsidered |
+| `refine` | command, host direction/system, rendered evidence, component-expression reference | shadcn reference when `components.json` identifies shadcn; report a route change when structure, direction, or a primary production asset must be reconsidered |
 | `review` | command, owning direction, rendered evidence | presentation model only for an attention/hierarchy diagnosis; visual-asset production only when reviewing a production visual asset; never the source index by default |
 | `cultivate` | command, presentation model | visual-language reference when a named style cue or expressive cross-surface relation is material; visual-seed index and selected cards when the host source field lacks inspectable visual contrast; design-source index only when formation or system evidence remains insufficient |
 | `shape` | command, host content/direction, presentation model | visual-language reference when a style cue is ambiguous or later agents need a cross-surface guide; visual-seed index and exactly two selected cards for the first direction pass when no supplied or inherited visual source grounds the cue; one expressive-process source only when the origin or testing of a relation remains material; concepts only when terms beyond the vocabulary above are genuinely conflated |
@@ -185,6 +185,10 @@ Whichever operation is selected:
 5. Translate the direction into the relevant details of recurring components
    and states. Let those details support content, attention, and identity; do
    not let a checklist of radii, shadows, spacing, or icons become the design.
+   When the treatment remains aesthetically underdetermined or a prior polish
+   attempt was rejected, compare a small number of relation-level rendered
+   candidates against one fixed baseline before changing shared production
+   primitives. Do not turn serial value tuning into a design method.
 6. Derive tokens from repeated semantic roles. Admit one only when it has at
    least two independent consumers or a declared theme/context substitution;
    otherwise keep the value local. Raw values, trends, and component kits

@@ -27,12 +27,10 @@ that affect function, attention, identity, or continuity in this case. A detail
 may remain deliberately neutral when stronger expression would reduce legibility,
 predictability, density, or trust.
 
-Do not translate a direction metaphor into component props. “Notebook” does not
-require hand-drawn icons, irregular corners, paper shadows, or ruled spacing;
-“craft” does not require every control to advertise its making. A detail earns
-change through an observed contradiction in function, attention, identity, or
-continuity—not because a library supplied it or because it could carry more
-style.
+Do not translate a direction label or metaphor into a bundle of component
+properties. A detail earns change through an observed contradiction in
+function, attention, identity, or continuity—not because a familiar genre is
+associated with it, a library supplied it, or it could carry more style.
 
 ## Form a component-expression map
 
@@ -63,6 +61,27 @@ therefore require different treatment across roles while still belonging to
 one system. Conversely, a coherent neutral icon family may already be the right
 supporting treatment for an expressive project.
 
+## Choose the propagation unit by relation
+
+The smallest coherent change is not necessarily one component. Components that
+share a functional and perceptual relation form a temporary **component
+ecology** for the present judgment. Typical relations include controls and
+their focus behavior, containers and overlays, navigation and selection,
+feedback and recovery, or dense data display. These examples are discovery
+lenses, not a universal grouping scheme.
+
+Inspect enough members to establish which relation is actually shared. A
+button, input, and select may need compatible control anatomy while preserving
+different affordances. A dialog and sheet may belong to the same surface and
+depth language while retaining different geometry and motion. Conversely, two
+components from the same library may deliberately carry different expression
+because their roles or surface densities differ.
+
+Uniformity is therefore not the acceptance condition. Do not extract a shared
+token or primitive merely to make every component use the same border, radius,
+shadow, spacing, icon weight, or motion. Promote only the relation that real
+consumers share; retain role differences explicitly.
+
 ## Implement through real dependencies
 
 Trace each retained decision to the smallest owning surface: local markup or
@@ -71,6 +90,11 @@ motion behavior. Promote a decision only when multiple real consumers need the
 same relation or a declared context must substitute it coherently. Do not edit a
 global radius, shadow, spacing, or icon rule merely because doing so changes many
 screens quickly.
+
+Do not invent an exact value merely because the owning layer is known. Ownership
+determines where an accepted decision belongs; it does not supply the aesthetic
+decision. When more than one treatment could carry the relation, compare
+rendered candidates through the refine command before promoting one.
 
 Preserve functional contracts. Detail work must not weaken semantic structure,
 keyboard and pointer operation, focus visibility, readable contrast, target size,
