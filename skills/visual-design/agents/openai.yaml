@@ -1,4 +1,4 @@
 interface:
   display_name: "Visual Design"
   short_description: "Design and review content-led visual systems."
-  default_prompt: "Use $visual-design on this visual task. Infer the smallest operation from my request, inherit existing project direction, organize content and attention before layout and semantic tokens, and implement or review only the needed slice."
+  default_prompt: "Use $visual-design on this visual task. Infer the smallest operation, inherit the accepted project direction without reopening style selection, compile it into the smallest project-local visual contract, map that contract to real implementation owners, and implement or review only the needed verified slice."

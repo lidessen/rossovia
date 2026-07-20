@@ -38,6 +38,22 @@ before implementation, or the request names only a surface preference such as
    through `references/design-sources/index.md`.
    For a direction-only request, use the provisional visual-language return
    below and stop; do not expand it into the general Aesthetic Case.
+   If no concrete artifact can be inspected at all, stop before forming
+   candidates. Return only:
+
+```text
+Source evidence status: insufficient
+Project relation recoverable from supplied facts:
+Missing source contrast:
+Two source roles to inspect next:
+Decision each source must clarify:
+Inspection action:
+```
+
+   A style cue by itself cannot ground candidate names, formal tendencies,
+   asset implications, or a recommendation. This source-insufficient state is
+   not the later case where grounded candidates exist but the runtime cannot
+   render a comparison; keep their returns distinct.
 5. Form two or three meaningful contrasts. Vary relations such as density,
    hierarchy, atmosphere, temporality, materiality, or interaction posture—not
    arbitrary mood-board labels. For every reference, state what decision it
