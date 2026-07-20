@@ -80,6 +80,29 @@ result marked `discovered` is a verified current location, not a stable project
 identity or durable alias. Do not turn a natural-language request into broader
 setup, marketplace search, automatic registration, or inferred task state.
 
+## Mission continuity entry
+
+When the human asks which work is in progress in this project, run
+`python3 scripts/mission-record.py list`. Treat its output as a projection over
+the Git-tracked Mission Records, not as a backlog or authority to start work.
+
+At a continuity safe point—before opening a branch, worktree, or PR; switching
+project or main focus; ending or handing off a session; or claiming a material
+phase complete—check whether an unresolved item must survive the transition.
+Create or update a Mission Record only when it is an authorized obligation,
+will remain unfinished across that safe point, could compromise acceptance or
+mainline return if forgotten, and has a distinct return or closure condition.
+Keep an immediate local step in the current plan. Keep an unapproved idea or
+observation outside active task state; preserve it in an owning evidence source
+only when it can change a later decision. Reuse an existing Mission, PR, Issue,
+or other declared source when it already preserves the obligation without loss.
+
+Lifecycle events trigger this check; words and tool events do not decide the
+result. Do not infer a commitment from phrases, create a top-level Mission
+beyond the human mandate, or automatically close a Mission from Git or PR
+state. At a safe point for an existing Mission, run its `status` and `check`
+commands and surface mismatches for settlement.
+
 ## Principle Sequence
 
 `principles/SEQUENCE.md` is the collection's only semantic root of core principles. It contains one stable, unexplained principle per line. `principles/interpretations/P<id>.md` is that P-ID's living, source-bound reading: it reduces agent interpretation drift but cannot redefine or extend the source line. Skills and target-project guidance are downstream expressions.

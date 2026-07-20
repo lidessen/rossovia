@@ -314,12 +314,34 @@ def command_check(args: argparse.Namespace) -> None:
 def command_status(args: argparse.Namespace) -> None:
     path = mission_path(args.root, args.mission)
     record = load(path)
+    print(json.dumps(status_projection(record), ensure_ascii=False, indent=2))
+
+
+def status_projection(record: dict[str, Any]) -> dict[str, Any]:
     branches = [
-        {"id": branch["id"], "status": branch["status"], "parent": branch.get("parent", "mainline"), "returnCondition": branch["returnCondition"]}
+        {
+            "id": branch["id"],
+            "status": branch["status"],
+            "parent": branch.get("parent", "mainline"),
+            "returnCondition": branch["returnCondition"],
+        }
         for branch in record["branches"]
         if branch["status"] != "closed"
     ]
-    print(json.dumps({"id": record["id"], "mainline": record["mainline"]["status"], "currentFocus": record["currentFocus"], "openBranches": branches}, ensure_ascii=False, indent=2))
+    return {
+        "id": record["id"],
+        "title": record["title"],
+        "mainline": record["mainline"]["status"],
+        "currentFocus": record["currentFocus"],
+        "openBranches": branches,
+        "updatedAt": record["updatedAt"],
+    }
+
+
+def command_list(args: argparse.Namespace) -> None:
+    records = [load(path) for path in sorted(args.root.glob("*.json"))]
+    active = [status_projection(record) for record in records if record["mainline"]["status"] == "active"]
+    print(json.dumps({"activeMissions": active}, ensure_ascii=False, indent=2))
 
 
 def command_close(args: argparse.Namespace) -> None:
@@ -399,6 +421,9 @@ def parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status", help="render the active mainline and side branches")
     status.add_argument("mission")
     status.set_defaults(handler=command_status)
+
+    listing = commands.add_parser("list", help="list every active mission in the project")
+    listing.set_defaults(handler=command_list)
 
     close = commands.add_parser("close", help="settle a mission after every branch returns")
     close.add_argument("mission")

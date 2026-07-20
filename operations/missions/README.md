@@ -17,7 +17,19 @@ Mission record       → what remains open, why it diverged, and how it returns
 
 ## Lifecycle
 
+With an Agent operating from this repository, ask in natural language:
+
+```text
+What work is currently in progress in this project?
+This investigation must survive the task switch; record its return condition.
+We finished this branch without a code change; return it to the mainline.
+```
+
+The Agent applies the continuity gate in `AGENTS.md` and invokes the commands
+below. Direct commands remain useful for automation and debugging.
+
 ```bash
+python3 scripts/mission-record.py list
 python3 scripts/mission-record.py init <id> \
   --title "…" \
   --mainline "…" \
@@ -50,6 +62,10 @@ phase completion—run `status`. A mission can settle only when all its branches
 have returned. `close` retains closure sources in the record. After that state
 is committed, `prune` removes the settled record; its complete final state
 remains in Git history while the active directory stays small.
+
+`list` validates every JSON record and projects only active Missions. It fails
+closed rather than hiding a malformed record. It does not scan Git branches,
+PRs, Issues, logs, or prose to infer new commitments.
 
 ## Boundaries
 

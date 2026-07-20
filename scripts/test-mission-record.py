@@ -45,6 +45,10 @@ def main() -> None:
             "init", "founding", "--title", "Founding baseline", "--mainline", "Return every founding branch to one reviewable baseline",
             "--accept", "Every branch has a return record", "--source", "design/FOUNDING-MANDATE.md",
         )
+        listing = json.loads(run(repo, "list").stdout)
+        assert [mission["id"] for mission in listing["activeMissions"]] == ["founding"]
+        assert listing["activeMissions"][0]["title"] == "Founding baseline"
+        assert listing["activeMissions"][0]["currentFocus"] == "mainline"
         run(repo, "check", "founding", "--git", expect=2)
 
         git(repo, "add", "operations/missions/founding.json")
@@ -59,18 +63,26 @@ def main() -> None:
         status = json.loads(run(repo, "status", "founding").stdout)
         assert status["currentFocus"] == "research"
         assert status["openBranches"][0]["id"] == "research"
+        listing = json.loads(run(repo, "list").stdout)
+        assert listing["activeMissions"][0]["openBranches"][0]["id"] == "research"
 
         run(repo, "suspend", "founding", "research", "--reactivation-signal", "A material mission starts")
         run(repo, "close", "founding", "--closure-source", "https://example.test/pr/1", expect=2)
         run(repo, "resume", "founding", "research")
         run(repo, "settle", "founding", "research", "--disposition", "no-change", "--mainline-delta", "The mission record is the required carrier")
         run(repo, "close", "founding", "--closure-source", "https://example.test/pr/1")
+        assert json.loads(run(repo, "list").stdout)["activeMissions"] == []
 
         git(repo, "add", "operations/missions/founding.json")
         git(repo, "commit", "-m", "ops: settle founding mission")
         run(repo, "check", "founding", "--git", "--require-committed")
         run(repo, "prune", "founding")
         assert not (repo / "operations/missions/founding.json").exists()
+
+        invalid = repo / "operations" / "missions" / "broken.json"
+        invalid.write_text("{}\n", encoding="utf-8")
+        failed_listing = run(repo, "list", expect=2)
+        assert "version must be mission-record.v1" in failed_listing.stderr
 
     print("mission-record tests passed")
 

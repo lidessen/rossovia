@@ -40,6 +40,32 @@ only after every branch closes and closure sources are named. Once this settled
 state is committed, `prune` removes the record; Git history retains its final
 source state, preventing the active directory from becoming an archive.
 
+## Ordinary continuity gate
+
+Lifecycle events trigger a semantic check; they do not create task state by
+themselves. Before opening a branch, worktree, or PR; switching project or main
+focus; ending or handing off a session; or claiming material completion, the
+acting Agent asks whether an unresolved item:
+
+1. is an authorized obligation rather than an idea or observation;
+2. remains unfinished across the safe point;
+3. could compromise acceptance or mainline return if forgotten; and
+4. has a distinct return or closure condition not already preserved without
+   loss by an existing declared source.
+
+Only an item that passes every gate enters or updates a Mission Record. An
+immediate step remains in the current plan. An unapproved idea or observation
+may stay in conversation or an owning evidence source, but it does not become
+an active task. A new top-level commitment beyond the mandate returns to the
+Principal. Tool events and phrases may remind an Agent to check; neither may
+decide the semantic result.
+
+`mission-record.py list` validates all project-local Mission JSON sources and
+projects only active Missions with their current focus and open return
+obligations. It does not infer tasks from Git, PRs, Issues, logs, or prose.
+Those sources may expose a mismatch for human or Agent reconciliation, but they
+cannot automatically create or close a commitment.
+
 ## Source boundaries
 
 | Carrier | Owns | Does not own |
@@ -64,6 +90,8 @@ own the mission graph or schedule the next branch.
   committed.
 - At a material safe point, inspect `status`; this is conditional on a material
   mission, not a universal task preflight.
+- Use `list` when the actor needs a project-level active-task view; do not run it
+  as a mandatory preflight for unrelated local work.
 - `check --git` confirms tracking, not correctness of linked sources. Existing
   verification and human acceptance remain their own gates.
 
@@ -89,6 +117,8 @@ own the mission graph or schedule the next branch.
   uncommitted record.
 - A current material mission uses one record without creating a global queue or
   permanent mission archive.
+- `list` exposes every valid active Mission, excludes committed settled records
+  awaiting prune, and fails rather than silently omitting an invalid JSON source.
 
 ## Disconfirming observation
 
