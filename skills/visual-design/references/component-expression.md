@@ -6,6 +6,53 @@ still feels assembled from unrelated defaults. These details are supporting
 expression: they make a design continuous at ordinary scale, but they must not
 become its premise.
 
+## Compile the direction into a project contract
+
+An accepted direction is not automatically executable. Before changing code,
+compile only the part needed by the current artifact into a **project visual
+contract**. Prefer the project's existing design source and extend it only when
+the decision is durable beyond this task. The contract should make these
+relations testable without turning them into a portable style recipe:
+
+- the project relation and negative boundary;
+- the attention hierarchy and functional skeleton that expression must not
+  displace;
+- where identity, illustration, typography, color, component anatomy, marks,
+  depth, and motion are strong, restrained, differentiated, or absent;
+- which role differences are intentional rather than drift;
+- which formal decisions are already established by accepted artifacts; and
+- which dimensions remain open for local design.
+
+Do not require a new file, table, or schema when an existing direction or
+design-system source can carry these decisions. Do not fill open dimensions
+with genre conventions merely to make the contract complete. The contract is
+project-local: another project choosing the same style cue may compile it
+differently because its content, audience, and production conditions differ.
+
+For the current slice, form a temporary **conformance map**:
+
+```text
+Visual role or consumer:
+Applicable contract relation:
+Current rendered, human, or explicit source evidence:
+Evidence provenance: direct rendering | inspected source | human observation | supplied summary | inference
+Implementation owner:
+Affected downstream consumers:
+Action: preserve | normalize | express | localize | leave open
+Verification:
+```
+
+This map prevents a direction from collapsing into color-token edits. It must
+also inspect component anatomy, icon and illustration language, type roles,
+spacing rhythm, depth, states, and motion wherever the contract allocates
+expression. Retain only decision-relevant rows; the map is working evidence,
+not a permanent inventory.
+
+Do not silently upgrade a supplied summary into direct inspection. It may bound
+the proposed slice when the caller makes it authoritative, but a shared-owner
+change still requires opening that owner and the downstream consumers whose
+behavior or expression it would alter.
+
 ## Read the detail field as relations
 
 Do not begin by normalizing values. Inspect representative rendered components
@@ -45,7 +92,7 @@ For each decision record:
 Component or repeated role:
 Observed mismatch or inherited strength:
 Functional and attention requirement:
-Direction relation to carry:
+Direction or applicable project-contract relation to carry:
 Detail families that matter:
 Scope: inherited | shared | local | experiment | deliberately neutral
 Consumers or states affected:
@@ -90,6 +137,18 @@ motion behavior. Promote a decision only when multiple real consumers need the
 same relation or a declared context must substitute it coherently. Do not edit a
 global radius, shadow, spacing, or icon rule merely because doing so changes many
 screens quickly.
+
+Before changing a shared owner, inspect its affected consumers. A project-wide
+primitive is justified only when the contract relation is shared and at least
+one ordinary downstream consumer has been checked. If those consumers cannot be
+inspected, keep the change local or return the missing propagation evidence;
+do not promote a focal treatment on reach alone.
+
+Creating a new component variant, prop, or public styling hook is also a shared
+promotion even when only one caller uses it today. Require multiple real
+consumers or a declared context substitution that must remain coherent. A lone
+focal consumer stays local unless the host architecture forbids a truthful local
+owner; a reusable file location is not evidence of a reusable decision.
 
 Do not invent an exact value merely because the owning layer is known. Ownership
 determines where an accepted decision belongs; it does not supply the aesthetic

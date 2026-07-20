@@ -18,26 +18,50 @@ operation in the same activation.
 
 ## Evidence gate
 
-Before setting `Evidence status`, form this two-row trace:
+Before setting `Evidence status`, form one of these evidence traces:
 
 ```text
+Route: rendered-observation
 Accepted direction source actually inspected -> relation and negative boundary observed:
 Current rendering source actually inspected -> specific perceptual mismatch observed:
+
+or
+
+Route: explicit-conformance
+Accepted project visual contract actually inspected -> concrete relation or established decision:
+Implementation source actually inspected -> specific contradiction and affected consumer:
 ```
 
-An inspected source is an artifact, image, recording, or live rendering opened
-in this activation, or a human observation that explicitly supplies the
-relation. A direction name declared in the task is not its source. A component
-inventory, class list, registry diff, or the verdict “ugly” cannot fill either
-observation by itself.
+An inspected source is an artifact, image, recording, live rendering, or owning
+project design source opened in this activation, or a human observation that
+explicitly supplies the relation. A direction name declared in the task is not
+its source. A component inventory, class list, registry diff, or the verdict
+“ugly” cannot fill the rendered-observation route by itself. Implementation
+source may fill the explicit-conformance route only when the owning visual
+contract already states the concrete relation being violated; code cannot
+invent the missing aesthetic decision.
+
+Label each trace item as direct rendering, inspected owning source, explicit
+human observation, supplied implementation summary, or inference. A supplied
+summary may establish a bounded plan when the caller makes it authoritative,
+but never report its consumers, states, or visual effects as directly
+inspected. Before editing a shared owner, inspect the actual owner and affected
+consumers.
 
 Then set `Evidence status` to `sufficient` or `insufficient`. It is sufficient
-only when both trace rows are grounded:
+only when both rows of one route are grounded:
 
 - an accepted direction traceable beyond its label to inspectable artifacts and
   a negative boundary; and
 - the current rendering, or a human observation that names the specific
   perceptual relation rather than only an outcome such as “ugly.”
+
+or:
+
+- an accepted project visual contract that states a concrete visual relation,
+  role distinction, or established treatment; and
+- implementation evidence of a specific contradiction and the consumers it
+  affects.
 
 Implementation evidence can identify what to inspect and where a selected
 decision may belong; it cannot supply formal traits that were not observed.
@@ -62,8 +86,11 @@ polish does not override this gate.
 
 ## Method
 
-1. Read the owning direction or design system, the real implementation, rendered
-   evidence, and `references/component-expression.md`. Reconstruct the content
+1. Read the owning direction or design system, the real implementation, the
+   evidence required by the selected route, and
+   `references/component-expression.md`. Compile the accepted direction into
+   the smallest project visual contract needed here when the owning source has
+   not already done so; do not reopen style selection. Reconstruct the content
    hierarchy and attention path only far enough to keep details subordinate to
    them. If either is materially wrong, name the defect and route the work to a
    broader design change instead of polishing around it.
@@ -90,12 +117,14 @@ polish does not override this gate.
    icon-bearing or stateful control when they exist. Select the smallest
    **component ecology** that shares the relation and must be judged together;
    do not assume one primitive or every component is the right propagation unit.
-4. Form the smallest component-expression map needed for this case. For each
-   retained detail family, state the functional role, relation to the direction,
-   owning layer, affected component ecology, and whether the decision is
-   inherited, local, shared, experimental, or deliberately neutral.
-5. When one treatment follows directly from an accepted system relation, proceed
-   to implementation. When the treatment is aesthetically underdetermined, a
+4. Form the smallest conformance and component-expression map needed for this
+   case. For each retained detail family, state the functional role, applicable
+   project-contract relation, current evidence, owning layer, affected
+   component ecology, required action, verification, and whether the decision
+   is inherited, local, shared, experimental, or deliberately neutral.
+5. When one treatment follows directly from an accepted project contract or
+   system relation, proceed to implementation without asking the human to
+   choose the direction again. When the treatment is aesthetically underdetermined, a
    previous polish attempt was rejected, or the proposed correction depends on
    unobserved values, freeze the current rendered baseline and form two or three
    relation-level candidates in an isolated preview. Candidates must test
@@ -103,7 +132,10 @@ polish does not override this gate.
    radius, shadow, spacing, color, or animation. Render them with the same real
    content, viewport, theme, and consequential states. Eliminate candidates
    against the attention path, accepted direction, negative boundary, functional
-   constraints, and designated human judgment. Derive each hypothesis from an
+   constraints. Select the evidence-dominant candidate and continue when one is
+   materially better supported. Ask the designated human only when the
+   remaining candidates are preference-equivalent but would materially change
+   a shared project decision. Derive each hypothesis from an
    observed relation in the accepted artifacts; do not unpack a named style into
    conventional visual traits, introduce a new prop or metaphor, or cite an
    uninspected source. Values needed to render a candidate are provisional trial
@@ -114,9 +146,12 @@ polish does not override this gate.
 6. Implement only the selected highest-leverage coherent slice through real
    owners and consumers. Change a shared primitive only when its component
    ecology genuinely needs the same relation; preserve intentional differences
-   between roles. Otherwise keep the treatment local. Remove superseded trial
-   code. Preserve semantics, interaction contracts, focus, contrast, target
-   size, content density, and reduced-motion behavior.
+   between roles. A new shared component variant or public styling API is also
+   a promotion: require multiple real consumers or a declared context
+   substitution, not one focal caller and anticipated reuse. Otherwise keep the
+   treatment local. Remove superseded trial code. Preserve semantics,
+   interaction contracts, focus, contrast, target size, content density, and
+   reduced-motion behavior.
 7. Inspect the rendered result beside the fixed baseline at representative content,
    viewports, themes, and interaction states. Confirm that repeated details now
    appear intentionally related, that ordinary downstream components still
@@ -130,9 +165,10 @@ polish does not override this gate.
 ```text
 Object, direction, and attention path preserved:
 Evidence trace:
+Project visual contract used or extended:
 Mismatch classification and evidence:
 Leading detail mismatch:
-Representative components and states inspected:
+Representative components and states inspected or authoritatively supplied:
 Component-expression map:
 Owning system layer and component ecology:
 Details deliberately kept neutral:

@@ -4,11 +4,15 @@ Use this path when a rendered artifact or comparable representations exist.
 Review the whole in-scope experience before diagnosing an isolated page.
 
 1. Reconstruct the object, audience action, intended perceptual relation,
-   inherited identity, and negative boundary from owning sources. If no
-   direction exists, state that limitation rather than reverse-engineering one
-   from attractive details. When the primary object is a production logo,
-   icon, illustration, repeated scene, or motion asset, read
-   `references/visual-asset-production.md`.
+   inherited identity, and negative boundary from owning sources. Compile the
+   accepted direction into the smallest project visual contract needed to judge
+   the in-scope artifact; use an existing contract when present and do not
+   reopen style selection. If no direction exists, state that limitation rather
+   than reverse-engineering one from attractive details. When the primary object
+   is a production logo, icon, illustration, repeated scene, or motion asset,
+   read `references/visual-asset-production.md`. When the review asks whether
+   recurring interface elements realize the accepted direction, read
+   `references/component-expression.md`.
 2. Inspect the real artifact at representative routes, states, content lengths,
    and viewports. Include the highest-risk real content condition when language,
    density, missing data, or user-generated material can change the judgment.
@@ -23,11 +27,13 @@ Review the whole in-scope experience before diagnosing an isolated page.
    - preference or acceptance: the designated human's aesthetic judgment.
 4. Name the highest-leverage visual mismatch: the one whose correction would
    change the interpretation or priority of the other visible defects. Rank no
-   more than three decision-changing findings, then trace each to its owning
-   layer: content structure, attention allocation, hierarchy, layout, semantic
+   more than three decision-changing findings. For each, form one conformance
+   trace from the applicable project-contract relation to observed evidence,
+   the real owning layer, affected consumers, and verification. Owners may be
+   content structure, attention allocation, hierarchy, layout, semantic
    tokens, shared identity, component treatment, implementation mechanics, or
    the direction itself. Do not turn a complete inventory into an unprioritized
-   redesign backlog.
+   redesign backlog or reduce conformance to token differences.
 5. Name what should remain invariant and what should be allowed to vary. Do not
    call differentiated page forms inconsistent merely because they are not
    visually identical.
@@ -44,12 +50,14 @@ Review the whole in-scope experience before diagnosing an isolated page.
 
 ```text
 Object, audience action, and intended relation:
+Project visual contract used for review:
 Direct mechanical observations:
 Direct perceptual observations:
 Observed attention order versus intended path:
 Inferred preference or unresolved judgment:
 Highest-leverage visual mismatch:
 Risk-ranked findings, maximum three:
+Conformance traces and affected consumers:
 System layer that owns the main defect:
 Invariant to preserve:
 Variation to permit:

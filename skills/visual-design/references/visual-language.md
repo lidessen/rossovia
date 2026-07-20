@@ -29,6 +29,8 @@ relation. Do not equate the first adjective with that relation.
 
 Build a small source field when the supplied evidence cannot expose real
 contrasts. A recommendation requires at least one inspected concrete artifact.
+When none can be inspected, stop at a source-acquisition action; do not continue
+into candidate generation and then compensate with a verbal evidence warning.
 When none is supplied or inherited, read `visual-seeds/index.md`, select exactly
 two contrasting cards for the first direction pass, and inspect their live
 artifacts. Retrieve a third only in a later iteration when human feedback or a
@@ -113,6 +115,15 @@ visible.
 Recommend one candidate when the evidence supports it. Present the alternatives
 and tradeoffs to the human rather than asking them to invent the choice space.
 Human selection remains the direction authority.
+
+Selection authorizes one representative implementation of the project relation;
+it is not a request to repeat the same choice for every surface. Until real
+artifacts pass the declared promotion gate, later design work retains the
+selection as a case-scoped hypothesis rather than project authority. After
+promotion, it compiles the needed part into the project's visual contract.
+Return to the human before implementation only when preference-equivalent
+options would materially revise the selected relation rather than merely test
+or realize it in a new case.
 
 Candidate implications describe relations, not ready-made assets. Do not offer
 logo-motif examples, mascots, icon metaphors, or illustration subjects merely

@@ -7,11 +7,14 @@ description: >-
   or coherence, reviewing a rendered artifact, or when "the page works but
   feels generic/inconsistent". Also use to establish a continuing project's
   visual direction from selected references when none exists, or to turn an
-  ambiguous style cue into provisional guidance for later design. Triggers include
+  ambiguous style cue into provisional guidance for later design. Also use when
+  an accepted style or direction must be applied consistently to real code
+  without reopening aesthetic selection. Triggers include
   "design this interface", "redesign this page", "review the UI", "make these
   pages feel unified", "the direction is right but the components feel generic",
   "polish/refine the interface details", "align this logo or illustration with
-  the product", "art direction", and "审美/视觉设计/组件细节/插画或品牌视觉统一/确立风格". Do not use
+  the product", "apply the selected style", "art direction", and
+  "审美/视觉设计/组件细节/插画或品牌视觉统一/确立风格/按现有风格落实". Do not use
   for a purely functional code fix, naming task, or automatic aesthetic
   acceptance. Never impose a portable fixed style.
 ---
@@ -55,6 +58,14 @@ current lead, but it does not create co-primary doctrine.
 - **Visual language:** a provisional project-local relation between direction
   and formal tendencies—gesture, shape, rhythm, material, type, imagery, and
   motion—plus how strongly they appear across different surfaces.
+- **Project visual contract:** an accepted direction compiled into project-local
+  expression responsibilities, invariants, negative boundaries, and established
+  formal decisions that downstream agents can test without reopening taste. It
+  belongs in the project's existing design source, not a portable preset or a
+  mandatory new schema.
+- **Conformance map:** a temporary trace from an in-scope visual role and its
+  contract relation to current evidence, implementation owner, affected
+  consumers, required change, and verification.
 - **Attention path:** the intended order and relative force of orientation,
   primary action, supporting judgment, context, and recovery signals.
 - **System:** the smallest shared invariants that keep related surfaces
@@ -72,8 +83,11 @@ current lead, but it does not create co-primary doctrine.
 ```text
 content and actions -> attention path -> visual hierarchy and layout
 project relation and sources -> provisional visual language
+                         -> selected project direction
+                         -> project visual contract
                          \       /
-                   surface expression allocation
+                   content and surface expression allocation
+                         -> role and implementation-owner map
                          -> component expression and semantic roles
                             -> repeated tokens where justified
                             -> case-specific treatment
@@ -114,6 +128,11 @@ inside a clear system remains ordinary development work.
 - Inherit an existing project direction or design system without requiring a
   setup exercise. Use `cultivate` only when a continuing project lacks one and
   forming it is part of the requested outcome.
+- Once the designated human or owning project source has selected a direction,
+  do not ask them to choose it again for each page, component, or polish pass.
+  Compile and apply the inherited direction. Ask another aesthetic question
+  only when the available choices would materially revise the shared direction
+  and project evidence cannot distinguish them.
 - Ask only for a decision that materially blocks safe progress. Present the
   relevant options, tradeoff, and recommendation rather than asking the user to
   discover the choice space.
@@ -157,7 +176,7 @@ exactly one command:
 |---|---|---|
 | `design` | command, host content/direction/system | component-expression reference when a direction must be realized across recurring interface elements; visual-language reference when a style cue remains unresolved or provisional guidance must be translated across surfaces; presentation model when content hierarchy, attention, layout, or a token system is unresolved; visual-asset production when a logo, icon, illustration, or motion asset is a primary object; source index and 1–3 detail files only when local interface guidance is insufficient |
 | `refine` | command, host direction/system, rendered evidence, component-expression reference | shadcn reference when `components.json` identifies shadcn; report a route change when structure, direction, or a primary production asset must be reconsidered |
-| `review` | command, owning direction, rendered evidence | presentation model only for an attention/hierarchy diagnosis; visual-asset production only when reviewing a production visual asset; never the source index by default |
+| `review` | command, owning direction, rendered evidence | component-expression reference when checking whether recurring interface elements realize an accepted direction; presentation model only for an attention/hierarchy diagnosis; visual-asset production only when reviewing a production visual asset; never the source index by default |
 | `cultivate` | command, presentation model | visual-language reference when a named style cue or expressive cross-surface relation is material; visual-seed index and selected cards when the host source field lacks inspectable visual contrast; design-source index only when formation or system evidence remains insufficient |
 | `shape` | command, host content/direction, presentation model | visual-language reference when a style cue is ambiguous or later agents need a cross-surface guide; visual-seed index and exactly two selected cards for the first direction pass when no supplied or inherited visual source grounds the cue; one expressive-process source only when the origin or testing of a relation remains material; concepts only when terms beyond the vocabulary above are genuinely conflated |
 
@@ -182,18 +201,21 @@ Whichever operation is selected:
    the decision each source changes and what must not be copied. Prefer host
    sources; built-in references are fallback context. Do not retrieve them for
    implementation inside an accepted direction.
-5. Translate the direction into the relevant details of recurring components
+5. Compile an accepted direction into the smallest project visual contract
+   needed by the current artifact. Map its expression responsibilities and
+   negative boundary to actual roles, owners, and consumers before editing.
+   This is a conformance judgment, not another direction workshop.
+6. Translate that contract into the relevant details of recurring components
    and states. Let those details support content, attention, and identity; do
    not let a checklist of radii, shadows, spacing, or icons become the design.
-   When the treatment remains aesthetically underdetermined or a prior polish
-   attempt was rejected, compare a small number of relation-level rendered
-   candidates against one fixed baseline before changing shared production
-   primitives. Do not turn serial value tuning into a design method.
-6. Derive tokens from repeated semantic roles. Admit one only when it has at
+   Compare rendered candidates only when the contract and evidence leave a
+   material treatment choice unresolved; do not make candidate selection a
+   routine user interaction or turn serial value tuning into a design method.
+7. Derive tokens from repeated semantic roles. Admit one only when it has at
    least two independent consumers or a declared theme/context substitution;
    otherwise keep the value local. Raw values, trends, and component kits
    cannot establish content priority.
-7. Inspect the real artifact across representative content, states, themes, and
+8. Inspect the real artifact across representative content, states, themes, and
    viewports. Mechanical checks admit work to human aesthetic review but cannot
    accept it.
 
@@ -225,5 +247,5 @@ Whichever operation is selected:
 - `refine`: the leading detail mismatch is corrected across representative
   components and states without disguising a structural defect or making
   supporting details compete with the content.
-- `review`: observations, attention mismatch, owning layer, smallest revision
-  or no-change case, and human acceptance question are explicit.
+- `review`: observations, contract-conformance mismatch, owning layer, smallest
+  revision or no-change case, and human acceptance question are explicit.
