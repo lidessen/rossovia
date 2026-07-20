@@ -33,6 +33,9 @@ skill 则是在具体语境中对所选条目的表达。
 初始化 Atthis 工作台，我的日常工作区在 ~/workspaces。
 把 ~/client-work 加为另一个工作区根目录。
 登记 ~/workspaces/meowask，并保留 meowask 和 survey 两个口头别名。
+记住：跨项目遇到稳定、有边界的任务时，优先考虑 Work Cell。
+仅在本机，原生 sub-agent 提供必要订阅能力时优先使用它。
+显示适用于 survey 的偏好。
 继续 survey。
 ```
 
@@ -46,10 +49,12 @@ skill 则是在具体语境中对所选条目的表达。
 python3 scripts/atthis.py init --workspace-root ~/workspaces
 python3 scripts/atthis.py root add ~/client-work
 python3 scripts/atthis.py resolve survey
+python3 scripts/atthis.py preference list --project survey
 ```
 
 工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它不会把本仓库变成
-全局任务板，也不会仅凭定位结果取得另一个项目的执行权。
+全局任务板，也不会仅凭定位结果取得另一个项目的执行权。显式个人偏好与项目
+共同约束、本机覆盖分别保存；未经人确认，推断出的 memory 不会成为生效偏好。
 
 ## 仓库地图
 
@@ -59,7 +64,7 @@ python3 scripts/atthis.py resolve survey
 | [`skills/`](skills/) | 当前可安装的方法论与行为表达 | 它们所表达的语义来源 |
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
 | [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
-| [`scripts/atthis.py`](scripts/atthis.py) | 可迁移的项目身份与经验证的本机工作区定位 | 任务调度、目标项目事实或执行权 |
+| [`scripts/atthis.py`](scripts/atthis.py) | 可迁移的项目身份、经验证的本机工作区定位与显式分域个人默认 | 任务调度、推断偏好、目标项目事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |

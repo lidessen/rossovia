@@ -74,7 +74,163 @@ def main() -> None:
         git(empty, "init")
         create_repo(credentialed, credentialed_remote)
         run(home, "init", "--workspace-root", str(pool))
+        assert json.loads((home / "config" / "preferences.json").read_text(encoding="utf-8"))["preferences"] == []
+        assert json.loads((home / "state" / "preferences.json").read_text(encoding="utf-8"))["preferences"] == []
         run(home, "register", str(survey), "--id", "repository:1304098496", "--alias", "survey")
+
+        run(
+            home,
+            "preference",
+            "set",
+            "execution-carrier",
+            "--scope",
+            "user",
+            "--statement",
+            "Prefer Work Cell for stable bounded work.",
+            "--reopen-when",
+            "The task requires a capability the Work Cell driver cannot expose.",
+        )
+        run(
+            home,
+            "preference",
+            "set",
+            "execution-carrier",
+            "--scope",
+            "machine",
+            "--statement",
+            "Prefer the native sub-agent when this machine provides a required subscription.",
+        )
+        global_preferences = json.loads(run(home, "preference", "list").stdout)
+        assert global_preferences["version"] == "atthis.preference-projection.v1"
+        assert global_preferences["projectId"] is None
+        assert global_preferences["preferences"] == [{
+            "id": "execution-carrier",
+            "statement": "Prefer the native sub-agent when this machine provides a required subscription.",
+            "scope": "machine",
+            "source": "user-explicit",
+        }]
+        run(home, "init")
+        assert json.loads(run(home, "preference", "list").stdout) == global_preferences
+
+        project_set = run(
+            home,
+            "preference",
+            "set",
+            "execution-carrier",
+            "--scope",
+            "user",
+            "--project",
+            "survey",
+            "--statement",
+            "For this project, prefer an isolated Work Cell for independently verifiable tasks.",
+        )
+        assert json.loads(project_set.stdout)["preference"]["projectId"] == "repository:1304098496"
+        project_preferences = json.loads(run(home, "preference", "list", "--project", "survey").stdout)
+        assert project_preferences["preferences"][0]["scope"] == "user"
+        assert project_preferences["preferences"][0]["projectId"] == "repository:1304098496"
+        receipt_path = home / "receipts" / "preferences.jsonl"
+        receipts_before = receipt_path.read_text(encoding="utf-8").splitlines()
+        unchanged = run(
+            home,
+            "preference",
+            "set",
+            "execution-carrier",
+            "--scope",
+            "user",
+            "--project",
+            "survey",
+            "--statement",
+            "For this project, prefer an isolated Work Cell for independently verifiable tasks.",
+        )
+        assert json.loads(unchanged.stdout)["changed"] is False
+        assert receipt_path.read_text(encoding="utf-8").splitlines() == receipts_before
+        assert "Prefer Work Cell" not in receipt_path.read_text(encoding="utf-8")
+        assert "native sub-agent" not in receipt_path.read_text(encoding="utf-8")
+        source_before_failed_receipt = (home / "config" / "preferences.json").read_text(encoding="utf-8")
+        receipts_before_failed_receipt = receipt_path.read_text(encoding="utf-8")
+        receipt_path.write_text(
+            json.dumps({"version": "atthis.preference-receipt.v1", "statement": "TOKEN=secret"}) + "\n",
+            encoding="utf-8",
+        )
+        rejected_receipt = run(
+            home,
+            "preference",
+            "set",
+            "receipt-preflight",
+            "--scope",
+            "user",
+            "--statement",
+            "This must not become active while its receipt cannot be admitted.",
+            expect=2,
+        )
+        assert "invalid fields" in rejected_receipt.stderr
+        assert (home / "config" / "preferences.json").read_text(encoding="utf-8") == source_before_failed_receipt
+        receipt_path.write_text(receipts_before_failed_receipt, encoding="utf-8")
+        repaired_receipt = json.loads(run(
+            home,
+            "preference",
+            "set",
+            "receipt-preflight",
+            "--scope",
+            "user",
+            "--statement",
+            "This must not become active while its receipt cannot be admitted.",
+        ).stdout)
+        assert repaired_receipt["changed"] is True
+        assert "receipt-preflight" in receipt_path.read_text(encoding="utf-8")
+        assert "This must not become active" not in receipt_path.read_text(encoding="utf-8")
+        source_before_failed_retire = (home / "config" / "preferences.json").read_text(encoding="utf-8")
+        receipts_before_failed_retire = receipt_path.read_text(encoding="utf-8")
+        receipt_path.write_text("not-json\n", encoding="utf-8")
+        rejected_retire = run(
+            home,
+            "preference",
+            "retire",
+            "receipt-preflight",
+            "--scope",
+            "user",
+            expect=2,
+        )
+        assert "invalid preference receipt" in rejected_retire.stderr
+        assert (home / "config" / "preferences.json").read_text(encoding="utf-8") == source_before_failed_retire
+        receipt_path.write_text(receipts_before_failed_retire, encoding="utf-8")
+        run(home, "preference", "retire", "receipt-preflight", "--scope", "user")
+        unknown_preference_project = run(
+            home,
+            "preference",
+            "set",
+            "unknown-project",
+            "--scope",
+            "user",
+            "--project",
+            "not-registered",
+            "--statement",
+            "This must not be admitted.",
+            expect=2,
+        )
+        assert "no project matches" in unknown_preference_project.stderr
+
+        run(home, "preference", "retire", "execution-carrier", "--scope", "user", "--project", "survey")
+        fallback_preferences = json.loads(run(home, "preference", "list", "--project", "survey").stdout)
+        assert fallback_preferences["preferences"][0]["scope"] == "machine"
+        run(home, "preference", "retire", "execution-carrier", "--scope", "machine")
+        portable_preferences = json.loads(run(home, "preference", "list", "--project", "survey").stdout)
+        assert portable_preferences["preferences"][0]["scope"] == "user"
+
+        machine_preferences_path = home / "state" / "preferences.json"
+        machine_preferences = json.loads(machine_preferences_path.read_text(encoding="utf-8"))
+        machine_preferences["preferences"].append({
+            "id": "inferred-preference",
+            "statement": "An inferred observation must not become active.",
+            "source": "agent-inferred",
+            "recordedAt": "2026-07-19T00:00:00Z",
+            "updatedAt": "2026-07-19T00:00:00Z",
+        })
+        machine_preferences_path.write_text(json.dumps(machine_preferences), encoding="utf-8")
+        inferred = run(home, "preference", "list", expect=2)
+        assert "source must be user-explicit" in inferred.stderr
+        machine_preferences["preferences"] = []
+        machine_preferences_path.write_text(json.dumps(machine_preferences), encoding="utf-8")
 
         indexed_credentialed = json.loads(run(home, "resolve", "credentialed").stdout)
         assert indexed_credentialed["workspace"]["origin"] == credential_free_remote

@@ -9,6 +9,7 @@ and the current Git state.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -25,6 +26,9 @@ WORKSPACES_VERSION = "atthis.workspaces.v1"
 ROOTS_VERSION = "atthis.roots.v1"
 INDEX_VERSION = "atthis.workspace-index.v1"
 RESOLUTION_VERSION = "atthis.resolution.v1"
+PREFERENCES_VERSION = "atthis.preferences.v1"
+PREFERENCE_PROJECTION_VERSION = "atthis.preference-projection.v1"
+PREFERENCE_RECEIPT_VERSION = "atthis.preference-receipt.v1"
 DEFAULT_HOME = Path("~/.atthis")
 HOME_DIRECTORIES = ("config", "state", "missions", "memory", "cognition", "receipts", "cache")
 
@@ -70,6 +74,18 @@ def workspaces_path(home: Path) -> Path:
 
 def roots_path(home: Path) -> Path:
     return home / "state" / "roots.json"
+
+
+def user_preferences_path(home: Path) -> Path:
+    return home / "config" / "preferences.json"
+
+
+def machine_preferences_path(home: Path) -> Path:
+    return home / "state" / "preferences.json"
+
+
+def preference_receipts_path(home: Path) -> Path:
+    return home / "receipts" / "preferences.jsonl"
 
 
 def index_path(home: Path) -> Path:
@@ -163,6 +179,41 @@ def validate_roots(value: Any) -> dict[str, Any]:
     return value
 
 
+def validate_preferences(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("version") != PREFERENCES_VERSION:
+        fail(f"{label} version must be {PREFERENCES_VERSION}")
+    preferences = value.get("preferences")
+    if not isinstance(preferences, list):
+        fail(f"{label}.preferences must be a list")
+    identities: set[tuple[str, str | None]] = set()
+    required = {"id", "statement", "source", "recordedAt", "updatedAt"}
+    optional = {"projectId", "reopenWhen"}
+    for preference in preferences:
+        if not isinstance(preference, dict):
+            fail(f"each {label} preference must be an object")
+        unknown = set(preference) - required - optional
+        missing = required - set(preference)
+        if unknown or missing:
+            fail(f"{label} preference fields are invalid: missing={sorted(missing)}, unknown={sorted(unknown)}")
+        preference_id = nonempty(preference.get("id"), f"{label} preference.id")
+        nonempty(preference.get("statement"), f"{label} preference {preference_id}.statement")
+        if preference.get("source") != "user-explicit":
+            fail(f"{label} preference {preference_id}.source must be user-explicit")
+        nonempty(preference.get("recordedAt"), f"{label} preference {preference_id}.recordedAt")
+        nonempty(preference.get("updatedAt"), f"{label} preference {preference_id}.updatedAt")
+        project_id = preference.get("projectId")
+        if project_id is not None:
+            project_id = nonempty(project_id, f"{label} preference {preference_id}.projectId")
+        reopen_when = preference.get("reopenWhen")
+        if reopen_when is not None:
+            nonempty(reopen_when, f"{label} preference {preference_id}.reopenWhen")
+        identity = (preference_id.casefold(), project_id.casefold() if project_id else None)
+        if identity in identities:
+            fail(f"duplicate {label} preference: {preference_id} for {project_id or 'all projects'}")
+        identities.add(identity)
+    return value
+
+
 def validate_index(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("version") != INDEX_VERSION:
         fail(f"workspace index version must be {INDEX_VERSION}")
@@ -193,6 +244,101 @@ def require_home(home: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     workspaces = validate_workspaces(load_json(workspaces_path(home)))
     validate_roots(load_json(roots_path(home)))
     return projects, workspaces
+
+
+def require_preference_sources(home: Path, projects: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    user = validate_preferences(load_json(user_preferences_path(home)), "user preferences")
+    machine = validate_preferences(load_json(machine_preferences_path(home)), "machine preferences")
+    project_ids = {project["id"] for project in projects["projects"]}
+    for label, source in (("user", user), ("machine", machine)):
+        for preference in source["preferences"]:
+            project_id = preference.get("projectId")
+            if project_id is not None and project_id not in project_ids:
+                fail(f"{label} preference {preference['id']} references unknown project id: {project_id}")
+    return user, machine
+
+
+def preference_path(home: Path, scope: str) -> Path:
+    return user_preferences_path(home) if scope == "user" else machine_preferences_path(home)
+
+
+def preference_project_id(projects: dict[str, Any], query: str | None) -> str | None:
+    return project_by_query(projects, query)["id"] if query else None
+
+
+def preference_digest(preference: dict[str, Any]) -> str:
+    payload = json.dumps(preference, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def validate_preference_receipts(value: str) -> None:
+    fields = {"version", "at", "action", "scope", "id", "projectId", "recordDigest"}
+    hex_characters = set("0123456789abcdef")
+    for line_number, line in enumerate(value.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            receipt = json.loads(line)
+        except json.JSONDecodeError as error:
+            fail(f"invalid preference receipt at line {line_number}: {error}")
+        if not isinstance(receipt, dict) or set(receipt) != fields:
+            fail(f"preference receipt at line {line_number} has invalid fields")
+        if receipt.get("version") != PREFERENCE_RECEIPT_VERSION:
+            fail(f"preference receipt at line {line_number} has an invalid version")
+        nonempty(receipt.get("at"), f"preference receipt {line_number}.at")
+        if receipt.get("action") not in {"set", "retire"}:
+            fail(f"preference receipt at line {line_number} has an invalid action")
+        if receipt.get("scope") not in {"user", "machine"}:
+            fail(f"preference receipt at line {line_number} has an invalid scope")
+        nonempty(receipt.get("id"), f"preference receipt {line_number}.id")
+        project_id = receipt.get("projectId")
+        if project_id is not None:
+            nonempty(project_id, f"preference receipt {line_number}.projectId")
+        digest = nonempty(receipt.get("recordDigest"), f"preference receipt {line_number}.recordDigest")
+        if len(digest) != 64 or any(character not in hex_characters for character in digest):
+            fail(f"preference receipt at line {line_number} has an invalid record digest")
+
+
+def commit_preference_change(
+    home: Path,
+    scope: str,
+    source: dict[str, Any],
+    action: str,
+    preference: dict[str, Any],
+) -> None:
+    source_path = preference_path(home, scope)
+    path = preference_receipts_path(home)
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    validate_preference_receipts(existing)
+    receipt = {
+        "version": PREFERENCE_RECEIPT_VERSION,
+        "at": now(),
+        "action": action,
+        "scope": scope,
+        "id": preference["id"],
+        "projectId": preference.get("projectId"),
+        "recordDigest": preference_digest(preference),
+    }
+    next_source = json.dumps(source, ensure_ascii=False, indent=2) + "\n"
+    next_receipts = existing + json.dumps(receipt, ensure_ascii=False, sort_keys=True) + "\n"
+    validate_preference_receipts(next_receipts)
+    previous_source = source_path.read_text(encoding="utf-8")
+    source_temporary = source_path.with_suffix(source_path.suffix + ".preference-txn.tmp")
+    receipt_temporary = path.with_suffix(path.suffix + ".preference-txn.tmp")
+    source_temporary.write_text(next_source, encoding="utf-8")
+    try:
+        receipt_temporary.write_text(next_receipts, encoding="utf-8")
+        source_temporary.replace(source_path)
+        try:
+            receipt_temporary.replace(path)
+        except OSError:
+            rollback = source_path.with_suffix(source_path.suffix + ".preference-rollback.tmp")
+            rollback.write_text(previous_source, encoding="utf-8")
+            rollback.replace(source_path)
+            raise
+    finally:
+        source_temporary.unlink(missing_ok=True)
+        receipt_temporary.unlink(missing_ok=True)
 
 
 def run_git(arguments: list[str], cwd: Path) -> str:
@@ -409,6 +555,14 @@ def command_init(args: argparse.Namespace) -> None:
         validate_roots(load_json(roots_path(home)))
     else:
         save_json(roots_path(home), {"version": ROOTS_VERSION, "roots": []})
+    if user_preferences_path(home).exists():
+        validate_preferences(load_json(user_preferences_path(home)), "user preferences")
+    else:
+        save_json(user_preferences_path(home), {"version": PREFERENCES_VERSION, "preferences": []})
+    if machine_preferences_path(home).exists():
+        validate_preferences(load_json(machine_preferences_path(home)), "machine preferences")
+    else:
+        save_json(machine_preferences_path(home), {"version": PREFERENCES_VERSION, "preferences": []})
     if index_path(home).exists():
         validate_index(load_json(index_path(home)))
     else:
@@ -526,6 +680,114 @@ def command_scan(args: argparse.Namespace) -> None:
     print(json.dumps({"indexedWorkspaces": len(index["entries"]), "index": str(index_path(home))}, indent=2))
 
 
+def command_preference_set(args: argparse.Namespace) -> None:
+    home = home_path(args.home)
+    projects, _ = require_home(home)
+    user, machine = require_preference_sources(home, projects)
+    source = user if args.scope == "user" else machine
+    project_id = preference_project_id(projects, args.project)
+    preference_id = nonempty(args.id, "preference id")
+    statement = nonempty(args.statement, "preference statement")
+    reopen_when = nonempty(args.reopen_when, "reopen condition") if args.reopen_when else None
+    previous = next(
+        (
+            preference
+            for preference in source["preferences"]
+            if preference["id"].casefold() == preference_id.casefold()
+            and preference.get("projectId") == project_id
+        ),
+        None,
+    )
+    timestamp = now()
+    preference = {
+        "id": preference_id,
+        "statement": statement,
+        "source": "user-explicit",
+        "recordedAt": previous["recordedAt"] if previous else timestamp,
+        "updatedAt": timestamp,
+    }
+    if project_id is not None:
+        preference["projectId"] = project_id
+    if reopen_when is not None:
+        preference["reopenWhen"] = reopen_when
+    comparable = {key: value for key, value in preference.items() if key != "updatedAt"}
+    previous_comparable = {key: value for key, value in previous.items() if key != "updatedAt"} if previous else None
+    changed = comparable != previous_comparable
+    if changed:
+        if previous is None:
+            source["preferences"].append(preference)
+        else:
+            source["preferences"][source["preferences"].index(previous)] = preference
+        source["preferences"].sort(key=lambda item: (item.get("projectId") or "", item["id"].casefold()))
+        validate_preferences(source, f"{args.scope} preferences")
+        commit_preference_change(home, args.scope, source, "set", preference)
+    else:
+        preference = previous
+    print(json.dumps({"changed": changed, "scope": args.scope, "preference": preference}, ensure_ascii=False, indent=2))
+
+
+def command_preference_list(args: argparse.Namespace) -> None:
+    home = home_path(args.home)
+    projects, _ = require_home(home)
+    user, machine = require_preference_sources(home, projects)
+    project_id = preference_project_id(projects, args.project)
+    selected: dict[str, tuple[tuple[int, int], str, dict[str, Any]]] = {}
+    for scope, source in (("user", user), ("machine", machine)):
+        for preference in source["preferences"]:
+            preference_project = preference.get("projectId")
+            if preference_project is not None and preference_project != project_id:
+                continue
+            rank = (1 if preference_project is not None else 0, 1 if scope == "machine" else 0)
+            key = preference["id"].casefold()
+            current = selected.get(key)
+            if current is None or rank > current[0]:
+                selected[key] = (rank, scope, preference)
+    projection = []
+    for _, scope, preference in sorted(selected.values(), key=lambda item: item[2]["id"].casefold()):
+        item = {
+            "id": preference["id"],
+            "statement": preference["statement"],
+            "scope": scope,
+            "source": preference["source"],
+        }
+        if preference.get("projectId") is not None:
+            item["projectId"] = preference["projectId"]
+        if preference.get("reopenWhen") is not None:
+            item["reopenWhen"] = preference["reopenWhen"]
+        projection.append(item)
+    print(json.dumps({
+        "version": PREFERENCE_PROJECTION_VERSION,
+        "projectId": project_id,
+        "preferences": projection,
+    }, ensure_ascii=False, indent=2))
+
+
+def command_preference_retire(args: argparse.Namespace) -> None:
+    home = home_path(args.home)
+    projects, _ = require_home(home)
+    user, machine = require_preference_sources(home, projects)
+    source = user if args.scope == "user" else machine
+    project_id = preference_project_id(projects, args.project)
+    matches = [
+        preference
+        for preference in source["preferences"]
+        if preference["id"].casefold() == args.id.casefold()
+        and preference.get("projectId") == project_id
+    ]
+    if not matches:
+        fail(f"no {args.scope} preference matches {args.id!r} for {project_id or 'all projects'}")
+    preference = matches[0]
+    source["preferences"].remove(preference)
+    validate_preferences(source, f"{args.scope} preferences")
+    commit_preference_change(home, args.scope, source, "retire", preference)
+    print(json.dumps({
+        "retired": True,
+        "scope": args.scope,
+        "id": preference["id"],
+        "projectId": project_id,
+    }, ensure_ascii=False, indent=2))
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--home", help="Atthis home; defaults to ATTHIS_HOME or ~/.atthis")
@@ -560,6 +822,24 @@ def parser() -> argparse.ArgumentParser:
 
     scan = commands.add_parser("scan", help="rebuild the workspace index from configured roots")
     scan.set_defaults(run=command_scan)
+
+    preference = commands.add_parser("preference", help="manage explicit personal defaults")
+    preference_commands = preference.add_subparsers(dest="preference_command", required=True)
+    preference_set = preference_commands.add_parser("set", help="set one explicit user or machine preference")
+    preference_set.add_argument("id")
+    preference_set.add_argument("--statement", required=True)
+    preference_set.add_argument("--scope", choices=("user", "machine"), required=True)
+    preference_set.add_argument("--project", help="registered project ID or alias")
+    preference_set.add_argument("--reopen-when", help="condition that should cause the preference to be reconsidered")
+    preference_set.set_defaults(run=command_preference_set)
+    preference_list = preference_commands.add_parser("list", help="project applicable explicit preferences")
+    preference_list.add_argument("--project", help="registered project ID or alias")
+    preference_list.set_defaults(run=command_preference_list)
+    preference_retire = preference_commands.add_parser("retire", help="retire one exact preference")
+    preference_retire.add_argument("id")
+    preference_retire.add_argument("--scope", choices=("user", "machine"), required=True)
+    preference_retire.add_argument("--project", help="registered project ID or alias")
+    preference_retire.set_defaults(run=command_preference_retire)
     return result
 
 

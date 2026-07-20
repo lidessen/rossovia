@@ -39,6 +39,9 @@ For the workbench path, ask the agent directly:
 Initialize the Atthis workbench. My workspace root is ~/workspaces.
 Add ~/client-work as another workspace root.
 Register ~/workspaces/meowask and keep meowask and survey as spoken aliases.
+Remember across projects that stable bounded tasks should prefer Work Cell.
+On this machine, prefer native sub-agents when they provide a required subscription.
+Show the preferences that apply to survey.
 Continue survey.
 ```
 
@@ -55,11 +58,15 @@ manual entry remains available:
 python3 scripts/atthis.py init --workspace-root ~/workspaces
 python3 scripts/atthis.py root add ~/client-work
 python3 scripts/atthis.py resolve survey
+python3 scripts/atthis.py preference list --project survey
 ```
 
 The workbench keeps stable project identity separate from repository names,
 spoken aliases, and machine-local paths. It does not turn this repository into
-a global task board or grant authority to execute in another project.
+a global task board or grant authority to execute in another project. Explicit
+personal defaults remain separate from project requirements and machine-local
+overrides; inferred memory never becomes active preference without human
+confirmation.
 
 ## Repository map
 
@@ -69,7 +76,7 @@ a global task board or grant authority to execute in another project.
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
-| [`scripts/atthis.py`](scripts/atthis.py) | relocatable project identity and verified machine-local workspace resolution | task scheduling, target-project facts, or execution authority |
+| [`scripts/atthis.py`](scripts/atthis.py) | relocatable project identity, verified machine-local workspace resolution, and explicit scoped personal defaults | task scheduling, inferred preference, target-project facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |

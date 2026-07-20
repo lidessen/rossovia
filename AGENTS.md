@@ -80,6 +80,40 @@ result marked `discovered` is a verified current location, not a stable project
 identity or durable alias. Do not turn a natural-language request into broader
 setup, marketplace search, automatic registration, or inferred task state.
 
+## Atthis preference entry
+
+Treat an explicit natural-language request to remember, change, inspect, or
+forget a personal default as authority to use the existing preference commands;
+do not require the human to translate it into CLI syntax. Preserve the strength
+of their wording: a preference remains a defeasible default, not a requirement.
+Before a preference operation, run `python3 scripts/atthis.py init` without
+workspace roots. This is an idempotent source migration and does not broaden
+discovery; it lets an existing or new Atthis home acquire the preference files
+without making the human perform setup first.
+
+- Keep a session-only preference in the conversation and do not persist it.
+- Use `python3 scripts/atthis.py preference set <id> --scope user --statement
+  <text>` for a personal default intended to survive this session.
+- Use `--scope machine` only when the person limits the default to this device
+  or it depends on machine-local capabilities. Availability and quota remain
+  observations, not preferences.
+- Add `--project <registered-name>` for a personal default limited to one
+  registered project. Put shared project requirements in that target
+  repository's governing source instead of Atthis.
+- Use `preference retire` only when the person explicitly withdraws the exact
+  scoped record. Use `preference list [--project <registered-name>]` to inspect
+  the compact applicable projection rather than reading raw preference files.
+
+Never promote a pattern inferred from corrections, history, memory, or
+cognition into an active preference. It may be offered as a candidate for human
+confirmation when it would materially change later work. Never place API keys,
+tokens, credentials, session data, or private environment dumps in preference
+text. Before a material choice among models, providers, execution carriers,
+verification forms, or expression defaults, query applicable preferences when
+one could change the choice. A preference cannot override a current human
+instruction, project constraint, authorization boundary, or contrary runtime
+evidence; state the reason when departing from it.
+
 ## Mission continuity entry
 
 When the human asks which work is in progress in this project, run
