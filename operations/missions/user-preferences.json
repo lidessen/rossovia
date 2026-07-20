@@ -1,0 +1,22 @@
+{
+  "version": "mission-record.v1",
+  "id": "user-preferences",
+  "title": "Make explicit user preferences available to the Atthis workbench",
+  "sources": [
+    "human mandate, 2026-07-19: choose option A for explicit Atthis preferences",
+    "design/decisions/038-atthis-workbench-entry.md"
+  ],
+  "createdAt": "2026-07-20T02:06:11Z",
+  "updatedAt": "2026-07-20T02:06:11Z",
+  "mainline": {
+    "contradiction": "Atthis can recover projects and tasks, but stable personal defaults, machine-local overrides, and inferred observations have no distinct authority or delivery path, so agents either forget them or over-promote memory into policy.",
+    "acceptance": [
+      "Natural-language preference requests are lowered into explicit user or machine-scoped records without requiring the human to know CLI syntax.",
+      "Only user-declared preferences become active; inferred observations remain non-authoritative and project-shared constraints remain in the target repository.",
+      "A query returns only applicable compact preferences with deterministic precedence, supports retirement with an audit receipt, and does not expose secrets or silently turn defaults into hard constraints."
+    ],
+    "status": "active"
+  },
+  "branches": [],
+  "currentFocus": "mainline"
+}
