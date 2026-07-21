@@ -16,6 +16,17 @@ block writes, or accept work.
 State is session-local under `~/.codex/intervention-reconciliation/`. It stores
 the prompt hash and byte count, never prompt text. The generic state CLI and
 receipt format live in [`scripts/intervention-reconciliation.py`](../scripts/intervention-reconciliation.py).
+After observing a prompt, the adapter injects a receipt endpoint bound to that
+exact session-state file. It does not rediscover state from the target
+repository path, so a session opened in this repository may safely use the
+binding while switching among other repositories and returning to earlier
+work.
+
+Receipt persistence is not an authorization precondition. If the endpoint is
+unavailable under the current runtime policy, the agent keeps the corrected
+constraint active, reports the receipt as unresolved, and continues work that
+is already authorized. It must not request broader filesystem access merely to
+upgrade this assist-only record.
 
 ## Enable and verify in a fresh Codex session
 

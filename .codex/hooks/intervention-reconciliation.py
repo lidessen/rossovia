@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -25,15 +26,26 @@ def main() -> int:
     if result.returncode != 0:
         print(result.stderr, file=sys.stderr, end="")
         return result.returncode
+    observed = json.loads(result.stdout)
+    receipt_endpoint = " ".join([
+        shlex.quote(sys.executable),
+        shlex.quote(str(CLI)),
+        "--state-file",
+        shlex.quote(str(observed["statePath"])),
+        "reconcile --help",
+    ])
     print(json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
             "additionalContext": (
-                "A Principal message has arrived. Before any mutation, compare it with the active task. "
+                "A Principal message has arrived. Before acting on it, compare it with the active task. "
                 "If it changes a target, hard boundary, concept relation, authority, or acceptance condition, "
                 "run practice-cycle continue and record a correction receipt through the available "
-                "intervention-reconciliation binding. The local receipt endpoint is "
-                f"`python3 {CLI} reconcile --help`. Otherwise proceed without ceremony."
+                "intervention-reconciliation binding. The exact session-local receipt endpoint is "
+                f"`{receipt_endpoint}`. Otherwise proceed without ceremony. "
+                "This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable "
+                "or denied, do not request broader filesystem permission and do not block already-authorized work; "
+                "retain the correction in the active task and report the receipt as unresolved."
             ),
         },
     }))

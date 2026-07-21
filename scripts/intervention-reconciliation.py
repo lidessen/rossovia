@@ -64,6 +64,12 @@ def latest_state(root: Path, cwd: str) -> Path:
     return states[0]
 
 
+def selected_state(args: argparse.Namespace) -> Path:
+    if args.state_file:
+        return Path(args.state_file).expanduser()
+    return latest_state(state_root(args.state_root), args.cwd)
+
+
 def command_observe(args: argparse.Namespace) -> int:
     payload = json.load(sys.stdin)
     cwd = str(payload["cwd"])
@@ -85,8 +91,7 @@ def command_observe(args: argparse.Namespace) -> int:
 
 
 def command_anchor(args: argparse.Namespace) -> int:
-    root = state_root(args.state_root)
-    path = latest_state(root, args.cwd)
+    path = selected_state(args)
     state = json.loads(path.read_text())
     state["anchor"] = {"summary": args.summary, "at": utc_now()}
     write_state(path, state)
@@ -95,8 +100,7 @@ def command_anchor(args: argparse.Namespace) -> int:
 
 
 def command_reconcile(args: argparse.Namespace) -> int:
-    root = state_root(args.state_root)
-    path = latest_state(root, args.cwd)
+    path = selected_state(args)
     state = json.loads(path.read_text())
     receipt = {
         "at": utc_now(),
@@ -112,8 +116,7 @@ def command_reconcile(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    root = state_root(args.state_root)
-    path = latest_state(root, args.cwd)
+    path = selected_state(args)
     state = json.loads(path.read_text())
     print(json.dumps({
         "statePath": str(path),
@@ -128,6 +131,10 @@ def command_status(args: argparse.Namespace) -> int:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--state-root", help="session-local state directory")
+    result.add_argument(
+        "--state-file",
+        help="exact state record supplied by a runtime binding; bypasses cwd discovery",
+    )
     commands = result.add_subparsers(dest="command", required=True)
 
     observe = commands.add_parser("observe")
@@ -156,7 +163,7 @@ def main() -> int:
     args = parser().parse_args()
     try:
         return args.handler(args)
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError) as error:
         print(f"intervention reconciliation: {error}", file=sys.stderr)
         return 2
 
