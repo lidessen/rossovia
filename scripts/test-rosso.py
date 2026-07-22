@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integration probe for relocatable Rosso project resolution."""
+"""Integration probe for relocatable Rossovia workbench resolution."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def git(cwd: Path, *arguments: str) -> None:
 def create_repo(path: Path, remote: str | None) -> None:
     path.mkdir()
     git(path, "init")
-    git(path, "config", "user.name", "Rosso Test")
+    git(path, "config", "user.name", "Rossovia Test")
     git(path, "config", "user.email", "rosso@example.test")
     (path / "README.md").write_text("# Test\n", encoding="utf-8")
     git(path, "add", "README.md")

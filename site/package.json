@@ -11,7 +11,7 @@
     "dev": "npm run sync:content && astro dev",
     "check": "npm run sync:content && astro check",
     "build": "npm run sync:content && astro check && astro build",
-    "verify:links": "linkinator dist --recurse --clean-urls --check-fragments --skip '^https://(github\\.com|rosso\\.run)/'",
+    "verify:links": "linkinator dist --recurse --clean-urls --check-fragments --skip '^https://(github\\.com|rossovia\\.dev)/'",
     "preview": "astro preview"
   },
   "dependencies": {

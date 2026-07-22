@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve a Rosso project alias to a verified local Git workspace.
+"""Resolve a Rossovia workbench project alias to a verified local Git workspace.
 
 The portable project registry and machine-local workspace mapping are separate
 sources.  Generated resolution output is only a read-only projection over them
@@ -104,7 +104,7 @@ def migration_receipts_path(home: Path) -> Path:
 
 def load_json(path: Path) -> Any:
     if not path.is_file():
-        fail(f"required Rosso source not found: {path}")
+        fail(f"required rossovia workbench source not found: {path}")
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
@@ -658,11 +658,11 @@ def command_migrate(args: argparse.Namespace) -> None:
     source = Path(args.from_home or LEGACY_DEFAULT_HOME).expanduser().resolve()
     target = home_path(args.home)
     if source == target:
-        fail("legacy source and Rosso target home must differ")
+        fail("legacy source and rossovia workbench target home must differ")
     if not source.is_dir():
         fail(f"legacy Atthis home does not exist: {source}")
     if target.exists():
-        fail(f"Rosso target home already exists: {target}")
+        fail(f"rossovia workbench target home already exists: {target}")
 
     for required_source in (manifest_path(source), projects_path(source)):
         if not required_source.is_file():
@@ -967,14 +967,14 @@ def command_preference_retire(args: argparse.Namespace) -> None:
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("--home", help="Rosso home; defaults to ROSSO_HOME or ~/.rosso")
+    result.add_argument("--home", help="Rossovia workbench home; defaults to ROSSO_HOME or ~/.rosso")
     commands = result.add_subparsers(dest="command", required=True)
 
-    init = commands.add_parser("init", help="initialize the relocatable Rosso home")
+    init = commands.add_parser("init", help="initialize the relocatable Rossovia workbench home")
     init.add_argument("--workspace-root", action="append", default=[], help="machine-local root to index; repeatable")
     init.set_defaults(run=command_init)
 
-    migrate = commands.add_parser("migrate", help="reconcile a legacy Atthis home into the Rosso namespace")
+    migrate = commands.add_parser("migrate", help="reconcile a legacy Atthis home into the retained rosso namespace")
     migrate.add_argument("--from-home", help="legacy source; defaults to ~/.atthis")
     migrate.set_defaults(run=command_migrate)
 

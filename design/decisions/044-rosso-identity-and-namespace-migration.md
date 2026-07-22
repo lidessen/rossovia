@@ -7,6 +7,9 @@
 [Founding Identity](../FOUNDING-IDENTITY.md); preserves the functional boundaries
 of [Decision 038](038-atthis-workbench-entry.md) and
 [Decision 042](042-atthis-explicit-user-preferences.md)
+**Superseded in part by:** [Decision 045](045-rossovia-identity-and-carriers.md),
+which later replaces the display name, public origin, and external carriers
+while retaining the stable `rosso` runtime namespace.
 
 ## Decision
 

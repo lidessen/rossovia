@@ -38,10 +38,10 @@ probe proves the current policy solves the actual project problem.
 
 This is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).
 
-## Rosso workbench entry
+## Rossovia workbench entry
 
 Treat a natural-language request to initialize, extend, register, or use the
-Rosso workbench as an instruction to operate the existing workbench entry. Do
+Rossovia workbench as an instruction to operate the existing workbench entry. Do
 not make the human translate the request into CLI syntax. Select only the
 mechanical action their words authorize:
 
@@ -83,7 +83,7 @@ result marked `discovered` is a verified current location, not a stable project
 identity or durable alias. Do not turn a natural-language request into broader
 setup, marketplace search, automatic registration, or inferred task state.
 
-## Rosso preference entry
+## Rossovia preference entry
 
 Treat an explicit natural-language request to remember, change, inspect, or
 forget a personal default as authority to use the existing preference commands;
@@ -92,7 +92,7 @@ of their wording: a preference remains a defeasible default, not a requirement.
 Before a preference operation, apply the legacy-home guard above, then run
 `python3 scripts/rosso.py init` without workspace roots. This is an idempotent
 source initialization or completion and does not broaden discovery; it lets an
-existing or new Rosso home acquire the preference files without making the
+existing or new Rossovia workbench home acquire the preference files without making the
 human perform setup first.
 
 - Keep a session-only preference in the conversation and do not persist it.
@@ -103,7 +103,7 @@ human perform setup first.
   observations, not preferences.
 - Add `--project <registered-name>` for a personal default limited to one
   registered project. Put shared project requirements in that target
-  repository's governing source instead of Rosso.
+  repository's governing source instead of Rossovia.
 - Use `preference retire` only when the person explicitly withdraws the exact
   scoped record. Use `preference list [--project <registered-name>]` to inspect
   the compact applicable projection rather than reading raw preference files.
@@ -118,7 +118,7 @@ one could change the choice. A preference cannot override a current human
 instruction, project constraint, authorization boundary, or contrary runtime
 evidence; state the reason when departing from it.
 
-## Rosso cross-project task entry
+## Rossovia cross-project task entry
 
 When the human asks for work in progress across registered projects, run
 `python3 scripts/rosso.py project list`. Preserve its `complete` flag and each
@@ -126,7 +126,7 @@ project's availability status. For every available project, read its returned
 instruction files—and no conventional filenames that were not returned—before
 using only the task-continuity source that project declares. Run every relative
 target command with its working directory set to the returned workspace path;
-never reuse the Rosso workbench directory for a different project's query.
+never reuse the Rossovia workbench directory for a different project's query.
 Report a project with no declared source as `unsupported`; do not infer
 commitments from Git branches, PRs, Issues, logs, or repository names. Mark the
 combined task view incomplete when the project inventory is incomplete or any
@@ -134,7 +134,7 @@ project is unverified, unsupported, or returns invalid task output. Once a
 declared task query returns a valid projection, aggregate only that output; do
 not open its underlying records merely to elaborate the answer. Keep every task
 judgment scoped to the project that produced it. The combined answer is a
-read-only projection: it neither copies task facts into Rosso nor authorizes
+read-only projection: it neither copies task facts into Rossovia nor authorizes
 work in a target project.
 
 ## Mission continuity entry

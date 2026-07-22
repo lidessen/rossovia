@@ -1,11 +1,11 @@
-# Rosso — Skills
+# Rossovia — Skills
 
 [简体中文](README.zh-CN.md)
 
-> The current methods repository for **Rosso**, a project that makes
+> The current methods repository for **Rossovia**, a project that makes
 > productive AI a common, open, replaceable capability.
 
-Rosso is the [current, revisable project name](design/FOUNDING-IDENTITY.md); this `skills` repository remains
+Rossovia is the [current, revisable project name](design/FOUNDING-IDENTITY.md); this `rossovia` repository remains
 one of its working surfaces. It contains [agent skills](https://agentskills.io) and an
 experimental Work Cell for AI-assisted development. It is one working surface,
 not the whole project, a model provider, or an opaque AI platform. Its semantic
@@ -33,9 +33,9 @@ the project exists, the [operating protocol](design/operations/OPERATING-PROTOCO
 to see how human-authorized work proceeds, or the active skills below to use a
 specific method.
 
-## Ways to use Rosso
+## Ways to use Rossovia
 
-- Develop Rosso itself through this repository's full operating and evidence
+- Develop Rossovia itself through this repository's full operating and evidence
   system.
 - Install one self-contained Skill into another project for a specific method.
 - Enter this checkout with a coding agent and use it as a workbench for other
@@ -44,7 +44,7 @@ specific method.
 For the workbench path, ask the agent directly:
 
 ```text
-Initialize the Rosso workbench. My workspace root is ~/workspaces.
+Initialize the Rossovia workbench. My workspace root is ~/workspaces.
 Add ~/client-work as another workspace root.
 Register ~/workspaces/meowask and keep meowask and survey as spoken aliases.
 Remember across projects that stable bounded tasks should prefer Work Cell.
@@ -61,7 +61,7 @@ missing value. It does not scan an unspecified home directory, auto-register
 discovered repositories, or make the user remember command flags.
 
 If a previous checkout initialized `~/.atthis`, ask the agent to migrate the
-workbench, or run `python3 scripts/rosso.py migrate`, before ordinary Rosso
+workbench, or run `python3 scripts/rosso.py migrate`, before ordinary Rossovia
 initialization. The migration preserves the old source and records a receipt;
 it does not keep two writable homes.
 
@@ -146,7 +146,7 @@ progressive-cognition mechanism experiment. Domain-defined formation schemes
 turn immutable source material through explicit, verified stages into cognitive
 artifacts and can return practice outcomes to an earlier stage. A catalog is
 only a rebuildable retrieval projection; projects, workspaces, Git, prompts,
-models, and task routing stay outside the core. Project cognition and Rosso
+models, and task routing stay outside the core. Project cognition and Rossovia
 resume are future domain methods over this mechanism, not its defining schema; see
 [decision 039](design/decisions/039-general-cognition-experiment.md).
 
@@ -196,13 +196,13 @@ Pre-regeneration methodology skills (`design-driven`, `goal-driven`, `evidence-d
 List the skills in this repository before choosing one:
 
 ```bash
-npx skills add lidessen/skills --list
+npx skills add lidessen/rossovia --list
 ```
 
 Install one skill into the current project (the default scope):
 
 ```bash
-npx skills add lidessen/skills --skill improve-agent-workflow
+npx skills add lidessen/rossovia --skill improve-agent-workflow
 ```
 
 Add `-g` for a personal installation available across projects, or `-a codex`

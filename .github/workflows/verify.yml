@@ -34,7 +34,7 @@ jobs:
         run: python3 scripts/test-mission-record.py
       - name: Test intervention reconciliation binding
         run: python3 scripts/test-intervention-reconciliation.py
-      - name: Test Rosso workbench resolution
+      - name: Test Rossovia workbench resolution
         run: python3 scripts/test-rosso.py
       - name: Test skill installation safety
         run: python3 scripts/test-probe-skill-installation.py

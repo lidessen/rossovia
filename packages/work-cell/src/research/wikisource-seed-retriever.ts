@@ -177,7 +177,7 @@ export class WikisourceSeedRetriever implements SeedMaterialRetriever {
         const timeout = AbortSignal.timeout(this.timeoutMs);
         return this.fetchImpl(url, {
           headers: {
-            "User-Agent": "lidessen-work-cell/0.1 (https://github.com/lidessen/skills; experimental title retrieval)",
+            "User-Agent": "lidessen-work-cell/0.1 (https://github.com/lidessen/rossovia; experimental title retrieval)",
           },
           signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         });
