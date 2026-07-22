@@ -23,6 +23,8 @@ from urllib.parse import urlparse
 
 HOME_VERSION = "rosso.home.v1"
 PROJECTS_VERSION = "rosso.projects.v1"
+LEGACY_HOME_VERSION = "atthis.home.v1"
+LEGACY_PROJECTS_VERSION = "atthis.projects.v1"
 WORKSPACES_VERSION = "rosso.workspaces.v1"
 ROOTS_VERSION = "rosso.roots.v1"
 INDEX_VERSION = "rosso.workspace-index.v1"
@@ -164,6 +166,17 @@ def migrate_namespace_files(home: Path) -> None:
                     "\n".join(migrated_lines) + ("\n" if original.endswith("\n") else ""),
                     encoding="utf-8",
                 )
+
+
+def validate_legacy_migration_source(home: Path) -> None:
+    manifest = load_json(manifest_path(home))
+    if not isinstance(manifest, dict) or manifest.get("version") != LEGACY_HOME_VERSION:
+        fail(f"legacy manifest version must be {LEGACY_HOME_VERSION}")
+    if manifest.get("namespace") != "atthis":
+        fail("legacy manifest namespace must be atthis")
+    projects = load_json(projects_path(home))
+    if not isinstance(projects, dict) or projects.get("version") != LEGACY_PROJECTS_VERSION:
+        fail(f"legacy projects version must be {LEGACY_PROJECTS_VERSION}")
 
 
 def validate_manifest(value: Any) -> dict[str, Any]:
@@ -654,6 +667,7 @@ def command_migrate(args: argparse.Namespace) -> None:
     for required_source in (manifest_path(source), projects_path(source)):
         if not required_source.is_file():
             fail(f"required legacy Atthis source not found: {required_source}")
+    validate_legacy_migration_source(source)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(f"{target.name}.namespace-migration.tmp")

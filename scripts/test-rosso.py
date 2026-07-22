@@ -68,6 +68,8 @@ def main() -> None:
         migration_repo = root / "migration-repo"
         legacy_home = root / "legacy-atthis"
         migrated_home = root / "migrated-rosso"
+        current_source_home = root / "current-rosso-source"
+        rejected_current_target = root / "rejected-current-target"
         remote = "https://example.test/lidessen/meowask.git"
         credentialed_remote = "https://user:secret@example.test/lidessen/credentialed.git?access_token=hidden#fragment"
         credential_free_remote = "https://example.test/lidessen/credentialed.git"
@@ -133,6 +135,17 @@ def main() -> None:
             expect=2,
         )
         assert "target home already exists" in rerun_migration.stderr
+
+        run(current_source_home, "init")
+        rejected_current_source = run(
+            rejected_current_target,
+            "migrate",
+            "--from-home",
+            str(current_source_home),
+            expect=2,
+        )
+        assert "legacy manifest version must be atthis.home.v1" in rejected_current_source.stderr
+        assert not rejected_current_target.exists()
 
         run(home, "init", "--workspace-root", str(pool))
         assert json.loads((home / "config" / "preferences.json").read_text(encoding="utf-8"))["preferences"] == []

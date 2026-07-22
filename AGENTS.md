@@ -89,10 +89,11 @@ Treat an explicit natural-language request to remember, change, inspect, or
 forget a personal default as authority to use the existing preference commands;
 do not require the human to translate it into CLI syntax. Preserve the strength
 of their wording: a preference remains a defeasible default, not a requirement.
-Before a preference operation, run `python3 scripts/rosso.py init` without
-workspace roots. This is an idempotent source migration and does not broaden
-discovery; it lets an existing or new Rosso home acquire the preference files
-without making the human perform setup first.
+Before a preference operation, apply the legacy-home guard above, then run
+`python3 scripts/rosso.py init` without workspace roots. This is an idempotent
+source initialization or completion and does not broaden discovery; it lets an
+existing or new Rosso home acquire the preference files without making the
+human perform setup first.
 
 - Keep a session-only preference in the conversation and do not persist it.
 - Use `python3 scripts/rosso.py preference set <id> --scope user --statement
