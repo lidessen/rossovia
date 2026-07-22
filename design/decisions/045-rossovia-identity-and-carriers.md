@@ -5,6 +5,9 @@
 **Approved by:** principal
 **Supersedes:** the display-name, public-origin, and repository-retention
 boundaries in [Decision 044](044-rosso-identity-and-namespace-migration.md)
+**Superseded in part by:** [Decision 047](047-bun-workbench-runtime.md), which
+replaces `scripts/rosso.py` as the active workbench carrier without renaming
+the retained `rosso` machine namespace.
 
 ## Decision
 

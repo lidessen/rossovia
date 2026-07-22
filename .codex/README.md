@@ -14,8 +14,9 @@ message with its active task. It does not decide that a correction occurred,
 block writes, or accept work.
 
 State is session-local under `~/.codex/intervention-reconciliation/`. It stores
-the prompt hash and byte count, never prompt text. The generic state CLI and
-receipt format live in [`scripts/intervention-reconciliation.py`](../scripts/intervention-reconciliation.py).
+the prompt hash and byte count, never prompt text. The generic state commands
+and receipt format live in
+[`operations/workbench`](../operations/workbench/src/interventions.ts).
 After observing a prompt, the adapter injects a receipt endpoint bound to that
 exact session-state file. It does not rediscover state from the target
 repository path, so a session opened in this repository may safely use the
@@ -42,8 +43,8 @@ upgrade this assist-only record.
 4. Inspect the resulting state:
 
    ```sh
-   INTERVENTION_RECONCILIATION_STATE_DIR="$HOME/.codex/intervention-reconciliation" \
-     python3 scripts/intervention-reconciliation.py status --cwd "$PWD"
+   ./operations/workbench/src/cli.ts intervention status \
+     --state-root "$HOME/.codex/intervention-reconciliation" --cwd "$PWD"
    ```
 
    The state root used by the Codex adapter is

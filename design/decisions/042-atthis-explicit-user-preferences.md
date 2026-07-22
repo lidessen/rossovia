@@ -2,6 +2,9 @@
 
 **Status:** accepted first slice
 **Date:** 2026-07-19
+**Superseded in part by:** [Decision 046](046-user-project-preference-boundary.md),
+which removes the machine preference source and treats machine conditions as
+environment configuration or observation.
 **Human mandate:** let a person state, retain, inspect, and retire preferences
 through the ordinary Atthis workbench without turning Agent inference into
 policy.

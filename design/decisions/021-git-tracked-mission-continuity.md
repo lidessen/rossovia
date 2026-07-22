@@ -32,8 +32,9 @@ of `integrate`, `no-change`, or `abandon` and a concrete `mainlineDelta`; a
 branch may not disappear because it produced an attractive report or partial
 artifact.
 
-`scripts/mission-record.py` creates, updates, validates, and renders the
-record. It can require that the active record is Git-tracked and, at a critical
+The `mission` command family in
+[`operations/workbench`](../../operations/workbench/src/missions.ts) creates,
+updates, validates, and renders the record. It can require that the active record is Git-tracked and, at a critical
 safe point, that its state is committed at `HEAD`. The record must be committed
 with its opening and material updates on the mission branch. A mission settles
 only after every branch closes and closure sources are named. Once this settled
@@ -60,7 +61,7 @@ an active task. A new top-level commitment beyond the mandate returns to the
 Principal. Tool events and phrases may remind an Agent to check; neither may
 decide the semantic result.
 
-`mission-record.py list` validates all project-local Mission JSON sources and
+`rossovia mission list` validates all project-local Mission JSON sources and
 projects only active Missions with their current focus and open return
 obligations. It does not infer tasks from Git, PRs, Issues, logs, or prose.
 Those sources may expose a mismatch for human or Agent reconciliation, but they

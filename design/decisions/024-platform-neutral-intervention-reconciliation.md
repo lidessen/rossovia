@@ -26,10 +26,10 @@ contract bound to a current tool only after consulting that tool's official
 documentation.
 
 The first binding is project-local and intentionally limited to
-`prompt_observation` and `context_injection`. Its portable state CLI lives at
-[`scripts/intervention-reconciliation.py`](../../scripts/intervention-reconciliation.py);
-the Codex projection at [`.codex/hooks.json`](../../.codex/hooks.json) and its
-thin adapter retain the current platform-specific lifecycle shape. The binding
+`prompt_observation` and `context_injection`. Its portable state commands live in
+[`operations/workbench`](../../operations/workbench/src/interventions.ts); the
+Codex projection at [`.codex/hooks.json`](../../.codex/hooks.json) and its thin
+Bun adapter retain the current platform-specific lifecycle shape. The binding
 stores a prompt SHA-256 and byte count, not prompt text, under session-local
 state outside the repository. Its direct tests cover state, receipt shape, and
 adapter context injection; they do not claim that Codex has yet trusted or run
@@ -64,7 +64,7 @@ capability lowers the guarantee; it never authorizes an invented substitute.
 ### Reconciliation state
 
 ```text
-active anchor → intervention candidate → correction receipt → settled | unresolved
+active task context → observed intervention → correction receipt | unresolved
 ```
 
 An accepted receipt contains only:
@@ -79,7 +79,11 @@ An accepted receipt contains only:
 ```
 
 This is a trace of a changed task constraint, not a new decision source. The
-Principal message remains authority; later summaries are projections.
+Principal message remains authority; later summaries are projections. The
+assist-only binding does not duplicate the active task as a second persisted
+anchor or materialize candidate/settled workflow states. The active Agent owns
+the semantic comparison; the runtime stores only privacy-preserving observation
+evidence and explicit receipts.
 
 ### Role boundary
 

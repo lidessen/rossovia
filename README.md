@@ -48,20 +48,20 @@ Initialize the Rossovia workbench. My workspace root is ~/workspaces.
 Add ~/client-work as another workspace root.
 Register ~/workspaces/meowask and keep meowask and survey as spoken aliases.
 Remember across projects that stable bounded tasks should prefer Work Cell.
-On this machine, prefer native sub-agents when they provide a required subscription.
+For survey, prefer native sub-agents when they provide a required subscription.
 Show the preferences that apply to survey.
 Continue survey.
 Show work in progress across my registered projects.
 ```
 
-The repository instructions translate those intents into the bounded
-`scripts/rosso.py` operations. When registration needs a stable identity that
+The repository instructions translate those intents into the bounded Bun
+workbench operations. When registration needs a stable identity that
 cannot be verified from the repository provider, the agent asks for that one
 missing value. It does not scan an unspecified home directory, auto-register
 discovered repositories, or make the user remember command flags.
 
 If a previous checkout initialized `~/.atthis`, ask the agent to migrate the
-workbench, or run `python3 scripts/rosso.py migrate`, before ordinary Rossovia
+workbench, or run `./operations/workbench/src/cli.ts migrate`, before ordinary Rossovia
 initialization. The migration preserves the old source and records a receipt;
 it does not keep two writable homes.
 
@@ -69,18 +69,18 @@ For automation, debugging, or an environment without an agent, the equivalent
 manual entry remains available:
 
 ```sh
-python3 scripts/rosso.py init --workspace-root ~/workspaces
-python3 scripts/rosso.py root add ~/client-work
-python3 scripts/rosso.py project list
-python3 scripts/rosso.py resolve survey
-python3 scripts/rosso.py preference list --project survey
+./operations/workbench/src/cli.ts init --workspace-root ~/workspaces
+./operations/workbench/src/cli.ts root add ~/client-work
+./operations/workbench/src/cli.ts project list
+./operations/workbench/src/cli.ts resolve survey
+./operations/workbench/src/cli.ts preference list --project survey
 ```
 
 The workbench keeps stable project identity separate from repository names,
 spoken aliases, and machine-local paths. It does not turn this repository into
 a global task board or grant authority to execute in another project. Explicit
 personal defaults remain separate from project requirements and machine-local
-overrides; inferred memory never becomes active preference without human
+environment configuration; inferred memory never becomes active preference without human
 confirmation.
 
 ## Repository map
@@ -91,7 +91,7 @@ confirmation.
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
-| [`scripts/rosso.py`](scripts/rosso.py) | relocatable project identity, verified machine-local workspace resolution, and explicit scoped personal defaults | task scheduling, inferred preference, target-project facts, or execution authority |
+| [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, and explicit user/project defaults | task scheduling, inferred preference, machine capability, target-project facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |

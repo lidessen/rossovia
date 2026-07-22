@@ -40,33 +40,33 @@ skill 则是在具体语境中对所选条目的表达。
 把 ~/client-work 加为另一个工作区根目录。
 登记 ~/workspaces/meowask，并保留 meowask 和 survey 两个口头别名。
 记住：跨项目遇到稳定、有边界的任务时，优先考虑 Work Cell。
-仅在本机，原生 sub-agent 提供必要订阅能力时优先使用它。
+仅对 survey，原生 sub-agent 提供必要订阅能力时优先使用它。
 显示适用于 survey 的偏好。
 继续 survey。
 显示所有已登记项目中正在进行的工作。
 ```
 
-仓库指引会把这些意图转换为有边界的 `scripts/rosso.py` 操作。登记时如果无法
+仓库指引会把这些意图转换为有边界的 Bun 工作台操作。登记时如果无法
 从仓库提供方验证稳定身份，Agent 只追问这个缺失值。它不会扫描未明确给出的
 主目录，不会自动登记扫描到的仓库，也不要求使用者记住命令参数。
 
 如果旧版本已初始化 `~/.atthis`，可以直接让 Agent“迁移 Rossovia 工作台”，或在
-普通初始化前运行 `python3 scripts/rosso.py migrate`。迁移会保留旧来源并写入
+普通初始化前运行 `./operations/workbench/src/cli.ts migrate`。迁移会保留旧来源并写入
 回执，不会维持两个可写 home。
 
 在自动化、调试或没有 Agent 的环境中，仍可使用等价的手动入口：
 
 ```sh
-python3 scripts/rosso.py init --workspace-root ~/workspaces
-python3 scripts/rosso.py root add ~/client-work
-python3 scripts/rosso.py project list
-python3 scripts/rosso.py resolve survey
-python3 scripts/rosso.py preference list --project survey
+./operations/workbench/src/cli.ts init --workspace-root ~/workspaces
+./operations/workbench/src/cli.ts root add ~/client-work
+./operations/workbench/src/cli.ts project list
+./operations/workbench/src/cli.ts resolve survey
+./operations/workbench/src/cli.ts preference list --project survey
 ```
 
 工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它不会把本仓库变成
 全局任务板，也不会仅凭定位结果取得另一个项目的执行权。显式个人偏好与项目
-共同约束、本机覆盖分别保存；未经人确认，推断出的 memory 不会成为生效偏好。
+共同约束分别保存；未经人确认，推断出的 memory 不会成为生效偏好。
 
 ## 仓库地图
 
@@ -76,7 +76,7 @@ python3 scripts/rosso.py preference list --project survey
 | [`skills/`](skills/) | 当前可安装的方法论与行为表达 | 它们所表达的语义来源 |
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
 | [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
-| [`scripts/rosso.py`](scripts/rosso.py) | 可迁移的项目身份、经验证的本机工作区定位与显式分域个人默认 | 任务调度、推断偏好、目标项目事实或执行权 |
+| [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位与显式的用户/项目偏好 | 任务调度、推断偏好、目标项目事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |

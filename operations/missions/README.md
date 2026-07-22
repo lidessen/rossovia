@@ -29,8 +29,8 @@ The Agent applies the continuity gate in `AGENTS.md` and invokes the commands
 below. Direct commands remain useful for automation and debugging.
 
 ```bash
-python3 scripts/mission-record.py list
-python3 scripts/mission-record.py init <id> \
+./operations/workbench/src/cli.ts mission list
+./operations/workbench/src/cli.ts mission init <id> \
   --title "…" \
   --mainline "…" \
   --accept "…" \
@@ -39,17 +39,17 @@ python3 scripts/mission-record.py init <id> \
 git add operations/missions/<id>.json
 git commit -m "ops: open <id> mission"
 
-python3 scripts/mission-record.py add-branch <id> <branch-id> \
+./operations/workbench/src/cli.ts mission add-branch <id> <branch-id> \
   --kind investigation \
   --purpose "…" \
   --return-condition "…" \
   --source "…"
 
-python3 scripts/mission-record.py status <id>
-python3 scripts/mission-record.py settle <id> <branch-id> \
+./operations/workbench/src/cli.ts mission status <id>
+./operations/workbench/src/cli.ts mission settle <id> <branch-id> \
   --disposition no-change \
   --mainline-delta "…"
-python3 scripts/mission-record.py check <id> --git
+./operations/workbench/src/cli.ts mission check <id> --git
 ```
 
 Every branch begins with a source, purpose, parent, and return condition. It

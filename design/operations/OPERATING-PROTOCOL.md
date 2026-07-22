@@ -91,8 +91,8 @@ After a material branch settles, before switching to another branch, and before
 presenting a phase-complete or merge decision, inspect the active record:
 
 ```text
-python3 scripts/mission-record.py status <mission-id>
-python3 scripts/mission-record.py check <mission-id> --git
+./operations/workbench/src/cli.ts mission status <mission-id>
+./operations/workbench/src/cli.ts mission check <mission-id> --git
 ```
 
 A branch returns only through `integrate`, `no-change`, or `abandon`, each with

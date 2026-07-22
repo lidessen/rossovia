@@ -30,12 +30,6 @@ jobs:
         run: python3 scripts/validate-observation-chronicle.py
       - name: Test Observation Chronicle validator
         run: python3 scripts/test-observation-chronicle.py
-      - name: Test mission continuity
-        run: python3 scripts/test-mission-record.py
-      - name: Test intervention reconciliation binding
-        run: python3 scripts/test-intervention-reconciliation.py
-      - name: Test Rossovia workbench resolution
-        run: python3 scripts/test-rosso.py
       - name: Test skill installation safety
         run: python3 scripts/test-probe-skill-installation.py
       - name: Install Cognition dependencies
@@ -46,6 +40,9 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Install Autonomy dependencies
         working-directory: operations/autonomy
+        run: bun install --frozen-lockfile
+      - name: Install Workbench dependencies
+        working-directory: operations/workbench
         run: bun install --frozen-lockfile
       - name: Typecheck Work Cell
         working-directory: packages/work-cell
@@ -58,6 +55,12 @@ jobs:
         run: bun run typecheck
       - name: Test Autonomy
         working-directory: operations/autonomy
+        run: bun test
+      - name: Typecheck Workbench
+        working-directory: operations/workbench
+        run: bun run typecheck
+      - name: Test Workbench
+        working-directory: operations/workbench
         run: bun test
       - name: Typecheck Cognition
         working-directory: packages/cognition
