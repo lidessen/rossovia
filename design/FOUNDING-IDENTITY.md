@@ -6,6 +6,7 @@
 **Authority:** [founding mandate](FOUNDING-MANDATE.md)
 **Prior inquiry evidence:** [project naming expression study](aesthetics/studies/2026-07-13-project-naming-expression.md)
 **Namespace migration:** [decision 044](decisions/044-rosso-identity-and-namespace-migration.md)
+**Repository and hosting carriers:** [decision 045](decisions/045-rosso-repository-and-hosting-carriers.md)
 
 ## Current name
 
@@ -19,7 +20,7 @@ project may become.
 Rosso develops open, economical, verifiable AI production capability as a
 common good. It includes the Principle Sequence, independently usable methods,
 Work Cell and orchestration infrastructure, project operations, and future
-working surfaces. It is not identical to this `skills` repository, a personal
+working surfaces. It is not identical to this `rosso` repository, a personal
 task manager, one agent, one model provider, or one local directory.
 
 The name is a compact handle for acting from the concrete situation at hand. It
@@ -33,14 +34,14 @@ second doctrine.
 |---|---|---|
 | Project display name | `Rosso` | current human-adopted identity |
 | Machine namespace | `rosso` | lowercase technical projection |
-| Methods repository | `skills` | repository handle, not the whole-project name |
+| Methods repository | [`lidessen/rosso`](https://github.com/lidessen/rosso) | repository handle, not the whole-project name |
 | Public methods site | `rosso.run` | public projection of this repository |
 | User-level home | `~/.rosso` by default | relocatable local carrier, not project identity |
 
 Repository, package, command, domain, and user-directory remain distinct
-carriers even though decision 044 coordinates their present migration. The
-GitHub repository handle remains `skills`; changing it is not required to make
-Rosso the project identity.
+carriers even though decisions 044 and 045 coordinate their present migration.
+The repository handle now matches the project name, but it remains a replaceable
+carrier rather than the source of Rosso's identity.
 
 ## Rename and relocation contract
 

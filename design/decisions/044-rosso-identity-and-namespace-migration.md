@@ -7,6 +7,8 @@
 [Founding Identity](../FOUNDING-IDENTITY.md); preserves the functional boundaries
 of [Decision 038](038-atthis-workbench-entry.md) and
 [Decision 042](042-atthis-explicit-user-preferences.md)
+**Superseded in part by:** [Decision 045](045-rosso-repository-and-hosting-carriers.md),
+which later authorizes the repository and Vercel project carrier renames.
 
 ## Decision
 

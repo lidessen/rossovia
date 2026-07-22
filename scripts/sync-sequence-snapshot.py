@@ -28,7 +28,7 @@ SKILLS_DIR = REPO_ROOT / "skills"
 PRINCIPLES_DIR = REPO_ROOT / "principles"
 SEQUENCE_PATH = PRINCIPLES_DIR / "SEQUENCE.md"
 INTERPRETATIONS_DIR = PRINCIPLES_DIR / "interpretations"
-CANONICAL_UPSTREAM = "https://github.com/lidessen/skills.git"
+CANONICAL_UPSTREAM = "https://github.com/lidessen/rosso.git"
 REFRESH_REF = "main"
 FULL_INTERPRETATION_SKILLS = frozenset({"skill-engineering"})
 

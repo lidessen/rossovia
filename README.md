@@ -5,7 +5,7 @@
 > The current methods repository for **Rosso**, a project that makes
 > productive AI a common, open, replaceable capability.
 
-Rosso is the [current, revisable project name](design/FOUNDING-IDENTITY.md); this `skills` repository remains
+Rosso is the [current, revisable project name](design/FOUNDING-IDENTITY.md); this `rosso` repository remains
 one of its working surfaces. It contains [agent skills](https://agentskills.io) and an
 experimental Work Cell for AI-assisted development. It is one working surface,
 not the whole project, a model provider, or an opaque AI platform. Its semantic
@@ -196,13 +196,13 @@ Pre-regeneration methodology skills (`design-driven`, `goal-driven`, `evidence-d
 List the skills in this repository before choosing one:
 
 ```bash
-npx skills add lidessen/skills --list
+npx skills add lidessen/rosso --list
 ```
 
 Install one skill into the current project (the default scope):
 
 ```bash
-npx skills add lidessen/skills --skill improve-agent-workflow
+npx skills add lidessen/rosso --skill improve-agent-workflow
 ```
 
 Add `-g` for a personal installation available across projects, or `-a codex`
