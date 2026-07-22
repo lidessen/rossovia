@@ -154,6 +154,230 @@ test("retries an invalid terminal payload during recovery before settlement", as
   expect(calls).toBe(3);
 });
 
+test("does not expose read tools when the Cell has no read scope", async () => {
+  const root = await fixture();
+  let toolNames: string[] = [];
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      toolNames = options.tools?.map((candidate) => candidate.name) ?? [];
+      return response([{
+        type: "tool-call",
+        toolCallId: "terminal-without-read",
+        toolName: "finish_without_read",
+        input: JSON.stringify({ verdict: "ready" }),
+      }], "tool-calls");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-no-read-surface",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "no-read-tool-surface",
+    intent: "Finish from supplied context without repository access.",
+    workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Use only the declared terminal tool."],
+    acceptance: ["Unavailable read tools are absent from the model-facing surface."],
+    terminalTools: [{
+      name: "finish_without_read",
+      description: "Finish the context-only judgment.",
+      inputSchema: {
+        type: "object",
+        properties: { verdict: { type: "string", enum: ["ready"] } },
+        required: ["verdict"],
+        additionalProperties: false,
+      },
+    }],
+    budget: { maxSteps: 2, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(toolNames).toEqual(["task_list", "task_get", "task_create", "task_update", "finish_without_read"]);
+});
+
+test("projects read-update Task authority without exposing creation or structural mutation", async () => {
+  const root = await fixture();
+  let calls = 0;
+  let firstTools: unknown;
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      firstTools ??= options.tools;
+      if (calls === 1) {
+        return response([{
+          type: "tool-call",
+          toolCallId: "complete-assigned-task",
+          toolName: "task_update",
+          input: JSON.stringify({ taskId: "task-1", status: "completed" }),
+        }], "tool-calls");
+      }
+      return response([{
+        type: "tool-call",
+        toolCallId: "finish-assigned-work",
+        toolName: "finish_assigned_work",
+        input: JSON.stringify({ status: "done" }),
+      }], "tool-calls");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-read-update-task-tools",
+    taskToolSet: "read-update",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "assigned-worker",
+    intent: "Complete the assigned task without changing its structure.",
+    workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Use only the assigned task."],
+    acceptance: ["The assigned task is settled."],
+    tasks: [{ subject: "Assigned work", description: "Complete the bounded assigned work." }],
+    terminalTools: [{
+      name: "finish_assigned_work",
+      description: "Finish the assigned bounded work.",
+      inputSchema: {
+        type: "object",
+        properties: { status: { type: "string", enum: ["done"] } },
+        required: ["status"],
+        additionalProperties: false,
+      },
+    }],
+    budget: { maxSteps: 3, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  const encoded = JSON.stringify(firstTools);
+  expect(encoded).toContain("task_list");
+  expect(encoded).toContain("task_get");
+  expect(encoded).toContain("task_update");
+  expect(encoded).not.toContain("task_create");
+  const update = (firstTools as Array<{ name: string; inputSchema: unknown }>).find((candidate) => candidate.name === "task_update");
+  expect(JSON.stringify(update?.inputSchema)).not.toContain("subject");
+  expect(JSON.stringify(update?.inputSchema)).not.toContain("owner");
+  expect(record.status).toBe("passed");
+  expect(record.tasks?.[0]?.status).toBe("completed");
+  expect(record.trace).toContainEqual(expect.objectContaining({
+    type: "task.tools.projected",
+    data: { taskToolSet: "read-update", tools: ["task_list", "task_get", "task_update"] },
+  }));
+});
+
+test("injects a task seed and records its settled cycle as process proof", async () => {
+  const root = await fixture();
+  let calls = 0;
+  let firstRequest: unknown;
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      if (calls === 1) {
+        firstRequest = options;
+        return response([{
+          type: "tool-call",
+          toolCallId: "complete-first-task",
+          toolName: "task_update",
+          input: JSON.stringify({ taskId: "task-1", status: "completed" }),
+        }], "tool-calls");
+      }
+      if (calls === 2) return response([{ type: "text", text: "Bounded work completed." }], "stop");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-task-proof",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "task-proof",
+    intent: "Exercise the economical task completion surface.",
+    workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Do only the declared bounded work."],
+    capabilities: [],
+    capabilitiesRequired: [],
+    acceptance: ["The task state is retained as non-authoritative process evidence."],
+    tasks: [{ subject: "Return the bounded result", description: "Return only the bounded result." }],
+    budget: { maxSteps: 3, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.tasks).toEqual([expect.objectContaining({ id: "task-1", subject: "Return the bounded result", status: "completed" })]);
+  expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
+  expect(JSON.stringify(firstRequest)).toContain("Return the bounded result");
+  expect(record.trace).toContainEqual(expect.objectContaining({ type: "task.updated" }));
+});
+
+test("lets an unseeded Cell create and settle a task cycle when complexity emerges", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response([{
+          type: "tool-call",
+          toolCallId: "create-inspection-task",
+          toolName: "task_create",
+          input: JSON.stringify({
+            subject: "Inspect the supplied context",
+            description: "Inspect only the supplied context.",
+            blockedBy: [],
+          }),
+        }, {
+          type: "tool-call",
+          toolCallId: "create-result-task",
+          toolName: "task_create",
+          input: JSON.stringify({
+            subject: "Return the bounded result",
+            description: "Return the bounded result after inspection.",
+            blockedBy: ["task-1"],
+          }),
+        }], "tool-calls");
+      }
+      if (calls === 2) {
+        return response([{
+          type: "tool-call",
+          toolCallId: "complete-inspection-task",
+          toolName: "task_update",
+          input: JSON.stringify({ taskId: "task-1", status: "completed" }),
+        }, {
+          type: "tool-call",
+          toolCallId: "complete-result-task",
+          toolName: "task_update",
+          input: JSON.stringify({ taskId: "task-2", status: "completed" }),
+        }], "tool-calls");
+      }
+      return response([{ type: "text", text: "Bounded work completed." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-dynamic-task",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "dynamic-task",
+    intent: "Track discovered multi-step work without a caller seed.",
+    workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Use tasks only if they improve execution."],
+    acceptance: ["The dynamic task cycle settles before completion."],
+    budget: { maxSteps: 4, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.tasks).toHaveLength(2);
+  expect(record.verification.tasks).toMatchObject({ passed: true, completed: 2 });
+  expect(record.trace.filter((event) => event.type === "task.created")).toHaveLength(2);
+  expect(record.trace.filter((event) => event.type === "task.updated")).toHaveLength(2);
+});
+
 test("forces the sole terminal tool before the step limit and blocks late ordinary actions", async () => {
   const root = await fixture();
   let calls = 0;

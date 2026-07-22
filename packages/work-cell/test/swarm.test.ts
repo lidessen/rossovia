@@ -13,6 +13,8 @@ import {
   persistSwarmRecord,
   projectSwarm,
   runSwarm,
+  startSwarm,
+  startSwarmFromFile,
   type SwarmInput,
 } from "../src/swarm";
 
@@ -53,6 +55,64 @@ test("input requires declared concurrency while run memory contains only executi
   expect(run).not.toHaveProperty("version");
   expect(run).not.toHaveProperty("summary");
   expect(projectSwarm(run)).toMatchObject({ authority: "none", counts: { passed: 1 } });
+});
+
+test("startSwarm returns an asynchronous handle while admitted Cells remain active", async () => {
+  const root = await fixture();
+  const barrier = new ManualBarrier(2);
+  const handle = await startSwarm(swarm(root, ["first", "second"]), () => new BarrierSwarmDriver(barrier));
+
+  await barrier.waitUntilBlocked();
+  let settled = false;
+  void handle.settled.then(() => { settled = true; });
+  await Promise.resolve();
+  expect(handle.swarmId).toBe("test-swarm");
+  expect(settled).toBe(false);
+
+  handle.cancel("supervisor cancellation");
+  const record = await handle.settled;
+  barrier.release();
+  expect(record.outcomes.map((outcome) => [
+    outcome.cellId,
+    outcome.kind === "settled" ? outcome.record.status : outcome.kind,
+  ])).toEqual([
+    ["first", "cancelled"],
+    ["second", "cancelled"],
+  ]);
+});
+
+test("file-backed Swarm returns stable status and result paths without retaining the manifest as tool input", async () => {
+  const root = await fixture();
+  const manifestPath = join(root, "swarm.json");
+  const outputRoot = join(root, ".operations");
+  await writeFile(manifestPath, `${JSON.stringify(swarm(root, ["original"]))}\n`, "utf8");
+  const barrier = new ManualBarrier(1);
+
+  const handle = await startSwarmFromFile(
+    { inputFile: "swarm.json" },
+    () => new BarrierSwarmDriver(barrier),
+    { inputRoot: root, outputRoot },
+  );
+  await barrier.waitUntilBlocked();
+  expect(JSON.parse(await readFile(handle.statusPath, "utf8"))).toMatchObject({
+    operationId: handle.operationId,
+    swarmId: "test-swarm",
+    state: "running",
+    resultPath: handle.resultPath,
+  });
+  await expect(readFile(handle.resultPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+
+  // Admission froze the parsed manifest; changing its carrier cannot change
+  // the already running operation.
+  await writeFile(manifestPath, `${JSON.stringify(swarm(root, ["replacement"]))}\n`, "utf8");
+  barrier.release();
+  const settlement = await handle.settled;
+  expect(settlement.run.outcomes.map((outcome) => outcome.cellId)).toEqual(["original"]);
+  expect(settlement.persisted.indexPath).toBe(handle.resultPath);
+  expect(JSON.parse(await readFile(handle.statusPath, "utf8"))).toMatchObject({ state: "settled" });
+  expect(JSON.parse(await readFile(handle.resultPath, "utf8"))).toMatchObject({
+    entries: [{ cellId: "original", recordPath: "cells/0001-original.json" }],
+  });
 });
 
 test("one Cell runner error cannot erase passing siblings or reorder their records", async () => {
@@ -194,7 +254,7 @@ class SwarmDriver implements CellDriver {
 }
 
 class BarrierSwarmDriver extends SwarmDriver {
-  constructor(private readonly barrier: SelectionBarrier) {
+  constructor(private readonly barrier: { enter(): Promise<void> }) {
     super();
   }
 
@@ -202,6 +262,28 @@ class BarrierSwarmDriver extends SwarmDriver {
     await this.barrier.enter();
     return super.run(input, context);
   }
+}
+
+class ManualBarrier {
+  private arrived = 0;
+  private readonly blocked: Promise<void>;
+  private resolveBlocked!: () => void;
+  private readonly released: Promise<void>;
+  private resolveReleased!: () => void;
+
+  constructor(private readonly expected: number) {
+    this.blocked = new Promise<void>((resolve) => { this.resolveBlocked = resolve; });
+    this.released = new Promise<void>((resolve) => { this.resolveReleased = resolve; });
+  }
+
+  async enter(): Promise<void> {
+    this.arrived += 1;
+    if (this.arrived === this.expected) this.resolveBlocked();
+    await this.released;
+  }
+
+  waitUntilBlocked(): Promise<void> { return this.blocked; }
+  release(): void { this.resolveReleased(); }
 }
 
 class SelectionBarrier {

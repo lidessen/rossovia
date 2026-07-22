@@ -15,6 +15,8 @@ import {
 import { compileOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
+import { TaskStore } from "./task-store";
+import { createTaskTools } from "./task-tools";
 import {
   createValidationModel,
   validationModelName,
@@ -22,13 +24,20 @@ import {
   type ValidationModelOptions,
 } from "./validation-model";
 
-export type AiSdkDriverOptions = ValidationModelOptions;
+export type AiSdkDriverOptions = ValidationModelOptions & {
+  /** Host-selected Task authority; it changes the actual tool surface, not only the prompt. */
+  taskToolSet?: "manage" | "read-update";
+};
 
 const EXECUTION_TOOL_NAMES = new Set([
   "list_files",
   "read_file",
   "write_file",
   "run_command",
+  "task_create",
+  "task_update",
+  "task_list",
+  "task_get",
 ]);
 
 const MAX_AGENT_OUTPUT_TOKENS = 16_000;
@@ -37,11 +46,13 @@ export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
   protected readonly model;
   private readonly structuredOutputMode: "inline" | "tool-settlement";
+  private readonly taskToolSet: NonNullable<AiSdkDriverOptions["taskToolSet"]>;
 
   constructor(options: AiSdkDriverOptions = {}) {
     const selection = createValidationModel(options);
     this.model = selection.model;
     this.structuredOutputMode = selection.structuredOutputMode;
+    this.taskToolSet = options.taskToolSet ?? "manage";
     this.descriptor = {
       adapter: "ai-sdk-v7",
       provider: validationProviderName(selection),
@@ -55,6 +66,13 @@ export class AiSdkValidationDriver implements CellDriver {
     context: DriverContext,
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
+    const tasks = TaskStore.fromSeeds(input.tasks, input.id);
+    context.emit("task.tools.projected", {
+      taskToolSet: this.taskToolSet,
+      tools: this.taskToolSet === "manage"
+        ? ["task_list", "task_get", "task_create", "task_update"]
+        : ["task_list", "task_get", "task_update"],
+    });
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
     const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
@@ -76,6 +94,7 @@ export class AiSdkValidationDriver implements CellDriver {
         return true;
       },
       () => terminalOnly,
+      tasks,
     );
     const terminalNames = input.terminalTools?.map((terminal) => terminal.name) ?? [];
     const terminalSatisfied = () => terminalNames.some((name) => terminalToolsCalled.has(name));
@@ -299,6 +318,7 @@ export class AiSdkValidationDriver implements CellDriver {
     const usage = settlement ? addUsage(executionUsage, settlement.usage) : executionUsage;
     return {
       terminalToolsCalled: [...terminalToolsCalled],
+      ...(tasks.snapshot().length > 0 ? { tasks: tasks.snapshot() } : {}),
       finalText: closureResult ? `${executionResult.text}\n\n${closureResult.text}` : executionResult.text,
       ...(output === undefined ? {} : { output }),
       usage,
@@ -316,6 +336,7 @@ export class AiSdkValidationDriver implements CellDriver {
     context: DriverContext,
     markTerminalTool: (name: string) => boolean,
     terminalOnly: () => boolean,
+    tasks: TaskStore,
   ) {
     const conflictingTerminalNames = (input.terminalTools ?? [])
       .map((terminal) => terminal.name)
@@ -327,33 +348,37 @@ export class AiSdkValidationDriver implements CellDriver {
     }
 
     const tools = {
-      list_files: tool({
-        description: "List files inside the declared workspace read scope.",
-        inputSchema: z.object({
-          path: z.string().default("."),
-          maxEntries: z.number().int().positive().max(2_000).default(500),
-        }),
-        execute: async ({ path, maxEntries }) => {
-          if (terminalOnly()) return terminalActionRequired();
-          const files = await context.workspace.listFiles(path, maxEntries);
-          context.emit("tool.list_files", { path, count: files.length });
-          return { files };
-        },
-      }),
-      read_file: tool({
-        description: "Read a UTF-8 file inside the declared workspace read scope.",
-        inputSchema: z.object({
-          path: z.string().min(1),
-          startLine: z.number().int().positive().default(1),
-          endLine: z.number().int().positive().optional(),
-        }),
-        execute: async ({ path, startLine, endLine }) => {
-          if (terminalOnly()) return terminalActionRequired();
-          const content = await context.workspace.readText(path, startLine, endLine);
-          context.emit("tool.read_file", { path, startLine, endLine, characters: content.length });
-          return { path, content };
-        },
-      }),
+      ...(context.workspace.canRead
+        ? {
+            list_files: tool({
+              description: "List files inside the declared workspace read scope.",
+              inputSchema: z.object({
+                path: z.string().default("."),
+                maxEntries: z.number().int().positive().max(2_000).default(500),
+              }),
+              execute: async ({ path, maxEntries }) => {
+                if (terminalOnly()) return terminalActionRequired();
+                const files = await context.workspace.listFiles(path, maxEntries);
+                context.emit("tool.list_files", { path, count: files.length });
+                return { files };
+              },
+            }),
+            read_file: tool({
+              description: "Read a UTF-8 file inside the declared workspace read scope.",
+              inputSchema: z.object({
+                path: z.string().min(1),
+                startLine: z.number().int().positive().default(1),
+                endLine: z.number().int().positive().optional(),
+              }),
+              execute: async ({ path, startLine, endLine }) => {
+                if (terminalOnly()) return terminalActionRequired();
+                const content = await context.workspace.readText(path, startLine, endLine);
+                context.emit("tool.read_file", { path, startLine, endLine, characters: content.length });
+                return { path, content };
+              },
+            }),
+          }
+        : {}),
       ...(context.workspace.canWrite
         ? {
             write_file: tool({
@@ -386,6 +411,13 @@ export class AiSdkValidationDriver implements CellDriver {
             }),
           }
         : {}),
+      ...createTaskTools(tasks, {
+        projection: this.taskToolSet === "manage"
+          ? { read: "all", create: true, update: "all", principal: input.id }
+          : { read: "all", create: false, update: "status", updateScope: "owned", principal: input.id },
+        actionBlocked: () => terminalOnly() ? terminalActionRequired() : undefined,
+        emit: (event) => context.emit(event.type, event.data),
+      }),
     };
     return {
       ...tools,
@@ -482,6 +514,9 @@ function renderExecutionInstructions(
   const artifactInstruction = input.artifacts?.length
     ? `Create each declared artifact in the workspace write scope. Their paths and instructions are binding:\n${input.artifacts.map((artifact) => `- ${artifact.path}: ${artifact.instructions}`).join("\n")}`
     : undefined;
+  const taskInstruction = input.tasks?.length
+    ? `The host seeded these tasks. Use task_list/task_get for detail and task_update as work advances; leave no task pending or in_progress at completion. Task completion is process evidence, not correctness:\n${input.tasks.map((task) => `- ${task.subject}: ${task.description}`).join("\n")}`
+    : "Use task_create only when several steps or outcomes create real omission risk; skip task tracking for simple work. Use task_list/task_get/task_update to keep created tasks accurate, and complete every created task before finishing. Task completion is process evidence, not correctness.";
   return [
     "You are one ephemeral Work Cell. Work only inside the granted tools and workspace.",
     "You own investigation order and local tool choice. You do not own durable acceptance.",
@@ -490,6 +525,7 @@ function renderExecutionInstructions(
     outputInstruction,
     deferredOutputInstruction,
     artifactInstruction,
+    taskInstruction,
     ...input.instructions,
     ...input.context.map((section) => `## ${section.title}\n${section.content}`),
   ].filter((section): section is string => Boolean(section)).join("\n\n");

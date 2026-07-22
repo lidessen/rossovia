@@ -182,7 +182,7 @@ async function projectFixture(): Promise<string> {
 
 function recordFixture(root: string, status: CellRunRecord["status"] = "passed"): CellRunRecord {
   return {
-    version: "work-cell.run.v3",
+    version: "work-cell.run.v4",
     runId: "run-1",
     cellId: "probe-interaction",
     driver: { adapter: "test", provider: "test", model: "test" },

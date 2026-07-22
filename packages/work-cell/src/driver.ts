@@ -2,6 +2,7 @@ import type {
   CellInput,
   CellUsage,
   DriverDescriptor,
+  Task,
   TraceEvent,
 } from "./contracts";
 import type { Workspace } from "./workspace";
@@ -17,6 +18,8 @@ export interface DriverContext {
 export interface DriverResult {
   /** Actual terminal tools invoked by the adapter, retained separately from output. */
   terminalToolsCalled: string[];
+  /** Final host-owned coordination state; task completion is never semantic acceptance. */
+  tasks?: Task[];
   finalText: string;
   output?: unknown;
   usage: CellUsage;

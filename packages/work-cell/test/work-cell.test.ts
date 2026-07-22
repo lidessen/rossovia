@@ -117,6 +117,51 @@ describe("Work Cell core", () => {
     expect(record.verification.artifacts).toMatchObject({ passed: false });
   });
 
+  test("records a settled task cycle as process proof without claiming correctness", async () => {
+    const root = await fixture();
+    const base = input(root);
+    base.tasks = [
+      { subject: "Inspect the bounded source", description: "Read the bounded source." },
+      { subject: "Return the requested result", description: "Report the bounded result." },
+    ];
+
+    const record = await runCell(base, new ContractDriver(false));
+
+    expect(record.status).toBe("passed");
+    expect(record.tasks).toEqual([
+      { id: "task-1", subject: "Inspect the bounded source", description: "Read the bounded source.", status: "completed", owner: base.id, blockedBy: [] },
+      { id: "task-2", subject: "Return the requested result", description: "Report the bounded result.", status: "completed", owner: base.id, blockedBy: [] },
+    ]);
+    expect(record.verification.tasks).toEqual({
+      passed: true,
+      pending: 0,
+      inProgress: 0,
+      completed: 2,
+      blocked: 0,
+      errors: [],
+    });
+  });
+
+  test("fails mechanical work proof when an enabled task cycle is unsettled", async () => {
+    const root = await fixture();
+    const base = input(root);
+    base.tasks = [{ subject: "Inspect the bounded source", description: "Read the bounded source." }];
+
+    const record = await runCell(base, new ContractDriver(false, true, false));
+
+    expect(record.status).toBe("verification_failed");
+    expect(record.tasks).toEqual([{
+      id: "task-1",
+      subject: "Inspect the bounded source",
+      description: "Read the bounded source.",
+      status: "pending",
+      owner: base.id,
+      blockedBy: [],
+    }]);
+    expect(record.verification.tasks).toMatchObject({ passed: false, pending: 1, inProgress: 0 });
+    expect(record.error).toContain("task cycle is unsettled");
+  });
+
   test("records output and artifact verification even when its terminal condition is unmet", async () => {
     const root = await fixture();
     const base = input(root);
@@ -404,12 +449,24 @@ class ContractDriver implements CellDriver {
   constructor(
     private readonly writeArtifact: boolean,
     private readonly signalTerminal = true,
+    private readonly completeTasks = true,
   ) {}
 
   async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
     if (this.writeArtifact) await context.workspace.writeText("output/report.md", "# Report\n");
     return {
       terminalToolsCalled: this.signalTerminal ? input.terminalTools?.map((terminal) => terminal.name) ?? [] : [],
+      ...(input.tasks
+        ? {
+            tasks: input.tasks.map((task, index) => ({
+              id: `task-${index + 1}`,
+              ...task,
+              status: this.completeTasks ? "completed" as const : "pending" as const,
+              owner: input.id,
+              blockedBy: [],
+            })),
+          }
+        : {}),
       finalText: "completed through caller-defined terminal tool",
       output: input.outputSchema ? { status: "ready" } : undefined,
       usage: usage(1, 1),

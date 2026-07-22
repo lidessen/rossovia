@@ -24,7 +24,7 @@ cause acceptance, budget release, merge, or a change to accepted design.
 | Formation | mandate plus source evidence | Session convener | selected skills/roles and handoff fields from decision 012 | no universal preflight |
 | Plan when material | settled phase or choice with different commitments | strategic/work-estimation advisers | proposed Strategy Case or Work Estimate with envelope/continuation boundary | human approval before executable mission |
 | Execute | approved mission, acceptance, branch/worktree bounds | Execution owner | branch-local diff, Work Cell trace where used, and check results | unresolved work remains explicit |
-| Verify | proposed diff and acceptance | independent AI reviewer | mechanical result plus traceable AI review packet | failure returns to execution or principal |
+| Verify | proposed diff and acceptance | independent AI reviewer | mechanical work proof plus concise traceable correctness judgment | failure returns to execution or principal |
 | Integrate | accepted review and human decision | Integration steward + Principal | merged PR, rejected/closed PR, or return-to-work record | only principal decides merge |
 | Learn | a traceable failed check, drift, or phase result | correction formation | smallest routed next practice and reopening observation | no automatic protocol/skill amendment |
 
@@ -64,7 +64,7 @@ queue.
 4. Run the declared local checks before opening a PR. Push only the mission
    branch; never use an agent session to push `main`.
 5. Open a PR into `main`, preserve failed checks and review observations, obtain
-   independent AI review evidence, and present its compact packet to the
+   independent AI review evidence, and present its compact decision view to the
    Principal for confirmation. A green check is necessary evidence, not
    acceptance. The named reviewer must submit an explicit record for the
    current head; an empty or pending review surface is not completion. Use

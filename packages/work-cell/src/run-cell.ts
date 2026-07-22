@@ -9,12 +9,14 @@ import {
   type ArtifactRecord,
   type ArtifactVerification,
   type OutputVerification,
+  type TaskVerification,
   type CellPreparation,
 } from "./contracts";
 import type { CellDriver } from "./driver";
 import { CellExecutionError, traceEvent } from "./driver";
 import { Workspace } from "./workspace";
 import { compileOutputSchema } from "./output-schema";
+import { TaskStore } from "./task-store";
 
 export async function runCell(
   unparsedInput: unknown,
@@ -45,6 +47,7 @@ export async function runCell(
   let verification = { passed: false, terminal: { passed: false, required: [] as string[], called: [] as string[] } };
   let outputVerification: OutputVerification | undefined;
   let artifactVerification: ArtifactVerification | undefined;
+  let taskVerification: TaskVerification | undefined;
   let artifacts: ArtifactRecord[] = [];
   let after: Awaited<ReturnType<Workspace["snapshot"]>> | undefined;
 
@@ -76,6 +79,9 @@ export async function runCell(
         terminalTools.map((terminal) => terminal.name),
         driverResult.terminalToolsCalled,
       );
+      taskVerification = input.tasks !== undefined || driverResult.tasks !== undefined
+        ? verifyTaskCycle(driverResult.tasks)
+        : undefined;
       if (terminalResult.error) {
         trace.push(traceEvent("terminal.contract.violation", {
           error: terminalResult.error,
@@ -96,7 +102,8 @@ export async function runCell(
       verification = {
         passed: terminalResult.verification.passed
           && (outputVerification?.passed ?? true)
-          && artifactVerification.passed,
+          && artifactVerification.passed
+          && (taskVerification?.passed ?? true),
         terminal: terminalResult.verification,
       };
 
@@ -109,6 +116,9 @@ export async function runCell(
       } else if (!artifactVerification.passed) {
         status = "verification_failed";
         error = artifactVerification.errors.join("; ");
+      } else if (taskVerification && !taskVerification.passed) {
+        status = "verification_failed";
+        error = taskVerification.errors.join("; ");
       } else {
         status = "passed";
       }
@@ -155,10 +165,12 @@ export async function runCell(
     finalText: driverResult?.finalText ?? "",
     ...(driverResult?.output === undefined ? {} : { output: driverResult.output }),
     artifacts,
+    ...(driverResult?.tasks === undefined ? {} : { tasks: driverResult.tasks }),
     verification: {
       ...verification,
       ...(outputVerification ? { output: outputVerification } : {}),
       ...(artifactVerification ? { artifacts: artifactVerification } : {}),
+      ...(taskVerification ? { tasks: taskVerification } : {}),
     },
     workspaceDiff: workspace.diff(before, after),
     usage,
@@ -175,6 +187,42 @@ export async function runCell(
     ],
     ...(error ? { error } : {}),
   };
+}
+
+function verifyTaskCycle(tasks: CellRunRecord["tasks"]): TaskVerification {
+  if (tasks === undefined) {
+    return {
+      passed: false,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      blocked: 0,
+      errors: ["driver completed without the enabled task state"],
+    };
+  }
+  let store: TaskStore;
+  try {
+    store = new TaskStore(tasks);
+  } catch (error) {
+    return {
+      passed: false,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      blocked: 0,
+      errors: [`invalid task state: ${error instanceof Error ? error.message : String(error)}`],
+    };
+  }
+  const counts = {
+    pending: tasks.filter((task) => task.status === "pending").length,
+    inProgress: tasks.filter((task) => task.status === "in_progress").length,
+    completed: tasks.filter((task) => task.status === "completed").length,
+    blocked: tasks.filter((task) => task.status !== "completed" && store.isBlocked(task)).length,
+  };
+  const errors = counts.pending > 0 || counts.inProgress > 0
+    ? [`task cycle is unsettled: ${counts.pending} pending, ${counts.inProgress} in_progress, ${counts.blocked} blocked`]
+    : [];
+  return { passed: errors.length === 0, ...counts, errors };
 }
 
 function verifyTerminalContract(required: string[], called: string[]) {

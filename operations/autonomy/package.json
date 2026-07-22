@@ -1,0 +1,24 @@
+{
+  "name": "@atthis/autonomy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mission": "bun src/cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "probe:reconciliation": "bun experiments/reconciliation-capability-probe.ts",
+    "probe:delegate-file": "bun experiments/delegate-file-capability-probe.ts",
+    "probe:live-mission-input": "bun experiments/live-mission-input-probe.ts",
+    "probe:live-mission-queue-recovery": "bun experiments/live-mission-queue-recovery-probe.ts"
+  },
+  "dependencies": {
+    "ai": "7.0.28",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "4.0.3",
+    "@types/bun": "latest",
+    "typescript": "5.9.3"
+  }
+}

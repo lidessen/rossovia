@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
 import {
   CellInputSchema,
@@ -11,12 +11,14 @@ import {
   type CellUsage,
 } from "./contracts";
 import type { CellDriver } from "./driver";
+import { readJsonFileInput, type JsonFileInputRef } from "./file-input";
 import { assertMultiCellWorkspaceBoundary } from "./multi-cell-workspace";
 import { InMemoryCellQueue, runOrchestration } from "./orchestration";
 
 export const SWARM_INPUT_VERSION = "work-cell.swarm-input.v1" as const;
 export const SWARM_OUTCOME_VERSION = "work-cell.swarm-outcome.v1" as const;
 export const SWARM_INDEX_VERSION = "work-cell.swarm-index.v1" as const;
+export const SWARM_FILE_OPERATION_VERSION = "work-cell.swarm-file-operation.v1" as const;
 
 export const SwarmInputSchema = z.object({
   version: z.literal(SWARM_INPUT_VERSION),
@@ -74,6 +76,54 @@ export interface SwarmRun {
   durationMs: number;
   concurrency: number;
   outcomes: SwarmCellOutcome[];
+}
+
+/** In-process asynchronous carrier. `runSwarm` remains its blocking convenience projection. */
+export interface SwarmHandle {
+  readonly swarmId: string;
+  readonly settled: Promise<SwarmRun>;
+  cancel(reason?: unknown): void;
+}
+
+export const SwarmFileOperationStatusSchema = z.object({
+  version: z.literal(SWARM_FILE_OPERATION_VERSION),
+  operationId: z.string().min(1),
+  swarmId: z.string().min(1),
+  state: z.enum(["running", "settled", "failed"]),
+  input: z.object({
+    path: z.string().min(1),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    bytes: z.number().int().nonnegative(),
+  }).strict(),
+  statusPath: z.string().min(1),
+  resultPath: z.string().min(1),
+  error: z.string().min(1).optional(),
+}).strict();
+
+export type SwarmFileOperationStatus = z.infer<typeof SwarmFileOperationStatusSchema>;
+
+export interface FileBackedSwarmSettlement {
+  readonly run: SwarmRun;
+  readonly persisted: Awaited<ReturnType<typeof persistSwarmRecordAt>>;
+}
+
+/** File-backed transport around the ordinary in-memory Swarm contract. */
+export interface FileBackedSwarmHandle {
+  readonly operationId: string;
+  readonly swarmId: string;
+  readonly input: { readonly path: string; readonly sha256: string; readonly bytes: number };
+  readonly statusPath: string;
+  readonly resultPath: string;
+  readonly settled: Promise<FileBackedSwarmSettlement>;
+  cancel(reason?: unknown): void;
+}
+
+export interface StartSwarmFromFileOptions {
+  /** Host-owned boundary within which `inputFile` is resolved. */
+  readonly inputRoot: string;
+  /** Host-owned directory for operation status, index, and Cell records. */
+  readonly outputRoot: string;
+  readonly signal?: AbortSignal;
 }
 
 const SwarmStatusSchema = z.enum([
@@ -135,14 +185,96 @@ export async function runSwarm(
   createDriver: () => CellDriver,
   signal?: AbortSignal,
 ): Promise<SwarmRun> {
+  const handle = await startSwarm(unparsedManifest, createDriver, signal);
+  return handle.settled;
+}
+
+export async function startSwarm(
+  unparsedManifest: unknown,
+  createDriver: () => CellDriver,
+  signal?: AbortSignal,
+): Promise<SwarmHandle> {
   const manifest = SwarmInputSchema.parse(unparsedManifest);
   await assertSwarmWorkspaceBoundary(manifest.cells);
+  const controller = new AbortController();
+  const executionSignal = signal === undefined
+    ? controller.signal
+    : AbortSignal.any([signal, controller.signal]);
+  const settled = runAdmittedSwarm(manifest, createDriver, executionSignal);
+  return {
+    swarmId: manifest.id,
+    settled,
+    cancel(reason?: unknown) {
+      controller.abort(reason ?? new DOMException("Swarm cancelled", "AbortError"));
+    },
+  };
+}
+
+/**
+ * Admit a Swarm from a small file reference and return stable output paths
+ * before its Cells settle. The parsed manifest is frozen in memory; later file
+ * edits cannot change the admitted run.
+ */
+export async function startSwarmFromFile(
+  unparsedRef: JsonFileInputRef,
+  createDriver: () => CellDriver,
+  options: StartSwarmFromFileOptions,
+): Promise<FileBackedSwarmHandle> {
+  const frozen = await readJsonFileInput(unparsedRef, options.inputRoot, SwarmInputSchema);
+  const manifest = resolveRelativeWorkspaceRoots(frozen.value, dirname(frozen.path));
+  const operationId = randomUUID();
+  const directory = join(resolve(options.outputRoot), operationId);
+  const statusPath = join(directory, "status.json");
+  const resultPath = join(directory, "index.json");
+  await mkdir(directory, { recursive: true });
+
+  const handle = await startSwarm(manifest, createDriver, options.signal);
+  const base = {
+    version: SWARM_FILE_OPERATION_VERSION,
+    operationId,
+    swarmId: handle.swarmId,
+    input: { path: frozen.path, sha256: frozen.sha256, bytes: frozen.bytes },
+    statusPath,
+    resultPath,
+  } as const;
+  await writeOperationStatus(statusPath, { ...base, state: "running" });
+  const settled = (async (): Promise<FileBackedSwarmSettlement> => {
+    try {
+      const run = await handle.settled;
+      const persisted = await persistSwarmRecordAt(directory, run);
+      await writeOperationStatus(statusPath, { ...base, state: "settled" });
+      return { run, persisted };
+    } catch (error) {
+      await writeOperationStatus(statusPath, {
+        ...base,
+        state: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  })();
+  return {
+    operationId,
+    swarmId: handle.swarmId,
+    input: base.input,
+    statusPath,
+    resultPath,
+    settled,
+    cancel: (reason?: unknown) => handle.cancel(reason),
+  };
+}
+
+async function runAdmittedSwarm(
+  manifest: SwarmInput,
+  createDriver: () => CellDriver,
+  signal: AbortSignal,
+): Promise<SwarmRun> {
   const source = new InMemoryCellQueue("Swarm cells");
   for (const input of manifest.cells) await source.submit(input, input.id);
   source.close();
   const orchestration = await runOrchestration(source, createDriver, {
     concurrency: manifest.concurrency,
-    ...(signal === undefined ? {} : { signal }),
+    signal,
   });
   const outcomes: SwarmCellOutcome[] = source.settlements().map((settlement): SwarmCellOutcome => {
     const { input, sequence } = settlement.lease.item;
@@ -193,7 +325,15 @@ export async function persistSwarmRecord(
   const absoluteManifest = resolve(manifestPath);
   const stem = basename(absoluteManifest).replace(/\.json$/, "");
   const directory = join(dirname(absoluteManifest), `${safe(stem)}.${record.runId}.swarm`);
-  const cellsDirectory = join(directory, "cells");
+  return persistSwarmRecordAt(directory, record);
+}
+
+export async function persistSwarmRecordAt(
+  directory: string,
+  record: SwarmRun,
+): Promise<{ directory: string; indexPath: string; cellRecordPaths: string[]; index: SwarmIndex }> {
+  const absoluteDirectory = resolve(directory);
+  const cellsDirectory = join(absoluteDirectory, "cells");
   await mkdir(cellsDirectory, { recursive: true });
   const entries: SwarmIndex["entries"] = [];
   const cellRecordPaths: string[] = [];
@@ -233,9 +373,9 @@ export async function persistSwarmRecord(
     entries,
     summary: projectSwarm(record),
   });
-  const indexPath = join(directory, "index.json");
+  const indexPath = join(absoluteDirectory, "index.json");
   await writeFile(indexPath, `${JSON.stringify(index, null, 2)}\n`, "utf8");
-  return { directory, indexPath, cellRecordPaths, index };
+  return { directory: absoluteDirectory, indexPath, cellRecordPaths, index };
 }
 
 export function projectSwarm(record: SwarmRun): SwarmSummary {
@@ -282,4 +422,22 @@ function addUsage(left: CellUsage, right: CellUsage): CellUsage {
 function safe(value: string): string {
   const normalized = value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized || "cell";
+}
+
+function resolveRelativeWorkspaceRoots(manifest: SwarmInput, base: string): SwarmInput {
+  return SwarmInputSchema.parse({
+    ...manifest,
+    cells: manifest.cells.map((cell) => ({
+      ...cell,
+      workspace: {
+        ...cell.workspace,
+        root: isAbsolute(cell.workspace.root) ? cell.workspace.root : resolve(base, cell.workspace.root),
+      },
+    })),
+  });
+}
+
+async function writeOperationStatus(path: string, status: SwarmFileOperationStatus): Promise<void> {
+  const parsed = SwarmFileOperationStatusSchema.parse(status);
+  await writeFile(path, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
 }

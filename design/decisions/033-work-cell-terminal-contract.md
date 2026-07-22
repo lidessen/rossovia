@@ -1,13 +1,15 @@
 # 033 — Work Cell Terminal Contract
 
 **Status:** implemented and verified
-**Date:** 2026-07-15
+**Date:** 2026-07-15; Task system replacement 2026-07-21
 **Approved by:** principal
 
 ## Concrete pressure
 
 A Work Cell may declare caller-defined `terminalTools`, an `outputSchema`, and
-required artifacts as independent completion contracts. The AI SDK driver
+required artifacts as independent work-proof conditions. It may also seed a
+small host-owned Task set as execution memory.
+The AI SDK driver
 previously asked for another free-text response after every terminal call and,
 when the main loop exhausted its steps, started a recovery loop with only the
 empty final text rather than the accumulated tool context.
@@ -21,8 +23,8 @@ the readable report contradicted its authoritative terminal action.
 
 ## Decision
 
-Keep the three completion contracts orthogonal, but give each one one clear
-runtime meaning:
+Keep the work-proof declaration flat and give each condition one clear runtime
+meaning. Do not add a `resultContract`, `workProof`, or review-pack wrapper:
 
 - `terminalTools` declares a one-of action contract. Exactly one declared tool
   must be called. Its caller-defined input is retained in the trace and is not
@@ -34,6 +36,42 @@ runtime meaning:
   tool-free step may then produce the independently validated logical output.
 - Artifacts remain workspace evidence verified by `runCell`; neither a terminal
   input nor a structured output implies that a file exists.
+- `tasks` optionally seeds concrete `{ subject, description }` work. The host
+  assigns stable IDs and owns full Task state: `pending | in_progress |
+  completed`, optional owner, and dependency IDs. The common Task kernel exposes
+  `task_create`, `task_update`, `task_list`, and `task_get` through a host-chosen
+  projection. A manager may use all four, an assigned executor may read shared
+  task context but update only its own status, and a reviewer may only read.
+  Forbidden actions are absent from
+  both the tool set and update schema; prompts are explanatory, not authoritative.
+  Once a Cell has tasks, it settles only when none remain pending or in progress.
+  Do not mirror every instruction or acceptance condition into tasks, and do not
+  make simple work manufacture a task list.
+
+These checks answer only **whether a declared observable is present**: a tool
+was called, an output has the declared shape, a file was created or changed, or
+an activated Task cycle settled. A `passed` Cell record means this mechanical
+work proof passed. It does not mean the action, output, artifact, or Task claim
+is correct.
+
+Task settlement is low-cost process evidence within that proof, not evidence
+that the underlying work occurred or is correct. [Eve's replaceable todo
+projection](https://github.com/vercel/eve/blob/main/packages/eve/src/runtime/framework-tools/todo.ts)
+and [Codex's short plan/status tool](https://github.com/openai/codex/blob/main/codex-rs/protocol/src/plan_tool.rs)
+show why visible work reduces omission risk. [Claude Code's Task
+tools](https://code.claude.com/docs/en/agent-sdk/todo-tracking) show how stable
+IDs, dependencies, ownership, and separate create/update/list/get operations
+extend that value into multi-agent coordination. This project uses one Task
+kernel in both Cell and Mission layers, while each host projects only the tools
+that role is allowed to use. Task state cannot admit a delegate by itself or
+prove correctness; it remains coordination and process evidence.
+
+Correctness belongs to a separate Agent judgment against the task, sources,
+acceptance, and retained evidence. The generic runtime neither encodes that
+judgment in a schema nor requires a universal review packet. A domain reviewer
+may return the smallest useful finding or disposition through the same simple
+tool/output/artifact mechanisms; partitioned review packets remain optional
+domain evidence for changes whose scale actually requires reconstruction.
 
 The main loop reserves one final action step for a terminal-only Cell and a
 second tool-free result step when `outputSchema` is also declared. Ordinary
@@ -51,9 +89,9 @@ new meaning for the terminal schema, or claim that retained reads never occurred
 The original trace and Cell input remain the evidence sources; the recovery
 context is their rebuildable action-oriented projection.
 
-This is protocol completion, not semantic acceptance. A `submit_review` payload
-may still be unsupported or false; the host or committee must inspect its file
-evidence before accepting the review.
+This is presence proof, not semantic acceptance. A `submit_review` payload or a
+completed Task may still be unsupported or false; the designated Agent reviewer
+must judge it against the evidence before a host or human accepts the result.
 
 ## Rejected alternatives
 
@@ -68,6 +106,13 @@ evidence before accepting the review.
   voluntarily following a prose reminder.
 - **Accept any terminal tool calls.** Calling both approve and reject is not a
   valid one-of disposition and now fails the Cell protocol.
+- **Reference a separate named result contract.** The actual flat Cell fields
+  are already inspectable and enforceable; an opaque reference duplicates them
+  without proving anything.
+- **Require a generic review pack for correctness.** Correctness is a semantic
+  Agent judgment whose smallest useful evidence depends on the domain and risk.
+  A mandatory pack adds production and reading cost without improving the
+  mechanical proof.
 
 ## Verification
 
@@ -83,6 +128,12 @@ evidence before accepting the review.
   model dispatch.
 - Existing recovery and simultaneous `terminalTools + outputSchema` probes pass
   while retaining usage from both loops.
+- Deterministic and AI SDK probes show that Task seeds receive stable IDs, an
+  unseeded Cell can create and settle tasks, simple work can omit them, and an
+  unsettled task fails mechanical work proof. A restricted execution probe sees
+  list/get/update but no create tool, and its update schema cannot mutate task
+  content, owner, or dependencies. A delegate-loop probe creates a Task before
+  delegation, checkpoints its binding, and completes it after child settlement.
 - A provider-behavior probe repeats an ordinary read despite a terminal-only
   final tool surface. The read is not executed, recovery retains the three
   earlier successful results, and the terminal action settles from that

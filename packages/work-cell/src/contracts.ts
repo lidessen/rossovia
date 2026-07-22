@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const WORK_CELL_RECORD_VERSION = "work-cell.run.v3" as const;
+export const WORK_CELL_RECORD_VERSION = "work-cell.run.v4" as const;
 
 export const BudgetSchema = z.object({
   maxSteps: z.number().int().positive().default(20),
@@ -69,6 +69,22 @@ export const ArtifactRequirementSchema = z.object({
   instructions: z.string().min(1),
 });
 
+export const TaskStatusSchema = z.enum(["pending", "in_progress", "completed"]);
+
+export const TaskSeedSchema = z.object({
+  subject: z.string().min(1),
+  description: z.string().min(1),
+}).strict();
+
+export const TaskSchema = z.object({
+  id: z.string().min(1),
+  subject: z.string().min(1),
+  description: z.string().min(1),
+  status: TaskStatusSchema,
+  owner: z.string().min(1).optional(),
+  blockedBy: z.array(z.string().min(1)),
+}).strict();
+
 export const TerminalToolSchema = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]*$/, "terminal tool names use lowercase snake_case"),
   description: z.string().min(1),
@@ -126,6 +142,7 @@ export const CellInputSchema = z.object({
   terminalTools: TerminalToolsSchema.optional(),
   outputSchema: OutputSchemaSchema.optional(),
   artifacts: z.array(ArtifactRequirementSchema).min(1).optional(),
+  tasks: z.array(TaskSeedSchema).min(1).optional(),
   budget: BudgetSchema.default({
     maxSteps: 20,
     maxDurationMs: 300_000,
@@ -157,6 +174,9 @@ export type CellPreparation = z.infer<typeof CellPreparationSchema>;
 export type OutputSchema = z.infer<typeof OutputSchemaSchema>;
 export type ArtifactRequirement = z.infer<typeof ArtifactRequirementSchema>;
 export type ArtifactRecord = z.infer<typeof ArtifactRecordSchema>;
+export type TaskStatus = z.infer<typeof TaskStatusSchema>;
+export type TaskSeed = z.infer<typeof TaskSeedSchema>;
+export type Task = z.infer<typeof TaskSchema>;
 export type TerminalTool = z.infer<typeof TerminalToolSchema>;
 export type CellUsage = z.infer<typeof UsageSchema>;
 export type WorkspaceDiff = z.infer<typeof WorkspaceDiffSchema>;
@@ -189,11 +209,14 @@ export interface CellRunRecord {
   finalText: string;
   output?: unknown;
   artifacts: ArtifactRecord[];
+  /** Final host-owned coordination state. Completion is process evidence, not correctness. */
+  tasks?: Task[];
   verification: {
     passed: boolean;
     terminal: TerminalVerification;
     output?: OutputVerification;
     artifacts?: ArtifactVerification;
+    tasks?: TaskVerification;
   };
   workspaceDiff: WorkspaceDiff;
   usage: CellUsage;
@@ -226,6 +249,15 @@ export interface TerminalVerification {
 
 export interface ArtifactVerification {
   passed: boolean;
+  errors: string[];
+}
+
+export interface TaskVerification {
+  passed: boolean;
+  pending: number;
+  inProgress: number;
+  completed: number;
+  blocked: number;
   errors: string[];
 }
 
@@ -274,6 +306,7 @@ export const CellRunRecordSchema = z.object({
   finalText: z.string(),
   output: z.unknown().optional(),
   artifacts: z.array(ArtifactRecordSchema),
+  tasks: z.array(TaskSchema).optional(),
   verification: z.object({
     passed: z.boolean(),
     terminal: z.object({
@@ -287,6 +320,14 @@ export const CellRunRecordSchema = z.object({
     }).strict().optional(),
     artifacts: z.object({
       passed: z.boolean(),
+      errors: z.array(z.string()),
+    }).strict().optional(),
+    tasks: z.object({
+      passed: z.boolean(),
+      pending: z.number().int().nonnegative(),
+      inProgress: z.number().int().nonnegative(),
+      completed: z.number().int().nonnegative(),
+      blocked: z.number().int().nonnegative(),
       errors: z.array(z.string()),
     }).strict().optional(),
   }).strict(),

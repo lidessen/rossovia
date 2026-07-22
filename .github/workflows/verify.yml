@@ -44,11 +44,20 @@ jobs:
       - name: Install Work Cell dependencies
         working-directory: packages/work-cell
         run: bun install --frozen-lockfile
+      - name: Install Autonomy dependencies
+        working-directory: operations/autonomy
+        run: bun install --frozen-lockfile
       - name: Typecheck Work Cell
         working-directory: packages/work-cell
         run: bun run typecheck
       - name: Test Work Cell
         working-directory: packages/work-cell
+        run: bun test
+      - name: Typecheck Autonomy
+        working-directory: operations/autonomy
+        run: bun run typecheck
+      - name: Test Autonomy
+        working-directory: operations/autonomy
         run: bun test
       - name: Typecheck Cognition
         working-directory: packages/cognition

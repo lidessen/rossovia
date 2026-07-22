@@ -3,6 +3,7 @@
 .work-cell/
 .vercel/
 packages/*/node_modules/
+operations/*/node_modules/
 packages/work-cell/.work-cell/
 site/node_modules/
 site/dist/

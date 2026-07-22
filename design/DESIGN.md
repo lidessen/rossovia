@@ -116,7 +116,13 @@ boundary. See [decision 043](decisions/043-generative-system-and-human-governed-
 - **Work Cell core** — Owns one generic ephemeral practice unit and its
   evidence: prepared instructions and context, isolated workspace tools,
   caller-declared terminal tools, independently validated structured output and
-  artifacts, and trace/usage/cost capture. It can link executor-independent Work
+  artifacts, host-owned Task coordination, and trace/usage/cost capture. Terminal
+  calls, output shape, and artifact existence produce mechanical work proof;
+  a settled Cell-local Task cycle contributes process evidence that reduces
+  omission risk while remaining non-authoritative about the underlying work.
+  Semantic correctness belongs to a separate Agent judgment against task
+  evidence and acceptance, not to a generic review pack or runtime schema. It
+  can link executor-independent Work
   Estimates to executor/profile-specific observations. It does not require or
   interpret a Sequence, experiment, proposal role, or vote. A terminal call is
   a caller-defined one-of action; it ends the model loop unless an independent
@@ -195,7 +201,7 @@ Sequence + selected interpretations + optional candidate treatment
                               ▼
                   generic ephemeral Work Cell
                               │
-       terminal evidence + output + artifacts + trace
+       tools + output shape + artifacts + Task projection + trace
                               │
                               ▼
              blinded comparison / accepted evaluation

@@ -26,6 +26,10 @@ performance in the ordinary Cell trace. The core contract can support another
 adapter without changing run records or experiment semantics; see
 [decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md) and
 [decision 034](../../design/decisions/034-validation-model-routing.md).
+The AI SDK driver exposes `list_files` and `read_file` only when `readPaths` is
+non-empty, `write_file` only when write scope exists, and `run_command` only
+when commands are allow-listed. An unavailable capability is absent from the
+model-facing tool surface rather than present as a guaranteed failure.
 
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
@@ -98,9 +102,10 @@ idempotency, persistence, retry, and workspace-allocation policy. Those
 concerns do not enter `CellInput`, `CellDriver`, or `runCell`; see
 [decision 031](../../design/decisions/031-extensible-work-cell-orchestration.md).
 
-## Completion contracts
+## Work proof
 
-Use only the conditions the task actually needs. They are orthogonal:
+Use only the presence conditions the task actually needs. Declare them directly;
+there is no `resultContract` or review-pack wrapper:
 
 ```json
 {
@@ -115,7 +120,11 @@ Use only the conditions the task actually needs. They are orthogonal:
     "required": ["recommendation"],
     "additionalProperties": false
   },
-  "artifacts": [{ "path": "output/report.md", "instructions": "Write the report." }]
+  "artifacts": [{ "path": "output/report.md", "instructions": "Write the report." }],
+  "tasks": [
+    { "subject": "Inspect the bounded source", "description": "Read the declared source." },
+    { "subject": "Write the report", "description": "Create output/report.md." }
+  ]
 }
 ```
 
@@ -127,8 +136,24 @@ that collide with its ordinary execution tools before dispatch. The terminal
 input remains trace evidence and is not silently
 treated as that result. `outputSchema` validates the final logical result. `artifacts`
 require a regular file in write scope that this run added or changed; the record
-retains its SHA-256 and byte size. None implies the schema or payload of another.
+retains its SHA-256 and byte size. `tasks` optionally seeds host-owned work with
+stable IDs, descriptions, status, ownership, and dependencies. The default
+driver exposes `task_create`, `task_update`, `task_list`, and `task_get`; a host
+may instead project read-update or read-only Task tools, so authority is removed
+from the actual tool schemas rather than merely discouraged in a prompt. Simple
+work need not create tasks. Once tasks exist, the Cell must finish without
+`pending` or `in_progress` tasks. Task settlement contributes low-cost process
+evidence to mechanical work proof, but a completed task is not evidence that
+the underlying work is correct. Do not copy every instruction or acceptance
+condition into tasks. None implies the schema or payload of another.
 See [decision 033](../../design/decisions/033-work-cell-terminal-contract.md).
+
+This proof answers **whether**, never **whether it is correct**. A tool call can
+be mistaken, schema-valid output can be false, and an artifact can contain the
+wrong work. Correctness is judged separately
+by a designated Agent against the task, sources, acceptance, and evidence. The
+runtime does not require a generic review pack; use one only when a domain review
+is large enough to need partitioning and reconstruction.
 
 The AI SDK driver may change how it obtains `outputSchema` when a selected
 provider does not support native structured responses. It first completes the
@@ -205,6 +230,22 @@ kernel, not a second Cell runtime.
 The input must declare `concurrency` explicitly; the runtime never turns an
 omitted resource decision into a hidden 32-way release.
 
+`startSwarm` returns an in-process handle after admission so a supervisor may
+observe other inputs or cancel while Cells run. `runSwarm` starts the same
+carrier and awaits its final settlement for CLI, tests, and short direct calls.
+The handle does not make the Swarm durable or remote; those remain carrier
+properties above the atomic Cell contract.
+
+`startSwarmFromFile` is the file-backed asynchronous carrier for tools and
+supervisors that should not copy a large manifest through model context. Its
+tool-sized input is `{ "inputFile": "relative/path.json", "sha256": "..." }`;
+the host owns both the resolution root and output root. Before dispatch it reads
+once, validates the ordinary `SwarmInput`, records its digest, and freezes that
+parsed value. The returned handle immediately names `status.json` and
+`index.json`; the latter links to independent Cell records after settlement.
+The file reference is transport metadata and is not added to `SwarmInput` or
+`SwarmRun`.
+
 ```json
 {
   "version": "work-cell.swarm-input.v1",
@@ -222,7 +263,7 @@ every Cell and retains one outcome for every manifest entry even when a sibling
 fails. Result identity follows manifest order rather than completion order.
 
 Differentiate Cells primarily through their bounded intent, semantic packet,
-evidence surface, local acceptance question, and result contract. These fields
+evidence surface, local acceptance question, and flat work-proof conditions. These fields
 shape what the Cell must notice without spending active context on a simulated
 personality. Add at most one compact attention bias only when a controlled probe
 shows that the local task needs it; semantic relevance alone is not evidence of

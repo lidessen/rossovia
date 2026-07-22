@@ -63,7 +63,7 @@ test("experiment keeps variants blind and attributes a treatment-only decision",
   expect(judge.sawTreatmentMetadata).toBe(false);
   const treatment = record.runs.find((run) => run.variantId === "treatment");
   expect(treatment?.record.workspaceDiff.changed).toContain("SKILL.md");
-  expect(await readFile(join(treatment!.directory, "record.json"), "utf8")).toContain("work-cell.run.v3");
+  expect(await readFile(join(treatment!.directory, "record.json"), "utf8")).toContain("work-cell.run.v4");
 });
 
 test("experiment skips its judge when either Work Cell is unsettled", async () => {

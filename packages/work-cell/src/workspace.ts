@@ -20,6 +20,7 @@ type Snapshot = Map<string, string>;
 
 export class Workspace {
   readonly root: string;
+  readonly canRead: boolean;
   readonly canWrite: boolean;
   readonly canRunCommands: boolean;
 
@@ -29,6 +30,7 @@ export class Workspace {
     private readonly budget: Budget,
   ) {
     this.root = root;
+    this.canRead = policy.readPaths.length > 0;
     this.canWrite = policy.writePaths.length > 0;
     this.canRunCommands = policy.allowedCommands.length > 0;
   }

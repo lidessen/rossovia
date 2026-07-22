@@ -43,9 +43,11 @@ implementation claim that must be tested separately.
 Select a **runtime capability** with a **CLI projection**, named **Work Cell
 Swarm**:
 
-1. `runSwarm` accepts one versioned Swarm input containing independent ordinary
-   `CellInput` values, an explicitly declared concurrency value from 1 through
-   256, and no domain-specific role or synthesis schema.
+1. `startSwarm` accepts one versioned Swarm input containing independent
+   ordinary `CellInput` values, an explicitly declared concurrency value from 1
+   through 256, and no domain-specific role or synthesis schema. It returns an
+   in-process cancellable settlement handle after admission. `runSwarm` is the
+   convenience projection that starts the same carrier and awaits its settlement.
 2. The runner creates a fresh `CellDriver` per Cell, starts at most the declared
    concurrency, preserves manifest order in the retained records, and lets every
    started Cell settle independently.
@@ -59,8 +61,12 @@ Swarm**:
 5. Each `CellRunRecord` remains the execution evidence source. The Swarm's
    counts, aggregate usage, estimate audit, and record index are projections over
    those records and have no semantic acceptance authority.
-6. The CLI persists one record file per Cell plus a compact Swarm index. It does
-   not print or inject all child outputs into an agent context by default.
+6. File transport is an adapter, not a second Swarm contract. `startSwarmFromFile`
+   accepts only a relative file reference inside a host-owned root, validates and
+   digests the ordinary `SwarmInput`, then returns fixed `status.json` and
+   `index.json` paths while execution continues. The adapter persists one record
+   per Cell plus a compact index; it does not print or inject all child outputs
+   into an agent context by default.
 
 The name denotes bounded concurrent release, not autonomous collective
 intelligence. This capability belongs in `packages/work-cell`; it is not an
@@ -135,9 +141,11 @@ invocation.
 
 ## Implementation evidence
 
-- [`runSwarm`](../../packages/work-cell/src/swarm.ts) validates one portable
-  manifest, creates one fresh driver per Cell, enforces the shared-workspace
-  boundary before execution, and retains sibling outcomes independently.
+- [`startSwarm` and `runSwarm`](../../packages/work-cell/src/swarm.ts) validate
+  one portable manifest, create one fresh driver per Cell, enforce the
+  shared-workspace boundary before execution, and retain sibling outcomes
+  independently. The start form exposes asynchronous settlement and
+  cancellation; the run form awaits the same handle.
   `projectSwarm` derives the non-authoritative aggregate only for consumers that
   need it.
 - [`mapConcurrent`](../../packages/work-cell/src/concurrency.ts) supplies the
