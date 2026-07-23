@@ -29,13 +29,22 @@ Receipt persistence is not an authorization precondition. If the endpoint is
 unavailable under the current runtime policy, the agent keeps the corrected
 constraint active, reports the receipt as unresolved, and continues work that
 is already authorized. It must not request broader filesystem access merely to
-upgrade this assist-only record. For ordinary `workspace-write` sessions, the
-project [Codex configuration](config.toml) declares `~/.rosso` as one additional
-writable root. This is a narrow capability grant for Workbench state, not a
-general home-directory exception. A custom `ROSSO_HOME` outside that root must
-be granted through the current Codex `writable_roots` setting or `--add-dir`
-before the session starts; the adapter must not silently fall back to a vendor
-directory.
+upgrade this assist-only record.
+
+This repository deliberately ships no project-level Codex configuration that
+grants access to a user home. When cross-project Workbench state is an accepted
+personal capability, grant the actual Rossovia home in the user's
+`~/.codex/config.toml`:
+
+```toml
+[sandbox_workspace_write]
+writable_roots = ["~/.rosso"]
+```
+
+Alternatively, use Codex's `--add-dir "$ROSSO_HOME"` for one new session. These
+grants do not retrofit a resumed session's frozen permission snapshot. A custom
+`ROSSO_HOME` must receive its own grant; the adapter must not silently fall back
+to a vendor directory.
 
 ## Enable and verify in a fresh Codex session
 
@@ -62,4 +71,5 @@ trust model come from the [Codex Hooks guide](https://learn.chatgpt.com/docs/hoo
 and [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference),
 checked on 2026-07-22. The configuration reference also documents
 `sandbox_workspace_write.writable_roots`; re-check these sources before changing
-the capability grant, adding a mutation gate, or adding stop continuation.
+the user-level capability grant, adding a mutation gate, or adding stop
+continuation.

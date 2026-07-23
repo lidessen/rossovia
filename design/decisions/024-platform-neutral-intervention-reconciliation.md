@@ -131,9 +131,10 @@ observed capability result.
 For Codex, the current starting sources are the [Hooks guide](https://learn.chatgpt.com/docs/hooks)
 and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 They are entry points for a later binding, not a claim that another tool has
-the same lifecycle surface. The current project projection uses the documented
-`sandbox_workspace_write.writable_roots` capability to grant the Rossovia home
-without widening the entire filesystem sandbox.
+the same lifecycle surface. The current binding requires an accepted user-level
+`sandbox_workspace_write.writable_roots` grant or a per-session `--add-dir`
+launch option for the Rossovia home. The repository projection does not grant
+access to a user home on the user's behalf.
 
 ### Deployment order
 
