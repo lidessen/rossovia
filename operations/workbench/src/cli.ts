@@ -71,7 +71,7 @@ try {
       console.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
     }
   } else if (args[0] === "intervention") {
-    console.log(JSON.stringify(runInterventionCommand(args.slice(1)), null, 2));
+    console.log(JSON.stringify(runInterventionCommand(args.slice(1), "", home), null, 2));
   } else if (args[0] === "correct") {
     console.log(JSON.stringify(runCorrectionCommand(args.slice(1)), null, 2));
   } else {

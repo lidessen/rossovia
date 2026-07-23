@@ -35,6 +35,13 @@ state outside the repository. Its direct tests cover state, receipt shape, and
 adapter context injection; they do not claim that Codex has yet trusted or run
 the project hook in a live session.
 
+Session identity and state ownership are separate. A platform adapter supplies
+the former; Rossovia Workbench owns the latter under
+`$ROSSO_HOME/state/interventions/`. A binding must not place Rossovia state in a
+vendor configuration directory merely because that vendor emitted the session
+identifier. When a sandboxed runtime needs access, its projection grants the
+smallest supported writable root instead of moving the state to a vendor home.
+
 ## Decision
 
 Adopt an **intervention-reconciliation contract** as a runtime-facing
@@ -92,7 +99,8 @@ evidence and explicit receipts.
 | Principal | correction, target, acceptance | mechanical state bookkeeping |
 | Context-equipped agent | semantic comparison of active anchor and new message; invoking `practice-cycle continue` | self-acceptance of changed work or ownership of context delivery mechanics |
 | `practice-cycle` | receipt, next smallest practice, disconfirming observation | hooks or tool configuration |
-| Hook binding | observation, injection, state persistence, conditional mutation gate | interpreting corrections, accepting design, choosing strategy |
+| Rossovia Workbench | state location, privacy-preserving observation record, receipt persistence | platform lifecycle, interpretation, acceptance |
+| Hook binding | platform session identity, observation delivery, context injection, conditional mutation gate | choosing Rossovia state location, interpreting corrections, accepting design |
 | Verifier | checks resulting change against the receipt | changing the Principal constraint |
 
 The hook must not use fixed phrases as the definition of a correction. It may
@@ -109,7 +117,7 @@ time, not shipped as core doctrine:
 platform and checked version
 official documentation entry points and checked date
 available portable capabilities and effective guarantee
-state location and trust model
+state access mechanism and trust model
 local configuration projection path
 known coverage gaps
 ```
@@ -123,7 +131,9 @@ observed capability result.
 For Codex, the current starting sources are the [Hooks guide](https://learn.chatgpt.com/docs/hooks)
 and [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
 They are entry points for a later binding, not a claim that another tool has
-the same lifecycle surface.
+the same lifecycle surface. The current project projection uses the documented
+`sandbox_workspace_write.writable_roots` capability to grant the Rossovia home
+without widening the entire filesystem sandbox.
 
 ### Deployment order
 
@@ -172,6 +182,8 @@ The first binding is ready for review only when it proves:
 - a material correction produces a receipt before a guarded mutation;
 - an ordinary execution request does not create a receipt or block work;
 - a platform missing `mutation_gate` reports `advisory`, not enforcement;
+- a platform adapter obtains its state path from Workbench, and a separated
+  vendor home receives no Rossovia intervention state;
 - its platform record links current official documentation and keeps vendor
   configuration outside the portable method;
 - stop behavior does not loop when the agent correctly needs a Principal reply.

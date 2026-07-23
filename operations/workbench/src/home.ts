@@ -33,6 +33,10 @@ export interface InitializedHome {
 
 const homeDirectories = ["config", "state", "receipts", "cache"];
 
+export function resolveHome(homeArgument?: string): string {
+  return expandPath(homeArgument ?? process.env.ROSSO_HOME ?? "~/.rosso");
+}
+
 function fold(value: string): string {
   return value.toLowerCase();
 }
@@ -132,7 +136,7 @@ function ensureJson<Schema extends z.ZodType>(
 }
 
 export function initializeHome(homeArgument?: string): InitializedHome {
-  const home = expandPath(homeArgument ?? process.env.ROSSO_HOME ?? "~/.rosso");
+  const home = resolveHome(homeArgument);
   for (const directory of homeDirectories) mkdirSync(join(home, directory), { recursive: true });
   ensureJson(join(home, "manifest.json"), ManifestSchema, {
     version: "rosso.home.v1",
@@ -164,7 +168,7 @@ export function initializeHome(homeArgument?: string): InitializedHome {
 }
 
 export function loadHome(homeArgument?: string): HomeSources {
-  const home = expandPath(homeArgument ?? process.env.ROSSO_HOME ?? "~/.rosso");
+  const home = resolveHome(homeArgument);
   loadJson(join(home, "manifest.json"), ManifestSchema);
   const projects = validateProjects(loadJson(join(home, "config", "projects.json"), ProjectsSchema));
   const workspaces = validateWorkspaces(loadJson(join(home, "state", "workspaces.json"), WorkspacesSchema));

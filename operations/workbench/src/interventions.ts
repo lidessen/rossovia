@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { saveJson } from "./home";
+import { resolveHome, saveJson } from "./home";
 import { expandPath } from "./paths";
 
 const ObservationSchema = z.object({
@@ -50,8 +50,10 @@ function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function stateRoot(value?: string): string {
-  return expandPath(value ?? process.env.INTERVENTION_RECONCILIATION_STATE_DIR ?? "~/.cache/intervention-reconciliation");
+function stateRoot(value?: string, homeArgument?: string): string {
+  return value
+    ? expandPath(value)
+    : join(resolveHome(homeArgument), "state", "interventions");
 }
 
 function workspaceKey(cwd: string): string {
@@ -115,16 +117,16 @@ function rejectUnknown(parsed: ParsedOptions, allowed: Set<string>): void {
   }
 }
 
-function selectedState(parsed: ParsedOptions): string {
+function selectedState(parsed: ParsedOptions, homeArgument?: string): string {
   const explicit = parsed.values.get("--state-file")?.[0];
   if (explicit) return expandPath(explicit);
   return newestState(
-    stateRoot(parsed.values.get("--state-root")?.[0]),
+    stateRoot(parsed.values.get("--state-root")?.[0], homeArgument),
     option(parsed, "--cwd", process.cwd()),
   );
 }
 
-export function runInterventionCommand(raw: string[], stdin = ""): unknown {
+export function runInterventionCommand(raw: string[], stdin = "", homeArgument?: string): unknown {
   const command = raw[0];
   if (!command) throw new Error("intervention requires observe or status");
   const parsed = parseOptions(raw.slice(1));
@@ -132,7 +134,7 @@ export function runInterventionCommand(raw: string[], stdin = ""): unknown {
   if (command === "observe") {
     rejectUnknown(parsed, new Set(["--state-root"]));
     const payload = HookPayloadSchema.parse(JSON.parse(stdin || readFileSync(0, "utf8")));
-    const root = stateRoot(parsed.values.get("--state-root")?.[0]);
+    const root = stateRoot(parsed.values.get("--state-root")?.[0], homeArgument);
     const path = statePath(root, payload.cwd, payload.session_id);
     const state: State = existsSync(path)
       ? readState(path)
@@ -156,7 +158,7 @@ export function runInterventionCommand(raw: string[], stdin = ""): unknown {
 
   if (command === "status") {
     rejectUnknown(parsed, new Set(["--state-root", "--state-file", "--cwd"]));
-    const path = selectedState(parsed);
+    const path = selectedState(parsed, homeArgument);
     const state = readState(path);
     return {
       statePath: path,

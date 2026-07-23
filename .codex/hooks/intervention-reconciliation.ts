@@ -1,11 +1,9 @@
 #!/usr/bin/env bun
 
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../..");
 const cli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
-const stateRoot = join(homedir(), ".codex", "intervention-reconciliation");
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
@@ -13,7 +11,7 @@ function shellQuote(value: string): string {
 
 try {
   const payload = await Bun.stdin.text();
-  const result = Bun.spawnSync([process.execPath, cli, "intervention", "observe", "--state-root", stateRoot], {
+  const result = Bun.spawnSync([process.execPath, cli, "intervention", "observe"], {
     stdin: Buffer.from(payload),
     stdout: "pipe",
     stderr: "pipe",

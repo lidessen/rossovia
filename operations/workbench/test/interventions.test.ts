@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -80,10 +80,11 @@ describe("intervention reconciliation", () => {
     expect(JSON.parse(otherSession.stdout).statePath).not.toBe(statePath);
   });
 
-  test("Codex adapter injects one writable session endpoint across target switches", () => {
+  test("Codex adapter uses the Rossovia home across target switches", () => {
     const home = mkdtempSync(join(tmpdir(), "rossovia-hook-"));
     temporaryRoots.push(home);
-    const environment = { ...process.env, HOME: home };
+    const rossoviaHome = join(home, "rossovia-home");
+    const environment = { ...process.env, HOME: home, ROSSO_HOME: rossoviaHome };
     const payload = {
       session_id: "session-hook",
       turn_id: "turn-hook",
@@ -128,7 +129,8 @@ describe("intervention reconciliation", () => {
       paths.push(JSON.parse(correction.stdout).statePath);
     }
     expect(new Set(paths).size).toBe(1);
-    expect(statePath).toStartWith(join(realpathSync(home), ".codex", "intervention-reconciliation"));
+    expect(statePath).toStartWith(join(realpathSync(home), "rossovia-home", "state", "interventions"));
+    expect(existsSync(join(home, ".codex", "intervention-reconciliation"))).toBe(false);
     const state = JSON.parse(readFileSync(statePath!, "utf8"));
     expect(state.receipts.map((receipt: { affectedSurfaces: string[] }) => receipt.affectedSurfaces)).toEqual(
       targets.map((target) => [target]),

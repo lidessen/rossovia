@@ -13,21 +13,29 @@ prompt observation and injects a reminder for the agent to compare a Principal
 message with its active task. It does not decide that a correction occurred,
 block writes, or accept work.
 
-State is session-local under `~/.codex/intervention-reconciliation/`. It stores
-the prompt hash and byte count, never prompt text. The generic state commands
-and receipt format live in
+State is session-local under `$ROSSO_HOME/state/interventions/` (default
+`~/.rosso/state/interventions/`). It stores the prompt hash and byte count,
+never prompt text. Rossovia Workbench owns both the location and the generic
+state commands and receipt format in
 [`operations/workbench`](../operations/workbench/src/interventions.ts).
-After observing a prompt, the adapter injects a receipt endpoint bound to that
-exact session-state file. It does not rediscover state from the target
-repository path, so a session opened in this repository may safely use the
-binding while switching among other repositories and returning to earlier
-work.
+The Codex adapter supplies session identity but does not choose a separate
+platform-owned state root. After observing a prompt, it injects a receipt
+endpoint bound to that exact session-state file. It does not rediscover state
+from the target repository path, so a session opened in this repository may
+safely use the binding while switching among other repositories and returning
+to earlier work.
 
 Receipt persistence is not an authorization precondition. If the endpoint is
 unavailable under the current runtime policy, the agent keeps the corrected
 constraint active, reports the receipt as unresolved, and continues work that
 is already authorized. It must not request broader filesystem access merely to
-upgrade this assist-only record.
+upgrade this assist-only record. For ordinary `workspace-write` sessions, the
+project [Codex configuration](config.toml) declares `~/.rosso` as one additional
+writable root. This is a narrow capability grant for Workbench state, not a
+general home-directory exception. A custom `ROSSO_HOME` outside that root must
+be granted through the current Codex `writable_roots` setting or `--add-dir`
+before the session starts; the adapter must not silently fall back to a vendor
+directory.
 
 ## Enable and verify in a fresh Codex session
 
@@ -43,16 +51,15 @@ upgrade this assist-only record.
 4. Inspect the resulting state:
 
    ```sh
-   ./operations/workbench/src/cli.ts intervention status \
-     --state-root "$HOME/.codex/intervention-reconciliation" --cwd "$PWD"
+   ./operations/workbench/src/cli.ts intervention status --cwd "$PWD"
    ```
 
-   The state root used by the Codex adapter is
-   `~/.codex/intervention-reconciliation`; the command above selects it for the
-   generic CLI.
+   Set `ROSSO_HOME` or pass Workbench's top-level `--home PATH` when using a
+   non-default Rossovia home.
 
 The current lifecycle names, command-handler limitation, and project-hook
 trust model come from the [Codex Hooks guide](https://learn.chatgpt.com/docs/hooks)
 and [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference),
-checked on 2026-07-12. Re-check those sources before adding a mutation gate or
-stop continuation.
+checked on 2026-07-22. The configuration reference also documents
+`sandbox_workspace_write.writable_roots`; re-check these sources before changing
+the capability grant, adding a mutation gate, or adding stop continuation.
