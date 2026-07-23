@@ -5,9 +5,9 @@
   color-scheme: light;
   --sl-font: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   --sl-font-system-mono: ui-monospace, 'SFMono-Regular', monospace;
-  --sl-color-accent-low: #ead1c6;
-  --sl-color-accent: #9a352c;
-  --sl-color-accent-high: #4a1713;
+  --sl-color-accent-low: #e5d2c6;
+  --sl-color-accent: #8f3a2c;
+  --sl-color-accent-high: #51231b;
   --sl-color-white: #20221f;
   --sl-color-gray-1: #363934;
   --sl-color-gray-2: #52554f;
@@ -33,9 +33,16 @@
 }
 
 body {
-  background:
-    linear-gradient(90deg, transparent calc(100% - 1px), var(--grid-line) 1px) 0 0 / 8.333vw 100%,
-    var(--paper);
+  background: var(--paper);
+}
+
+html .sidebar-content a[aria-current='page'],
+html .sidebar-content a[aria-current='page']:hover,
+html .sidebar-content a[aria-current='page']:focus {
+  border-radius: 0;
+  border-inline-start: 2px solid var(--red);
+  background: color-mix(in srgb, var(--red) 11%, transparent);
+  color: var(--red-deep);
 }
 
 h1,
@@ -87,7 +94,7 @@ html[data-presentation='skill-guide'] .hero h1 {
   font-family: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
   font-size: clamp(3rem, 8vw, 6.25rem);
   font-weight: 600;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.025em;
   line-height: 0.96;
 }
 
@@ -100,6 +107,20 @@ html[data-presentation='skill-guide'] .hero .tagline {
 
 html[data-presentation='skill-guide'] .hero .actions {
   justify-content: flex-start;
+}
+
+html[data-presentation='skill-guide'] .hero .sl-link-button.primary {
+  border-color: var(--ink);
+  border-radius: 0;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+html[data-presentation='skill-guide'] .hero .sl-link-button.primary:hover,
+html[data-presentation='skill-guide'] .hero .sl-link-button.primary:focus-visible {
+  border-color: var(--red-deep);
+  background: var(--red-deep);
+  color: var(--paper);
 }
 
 html[data-presentation='skill-guide'] .sl-markdown-content {

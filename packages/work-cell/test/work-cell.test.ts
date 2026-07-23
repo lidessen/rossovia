@@ -255,6 +255,73 @@ describe("Work Cell core", () => {
     })).toThrow("maxTokens");
   });
 
+  test("projects the retained trace while the cell is still running", async () => {
+    const root = await fixture();
+    const observed: Array<{ type: string; data: unknown }> = [];
+    const driver: CellDriver = {
+      descriptor: { adapter: "observable-test", provider: "deterministic", model: "fixture" },
+      async run(_input, context) {
+        context.emit("agent.reasoning.progress", { characters: 4_000 });
+        return {
+          terminalToolsCalled: [],
+          finalText: "completed",
+          usage: usage(30, 15),
+          rawSteps: [],
+        };
+      },
+    };
+
+    const record = await runCell(input(root), driver, {
+      onTrace: ({ type, data }) => observed.push({ type, data }),
+    });
+
+    expect(observed.map(({ type }) => type)).toEqual([
+      "cell.started",
+      "agent.reasoning.progress",
+      "cell.finished",
+    ]);
+    expect(observed[0]?.data).toMatchObject({
+      cellId: "test-cell",
+      driver: { provider: "deterministic", model: "fixture" },
+    });
+    expect(observed.at(-1)?.data).toMatchObject({ status: "passed", usage: usage(30, 15) });
+    expect(record.trace.map(({ type }) => type)).toEqual(observed.map(({ type }) => type));
+  });
+
+  test("an observer failure is retained without acquiring execution authority", async () => {
+    const root = await fixture();
+    let observerCalls = 0;
+    const driver: CellDriver = {
+      descriptor: { adapter: "observer-failure-test", provider: "deterministic", model: "fixture" },
+      async run(_input, context) {
+        expect(context.liveObservation).toBe(false);
+        context.emit("agent.step.started", { stepNumber: 0 });
+        return {
+          terminalToolsCalled: [],
+          finalText: "completed despite the failed projection",
+          usage: usage(30, 15),
+          rawSteps: [],
+        };
+      },
+    };
+
+    const record = await runCell(input(root), driver, {
+      onTrace() {
+        observerCalls += 1;
+        throw new Error("event sink unavailable");
+      },
+    });
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("completed despite the failed projection");
+    expect(observerCalls).toBe(1);
+    expect(record.trace.find((event) => event.type === "cell.observer.failed")?.data).toEqual({
+      error: "event sink unavailable",
+    });
+    expect(record.trace.some((event) => event.type === "agent.step.started")).toBe(true);
+    expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  });
+
   test("retains observed usage when a driver fails after starting execution", async () => {
     const root = await fixture();
     const driver = new ScriptedDriver(geneExpression("P04", []));

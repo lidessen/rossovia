@@ -10,6 +10,8 @@ import type { Workspace } from "./workspace";
 export interface DriverContext {
   workspace: Workspace;
   signal: AbortSignal;
+  /** The caller is consuming execution events while the driver is running. */
+  liveObservation: boolean;
   /** Retain completed provider-step usage even if the outer Cell timeout wins the driver race. */
   observeUsage(usage: CellUsage): void;
   emit(type: string, data: unknown): void;

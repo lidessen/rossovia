@@ -2,6 +2,8 @@ import {
   type LanguageModelV4,
   type LanguageModelV4GenerateResult,
   type LanguageModelV4Middleware,
+  type LanguageModelV4StreamPart,
+  type LanguageModelV4StreamResult,
 } from "@ai-sdk/provider";
 import { wrapLanguageModel } from "ai";
 
@@ -23,10 +25,7 @@ export interface ModelRoute {
   targets: readonly [ModelRouteTarget, ...ModelRouteTarget[]];
 }
 
-/**
- * Routes non-streaming generate calls. Streaming is rejected explicitly because
- * switching providers after partial output would duplicate or splice effects.
- */
+/** Routes one model call without switching providers after output has begun. */
 export function createRoutedLanguageModel(route: ModelRoute): LanguageModelV4 {
   assertRoute(route);
   const [primary] = route.targets;
@@ -70,8 +69,46 @@ export function createRoutedLanguageModel(route: ModelRoute): LanguageModelV4 {
       }
       throw new Error(`model route ${route.id} has no executable target`);
     },
-    wrapStream: async () => {
-      throw new Error(`model route ${route.id} supports non-streaming generate calls only`);
+    wrapStream: async ({ doStream, params }) => {
+      const failedAttempts: Array<{ target: string; reason: string; error: unknown }> = [];
+      for (const [index, target] of route.targets.entries()) {
+        try {
+          // A fallback is admitted only while establishing the stream. Once a
+          // target returns a stream, later chunks and errors remain that
+          // target's single response; the route never splices partial output.
+          const result = index === 0
+            ? await doStream()
+            : await target.model.doStream(params);
+          return withRouteStreamMetadata(result, {
+            routeId: route.id,
+            servedBy: target.id,
+            model: target.model.modelId,
+            mode: route.targets.length === 1
+              ? "direct"
+              : index === 0 ? "preferred" : "fallback",
+            attempts: failedAttempts.map(({ target: failedTarget, reason }) => ({
+              target: failedTarget,
+              reason,
+            })),
+          });
+        } catch (error) {
+          if (params.abortSignal?.aborted || isAbortError(error)) throw error;
+          const failure = target.fallbackOn?.(error, {
+            ...(params.abortSignal ? { signal: params.abortSignal } : {}),
+          });
+          const hasNext = index < route.targets.length - 1;
+          if (!hasNext || !failure) {
+            if (failedAttempts.length === 0) throw error;
+            throw routeFailure(route.id, [...failedAttempts, {
+              target: target.id,
+              reason: failure?.reason ?? "terminal_target_failed",
+              error,
+            }]);
+          }
+          failedAttempts.push({ target: target.id, reason: failure.reason, error });
+        }
+      }
+      throw new Error(`model route ${route.id} has no executable target`);
     },
   };
 
@@ -81,6 +118,36 @@ export function createRoutedLanguageModel(route: ModelRoute): LanguageModelV4 {
     modelId: primary.model.modelId,
     providerId: `model-route:${route.id}`,
   });
+}
+
+function withRouteStreamMetadata(
+  result: LanguageModelV4StreamResult,
+  route: {
+    routeId: string;
+    servedBy: string;
+    model: string;
+    mode: "preferred" | "fallback" | "direct";
+    attempts: Array<{ target: string; reason: string }>;
+  },
+): LanguageModelV4StreamResult {
+  return {
+    ...result,
+    stream: result.stream.pipeThrough(new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
+      transform(part, controller) {
+        if (part.type !== "finish") {
+          controller.enqueue(part);
+          return;
+        }
+        controller.enqueue({
+          ...part,
+          providerMetadata: {
+            ...part.providerMetadata,
+            workCellRoute: route,
+          },
+        });
+      },
+    })),
+  };
 }
 
 function assertRoute(route: ModelRoute): void {

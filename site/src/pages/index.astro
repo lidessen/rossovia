@@ -93,7 +93,7 @@ const canonicalUrl = new URL('/', Astro.site ?? Astro.url);
                 <p lang="en">{skill.description}</p>
               </div>
               <a href={skill.publicPath ?? skill.sourceUrl} aria-label={`查看 ${skill.name}`}>
-                <span aria-hidden="true">↗</span>
+                <span aria-hidden="true">查看&nbsp;→</span>
               </a>
             </li>
           ))}

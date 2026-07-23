@@ -1,22 +1,19 @@
 ---
 name: visual-design
 description: >-
-  Design, redesign, or review real interfaces, documents, illustrations, and
-  related visual systems from their content, audience, intended action, and
-  existing project direction. Use when creating UI, improving visual hierarchy
-  or coherence, reviewing a rendered artifact, or when "the page works but
-  feels generic/inconsistent". Also use to establish a continuing project's
-  visual direction from selected references when none exists, or to turn an
-  ambiguous style cue into provisional guidance for later design. Also use when
-  an accepted style or direction must be applied consistently to real code
-  without reopening aesthetic selection. Triggers include
-  "design this interface", "redesign this page", "review the UI", "make these
-  pages feel unified", "the direction is right but the components feel generic",
-  "polish/refine the interface details", "align this logo or illustration with
-  the product", "apply the selected style", "art direction", and
-  "审美/视觉设计/组件细节/插画或品牌视觉统一/确立风格/按现有风格落实". Do not use
-  for a purely functional code fix, naming task, or automatic aesthetic
-  acceptance. Never impose a portable fixed style.
+  Design, redesign, refine, or review real interfaces, documents,
+  illustrations, and visual systems from their content, audience, intended
+  action, and project direction. Use when creating UI, improving visual
+  hierarchy or coherence, reviewing a rendered artifact, establishing a
+  continuing project's direction from references, translating an ambiguous
+  style cue into provisional guidance, or applying an accepted direction to
+  code without reopening taste. Triggers include "design/redesign/review the
+  UI", "the page works but feels generic/inconsistent", "the direction is right
+  but components feel generic", "polish/refine interface details", "align logo
+  or illustration with product", "apply the selected style", "art direction",
+  and "审美/视觉设计/组件细节/插画或品牌视觉统一/确立风格/按现有风格落实". Do not use for
+  purely functional fixes, naming, or automatic aesthetic acceptance. Never
+  impose a portable fixed style.
 ---
 
 # Visual Design
@@ -130,9 +127,12 @@ inside a clear system remains ordinary development work.
   forming it is part of the requested outcome.
 - Once the designated human or owning project source has selected a direction,
   do not ask them to choose it again for each page, component, or polish pass.
-  Compile and apply the inherited direction. Ask another aesthetic question
-  only when the available choices would materially revise the shared direction
-  and project evidence cannot distinguish them.
+  Compile and apply the inherited direction. Preserve its relation and negative
+  boundary, not the current page composition or treatment unless the owning
+  source makes those invariant. An explicit redesign request authorizes new
+  visual structure and component expression inside the functional scope. Ask
+  another aesthetic question only when the available choices would materially
+  revise the shared direction and project evidence cannot distinguish them.
 - Ask only for a decision that materially blocks safe progress. Present the
   relevant options, tradeoff, and recommendation rather than asking the user to
   discover the choice space.
@@ -174,11 +174,11 @@ exactly one command:
 
 | Operation | Required next context | Conditional retrieval |
 |---|---|---|
-| `design` | command, host content/direction/system | component-expression reference when a direction must be realized across recurring interface elements; visual-language reference when a style cue remains unresolved or provisional guidance must be translated across surfaces; presentation model when content hierarchy, attention, layout, or a token system is unresolved; visual-asset production when a logo, icon, illustration, or motion asset is a primary object; source index and 1–3 detail files only when local interface guidance is insufficient |
+| `design` | command, host content/direction/system | component-expression reference only when recurring component conformance is the principal unresolved judgment; visual-language reference when a style cue remains unresolved or provisional guidance must be translated across surfaces; presentation model when content hierarchy, attention, layout, or a token system is unresolved; visual-asset production when a logo, icon, illustration, or motion asset is a primary object; source index and 1–3 detail files only when local interface guidance is insufficient |
 | `refine` | command, host direction/system, rendered evidence, component-expression reference | shadcn reference when `components.json` identifies shadcn; report a route change when structure, direction, or a primary production asset must be reconsidered |
 | `review` | command, owning direction, rendered evidence | component-expression reference when checking whether recurring interface elements realize an accepted direction; presentation model only for an attention/hierarchy diagnosis; visual-asset production only when reviewing a production visual asset; never the source index by default |
 | `cultivate` | command, presentation model | visual-language reference when a named style cue or expressive cross-surface relation is material; visual-seed index and selected cards when the host source field lacks inspectable visual contrast; design-source index only when formation or system evidence remains insufficient |
-| `shape` | command, host content/direction, presentation model | visual-language reference when a style cue is ambiguous or later agents need a cross-surface guide; visual-seed index and exactly two selected cards for the first direction pass when no supplied or inherited visual source grounds the cue; one expressive-process source only when the origin or testing of a relation remains material; concepts only when terms beyond the vocabulary above are genuinely conflated |
+| `shape` | command, host content/direction, presentation model | visual-language reference when a style cue is ambiguous or later agents need a cross-surface guide; visual-seed index and exactly two selected cards when the concrete project evidence cannot expose a meaningful contrast or a durable direction needs a source field; one expressive-process source only when the origin or testing of a relation remains material; concepts only when terms beyond the vocabulary above are genuinely conflated |
 
 The paths above are complete for routing; do not list the skill directory when
 the operation is known. Never load sibling command files to complete a formal
@@ -189,7 +189,10 @@ sequence.
 Whichever operation is selected:
 
 1. Begin with owning content, the actual audience action, inherited direction,
-   and material constraints; distinguish observed facts from inferred taste.
+   material constraints, and—when available—one representative render.
+   Distinguish observed facts from inferred taste. Do not turn source reading
+   into a theory preflight: retrieve only what can still change the next design
+   decision.
 2. Allocate attention before choosing layout or treatment. Balance means
    unequal emphasis proportional to the user's current decision, not equal
    visual weight.
@@ -202,9 +205,10 @@ Whichever operation is selected:
    sources; built-in references are fallback context. Do not retrieve them for
    implementation inside an accepted direction.
 5. Compile an accepted direction into the smallest project visual contract
-   needed by the current artifact. Map its expression responsibilities and
-   negative boundary to actual roles, owners, and consumers before editing.
-   This is a conformance judgment, not another direction workshop.
+   needed by the current artifact. Carry its expression responsibilities,
+   negative boundary, actual owners, and consumers as working decisions; do
+   not require a formal map or prose artifact before editing unless another
+   actor must use it.
 6. Translate that contract into the relevant details of recurring components
    and states. Let those details support content, attention, and identity; do
    not let a checklist of radii, shadows, spacing, or icons become the design.
@@ -215,9 +219,12 @@ Whichever operation is selected:
    least two independent consumers or a declared theme/context substitution;
    otherwise keep the value local. Raw values, trends, and component kits
    cannot establish content priority.
-8. Inspect the real artifact across representative content, states, themes, and
-   viewports. Mechanical checks admit work to human aesthetic review but cannot
-   accept it.
+8. For implementation, make one representative fragment embody the chosen
+   relation early, inspect the real render, and revise before propagating the
+   treatment. A broad redesign that changes only palette or tokens needs
+   rendered evidence that structure and component expression were already
+   sufficient. Inspect representative content, states, themes, and viewports.
+   Mechanical checks admit work to human aesthetic review but cannot accept it.
 
 ## Boundaries
 

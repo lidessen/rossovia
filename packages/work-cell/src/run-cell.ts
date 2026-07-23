@@ -11,6 +11,7 @@ import {
   type OutputVerification,
   type TaskVerification,
   type CellPreparation,
+  type TraceEvent,
 } from "./contracts";
 import type { CellDriver } from "./driver";
 import { CellExecutionError, traceEvent } from "./driver";
@@ -18,10 +19,17 @@ import { Workspace } from "./workspace";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
 
+export interface RunCellOptions {
+  signal?: AbortSignal;
+  preparation?: CellPreparation;
+  /** Observe the same bounded events retained in the final trace while the Cell is running. */
+  onTrace?: (event: TraceEvent) => void;
+}
+
 export async function runCell(
   unparsedInput: unknown,
   driver: CellDriver,
-  options: { signal?: AbortSignal; preparation?: CellPreparation } = {},
+  options: RunCellOptions = {},
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
   if (input.terminalTools?.length && input.budget.maxSteps < 2) {
@@ -30,7 +38,22 @@ export async function runCell(
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
   const runId = randomUUID();
   const startedAt = new Date();
-  const trace = [traceEvent("cell.started", { runId, cellId: input.id })];
+  const trace: TraceEvent[] = [];
+  let observerActive = options.onTrace !== undefined;
+  const emit = (type: string, data: unknown) => {
+    const event = traceEvent(type, data);
+    trace.push(event);
+    if (!observerActive) return;
+    try {
+      options.onTrace?.(event);
+    } catch (error) {
+      observerActive = false;
+      trace.push(traceEvent("cell.observer.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  };
+  emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
   const workspace = await Workspace.create(input.workspace, input.budget);
   const before = await workspace.snapshot();
   const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
@@ -54,24 +77,25 @@ export async function runCell(
   if (missingCapabilities.length > 0) {
     status = "capability_mismatch";
     error = `missing capabilities: ${missingCapabilities.join(", ")}`;
-    trace.push(traceEvent("cell.capability_mismatch", { missingCapabilities }));
+    emit("cell.capability_mismatch", { missingCapabilities });
   } else {
     try {
       const context = {
         workspace,
         signal,
+        liveObservation: observerActive,
         observeUsage(usage: CellUsage) {
           observedExecutionUsage = addUsage(observedExecutionUsage, usage);
         },
         emit(type: string, data: unknown) {
-          trace.push(traceEvent(type, data));
+          emit(type, data);
         },
       };
       if (options.preparation) {
-        trace.push(traceEvent("cell.prepared", {
+        emit("cell.prepared", {
           adapter: options.preparation.adapter,
           usage: options.preparation.usage,
-        }));
+        });
       }
       driverResult = await runWithSignal(() => driver.run(input, context), signal);
       const terminalTools = input.terminalTools ?? [];
@@ -83,11 +107,11 @@ export async function runCell(
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;
       if (terminalResult.error) {
-        trace.push(traceEvent("terminal.contract.violation", {
+        emit("terminal.contract.violation", {
           error: terminalResult.error,
           required: terminalResult.verification.required,
           called: terminalResult.verification.called,
-        }));
+        });
       }
       after = await workspace.snapshot();
       const diff = workspace.diff(before, after);
@@ -131,7 +155,7 @@ export async function runCell(
       }
       if (signal.aborted) status = "cancelled";
       else status = "failed";
-      trace.push(traceEvent("cell.error", { status, error }));
+      emit("cell.error", { status, error });
     }
   }
 
@@ -142,7 +166,7 @@ export async function runCell(
     driverResult?.usage ?? failureUsage,
   );
   const estimate = estimateCost(usage, driver.descriptor.pricing);
-  trace.push(traceEvent("cell.finished", { status }));
+  emit("cell.finished", { status, usage });
 
   const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
   const executionObservation: CellRunRecord["executionObservation"] = {

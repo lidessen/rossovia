@@ -1,0 +1,38 @@
+{
+  "version": "mission-record.v1",
+  "id": "kimi-visual-distillation",
+  "title": "Distill Kimi K3 visual judgment into the site and visual-design skill",
+  "sources": [
+    "principal:2026-07-22-kimi-k3-visual-distillation",
+    "skills/visual-design/SKILL.md",
+    "site/src/pages/index.astro"
+  ],
+  "createdAt": "2026-07-22T18:23:45Z",
+  "updatedAt": "2026-07-23T01:47:59Z",
+  "mainline": {
+    "contradiction": "Use one real Rossovia site redesign to distinguish Kimi K3 aesthetic judgments that are reproducible and transferable from one-off styling, then retain only the former in visual-design.",
+    "acceptance": [
+      "The site embodies the Principal's subtle historical communal direction without direct symbolism or heavy retro costume.",
+      "A baseline and Kimi-informed implementation are compared through rendered evidence.",
+      "Only behavior-changing, cross-context visual judgment is added to visual-design, with a boundary probe and synchronized Sequence snapshot."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "work-cell-live-observation",
+      "title": "Expose useful Work Cell progress while a run is active",
+      "kind": "implementation",
+      "purpose": "The Kimi implementation pass showed only process liveness until a hidden transport timeout settled.",
+      "returnCondition": "A provider-neutral event projection exposes phase, reasoning activity when available, tool activity, step usage, and failure without persisting raw hidden reasoning.",
+      "sources": [
+        "regeneration/evaluations/2026-07-22-work-cell-live-observation.md",
+        "packages/work-cell/src/run-cell.ts"
+      ],
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Long Kimi-backed runs now expose bounded provider-neutral progress and a durable run-scoped trace without giving observation authority over execution."
+    }
+  ],
+  "currentFocus": "mainline"
+}

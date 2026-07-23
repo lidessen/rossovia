@@ -63,6 +63,7 @@ the families relevant to the current surface:
 |---|---|
 | Shape and anatomy | silhouette, corner behavior, edge character, proportions, control and container construction |
 | Spacing and rhythm | internal padding, gaps, alignment, density, grouping, repeated vertical and horizontal cadence |
+| Color and material dosage | occupied area, frequency, placement, field versus mark, continuity across surfaces, which signal recedes or persists |
 | Separation and depth | border, surface contrast, shadow, overlap, elevation, material continuity, what must remain flat |
 | Type inside components | label hierarchy, weight, line height, numerals, truncation, alignment, relation to surrounding text |
 | Icon and mark language | family, contour, stroke or fill, optical weight and size, caps and joins, alignment, metaphor clarity |

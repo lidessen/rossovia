@@ -25,7 +25,8 @@ before implementation, or the request names only a surface preference such as
    read `references/visual-language.md`. Treat the phrase as a style cue,
    expand its materially different readings, and prepare a choice rather than
    asking the user to define the field unaided.
-   If no supplied or inherited visual source grounds the cue, read
+   If the concrete project facts and cue cannot expose a consequential contrast,
+   or if the choice is meant to become a durable project direction, read
    `references/visual-seeds/index.md`, select two contrasting cards, and inspect
    their live artifacts. In the first direction pass, stop at exactly two;
    retrieve a third only in a later iteration when human feedback or a real
@@ -38,8 +39,12 @@ before implementation, or the request names only a surface preference such as
    through `references/design-sources/index.md`.
    For a direction-only request, use the provisional visual-language return
    below and stop; do not expand it into the general Aesthetic Case.
-   If no concrete artifact can be inspected at all, stop before forming
-   candidates. Return only:
+   A direction-only request with a concrete object, audience, action,
+   constraints, and cue may proceed as a hypothesis without an external visual
+   source. Keep treatment open, name the missing evidence, and make the first
+   fragments test the relation. If neither that concrete project relation nor
+   an inspected source is available, stop before forming candidates. Return
+   only:
 
 ```text
 Source evidence status: insufficient
@@ -81,22 +86,13 @@ Inspection action:
 For an unresolved style cue, return only:
 
 ```text
-Project, audience, and intended relation:
-Style cue and the ambiguity it leaves:
-Source status, direct observations or unverified pointers, decision changed, and transfer boundary:
-Two or three candidate relations:
-  - relation-led formal tendencies that distinguish each candidate;
-  - suitable content and artifact conditions;
-  - expression strength across representative surfaces;
-  - plausible wrong reading, cost, and maintenance consequence.
-Recommended provisional visual language and why:
-Cross-surface expression allocation:
-Asset transformation dimensions, with identity content unresolved:
-Smallest shared invariants:
-Dimensions deliberately left open:
-Negative boundary:
-First fragments that could test the choice:
-Human selection question and rejection observation:
+Context, intended action, and relation:
+Cue ambiguity and source status:
+Two or three candidate relations, each with its formal carrier, fit, wrong reading, and cost:
+Recommendation and why:
+Carrier map across the relevant surfaces, states, and assets:
+Smallest invariants, deliberately open dimensions, and negative boundary:
+First fragments, rejection observation, and human decision:
 ```
 
 This is a choice among relations, not a miniature specification. State relative

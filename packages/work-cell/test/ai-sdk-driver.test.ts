@@ -2,7 +2,13 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { APICallError, type LanguageModelV3GenerateResult, type LanguageModelV4GenerateResult } from "@ai-sdk/provider";
+import {
+  APICallError,
+  type LanguageModelV3GenerateResult,
+  type LanguageModelV3StreamPart,
+  type LanguageModelV4GenerateResult,
+} from "@ai-sdk/provider";
+import { simulateReadableStream } from "ai";
 import { MockLanguageModelV3, MockLanguageModelV4 } from "ai/test";
 import { AiSdkActivationFieldDriver } from "../src/research/ai-sdk-activation-field";
 import { AiSdkCandidateFieldDriver } from "../src/research/ai-sdk-candidate-field";
@@ -147,11 +153,105 @@ test("retries an invalid terminal payload during recovery before settlement", as
   expect(record.status).toBe("passed");
   expect(record.verification.terminal).toMatchObject({ passed: true, called: ["finish_review"] });
   expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(true);
+  expect(record.trace.find((event) => event.type === "agent.step.started")?.data).toMatchObject({
+    provider: "mock-provider",
+    model: "mock-model-id",
+    stepNumber: 0,
+  });
   expect(record.trace.find((event) => event.type === "agent.step.finished")?.data).toMatchObject({
     performance: expect.objectContaining({ stepTimeMs: expect.any(Number) }),
   });
   expect(record.finalText).toContain("Terminal contract satisfied during recovery");
   expect(calls).toBe(3);
+});
+
+test("streams bounded reasoning activity when a live observer is attached", async () => {
+  const root = await fixture();
+  const firstStep: LanguageModelV3StreamPart[] = [
+    { type: "stream-start", warnings: [] },
+    { type: "reasoning-start", id: "reasoning-1" },
+    { type: "reasoning-delta", id: "reasoning-1", delta: "a".repeat(600) },
+    { type: "reasoning-delta", id: "reasoning-1", delta: "b".repeat(600) },
+    { type: "reasoning-end", id: "reasoning-1" },
+    {
+      type: "tool-call",
+      toolCallId: "read-1",
+      toolName: "read_file",
+      input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+    },
+    {
+      type: "finish",
+      finishReason: { unified: "tool-calls", raw: "tool-calls" },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 5, text: 1, reasoning: 4 },
+      },
+    },
+  ];
+  const secondStep: LanguageModelV3StreamPart[] = [
+    { type: "stream-start", warnings: [] },
+    { type: "text-start", id: "response-1" },
+    { type: "text-delta", id: "response-1", delta: "completed" },
+    { type: "text-end", id: "response-1" },
+    {
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 5, text: 1, reasoning: 4 },
+      },
+    },
+  ];
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: simulateReadableStream({
+        chunks: calls++ === 0 ? firstStep : secondStep,
+        chunkDelayInMs: null,
+      }),
+    }),
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-stream-observation",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+  const observed: string[] = [];
+
+  const record = await runCell({
+    id: "stream-observation",
+    intent: "Expose bounded live execution activity.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return a concise result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The live observer sees reasoning progress without raw reasoning text."],
+    budget: { maxSteps: 2, estimatedTokens: 100, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, {
+    onTrace(event) {
+      observed.push(event.type);
+    },
+  });
+
+  expect(record.status).toBe("passed");
+  expect(observed).toEqual(expect.arrayContaining([
+    "agent.reasoning.started",
+    "agent.reasoning.progress",
+    "agent.reasoning.finished",
+    "agent.tool.started",
+    "agent.tool.finished",
+    "agent.response.started",
+    "agent.response.finished",
+  ]));
+  expect(record.trace.find((event) => event.type === "agent.reasoning.progress")?.data).toEqual({
+    phase: "execution",
+    id: "reasoning-1",
+    characters: 1_200,
+  });
+  expect(JSON.stringify(record.trace)).not.toContain("a".repeat(100));
+  expect(record.trace.some((event) => event.type === "tool.read_file")).toBe(true);
+  expect(record.usage.totalTokens).toBe(30);
 });
 
 test("does not expose read tools when the Cell has no read scope", async () => {

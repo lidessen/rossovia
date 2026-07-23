@@ -9,7 +9,7 @@ import {
   type TaskToolSet,
 } from "./ai-sdk-driver";
 import { AiSdkValidationSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
-import { CellInputSchema, type CellRunRecord } from "./contracts";
+import { CellInputSchema, type CellRunRecord, type TraceEvent } from "./contracts";
 import { persistDeliberationRecord, runDeliberation } from "./adapters/deliberation/runtime";
 import { runExperimentFromFile } from "./adapters/experiment/runtime";
 import { AiSdkValidationJudge } from "./adapters/experiment/judge";
@@ -22,6 +22,7 @@ import { latestProjectRun, lowerProjectProbe, persistProjectRun } from "./adapte
 import { prepareProjectDeliberation } from "./adapters/deliberation/project";
 import { renderRunSummary } from "./adapters/sequence/presentation";
 import { runCell } from "./run-cell";
+import { createLiveTraceFile } from "./live-trace-file";
 import { runSequenceCell } from "./adapters/sequence/runtime";
 import { persistSwarmRecord, runSwarm } from "./swarm";
 import { queryKimiCodingQuota, renderKimiCodingQuota } from "./providers/kimi-coding-quota";
@@ -55,10 +56,16 @@ async function main(args: string[]): Promise<void> {
       raw.workspace.root = resolve(dirname(absolutePath), raw.workspace.root);
     }
     const input = CellInputSchema.parse(raw);
-    const record = await runCell(input, new AiSdkValidationDriver({ taskToolSet }));
+    const liveTrace = createLiveTraceFile(absolutePath, console.error);
+    const record = await runCell(input, new AiSdkValidationDriver({ taskToolSet }), {
+      onTrace(event) {
+        liveTrace.observe(event);
+        console.error(renderLiveEvent(event));
+      },
+    });
     const output = `${absolutePath.replace(/\.json$/, "")}.run.json`;
     await writeFile(output, `${JSON.stringify(record, null, 2)}\n`, "utf8");
-    console.log(JSON.stringify({ output, runId: record.runId, status: record.status, usage: record.usage }, null, 2));
+    console.log(JSON.stringify({ output, events: liveTrace.availablePath(), runId: record.runId, status: record.status, usage: record.usage }, null, 2));
     return;
   }
 
@@ -209,6 +216,93 @@ async function main(args: string[]): Promise<void> {
   }
 
   usage();
+}
+
+function renderLiveEvent(event: TraceEvent): string {
+  if (event.type === "cell.started") {
+    const data = event.data as { cellId?: string; driver?: { provider?: string; model?: string } };
+    return `[work-cell] started ${data.cellId ?? "unknown"} via ${data.driver?.provider ?? "unknown"}/${data.driver?.model ?? "unknown"}`;
+  }
+  if (event.type === "agent.step.started") {
+    const data = event.data as { provider?: string; model?: string; stepNumber?: number; activeTools?: string[] };
+    const tools = data.activeTools?.length ? ` tools=${data.activeTools.join(",")}` : "";
+    return `[work-cell] model step=${data.stepNumber ?? "?"} ${data.provider ?? "unknown"}/${data.model ?? "unknown"}${tools}`;
+  }
+  if (event.type === "agent.step.finished") {
+    const data = event.data as {
+      cumulativeUsage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+      finishReason?: string;
+      providerMetadata?: { workCellRoute?: { servedBy?: string; model?: string } };
+    };
+    const usage = data.cumulativeUsage;
+    const served = data.providerMetadata?.workCellRoute;
+    const target = served?.servedBy
+      ? ` ${served.servedBy}${served.model ? `/${served.model}` : ""}`
+      : "";
+    const tokens = usage
+      ? ` input=${usage.inputTokens ?? 0} output=${usage.outputTokens ?? 0} total=${usage.totalTokens ?? 0}`
+      : "";
+    return `[work-cell] model settled${target} reason=${data.finishReason ?? "unknown"}${tokens}`;
+  }
+  if (event.type === "agent.tool.started") {
+    const data = event.data as { name?: string; id?: string };
+    return `[work-cell] tool started ${data.name ?? "unknown"}${data.id ? ` id=${data.id}` : ""}`;
+  }
+  if (event.type === "agent.tool.finished") {
+    const data = event.data as { name?: string; id?: string; durationMs?: number; outcome?: string };
+    return `[work-cell] tool finished ${data.name ?? "unknown"}${data.id ? ` id=${data.id}` : ""}${data.durationMs === undefined ? "" : ` duration=${data.durationMs}ms`}${data.outcome ? ` outcome=${data.outcome}` : ""}`;
+  }
+  if (event.type === "agent.reasoning.started") {
+    const data = event.data as { phase?: string };
+    return `[work-cell] thinking started${data.phase ? ` phase=${data.phase}` : ""}`;
+  }
+  if (event.type === "agent.reasoning.progress") {
+    const data = event.data as { phase?: string; characters?: number };
+    return `[work-cell] thinking${data.phase ? ` phase=${data.phase}` : ""} characters=${data.characters ?? 0}`;
+  }
+  if (event.type === "agent.reasoning.finished") {
+    const data = event.data as { phase?: string; characters?: number };
+    return `[work-cell] thinking finished${data.phase ? ` phase=${data.phase}` : ""} characters=${data.characters ?? 0}`;
+  }
+  if (event.type === "agent.response.started") {
+    const data = event.data as { phase?: string };
+    return `[work-cell] response started${data.phase ? ` phase=${data.phase}` : ""}`;
+  }
+  if (event.type === "agent.response.progress") {
+    const data = event.data as { phase?: string; characters?: number };
+    return `[work-cell] response${data.phase ? ` phase=${data.phase}` : ""} characters=${data.characters ?? 0}`;
+  }
+  if (event.type === "agent.response.finished") {
+    const data = event.data as { phase?: string; characters?: number };
+    return `[work-cell] response finished${data.phase ? ` phase=${data.phase}` : ""} characters=${data.characters ?? 0}`;
+  }
+  if (event.type === "cell.finished") {
+    const data = event.data as { status?: string; usage?: { totalTokens?: number } };
+    return `[work-cell] finished status=${data.status ?? "unknown"} total=${data.usage?.totalTokens ?? 0}`;
+  }
+  if (event.type.startsWith("task.") || event.type.startsWith("terminal.")) {
+    return `[work-cell] ${event.type}`;
+  }
+  if (event.type === "tool.read_file") {
+    const data = event.data as { path?: string; startLine?: number; endLine?: number; characters?: number };
+    const lines = data.startLine === undefined
+      ? ""
+      : ` lines=${data.startLine}${data.endLine === undefined ? "+" : `-${data.endLine}`}`;
+    return `[work-cell] read ${data.path ?? "unknown"}${lines} characters=${data.characters ?? 0}`;
+  }
+  if (event.type === "tool.list_files") {
+    const data = event.data as { path?: string; count?: number };
+    return `[work-cell] list ${data.path ?? "."} entries=${data.count ?? 0}`;
+  }
+  if (event.type === "tool.write_file") {
+    const data = event.data as { path?: string; characters?: number };
+    return `[work-cell] write ${data.path ?? "unknown"} characters=${data.characters ?? 0}`;
+  }
+  if (event.type === "tool.run_command") {
+    const data = event.data as { argv?: string[]; cwd?: string; exitCode?: number; timedOut?: boolean };
+    return `[work-cell] command ${(data.argv ?? []).join(" ") || "unknown"} cwd=${data.cwd ?? "."} exit=${data.exitCode ?? "?"}${data.timedOut ? " timed-out" : ""}`;
+  }
+  return `[work-cell] ${event.type}`;
 }
 
 async function reconcileAbandonedAttempts(manifestPath: string): Promise<void> {

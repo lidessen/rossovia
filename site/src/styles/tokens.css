@@ -1,14 +1,13 @@
 :root {
   color-scheme: light;
-  --paper: #f3eddf;
-  --paper-deep: #e7ddca;
-  --ink: #20221f;
-  --muted: #62645d;
-  --line: #b8ad99;
-  --red: #a3392f;
-  --red-deep: #7f2a23;
-  --green: #243e35;
-  --grid-line: rgba(32, 34, 31, 0.045);
+  --paper: #f1ead9;
+  --paper-deep: #e5dbc7;
+  --ink: #27261f;
+  --muted: #676258;
+  --line: #b6aa94;
+  --red: #8f3a2c;
+  --red-deep: #6e2b21;
+  --green: #293f37;
   --serif: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, serif;
   --sans: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
 }

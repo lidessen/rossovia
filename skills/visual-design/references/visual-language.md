@@ -19,6 +19,18 @@ content role, or real fragment earns them. Carry the relation first through
 hierarchy, rhythm, gesture, material allocation, and the contrast between
 expressive and functional surfaces.
 
+When a cue describes a sensory condition or change over time, ask what recedes,
+what persists, and where the consequential remainder concentrates before
+choosing form. Use that transition as a generative lens, not a mandatory
+four-part formula. Test area, frequency, placement, contrast, edge, density,
+rhythm, and continuity as readily as hue. A faint cue may require less occupied
+area rather than merely a paler palette.
+
+For historical or metaphorical cues, remove the named era, props, textures, and
+symbols from the candidate. If the intended relation no longer survives in its
+attention, material allocation, and component behavior, it is costume rather
+than a visual language. Preserve the surviving relation, not the inventory.
+
 ## Expand the cue from concrete sources
 
 Start from the project, audience, content, artifact family, supplied references,
@@ -27,14 +39,19 @@ present: personal authorship, warmth, immediacy, construction, dissent, play,
 public accessibility, craft, historical continuity, or another project-specific
 relation. Do not equate the first adjective with that relation.
 
-Build a small source field when the supplied evidence cannot expose real
-contrasts. A recommendation requires at least one inspected concrete artifact.
-When none can be inspected, stop at a source-acquisition action; do not continue
-into candidate generation and then compensate with a verbal evidence warning.
-When none is supplied or inherited, read `visual-seeds/index.md`, select exactly
-two contrasting cards for the first direction pass, and inspect their live
-artifacts. Retrieve a third only in a later iteration when human feedback or a
-real fragment reveals a missing material contrast. Use
+Build a small source field when the supplied project evidence cannot expose a
+meaningful contrast, or when a provisional choice is intended to become a
+durable project direction. A direction-only guide may proceed as a
+hypothesis from a concrete object, audience, action, constraints, and style cue;
+state that no external visual source was inspected, keep treatment open, and
+name the first fragments that could reject it. Promotion beyond that hypothesis
+requires at least one inspected concrete artifact.
+
+When source contrast is needed and none is supplied or inherited, read
+`visual-seeds/index.md`, select exactly two contrasting cards for the first
+direction pass, and inspect their live artifacts. Retrieve a third only in a
+later iteration when human feedback or a real fragment reveals a missing
+material contrast. Use
 `design-sources/index.md` and at most one expressive-process detail only when
 the formation or testing of a relation remains decision-relevant. Select
 sources by the decision they can change:

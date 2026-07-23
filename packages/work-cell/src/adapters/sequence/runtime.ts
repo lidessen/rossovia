@@ -66,6 +66,7 @@ export async function prepareSequenceCell(
   const context: DriverContext = {
     workspace,
     signal,
+    liveObservation: false,
     observeUsage() {},
     emit(type, data) {
       preparationTrace.push(traceEvent(type, data));

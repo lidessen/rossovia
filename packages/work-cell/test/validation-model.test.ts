@@ -3,8 +3,9 @@ import {
   APICallError,
   type LanguageModelV4CallOptions,
   type LanguageModelV4GenerateResult,
+  type LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
-import { generateText, tool } from "ai";
+import { generateText, simulateReadableStream, streamText, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
 import { createRoutedLanguageModel } from "../src/model-route";
@@ -319,6 +320,132 @@ test("a generic route does not touch its reserve target when the preferred targe
   });
 });
 
+test("a routed stream retains serving metadata without touching its reserve target", async () => {
+  let reserveCalls = 0;
+  const result = streamText({
+    model: createRoutedLanguageModel({
+      id: "stream-route",
+      targets: [
+        {
+          id: "preferred",
+          model: new MockLanguageModelV4({ doStream: async () => streamResponse("primary") }),
+          fallbackOn: () => ({ reason: "unavailable" }),
+        },
+        {
+          id: "reserve",
+          model: new MockLanguageModelV4({
+            doStream: async () => {
+              reserveCalls += 1;
+              return streamResponse("fallback");
+            },
+          }),
+        },
+      ],
+    }),
+    prompt: "route one stream",
+    maxRetries: 0,
+  });
+
+  expect(await result.text).toBe("primary");
+  expect(reserveCalls).toBe(0);
+  expect(await result.providerMetadata).toMatchObject({
+    workCellRoute: {
+      routeId: "stream-route",
+      servedBy: "preferred",
+      mode: "preferred",
+      attempts: [],
+    },
+  });
+});
+
+test("a routed stream may fall back only before any stream is returned", async () => {
+  let reserveCalls = 0;
+  const result = streamText({
+    model: createRoutedLanguageModel({
+      id: "stream-fallback-route",
+      targets: [
+        {
+          id: "preferred",
+          model: new MockLanguageModelV4({
+            doStream: async () => {
+              throw new Error("capacity unavailable");
+            },
+          }),
+          fallbackOn: () => ({ reason: "capacity_unavailable" }),
+        },
+        {
+          id: "reserve",
+          model: new MockLanguageModelV4({
+            doStream: async () => {
+              reserveCalls += 1;
+              return streamResponse("fallback");
+            },
+          }),
+        },
+      ],
+    }),
+    prompt: "route one stream",
+    maxRetries: 0,
+  });
+
+  expect(await result.text).toBe("fallback");
+  expect(reserveCalls).toBe(1);
+  expect(await result.providerMetadata).toMatchObject({
+    workCellRoute: {
+      servedBy: "reserve",
+      mode: "fallback",
+      attempts: [{ target: "preferred", reason: "capacity_unavailable" }],
+    },
+  });
+});
+
+test("a routed stream never splices a reserve response after output begins", async () => {
+  let reserveCalls = 0;
+  const result = streamText({
+    model: createRoutedLanguageModel({
+      id: "stream-no-splice-route",
+      targets: [
+        {
+          id: "preferred",
+          model: new MockLanguageModelV4({
+            doStream: async () => ({
+              stream: simulateReadableStream({
+                chunks: [
+                  { type: "stream-start", warnings: [] },
+                  { type: "text-start", id: "text-1" },
+                  { type: "text-delta", id: "text-1", delta: "partial" },
+                  { type: "error", error: new Error("mid-stream failure") },
+                ] satisfies LanguageModelV4StreamPart[],
+                chunkDelayInMs: null,
+              }),
+            }),
+          }),
+          fallbackOn: () => ({ reason: "unavailable" }),
+        },
+        {
+          id: "reserve",
+          model: new MockLanguageModelV4({
+            doStream: async () => {
+              reserveCalls += 1;
+              return streamResponse("fallback");
+            },
+          }),
+        },
+      ],
+    }),
+    prompt: "do not splice this stream",
+    maxRetries: 0,
+    onError: () => {},
+  });
+
+  const parts = [];
+  for await (const part of result.fullStream) parts.push(part);
+
+  expect(parts.some((part) => part.type === "error")).toBe(true);
+  expect(await result.text).toBe("partial");
+  expect(reserveCalls).toBe(0);
+});
+
 test("a target-owned failure policy advances one call and retains the failed attempt", async () => {
   let reserveCalls = 0;
   const result = await generateText({
@@ -470,6 +597,24 @@ function apiError(
     statusCode,
     isRetryable,
   });
+}
+
+function streamResponse(text: string) {
+  const chunks: LanguageModelV4StreamPart[] = [
+    { type: "stream-start", warnings: [] },
+    { type: "text-start", id: "text-1" },
+    { type: "text-delta", id: "text-1", delta: text },
+    { type: "text-end", id: "text-1" },
+    {
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+    },
+  ];
+  return { stream: simulateReadableStream({ chunks, chunkDelayInMs: null }) };
 }
 
 function response(text: string): LanguageModelV4GenerateResult {

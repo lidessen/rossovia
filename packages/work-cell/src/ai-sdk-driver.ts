@@ -44,6 +44,16 @@ const EXECUTION_TOOL_NAMES = new Set([
 ]);
 
 const MAX_AGENT_OUTPUT_TOKENS = 16_000;
+const STREAM_PROGRESS_CHARACTERS = 1_000;
+
+interface MaterializedAgentResult {
+  text: string;
+  output?: unknown;
+  readOutput?: () => Promise<unknown>;
+  totalUsage: unknown;
+  providerMetadata: unknown;
+  steps: unknown[];
+}
 
 export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
@@ -146,13 +156,38 @@ export class AiSdkValidationDriver implements CellDriver {
     });
     let observedUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
     let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
-    let executionResult;
-    let closureResult: { text: string; output?: unknown; totalUsage: unknown; providerMetadata: unknown; steps: unknown[] } | undefined;
+    let executionResult: MaterializedAgentResult;
+    let closureResult: MaterializedAgentResult | undefined;
     try {
-      executionResult = await executionAgent.generate({
+      const callbacks: Parameters<typeof executionAgent.generate>[0] = {
         prompt: renderTaskPrompt(input),
         abortSignal: context.signal,
         timeout: { totalMs: input.budget.maxDurationMs },
+        onStepStart: ({ callId, provider, modelId, stepNumber, activeTools }) => {
+          context.emit("agent.step.started", {
+            callId,
+            provider,
+            model: modelId,
+            stepNumber,
+            activeTools,
+          });
+        },
+        onToolExecutionStart: ({ callId, toolCall }) => {
+          context.emit("agent.tool.started", {
+            callId,
+            id: toolCall.toolCallId,
+            name: toolCall.toolName,
+          });
+        },
+        onToolExecutionEnd: ({ callId, toolCall, toolExecutionMs, toolOutput }) => {
+          context.emit("agent.tool.finished", {
+            callId,
+            id: toolCall.toolCallId,
+            name: toolCall.toolName,
+            durationMs: toolExecutionMs,
+            outcome: toolOutput.type,
+          });
+        },
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const stepUsage = normalizeUsage(usage, providerMetadata);
           observedUsage = addUsage(observedUsage, stepUsage);
@@ -167,7 +202,16 @@ export class AiSdkValidationDriver implements CellDriver {
             toolResults: sanitize(toolResults),
           });
         },
-      });
+      };
+      if (context.liveObservation) {
+        const observeChunk = createStreamActivityObserver(context, "execution");
+        const streamed = await executionAgent.stream(callbacks);
+        for await (const chunk of streamed.stream) observeChunk(chunk);
+        executionResult = await materializeStreamedResult(streamed, inlineOutputSchema !== undefined);
+      } else {
+        const generated = await executionAgent.generate(callbacks);
+        executionResult = materializeGeneratedResult(generated, inlineOutputSchema !== undefined);
+      }
     } catch (error) {
       if (terminalProtocolError) {
         throw new CellExecutionError(terminalProtocolError, observedUsage);
@@ -228,7 +272,7 @@ export class AiSdkValidationDriver implements CellDriver {
         temperature: 0,
       });
       try {
-        closureResult = await closureAgent.generate({
+        const generatedClosure = await closureAgent.generate({
           messages: [
             { role: "user", content: renderTaskPrompt(input) },
             {
@@ -257,6 +301,7 @@ export class AiSdkValidationDriver implements CellDriver {
             });
           },
         });
+        closureResult = materializeGeneratedResult(generatedClosure, inlineOutputSchema !== undefined);
       } catch (error) {
         if (terminalProtocolError) {
           throw new CellExecutionError(
@@ -293,7 +338,10 @@ export class AiSdkValidationDriver implements CellDriver {
     let output: unknown;
     if (inlineOutputSchema) {
       try {
-        output = (closureResult ?? executionResult).output;
+        const selectedResult = closureResult ?? executionResult;
+        output = selectedResult.readOutput
+          ? await selectedResult.readOutput()
+          : selectedResult.output;
       } catch (error) {
         throw new CellExecutionError(
           error instanceof Error ? error.message : String(error),
@@ -481,6 +529,107 @@ function terminalOnlyResult(names: string[], usage: CellUsage, phase: "execution
     totalUsage: usage,
     providerMetadata: undefined,
     steps: [],
+  };
+}
+
+function materializeGeneratedResult(
+  result: {
+    text: string;
+    output?: unknown;
+    totalUsage: unknown;
+    providerMetadata: unknown;
+    steps: unknown[];
+  },
+  includeOutput: boolean,
+): MaterializedAgentResult {
+  return {
+    text: result.text,
+    ...(includeOutput ? { readOutput: async () => result.output } : {}),
+    totalUsage: result.totalUsage,
+    providerMetadata: result.providerMetadata,
+    steps: result.steps,
+  };
+}
+
+async function materializeStreamedResult(
+  result: {
+    text: PromiseLike<string>;
+    output: PromiseLike<unknown>;
+    totalUsage: PromiseLike<unknown>;
+    providerMetadata: PromiseLike<unknown>;
+    steps: PromiseLike<unknown[]>;
+  },
+  includeOutput: boolean,
+): Promise<MaterializedAgentResult> {
+  const [text, totalUsage, providerMetadata, steps] = await Promise.all([
+    result.text,
+    result.totalUsage,
+    result.providerMetadata,
+    result.steps,
+  ]);
+  return {
+    text,
+    ...(includeOutput ? { readOutput: async () => await result.output } : {}),
+    totalUsage,
+    providerMetadata,
+    steps,
+  };
+}
+
+function createStreamActivityObserver(context: DriverContext, phase: string) {
+  const reasoning = new Map<string, { characters: number; reported: number }>();
+  const responses = new Map<string, { characters: number; reported: number }>();
+
+  return (chunk: unknown): void => {
+    const value = asRecord(chunk);
+    const type = typeof value.type === "string" ? value.type : "";
+    const id = typeof value.id === "string" ? value.id : "unknown";
+
+    if (type === "reasoning-start") {
+      reasoning.set(id, { characters: 0, reported: 0 });
+      context.emit("agent.reasoning.started", { phase, id });
+      return;
+    }
+    if (type === "reasoning-delta") {
+      const state = reasoning.get(id) ?? { characters: 0, reported: 0 };
+      if (!reasoning.has(id)) context.emit("agent.reasoning.started", { phase, id });
+      const text = typeof value.text === "string" ? value.text : "";
+      state.characters += text.length;
+      reasoning.set(id, state);
+      if (state.characters - state.reported >= STREAM_PROGRESS_CHARACTERS) {
+        state.reported = state.characters;
+        context.emit("agent.reasoning.progress", { phase, id, characters: state.characters });
+      }
+      return;
+    }
+    if (type === "reasoning-end") {
+      const state = reasoning.get(id) ?? { characters: 0, reported: 0 };
+      context.emit("agent.reasoning.finished", { phase, id, characters: state.characters });
+      reasoning.delete(id);
+      return;
+    }
+    if (type === "text-start") {
+      responses.set(id, { characters: 0, reported: 0 });
+      context.emit("agent.response.started", { phase, id });
+      return;
+    }
+    if (type === "text-delta") {
+      const state = responses.get(id) ?? { characters: 0, reported: 0 };
+      if (!responses.has(id)) context.emit("agent.response.started", { phase, id });
+      const text = typeof value.text === "string" ? value.text : "";
+      state.characters += text.length;
+      responses.set(id, state);
+      if (state.characters - state.reported >= STREAM_PROGRESS_CHARACTERS) {
+        state.reported = state.characters;
+        context.emit("agent.response.progress", { phase, id, characters: state.characters });
+      }
+      return;
+    }
+    if (type === "text-end") {
+      const state = responses.get(id) ?? { characters: 0, reported: 0 };
+      context.emit("agent.response.finished", { phase, id, characters: state.characters });
+      responses.delete(id);
+    }
   };
 }
 

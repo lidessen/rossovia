@@ -69,6 +69,36 @@ than publishing a quota API. Work Cell does not copy the community workaround
 of scraping an authenticated workspace page. Model response usage remains
 available per call; it is not mislabeled as the account's remaining allowance.
 
+## Live run observation
+
+The final Cell record remains the durable audit source, but callers do not need
+to wait for settlement to learn how a run is proceeding. `runCell` accepts an
+optional `onTrace` observer that receives the same bounded events retained in
+the final trace. A synchronous observer failure is retained as
+`cell.observer.failed`, detaches that projection, and never changes Cell
+execution or settlement. The AI SDK driver emits model/provider identity and
+step start, tool start and finish, completed-step usage, terminal and
+structured-settlement transitions, errors, and final status.
+
+The `run` CLI writes those events incrementally to a run-ID-scoped JSONL file
+beside the input, prints its path and a compact live projection to stderr, and
+returns the path in its final stdout JSON while that sink remains writable. If
+the sink fails, the Cell continues, records `cell.observer.failed`, and does not
+claim the partial path as an available result. A background caller can tail a
+healthy file without parsing a partial final record.
+
+When a live observer is attached, the AI SDK driver uses its streaming agent
+path. Provider-exposed reasoning produces bounded start, character-progress,
+and finish events; response production is projected the same way. Raw
+reasoning text is neither copied into the trace nor treated as a portable
+contract. Tool names, bounded tool evidence, tool duration, serving route, and
+completed-step token use remain visible. Usage is reported only when the
+provider settles a step; Work Cell does not estimate an in-flight token count.
+
+The model route may select a fallback only before a provider returns a stream.
+Once streaming begins, a later error belongs to that one response and is never
+spliced into another provider's partial output.
+
 ## Orchestration runtime
 
 `runCell` remains the atomic execution boundary. Multi-Cell execution is built

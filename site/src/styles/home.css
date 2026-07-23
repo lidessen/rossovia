@@ -14,9 +14,7 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    linear-gradient(90deg, transparent calc(100% - 1px), var(--grid-line) 1px) 0 0 / 8.333vw 100%,
-    var(--paper);
+  background: var(--paper);
 }
 
 a {
@@ -25,8 +23,8 @@ a {
 }
 
 a:focus-visible {
-  outline: 3px solid var(--red);
-  outline-offset: 4px;
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
 }
 
 .skip-link {
@@ -51,12 +49,33 @@ footer {
   margin-inline: auto;
 }
 
+main {
+  position: relative;
+}
+
+main::before {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 58.333%;
+  width: 1px;
+  background: color-mix(in srgb, var(--line) 62%, transparent);
+  content: '';
+  pointer-events: none;
+}
+
+main > section {
+  position: relative;
+  z-index: 1;
+}
+
 .site-header {
   display: flex;
   min-height: 96px;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--ink);
+  border-bottom: 1px solid var(--line);
 }
 
 .footer-links {
@@ -76,18 +95,22 @@ footer {
 .hero {
   display: grid;
   min-height: calc(100vh - 96px);
-  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
-  gap: clamp(3rem, 8vw, 8rem);
+  grid-template-columns: minmax(0, 7fr) minmax(340px, 5fr);
+  gap: 0;
   align-items: center;
   padding-block: clamp(5rem, 10vw, 9rem);
 }
 
+.hero-copy {
+  padding-right: clamp(3rem, 7vw, 7rem);
+}
+
 .eyebrow {
   margin: 0 0 1.5rem;
-  color: var(--red-deep);
+  color: var(--muted);
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+  font-weight: 600;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -95,20 +118,20 @@ footer {
   max-width: 12ch;
   margin: 0;
   font-family: var(--serif);
-  font-size: clamp(3.5rem, 7.1vw, 7.6rem);
-  font-weight: 600;
-  letter-spacing: -0.055em;
+  font-size: clamp(3.5rem, 6.4vw, 6.4rem);
+  font-weight: 550;
+  letter-spacing: -0.025em;
   line-height: 1.02;
 }
 
 .hero h1 span {
-  color: var(--red);
+  color: inherit;
 }
 
 .hero-lede {
   max-width: 43rem;
   margin: 2.5rem 0 0;
-  color: #3f423d;
+  color: var(--muted);
   font-size: clamp(1rem, 1.3vw, 1.23rem);
   line-height: 1.9;
 }
@@ -129,12 +152,11 @@ footer {
   background: var(--ink);
   color: var(--paper);
   text-decoration: none;
-  transition: background 160ms ease, transform 160ms ease;
+  transition: background 160ms ease;
 }
 
 .primary-action:hover {
   background: var(--red-deep);
-  transform: translateY(-2px);
 }
 
 .text-action {
@@ -144,26 +166,34 @@ footer {
 .workshop-figure {
   position: relative;
   padding: 1.25rem 0 0 clamp(1.5rem, 4vw, 3.5rem);
-  border-left: 1px solid var(--ink);
+  border-left: 1px solid var(--line);
 }
 
 .workshop-figure::before {
   position: absolute;
-  top: -1.4rem;
-  left: -0.48rem;
-  width: 0.9rem;
-  height: 0.9rem;
-  border: 1px solid var(--ink);
-  background: var(--paper);
+  top: -0.35rem;
+  left: -0.35rem;
+  width: 0.7rem;
+  height: 1px;
+  background: var(--ink);
   content: '';
-  transform: rotate(45deg);
+}
+
+.workshop-figure::after {
+  position: absolute;
+  top: -0.7rem;
+  left: -1px;
+  width: 1px;
+  height: 0.7rem;
+  background: var(--ink);
+  content: '';
 }
 
 .figure-label {
   margin: 0 0 2rem;
   color: var(--muted);
   font-size: 0.66rem;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
 }
 
 .workshop-figure ol {
@@ -188,7 +218,7 @@ footer {
 .workshop-figure li span,
 .method-number,
 .section-index {
-  color: var(--red-deep);
+  color: var(--muted);
   font-family: ui-monospace, 'SFMono-Regular', monospace;
   font-size: 0.68rem;
 }
@@ -204,10 +234,14 @@ footer {
 
 .orientation {
   display: grid;
-  grid-template-columns: 0.2fr 0.9fr 1fr;
-  gap: clamp(2rem, 5vw, 5rem);
+  grid-template-columns: minmax(3rem, 1fr) minmax(0, 6fr) minmax(0, 5fr);
+  gap: 0;
   padding-block: 7rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
+}
+
+.section-heading {
+  padding-inline: clamp(1rem, 3vw, 3rem);
 }
 
 .section-heading h2,
@@ -222,15 +256,23 @@ footer {
   line-height: 1.12;
 }
 
+.sequence h2 {
+  max-width: 16ch;
+  font-size: clamp(2.1rem, 3.2vw, 3.5rem);
+  letter-spacing: -0.03em;
+  line-height: 1.18;
+}
+
 .orientation-copy {
   max-width: 39rem;
   align-self: end;
+  padding-left: clamp(2rem, 5vw, 5rem);
 }
 
 .orientation-copy p,
 .sequence-detail p,
 .boundary p {
-  color: #444741;
+  color: var(--muted);
   font-size: 1.05rem;
   line-height: 1.85;
 }
@@ -246,7 +288,8 @@ footer {
 }
 
 .methods {
-  padding: 7rem clamp(1.5rem, 5vw, 5rem);
+  margin-inline: clamp(1rem, 4.166vw, 4rem);
+  padding: 6.5rem clamp(1.5rem, 5vw, 5rem);
   background: var(--green);
   color: #f1eadc;
 }
@@ -285,12 +328,27 @@ footer {
 }
 
 .method-list li {
+  position: relative;
   display: grid;
   grid-template-columns: 3rem minmax(0, 1fr) auto;
   gap: clamp(1rem, 3vw, 3rem);
   align-items: start;
   padding: 2rem 0;
   border-top: 1px solid rgba(241, 234, 220, 0.28);
+}
+
+.method-list li::before {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: transparent;
+  content: '';
+}
+
+.method-list li:hover::before {
+  background: rgba(241, 234, 220, 0.28);
 }
 
 .method-list li:last-child {
@@ -312,18 +370,26 @@ footer {
 }
 
 .method-list a {
-  display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
-  place-items: center;
-  border: 1px solid rgba(241, 234, 220, 0.5);
-  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  padding-block: 0.25rem;
+  border-bottom: 1px solid transparent;
+  color: #e6d7c5;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
   text-decoration: none;
 }
 
-.method-list a:hover {
-  background: #f1eadc;
-  color: var(--green);
+.method-list a:hover,
+.method-list a:focus-visible {
+  border-bottom-color: #f1eadc;
+  color: #f1eadc;
+}
+
+.method-list li:hover h3 {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
 }
 
 .methods .method-number {
@@ -337,31 +403,48 @@ footer {
 
 .sequence {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
-  gap: clamp(4rem, 10vw, 10rem);
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 0;
   padding-block: 9rem;
+}
+
+.sequence-statement {
+  padding-right: clamp(3rem, 7vw, 7rem);
 }
 
 .sequence-detail {
   align-self: end;
+  padding-left: clamp(2rem, 5vw, 5rem);
 }
 
 .sequence-detail blockquote {
   margin: 3rem 0 1rem;
-  padding: 1.4rem 0 1.4rem 1.5rem;
-  border-left: 4px solid var(--red);
+  padding: 1.5rem 0 0;
+  border-top: 1px solid var(--line);
   font-family: var(--serif);
-  font-size: clamp(1.6rem, 3vw, 2.6rem);
+  font-size: clamp(1.45rem, 2.2vw, 1.9rem);
 }
 
 .boundary {
+  position: relative;
   padding: 6rem clamp(1.5rem, 7vw, 7rem);
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.boundary::before {
+  position: absolute;
+  top: 5.25rem;
+  left: clamp(1.5rem, 7vw, 7rem);
+  width: 4rem;
+  height: 4px;
   background: var(--red);
-  color: #fff8e9;
+  content: '';
 }
 
 .boundary .eyebrow {
-  color: #f5c8b7;
+  margin-top: 1.5rem;
+  color: var(--muted);
 }
 
 .boundary h2 {
@@ -371,7 +454,7 @@ footer {
 .boundary p {
   max-width: 48rem;
   margin: 2rem 0 0 auto;
-  color: #f8ded3;
+  color: var(--muted);
 }
 
 footer {
@@ -380,7 +463,10 @@ footer {
   align-items: center;
   justify-content: space-between;
   gap: 2rem;
-  border-top: 1px solid var(--ink);
+  border-top: 1px solid var(--line);
+  background: var(--paper-deep);
+  box-shadow: 0 0 0 100vmax var(--paper-deep);
+  clip-path: inset(0 -100vmax);
 }
 
 footer > div:first-child {
@@ -424,6 +510,10 @@ footer span {
 }
 
 @media (max-width: 900px) {
+  main::before {
+    display: none;
+  }
+
   body {
     background: var(--paper);
   }
@@ -433,6 +523,14 @@ footer span {
   .methods-intro,
   .sequence {
     grid-template-columns: 1fr;
+  }
+
+  .hero-copy,
+  .section-heading,
+  .orientation-copy,
+  .sequence-statement,
+  .sequence-detail {
+    padding-inline: 0;
   }
 
   .hero {
@@ -499,7 +597,7 @@ footer span {
   }
 
   .methods {
-    margin-inline: -1rem;
+    margin-inline: 0;
     padding-block: 5rem;
   }
 
@@ -508,12 +606,16 @@ footer span {
   }
 
   .method-list a {
-    display: none;
+    grid-column: 2;
+    justify-self: start;
   }
 
   .boundary {
-    margin-inline: -1rem;
     padding-block: 5rem;
+  }
+
+  .boundary::before {
+    top: 4.25rem;
   }
 
   footer {
