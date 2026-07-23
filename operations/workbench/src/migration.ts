@@ -13,7 +13,7 @@ import {
 import { join } from "node:path";
 import { z } from "zod";
 import { PreferenceReceiptSchema, PreferencesSchema } from "./contracts";
-import { initializeHome, loadHome, workspaceFor } from "./home";
+import { initializeHome, loadHome, saveJson, workspaceFor } from "./home";
 import { expandPath } from "./paths";
 import { observeWorkspace } from "./workspace";
 
@@ -173,20 +173,23 @@ function clearMigrationTarget(target: string): void {
 function prepareMigrationTarget(source: string, target: string): string {
   const marker = join(target, migrationMarkerName);
   if (existsSync(target)) {
-    if (!existsSync(marker)) throw new Error(`rossovia workbench target home already exists: ${target}`);
-    const interrupted = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
-    if (interrupted.sourceHome !== source || interrupted.targetHome !== target) {
-      throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
+    if (existsSync(marker)) {
+      const interrupted = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+      if (interrupted.sourceHome !== source || interrupted.targetHome !== target) {
+        throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
+      }
+      clearMigrationTarget(target);
+    } else if (readdirSync(target).length > 0) {
+      throw new Error(`rossovia workbench target home already exists: ${target}`);
     }
-    clearMigrationTarget(target);
   } else {
     mkdirSync(target, { recursive: true });
   }
-  writeFileSync(marker, `${JSON.stringify({
+  saveJson(marker, {
     version: "rosso.namespace-migration.v1",
     sourceHome: source,
     targetHome: target,
-  }, null, 2)}\n`, "utf8");
+  });
   return marker;
 }
 

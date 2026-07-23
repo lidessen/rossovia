@@ -61,10 +61,11 @@ source into `~/.rosso`. It:
    contents discarded and is rebuilt from the preserved source on retry.
 
 The command refuses an existing completed or unrelated target and resumes only
-a matching marked transaction. The old home remains recovery evidence, not a
-second writable source. An agent that observes `~/.atthis` without `~/.rosso`
-must migrate before ordinary initialization rather than silently creating two
-homes.
+a matching marked transaction or an empty target left before marker
+publication. The marker is published through a temporary write and rename
+inside the target. The old home remains recovery evidence, not a second
+writable source. An agent that observes `~/.atthis` without `~/.rosso` must
+migrate before ordinary initialization rather than silently creating two homes.
 
 ## Domain boundary
 

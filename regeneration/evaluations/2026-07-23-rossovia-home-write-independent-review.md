@@ -45,3 +45,23 @@ operations on the same JSON record transactional.
 
 The correction requires a new independent review of the resulting head. The
 first report remains failure evidence and cannot be promoted as acceptance.
+
+## Second reviewed head
+
+The reviewer inspected
+`26ae09d5cf0acab85a64e7938f9dea09333ddd03`. Both first-report findings were
+closed, including exact-root-only fresh and marked-retry migration probes.
+However, the review retained one new reachable failure and again returned
+`changes_required`: interruption or denial after target-directory creation but
+before marker publication left an empty unmarked home that every later retry
+rejected as an existing target.
+
+The target preparation now recognizes only an empty unmarked target as the
+recoverable pre-marker state and publishes the marker through the same
+temporary-write-and-rename mechanism used by ordinary JSON state. A focused
+test denies marker creation, restores permission, and requires the next
+migration to succeed without manual directory removal. A nonempty unmarked
+target remains protected from overwrite.
+
+This correction also requires a new current-head review; neither prior
+`changes_required` report is acceptance evidence.

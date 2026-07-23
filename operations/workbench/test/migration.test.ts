@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -163,6 +163,32 @@ describe("legacy namespace migration", () => {
     expect(existsSync(join(target, "partial"))).toBe(false);
     expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
     expect(existsSync(`${target}.namespace-migration.tmp`)).toBe(false);
+    expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
+  });
+
+  test("recovers an empty target after marker publication was denied", () => {
+    if (process.platform === "win32") return;
+    const root = mkdtempSync(join(tmpdir(), "rossovia-marker-publication-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    mkdirSync(target);
+    chmodSync(target, 0o555);
+    try {
+      const denied = workbench(target, "migrate", "--from-home", source);
+      expect(denied.exitCode).toBe(2);
+      expect(denied.stderr).toContain("cannot persist Rossovia state");
+      expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    } finally {
+      chmodSync(target, 0o755);
+    }
+
+    const retried = workbench(target, "migrate", "--from-home", source);
+    expect(retried.exitCode).toBe(0);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
     expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
   });
 
