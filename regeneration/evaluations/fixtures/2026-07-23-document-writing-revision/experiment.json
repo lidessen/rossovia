@@ -1,0 +1,84 @@
+{
+  "id": "document-writing-heldout-revision",
+  "fixture": {
+    "root": ".",
+    "overlays": [
+      {
+        "source": "../../../../principles/SEQUENCE.md",
+        "destination": "principles/SEQUENCE.md"
+      },
+      {
+        "source": "../../../../principles/interpretations",
+        "destination": "principles/interpretations"
+      },
+      {
+        "source": "../../../../skills/document-writing",
+        "destination": "skills/document-writing"
+      }
+    ]
+  },
+  "outputDir": "../../../../packages/work-cell/.work-cell/experiments",
+  "task": {
+    "id": "rewrite-clinic-notice",
+    "intent": "Rewrite draft.md as a truthful public notice on the clinic website. Caregivers need to understand why the trial is being run, how to request a same-day slot, who decides urgency, what happens to unused slots, what the clinic will measure, and what the trial does not change. Remove unsupported promotional language and the catalog-like shape. Use only source.md.",
+    "workspace": {
+      "readPaths": [
+        "source.md",
+        "draft.md",
+        "skills/document-writing",
+        "principles/SEQUENCE.md",
+        "principles/interpretations"
+      ],
+      "writePaths": ["draft.md"],
+      "allowedCommands": []
+    },
+    "genome": {
+      "sequencePath": "principles/SEQUENCE.md",
+      "interpretationsDir": "principles/interpretations",
+      "inheritedLineage": {
+        "primary": "P16",
+        "supporting": ["P01", "P05", "P07"]
+      }
+    },
+    "dna": {
+      "baseInstructions": "Act as the accountable editor of a public clinic notice. Read the source and full draft, preserve source qualifications, and write only the finished notice to draft.md. Do not discuss the process.",
+      "capabilities": ["read", "write"]
+    },
+    "capabilitiesRequired": ["read", "write"],
+    "acceptance": [
+      "Read source.md and the complete existing draft before writing.",
+      "Replace draft.md with an English public notice that gives caregivers a usable path.",
+      "Preserve every confirmed operational boundary and add no unsupported benefit, guarantee, outcome, or continuation claim.",
+      "Remove promotional filler and organize the notice around the reader's understanding and action rather than the inherited section catalog."
+    ],
+    "artifacts": [
+      {
+        "path": "draft.md",
+        "instructions": "The finished clinic website notice."
+      }
+    ],
+    "budget": {
+      "maxSteps": 8,
+      "estimatedTokens": 12000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 120000,
+      "maxCommandOutputBytes": 4000
+    }
+  },
+  "variants": [
+    {
+      "id": "baseline"
+    },
+    {
+      "id": "document-writing",
+      "treatment": {
+        "id": "installed-document-writing-skill",
+        "instructions": "Use the installed document-writing skill for this task. Read skills/document-writing/SKILL.md and follow its progressive-disclosure condition exactly. Apply its method to the artifact and do not mention the skill in the document."
+      }
+    }
+  ],
+  "repetitions": 2,
+  "judge": {
+    "rubric": "Judge the notices as real clinic web copy for caregivers, not chat answers. The complete authorized source says: from August 5 Northside Community Clinic reserves 12 weekday same-day slots for urgent pediatric cases; caregivers request by phone without an app or account; a triage nurse, not front desk, applies the existing protocol; unused slots release online at 14:00 for next-day booking; six-week trial measures pediatric waiting time and abandoned calls; no added clinicians or total capacity; 18 callers in the prior four weeks were told no same-day appointment was available. The source forbids guarantees, emergency-room reduction, improved outcomes, or continuation claims. Factual fidelity is a gate. Then prefer a notice that connects the observed access problem to the bounded trial and gives caregivers the phone path, triage boundary, release rule, measures, and capacity limit in a useful order. Penalize promotional filler, generic positive endings, feature catalogs, invented benefits, and unsupported reassurance. Prefer only a repeated material difference; otherwise tie or inconclusive."
+  }
+}

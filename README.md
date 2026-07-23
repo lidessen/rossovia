@@ -118,6 +118,7 @@ confirmation.
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | Turn an observed non-trivial practice into a settled conclusion, a next smallest test, or a route to the owner of the unresolved judgment. |
 | [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | Choose whether a recurring need should exist as a skill, decision artifact, runtime, projection, bounded campaign, or no new form before implementation starts. |
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | Name a shared project concept, define its operative boundary, explain it at the right source, and decline needless terminology. |
+| [document-writing](skills/document-writing/SKILL.md) | `/document-writing` | Turn source-grounded meaning into truthful prose for a real writer, reader, occasion, and intended change; treat AI-writing patterns as late diagnostics rather than the generative method. |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | Recover necessary work and discovery branches before converting a mission into model-specific budget, time, or cost. |
 | [model-evaluation](skills/model-evaluation/SKILL.md) | `/model-evaluation` | Build evidence-linked, task-specific capability profiles from matched repeated runs without turning model labels or one result into fact. |
 | [task-shaping](skills/task-shaping/SKILL.md) | `/task-shaping` | Judge whether one task fits a conservative Agent execution envelope, needs guards, can be transformed without losing the whole, or should escalate. |
@@ -168,6 +169,7 @@ resume are future domain methods over this mechanism, not its defining schema; s
 | Turning a finished or failed non-trivial attempt into the next bounded practice | `/practice-cycle` |
 | Deciding whether a capability needs a skill, record, runtime, projection, or no new form | `/form-guidance` |
 | Naming a shared concept, defining terminology, or deciding where its explanation belongs | `/naming-and-articulation` |
+| Writing or rewriting a README, design document, report, explainer, guide, or other prose for a real reader without changing the source facts | `/document-writing` |
 | Comparing the real work of alternatives, selecting estimate precision, or setting error tolerance before a budget | `/work-estimation` |
 | Comparing model, provider, plan, harness, or prompt/tool execution profiles on representative real tasks | `/model-evaluation` |
 | Deciding whether a task is reliable for a Flash-class agent loop, needs guards, can be transformed without losing the whole, or should escalate | `/task-shaping` |

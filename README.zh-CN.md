@@ -102,6 +102,7 @@ skill 则是在具体语境中对所选条目的表达。
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | 将一次已观察到的非平凡实践转化为已定结论、下一项最小测试，或转交给尚未解决判断的责任方。 |
 | [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | 在实施前判断一个重复性需求应以 skill、决策记录、运行时、投影、有限期任务还是无需新增形式来存在。 |
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | 为共享项目概念命名，定义其可操作边界，将解释放在正确的来源处，并拒绝不必要的术语。 |
+| [document-writing](skills/document-writing/SKILL.md) | `/document-writing` | 将有来源的意义转化为真实作者在具体处境中写给真实读者的可靠文档；把 AI 写作模式作为后置诊断，而不是生成方法。 |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | 在将任务转换为模型预算、时间或成本前，恢复必要工作及其探索分支。 |
 | [model-evaluation](skills/model-evaluation/SKILL.md) | `/model-evaluation` | 通过条件匹配的重复真实任务，形成带证据、特定于任务的能力画像，不把模型名称或单次结果当成事实。 |
 | [task-shaping](skills/task-shaping/SKILL.md) | `/task-shaping` | 判断单项任务是否适合保守的 Agent 执行包络、需要保护、能够在不丢失整体的情况下转换，或应当升级处理。 |
@@ -146,6 +147,7 @@ Git、prompt、模型和任务定位都不进入核心。项目认知和 Rossovi
 | 将已完成或失败的非平凡尝试转化为下一项有边界的实践 | `/practice-cycle` |
 | 判断一项能力需要 skill、记录、运行时、投影，还是无需新增形式 | `/form-guidance` |
 | 为共享概念命名、定义术语，或决定解释应放在哪里 | `/naming-and-articulation` |
+| 为真实读者撰写或改写 README、设计文档、报告、说明、指南等文档，同时不改变来源事实 | `/document-writing` |
 | 比较替代方案的真实工作、选择估计精度，或在预算前设定误差容忍度 | `/work-estimation` |
 | 在代表性的真实任务上比较模型、provider、套餐、harness 或 prompt/tool 执行画像 | `/model-evaluation` |
 | 判断任务对 Flash 级 Agent loop 是否可靠、是否需要验证保护、能否在保全整体的前提下转换，或应当升级处理 | `/task-shaping` |

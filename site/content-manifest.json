@@ -46,6 +46,15 @@
     },
     {
       "kind": "source",
+      "source": "skills/document-writing/SKILL.md",
+      "output": "docs/skills/document-writing.md",
+      "route": "/docs/skills/document-writing/",
+      "presentation": "skill-guide",
+      "title": "Document Writing",
+      "description": "从来源、写作者、读者和真实处境出发，写出可靠而不机械的文档。"
+    },
+    {
+      "kind": "source",
       "source": "skills/model-evaluation/SKILL.md",
       "output": "docs/skills/model-evaluation.md",
       "route": "/docs/skills/model-evaluation/",
@@ -74,6 +83,7 @@
       "skills/practice-cycle/SKILL.md",
       "skills/form-guidance/SKILL.md",
       "skills/naming-and-articulation/SKILL.md",
+      "skills/document-writing/SKILL.md",
       "skills/work-estimation/SKILL.md",
       "skills/model-evaluation/SKILL.md",
       "skills/task-shaping/SKILL.md",
