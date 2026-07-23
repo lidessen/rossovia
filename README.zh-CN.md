@@ -64,6 +64,11 @@ skill 则是在具体语境中对所选条目的表达。
 ./operations/workbench/src/cli.ts preference list --project survey
 ```
 
+成功的 `init` 会在 Rossovia home 中实际执行并清理一次写入探针，然后返回
+`writeAccess: "verified"`。仅能读取既有状态并不代表环境可用；如果没有这个
+观察结果，应为准确的 home 协调用户级 harness 权限并新开会话。初始化不会安装
+项目 hooks，也不会把共享状态移进当前仓库。
+
 工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它不会把本仓库变成
 全局任务板，也不会仅凭定位结果取得另一个项目的执行权。显式个人偏好与项目
 共同约束分别保存；未经人确认，推断出的 memory 不会成为生效偏好。

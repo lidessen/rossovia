@@ -33,6 +33,7 @@ try {
     console.log(JSON.stringify({
       home: initialized.home,
       initialized: true,
+      writeAccess: initialized.writeAccess,
       workspaceRoots: roots.roots,
       indexedWorkspaces: index.entries.length,
     }, null, 2));

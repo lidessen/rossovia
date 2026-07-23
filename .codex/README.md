@@ -46,18 +46,28 @@ grants do not retrofit a resumed session's frozen permission snapshot. A custom
 `ROSSO_HOME` must receive its own grant; the adapter must not silently fall back
 to a vendor directory.
 
+Workbench `init` does not install hooks or grant harness permissions. It does
+perform a no-residue create–rename–remove probe under the resolved home on every
+run, including when the home is already complete. Success reports
+`writeAccess: "verified"`; a readable existing home without that observation is
+not a usable state surface for preferences, receipts, timelines, or later
+updates.
+
 ## Enable and verify in a fresh Codex session
 
-1. Start Codex in this repository and use `/hooks` to inspect and trust the
-   project hook. Do not use a trust-bypass flag: hook review is part of the
-   binding's safety boundary.
-2. Send an ordinary task message. It should create an observation but no
+1. Run `./operations/workbench/src/cli.ts init` through the ordinary agent
+   session and require `writeAccess: "verified"`. If it fails, reconcile the
+   exact user-level grant above and start another fresh session; repeated init
+   attempts cannot change a frozen sandbox.
+2. Use `/hooks` to inspect and trust the project hook. Do not use a trust-bypass
+   flag: hook review is part of the binding's safety boundary.
+3. Send an ordinary task message. It should create an observation but no
    correction receipt.
-3. Send a material correction. The agent must compare it with the active task;
+4. Send a material correction. The agent must compare it with the active task;
    if it changes a target, hard boundary, concept relation, authority, or
    acceptance condition, it records a receipt before claiming a mutation
    implements the correction.
-4. Inspect the resulting state:
+5. Inspect the resulting state:
 
    ```sh
    ./operations/workbench/src/cli.ts intervention status --session-id "$CODEX_THREAD_ID"

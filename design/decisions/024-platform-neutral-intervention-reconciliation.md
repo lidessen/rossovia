@@ -142,6 +142,13 @@ the same lifecycle surface. The current binding requires an accepted user-level
 launch option for the Rossovia home. The repository projection does not grant
 access to a user home on the user's behalf.
 
+An environment that claims this personal capability is configured must pass an
+actual no-residue write probe through the ordinary Agent runtime. A readable
+existing home or a hook process that can write under a different capability
+boundary is not evidence that the Agent can persist a later correction receipt.
+Receipt failure remains non-blocking for already-authorized work; it makes the
+environment setup incomplete rather than moving state or widening the sandbox.
+
 ### Deployment order
 
 1. **Shadow:** record candidate corrections and receipts; never block a tool.

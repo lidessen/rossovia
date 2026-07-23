@@ -61,6 +61,8 @@ maintenance scripts to move.
 - registered, discovered, partial-failure, and stale-workspace projections
   match retained Python fixtures;
 - initialization, roots, register, and attach preserve their state contracts;
+- initialization verifies a real no-residue write through the current runtime
+  even when the Rossovia home is already structurally complete;
 - preferences satisfy Decision 046 without a machine preference source;
 - legacy migration preserves its source, verifies a migrated workspace, writes
   a receipt, and rejects nonempty obsolete machine preferences;

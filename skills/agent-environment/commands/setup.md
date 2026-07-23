@@ -77,6 +77,12 @@ environment on one device.
 7. Verify each selected capability through its ordinary use path, including one
    distinctive behavior and one preserved/excluded boundary. A skill-only setup
    can verify discovery and invocation without installing or calling a new CLI.
+   For a capability whose ordinary operation updates a user-owned state root,
+   exercise a harmless create–rename–remove probe at that exact root through the
+   target harness. Directory presence, readable prior data, or a hook running
+   under a separate process boundary does not prove that the Agent can update
+   it. When the harness freezes permissions at session start, classify setup as
+   deferred until the same probe passes in a fresh session.
    Confirm that the projection improved the named action without adding an
    unnecessary always-on instruction, runtime, updater, or duplicate source.
    Record unsupported and deferred in-scope items rather than weakening

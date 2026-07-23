@@ -76,6 +76,12 @@ manual entry remains available:
 ./operations/workbench/src/cli.ts preference list --project survey
 ```
 
+A successful `init` reports `writeAccess: "verified"` after exercising and
+cleaning up a real write under the resolved Rossovia home. Existing readable
+state is not enough: if this observation is absent, reconcile the exact
+user-level harness permission and start a fresh session. Initialization does not
+install project hooks or move shared state into the current repository.
+
 The workbench keeps stable project identity separate from repository names,
 spoken aliases, and machine-local paths. It does not turn this repository into
 a global task board or grant authority to execute in another project. Explicit

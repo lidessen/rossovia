@@ -168,7 +168,10 @@ identifiers.
    harmless behavior probe per selected capability. A copied file is not proof
    that the intended agent or runtime loaded it. Confirm an adjacent unselected
    surface was not changed and preserve one relevant unmanaged item as boundary
-   evidence. Also confirm that the selected projection improved its named action
+   evidence. When the capability owns mutable user-level state, verify an actual
+   no-residue create, rename, and remove through the target runtime; an existing
+   readable directory is not evidence of write capability. Also confirm that
+   the selected projection improved its named action
    without adding an unnecessary always-on instruction, runtime, updater, or
    duplicate source. When marketplace discovery is a live competing trigger,
    repeat the raw setup request through the ordinary classifier with the actual

@@ -87,6 +87,10 @@ repeated mechanical failure can name the invariant they must enforce.
   labels unverified mechanics `lookup-required` and omits their command text.
 - Native import or settings-sync features may create projections, but the Skill
   audits them and does not treat them as the portable source.
+- A selected capability that updates user-owned state is verified by a harmless
+  create–rename–remove operation through the target runtime. Existing readable
+  state, configuration syntax, or a separately privileged hook process cannot
+  substitute for that ordinary-use observation.
 
 ## First-slice verification
 

@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 import {
@@ -29,6 +30,7 @@ export interface InitializedHome {
   home: string;
   roots: Roots;
   index: WorkspaceIndex;
+  writeAccess: "verified";
 }
 
 const homeDirectories = ["config", "state", "receipts", "cache"];
@@ -47,10 +49,57 @@ export function loadJson<Schema extends z.ZodType>(path: string, schema: Schema)
 }
 
 export function saveJson(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const temporary = `${path}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  renameSync(temporary, path);
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(temporary, serialized, "utf8");
+    renameSync(temporary, path);
+  } catch (error: unknown) {
+    removeProbe(temporary);
+    throw new Error(
+      `cannot persist Rossovia state at ${path}: ${error instanceof Error ? error.message : String(error)}. `
+      + "The current runtime must grant write access to this exact state location.",
+    );
+  }
+}
+
+function verifyHomeWrite(home: string): void {
+  const temporary = join(home, "state", `.rossovia-write-probe-${randomUUID()}.tmp`);
+  const renamed = `${temporary}.renamed`;
+  try {
+    writeFileSync(temporary, "", { encoding: "utf8", flag: "wx" });
+    renameSync(temporary, renamed);
+    rmSync(renamed);
+  } catch (error: unknown) {
+    removeProbe(temporary);
+    removeProbe(renamed);
+    throw new Error(
+      `Rossovia home is readable but not writable by the current runtime: ${home}: `
+      + `${error instanceof Error ? error.message : String(error)}. `
+      + "Grant write access to the exact ROSSO_HOME and start a fresh agent session before retrying.",
+    );
+  }
+}
+
+function prepareHomeDirectories(home: string): void {
+  try {
+    for (const directory of homeDirectories) mkdirSync(join(home, directory), { recursive: true });
+  } catch (error: unknown) {
+    throw new Error(
+      `Rossovia home cannot be prepared by the current runtime: ${home}: `
+      + `${error instanceof Error ? error.message : String(error)}. `
+      + "Grant write access to the exact ROSSO_HOME and start a fresh agent session before retrying.",
+    );
+  }
+}
+
+function removeProbe(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // Preserve the original write failure. A later init probe uses a unique name.
+  }
 }
 
 export function validateProjects(projects: Projects): Projects {
@@ -137,7 +186,8 @@ function ensureJson<Schema extends z.ZodType>(
 
 export function initializeHome(homeArgument?: string): InitializedHome {
   const home = resolveHome(homeArgument);
-  for (const directory of homeDirectories) mkdirSync(join(home, directory), { recursive: true });
+  prepareHomeDirectories(home);
+  verifyHomeWrite(home);
   ensureJson(join(home, "manifest.json"), ManifestSchema, {
     version: "rosso.home.v1",
     namespace: "rosso",
@@ -164,7 +214,7 @@ export function initializeHome(homeArgument?: string): InitializedHome {
     generatedAt: now(),
     entries: [],
   }, validateIndex);
-  return { home, roots, index };
+  return { home, roots, index, writeAccess: "verified" };
 }
 
 export function loadHome(homeArgument?: string): HomeSources {

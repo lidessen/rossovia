@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
@@ -177,5 +177,41 @@ describe("intervention reconciliation", () => {
     expect(state.receipts.map((receipt: { affectedSurfaces: string[] }) => receipt.affectedSurfaces)).toEqual(
       targets.map((target) => [target]),
     );
+  });
+
+  test("reports the exact state capability when a correction receipt cannot be persisted", () => {
+    if (process.platform === "win32") return;
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-correction-read-only-"));
+    temporaryRoots.push(temporary);
+    const stateRoot = join(temporary, "state");
+    const observation = command(
+      [process.execPath, bunCli, "intervention", "observe", "--state-root", stateRoot],
+      { stdin: JSON.stringify({ session_id: "read-only", cwd: repositoryRoot, prompt: "Change the invariant" }) },
+    );
+    expect(observation.exitCode).toBe(0);
+    const statePath = JSON.parse(observation.stdout).statePath as string;
+    const directory = dirname(statePath);
+    chmodSync(directory, 0o555);
+    try {
+      const correction = workbench(
+        "correct",
+        "--state-file",
+        statePath,
+        "--rejected-assumption",
+        "readable state is writable state",
+        "--new-invariant",
+        "the current runtime must prove exact write capability",
+        "--affected-surface",
+        "intervention receipt",
+        "--next-probe",
+        "retry from a fresh session with the exact state root granted",
+      );
+      expect(correction.exitCode).toBe(2);
+      expect(correction.stderr).toContain(`cannot persist Rossovia state at ${statePath}`);
+      expect(correction.stderr).toContain("grant write access to this exact state location");
+      expect(readdirSync(directory).some((entry) => entry.endsWith(".tmp"))).toBe(false);
+    } finally {
+      chmodSync(directory, 0o755);
+    }
   });
 });

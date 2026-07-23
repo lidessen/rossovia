@@ -51,7 +51,14 @@ mechanical action their words authorize:
 - To initialize the workbench, run `./operations/workbench/src/cli.ts init` and include
   one `--workspace-root <path>` for each root they explicitly supplied. Do not
   infer or scan `$HOME` when no root was supplied; an empty initialized home is
-  valid, and roots can be added later.
+  valid, and roots can be added later. Initialization is complete only when the
+  result reports `writeAccess: "verified"`: the command performs a
+  create–rename–remove probe even when every home file already exists. If the
+  home is readable but this probe fails, treat the selected Workbench capability
+  as an incomplete user-level environment projection. Do not retry `init`,
+  inspect hooks, or move state into the current project. Reconcile write access
+  for the exact `ROSSO_HOME` through the selected harness's user-level setup,
+  then verify it from a fresh session.
 - To add a later workspace root, run
   `./operations/workbench/src/cli.ts root add <path>`. Discovery remains bounded and
   does not register the repositories it finds.

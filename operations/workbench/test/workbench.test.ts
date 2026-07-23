@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -68,6 +79,7 @@ describe("Rossovia workbench", () => {
     expect(JSON.parse(initialized.stdout)).toEqual({
       home: realpathSync(home),
       initialized: true,
+      writeAccess: "verified",
       workspaceRoots: [realpathSync(pool)],
       indexedWorkspaces: 1,
     });
@@ -84,6 +96,43 @@ describe("Rossovia workbench", () => {
     expect(existsSync(join(home, "missions"))).toBe(false);
     expect(existsSync(join(home, "memory"))).toBe(false);
     expect(existsSync(join(home, "cognition"))).toBe(false);
+    expect(readdirSync(join(home, "state")).some((entry) => entry.startsWith(".rossovia-write-probe-"))).toBe(false);
+  });
+
+  test("rejects an existing readable home when the current runtime cannot update its state", () => {
+    if (process.platform === "win32") return;
+    const root = mkdtempSync(join(tmpdir(), "rossovia-workbench-read-only-"));
+    temporaryRoots.push(root);
+    const home = join(root, "home");
+    expect(workbench(home, "init").exitCode).toBe(0);
+    const state = join(home, "state");
+    chmodSync(state, 0o555);
+    try {
+      const result = workbench(home, "init");
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("Rossovia home is readable but not writable by the current runtime");
+      expect(result.stderr).toContain("Grant write access to the exact ROSSO_HOME");
+      expect(result.stderr).not.toContain("initialized\": true");
+    } finally {
+      chmodSync(state, 0o755);
+    }
+  });
+
+  test("reports the required capability when a new home cannot be created", () => {
+    if (process.platform === "win32") return;
+    const root = mkdtempSync(join(tmpdir(), "rossovia-workbench-denied-parent-"));
+    temporaryRoots.push(root);
+    const home = join(root, "home");
+    chmodSync(root, 0o555);
+    try {
+      const result = workbench(home, "init");
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("Rossovia home cannot be prepared by the current runtime");
+      expect(result.stderr).toContain("Grant write access to the exact ROSSO_HOME");
+      expect(existsSync(home)).toBe(false);
+    } finally {
+      chmodSync(root, 0o755);
+    }
   });
 
   test("adds, lists, and rescans workspace roots without registering discoveries", () => {

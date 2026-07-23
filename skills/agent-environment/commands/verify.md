@@ -15,6 +15,10 @@ ordinary use surfaces and preserve their safety boundaries.
 3. Run one harmless ordinary-use probe per selected capability that exercises a
    distinctive instruction or behavior. Prefer built-in inspection commands;
    otherwise use a bounded prompt whose expected evidence is named in advance.
+   If the capability mutates a user-owned state root, the probe must perform and
+   clean up a real create–rename–remove operation through the target runtime.
+   Existing readable state, a syntax-valid permission entry, or a hook process
+   that can write under different permissions is insufficient.
 4. Run boundary probes appropriate to the selected scope: confirm one adjacent
    unselected capability was not changed and one relevant unmanaged item was
    preserved. When cross-tool translation is in scope, keep an unsupported
