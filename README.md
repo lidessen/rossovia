@@ -113,6 +113,7 @@ confirmation.
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | Decide how authoritative project information reaches an agent at the moment it changes action, using the actual runtime rather than a fixed layer or filename convention. |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | Diagnose a real agent-work failure in an existing project, change the smallest owning surface, and verify the improvement through the ordinary agent entry path. |
+| [agent-tooling](skills/agent-tooling/SKILL.md) | `/agent-tooling` | Operate and tune Codex, Claude Code, Cursor, and similar coding-agent tool surfaces, including headless execution, capability evidence, and removal of net-negative tooling. |
 | [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | Design, rewrite, review, and test skills that improve repeated agent action. Forms a selected Sequence expression team for each target skill, carries a standalone Sequence snapshot, and requires behavior evidence rather than prompt polish. |
 | [disciplined-development](skills/disciplined-development/SKILL.md) | `/disciplined-development` | Apply lightweight evidence, scope, and test-value discipline underneath a development task without creating another methodology workflow. |
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | Turn an observed non-trivial practice into a settled conclusion, a next smallest test, or a route to the owner of the unresolved judgment. |
@@ -164,6 +165,7 @@ resume are future domain methods over this mechanism, not its defining schema; s
 | Researching whether recurring evidence merits a reusable core principle | `/principle-cultivation research` |
 | Designing, auditing, or verifying how project context reaches an agent | `/context-engineering` |
 | Installing one entry into an existing project to improve its agent skills, instructions, tools, verification, or handoffs from observed behavior | `/improve-agent-workflow` |
+| Running a coding-agent CLI headlessly, inspecting its effective skills/hooks/MCP/plugins, shaping tools and permissions, or reducing harmful tooling | `/agent-tooling` |
 | Creating, rewriting, or behavior-testing an agent skill | `/skill-engineering` |
 | Applying a lightweight evidence, scope, completion, or meaningful-test discipline to ordinary development | `/disciplined-development` |
 | Turning a finished or failed non-trivial attempt into the next bounded practice | `/practice-cycle` |

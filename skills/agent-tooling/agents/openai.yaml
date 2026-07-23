@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Tooling"
+  short_description: "Operate and tune coding-agent tool surfaces"
+  default_prompt: "Use $agent-tooling to choose, inspect, or tune the coding-agent tools for this task."

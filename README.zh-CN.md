@@ -97,6 +97,7 @@ skill 则是在具体语境中对所选条目的表达。
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | 原则序列的自身验证守护者。先保留带引文的研究，再提出候选、召开选择性的 P-ID 审议，并试行由人指定的替代项；只有经人批准的采纳才能进入核心。 |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | 依据真实运行时，判断权威项目信息如何在能够改变行动的时刻抵达 Agent，而不预设固定层级或文件名约定。 |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | 定位现有项目中真实的 Agent 工作失败，修改最小的责任界面，并通过日常 Agent 入口验证改进。 |
+| [agent-tooling](skills/agent-tooling/SKILL.md) | `/agent-tooling` | 操作和调校 Codex、Claude Code、Cursor 等编码 Agent 的工具层，包括 headless 执行、能力证据，以及移除产生净负担的工具配置。 |
 | [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | 设计、改写、审查和测试能改善重复性 Agent 行动的 skills。为每个目标 skill 形成所选的原则序列表达小组，携带可单独安装的序列快照，并要求行为证据而非提示词修辞。 |
 | [disciplined-development](skills/disciplined-development/SKILL.md) | `/disciplined-development` | 在开发任务之下应用轻量的证据、范围与测试价值纪律，而不另建一套方法论工作流。 |
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | 将一次已观察到的非平凡实践转化为已定结论、下一项最小测试，或转交给尚未解决判断的责任方。 |
@@ -142,6 +143,7 @@ Git、prompt、模型和任务定位都不进入核心。项目认知和 Rossovi
 | 研究重复出现的证据是否足以形成可复用的核心原则 | `/principle-cultivation research` |
 | 设计、审计或验证项目上下文如何抵达 Agent | `/context-engineering` |
 | 在现有项目中安装一个入口，以便从已观察行为出发改进 Agent skills、指令、工具、验证或交接 | `/improve-agent-workflow` |
+| 以 headless 形式运行编码 Agent CLI，检查其实际 skills、hooks、MCP、plugins，约束工具与权限，或减少有害工具负担 | `/agent-tooling` |
 | 创建、改写或进行行为测试一个 Agent skill | `/skill-engineering` |
 | 为日常开发应用轻量的证据、范围、完成条件或有意义的测试纪律 | `/disciplined-development` |
 | 将已完成或失败的非平凡尝试转化为下一项有边界的实践 | `/practice-cycle` |
