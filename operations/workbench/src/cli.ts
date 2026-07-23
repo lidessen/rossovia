@@ -96,7 +96,8 @@ function printUsage(): void {
   console.log("  preference list [--project <project>]");
   console.log("  preference retire <id> [--project <project>]");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
-  console.log("  intervention <observe|status> [--state-root <path>] [--state-file <path>]");
+  console.log("  intervention observe [--state-root <path>]");
+  console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
   console.log("  correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>");
   console.log("  root list");
   console.log("  root add <path>...");

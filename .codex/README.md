@@ -1,6 +1,6 @@
-# Codex hook binding
+# Codex hook bindings
 
-This directory is a **local Codex projection** of the portable
+The intervention adapter in this directory is a **local Codex projection** of the portable
 intervention-reconciliation contract in
 [Decision 024](../design/decisions/024-platform-neutral-intervention-reconciliation.md).
 It is not part of the portable method and must be checked against current Codex
@@ -60,11 +60,13 @@ to a vendor directory.
 4. Inspect the resulting state:
 
    ```sh
-   ./operations/workbench/src/cli.ts intervention status --cwd "$PWD"
+   ./operations/workbench/src/cli.ts intervention status --session-id "$CODEX_THREAD_ID"
    ```
 
    Set `ROSSO_HOME` or pass Workbench's top-level `--home PATH` when using a
-   non-default Rossovia home.
+   non-default Rossovia home. Session identity, rather than the current target
+   repository, keeps this lookup exact when several Codex sessions share the
+   workbench or one session switches among target repositories.
 
 The current lifecycle names, command-handler limitation, and project-hook
 trust model come from the [Codex Hooks guide](https://learn.chatgpt.com/docs/hooks)
@@ -73,3 +75,18 @@ checked on 2026-07-22. The configuration reference also documents
 `sandbox_workspace_write.writable_roots`; re-check these sources before changing
 the user-level capability grant, adding a mutation gate, or adding stop
 continuation.
+
+## Artifact-consistency assist
+
+`PostToolUse` receives Codex's canonical `apply_patch` input and records only
+repository-relative paths for changed Skill artifacts, `README.md`,
+`AGENTS.md`, or `CLAUDE.md`. A `Stop` hook consumes those paths for one final
+consistency reminder. It does not parse the transcript: Codex documents that
+format as unstable.
+
+This reminder is project-local and advisory. Its per-session path set is
+ephemeral under the operating system temporary directory, isolated by
+repository and session identity, and removed after the stop continuation. It
+contains no file content and is not a Workbench source, receipt, or acceptance
+record. An invalid runtime payload degrades to a visible warning without
+blocking an already-completed tool action.

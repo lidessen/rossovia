@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { resolveHome, saveJson } from "./home";
@@ -69,15 +69,16 @@ function readState(path: string): State {
   return StateSchema.parse(JSON.parse(readFileSync(path, "utf8")));
 }
 
-function newestState(root: string, cwd: string): string {
-  const directory = join(root, workspaceKey(cwd));
-  if (!existsSync(directory)) throw new Error("no observed intervention session for this workspace");
-  const states = readdirSync(directory)
-    .filter((name) => name.endsWith(".json"))
-    .map((name) => join(directory, name))
-    .sort((left, right) => statSync(right).mtimeMs - statSync(left).mtimeMs);
-  if (!states[0]) throw new Error("no observed intervention session for this workspace");
-  return states[0];
+function stateForSession(root: string, sessionId: string): string {
+  if (!existsSync(root)) throw new Error(`no observed intervention session: ${sessionId}`);
+  const filename = `${digest(sessionId).slice(0, 32)}.json`;
+  const states = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(root, entry.name, filename))
+    .filter(existsSync);
+  if (states.length === 0) throw new Error(`no observed intervention session: ${sessionId}`);
+  if (states.length > 1) throw new Error(`intervention session is ambiguous: ${sessionId}`);
+  return states[0]!;
 }
 
 function parseOptions(raw: string[], repeated: Set<string> = new Set()): ParsedOptions {
@@ -119,11 +120,14 @@ function rejectUnknown(parsed: ParsedOptions, allowed: Set<string>): void {
 
 function selectedState(parsed: ParsedOptions, homeArgument?: string): string {
   const explicit = parsed.values.get("--state-file")?.[0];
-  if (explicit) return expandPath(explicit);
-  return newestState(
-    stateRoot(parsed.values.get("--state-root")?.[0], homeArgument),
-    option(parsed, "--cwd", process.cwd()),
-  );
+  const sessionId = parsed.values.get("--session-id")?.[0];
+  const explicitRoot = parsed.values.get("--state-root")?.[0];
+  if (explicit) {
+    if (sessionId || explicitRoot) throw new Error("--state-file cannot be combined with --session-id or --state-root");
+    return expandPath(explicit);
+  }
+  if (!sessionId) throw new Error("intervention status requires --state-file or --session-id");
+  return stateForSession(stateRoot(explicitRoot, homeArgument), sessionId);
 }
 
 export function runInterventionCommand(raw: string[], stdin = "", homeArgument?: string): unknown {
@@ -157,9 +161,13 @@ export function runInterventionCommand(raw: string[], stdin = "", homeArgument?:
   }
 
   if (command === "status") {
-    rejectUnknown(parsed, new Set(["--state-root", "--state-file", "--cwd"]));
+    rejectUnknown(parsed, new Set(["--state-root", "--state-file", "--session-id"]));
     const path = selectedState(parsed, homeArgument);
     const state = readState(path);
+    const requestedSession = parsed.values.get("--session-id")?.[0];
+    if (requestedSession && state.sessionId !== requestedSession) {
+      throw new Error(`intervention state does not belong to session: ${requestedSession}`);
+    }
     return {
       statePath: path,
       sessionId: state.sessionId,

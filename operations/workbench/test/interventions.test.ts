@@ -77,7 +77,49 @@ describe("intervention reconciliation", () => {
       { stdin: JSON.stringify({ session_id: "session-2", cwd: repositoryRoot, prompt: "parallel" }) },
     );
     expect(otherSession.exitCode).toBe(0);
-    expect(JSON.parse(otherSession.stdout).statePath).not.toBe(statePath);
+    const otherStatePath = JSON.parse(otherSession.stdout).statePath as string;
+    expect(otherStatePath).not.toBe(statePath);
+
+    const firstBySession = workbench(
+      "intervention",
+      "status",
+      "--state-root",
+      stateRoot,
+      "--session-id",
+      "session-1",
+    );
+    const secondBySession = workbench(
+      "intervention",
+      "status",
+      "--state-root",
+      stateRoot,
+      "--session-id",
+      "session-2",
+    );
+    expect(firstBySession.exitCode).toBe(0);
+    expect(secondBySession.exitCode).toBe(0);
+    expect(JSON.parse(firstBySession.stdout).statePath).toBe(statePath);
+    expect(JSON.parse(secondBySession.stdout).statePath).toBe(otherStatePath);
+
+    const unselected = workbench("intervention", "status", "--state-root", stateRoot);
+    expect(unselected.exitCode).toBe(2);
+    expect(unselected.stderr).toContain("requires --state-file or --session-id");
+
+    const duplicateIdentity = command(
+      [process.execPath, bunCli, "intervention", "observe", "--state-root", stateRoot],
+      { stdin: JSON.stringify({ session_id: "session-1", cwd: join(temporary, "other-workspace"), prompt: "parallel" }) },
+    );
+    expect(duplicateIdentity.exitCode).toBe(0);
+    const ambiguousSession = workbench(
+      "intervention",
+      "status",
+      "--state-root",
+      stateRoot,
+      "--session-id",
+      "session-1",
+    );
+    expect(ambiguousSession.exitCode).toBe(2);
+    expect(ambiguousSession.stderr).toContain("intervention session is ambiguous");
   });
 
   test("Codex adapter uses the Rossovia home across target switches", () => {

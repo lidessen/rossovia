@@ -14,11 +14,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
+        "matcher": "^apply_patch$",
         "hooks": [
           {
             "type": "command",
-            "command": "input=$(cat); fp=$(echo \"$input\" | jq -r '.tool_input.file_path // empty'); case \"$fp\" in */skills/*|*/CLAUDE.md|*/README.md) ;; *) exit 0 ;; esac; jq -n --arg p \"$fp\" '{hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:(\"Self-check for \"+$p+\": For SKILL.md — name matches directory, description precise for trigger matching, body under 500 lines, L3 content (templates, examples, reference data) in references/ not inlined. For CLAUDE.md — every line passes the litmus test (would removing it worsen an architectural decision?). Layering: L1 stable/small, L2 on activation, L3 on demand.\")}}'"
+            "command": "bun \"$(git rev-parse --show-toplevel)/.codex/hooks/artifact-consistency.ts\""
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "input=$(cat); [ \"$(echo \"$input\" | jq -r '.stop_hook_active // false')\" = \"true\" ] && exit 0; t=$(echo \"$input\" | jq -r '.transcript_path // empty'); [ -f \"$t\" ] || exit 0; files=$(jq -r 'select(.message?.content) | .message.content | if type==\"array\" then .[] | select(.type?==\"tool_use\" and (.name==\"Edit\" or .name==\"Write\" or .name==\"NotebookEdit\")) | .input.file_path // empty else empty end' \"$t\" 2>/dev/null | awk '/\\/skills\\/|\\/CLAUDE\\.md$|\\/README\\.md$/ {if (!seen[$0]++) print}' | tail -10 | paste -sd \",\" -); [ -n \"$files\" ] || exit 0; jq -n --arg f \"$files\" '{decision:\"block\",reason:(\"Before finishing — relevant files changed this session (up to 10 shown): \" + $f + \". If any paths, names, terminology, or structure shifted, check that other files still reference them correctly.\")}'"
+            "command": "bun \"$(git rev-parse --show-toplevel)/.codex/hooks/artifact-consistency.ts\""
           }
         ]
       }

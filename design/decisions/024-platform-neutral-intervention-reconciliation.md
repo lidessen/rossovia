@@ -92,6 +92,12 @@ anchor or materialize candidate/settled workflow states. The active Agent owns
 the semantic comparison; the runtime stores only privacy-preserving observation
 evidence and explicit receipts.
 
+Human inspection selects the exact platform-supplied session identity or the
+exact state file. It must not infer the current session from the newest file for
+a workspace, because [several sessions may share one workbench entry while
+remaining independently selectable](../../operations/workbench/test/interventions.test.ts)
+and one session may operate different target repositories.
+
 ### Role boundary
 
 | Role | Owns | Does not own |
