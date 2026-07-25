@@ -219,6 +219,22 @@ describe("user-level setup reconciliation", () => {
       appliedRevision: "0".repeat(40),
       applicableChanges: [],
     }));
+
+    const targetPath = join(codex, "AGENTS.md");
+    const targetBefore = readFileSync(targetPath, "utf8");
+    const receiptBefore = readFileSync(receiptPath, "utf8");
+    const applied = workbench(
+      source,
+      home,
+      "setup",
+      "apply",
+      "--target-root",
+      codex,
+    );
+    expect(applied.exitCode).toBe(2);
+    expect(applied.stderr).toContain("setup applied baseline is unavailable");
+    expect(readFileSync(targetPath, "utf8")).toBe(targetBefore);
+    expect(readFileSync(receiptPath, "utf8")).toBe(receiptBefore);
   });
 
   test("refuses to record a Git baseline while setup source changes are uncommitted", () => {

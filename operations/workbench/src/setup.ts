@@ -185,6 +185,12 @@ function applyModule(
   const path = adapter.projectionPath(targetRoot);
   const projection = adapter.render(multiAgentDelegationModule);
   const receipt = readReceipt(home, entry);
+  if (receipt && !gitSucceeds(sourceRoot, ["cat-file", "-e", `${receipt.sourceRevision}^{commit}`])) {
+    throw new Error(
+      `setup applied baseline is unavailable: ${receipt.sourceRevision}. `
+      + "Rossovia will not apply until that Git commit is available for reconciliation.",
+    );
+  }
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
   const current = readManagedBlockFromText(existing, projection.startMarker, projection.endMarker);
   if (receipt && (current === null || digest(current) !== receipt.projectionDigest)) {
