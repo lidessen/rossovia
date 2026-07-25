@@ -11,6 +11,7 @@ import { listProjects } from "./projects";
 import { registerProject } from "./register";
 import { resolveProject } from "./resolve";
 import { addRoots, scanRoots } from "./roots";
+import { applySetup, selectSetupModules, setupStatus } from "./setup";
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -23,21 +24,36 @@ try {
     console.log(JSON.stringify(result, null, 2));
     if (!result.complete) process.exitCode = 2;
   } else if (args[0] === "init") {
-    const workspaceRoots = repeatedOption(args.slice(1), "--workspace-root");
+    const options = parseInit(args.slice(1));
     const initialized = initializeHome(home);
-    const roots = workspaceRoots.length > 0
-      ? addRoots(initialized.home, initialized.roots, workspaceRoots)
+    const roots = options.workspaceRoots.length > 0
+      ? addRoots(initialized.home, initialized.roots, options.workspaceRoots)
       : initialized.roots;
-    const index = workspaceRoots.length > 0
+    const index = options.workspaceRoots.length > 0
       ? scanRoots(initialized.home, roots)
       : initialized.index;
+    if (options.setup.length > 0) {
+      selectSetupModules(initialized.home, options.setup);
+      applySetup(initialized.home, {
+        ...(options.targetRoot ? { targetRoot: options.targetRoot } : {}),
+      });
+    }
     console.log(JSON.stringify({
       home: initialized.home,
       initialized: true,
       writeAccess: initialized.writeAccess,
       workspaceRoots: roots.roots,
       indexedWorkspaces: index.entries.length,
+      ...(options.setup.length > 0
+        ? { setup: setupStatus(initialized.home, {
+            ...(options.targetRoot ? { targetRoot: options.targetRoot } : {}),
+          }) }
+        : {}),
     }, null, 2));
+  } else if (args[0] === "setup" && args[1] === "status") {
+    console.log(JSON.stringify(setupStatus(home, parseSetupOptions(args.slice(2))), null, 2));
+  } else if (args[0] === "setup" && args[1] === "apply") {
+    console.log(JSON.stringify(applySetup(home, parseSetupOptions(args.slice(2))), null, 2));
   } else if (args[0] === "migrate") {
     console.log(JSON.stringify(migrateLegacyHome(home, optionalFromHome(args.slice(1))), null, 2));
   } else if (args[0] === "root" && args[1] === "list" && args.length === 2) {
@@ -91,7 +107,9 @@ function printUsage(): void {
   console.log("usage: rossovia [--home PATH] <command>");
   console.log("");
   console.log("commands:");
-  console.log("  init [--workspace-root PATH]...");
+  console.log("  init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH]");
+  console.log("  setup status [--target-root PATH]");
+  console.log("  setup apply [--target-root PATH]");
   console.log("  migrate [--from-home PATH]");
   console.log("  resolve <project>");
   console.log("  register <path> --id <stable-id> [--alias <alias>]...");
@@ -195,6 +213,37 @@ function repeatedOption(raw: string[], option: string): string[] {
     index += 1;
   }
   return values;
+}
+
+function parseInit(raw: string[]): {
+  workspaceRoots: string[];
+  setup: string[];
+  targetRoot?: string;
+} {
+  const workspaceRoots: string[] = [];
+  const setup: string[] = [];
+  let targetRoot: string | undefined;
+  for (let index = 0; index < raw.length; index += 2) {
+    const option = raw[index];
+    const value = raw[index + 1];
+    if (!option || !value || value.startsWith("--")) throw new Error(`invalid init option sequence: ${raw.join(" ")}`);
+    if (option === "--workspace-root") workspaceRoots.push(value);
+    else if (option === "--setup") setup.push(value);
+    else if (option === "--target-root" && targetRoot === undefined) targetRoot = value;
+    else throw new Error(`invalid init option sequence: ${raw.join(" ")}`);
+  }
+  return {
+    workspaceRoots,
+    setup,
+    ...(targetRoot ? { targetRoot } : {}),
+  };
+}
+
+function parseSetupOptions(raw: string[]): { targetRoot?: string } {
+  const options = namedOptions(raw, new Set(["--target-root"]));
+  return {
+    ...(options.has("--target-root") ? { targetRoot: options.get("--target-root")! } : {}),
+  };
 }
 
 function extractHome(raw: string[]): { args: string[]; home: string | undefined } {

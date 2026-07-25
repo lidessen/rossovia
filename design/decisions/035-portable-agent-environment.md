@@ -1,7 +1,7 @@
 # Decision 035 — Portable User-Level Agent Environment
 
-**Status:** accepted first slice
-**Date:** 2026-07-16
+**Status:** accepted deterministic setup slice
+**Date:** 2026-07-16; Workbench setup reconciliation added 2026-07-23
 **Human mandate:** support user-level setup for Codex, Cursor, Claude Code, and
 later migration to other devices by applying this project's methodology.
 
@@ -66,9 +66,47 @@ apart from its output template.
 | device receipt | prior applied revision and evidence for later reconciliation | desired-state authority |
 | supported vendor installer/import/login | mechanical application or authorization | portable intent or semantic equivalence |
 
-No new daemon, database, dotfiles manager, cross-vendor schema, or migration
-runtime is admitted. Deterministic scripts may be reconsidered only after a
-repeated mechanical failure can name the invariant they must enforce.
+No new daemon, database, dotfiles manager, or cross-vendor schema is admitted.
+The Workbench supplies one bounded deterministic setup adapter after repeated
+pulls exposed a concrete failure: an Agent could not determine which approved
+user-level behavior had been applied, which source changes affected it, or
+whether the target projection had drifted.
+
+## Workbench setup reconciliation slice
+
+`rossovia init --setup multi-agent-delegation` records an explicit,
+tool-neutral selection in the Workbench home. The module owns only when
+delegation is justified, which work is independent, and what synthesis and
+verification remain with the main Agent. It does not prescribe worker names,
+tool calls, nesting, concurrency syntax, or result transport. The current Codex
+adapter owns one delimited user-instruction projection; another harness must
+provide its own adapter without changing the module judgment.
+`setup status` and `setup apply` compare:
+
+- the Git revision recorded by the last successful application;
+- the current checkout revision and applicable entries from the repository's
+  general `CHANGELOG.md`, filtered by stable functional-module prefix; and
+- the digest of the currently installed managed block.
+
+Published changelog entries are append-only so a Git interval can return the
+complete `Action`, change description, and verification guidance for each
+selected module.
+The Git revision is the source-update baseline; it is not a release version.
+Workbench derives the source checkout from its own tracked executable; callers
+cannot bind a projection produced by one checkout to an unrelated repository
+revision.
+Relevant setup source and changelog files must be clean before Workbench records
+that revision, so an immutable commit actually reconstructs the applied intent.
+The projection digest detects target drift independently. A missing historical
+revision reports `baseline-unavailable`. A missing or changed managed block
+reports drift or conflict and is never overwritten automatically. Unmanaged
+target content remains byte-preserved, and an existing target file receives a
+rollback copy before application.
+
+The portable profile remains the desired-state form for broader multi-tool or
+multi-device setup. This Workbench slice owns only repeated mechanical
+application and evidence for explicitly selected repository-defined modules;
+its receipt does not become the desired source.
 
 ## Safety and migration boundaries
 
@@ -104,6 +142,11 @@ The expression is supported only if:
 4. the Skill installs through the repository's disposable packaging probe; and
 5. Sequence snapshot, Markdown, site content, and existing repository checks
    remain valid.
+
+The deterministic Workbench slice additionally requires a temporary Git source
+and target-home probe that filters unrelated changelog entries, discovers an
+applicable module entry, advances an unchanged baseline, rejects local managed
+block drift, and fails visibly when the applied Git baseline is unavailable.
 
 Behavior attribution remains provisional until a fresh agent executes the
 action and boundary scenarios without seeing this decision's intended answer.

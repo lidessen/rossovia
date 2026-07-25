@@ -108,9 +108,11 @@ function interventionOutput(
       hookEventName: "UserPromptSubmit",
       additionalContext: (
         "A Principal message has arrived. Before acting on it, compare it with the active task. " +
-        "If it changes a target, hard boundary, concept relation, authority, or acceptance condition, " +
+        "Only if it revises an assumption or constraint of a still-active task—including its target, " +
+        "hard boundary, concept relation, authority, or acceptance condition—" +
         "run practice-cycle continue and record one correction with the session-local `correct` command prefix " +
-        "`" + receiptEndpoint + "`. Otherwise proceed without ceremony. `correct` requires " +
+        "`" + receiptEndpoint + "`. Starting a new task after the prior task was completed, paused, or handed off " +
+        "is not a correction. Otherwise proceed without ceremony. `correct` requires " +
         "--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. " +
         "This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable " +
         "or denied, do not request broader filesystem permission and do not block already-authorized work; " +
@@ -195,10 +197,39 @@ function repositoryPath(rawPath: string, cwd: string): string | undefined {
 
 function isRelevant(path: string): boolean {
   const name = path.slice(path.lastIndexOf("/") + 1);
-  return path.startsWith("skills/")
+  return /^skills\/[^/]+\/SKILL\.md$/.test(path)
+    || /^skills\/[^/]+\/(?:commands|references)\/.+\.md$/.test(path)
     || name === "AGENTS.md"
     || name === "CLAUDE.md"
     || name === "README.md";
+}
+
+type ArtifactKind = "skill-entry" | "skill-support" | "agent-guidance" | "readme";
+
+function artifactKind(path: string): ArtifactKind {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  if (/^skills\/[^/]+\/SKILL\.md$/.test(path)) return "skill-entry";
+  if (/^skills\/[^/]+\/(?:commands|references)\/.+\.md$/.test(path)) return "skill-support";
+  if (name === "AGENTS.md" || name === "CLAUDE.md") return "agent-guidance";
+  return "readme";
+}
+
+function consistencyChecks(paths: string[]): string {
+  const kinds = new Set(paths.map(artifactKind));
+  const checks: string[] = [];
+  if (kinds.has("skill-entry")) {
+    checks.push("Skill entries: verify trigger frontmatter, Principle expression, dispatch, and progressive disclosure");
+  }
+  if (kinds.has("skill-support")) {
+    checks.push("Skill support: verify entry references, self-contained command/reference boundaries, and no duplicated doctrine");
+  }
+  if (kinds.has("agent-guidance")) {
+    checks.push("Agent guidance: verify scope, commands, source ownership, and referenced paths");
+  }
+  if (kinds.has("readme")) {
+    checks.push("README: verify audience, scope, commands, and links");
+  }
+  return checks.join("; ");
 }
 
 function summarizePaths(paths: string[], limit: number): string {
@@ -226,17 +257,7 @@ function artifactOutput(
   const additions = paths.filter((entry) => !observed.includes(entry));
   if (additions.length === 0) return undefined;
   appendPaths(path, additions);
-  if (platform === "cursor") return undefined;
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext: (
-        `Relevant project artifacts changed: ${summarizePaths(additions, 10)}. ` +
-        "Check the owning artifact now: Skill prompts keep their trigger, principle expression, and progressive disclosure coherent; " +
-        "README, AGENTS, or CLAUDE guidance keeps scope and references accurate."
-      ),
-    },
-  };
+  return undefined;
 }
 
 function stopOutput(
@@ -256,6 +277,7 @@ function stopOutput(
   const reminder = (
     `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` +
     `${summarizePaths(paths, 20)}. ` +
+    `${consistencyChecks(paths)}. Check only the applicable groups; do not expand into unrelated consistency work. ` +
     "Record only information that must survive this session in its owning source."
   );
   return platform === "cursor"

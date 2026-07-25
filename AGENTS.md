@@ -60,6 +60,18 @@ mechanical action their words authorize:
   inspect hooks, or move state into the current project. Reconcile write access
   for the exact `ROSSO_HOME` through the selected harness's user-level setup,
   then verify it from a fresh session.
+- When initialization explicitly includes the `multi-agent-delegation` setup
+  capability, add `--setup multi-agent-delegation`. The module owns
+  tool-neutral delegation judgment; each harness adapter owns its projection
+  path, syntax, and supported mechanics. The current Codex adapter writes one
+  delimited user-instruction projection; this does not authorize other setup
+  modules or whole-file replacement. After a repository update, a request
+  to inspect or apply selected setup changes maps to
+  `./operations/workbench/rossovia setup status` or `setup apply`. Status uses
+  the last applied Git revision to filter the general `CHANGELOG.md` by selected
+  functional-module prefix and the managed-block digest to distinguish source
+  updates from local drift. Never apply across `drifted`, `conflict`, or
+  `baseline-unavailable`.
 - To add a later workspace root, run
   `./operations/workbench/rossovia root add <path>`. Discovery remains bounded and
   does not register the repositories it finds.

@@ -14353,6 +14353,25 @@ var PreferenceReceiptSchema = exports_external.object({
   projectId: nonempty.nullable(),
   recordDigest: exports_external.string().regex(/^[0-9a-f]{64}$/)
 }).strict();
+var SetupSelectionEntrySchema = exports_external.object({
+  module: exports_external.literal("multi-agent-delegation"),
+  harness: exports_external.literal("codex")
+}).strict();
+var SetupSelectionSchema = exports_external.object({
+  version: exports_external.literal("rosso.setup-selection.v1"),
+  selections: exports_external.array(SetupSelectionEntrySchema)
+}).strict();
+var SetupReceiptSchema = exports_external.object({
+  version: exports_external.literal("rosso.setup-receipt.v1"),
+  module: exports_external.literal("multi-agent-delegation"),
+  harness: exports_external.literal("codex"),
+  sourceRevision: nonempty,
+  sourceRoot: nonempty,
+  projectionPath: nonempty,
+  projectionDigest: exports_external.string().regex(/^[0-9a-f]{64}$/),
+  appliedAt: nonempty,
+  rollbackPath: nonempty.nullable()
+}).strict();
 
 // src/paths.ts
 import { existsSync, realpathSync } from "node:fs";
@@ -14640,6 +14659,10 @@ function initializeHome(homeArgument) {
     version: "rosso.preferences.v1",
     preferences: []
   }, (value) => validatePreferences(value, "user preferences"));
+  ensureJson(join3(home, "config", "setup.json"), SetupSelectionSchema, {
+    version: "rosso.setup-selection.v1",
+    selections: []
+  });
   const index = ensureJson(join3(home, "cache", "workspaces.json"), WorkspaceIndexSchema, {
     version: "rosso.workspace-index.v1",
     generatedAt: now(),
@@ -14982,7 +15005,7 @@ function interventionOutput(platform, payload, homeArgument) {
   return {
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
-      additionalContext: "A Principal message has arrived. Before acting on it, compare it with the active task. " + "If it changes a target, hard boundary, concept relation, authority, or acceptance condition, " + "run practice-cycle continue and record one correction with the session-local `correct` command prefix " + "`" + receiptEndpoint + "`. Otherwise proceed without ceremony. `correct` requires " + "--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. " + "This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable " + "or denied, do not request broader filesystem permission and do not block already-authorized work; " + "retain the correction in the active task and report the receipt as unresolved."
+      additionalContext: "A Principal message has arrived. Before acting on it, compare it with the active task. " + "Only if it revises an assumption or constraint of a still-active task—including its target, " + "hard boundary, concept relation, authority, or acceptance condition—" + "run practice-cycle continue and record one correction with the session-local `correct` command prefix " + "`" + receiptEndpoint + "`. Starting a new task after the prior task was completed, paused, or handed off " + "is not a correction. Otherwise proceed without ceremony. `correct` requires " + "--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. " + "This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable " + "or denied, do not request broader filesystem permission and do not block already-authorized work; " + "retain the correction in the active task and report the receipt as unresolved."
     }
   };
 }
@@ -15056,7 +15079,34 @@ function repositoryPath(rawPath, cwd) {
 }
 function isRelevant(path) {
   const name = path.slice(path.lastIndexOf("/") + 1);
-  return path.startsWith("skills/") || name === "AGENTS.md" || name === "CLAUDE.md" || name === "README.md";
+  return /^skills\/[^/]+\/SKILL\.md$/.test(path) || /^skills\/[^/]+\/(?:commands|references)\/.+\.md$/.test(path) || name === "AGENTS.md" || name === "CLAUDE.md" || name === "README.md";
+}
+function artifactKind(path) {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  if (/^skills\/[^/]+\/SKILL\.md$/.test(path))
+    return "skill-entry";
+  if (/^skills\/[^/]+\/(?:commands|references)\/.+\.md$/.test(path))
+    return "skill-support";
+  if (name === "AGENTS.md" || name === "CLAUDE.md")
+    return "agent-guidance";
+  return "readme";
+}
+function consistencyChecks(paths) {
+  const kinds = new Set(paths.map(artifactKind));
+  const checks3 = [];
+  if (kinds.has("skill-entry")) {
+    checks3.push("Skill entries: verify trigger frontmatter, Principle expression, dispatch, and progressive disclosure");
+  }
+  if (kinds.has("skill-support")) {
+    checks3.push("Skill support: verify entry references, self-contained command/reference boundaries, and no duplicated doctrine");
+  }
+  if (kinds.has("agent-guidance")) {
+    checks3.push("Agent guidance: verify scope, commands, source ownership, and referenced paths");
+  }
+  if (kinds.has("readme")) {
+    checks3.push("README: verify audience, scope, commands, and links");
+  }
+  return checks3.join("; ");
 }
 function summarizePaths(paths, limit) {
   const visible = paths.slice(0, limit);
@@ -15077,14 +15127,7 @@ function artifactOutput(platform, event, payload) {
   if (additions.length === 0)
     return;
   appendPaths(path, additions);
-  if (platform === "cursor")
-    return;
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PostToolUse",
-      additionalContext: `Relevant project artifacts changed: ${summarizePaths(additions, 10)}. ` + "Check the owning artifact now: Skill prompts keep their trigger, principle expression, and progressive disclosure coherent; " + "README, AGENTS, or CLAUDE guidance keeps scope and references accurate."
-    }
-  };
+  return;
 }
 function stopOutput(platform, payload, path) {
   const continuing = platform === "cursor" ? typeof payload.loop_count === "number" && payload.loop_count > 0 : payload.stop_hook_active === true;
@@ -15095,7 +15138,7 @@ function stopOutput(platform, payload, path) {
   const paths = readPaths(path);
   if (paths.length === 0)
     return;
-  const reminder = `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` + `${summarizePaths(paths, 20)}. ` + "Record only information that must survive this session in its owning source.";
+  const reminder = `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` + `${summarizePaths(paths, 20)}. ` + `${consistencyChecks(paths)}. Check only the applicable groups; do not expand into unrelated consistency work. ` + "Record only information that must survive this session in its owning source.";
   return platform === "cursor" ? { followup_message: reminder } : { decision: "block", reason: reminder };
 }
 
@@ -16135,6 +16178,305 @@ function scanRoots(home, roots) {
   return index;
 }
 
+// src/setup.ts
+import { createHash as createHash5, randomUUID as randomUUID2 } from "node:crypto";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync4, rmSync as rmSync6, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname7, join as join12, relative as relative3, resolve as resolve5 } from "node:path";
+
+// src/setup-adapters.ts
+import { join as join11 } from "node:path";
+var codexAdapter = {
+  harness: "codex",
+  projectionPath(targetRoot) {
+    const root = expandPath(targetRoot ?? process.env.CODEX_HOME ?? "~/.codex");
+    return join11(root, "AGENTS.md");
+  },
+  render(module) {
+    const startMarker = `<!-- rossovia:workbench.setup.${module.id}:start -->`;
+    const endMarker = `<!-- rossovia:workbench.setup.${module.id}:end -->`;
+    return {
+      content: `${startMarker}
+${module.guidance}
+${endMarker}`,
+      startMarker,
+      endMarker
+    };
+  }
+};
+function setupAdapter(harness) {
+  if (harness === codexAdapter.harness)
+    return codexAdapter;
+  throw new Error(`unsupported setup harness: ${harness}`);
+}
+
+// src/setup-modules.ts
+var multiAgentDelegationModule = {
+  id: "multi-agent-delegation",
+  changelogPrefix: "workbench.setup.multi-agent-delegation",
+  guidance: `## Multi-agent delegation
+
+Treat delegation as a task-shaping decision, not as a fixed tool recipe. When
+one request contains two or more concrete, bounded contributions that can
+proceed independently, use the active environment's supported delegation and
+coordination capabilities when their isolation or parallel progress reduces
+attention cost, latency, or interference enough to justify the overhead.
+Multiple people, files, or topics do not by themselves justify delegation:
+keep coupled judgment, trivial work, and sequential dependencies together.
+The main agent retains synthesis, verification, and the final response.`
+};
+
+// src/setup.ts
+var supportedSelection = {
+  module: "multi-agent-delegation",
+  harness: "codex"
+};
+var changelogModule = multiAgentDelegationModule.changelogPrefix;
+function selectSetupModules(homeArgument, requested) {
+  const home = resolveHome(homeArgument);
+  const path = join12(home, "config", "setup.json");
+  const current = loadJson(path, SetupSelectionSchema);
+  const selections = [...current.selections];
+  for (const value of requested) {
+    const parsed = parseSelection(value);
+    if (!selections.some((entry) => entry.module === parsed.module && entry.harness === parsed.harness)) {
+      selections.push(parsed);
+    }
+  }
+  const next = { version: "rosso.setup-selection.v1", selections };
+  saveJson(path, next);
+  return next;
+}
+function setupStatus(homeArgument, options = {}) {
+  const home = resolveHome(homeArgument);
+  const sourceRoot = resolveSourceRoot();
+  assertSetupSourceClean(sourceRoot);
+  const sourceRevision = gitOutput(sourceRoot, ["rev-parse", "HEAD"], "resolve setup source revision");
+  const selection = loadJson(join12(home, "config", "setup.json"), SetupSelectionSchema);
+  return {
+    version: "rosso.setup-status.v1",
+    sourceRevision,
+    modules: selection.selections.map((entry) => moduleStatus(home, entry, sourceRoot, sourceRevision, options.targetRoot))
+  };
+}
+function applySetup(homeArgument, options = {}) {
+  const home = resolveHome(homeArgument);
+  const sourceRoot = resolveSourceRoot();
+  assertSetupSourceClean(sourceRoot);
+  const sourceRevision = gitOutput(sourceRoot, ["rev-parse", "HEAD"], "resolve setup source revision");
+  const selection = loadJson(join12(home, "config", "setup.json"), SetupSelectionSchema);
+  for (const entry of selection.selections) {
+    applyModule(home, entry, sourceRoot, sourceRevision, options.targetRoot);
+  }
+  return setupStatus(home, options.targetRoot ? { targetRoot: options.targetRoot } : {});
+}
+function parseSelection(value) {
+  if (value === "multi-agent-delegation" || value === "codex:multi-agent-delegation") {
+    return supportedSelection;
+  }
+  throw new Error(`unsupported setup module: ${value}`);
+}
+function resolveSourceRoot() {
+  const entry = process.argv[1];
+  if (!entry)
+    throw new Error("cannot resolve setup source: executable path is unavailable");
+  const executable = resolve5(entry);
+  const sourceRoot = gitOutput(dirname7(executable), ["rev-parse", "--show-toplevel"], "resolve setup source root");
+  const sourceRelative = relative3(sourceRoot, executable);
+  if (sourceRelative.startsWith("..") || sourceRelative.length === 0) {
+    throw new Error("cannot resolve setup source: executable is outside its Git checkout");
+  }
+  const tracked = runCommand("git", ["ls-files", "--error-unmatch", sourceRelative], { cwd: sourceRoot });
+  if (tracked.exitCode !== 0) {
+    throw new Error("cannot resolve setup source: executable is not tracked by its Git checkout");
+  }
+  return sourceRoot;
+}
+function receiptPath2(home, entry) {
+  return join12(home, "receipts", "setup", `${entry.harness}.${entry.module}.json`);
+}
+function readReceipt(home, entry) {
+  const path = receiptPath2(home, entry);
+  return existsSync10(path) ? loadJson(path, SetupReceiptSchema) : null;
+}
+function moduleStatus(home, entry, sourceRoot, sourceRevision, targetRoot) {
+  const adapter = setupAdapter(entry.harness);
+  const path = adapter.projectionPath(targetRoot);
+  const projection = adapter.render(multiAgentDelegationModule);
+  const receipt = readReceipt(home, entry);
+  if (!receipt) {
+    return statusResult(entry, "missing", sourceRevision, null, path, []);
+  }
+  if (!gitSucceeds(sourceRoot, ["cat-file", "-e", `${receipt.sourceRevision}^{commit}`])) {
+    return statusResult(entry, "baseline-unavailable", sourceRevision, receipt.sourceRevision, path, []);
+  }
+  const changes = applicableChanges(sourceRoot, receipt.sourceRevision, sourceRevision);
+  const current = readManagedBlock(path, projection.startMarker, projection.endMarker);
+  const drifted = current === null || digest5(current) !== receipt.projectionDigest;
+  const desiredChanged = receipt.projectionDigest !== digest5(projection.content);
+  if (drifted) {
+    return statusResult(entry, desiredChanged || changes.length > 0 ? "conflict" : "drifted", sourceRevision, receipt.sourceRevision, path, changes);
+  }
+  return statusResult(entry, desiredChanged || changes.length > 0 ? "update-available" : "current", sourceRevision, receipt.sourceRevision, path, changes);
+}
+function statusResult(entry, status, sourceRevision, appliedRevision, path, applicableChanges) {
+  return {
+    module: entry.module,
+    harness: entry.harness,
+    status,
+    sourceRevision,
+    appliedRevision,
+    projectionPath: path,
+    applicableChanges
+  };
+}
+function applyModule(home, entry, sourceRoot, sourceRevision, targetRoot) {
+  const adapter = setupAdapter(entry.harness);
+  const path = adapter.projectionPath(targetRoot);
+  const projection = adapter.render(multiAgentDelegationModule);
+  const receipt = readReceipt(home, entry);
+  const existing = existsSync10(path) ? readFileSync7(path, "utf8") : "";
+  const current = readManagedBlockFromText(existing, projection.startMarker, projection.endMarker);
+  if (receipt && (current === null || digest5(current) !== receipt.projectionDigest)) {
+    throw new Error(`setup projection drift requires reconciliation before apply: ${path}. ` + "Rossovia will not overwrite a missing or locally changed managed block.");
+  }
+  if (!receipt && current !== null) {
+    throw new Error(`unreceipted Rossovia managed block already exists: ${path}`);
+  }
+  const projectionChanged = current === null || current !== projection.content;
+  const rollbackPath = projectionChanged && existing.length > 0 ? saveRollback(home, path, existing) : null;
+  if (projectionChanged) {
+    const next = current === null ? appendManagedBlock(existing, projection.content) : existing.replace(current, projection.content);
+    writeTarget(path, next);
+  }
+  const nextReceipt = {
+    version: "rosso.setup-receipt.v1",
+    module: entry.module,
+    harness: entry.harness,
+    sourceRevision,
+    sourceRoot,
+    projectionPath: path,
+    projectionDigest: digest5(projection.content),
+    appliedAt: now5(),
+    rollbackPath
+  };
+  saveJson(receiptPath2(home, entry), nextReceipt);
+}
+function appendManagedBlock(existing, projection) {
+  const prefix = existing.length === 0 ? "" : existing.endsWith(`
+`) ? `
+` : `
+
+`;
+  return `${existing}${prefix}${projection}
+`;
+}
+function readManagedBlock(path, startMarker, endMarker) {
+  return existsSync10(path) ? readManagedBlockFromText(readFileSync7(path, "utf8"), startMarker, endMarker) : null;
+}
+function readManagedBlockFromText(value, startMarker, endMarker) {
+  const starts = occurrences(value, startMarker);
+  const ends = occurrences(value, endMarker);
+  if (starts.length === 0 && ends.length === 0)
+    return null;
+  if (starts.length !== 1 || ends.length !== 1 || starts[0] >= ends[0]) {
+    throw new Error("Rossovia setup projection has ambiguous managed block markers");
+  }
+  return value.slice(starts[0], ends[0] + endMarker.length);
+}
+function occurrences(value, needle) {
+  const result = [];
+  let offset = 0;
+  while (true) {
+    const index = value.indexOf(needle, offset);
+    if (index < 0)
+      return result;
+    result.push(index);
+    offset = index + needle.length;
+  }
+}
+function applicableChanges(sourceRoot, from, to) {
+  if (from === to)
+    return [];
+  const result = runCommand("git", ["diff", "--unified=0", `${from}..${to}`, "--", "CHANGELOG.md"], {
+    cwd: sourceRoot
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`cannot inspect setup changelog diff: ${result.stderr.trim()}`);
+  }
+  const added = result.stdout.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++")).map((line) => line.slice(1));
+  const entries = [];
+  let current = null;
+  for (const line of added) {
+    if (line.startsWith("##")) {
+      if (current !== null)
+        entries.push(current.join(`
+`).trim());
+      current = line.includes(changelogModule) ? [line] : null;
+    } else if (current !== null) {
+      current.push(line);
+    }
+  }
+  if (current !== null)
+    entries.push(current.join(`
+`).trim());
+  return entries.filter((entry) => entry.length > 0);
+}
+function saveRollback(home, target, content) {
+  const path = join12(home, "receipts", "setup", "backups", `${Date.now()}-${randomUUID2()}.md`);
+  mkdirSync5(dirname7(path), { recursive: true });
+  writeFileSync4(path, content, "utf8");
+  return path;
+}
+function writeTarget(path, content) {
+  const temporary = `${path}.${randomUUID2()}.tmp`;
+  try {
+    mkdirSync5(dirname7(path), { recursive: true });
+    writeFileSync4(temporary, content, "utf8");
+    renameSync4(temporary, path);
+  } catch (error51) {
+    try {
+      rmSync6(temporary, { force: true });
+    } catch {}
+    throw new Error(`cannot apply setup projection at ${path}: ${error51 instanceof Error ? error51.message : String(error51)}`);
+  }
+}
+function assertSetupSourceClean(sourceRoot) {
+  const executable = resolve5(process.argv[1]);
+  const sourceRelative = relative3(sourceRoot, executable);
+  const result = runCommand("git", [
+    "status",
+    "--porcelain",
+    "--",
+    "CHANGELOG.md",
+    "operations/workbench/src/setup.ts",
+    "operations/workbench/src/setup-adapters.ts",
+    "operations/workbench/src/setup-modules.ts",
+    sourceRelative
+  ], { cwd: sourceRoot });
+  if (result.exitCode !== 0 || result.stdout.trim().length > 0) {
+    throw new Error("setup source has uncommitted changes; commit or restore the setup definition and changelog " + "before recording an applied Git revision");
+  }
+}
+function gitOutput(cwd, args, purpose) {
+  const result = runCommand("git", args, { cwd });
+  if (result.exitCode !== 0 || result.stdout.trim().length === 0) {
+    throw new Error(`cannot ${purpose}: ${result.stderr.trim() || "empty git output"}`);
+  }
+  return resolveGitPathOutput(args, result.stdout.trim());
+}
+function resolveGitPathOutput(args, value) {
+  return args.includes("--show-toplevel") ? resolve5(value) : value;
+}
+function gitSucceeds(cwd, args) {
+  return runCommand("git", args, { cwd, quiet: true }).exitCode === 0;
+}
+function digest5(value) {
+  return createHash5("sha256").update(value).digest("hex");
+}
+function now5() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 // src/cli.ts
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -16148,17 +16490,30 @@ try {
     if (!result.complete)
       process.exitCode = 2;
   } else if (args[0] === "init") {
-    const workspaceRoots = repeatedOption2(args.slice(1), "--workspace-root");
+    const options = parseInit(args.slice(1));
     const initialized = initializeHome(home);
-    const roots = workspaceRoots.length > 0 ? addRoots(initialized.home, initialized.roots, workspaceRoots) : initialized.roots;
-    const index = workspaceRoots.length > 0 ? scanRoots(initialized.home, roots) : initialized.index;
+    const roots = options.workspaceRoots.length > 0 ? addRoots(initialized.home, initialized.roots, options.workspaceRoots) : initialized.roots;
+    const index = options.workspaceRoots.length > 0 ? scanRoots(initialized.home, roots) : initialized.index;
+    if (options.setup.length > 0) {
+      selectSetupModules(initialized.home, options.setup);
+      applySetup(initialized.home, {
+        ...options.targetRoot ? { targetRoot: options.targetRoot } : {}
+      });
+    }
     console.log(JSON.stringify({
       home: initialized.home,
       initialized: true,
       writeAccess: initialized.writeAccess,
       workspaceRoots: roots.roots,
-      indexedWorkspaces: index.entries.length
+      indexedWorkspaces: index.entries.length,
+      ...options.setup.length > 0 ? { setup: setupStatus(initialized.home, {
+        ...options.targetRoot ? { targetRoot: options.targetRoot } : {}
+      }) } : {}
     }, null, 2));
+  } else if (args[0] === "setup" && args[1] === "status") {
+    console.log(JSON.stringify(setupStatus(home, parseSetupOptions(args.slice(2))), null, 2));
+  } else if (args[0] === "setup" && args[1] === "apply") {
+    console.log(JSON.stringify(applySetup(home, parseSetupOptions(args.slice(2))), null, 2));
   } else if (args[0] === "migrate") {
     console.log(JSON.stringify(migrateLegacyHome(home, optionalFromHome(args.slice(1))), null, 2));
   } else if (args[0] === "root" && args[1] === "list" && args.length === 2) {
@@ -16212,7 +16567,9 @@ function printUsage() {
   console.log("usage: rossovia [--home PATH] <command>");
   console.log("");
   console.log("commands:");
-  console.log("  init [--workspace-root PATH]...");
+  console.log("  init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH]");
+  console.log("  setup status [--target-root PATH]");
+  console.log("  setup apply [--target-root PATH]");
   console.log("  migrate [--from-home PATH]");
   console.log("  resolve <project>");
   console.log("  register <path> --id <stable-id> [--alias <alias>]...");
@@ -16299,16 +16656,35 @@ function parseRegister(raw) {
     throw new Error("register requires <path> and --id <stable-id>");
   return { path, id, aliases };
 }
-function repeatedOption2(raw, option2) {
-  const values = [];
-  for (let index = 0;index < raw.length; index += 1) {
-    if (raw[index] !== option2 || !raw[index + 1]) {
-      throw new Error(`${option2} requires a path and may be repeated`);
-    }
-    values.push(raw[index + 1]);
-    index += 1;
+function parseInit(raw) {
+  const workspaceRoots = [];
+  const setup = [];
+  let targetRoot;
+  for (let index = 0;index < raw.length; index += 2) {
+    const option2 = raw[index];
+    const value = raw[index + 1];
+    if (!option2 || !value || value.startsWith("--"))
+      throw new Error(`invalid init option sequence: ${raw.join(" ")}`);
+    if (option2 === "--workspace-root")
+      workspaceRoots.push(value);
+    else if (option2 === "--setup")
+      setup.push(value);
+    else if (option2 === "--target-root" && targetRoot === undefined)
+      targetRoot = value;
+    else
+      throw new Error(`invalid init option sequence: ${raw.join(" ")}`);
   }
-  return values;
+  return {
+    workspaceRoots,
+    setup,
+    ...targetRoot ? { targetRoot } : {}
+  };
+}
+function parseSetupOptions(raw) {
+  const options = namedOptions(raw, new Set(["--target-root"]));
+  return {
+    ...options.has("--target-root") ? { targetRoot: options.get("--target-root") } : {}
+  };
 }
 function extractHome(raw) {
   let home;

@@ -64,10 +64,11 @@ updates.
    flag: hook review is part of the binding's safety boundary.
 3. Send an ordinary task message. It should create an observation but no
    correction receipt.
-4. Send a material correction. The agent must compare it with the active task;
-   if it changes a target, hard boundary, concept relation, authority, or
-   acceptance condition, it records a receipt before claiming a mutation
-   implements the correction.
+4. Send a material correction. The agent must compare it with the still-active
+   task; only when the message revises one of that task's assumptions or
+   constraints does it record a receipt before claiming a mutation implements
+   the correction. Starting another task after completion, pause, or handoff is
+   not a correction.
 5. Inspect the resulting state:
 
    ```sh
@@ -90,10 +91,12 @@ continuation.
 ## Artifact-consistency assist
 
 `PostToolUse` receives Codex's canonical `apply_patch` input and records only
-repository-relative paths for changed Skill artifacts, `README.md`,
-`AGENTS.md`, or `CLAUDE.md`. A `Stop` hook consumes those paths for one final
-consistency reminder. It does not parse the transcript: Codex documents that
-format as unstable.
+repository-relative paths for changed `SKILL.md`, Skill `commands/` or
+`references/` Markdown, `README.md`, `AGENTS.md`, or `CLAUDE.md`. It emits no
+mid-task context. A `Stop` hook consumes those paths once and selects only the
+checks applicable to Skill entries, Skill support, agent guidance, or README
+files. Scripts, assets, and unrelated files do not trigger the reminder. The
+adapter does not parse the transcript: Codex documents that format as unstable.
 
 This reminder is project-local and advisory. Its per-session path set is
 ephemeral under the operating system temporary directory, isolated by

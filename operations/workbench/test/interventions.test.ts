@@ -140,6 +140,8 @@ describe("intervention reconciliation", () => {
       expect(result.exitCode).toBe(0);
       const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
       expect(context).toContain("compare it with the active task");
+      expect(context).toContain("revises an assumption or constraint of a still-active task");
+      expect(context).toContain("Starting a new task after the prior task was completed, paused, or handed off is not a correction");
       expect(context).toContain("advisory, not a mutation or authorization gate");
       expect(context).toContain("do not request broader filesystem permission");
       expect(context).toContain("dist/rossovia.mjs");

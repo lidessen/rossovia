@@ -7,6 +7,7 @@ import {
   PreferencesSchema,
   ProjectsSchema,
   RootsSchema,
+  SetupSelectionSchema,
   WorkspaceIndexSchema,
   WorkspacesSchema,
   type Projects,
@@ -215,6 +216,10 @@ export function initializeHome(homeArgument?: string): InitializedHome {
     version: "rosso.preferences.v1",
     preferences: [],
   }, (value) => validatePreferences(value, "user preferences"));
+  ensureJson(join(home, "config", "setup.json"), SetupSelectionSchema, {
+    version: "rosso.setup-selection.v1",
+    selections: [],
+  });
   const index = ensureJson(join(home, "cache", "workspaces.json"), WorkspaceIndexSchema, {
     version: "rosso.workspace-index.v1",
     generatedAt: now(),
