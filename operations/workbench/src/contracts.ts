@@ -70,11 +70,36 @@ export const PreferenceReceiptSchema = z.object({
   recordDigest: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 
+export const SetupSelectionEntrySchema = z.object({
+  module: z.literal("multi-agent-delegation"),
+  harness: z.literal("codex"),
+}).strict();
+
+export const SetupSelectionSchema = z.object({
+  version: z.literal("rosso.setup-selection.v1"),
+  selections: z.array(SetupSelectionEntrySchema),
+}).strict();
+
+export const SetupReceiptSchema = z.object({
+  version: z.literal("rosso.setup-receipt.v1"),
+  module: z.literal("multi-agent-delegation"),
+  harness: z.literal("codex"),
+  sourceRevision: nonempty,
+  sourceRoot: nonempty,
+  projectionPath: nonempty,
+  projectionDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  appliedAt: nonempty,
+  rollbackPath: nonempty.nullable(),
+}).strict();
+
 export type Project = z.infer<typeof ProjectSchema>;
 export type Projects = z.infer<typeof ProjectsSchema>;
 export type Preferences = z.infer<typeof PreferencesSchema>;
 export type Preference = z.infer<typeof PreferenceSchema>;
 export type PreferenceReceipt = z.infer<typeof PreferenceReceiptSchema>;
+export type SetupSelection = z.infer<typeof SetupSelectionSchema>;
+export type SetupSelectionEntry = z.infer<typeof SetupSelectionEntrySchema>;
+export type SetupReceipt = z.infer<typeof SetupReceiptSchema>;
 export type Roots = z.infer<typeof RootsSchema>;
 export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type Workspaces = z.infer<typeof WorkspacesSchema>;

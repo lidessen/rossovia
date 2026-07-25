@@ -73,6 +73,7 @@ describe("Codex artifact-consistency hook", () => {
     const temporary = mkdtempSync(join(tmpdir(), "rossovia-artifact-hook-"));
     temporaryRoots.push(temporary);
     const relevant = join(repositoryRoot, "skills", "visual-design", "SKILL.md");
+    const asset = join(repositoryRoot, "skills", "visual-design", "assets", "preview.png");
     const agents = join(repositoryRoot, "AGENTS.md");
     const ordinary = join(repositoryRoot, "operations", "workbench", "src", "home.ts");
     const similarlyNamedOutsideRoot = `${repositoryRoot}-other/skills/example/SKILL.md`;
@@ -80,6 +81,7 @@ describe("Codex artifact-consistency hook", () => {
       "*** Begin Patch",
       `*** Update File: ${ordinary}`,
       `*** Update File: ${relevant}`,
+      `*** Update File: ${asset}`,
       `*** Update File: ${agents}`,
       `*** Update File: ${similarlyNamedOutsideRoot}`,
       "*** End Patch",
@@ -88,11 +90,7 @@ describe("Codex artifact-consistency hook", () => {
     const observed = runHook(temporary, "codex", "post-tool-use", postPayload("session-a", patch));
     expect(observed.exitCode).toBe(0);
     expect(observed.stderr).toBe("");
-    const context = JSON.parse(observed.stdout).hookSpecificOutput.additionalContext as string;
-    expect(context).toContain("skills/visual-design/SKILL.md");
-    expect(context).toContain("AGENTS.md");
-    expect(context).not.toContain("operations/workbench/src/home.ts");
-    expect(context).not.toContain("skills-other");
+    expect(observed.stdout).toBe("");
 
     const repeated = runHook(temporary, "codex", "post-tool-use", postPayload("session-a", patch));
     expect(repeated.exitCode).toBe(0);
@@ -111,10 +109,17 @@ describe("Codex artifact-consistency hook", () => {
       stop_hook_active: false,
     });
     expect(stop.exitCode).toBe(0);
-    expect(JSON.parse(stop.stdout)).toEqual(expect.objectContaining({
+    const stopOutput = JSON.parse(stop.stdout);
+    expect(stopOutput).toEqual(expect.objectContaining({
       decision: "block",
       reason: expect.stringContaining("skills/visual-design/SKILL.md"),
     }));
+    expect(stopOutput.reason).toContain("AGENTS.md");
+    expect(stopOutput.reason).toContain("Skill entries:");
+    expect(stopOutput.reason).toContain("Agent guidance:");
+    expect(stopOutput.reason).not.toContain("assets/preview.png");
+    expect(stopOutput.reason).not.toContain("operations/workbench/src/home.ts");
+    expect(stopOutput.reason).not.toContain("skills-other");
 
     const continuation = runHook(temporary, "codex", "stop", {
       hook_event_name: "Stop",
@@ -175,12 +180,15 @@ describe("Codex artifact-consistency hook", () => {
       tool_name: "Edit",
       tool_input: { file_path: skill },
     });
-    expect(JSON.parse(claude.stdout).hookSpecificOutput.additionalContext).toContain("skills/visual-design/SKILL.md");
+    expect(claude.stdout).toBe("");
     const claudeStop = runHook(temporary, "claude", "stop", {
       session_id: "claude-session",
       stop_hook_active: false,
     });
-    expect(JSON.parse(claudeStop.stdout).decision).toBe("block");
+    expect(JSON.parse(claudeStop.stdout)).toEqual(expect.objectContaining({
+      decision: "block",
+      reason: expect.stringContaining("Skill entries:"),
+    }));
 
     const cursor = runHook(temporary, "cursor", "after-file-edit", {
       conversation_id: "cursor-conversation",

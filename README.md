@@ -82,6 +82,24 @@ Rossovia home. Existing readable state is not enough: if this observation is abs
 user-level harness permission and start a fresh session. Initialization does not
 install project hooks or move shared state into the current repository.
 
+Initialization may also select the bounded, tool-neutral multi-agent module.
+The current Codex adapter projects it into that harness's user instructions:
+
+```sh
+./operations/workbench/rossovia init --setup multi-agent-delegation
+./operations/workbench/rossovia setup status
+./operations/workbench/rossovia setup apply
+```
+
+The Workbench records the applied Git revision and managed-block digest. After
+a pull, status filters the general [`CHANGELOG.md`](CHANGELOG.md) by the selected
+module prefix, while the digest separately detects local target drift. The
+source revision always belongs to the checkout containing the running,
+Git-tracked Rossovia executable; it cannot be supplied from another repository.
+Apply preserves unmanaged user instructions and refuses to overwrite a changed
+or missing managed block. Relevant setup source files must be committed before
+a Git revision can be recorded as applied.
+
 The workbench keeps stable project identity separate from repository names,
 spoken aliases, and machine-local paths. It does not turn this repository into
 a global task board or grant authority to execute in another project. Explicit
@@ -94,6 +112,7 @@ confirmation.
 | Path | Owns | Does not own |
 |---|---|---|
 | [`principles/`](principles/) | the one-line Sequence, interpretations, inquiries, candidates, and review/adoption evidence | skill workflows or project execution |
+| [`CHANGELOG.md`](CHANGELOG.md) | repository changes labeled by stable functional-module prefix and their local response | applied setup state or release authority |
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |

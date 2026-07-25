@@ -87,6 +87,10 @@ describe("Rossovia workbench", () => {
       version: "rosso.home.v1",
       namespace: "rosso",
     }));
+    expect(JSON.parse(readFileSync(join(home, "config", "setup.json"), "utf8"))).toEqual({
+      version: "rosso.setup-selection.v1",
+      selections: [],
+    });
     expect(JSON.parse(readFileSync(join(home, "cache", "workspaces.json"), "utf8")).entries[0]).toEqual({
       path: realpathSync(repository),
       repository: "https://example.test/lidessen/fixture.git",
