@@ -314,7 +314,7 @@ worktree, base HEAD, patch, manifest, and changed paths from the effect journal;
 it does not accept those facts as caller arguments. It rechecks the retained
 file hashes and reconstructed patch, discovers one installed sibling worktree
 with the unchanged base package lock, and runs build, Drizzle migration, and
-the [declared content-model contract](../../experiments/agent-era-blog/DESIGN.md#first-content-model-contract)
+the [content-model contract verifier](experiments/verify-agent-era-blog-candidate.ts)
 in a disposable snapshot. It checks the candidate again before appending its
 own `effect-verified` event, which binds the verified Git HEAD and changed-file
 hashes. A later same-path edit therefore makes the activity projection stale

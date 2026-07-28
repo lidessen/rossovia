@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
-  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -11,40 +11,41 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
-import { verifyAgentEraBlogEffect } from "../experiments/agent-era-blog-effect-verifier";
+import {
+  verifyAgentEraBlogEffect,
+  verifyAgentEraBlogEffectWithProfile,
+} from "../experiments/agent-era-blog-effect-verifier";
 import {
   verifyAgentEraBlogCandidate,
+  type BlogCandidateVerificationCheck,
 } from "../experiments/verify-agent-era-blog-candidate";
 import { FileEffectJournal } from "../src/effect-journal";
 import { readGitStatus } from "../src/git-effect-observer";
 import { missionRunnerDirectory } from "../src/mission-runner";
 
-const BLOG_ROOT = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../experiments/agent-era-blog",
-);
+const DEPENDENCY_ROOT = resolve(dirname(import.meta.dir));
 
 describe("agent-era Blog candidate verification", () => {
+  test("the default effect wrapper fails closed outside the Blog Mission", async () => {
+    const result = await verifyAgentEraBlogEffect({
+      home: "/does/not/matter",
+      missionId: "another-mission",
+      effectId: "effect-1",
+    });
+    expect(result).toMatchObject({
+      verdict: "unverifiable",
+      reason: expect.stringContaining(
+        "Blog verifier only accepts Mission principal-workbench-dogfood",
+      ),
+    });
+  });
+
   test("admits only a buildable candidate with revision-bound closed projections", async () => {
     const temporary = await mkdtemp(join(tmpdir(), "rosso-blog-verifier-test-"));
     const candidateRoot = join(temporary, "candidate");
     try {
-      await cp(BLOG_ROOT, candidateRoot, {
-        recursive: true,
-        filter: (source) => {
-          const path = relative(BLOG_ROOT, source);
-          if (path.length === 0) return true;
-          const first = path.split(/[\\/]/u)[0] ?? path;
-          return ![".git", ".next", ".wrangler", "dist", "drizzle", "node_modules"].includes(first);
-        },
-      });
-      git(candidateRoot, ["init", "--initial-branch=main"]);
-      git(candidateRoot, ["config", "user.name", "Verifier Test"]);
-      git(candidateRoot, ["config", "user.email", "verifier@example.test"]);
-      git(candidateRoot, ["add", "."]);
-      git(candidateRoot, ["-c", "commit.gpgsign=false", "commit", "-m", "baseline"]);
+      await createBaselineProject(candidateRoot);
 
       await writeFile(join(candidateRoot, "db/schema.ts"), VALID_SCHEMA, "utf8");
       await mkdir(join(candidateRoot, "app/blog"), { recursive: true });
@@ -52,7 +53,8 @@ describe("agent-era Blog candidate verification", () => {
 
       const passed = await verifyAgentEraBlogCandidate({
         candidateRoot,
-        dependencyRoot: BLOG_ROOT,
+        dependencyRoot: DEPENDENCY_ROOT,
+        commandCheck: fixtureCommandCheck,
       });
       expect(passed.version).toBe("rosso.agent-era-blog-candidate-verification.v2");
       expect(passed.verifierRef).toBe("supervisor:agent-era-blog-content-contract-v2");
@@ -73,7 +75,8 @@ describe("agent-era Blog candidate verification", () => {
       );
       const stale = await verifyAgentEraBlogCandidate({
         candidateRoot,
-        dependencyRoot: BLOG_ROOT,
+        dependencyRoot: DEPENDENCY_ROOT,
+        commandCheck: fixtureCommandCheck,
       });
       expect(stale.verdict).toBe("failed");
       expect(stale.checks.find((check) => check.id === "content-contract")).toMatchObject({
@@ -92,21 +95,12 @@ describe("agent-era Blog candidate verification", () => {
     const missionId = "principal-workbench-dogfood";
     const effectId = "blog-effect-1";
     try {
-      await cp(BLOG_ROOT, primaryRoot, {
-        recursive: true,
-        filter: (source) => {
-          const path = relative(BLOG_ROOT, source);
-          if (path.length === 0) return true;
-          const first = path.split(/[\\/]/u)[0] ?? path;
-          return ![".git", ".next", ".wrangler", "dist", "drizzle", "node_modules"].includes(first);
-        },
-      });
-      git(primaryRoot, ["init", "--initial-branch=main"]);
-      git(primaryRoot, ["config", "user.name", "Verifier Test"]);
-      git(primaryRoot, ["config", "user.email", "verifier@example.test"]);
-      git(primaryRoot, ["add", "."]);
-      git(primaryRoot, ["-c", "commit.gpgsign=false", "commit", "-m", "baseline"]);
-      await symlink(join(BLOG_ROOT, "node_modules"), join(primaryRoot, "node_modules"), "dir");
+      await createBaselineProject(primaryRoot);
+      await symlink(
+        join(DEPENDENCY_ROOT, "node_modules"),
+        join(primaryRoot, "node_modules"),
+        "dir",
+      );
       git(primaryRoot, ["worktree", "add", "--detach", candidateRoot, "HEAD"]);
 
       await writeFile(join(candidateRoot, "db/schema.ts"), VALID_SCHEMA, "utf8");
@@ -202,7 +196,11 @@ describe("agent-era Blog candidate verification", () => {
         `${VALID_CONTENT}\n// post-settlement drift\n`,
         "utf8",
       );
-      const drifted = await verifyAgentEraBlogEffect({ home, missionId, effectId });
+      const drifted = await verifyEffectWithFixture({
+        home,
+        missionId,
+        effectId,
+      });
       expect(drifted).toMatchObject({
         verdict: "unverifiable",
         reason: expect.stringContaining("retained evidence"),
@@ -210,7 +208,11 @@ describe("agent-era Blog candidate verification", () => {
       expect((await journal.activity(effectId))?.independentVerification).toBeUndefined();
 
       await writeFile(join(candidateRoot, "app/blog/content.ts"), VALID_CONTENT, "utf8");
-      const passed = await verifyAgentEraBlogEffect({ home, missionId, effectId });
+      const passed = await verifyEffectWithFixture({
+        home,
+        missionId,
+        effectId,
+      });
       expect(passed).toMatchObject({
         verdict: "passed",
         admittedClaim: "content-model-ready-for-next-slice",
@@ -228,6 +230,86 @@ describe("agent-era Blog candidate verification", () => {
     }
   }, 60_000);
 });
+
+async function createBaselineProject(root: string): Promise<void> {
+  await mkdir(join(root, "db"), { recursive: true });
+  await mkdir(join(root, "app/blog"), { recursive: true });
+  await writeFile(join(root, ".gitignore"), "node_modules\n");
+  await writeFile(join(root, "package.json"), "{\"scripts\":{}}\n");
+  await writeFile(
+    join(root, "package-lock.json"),
+    "{\"name\":\"fixture\",\"lockfileVersion\":3,\"packages\":{}}\n",
+  );
+  await writeFile(join(root, "db/schema.ts"), "export const baseline = true;\n");
+  await writeFile(
+    join(root, "app/blog/content.ts"),
+    "export const baseline = true;\n",
+  );
+  git(root, ["init", "--initial-branch=main"]);
+  git(root, ["config", "user.name", "Verifier Test"]);
+  git(root, ["config", "user.email", "verifier@example.test"]);
+  git(root, ["add", "."]);
+  git(root, ["-c", "commit.gpgsign=false", "commit", "-m", "baseline"]);
+}
+
+function fixtureCommandCheck(input: {
+  readonly id: string;
+  readonly command: string;
+  readonly executable: string;
+  readonly arguments: readonly string[];
+  readonly cwd: string;
+}): BlogCandidateVerificationCheck {
+  const passed = input.id !== "content-contract"
+    || readFileSync(join(input.cwd, "app/blog/content.ts"), "utf8").includes(
+      "sourceRevisionId: revision.revisionId",
+    );
+  const observation = JSON.stringify({
+    id: input.id,
+    executable: input.executable,
+    arguments: input.arguments,
+    passed,
+  });
+  return {
+    id: input.id,
+    command: input.command,
+    exitCode: passed ? 0 : 1,
+    outputDigest: digest(observation),
+    diagnostic: passed ? "" : "fixture content contract rejected revision drift",
+  };
+}
+
+async function verifyEffectWithFixture(input: {
+  readonly home: string;
+  readonly missionId: string;
+  readonly effectId: string;
+}) {
+  return verifyAgentEraBlogEffectWithProfile(input, {
+    version: "rosso.agent-era-blog-effect-verifier.fixture.v1",
+    admittedClaim: "content-model-ready-for-next-slice",
+    verifierSources: [{
+      ref:
+        "source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts",
+      path: resolve(
+        import.meta.dir,
+        "../experiments/agent-era-blog-effect-verifier.ts",
+      ),
+    }, {
+      ref:
+        "source-project:operations/autonomy/experiments/verify-agent-era-blog-candidate.ts",
+      path: resolve(
+        import.meta.dir,
+        "../experiments/verify-agent-era-blog-candidate.ts",
+      ),
+    }],
+    residualRisks: ["fixture command execution is replaced by deterministic checks"],
+    verifyCandidate: ({ candidateRoot, dependencyRoot }) =>
+      verifyAgentEraBlogCandidate({
+        candidateRoot,
+        dependencyRoot,
+        commandCheck: fixtureCommandCheck,
+      }),
+  });
+}
 
 function git(root: string, arguments_: readonly string[]): void {
   gitOutput(root, arguments_);

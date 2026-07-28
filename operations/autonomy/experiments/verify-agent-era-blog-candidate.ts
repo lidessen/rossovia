@@ -29,6 +29,13 @@ const REQUIRED_CHANGED_PATHS = [
 export interface BlogCandidateVerificationOptions {
   readonly candidateRoot: string;
   readonly dependencyRoot: string;
+  readonly commandCheck?: (input: {
+    readonly id: string;
+    readonly command: string;
+    readonly executable: string;
+    readonly arguments: readonly string[];
+    readonly cwd: string;
+  }) => BlogCandidateVerificationCheck;
 }
 
 export interface BlogCandidateVerificationCheck {
@@ -81,29 +88,37 @@ export async function verifyAgentEraBlogCandidate(
       "utf8",
     );
 
+    const commandCheck = options.commandCheck ?? ((input) =>
+      runCheck(
+        input.id,
+        input.command,
+        input.executable,
+        input.arguments,
+        input.cwd,
+      ));
     const checks = [
       scope,
-      runCheck(
-        "build",
-        "npm run build (temporary candidate snapshot)",
-        "npm",
-        ["run", "build"],
-        snapshot,
-      ),
-      runCheck(
-        "migration",
-        "npm run db:generate (temporary candidate snapshot)",
-        "npm",
-        ["run", "db:generate"],
-        snapshot,
-      ),
-      runCheck(
-        "content-contract",
-        "bun .rosso-blog-contract-probe.mjs (temporary candidate snapshot)",
-        "bun",
-        [".rosso-blog-contract-probe.mjs"],
-        snapshot,
-      ),
+      commandCheck({
+        id: "build",
+        command: "npm run build (temporary candidate snapshot)",
+        executable: "npm",
+        arguments: ["run", "build"],
+        cwd: snapshot,
+      }),
+      commandCheck({
+        id: "migration",
+        command: "npm run db:generate (temporary candidate snapshot)",
+        executable: "npm",
+        arguments: ["run", "db:generate"],
+        cwd: snapshot,
+      }),
+      commandCheck({
+        id: "content-contract",
+        command: "bun .rosso-blog-contract-probe.mjs (temporary candidate snapshot)",
+        executable: "bun",
+        arguments: [".rosso-blog-contract-probe.mjs"],
+        cwd: snapshot,
+      }),
     ];
 
     return {
