@@ -13,6 +13,7 @@ import {
 import {
   MISSION_TURN_RECOVERY_VERSION,
   MISSION_TURN_VERSION,
+  settlementFromExecution,
   type MissionTurnRecovery,
   type MissionTurnStart,
 } from "../src/mission-turn";
@@ -183,10 +184,26 @@ test("a replacement carrier projects an unsettled turn as interrupted", async ()
   const home = await fixture();
   const missionId = "mission-interrupted-1";
   const timeline = new FileMissionTimeline(missionRunnerDirectory(home, missionId));
+  const anchor: ActiveIntentAnchor = {
+    id: "anchor:mission-interrupted-1",
+    revision: "r1",
+    statement: "Recover the interrupted turn only through explicit authority.",
+    sourceRefs: ["mission-envelope:r1"],
+    reconciledWatermark: 0,
+  };
+  await timeline.seedAnchor({
+    version: "rosso.mission-anchor-seed.v1",
+    id: "seed:mission-interrupted-1",
+    missionId,
+    authorityRef: "principal:test",
+    sourceRef: "test:mission-authorization",
+    anchor,
+  });
   await timeline.startTurn(missionId, {
     version: MISSION_TURN_VERSION,
     turnId: "turn-open",
     baselineWatermark: 0,
+    anchorDigest: digestAnchor(anchor),
     sourceRefs: ["mission-envelope:r1"],
   });
 
@@ -195,6 +212,53 @@ test("a replacement carrier projects an unsettled turn as interrupted", async ()
   expect(status.state).toBe("interrupted");
   await requestMissionRunner(home, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
   await runner;
+});
+
+test("a finished turn durably retains child result-read receipts", async () => {
+  const root = await fixture();
+  const missionId = "mission-result-read-receipt";
+  const timeline = new FileMissionTimeline(root);
+  const start: MissionTurnStart = {
+    version: MISSION_TURN_VERSION,
+    turnId: "turn-result-read",
+    baselineWatermark: 0,
+    sourceRefs: ["mission-envelope:r1"],
+  };
+  await timeline.startTurn(missionId, start);
+  const settlement = settlementFromExecution({
+    kind: "finished",
+    run: {
+      status: "returned",
+      text: "Reconstructed one verified child result.",
+      messages: [],
+      batches: [],
+      tasks: [],
+      uncoveredObligations: [],
+      resultReads: [{
+        batchId: "turn-result-read:batch:1",
+        key: "inspect-contract",
+        cellId: "cell-inspect-contract",
+        status: "completed",
+        settlementDigest: "a".repeat(64),
+        semanticDigest: "b".repeat(64),
+        semanticBytes: 512,
+        projection: "full",
+      }],
+      usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12, cachedInputTokens: 0 },
+    },
+  });
+  if (settlement === undefined) throw new Error("finished execution must produce a settlement");
+  await timeline.settleTurn(missionId, start.turnId, settlement);
+
+  expect((await new FileMissionTimeline(root).latestTurn(missionId))?.settlement).toMatchObject({
+    kind: "finished",
+    resultReads: [{
+      batchId: "turn-result-read:batch:1",
+      key: "inspect-contract",
+      semanticDigest: "b".repeat(64),
+      projection: "full",
+    }],
+  });
 });
 
 async function waitForStatus(root: string, missionId: string) {

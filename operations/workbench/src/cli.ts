@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { attachWorkspace } from "./attach";
+import { authorizeExecution, inspectExecution } from "./execution-authorization";
 import { initializeHome, loadHome } from "./home";
 import { runHookCommand } from "./hooks";
 import { runCorrectionCommand, runInterventionCommand } from "./interventions";
@@ -83,6 +84,10 @@ try {
     console.log(JSON.stringify(listPreferences(home, optionalProject(args.slice(2))), null, 2));
   } else if (args[0] === "preference" && args[1] === "retire") {
     console.log(JSON.stringify(retirePreference(home, parsePreferenceRetire(args.slice(2))), null, 2));
+  } else if (args[0] === "execution" && args[1] === "inspect" && args.length === 4) {
+    console.log(JSON.stringify(inspectExecution(home, args[2]!, args[3]!), null, 2));
+  } else if (args[0] === "execution" && args[1] === "authorize") {
+    console.log(JSON.stringify(authorizeExecution(home, parseExecutionAuthorize(args.slice(2))), null, 2));
   } else if (args[0] === "mission") {
     const result = runMissionCommand(args.slice(1));
     if (result !== undefined) {
@@ -118,6 +123,8 @@ function printUsage(): void {
   console.log("  preference set <id> --statement <text> [--project <project>] [--reopen-when <condition>]");
   console.log("  preference list [--project <project>]");
   console.log("  preference retire <id> [--project <project>]");
+  console.log("  execution inspect <project> <mission-id>");
+  console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
   console.log("  intervention observe [--state-root <path>]");
   console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
@@ -160,6 +167,49 @@ function parsePreferenceRetire(raw: string[]): { id: string; project?: string } 
 function optionalProject(raw: string[]): string | undefined {
   const options = namedOptions(raw, new Set(["--project"]));
   return options.get("--project");
+}
+
+function parseExecutionAuthorize(raw: string[]): {
+  project: string;
+  missionId: string;
+  proposalId: string;
+  proposalDigest: string;
+  choices: string[];
+  actorRef: string;
+  sourceRef: string;
+} {
+  const project = raw[0];
+  const missionId = raw[1];
+  if (!project || project.startsWith("--") || !missionId || missionId.startsWith("--")) {
+    throw new Error("execution authorize requires <project> <mission-id>");
+  }
+  const choices: string[] = [];
+  const singles = new Map<string, string>();
+  const allowedSingles = new Set(["--proposal-id", "--proposal-digest", "--actor-ref", "--source-ref"]);
+  for (let index = 2; index < raw.length; index += 2) {
+    const option = raw[index];
+    const value = raw[index + 1];
+    if (!option || !value || value.startsWith("--")) {
+      throw new Error(`invalid execution authorize option sequence: ${raw.join(" ")}`);
+    }
+    if (option === "--choice") choices.push(value);
+    else if (allowedSingles.has(option) && !singles.has(option)) singles.set(option, value);
+    else throw new Error(`invalid execution authorize option sequence: ${raw.join(" ")}`);
+  }
+  const required = (option: string): string => {
+    const value = singles.get(option);
+    if (!value) throw new Error(`execution authorize requires ${option} <value>`);
+    return value;
+  };
+  return {
+    project,
+    missionId,
+    proposalId: required("--proposal-id"),
+    proposalDigest: required("--proposal-digest"),
+    choices,
+    actorRef: required("--actor-ref"),
+    sourceRef: required("--source-ref"),
+  };
 }
 
 function positionalHead(raw: string[], command: string): string {

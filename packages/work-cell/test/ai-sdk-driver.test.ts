@@ -74,6 +74,15 @@ test("recovers one gene-expression natural finish before executing the Cell", as
   expect(record.preparation?.rawSteps).toEqual(expect.arrayContaining([
     expect.objectContaining({ type: "sequence.expression.recovery" }),
   ]));
+  expect(JSON.stringify(recoveryRequest)).toContain(
+    "The principal contradiction belongs to the concrete object, not to the Sequence.",
+  );
+  expect(JSON.stringify(recoveryRequest)).toContain(
+    "Select a lead whose use changes the object's explanation or transformation.",
+  );
+  expect(JSON.stringify(recoveryRequest)).toContain(
+    "do not fill the team only with downstream safeguards.",
+  );
   expect(JSON.stringify(recoveryRequest)).toContain("## Gene-expression recovery");
   expect(calls).toBe(3);
 });
@@ -248,6 +257,10 @@ test("streams bounded reasoning activity when a live observer is attached", asyn
     phase: "execution",
     id: "reasoning-1",
     characters: 1_200,
+  });
+  expect(record.trace.find((event) => event.type === "agent.tool.started")?.data).toMatchObject({
+    name: "read_file",
+    target: { kind: "workspace-path", path: "principles/SEQUENCE.md" },
   });
   expect(JSON.stringify(record.trace)).not.toContain("a".repeat(100));
   expect(record.trace.some((event) => event.type === "tool.read_file")).toBe(true);

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
@@ -12,9 +12,14 @@ import {
 } from "./mission-input";
 import {
   MissionReconciliationCommitSchema,
+  verifyRetainedReconciliationEvidence,
   type MissionReconciliationCommit,
 } from "./mission-reconciliation-commit";
-import type { MissionAnchorSeed } from "./mission-reconciliation";
+import {
+  MissionAnchorAdoptionSchema,
+  type MissionAnchorAdoption,
+  type MissionAnchorSeed,
+} from "./mission-reconciliation";
 import {
   startMissionExecution,
   type MissionExecutionHandle,
@@ -31,11 +36,22 @@ import {
 } from "./mission-turn";
 import type { MissionRuntimeFactory } from "./mission-runtime";
 import { stableStringify } from "./canonical-json";
+import {
+  missionRunnerDirectory,
+  missionRunnerStatusPath,
+} from "./mission-paths";
+
+export {
+  missionRunnerDirectory,
+  missionRunnerStatusPath,
+} from "./mission-paths";
 
 export const MISSION_RUNNER_PROTOCOL_VERSION = "rosso.mission-runner.v1" as const;
 
 export const MissionRunnerStateSchema = z.enum([
   "running",
+  "idle",
+  "anchor-pending",
   "paused",
   "input-pending",
   "interrupted",
@@ -53,9 +69,26 @@ export const MissionRunnerStatusSchema = z.object({
   updatedAt: z.string().min(1),
   inputWatermark: z.number().int().nonnegative(),
   reconciledWatermark: z.number().int().nonnegative(),
+  runtimeMode: z.enum(["none", "configured"]).optional(),
   socketPath: z.string().min(1),
   stopReason: z.enum(["runner-shutdown", "mission-stop"]).nullable(),
 }).strict();
+
+export const MissionRecoveryCapabilitiesSchema = z.object({
+  abandon: z.boolean(),
+  resume: z.boolean(),
+  replace: z.boolean(),
+}).strict();
+
+const ExpectedRunnerTargetFields = {
+  expectedRunnerId: z.string().min(1).optional(),
+  expectedState: MissionRunnerStateSchema.optional(),
+};
+
+const RequiredExpectedRunnerTargetFields = {
+  expectedRunnerId: z.string().min(1),
+  expectedState: MissionRunnerStateSchema,
+};
 
 const StatusRequestSchema = z.object({
   version: z.literal(MISSION_RUNNER_PROTOCOL_VERSION),
@@ -68,6 +101,7 @@ const InputRequestSchema = z.object({
   requestId: z.string().min(1),
   kind: z.literal("input"),
   input: MissionInputDraftSchema,
+  ...ExpectedRunnerTargetFields,
 }).strict();
 
 const ShutdownRequestSchema = z.object({
@@ -81,6 +115,7 @@ const RecoveryRequestSchema = z.object({
   requestId: z.string().min(1),
   kind: z.literal("recovery"),
   recovery: MissionTurnRecoveryCommandSchema,
+  ...ExpectedRunnerTargetFields,
 }).strict();
 
 const ReconciliationCommitRequestSchema = z.object({
@@ -88,7 +123,37 @@ const ReconciliationCommitRequestSchema = z.object({
   requestId: z.string().min(1),
   kind: z.literal("reconciliation-commit"),
   commit: MissionReconciliationCommitSchema,
+  ...RequiredExpectedRunnerTargetFields,
 }).strict();
+
+const AnchorAdoptionRequestSchema = z.object({
+  version: z.literal(MISSION_RUNNER_PROTOCOL_VERSION),
+  requestId: z.string().min(1),
+  kind: z.literal("anchor-adoption"),
+  adoption: MissionAnchorAdoptionSchema,
+  ...RequiredExpectedRunnerTargetFields,
+}).strict();
+
+const AnchorMigrationAdoptionRequestSchema = z.object({
+  version: z.literal(MISSION_RUNNER_PROTOCOL_VERSION),
+  requestId: z.string().min(1),
+  kind: z.literal("anchor-migration-adoption"),
+  proposalDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  adoption: MissionAnchorAdoptionSchema,
+  retireCarrier: z.literal(true),
+  ...RequiredExpectedRunnerTargetFields,
+}).strict().superRefine((request, context) => {
+  if (
+    request.adoption.sourceRef
+    !== `anchor-migration-proposal:sha256:${request.proposalDigest}`
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["adoption", "sourceRef"],
+      message: "migration adoption sourceRef must bind the exact proposal digest",
+    });
+  }
+});
 
 export const MissionRunnerRequestSchema = z.discriminatedUnion("kind", [
   StatusRequestSchema,
@@ -96,6 +161,8 @@ export const MissionRunnerRequestSchema = z.discriminatedUnion("kind", [
   ShutdownRequestSchema,
   RecoveryRequestSchema,
   ReconciliationCommitRequestSchema,
+  AnchorAdoptionRequestSchema,
+  AnchorMigrationAdoptionRequestSchema,
 ]);
 
 const SuccessfulResponseSchema = z.object({
@@ -104,6 +171,7 @@ const SuccessfulResponseSchema = z.object({
   ok: z.literal(true),
   status: MissionRunnerStatusSchema,
   receipt: MissionInputReceiptSchema.optional(),
+  recoveryCapabilities: MissionRecoveryCapabilitiesSchema.optional(),
 }).strict();
 
 const FailedResponseSchema = z.object({
@@ -120,14 +188,30 @@ export const MissionRunnerResponseSchema = z.discriminatedUnion("ok", [
 
 export type MissionRunnerState = z.infer<typeof MissionRunnerStateSchema>;
 export type MissionRunnerStatus = z.infer<typeof MissionRunnerStatusSchema>;
+export type MissionRecoveryCapabilities = z.infer<typeof MissionRecoveryCapabilitiesSchema>;
 export type MissionRunnerRequest = z.infer<typeof MissionRunnerRequestSchema>;
 export type MissionRunnerResponse = z.infer<typeof MissionRunnerResponseSchema>;
+export interface MissionRunnerExpectedTarget {
+  readonly expectedRunnerId?: string;
+  readonly expectedState?: MissionRunnerState;
+}
 export type MissionRunnerRequestDraft =
   | { readonly kind: "status" }
   | { readonly kind: "runner-shutdown" }
   | { readonly kind: "recovery"; readonly recovery: MissionTurnRecoveryCommand }
-  | { readonly kind: "reconciliation-commit"; readonly commit: MissionReconciliationCommit }
-  | { readonly kind: "input"; readonly input: z.infer<typeof MissionInputDraftSchema> };
+    & MissionRunnerExpectedTarget
+  | ({ readonly kind: "reconciliation-commit"; readonly commit: MissionReconciliationCommit }
+    & Required<MissionRunnerExpectedTarget>)
+  | ({ readonly kind: "anchor-adoption"; readonly adoption: MissionAnchorAdoption }
+    & Required<MissionRunnerExpectedTarget>)
+  | ({
+    readonly kind: "anchor-migration-adoption";
+    readonly proposalDigest: string;
+    readonly adoption: MissionAnchorAdoption;
+    readonly retireCarrier: true;
+  } & Required<MissionRunnerExpectedTarget>)
+  | ({ readonly kind: "input"; readonly input: z.infer<typeof MissionInputDraftSchema> }
+    & MissionRunnerExpectedTarget);
 
 export interface RunMissionRunnerOptions {
   readonly root: string;
@@ -135,14 +219,6 @@ export interface RunMissionRunnerOptions {
   readonly now?: () => string;
   readonly prepareExecution?: MissionRuntimeFactory;
   readonly initialAnchor?: MissionAnchorSeed;
-}
-
-export function missionRunnerDirectory(root: string, missionId: string): string {
-  return join(resolve(root), "missions", hash(missionId));
-}
-
-export function missionRunnerStatusPath(root: string, missionId: string): string {
-  return join(missionRunnerDirectory(root, missionId), "runner-status.json");
 }
 
 export function missionRunnerSocketPath(root: string, missionId: string): string {
@@ -198,6 +274,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
     socketPath,
     now,
     hasLiveExecution: false,
+    hasRuntime: options.prepareExecution !== undefined,
   });
 
   if (status.state === "mission-stopped") {
@@ -206,7 +283,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
   }
 
   await mkdir(dirname(socketPath), { recursive: true, mode: 0o700 });
-  await removeStaleSocket(socketPath);
+  await removeStaleMissionRunnerSocket(socketPath);
 
   const server = createServer();
   let execution: MissionExecutionHandle | undefined;
@@ -245,14 +322,19 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
       queue = queue
         .then(async () => {
           await initialization;
-          let requestId = "unparsed";
+          let requestId = requestIdFromUnparsedRequest(unparsedRequest);
           try {
             const request = MissionRunnerRequestSchema.parse(unparsedRequest);
             requestId = request.requestId;
             if (closing) throw new Error(`Mission runner ${runnerId} is shutting down`);
 
             if (request.kind === "status") {
-              sendResponse(socket, success(request.requestId, status));
+              sendResponse(socket, success(
+                request.requestId,
+                status,
+                undefined,
+                recoveryCapabilities(status, options.prepareExecution !== undefined),
+              ));
               return;
             }
 
@@ -271,6 +353,12 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
             }
 
             if (request.kind === "recovery") {
+              if (status.state === "anchor-pending") {
+                throw new Error(
+                  `Mission ${missionId} has no authorized intent anchor; only status, shutdown, or guarded anchor adoption is allowed`,
+                );
+              }
+              assertExpectedRunnerTarget(request, status);
               await recoverExecution(request.recovery);
               status = await projectStatus({
                 timeline,
@@ -280,6 +368,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
                 socketPath,
                 now,
                 hasLiveExecution: execution !== undefined,
+                hasRuntime: options.prepareExecution !== undefined,
               });
               await writeStatus(root, missionId, status);
               sendResponse(socket, success(request.requestId, status));
@@ -287,9 +376,37 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
             }
 
             if (request.kind === "reconciliation-commit") {
+              assertRequiredExpectedRunnerTarget(request, status);
+              if (status.state === "anchor-pending") {
+                throw new Error(
+                  `Mission ${missionId} has no authorized intent anchor; reconciliation is unavailable`,
+                );
+              }
               if (execution !== undefined) {
                 throw new Error(`Mission ${missionId} cannot commit reconciliation while a turn is still live`);
               }
+              const proposalAnchor = request.commit.proposal.anchor;
+              const sourceInput = (
+                await timeline.readInputsAfter(
+                  missionId,
+                  proposalAnchor.reconciledWatermark,
+                )
+              ).find((input) =>
+                input.inputId === request.commit.proposal.inputRef.inputId
+                && input.watermark === request.commit.proposal.inputRef.watermark
+              );
+              if (sourceInput === undefined) {
+                throw new Error(
+                  `Mission ${missionId} cannot verify reconciliation evidence without its exact source input`,
+                );
+              }
+              await verifyRetainedReconciliationEvidence({
+                home: root,
+                missionId,
+                commit: request.commit,
+                activeAnchor: proposalAnchor,
+                input: sourceInput,
+              });
               const previousWatermark = (
                 await timeline.latestReconciledAnchor(missionId)
               )?.reconciledWatermark ?? 0;
@@ -302,6 +419,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
                 socketPath,
                 now,
                 hasLiveExecution: false,
+                hasRuntime: options.prepareExecution !== undefined,
               });
               await writeStatus(root, missionId, status);
               if (
@@ -318,6 +436,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
                   socketPath,
                   now,
                   hasLiveExecution: execution !== undefined,
+                  hasRuntime: options.prepareExecution !== undefined,
                 });
                 await writeStatus(root, missionId, status);
               }
@@ -325,6 +444,96 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
               return;
             }
 
+            if (request.kind === "anchor-adoption") {
+              assertRequiredExpectedRunnerTarget(request, status);
+              if (execution !== undefined) {
+                throw new Error(`Mission ${missionId} cannot adopt a legacy anchor while a turn is still live`);
+              }
+              if (options.prepareExecution !== undefined) {
+                throw new Error(
+                  `Mission ${missionId} legacy anchor adoption requires a no-runtime carrier`,
+                );
+              }
+              if (request.adoption.missionId !== missionId) {
+                throw new Error(
+                  `Mission anchor adoption belongs to ${request.adoption.missionId}, not ${missionId}`,
+                );
+              }
+              await timeline.adoptLegacyAnchor(request.adoption);
+              status = await projectStatus({
+                timeline,
+                missionId,
+                runnerId,
+                startedAt,
+                socketPath,
+                now,
+                hasLiveExecution: false,
+                hasRuntime: options.prepareExecution !== undefined,
+              });
+              await writeStatus(root, missionId, status);
+              sendResponse(socket, success(request.requestId, status));
+              return;
+            }
+
+            if (request.kind === "anchor-migration-adoption") {
+              assertRequiredExpectedRunnerTarget(request, status);
+              if (execution !== undefined) {
+                throw new Error(
+                  `Mission ${missionId} cannot settle anchor migration while a turn is still live`,
+                );
+              }
+              if (request.adoption.missionId !== missionId) {
+                throw new Error(
+                  `Mission anchor migration belongs to ${request.adoption.missionId}, not ${missionId}`,
+                );
+              }
+              await timeline.adoptLegacyAnchor(request.adoption);
+              // Adoption is the irreversible semantic boundary. From this
+              // point the runtime-bearing carrier must never accept another
+              // request, even if its rebuildable status write fails.
+              closing = true;
+              try {
+                const adopted = await projectStatus({
+                  timeline,
+                  missionId,
+                  runnerId,
+                  startedAt,
+                  socketPath,
+                  now,
+                  hasLiveExecution: false,
+                  hasRuntime: options.prepareExecution !== undefined,
+                });
+                status = MissionRunnerStatusSchema.parse({
+                  ...adopted,
+                  state: "stopped",
+                  updatedAt: now(),
+                  stopReason: "runner-shutdown",
+                });
+                await writeStatus(root, missionId, status);
+                sendResponse(socket, success(request.requestId, status), closeServer);
+              } catch (error) {
+                status = MissionRunnerStatusSchema.parse({
+                  ...status,
+                  state: "stopped",
+                  updatedAt: now(),
+                  stopReason: "runner-shutdown",
+                });
+                await writeStatus(root, missionId, status).catch(() => undefined);
+                sendResponse(
+                  socket,
+                  failure(request.requestId, error),
+                  closeServer,
+                );
+              }
+              return;
+            }
+
+            assertExpectedRunnerTarget(request, status);
+            if (status.state === "anchor-pending") {
+              throw new Error(
+                `Mission ${missionId} has no authorized intent anchor; only status, shutdown, or guarded anchor adoption is allowed`,
+              );
+            }
             const receipt = await timeline.appendInput(missionId, request.input);
             execution?.observeInput(receipt);
             status = await projectStatus({
@@ -335,6 +544,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
               socketPath,
               now,
               hasLiveExecution: execution !== undefined,
+              hasRuntime: options.prepareExecution !== undefined,
             });
             await writeStatus(root, missionId, status);
             const response = success(request.requestId, status, receipt);
@@ -392,6 +602,11 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
 
   async function initializeExecution(): Promise<void> {
     if (options.prepareExecution === undefined) return;
+    if (await timeline.latestReconciledAnchor(missionId) === undefined) {
+      throw new Error(
+        `Mission ${missionId} has no authorized intent anchor and cannot execute semantic work`,
+      );
+    }
     if (status.state === "interrupted" || status.state === "input-pending" || status.state === "paused") return;
     if (status.state !== "running") {
       throw new Error(`Mission ${missionId} cannot start a turn while its state is ${status.state}`);
@@ -404,6 +619,11 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
       throw new Error(`Mission ${missionId} has no runtime module for a fresh turn`);
     }
     if (execution !== undefined) throw new Error(`Mission ${missionId} already has a live turn`);
+    if (await timeline.latestReconciledAnchor(missionId) === undefined) {
+      throw new Error(
+        `Mission ${missionId} has no authorized intent anchor and cannot start a fresh turn`,
+      );
+    }
     const prepared = await options.prepareExecution({ root, missionId, timeline });
     const turn = MissionTurnStartSchema.parse(prepared.turn);
     await timeline.startTurn(missionId, turn);
@@ -438,6 +658,11 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
         action: { kind: "abandon" },
       }));
       return;
+    }
+    if (await timeline.latestReconciledAnchor(missionId) === undefined) {
+      throw new Error(
+        `Mission ${missionId} has no authorized intent anchor and cannot recover semantic work`,
+      );
     }
     if (options.prepareExecution === undefined) {
       throw new Error(`Mission ${missionId} recovery ${command.action} requires a runtime module`);
@@ -488,6 +713,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
           socketPath,
           now,
           hasLiveExecution: false,
+          hasRuntime: options.prepareExecution !== undefined,
         });
         await writeStatus(root, missionId, status);
       }).catch(failRunner);
@@ -523,7 +749,10 @@ export async function requestMissionRunner(
       try {
         const response = MissionRunnerResponseSchema.parse(JSON.parse(content.slice(0, newline)));
         if (response.requestId !== request.requestId) {
-          throw new Error(`Mission runner response does not match request ${request.requestId}`);
+          const detail = response.ok ? "" : `: ${response.error}`;
+          throw new Error(
+            `Mission runner response ${response.requestId} does not match request ${request.requestId}${detail}`,
+          );
         }
         finish(() => resolveResponse(response));
       } catch (error) {
@@ -538,6 +767,107 @@ export async function requestMissionRunner(
       if (!settled) finish(() => rejectResponse(new Error("Mission runner closed without a response")));
     });
   });
+}
+
+export type MissionRunnerReachabilityFailure = {
+  readonly standing: "unreachable" | "unknown";
+  readonly code: string | null;
+  readonly message: string;
+  readonly socketPathStanding?: "present" | "absent" | "unverified";
+};
+
+/**
+ * A missing socket or a refused connection proves that no carrier is accepting
+ * requests at the Mission's exact socket. Permission failures, timeouts, and
+ * malformed or missing responses only prove that this observer could not
+ * establish reachability; callers must not lower those observations to
+ * `live: false`.
+ */
+export function classifyMissionRunnerReachabilityFailure(
+  error: unknown,
+): MissionRunnerReachabilityFailure {
+  const code = error !== null
+      && typeof error === "object"
+      && "code" in error
+      && typeof error.code === "string"
+    ? error.code
+    : null;
+  return {
+    standing: code === "ENOENT" || code === "ECONNREFUSED"
+      ? "unreachable"
+      : "unknown",
+    code,
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+export async function classifyMissionRunnerReachabilityFailureAtSocket(
+  error: unknown,
+  socketPath: string,
+): Promise<MissionRunnerReachabilityFailure> {
+  const classified = classifyMissionRunnerReachabilityFailure(error);
+  if (classified.code !== "ENOENT") return classified;
+  try {
+    await stat(socketPath);
+    return {
+      ...classified,
+      standing: "unknown",
+      socketPathStanding: "present",
+    };
+  } catch (pathError) {
+    const pathCode = pathError !== null
+        && typeof pathError === "object"
+        && "code" in pathError
+        && typeof pathError.code === "string"
+      ? pathError.code
+      : null;
+    if (pathCode === "ENOENT") {
+      return {
+        ...classified,
+        standing: "unreachable",
+        socketPathStanding: "absent",
+      };
+    }
+    return {
+      ...classified,
+      standing: "unknown",
+      socketPathStanding: "unverified",
+    };
+  }
+}
+
+/**
+ * Returns a live status only after an exact runner response. A definitively
+ * absent/refused socket returns `undefined`; observer uncertainty remains an
+ * error so mutation callers cannot treat it as carrier absence.
+ */
+export async function readVerifiedMissionRunnerIfReachable(
+  root: string,
+  missionId: string,
+  timeoutMs = 300,
+): Promise<MissionRunnerStatus | undefined> {
+  try {
+    const response = await requestMissionRunner(
+      root,
+      missionId,
+      missionRunnerRequest({ kind: "status" }),
+      timeoutMs,
+    );
+    if (!response.ok) throw new Error(response.error);
+    return response.status;
+  } catch (error) {
+    const reachability = await classifyMissionRunnerReachabilityFailureAtSocket(
+      error,
+      missionRunnerSocketPath(root, missionId),
+    );
+    if (reachability.standing === "unknown") {
+      throw new Error(
+        `Mission ${missionId} runner reachability could not be verified: ${reachability.message}`,
+        { cause: error },
+      );
+    }
+    return undefined;
+  }
 }
 
 export function missionRunnerRequest(
@@ -558,12 +888,12 @@ async function projectStatus(input: {
   readonly socketPath: string;
   readonly now: () => string;
   readonly hasLiveExecution: boolean;
+  readonly hasRuntime: boolean;
 }): Promise<MissionRunnerStatus> {
   const receipts = await input.timeline.readInputsAfter(input.missionId, 0);
   const inputWatermark = receipts.at(-1)?.watermark ?? 0;
-  const reconciledWatermark = (
-    await input.timeline.latestReconciledAnchor(input.missionId)
-  )?.reconciledWatermark ?? 0;
+  const activeAnchor = await input.timeline.latestReconciledAnchor(input.missionId);
+  const reconciledWatermark = activeAnchor?.reconciledWatermark ?? 0;
   let paused = false;
   let stopped = false;
   const turn = await input.timeline.latestTurn(input.missionId);
@@ -575,13 +905,17 @@ async function projectStatus(input: {
   }
   const state: MissionRunnerState = stopped
     ? "mission-stopped"
-    : paused
-      ? "paused"
-      : inputWatermark > reconciledWatermark
-        ? "input-pending"
-        : turn !== undefined && missionTurnNeedsRecovery(turn) && !input.hasLiveExecution
-          ? "interrupted"
-          : "running";
+    : activeAnchor === undefined
+      ? "anchor-pending"
+      : paused
+        ? "paused"
+        : inputWatermark > reconciledWatermark
+          ? "input-pending"
+          : turn !== undefined && missionTurnNeedsRecovery(turn) && !input.hasLiveExecution
+            ? "interrupted"
+            : !input.hasRuntime && !input.hasLiveExecution
+              ? "idle"
+              : "running";
   return MissionRunnerStatusSchema.parse({
     version: MISSION_RUNNER_PROTOCOL_VERSION,
     runnerId: input.runnerId,
@@ -592,6 +926,7 @@ async function projectStatus(input: {
     updatedAt: input.now(),
     inputWatermark,
     reconciledWatermark,
+    runtimeMode: input.hasRuntime ? "configured" : "none",
     socketPath: input.socketPath,
     stopReason: stopped ? "mission-stop" : null,
   });
@@ -601,6 +936,7 @@ function success(
   requestId: string,
   status: MissionRunnerStatus,
   receipt?: MissionInputReceipt,
+  capabilities?: MissionRecoveryCapabilities,
 ): MissionRunnerResponse {
   return MissionRunnerResponseSchema.parse({
     version: MISSION_RUNNER_PROTOCOL_VERSION,
@@ -608,7 +944,61 @@ function success(
     ok: true,
     status,
     ...(receipt === undefined ? {} : { receipt }),
+    ...(capabilities === undefined ? {} : { recoveryCapabilities: capabilities }),
   });
+}
+
+function assertExpectedRunnerTarget(
+  request: Extract<MissionRunnerRequest, {
+    kind:
+      | "input"
+      | "recovery"
+      | "reconciliation-commit"
+      | "anchor-adoption"
+      | "anchor-migration-adoption";
+  }>,
+  status: MissionRunnerStatus,
+): void {
+  const hasExpectedRunner = request.expectedRunnerId !== undefined;
+  const hasExpectedState = request.expectedState !== undefined;
+  if (hasExpectedRunner !== hasExpectedState) {
+    throw new Error("guarded Mission action requires both expectedRunnerId and expectedState");
+  }
+  if (!hasExpectedRunner || !hasExpectedState) return;
+  if (request.expectedRunnerId !== status.runnerId) {
+    throw new Error(
+      `Mission ${status.missionId} runner changed from ${request.expectedRunnerId} to ${status.runnerId}`,
+    );
+  }
+  if (request.expectedState !== status.state) {
+    throw new Error(
+      `Mission ${status.missionId} state changed from ${request.expectedState} to ${status.state}`,
+    );
+  }
+}
+
+function assertRequiredExpectedRunnerTarget(
+  request: Extract<MissionRunnerRequest, {
+    kind: "reconciliation-commit" | "anchor-adoption" | "anchor-migration-adoption";
+  }>,
+  status: MissionRunnerStatus,
+): void {
+  if (request.expectedRunnerId === undefined || request.expectedState === undefined) {
+    throw new Error(`${request.kind} requires expectedRunnerId and expectedState`);
+  }
+  assertExpectedRunnerTarget(request, status);
+}
+
+function recoveryCapabilities(
+  status: MissionRunnerStatus,
+  hasRuntime: boolean,
+): MissionRecoveryCapabilities {
+  const interrupted = status.state === "interrupted";
+  return {
+    abandon: interrupted,
+    resume: interrupted && hasRuntime,
+    replace: interrupted && hasRuntime,
+  };
 }
 
 function failure(requestId: string, error: unknown): MissionRunnerResponse {
@@ -618,6 +1008,19 @@ function failure(requestId: string, error: unknown): MissionRunnerResponse {
     ok: false,
     error: error instanceof Error ? error.message : String(error),
   };
+}
+
+function requestIdFromUnparsedRequest(value: unknown): string {
+  if (
+    value !== null
+    && typeof value === "object"
+    && "requestId" in value
+    && typeof value.requestId === "string"
+    && value.requestId.length > 0
+  ) {
+    return value.requestId;
+  }
+  return "unparsed";
 }
 
 function receiveRequest(socket: Socket, receive: (request: unknown) => void): void {
@@ -665,8 +1068,44 @@ async function closeListeningServer(server: Server): Promise<void> {
   await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
 }
 
-async function removeStaleSocket(socketPath: string): Promise<void> {
-  const accepting = await new Promise<boolean>((resolveAccepting, rejectAccepting) => {
+export type MissionRunnerSocketAcceptanceProbe = (
+  socketPath: string,
+) => Promise<boolean>;
+
+/**
+ * Removes the exact socket only after proving it is not accepting requests.
+ * The injectable probe is a narrow verification seam for masked filesystem
+ * failures; production callers use the real Unix-socket probe.
+ */
+export async function removeStaleMissionRunnerSocket(
+  socketPath: string,
+  probe: MissionRunnerSocketAcceptanceProbe =
+    probeMissionRunnerSocketAcceptance,
+): Promise<void> {
+  let accepting: boolean;
+  try {
+    accepting = await probe(socketPath);
+  } catch (error) {
+    const reachability = await classifyMissionRunnerReachabilityFailureAtSocket(
+      error,
+      socketPath,
+    );
+    if (reachability.standing === "unknown") {
+      throw new Error(
+        `Mission runner socket reachability could not be verified before stale-socket cleanup: ${reachability.message}`,
+        { cause: error },
+      );
+    }
+    accepting = false;
+  }
+  if (accepting) throw new Error(`Mission runner socket is already active at ${socketPath}`);
+  await rm(socketPath, { force: true });
+}
+
+async function probeMissionRunnerSocketAcceptance(
+  socketPath: string,
+): Promise<boolean> {
+  return await new Promise<boolean>((resolveAccepting, rejectAccepting) => {
     const socket = createConnection(socketPath);
     socket.once("connect", () => {
       socket.destroy();
@@ -674,12 +1113,9 @@ async function removeStaleSocket(socketPath: string): Promise<void> {
     });
     socket.once("error", (error: NodeJS.ErrnoException) => {
       socket.destroy();
-      if (error.code === "ENOENT" || error.code === "ECONNREFUSED") resolveAccepting(false);
-      else rejectAccepting(error);
+      rejectAccepting(error);
     });
   });
-  if (accepting) throw new Error(`Mission runner socket is already active at ${socketPath}`);
-  await rm(socketPath, { force: true });
 }
 
 async function writeStatus(root: string, missionId: string, status: MissionRunnerStatus): Promise<void> {

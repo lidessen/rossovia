@@ -1,7 +1,12 @@
-import type { CellRunRecord, CellInput } from "../../../packages/work-cell/src/contracts";
+import type {
+  CellRunRecord,
+  CellInput,
+  TraceEvent,
+} from "../../../packages/work-cell/src/contracts";
 import { CellInputSchema } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
 import { runCell } from "../../../packages/work-cell/src/run-cell";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   SWARM_INPUT_VERSION,
   runSwarm,
@@ -55,6 +60,15 @@ export interface PreparedDelegateContribution {
   readonly cell: unknown;
 }
 
+/**
+ * Allows one guarded Cell to write only candidate files inside an isolated
+ * workspace. It grants no command, commit, publication, or acceptance authority.
+ */
+export interface IsolatedWritableTrialEffectPolicy {
+  readonly kind: "isolated-writable-trial";
+  readonly root: string;
+}
+
 export interface PreparedDelegateBatch {
   readonly id: string;
   readonly whole: {
@@ -66,6 +80,7 @@ export interface PreparedDelegateBatch {
     readonly capabilityNeeds: readonly string[];
     readonly reconstructionOwner: string;
     readonly workspace: CellInput["workspace"];
+    readonly effectPolicy?: IsolatedWritableTrialEffectPolicy;
   };
   readonly contributions: readonly PreparedDelegateContribution[];
 }
@@ -105,8 +120,30 @@ export function admitPreparedDelegateBatch(input: PreparedDelegateBatch): Admitt
   requireText(input.whole.workspace.root, "whole workspace root", issues);
   requireUniqueText(input.whole.workspace.readPaths, "whole workspace read paths", issues);
   requireUniqueText(input.whole.workspace.excludePaths, "whole workspace exclude paths", issues, true);
-  if (input.whole.workspace.writePaths.length > 0 || input.whole.workspace.allowedCommands.length > 0) {
-    issues.push("the first delegate slice requires a read-only, command-free whole workspace");
+  const effectPolicy = input.whole.effectPolicy;
+  if (input.whole.workspace.allowedCommands.length > 0) {
+    issues.push("delegate admission does not permit command execution");
+  }
+  if (effectPolicy === undefined) {
+    if (input.whole.workspace.writePaths.length > 0) {
+      issues.push("a writable whole workspace requires an explicit isolated writable trial effect policy");
+    }
+  } else {
+    if (effectPolicy.kind !== "isolated-writable-trial") {
+      issues.push(`unsupported effect policy kind: ${String(effectPolicy.kind)}`);
+    }
+    requireText(effectPolicy.root, "effect policy root", issues);
+    if (!isAbsolute(effectPolicy.root)) {
+      issues.push("isolated writable trial effect root must be absolute");
+    }
+    if (input.whole.workspace.root !== effectPolicy.root) {
+      issues.push("whole workspace root does not match the isolated writable trial effect root");
+    }
+    for (const writePath of input.whole.workspace.writePaths) {
+      if (!isPathWithinScopes(effectPolicy.root, writePath, ["."])) {
+        issues.push(`whole workspace write path is outside the isolated writable trial root: ${writePath}`);
+      }
+    }
   }
   if (input.contributions.length === 0) issues.push("batch must contain at least one contribution");
   if (input.contributions.length > 256) issues.push("batch cannot contain more than 256 contributions");
@@ -121,6 +158,7 @@ export function admitPreparedDelegateBatch(input: PreparedDelegateBatch): Admitt
   const seenTaskIds = new Set<string>();
   const obligationOwners = new Map<string, string>();
   const admitted: AdmittedDelegateContribution[] = [];
+  let writableContributions = 0;
 
   for (const [index, contribution] of input.contributions.entries()) {
     const path = `contributions[${index}]`;
@@ -187,8 +225,29 @@ export function admitPreparedDelegateBatch(input: PreparedDelegateBatch): Admitt
         `${path}.cell execution profile ${cell.executionProfile.id} does not match Task Shape profile ${contribution.taskShape.referenceProfile.id}`,
       );
     }
-    if (cell.workspace.writePaths.length > 0 || cell.workspace.allowedCommands.length > 0) {
-      issues.push(`${path}.cell exceeds the first slice's read-only, command-free boundary`);
+    if (cell.workspace.allowedCommands.length > 0) {
+      issues.push(`${path}.cell is not permitted to execute commands`);
+    }
+    if (cell.workspace.writePaths.length > 0) {
+      writableContributions += 1;
+      if (effectPolicy === undefined) {
+        issues.push(`${path}.cell requires an explicit isolated writable trial effect policy`);
+      } else {
+        if (cell.workspace.root !== effectPolicy.root) {
+          issues.push(`${path}.cell workspace root does not match the isolated writable trial effect root`);
+        }
+        for (const writePath of cell.workspace.writePaths) {
+          if (!isPathWithinScopes(input.whole.workspace.root, writePath, input.whole.workspace.writePaths)) {
+            issues.push(`${path}.cell write path is outside the frozen whole: ${writePath}`);
+          }
+        }
+      }
+      if (contribution.taskShape.disposition !== "guarded") {
+        issues.push(`${path}.writable cell requires a guarded Task Shape`);
+      }
+      if (contribution.taskShape.guardRefs.length === 0) {
+        issues.push(`${path}.writable cell requires at least one independently owned guard`);
+      }
     }
     validateWorkspace(cell.workspace, input.whole.workspace, path, issues);
     if (
@@ -201,9 +260,33 @@ export function admitPreparedDelegateBatch(input: PreparedDelegateBatch): Admitt
     admitted.push({ ...contribution, cell });
   }
 
+  if (effectPolicy !== undefined && writableContributions !== 1) {
+    issues.push(`isolated writable trial requires exactly one writable contribution; received ${writableContributions}`);
+  }
   if (issues.length > 0) throw new DelegateAdmissionError(issues);
   const unassignedObligations = input.whole.obligations.filter((obligation) => !obligationOwners.has(obligation));
   return { ...input, contributions: admitted, unassignedObligations };
+}
+
+function isPathWithinScopes(root: string, path: string, scopes: readonly string[]): boolean {
+  if (isAbsolute(path)) return false;
+  const absoluteRoot = resolve(root);
+  const candidate = resolve(absoluteRoot, path);
+  if (!isInside(absoluteRoot, candidate)) return false;
+  return scopes.some((scope) => {
+    if (isAbsolute(scope)) return false;
+    const absoluteScope = resolve(absoluteRoot, scope);
+    return isInside(absoluteRoot, absoluteScope) && isInside(absoluteScope, candidate);
+  });
+}
+
+function isInside(root: string, candidate: string): boolean {
+  const offset = relative(root, candidate);
+  return offset === "" || (
+    offset !== ".."
+    && !offset.startsWith(`..${sep}`)
+    && !isAbsolute(offset)
+  );
 }
 
 function validateWorkspace(
@@ -263,7 +346,11 @@ export type DelegateBatchRun =
 export async function runPreparedDelegateBatch(
   input: PreparedDelegateBatch,
   createDriver: () => CellDriver,
-  options: { readonly concurrency: number; readonly signal?: AbortSignal },
+  options: {
+    readonly concurrency: number;
+    readonly signal?: AbortSignal;
+    readonly onTrace?: (event: TraceEvent) => void;
+  },
 ): Promise<DelegateBatchRun> {
   const admission = admitPreparedDelegateBatch(input);
   return runAdmittedDelegateBatch(admission, createDriver, options);
@@ -273,14 +360,21 @@ export async function runPreparedDelegateBatch(
 export async function runAdmittedDelegateBatch(
   admission: AdmittedDelegateBatch,
   createDriver: () => CellDriver,
-  options: { readonly concurrency: number; readonly signal?: AbortSignal },
+  options: {
+    readonly concurrency: number;
+    readonly signal?: AbortSignal;
+    readonly onTrace?: (event: TraceEvent) => void;
+  },
 ): Promise<DelegateBatchRun> {
   const lowered = lowerAdmittedDelegateBatch(admission, options.concurrency);
   if (lowered.kind === "direct") {
     const record = await runCell(
       lowered.input,
       createDriver(),
-      options.signal === undefined ? {} : { signal: options.signal },
+      {
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(options.onTrace === undefined ? {} : { onTrace: options.onTrace }),
+      },
     );
     return { kind: "direct", admission, record };
   }

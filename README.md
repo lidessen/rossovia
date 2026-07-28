@@ -116,6 +116,7 @@ confirmation.
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
+| [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, and recovery | accepted autonomous operation, task discovery, writable effects, remote authority, publication, or merge |
 | [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, and explicit user/project defaults | task scheduling, inferred preference, machine capability, target-project facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
@@ -151,7 +152,7 @@ confirmation.
 | [project-cognition](skills/project-cognition/SKILL.md) | `/project-cognition` | Build or selectively refresh a source-linked, non-authoritative working model when later agents need reusable project understanding across substantial tasks. |
 | [agent-environment](skills/agent-environment/SKILL.md) | `/agent-environment` | Audit, set up, reconcile, verify, or migrate a person's non-secret user-level coding-agent workflow across devices and tools without copying opaque machine state. |
 
-## Experimental runtime
+## Experimental mechanisms
 
 [`packages/work-cell`](packages/work-cell/README.md) is the collection's
 independent practice and evaluation unit. Its core runs one caller-prepared,
@@ -176,6 +177,16 @@ only a rebuildable retrieval projection; projects, workspaces, Git, prompts,
 models, and task routing stay outside the core. Project cognition and Rossovia
 resume are future domain methods over this mechanism, not its defining schema; see
 [decision 039](design/decisions/039-general-cognition-experiment.md).
+
+[`operations/autonomy`](operations/autonomy/README.md) is the project-local
+supervised-Mission experiment. Its implemented first slice retains ordered
+human input, bounded Agent turns, delegation evidence, reconciliation, and
+local recovery. Read-only and graceful-restart mechanism claims have guarded
+support; writable effects, autonomous completion, remote authority, and
+production advantage remain unproved. The
+[Principal settlement](design/organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+recognizes it as an active, bounded experimental capability; the ordinary
+operating mode remains human-initiated.
 
 ## Which skill, when?
 

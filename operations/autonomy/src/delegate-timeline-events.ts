@@ -3,7 +3,10 @@ import { CellRunRecordSchema } from "../../../packages/work-cell/src/contracts";
 import { SwarmOutcomeRecordSchema } from "../../../packages/work-cell/src/swarm";
 import { MissionInputEventDataSchema } from "./mission-input";
 import { MissionReconciliationEventDataSchema } from "./mission-reconciliation-commit";
-import { MissionAnchorSeedEventDataSchema } from "./mission-reconciliation";
+import {
+  MissionAnchorAdoptionEventDataSchema,
+  MissionAnchorSeedEventDataSchema,
+} from "./mission-reconciliation";
 import {
   MissionTurnRecoveredEventDataSchema,
   MissionTurnSettledEventDataSchema,
@@ -46,6 +49,15 @@ export const TimelineEventSchema = z.discriminatedUnion("type", [
     at: z.string().min(1),
     type: z.literal("mission.anchor-seeded"),
     data: MissionAnchorSeedEventDataSchema,
+  }).strict(),
+  z.object({
+    version: z.literal(TIMELINE_EVENT_VERSION),
+    eventId: z.string().min(1),
+    timelineId: z.string().min(1),
+    sequence: z.number().int().nonnegative(),
+    at: z.string().min(1),
+    type: z.literal("mission.anchor-adopted"),
+    data: MissionAnchorAdoptionEventDataSchema,
   }).strict(),
   z.object({
     version: z.literal(TIMELINE_EVENT_VERSION),
@@ -179,4 +191,5 @@ export type ParentPreparedEvent = Extract<TimelineEvent, { type: "delegate.batch
 export type ChildSettledEvent = Extract<TimelineEvent, { type: "delegate.child-settled" }>;
 export type MissionInputReceivedEvent = Extract<TimelineEvent, { type: "mission.input-received" }>;
 export type MissionAnchorSeededEvent = Extract<TimelineEvent, { type: "mission.anchor-seeded" }>;
+export type MissionAnchorAdoptedEvent = Extract<TimelineEvent, { type: "mission.anchor-adopted" }>;
 export type MissionInputReconciledEvent = Extract<TimelineEvent, { type: "mission.input-reconciled" }>;

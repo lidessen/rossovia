@@ -14,6 +14,7 @@ import { digest } from "./canonical-json";
 
 export const MISSION_RECONCILIATION_VERSION = "rosso.mission-reconciliation.v1" as const;
 export const MISSION_ANCHOR_SEED_VERSION = "rosso.mission-anchor-seed.v1" as const;
+export const MISSION_ANCHOR_ADOPTION_VERSION = "rosso.mission-anchor-adoption.v1" as const;
 
 export const ActiveIntentAnchorSchema = z.object({
   id: z.string().min(1),
@@ -43,6 +44,32 @@ export const MissionAnchorSeedSchema = z.object({
 export const MissionAnchorSeedEventDataSchema = z.object({
   seedDigest: z.string().regex(/^[a-f0-9]{64}$/),
   seed: MissionAnchorSeedSchema,
+}).strict();
+
+export const MissionAnchorAdoptionSchema = z.object({
+  version: z.literal(MISSION_ANCHOR_ADOPTION_VERSION),
+  id: z.string().min(1),
+  missionId: z.string().min(1),
+  authorityRef: z.string().min(1),
+  sourceRef: z.string().min(1),
+  expectedPriorEventCount: z.number().int().positive(),
+  expectedPriorTimelineDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  anchor: ActiveIntentAnchorSchema,
+}).strict().superRefine((value, context) => {
+  if (value.anchor.reconciledWatermark !== 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["anchor", "reconciledWatermark"],
+      message: "a legacy Mission anchor adoption must start at watermark 0",
+    });
+  }
+});
+
+export const MissionAnchorAdoptionEventDataSchema = z.object({
+  adoptionDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  priorEventCount: z.number().int().positive(),
+  priorTimelineDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  adoption: MissionAnchorAdoptionSchema,
 }).strict();
 
 export const ReconciliationDecisionSchema = z.discriminatedUnion("disposition", [
@@ -102,6 +129,7 @@ export const MissionReconciliationProposalSchema = z.object({
 
 export type ActiveIntentAnchor = z.infer<typeof ActiveIntentAnchorSchema>;
 export type MissionAnchorSeed = z.infer<typeof MissionAnchorSeedSchema>;
+export type MissionAnchorAdoption = z.infer<typeof MissionAnchorAdoptionSchema>;
 export type ReconciliationDecision = z.infer<typeof ReconciliationDecisionSchema>;
 export type MissionReconciliationProposal = z.infer<typeof MissionReconciliationProposalSchema>;
 
@@ -132,9 +160,7 @@ export async function proposeMissionReconciliation(
 ): Promise<ReconciliationProposalResult> {
   const anchor = ActiveIntentAnchorSchema.parse(unparsedRequest.anchor);
   const input = unparsedRequest.input;
-  if (input.payload.kind !== "contribution") {
-    throw new Error(`mission input ${input.inputId} is mechanical control, not semantic reconciliation`);
-  }
+  assertSemanticMissionInput(input);
   if (input.watermark !== anchor.reconciledWatermark + 1) {
     throw new Error(`mission input ${input.inputId} is not the next unreconciled watermark`);
   }
@@ -145,7 +171,7 @@ export async function proposeMissionReconciliation(
   ) throw new Error(`reconciliation driver does not match execution profile ${executionProfile.id}`);
   const record = await runCell({
     id: `reconcile:${unparsedRequest.missionId}:${input.inputId}`,
-    intent: "Compare one new Mission contribution with the active intent anchor and submit one bounded reconciliation candidate.",
+    intent: "Compare one new semantic Mission input with the active intent anchor and submit one bounded reconciliation candidate.",
     workspace: {
       root: unparsedRequest.workspaceRoot,
       readPaths: [],
@@ -154,9 +180,10 @@ export async function proposeMissionReconciliation(
       allowedCommands: [],
     },
     instructions: [
-      "Compare only the supplied active anchor and Mission input. Do not inspect the repository or other Mission history.",
-      "Use continue only when the input changes no active constraint; preserve each response obligation.",
-      "Use correction only for a material changed constraint and fill the correction-receipt fields exactly.",
+      "Compare only the supplied active anchor and semantic Mission input. Do not inspect the repository or other Mission history.",
+      "A structured correction is semantic input, but its label does not pre-accept its requested transition or expand its retained authority boundary. Its implementation instruction, bounded write scope, and verification requirement are response obligations unless they revise the active Mission anchor or retained authority boundary.",
+      "Use continue when, after applying the input, the active Mission anchor remains truthful and sufficient verbatim and the retained authority boundary is unchanged. Describe candidate or effect changes in inputEffect and preserve each still-live consequence as a response obligation.",
+      "Use correction only when the next active Mission anchor statement itself must change. A payload label, file-level implementation requirement, failed probe, completed local correction, or verification result is not by itself a Mission invariant.",
       "Use decision-required when authority, meaning, or scope is ambiguous. Do not resolve ambiguity yourself.",
       "Recency is not authority. Do not rewrite the whole Mission or claim acceptance.",
       "Finish by calling exactly one disposition tool. Tool choice is the decision; provide only that tool's fields.",
@@ -189,12 +216,12 @@ export async function proposeMissionReconciliation(
     terminalTools: [
       {
         name: "submit_continue",
-        description: "Submit when the input changes no active constraint. This records a proposal, not acceptance.",
+        description: "Submit when the input preserves the active Mission anchor and authority boundary; retain tactical implementation and verification constraints as response obligations. This records a proposal, not acceptance.",
         inputSchema: jsonSchema(ContinueSubmissionSchema),
       },
       {
         name: "submit_correction",
-        description: "Submit when the input materially changes an active constraint. This records a proposal, not acceptance.",
+        description: "Submit only when the input changes a Mission-level constraint encoded by the active anchor. This records a proposal, not acceptance.",
         inputSchema: jsonSchema(CorrectionSubmissionSchema),
       },
       {
@@ -215,7 +242,7 @@ export async function proposeMissionReconciliation(
   if (record.status !== "passed") {
     return { kind: "unsettled", record, reason: record.error ?? `reconciliation Cell ${record.status}` };
   }
-  const decision = submittedDecision(record);
+  const decision = reconciliationDecisionFromRecord(record);
   if (decision === undefined) {
     return { kind: "unsettled", record, reason: "reconciliation Cell retained no valid terminal payload" };
   }
@@ -241,7 +268,17 @@ export function digestAnchor(anchor: ActiveIntentAnchor): string {
   return digest(anchor);
 }
 
-function submittedDecision(record: CellRunRecord): ReconciliationDecision | undefined {
+export function assertSemanticMissionInput(input: MissionInputReceipt): void {
+  if (input.payload.kind === "control") {
+    throw new Error(
+      `mission input ${input.inputId} is mechanical control and cannot enter semantic reconciliation`,
+    );
+  }
+}
+
+export function reconciliationDecisionFromRecord(
+  record: CellRunRecord,
+): ReconciliationDecision | undefined {
   const submissions = record.trace.filter((event) => event.type === "terminal.tool.called");
   if (submissions.length !== 1) return undefined;
   const data = asRecord(submissions[0]!.data);

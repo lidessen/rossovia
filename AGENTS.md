@@ -180,6 +180,43 @@ beyond the human mandate, or automatically close a Mission from Git or PR
 state. At a safe point for an existing Mission, run its `status` and `check`
 commands and surface mismatches for settlement.
 
+## Rossovia supervised execution entry
+
+When the human asks what a pending supervised execution would disclose, spend,
+write, or decide, run:
+
+```text
+./operations/workbench/rossovia execution inspect <project> <mission-id>
+```
+
+Treat the result as a projection of the exact committed Mission proposal, not
+as execution authority. Present its proposal ID and digest, runtime reference
+and source digest, consequential choices and immediate results, external
+disclosure, hard execution limits, forecast-only token estimate, write/command
+scope, and withheld authorities.
+Only the registered primary workspace's committed Mission is an authorization
+source; the same Mission observed in another worktree remains observation-only.
+
+Create a local launch receipt only after the human explicitly answers every
+pending decision and explicitly allows any declared external disclosure. Re-run
+`execution inspect`, bind the current proposal ID and digest, then run
+`execution authorize` with one `--choice <decision-id>=<reply-key>` per
+decision plus attributable Principal and source references. Do not infer
+`ALLOW` from `continue`, silence, a preference, an earlier proposal, or a
+recommendation. A valid receipt releases only its declared disclosure, budget,
+write paths, and one execution against the exact runtime source digest; a
+same-named runtime whose content changed is stale. It is not commit, merge,
+publication, or product acceptance authority. Its actor and source references
+preserve attribution and do not authenticate a person.
+
+The local Principal Workbench UI may perform the same receipt-only operation
+after the person explicitly selects every decision and checks all three
+disclosure, forecast, and one-use/integration acknowledgements. Its v2 receipt
+retains those acknowledgements with
+`identityAssurance: "unverified-local-interaction"`. Treat `HOLD` as continued
+blocking. Receipt issuance never starts the runner or grants integration,
+publication, or product-acceptance authority.
+
 ## Integration entry
 
 When the human asks to create or operate a branch, worktree, PR, review, or
@@ -222,7 +259,7 @@ When creating or materially updating a skill:
   for human-gated Sequence change. The deprecated `extract` path still creates
   candidates when the gate passes. Never silently create a second canon.
 - Keep only pending or incubating records in `principles/candidates/`. After human adoption, move the record to `principles/adopted/`; it remains evidence but no longer competes as an active proposal.
-- Treat the sequence as the central committee and each skill as a durable working team: its Primary P-ID is the skill's stable lineage and its Supporting P-IDs are habitual members. Each activation selects one current lead for the task's principal contradiction; it may differ from the lineage, but never creates co-primary doctrine. The standing committee is a governance projection, never a second semantic source.
+- Treat the sequence as the central committee and each skill as a durable working team: its Primary P-ID is the skill's stable lineage and its Supporting P-IDs are habitual members. Each activation first forms the actual object and its governing relations, then selects one current lead for the task's principal contradiction; it may differ from the lineage, but never creates co-primary doctrine. A selected P-ID must change the object's explanation or transformation, not merely label an already chosen action. The standing committee is a governance projection, never a second semantic source.
 - A human-nominated alternate candidate may join one activation only as a separately labeled trial. It never becomes Primary, Supporting, current lead, a review-team seat, or portable lineage; record its baseline, decision delta, disconfirming observation, and outcome in the candidate record.
 - For a sequence addition, revision, or retirement, use `principle-cultivation review` to form a temporary team: a lead, standing liaison, direct comparators, and a preservation seat that makes the strongest case for leaving the sequence unchanged. Select 3–5 seats with reasons; do not convene every principle by default.
 - Team reports are review evidence, not votes or semantic authority. Record the selected P-IDs, roles, overlap and boundary findings, and unchanged-sequence alternative. Human approval is the only adoption authority.

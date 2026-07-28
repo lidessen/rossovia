@@ -7,6 +7,7 @@ import {
 import {
   type CompactDelegateOutcome,
   type DelegateBatchCheckpoint,
+  type DelegateResultProjection,
   type DelegateTimeline,
 } from "./delegate-loop";
 import {
@@ -23,9 +24,11 @@ import {
 } from "./mission-reconciliation-commit";
 import {
   ActiveIntentAnchorSchema,
+  MissionAnchorAdoptionSchema,
   MissionAnchorSeedSchema,
   digestAnchor,
   type ActiveIntentAnchor,
+  type MissionAnchorAdoption,
   type MissionAnchorSeed,
 } from "./mission-reconciliation";
 import {
@@ -61,6 +64,8 @@ import {
   inputReceipt,
   isMissing,
   missionInputEvents,
+  missionAnchorAdoptionEvent,
+  missionAuthorizedAnchor,
   missionAnchorSeedEvent,
   missionReconciliationEvents,
   parseCheckpoint,
@@ -77,6 +82,8 @@ export interface RecoveredDelegateBatch {
   readonly outcomes?: readonly CompactDelegateOutcome[];
   readonly ready: boolean;
 }
+
+const MAX_DELEGATE_RESULT_PROJECTION_BYTES = 32 * 1024;
 
 /**
  * Local foreground carrier for one parent timeline and independent child
@@ -141,6 +148,9 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     const seed = MissionAnchorSeedSchema.parse(unparsedSeed);
     const seedDigest = digest(seed);
     await this.mutateTimeline(seed.missionId, (events) => {
+      if (missionAnchorAdoptionEvent(events, seed.missionId) !== undefined) {
+        throw new Error(`Mission ${seed.missionId} already has an authorized legacy anchor adoption`);
+      }
       const existing = missionAnchorSeedEvent(events, seed.missionId);
       if (existing !== undefined) {
         if (existing.data.seedDigest !== seedDigest || stableStringify(existing.data.seed) !== stableStringify(seed)) {
@@ -155,6 +165,67 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     });
   }
 
+  async adoptLegacyAnchor(unparsedAdoption: MissionAnchorAdoption): Promise<void> {
+    const adoption = MissionAnchorAdoptionSchema.parse(unparsedAdoption);
+    const adoptionDigest = digest(adoption);
+    await this.mutateTimeline(adoption.missionId, (events) => {
+      if (missionAnchorSeedEvent(events, adoption.missionId) !== undefined) {
+        throw new Error(`Mission ${adoption.missionId} already has an authorized initial anchor`);
+      }
+      const existing = missionAnchorAdoptionEvent(events, adoption.missionId);
+      if (existing !== undefined) {
+        if (
+          existing.data.adoptionDigest !== adoptionDigest
+          || stableStringify(existing.data.adoption) !== stableStringify(adoption)
+        ) {
+          throw new Error(`Mission ${adoption.missionId} conflicts with its authorized legacy anchor adoption`);
+        }
+        return undefined;
+      }
+      if (events.length === 0) {
+        throw new Error(
+          `Mission ${adoption.missionId} has no legacy events; use an initial anchor seed`,
+        );
+      }
+      if (
+        adoption.expectedPriorEventCount !== events.length
+        || adoption.expectedPriorTimelineDigest !== digest(events)
+      ) {
+        throw new Error(
+          `Mission ${adoption.missionId} legacy anchor adoption does not match its expected prior timeline`,
+        );
+      }
+      if (events.some((event) => event.type === "mission.input-reconciled")) {
+        throw new Error(`Mission ${adoption.missionId} cannot adopt an anchor after reconciliation`);
+      }
+      const activeTurn = missionTurns(events).find(missionTurnNeedsRecovery);
+      if (activeTurn !== undefined) {
+        throw new Error(
+          `Mission ${adoption.missionId} cannot adopt an anchor while turn ${activeTurn.start.turnId} is unsettled`,
+        );
+      }
+      const nonzeroTurn = events.find(
+        (event) =>
+          event.type === "mission.turn-started"
+          && event.data.start.baselineWatermark !== 0,
+      );
+      if (nonzeroTurn?.type === "mission.turn-started") {
+        throw new Error(
+          `Mission ${adoption.missionId} cannot adopt an anchor after turn ${nonzeroTurn.data.start.turnId} started from nonzero baseline`,
+        );
+      }
+      return {
+        type: "mission.anchor-adopted",
+        data: {
+          adoptionDigest,
+          priorEventCount: adoption.expectedPriorEventCount,
+          priorTimelineDigest: adoption.expectedPriorTimelineDigest,
+          adoption,
+        },
+      };
+    });
+  }
+
   async commitReconciliation(unparsedCommit: MissionReconciliationCommit): Promise<void> {
     const commit = MissionReconciliationCommitSchema.parse(unparsedCommit);
     const missionId = commit.proposal.missionId;
@@ -163,7 +234,7 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       const inputs = missionInputEvents(events, missionId);
       const reconciliations = missionReconciliationEvents(events, missionId, inputs);
       const previousAnchor = reconciliations.at(-1)?.data.acceptance.nextAnchor
-        ?? missionAnchorSeedEvent(events, missionId)?.data.seed.anchor;
+        ?? missionAuthorizedAnchor(events, missionId);
       if (previousAnchor === undefined) {
         throw new Error(`Mission ${missionId} has no authorized initial anchor`);
       }
@@ -211,7 +282,7 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     const events = await this.readTimeline(missionId);
     const inputs = missionInputEvents(events, missionId);
     return missionReconciliationEvents(events, missionId, inputs).at(-1)?.data.acceptance.nextAnchor
-      ?? missionAnchorSeedEvent(events, missionId)?.data.seed.anchor;
+      ?? missionAuthorizedAnchor(events, missionId);
   }
 
   async startTurn(missionId: string, unparsedStart: MissionTurnStart): Promise<void> {
@@ -229,7 +300,7 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       const inputs = missionInputEvents(events, missionId);
       const reconciledWatermark = missionReconciliationEvents(events, missionId, inputs)
         .at(-1)?.data.acceptance.nextAnchor.reconciledWatermark
-        ?? missionAnchorSeedEvent(events, missionId)?.data.seed.anchor.reconciledWatermark
+        ?? missionAuthorizedAnchor(events, missionId)?.reconciledWatermark
         ?? 0;
       if (start.baselineWatermark !== reconciledWatermark) {
         throw new Error(
@@ -238,7 +309,7 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       }
       const activeAnchor = missionReconciliationEvents(events, missionId, inputs)
         .at(-1)?.data.acceptance.nextAnchor
-        ?? missionAnchorSeedEvent(events, missionId)?.data.seed.anchor;
+        ?? missionAuthorizedAnchor(events, missionId);
       if (activeAnchor === undefined && start.anchorDigest !== undefined) {
         throw new Error(`mission turn ${start.turnId} names an anchor but the Mission has none`);
       }
@@ -276,7 +347,7 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       const inputs = missionInputEvents(events, missionId);
       const activeAnchor = missionReconciliationEvents(events, missionId, inputs)
         .at(-1)?.data.acceptance.nextAnchor
-        ?? missionAnchorSeedEvent(events, missionId)?.data.seed.anchor;
+        ?? missionAuthorizedAnchor(events, missionId);
       const reconciledWatermark = activeAnchor?.reconciledWatermark ?? 0;
       if (inputs.length !== reconciledWatermark) {
         throw new Error(`mission ${missionId} has unreconciled input and cannot recover a turn`);
@@ -524,6 +595,81 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     }));
   }
 
+  async readResult(
+    parentLoopId: string,
+    batchId: string,
+    key: string,
+  ): Promise<DelegateResultProjection> {
+    const parent = await this.readTimeline(parentLoopId);
+    const prepared = findPrepared(parent, batchId);
+    if (prepared === undefined) {
+      throw new Error(`delegate batch ${batchId} is not present in parent timeline ${parentLoopId}`);
+    }
+    const checkpoint = parseCheckpoint(prepared.data.checkpoint);
+    const child = prepared.data.children.find((candidate) => candidate.key === key);
+    if (child === undefined) {
+      throw new Error(`delegate batch ${batchId} has no child result for ${key}`);
+    }
+    const events = await this.readTimeline(child.timelineId);
+    requireOpened(events, checkpoint, child, prepared.data.checkpointDigest);
+    const settlement = findSettlement(events, checkpoint, child, prepared.data.checkpointDigest);
+    if (settlement === undefined) {
+      throw new Error(`delegate child ${batchId}/${key} has not settled`);
+    }
+
+    const evidence = settlement.data.evidence;
+    if (evidence.kind === "runner-error") {
+      const serialized = stableStringify(evidence.record);
+      return {
+        receipt: {
+          batchId,
+          key,
+          cellId: settlement.data.outcome.cellId,
+          status: settlement.data.outcome.status,
+          settlementDigest: settlement.data.settlementDigest,
+          semanticDigest: digest(evidence.record),
+          semanticBytes: Buffer.byteLength(serialized, "utf8"),
+          projection: "metadata-only",
+        },
+        omission: {
+          reason: "runner-error",
+          maxBytes: MAX_DELEGATE_RESULT_PROJECTION_BYTES,
+        },
+      };
+    }
+
+    const semantic = {
+      finalText: evidence.record.finalText,
+      ...(evidence.record.output === undefined ? {} : { output: evidence.record.output }),
+      artifacts: evidence.record.artifacts,
+      verification: evidence.record.verification,
+    };
+    const serialized = stableStringify(semantic);
+    const semanticBytes = Buffer.byteLength(serialized, "utf8");
+    const receipt = {
+      batchId,
+      key,
+      cellId: settlement.data.outcome.cellId,
+      status: settlement.data.outcome.status,
+      settlementDigest: settlement.data.settlementDigest,
+      semanticDigest: digest(semantic),
+      semanticBytes,
+      projection: semanticBytes <= MAX_DELEGATE_RESULT_PROJECTION_BYTES
+        ? "full" as const
+        : "metadata-only" as const,
+    };
+    if (semanticBytes > MAX_DELEGATE_RESULT_PROJECTION_BYTES) {
+      return {
+        receipt,
+        omission: {
+          reason: "projection-too-large",
+          maxBytes: MAX_DELEGATE_RESULT_PROJECTION_BYTES,
+        },
+      };
+    }
+    return { receipt, semantic };
+  }
+
   async recoverBatch(parentTimelineId: string, batchId: string): Promise<RecoveredDelegateBatch> {
     const parent = await this.readTimeline(parentTimelineId);
     const prepared = findPrepared(parent, batchId);
@@ -547,6 +693,11 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
 
   timelinePath(timelineId: string): string {
     return join(this.root, "timelines", `${digest(timelineId)}.jsonl`);
+  }
+
+  /** Read the validated append-only source for a bounded external projection. */
+  async readEvents(timelineId: string): Promise<readonly TimelineEvent[]> {
+    return await this.readTimeline(timelineId);
   }
 
   private async requirePrepared(checkpoint: DelegateBatchCheckpoint): Promise<ParentPreparedEvent> {

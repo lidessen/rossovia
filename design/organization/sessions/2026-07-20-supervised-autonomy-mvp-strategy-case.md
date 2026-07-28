@@ -1,6 +1,9 @@
 # Strategy Case — Supervised Live Mission MVP
 
-**Status:** proposed
+**Status:** historical proposal; implemented first slice accepted as a bounded
+experimental capability through later settlement
+**Current disposition record:** [2026-07-26 supervised-autonomy first-slice
+settlement](2026-07-26-supervised-autonomy-first-slice-settlement.md)
 **Human mandate:** design the minimum autonomous MVP after accepting the
 generative system and human-governed autonomy model.
 **Decision requested:** choose the first autonomous operating boundary and
@@ -28,7 +31,7 @@ Agent roles and can produce one draft PR, but cannot merge.**
 | Statement | Classification | Source and exact status | Verification gap |
 |---|---|---|---|
 | Formal project work is currently human-initiated. | fact | [Decision 015](../../decisions/015-human-initiated-formal-operations.md), approved | none for current design |
-| Operational autonomy under human governance is the accepted direction, but no autonomous transition has been implemented. | fact | [Decision 043](../../decisions/043-generative-system-and-human-governed-autonomy.md), accepted design | usefulness, controllability, and recovery remain untested |
+| At this Case's evidence cutoff, operational autonomy under human governance was the accepted direction, but no autonomous transition had been implemented. | fact | [Decision 043](../../decisions/043-generative-system-and-human-governed-autonomy.md), accepted design | usefulness, controllability, and recovery remained untested |
 | Work Cell executes one prepared, bounded attempt and retains its evidence; orchestration can release prepared Cells and cancel active attempts. | fact | [Decision 031](../../decisions/031-extensible-work-cell-orchestration.md), implemented and verified | no durable, steerable Mission source has exercised it |
 | Work Cell Swarm has deterministic 256-Cell mechanical coverage and a four-Cell live DeepSeek V4 Flash smoke, while the retained evidence explicitly does not establish collective semantic intelligence. | fact | [Decision 025](../../decisions/025-general-work-cell-swarm-runtime.md), implemented and verified | live multi-role reconstruction and verification remain unproved |
 | The project defines a conservative Flash-class execution profile as the ordinary task-shaping baseline; stronger profiles are explicit escalations, not silent baseline inflation. | fact | [Decision 040](../../decisions/040-task-shaping-core-skill.md), first slice implemented | the primitive map and transformations remain provisional |
@@ -967,6 +970,11 @@ supervision and state maintenance than it removes.
   event ordering/locking, cancellation settlement, lease-aware driver
   substitution, Flash coverage/reconstruction, credential separation, and
   restart behavior against the actual repository runtime.
-- **Human decision:** pending.
-- **Accepted execution owner after approval:** an ordinary isolated mission
-  worktree; no autonomous implementation starts from this proposed Case.
+- **Human decision:** no decision was recorded in this Case before the
+  implementation was merged; do not infer approval from the source tree.
+- **Subsequent disposition:** the Principal selected bounded option A through
+  the [first-slice settlement](2026-07-26-supervised-autonomy-first-slice-settlement.md);
+  this did not retroactively approve every capability proposed here.
+- **Accepted execution owner:** the ordinary repository integration process;
+  this historical proposal does not authorize autonomous operation, writable
+  effects, publication, or merge.

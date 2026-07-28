@@ -177,6 +177,7 @@ export class AiSdkValidationDriver implements CellDriver {
             callId,
             id: toolCall.toolCallId,
             name: toolCall.toolName,
+            ...safeToolTarget(toolCall.toolName, toolCall.input),
           });
         },
         onToolExecutionEnd: ({ callId, toolCall, toolExecutionMs, toolOutput }) => {
@@ -744,6 +745,32 @@ function emptyUsage(): CellUsage {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * Live supervision needs to know which boundary a tool is touching without
+ * retaining model-authored file content, command output, or hidden reasoning.
+ */
+function safeToolTarget(name: string, input: unknown): Record<string, unknown> {
+  const value = asRecord(input);
+  if (name === "write_file" || name === "read_file" || name === "list_files") {
+    return typeof value.path === "string"
+      ? { target: { kind: "workspace-path", path: value.path } }
+      : {};
+  }
+  if (name === "run_command") {
+    const argv = Array.isArray(value.argv)
+      ? value.argv.filter((item): item is string => typeof item === "string")
+      : [];
+    return {
+      target: {
+        kind: "command",
+        executable: argv[0] ?? "unknown",
+        cwd: typeof value.cwd === "string" ? value.cwd : ".",
+      },
+    };
+  }
+  return {};
 }
 
 function sanitize(value: unknown): unknown {

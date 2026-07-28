@@ -10,6 +10,9 @@ export const createMissionRuntime: MissionRuntimeFactory = async (context) => {
       version: MISSION_TURN_VERSION,
       turnId: `${recovery.interruptedTurn.turnId}-replacement`,
       baselineWatermark: recovery.interruptedTurn.baselineWatermark,
+      ...(recovery.interruptedTurn.anchorDigest === undefined
+        ? {}
+        : { anchorDigest: recovery.interruptedTurn.anchorDigest }),
       sourceRefs: ["test:replacement-runtime"],
     };
   return {

@@ -59,10 +59,13 @@ host owners. Human-led governance, administrative operation, execution, and
 independent verification stay distinct. The durable center is inspectable
 state, evidence, authority, and recovery—not a resident omniscient Agent.
 
-This target does not describe current runtime capability. Formal operation
-remains human-initiated until a separate supervised-autonomy Strategy Case,
-implementation decision, and representative pilot justify reopening that
-boundary. See [decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
+This target does not describe accepted autonomous runtime capability. The
+[Principal settlement](organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+recognizes a project-local supervised-autonomy first slice as an active,
+bounded experimental capability for ordered Mission input, bounded turns,
+reconciliation, delegation, and local recovery. Its evidence remains guarded,
+and formal operation remains human-initiated. See
+[decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
 
 ## Modules
 
@@ -166,6 +169,14 @@ boundary. See [decision 043](decisions/043-generative-system-and-human-governed-
   [decision 044](decisions/044-rosso-identity-and-namespace-migration.md) and
   its preserved functional predecessor,
   [decision 038](decisions/038-atthis-workbench-entry.md).
+- **Supervised autonomy experiment** — Owns the project-local mechanism for
+  ordered Mission input, bounded Agent turns, reconciliation, delegation,
+  interruption, and local recovery. It does not own project purpose, task
+  discovery, provider policy, acceptance, remote authentication, writable
+  effects, publication, or merge. Its first slice is an accepted, active
+  experimental capability under the
+  [Principal settlement](organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md),
+  not accepted autonomous operation.
 
 ## Data Flow
 

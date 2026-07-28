@@ -25,6 +25,7 @@ import type {
   DelegateChildReference,
   MissionInputReceivedEvent,
   MissionInputReconciledEvent,
+  MissionAnchorAdoptedEvent,
   MissionAnchorSeededEvent,
   ParentPreparedEvent,
   StoredCompactOutcome,
@@ -108,6 +109,154 @@ export function missionAnchorSeedEvent(
   return seed;
 }
 
+export function missionAnchorAdoptionEvent(
+  events: readonly TimelineEvent[],
+  missionId: string,
+): MissionAnchorAdoptedEvent | undefined {
+  const adoptions = events.filter((event): event is MissionAnchorAdoptedEvent =>
+    event.type === "mission.anchor-adopted"
+  );
+  if (adoptions.length > 1) throw new Error(`Mission ${missionId} has duplicate legacy anchor adoptions`);
+  const adoption = adoptions[0];
+  if (adoption === undefined) return undefined;
+  if (adoption.timelineId !== missionId || adoption.data.adoption.missionId !== missionId) {
+    throw new Error(`Mission anchor adoption does not belong to ${missionId}`);
+  }
+  if (adoption.data.adoptionDigest !== digest(adoption.data.adoption)) {
+    throw new Error(`Mission ${missionId} has a damaged legacy anchor adoption`);
+  }
+  if (
+    adoption.sequence !== adoption.data.priorEventCount
+    || adoption.data.priorEventCount !== adoption.data.adoption.expectedPriorEventCount
+    || adoption.data.priorTimelineDigest !== adoption.data.adoption.expectedPriorTimelineDigest
+    || adoption.data.priorTimelineDigest !== digest(events.slice(0, adoption.sequence))
+  ) {
+    throw new Error(`Mission ${missionId} legacy anchor adoption does not bind its prior timeline`);
+  }
+  const priorEvents = events.slice(0, adoption.sequence);
+  if (priorEvents.length === 0) {
+    throw new Error(`Mission ${missionId} legacy anchor adoption has no legacy events`);
+  }
+  if (priorEvents.some((event) => event.type === "mission.input-reconciled")) {
+    throw new Error(`Mission ${missionId} cannot adopt an anchor after reconciliation`);
+  }
+  const activeTurnId = legacyActiveTurnId(priorEvents);
+  if (activeTurnId !== undefined) {
+    throw new Error(
+      `Mission ${missionId} cannot adopt an anchor while turn ${activeTurnId} is unsettled`,
+    );
+  }
+  const nonzeroTurn = priorEvents.find(
+    (event) =>
+      event.type === "mission.turn-started"
+      && event.data.start.baselineWatermark !== 0,
+  );
+  if (nonzeroTurn?.type === "mission.turn-started") {
+    throw new Error(
+      `Mission ${missionId} cannot adopt an anchor after turn ${nonzeroTurn.data.start.turnId} started from nonzero baseline`,
+    );
+  }
+  return adoption;
+}
+
+function legacyActiveTurnId(events: readonly TimelineEvent[]): string | undefined {
+  let activeTurnId: string | undefined;
+  for (const event of events) {
+    if (event.type === "mission.turn-started") {
+      activeTurnId = event.data.start.turnId;
+      continue;
+    }
+    if (event.type === "mission.turn-settled" && event.data.turnId === activeTurnId) {
+      activeTurnId = undefined;
+      continue;
+    }
+    if (
+      event.type !== "mission.turn-recovered"
+      || event.data.recovery.interruptedTurnId !== activeTurnId
+    ) continue;
+    if (event.data.recovery.action.kind === "replace") {
+      activeTurnId = event.data.recovery.action.replacement.turnId;
+    } else if (event.data.recovery.action.kind === "abandon") {
+      activeTurnId = undefined;
+    }
+  }
+  return activeTurnId;
+}
+
+export function missionAuthorizedAnchor(
+  events: readonly TimelineEvent[],
+  missionId: string,
+): ActiveIntentAnchor | undefined {
+  const seed = missionAnchorSeedEvent(events, missionId);
+  const adoption = missionAnchorAdoptionEvent(events, missionId);
+  if (seed !== undefined && adoption !== undefined) {
+    throw new Error(`Mission ${missionId} has both an initial anchor seed and legacy anchor adoption`);
+  }
+  return seed?.data.seed.anchor ?? adoption?.data.adoption.anchor;
+}
+
+export type MissionIntentLineageProjection =
+  | {
+    readonly standing: "uninitialized";
+    readonly activeAnchor: null;
+  }
+  | {
+    readonly standing: "legacy-unanchored";
+    readonly activeAnchor: null;
+    readonly priorEventCount: number;
+    readonly priorTimelineDigest: string;
+  }
+  | {
+    readonly standing: "seeded" | "legacy-adopted";
+    readonly activeAnchor: {
+      readonly id: string;
+      readonly revision: string;
+      readonly reconciledWatermark: number;
+    };
+  };
+
+export function projectMissionIntentLineage(
+  events: readonly TimelineEvent[],
+  missionId: string,
+): MissionIntentLineageProjection {
+  const seed = missionAnchorSeedEvent(events, missionId);
+  const adoption = missionAnchorAdoptionEvent(events, missionId);
+  if (seed !== undefined && adoption !== undefined) {
+    throw new Error(`Mission ${missionId} has both an initial anchor seed and legacy anchor adoption`);
+  }
+  if (seed === undefined && adoption === undefined) {
+    if (events.some((event) => event.type === "mission.input-reconciled")) {
+      throw new Error(`Mission ${missionId} has reconciliation without an authorized initial anchor`);
+    }
+    return events.length === 0
+      ? {
+        standing: "uninitialized",
+        activeAnchor: null,
+      }
+      : {
+        standing: "legacy-unanchored",
+        activeAnchor: null,
+        priorEventCount: events.length,
+        priorTimelineDigest: digest(events),
+      };
+  }
+  const inputs = missionInputEvents(events, missionId);
+  const reconciled = missionReconciliationEvents(events, missionId, inputs)
+    .at(-1)?.data.acceptance.nextAnchor;
+  const active = reconciled ?? seed?.data.seed.anchor ?? adoption?.data.adoption.anchor;
+  if (active === undefined) {
+    throw new Error(`Mission ${missionId} lost its authorized intent anchor`);
+  }
+  return {
+    standing: seed === undefined ? "legacy-adopted" : "seeded",
+    activeAnchor: {
+      id: active.id,
+      revision: active.revision,
+      reconciledWatermark: active.reconciledWatermark,
+    },
+  };
+}
+
 export function missionReconciliationEvents(
   events: readonly TimelineEvent[],
   missionId: string,
@@ -116,12 +265,12 @@ export function missionReconciliationEvents(
   const reconciliations = events.filter((event): event is MissionInputReconciledEvent =>
     event.type === "mission.input-reconciled"
   );
-  const seed = missionAnchorSeedEvent(events, missionId);
-  if (reconciliations.length > 0 && seed === undefined) {
+  const rootAnchor = missionAuthorizedAnchor(events, missionId);
+  if (reconciliations.length > 0 && rootAnchor === undefined) {
     throw new Error(`Mission ${missionId} has reconciliation without an authorized initial anchor`);
   }
-  let watermark = seed?.data.seed.anchor.reconciledWatermark ?? 0;
-  let anchor: ActiveIntentAnchor | undefined = seed?.data.seed.anchor;
+  let watermark = rootAnchor?.reconciledWatermark ?? 0;
+  let anchor: ActiveIntentAnchor | undefined = rootAnchor;
   const proposalIds = new Set<string>();
   const inputsById = new Map(inputs.map((event) => [event.data.inputId, event]));
   for (const event of reconciliations) {

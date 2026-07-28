@@ -45,7 +45,15 @@ test("a parked Mission execution resumes after its child barrier and advances th
 test("an input signal between a ready barrier and the next park cannot be lost", async () => {
   const first = deferred<DelegateBatchSettlement>();
   const parkedOne = handle("batch-1", first.promise);
-  const parkedTwo = handle("batch-2", new Promise(() => {}));
+  const second = deferred<DelegateBatchSettlement>();
+  let secondCancelled = 0;
+  const parkedTwo = {
+    ...handle("batch-2", second.promise),
+    cancel() {
+      secondCancelled += 1;
+      second.resolve({ run: { kind: "direct" } as DelegateBatchSettlement["run"], outcomes: [] });
+    },
+  };
   let advances = 0;
   let resumes = 0;
   let execution!: MissionExecutionHandle;
@@ -89,13 +97,15 @@ test("an input signal between a ready barrier and the next park cannot be lost",
     transition: { currentWatermark: 1 },
   });
   expect({ advances, resumes }).toEqual({ advances: 2, resumes: 2 });
+  expect(secondCancelled).toBe(1);
 });
 
-test("a durable pause cancels both the parked batch and its parent turn", async () => {
+test("a durable pause waits for the parked batch to quiesce before settling the parent turn", async () => {
   let batchCancellations = 0;
   let parentCancellations = 0;
+  const child = deferred<DelegateBatchSettlement>();
   const parked = {
-    ...handle("batch-1", new Promise(() => {})),
+    ...handle("batch-1", child.promise),
     cancel() { batchCancellations += 1; },
   };
   const controller: MissionExecutionController = {
@@ -111,6 +121,11 @@ test("a durable pause cancels both the parked batch and its parent turn", async 
 
   execution.observeInput(controlReceipt("pause"));
 
+  let parentSettled = false;
+  void execution.settled.then(() => { parentSettled = true; });
+  await Promise.resolve();
+  expect(parentSettled).toBe(false);
+  child.resolve({ run: { kind: "direct" } as DelegateBatchSettlement["run"], outcomes: [] });
   expect(await execution.settled).toMatchObject({
     kind: "cancelled",
     reason: "Mission pause at input watermark 1",

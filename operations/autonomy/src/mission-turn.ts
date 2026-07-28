@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TaskSchema, UsageSchema } from "../../../packages/work-cell/src/contracts";
+import { DelegateResultReadReceiptSchema } from "./delegate-loop";
 import type { MissionExecutionOutcome } from "./mission-execution-host";
 
 export const MISSION_TURN_VERSION = "rosso.mission-turn.v1" as const;
@@ -27,6 +28,7 @@ export const MissionTurnSettlementSchema = z.discriminatedUnion("kind", [
     text: z.string(),
     tasks: z.array(TaskSchema),
     uncoveredObligationRefs: z.array(z.string().min(1)),
+    resultReads: z.array(DelegateResultReadReceiptSchema).optional(),
     usage: UsageSchema,
   }).strict(),
   z.object({
@@ -122,6 +124,7 @@ export function settlementFromExecution(
       text: outcome.run.text,
       tasks: outcome.run.tasks,
       uncoveredObligationRefs: outcome.run.uncoveredObligations,
+      resultReads: outcome.run.resultReads ?? [],
       usage: outcome.run.usage,
     });
   }
