@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { TaskSchema, UsageSchema } from "../../../packages/work-cell/src/contracts";
 import { DelegateResultReadReceiptSchema } from "./delegate-loop";
@@ -6,12 +7,28 @@ import type { MissionExecutionOutcome } from "./mission-execution-host";
 export const MISSION_TURN_VERSION = "rosso.mission-turn.v1" as const;
 export const MISSION_TURN_RECOVERY_VERSION = "rosso.mission-turn-recovery.v1" as const;
 
+const RelativeEvidenceRefSchema = z.string().min(1).refine(
+  (value) =>
+    !isAbsolute(value)
+    && value.split(/[\\/]/u).every((segment) =>
+      segment.length > 0 && segment !== "." && segment !== ".."
+    ),
+  "must be a normalized relative evidence reference",
+);
+
+export const LaunchAuthorizationRefSchema = z.object({
+  authorizationId: z.string().uuid(),
+  proposalDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  claimSourceRef: RelativeEvidenceRefSchema,
+}).strict();
+
 export const MissionTurnStartSchema = z.object({
   version: z.literal(MISSION_TURN_VERSION),
   turnId: z.string().min(1),
   baselineWatermark: z.number().int().nonnegative(),
   anchorDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   sourceRefs: z.array(z.string().min(1)).min(1),
+  launchAuthorizationRef: LaunchAuthorizationRefSchema.optional(),
 }).strict();
 
 const InputReferenceSchema = z.object({
@@ -86,6 +103,7 @@ export const MissionTurnRecoveredEventDataSchema = z.object({
 }).strict();
 
 export type MissionTurnStart = z.infer<typeof MissionTurnStartSchema>;
+export type LaunchAuthorizationRef = z.infer<typeof LaunchAuthorizationRefSchema>;
 export type MissionTurnSettlement = z.infer<typeof MissionTurnSettlementSchema>;
 export type MissionTurnRecoveryCommand = z.infer<typeof MissionTurnRecoveryCommandSchema>;
 export type MissionTurnRecovery = z.infer<typeof MissionTurnRecoverySchema>;

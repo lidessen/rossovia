@@ -26,8 +26,10 @@ import {
 import {
   blogPublicationWorkspace,
   blogPublicationAuthorizationContract,
+  blogPublicationExecutionProposal,
   createMissionRuntime,
   currentBlogPublicationRuntimeDigest,
+  missionRuntimeRecoveryCapabilities,
 } from "../experiments/agent-era-blog-publication-runtime";
 import {
   claimProjectExecutionAuthorization,
@@ -45,6 +47,10 @@ afterEach(() => {
 
 test("the publication runtime declares one exact v2 read, exclusion, write, and empty command boundary", () => {
   const contract = blogPublicationAuthorizationContract();
+  expect(missionRuntimeRecoveryCapabilities).toEqual({
+    resume: false,
+    replace: false,
+  });
   expect(contract.proposalId).toBe(
     "agent-era-blog-seeded-publication-roundtrip-v1",
   );
@@ -321,6 +327,15 @@ test("the runtime claims only after all local launch preconditions succeed", asy
       recovery: undefined,
     } as unknown as Parameters<typeof createMissionRuntime>[0]);
     expect(prepared.turn.anchorDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(prepared.turn.launchAuthorizationRef).toEqual({
+      authorizationId: fixture.receipt.authorizationId,
+      proposalDigest: fixture.receipt.proposalDigest,
+      claimSourceRef: join(
+        "state",
+        "execution-authorization-claims",
+        `${fixture.receipt.authorizationId}.json`,
+      ),
+    });
     expect(claimExists(
       fixture.home,
       fixture.receipt.authorizationId,
@@ -428,57 +443,7 @@ function publicationProposal(): Extract<
   MissionExecutionProposal,
   { version: "mission-execution-proposal.v2" }
 > {
-  const contract = blogPublicationAuthorizationContract();
-  return MissionExecutionProposalSchema.parse({
-    version: "mission-execution-proposal.v2",
-    proposalId: contract.proposalId,
-    mode: "supervised",
-    status: "awaiting-principal-authorization",
-    runtimeRef: contract.runtimeRef,
-    runtimeDigest: contract.runtimeDigest,
-    externalProvider: contract.externalProvider,
-    externalDisclosure: contract.externalDisclosure,
-    candidateWorktree: {
-      rootRef: contract.candidateRootRef,
-      binding: "operator-selected-at-launch",
-    },
-    scope: contract.scope,
-    budget: contract.budget,
-    authority: {
-      externalDisclosure: "withheld",
-      budgetRelease: "withheld",
-      write: "withheld",
-      execute: "withheld",
-      commit: "withheld",
-      merge: "withheld",
-      publish: "withheld",
-    },
-    pendingDecisions: [{
-      id: "external-disclosure",
-      label: "Authorize the declared DeepSeek disclosure",
-      proposal: "ALLOW the exact v2 read boundary",
-      status: "pending",
-      options: [{
-        replyKey: "ALLOW",
-        label: "Authorize exact disclosure",
-        immediateResult:
-          "Run one supervised publication writer with only the declared read and write paths.",
-        tradeoff:
-          "The declared project sources leave the local boundary and may incur model cost.",
-      }, {
-        replyKey: "HOLD",
-        label: "Keep blocked",
-        immediateResult:
-          "Do not disclose project sources or start the publication writer.",
-        tradeoff:
-          "The author-reader MVP remains incomplete.",
-      }],
-      compactReplyKey: "ALLOW",
-    }],
-  }) as Extract<
-    MissionExecutionProposal,
-    { version: "mission-execution-proposal.v2" }
-  >;
+  return blogPublicationExecutionProposal();
 }
 
 function missionRecord(proposal: MissionExecutionProposal) {

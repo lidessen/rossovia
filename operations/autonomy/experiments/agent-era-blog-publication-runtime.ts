@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
 import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
 import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
-import type { MissionExecutionProposal } from "../../workbench/src/mission-execution-proposal";
+import {
+  executionAuthorizationClaimPath,
+} from "../../workbench/src/execution-authorization-claim";
+import {
+  MissionExecutionProposalSchema,
+  type MissionExecutionProposal,
+} from "../../workbench/src/mission-execution-proposal";
 import {
   DelegateLoopSession,
   type DelegateCall,
@@ -15,6 +21,7 @@ import type { MissionExecutionController } from "../src/mission-execution-host";
 import { missionRunnerDirectory } from "../src/mission-runner";
 import type {
   MissionRuntimeFactory,
+  MissionRuntimeRecoveryCapabilities,
   PreparedMissionExecution,
 } from "../src/mission-runtime";
 import { digestAnchor } from "../src/mission-reconciliation";
@@ -143,6 +150,11 @@ const route = [{
   model: "deepseek-v4-flash",
 }];
 
+export const missionRuntimeRecoveryCapabilities = {
+  resume: false,
+  replace: false,
+} as const satisfies MissionRuntimeRecoveryCapabilities;
+
 const task = [
   "Implement the first complete seeded author-to-publication-to-reader roundtrip for the agent-era Blog from the current clean candidate HEAD.",
   "Preserve the accepted Reading Field visual direction and the authority boundary in AGENTS.md and DESIGN.md.",
@@ -220,6 +232,63 @@ export function blogPublicationAuthorizationContract():
   };
 }
 
+export function blogPublicationExecutionProposal(): Extract<
+  MissionExecutionProposal,
+  { version: "mission-execution-proposal.v2" }
+> {
+  const contract = blogPublicationAuthorizationContract();
+  return MissionExecutionProposalSchema.parse({
+    version: contract.proposalVersion,
+    proposalId: contract.proposalId,
+    mode: "supervised",
+    status: "awaiting-principal-authorization",
+    runtimeRef: contract.runtimeRef,
+    runtimeDigest: contract.runtimeDigest,
+    externalProvider: contract.externalProvider,
+    externalDisclosure: contract.externalDisclosure,
+    candidateWorktree: {
+      rootRef: contract.candidateRootRef,
+      binding: "operator-selected-at-launch",
+    },
+    scope: contract.scope,
+    budget: contract.budget,
+    authority: {
+      externalDisclosure: "withheld",
+      budgetRelease: "withheld",
+      write: "withheld",
+      execute: "withheld",
+      commit: "withheld",
+      merge: "withheld",
+      publish: "withheld",
+    },
+    pendingDecisions: [{
+      id: "external-disclosure",
+      label: "Authorize the declared DeepSeek disclosure",
+      proposal: "ALLOW the exact v2 read boundary",
+      status: "pending",
+      options: [{
+        replyKey: "ALLOW",
+        label: "Authorize exact disclosure",
+        immediateResult:
+          "Run one supervised publication writer with only the declared read and write paths.",
+        tradeoff:
+          "The declared project sources leave the local boundary and may incur model cost.",
+      }, {
+        replyKey: "HOLD",
+        label: "Keep blocked",
+        immediateResult:
+          "Do not disclose project sources or start the publication writer.",
+        tradeoff:
+          "The author-reader MVP remains incomplete.",
+      }],
+      compactReplyKey: "ALLOW",
+    }],
+  }) as Extract<
+    MissionExecutionProposal,
+    { version: "mission-execution-proposal.v2" }
+  >;
+}
+
 export const createMissionRuntime: MissionRuntimeFactory = async (
   context,
 ): Promise<PreparedMissionExecution> => {
@@ -251,6 +320,17 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       "the seeded publication trial requires an authorized and reconciled Mission anchor",
     );
   }
+  const launchAuthorizationRef = {
+    authorizationId: authorizationValidation.receipt.authorizationId,
+    proposalDigest: authorizationValidation.receipt.proposalDigest,
+    claimSourceRef: relative(
+      context.root,
+      executionAuthorizationClaimPath(
+        context.root,
+        authorizationValidation.receipt.authorizationId,
+      ),
+    ),
+  };
   const turn: MissionTurnStart = {
     version: MISSION_TURN_VERSION,
     turnId: `agent-era-blog-publication-${randomUUID()}`,
@@ -262,6 +342,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       `authorization:${authorizationValidation.receipt.authorizationId}`,
       `proposal:${authorizationValidation.receipt.proposalId}@${authorizationValidation.receipt.proposalDigest}`,
     ],
+    launchAuthorizationRef,
   };
 
   const selection = createValidationModel({ route });
@@ -305,6 +386,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       missionId: context.missionId,
       journalRoot: missionRunnerDirectory(context.root, context.missionId),
       leaseRoot: context.root,
+      launchAuthorizationRef,
     }),
     concurrency: 1,
     maxModelSteps: EXPECTED_BUDGET.parent.maxModelSteps,
@@ -325,7 +407,10 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
     observeInput: (input) => supervisor.observeInput(input),
     cancel: (reason) => abort.abort(reason),
   };
-  claimProjectExecutionAuthorization(authorizationValidation);
+  const authorization = claimProjectExecutionAuthorization(authorizationValidation);
+  if (relative(context.root, authorization.claimPath) !== launchAuthorizationRef.claimSourceRef) {
+    throw new Error("execution authorization claim source changed after launch preflight");
+  }
   return { turn, controller };
 };
 

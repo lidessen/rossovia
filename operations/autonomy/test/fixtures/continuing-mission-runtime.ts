@@ -1,7 +1,15 @@
 import type { MissionInputReceipt } from "../../src/mission-input";
-import type { MissionRuntimeFactory } from "../../src/mission-runtime";
+import type {
+  MissionRuntimeFactory,
+  MissionRuntimeRecoveryCapabilities,
+} from "../../src/mission-runtime";
 import { digestAnchor } from "../../src/mission-reconciliation";
 import { MISSION_TURN_VERSION } from "../../src/mission-turn";
+
+export const missionRuntimeRecoveryCapabilities = {
+  resume: false,
+  replace: false,
+} as const satisfies MissionRuntimeRecoveryCapabilities;
 
 export const createMissionRuntime: MissionRuntimeFactory = async (context) => {
   const activeAnchor = await context.timeline.latestReconciledAnchor(context.missionId);

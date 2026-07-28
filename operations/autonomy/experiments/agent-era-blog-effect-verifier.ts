@@ -62,10 +62,41 @@ const EffectManifestSchema = z.object({
 
 export interface AgentEraBlogEffectVerificationResult {
   readonly verdict: "passed" | "failed" | "unverifiable";
-  readonly admittedClaim?: typeof ADMITTED_CLAIM;
+  readonly admittedClaim?: string;
   readonly reportRef?: string;
   readonly journalEventId?: string;
   readonly reason?: string;
+}
+
+export interface AgentEraBlogCandidateVerification {
+  readonly verdict: "passed" | "failed" | "unverifiable";
+  readonly reason?: string;
+  readonly candidate: {
+    readonly root: string;
+    readonly head: string;
+    readonly changedPaths: readonly string[];
+  };
+  readonly checks: readonly {
+    readonly id: string;
+    readonly command: string;
+    readonly exitCode: number;
+    readonly outputDigest: string;
+    readonly diagnostic: string;
+  }[];
+}
+
+export interface AgentEraBlogEffectVerifierProfile {
+  readonly version: string;
+  readonly admittedClaim: string;
+  readonly verifierSources: readonly {
+    readonly ref: string;
+    readonly path: string;
+  }[];
+  readonly residualRisks: readonly string[];
+  readonly verifyCandidate: (input: {
+    readonly candidateRoot: string;
+    readonly dependencyRoot: string;
+  }) => Promise<AgentEraBlogCandidateVerification>;
 }
 
 export async function verifyAgentEraBlogEffect(input: {
@@ -73,8 +104,35 @@ export async function verifyAgentEraBlogEffect(input: {
   readonly missionId: string;
   readonly effectId: string;
 }): Promise<AgentEraBlogEffectVerificationResult> {
+  return verifyAgentEraBlogEffectWithProfile(input, {
+    version: VERIFIER_VERSION,
+    admittedClaim: ADMITTED_CLAIM,
+    verifierSources: [{
+      ref: "source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts",
+      path: fileURLToPath(import.meta.url),
+    }, {
+      ref: "source-project:operations/autonomy/experiments/verify-agent-era-blog-candidate.ts",
+      path: fileURLToPath(new URL("./verify-agent-era-blog-candidate.ts", import.meta.url)),
+    }],
+    residualRisks: [
+      "This verdict does not establish reader or studio UI behavior.",
+      "This verdict does not establish D1 runtime behavior, authentication, publication, or product acceptance.",
+      "This is time-point evidence; later candidate mutation requires fresh verification.",
+    ],
+    verifyCandidate: verifyAgentEraBlogCandidate,
+  });
+}
+
+export async function verifyAgentEraBlogEffectWithProfile(
+  input: {
+    readonly home: string;
+    readonly missionId: string;
+    readonly effectId: string;
+  },
+  profile: AgentEraBlogEffectVerifierProfile,
+): Promise<AgentEraBlogEffectVerificationResult> {
   try {
-    return await verifySettledEffect(input);
+    return await verifySettledEffect(input, profile);
   } catch (error) {
     return {
       verdict: "unverifiable",
@@ -87,7 +145,7 @@ async function verifySettledEffect(input: {
   readonly home: string;
   readonly missionId: string;
   readonly effectId: string;
-}): Promise<AgentEraBlogEffectVerificationResult> {
+}, profile: AgentEraBlogEffectVerifierProfile): Promise<AgentEraBlogEffectVerificationResult> {
   if (input.missionId !== BLOG_MISSION_ID) {
     throw new Error(`Blog verifier only accepts Mission ${BLOG_MISSION_ID}`);
   }
@@ -127,7 +185,7 @@ async function verifySettledEffect(input: {
     candidateRoot,
     activity.prepared.worktree.baseHead,
   );
-  const candidateReport = await verifyAgentEraBlogCandidate({
+  const candidateReport = await profile.verifyCandidate({
     candidateRoot,
     dependencyRoot,
   });
@@ -136,11 +194,17 @@ async function verifySettledEffect(input: {
   if (JSON.stringify(final) !== JSON.stringify(initial)) {
     throw new Error("candidate changed while independent verification was running");
   }
+  if (candidateReport.verdict === "unverifiable") {
+    return {
+      verdict: "unverifiable",
+      reason: candidateReport.reason ?? "candidate verification could not reach a verdict",
+    };
+  }
 
-  const verifierSources = await verifierSourceDigests();
+  const verifierSources = await verifierSourceDigests(profile.verifierSources);
   const report = {
-    version: VERIFIER_VERSION,
-    admittedClaim: candidateReport.verdict === "passed" ? ADMITTED_CLAIM : null,
+    version: profile.version,
+    admittedClaim: candidateReport.verdict === "passed" ? profile.admittedClaim : null,
     effect: {
       missionId: input.missionId,
       effectId: input.effectId,
@@ -153,11 +217,7 @@ async function verifySettledEffect(input: {
     candidate: candidateReport.candidate,
     checks: candidateReport.checks,
     verdict: candidateReport.verdict,
-    residualRisks: [
-      "This verdict does not establish reader or studio UI behavior.",
-      "This verdict does not establish D1 runtime behavior, authentication, publication, or product acceptance.",
-      "This is time-point evidence; later candidate mutation requires fresh verification.",
-    ],
+    residualRisks: profile.residualRisks,
   };
   const reportSource = `${JSON.stringify(report, null, 2)}\n`;
   const reportDigest = sha256(reportSource);
@@ -169,7 +229,7 @@ async function verifySettledEffect(input: {
   await durableCreate(reportPath, reportSource);
 
   const verification = EffectVerifiedDataSchema.parse({
-    verifierRef: `source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts@sha256:${verifierSources[0]!.digest}`,
+    verifierRef: `${verifierSources[0]!.ref}@sha256:${verifierSources[0]!.digest}`,
     verdict: candidateReport.verdict,
     checks: candidateReport.checks.map(({ command, exitCode, outputDigest }) => ({
       command,
@@ -180,7 +240,7 @@ async function verifySettledEffect(input: {
       `file:${relative(journalRoot, reportPath)}`,
       `sha256:${reportDigest}`,
       `git-head:${candidateReport.candidate.head}`,
-      ...(candidateReport.verdict === "passed" ? [`claim:${ADMITTED_CLAIM}`] : []),
+      ...(candidateReport.verdict === "passed" ? [`claim:${profile.admittedClaim}`] : []),
     ],
     subject: {
       gitHead: initial.head,
@@ -193,7 +253,9 @@ async function verifySettledEffect(input: {
   const event = await journal.verify(input.effectId, verification);
   return {
     verdict: candidateReport.verdict,
-    ...(candidateReport.verdict === "passed" ? { admittedClaim: ADMITTED_CLAIM } : {}),
+    ...(candidateReport.verdict === "passed"
+      ? { admittedClaim: profile.admittedClaim }
+      : {}),
     reportRef: `file:${relative(journalRoot, reportPath)}`,
     journalEventId: event.eventId,
   };
@@ -317,17 +379,9 @@ async function observeCandidate(root: string) {
   };
 }
 
-async function verifierSourceDigests() {
-  const sources = [
-    {
-      ref: "source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts",
-      path: fileURLToPath(import.meta.url),
-    },
-    {
-      ref: "source-project:operations/autonomy/experiments/verify-agent-era-blog-candidate.ts",
-      path: fileURLToPath(new URL("./verify-agent-era-blog-candidate.ts", import.meta.url)),
-    },
-  ];
+async function verifierSourceDigests(
+  sources: AgentEraBlogEffectVerifierProfile["verifierSources"],
+) {
   return await Promise.all(sources.map(async (source) => ({
     ref: source.ref,
     digest: sha256(await readFile(source.path)),

@@ -1526,6 +1526,38 @@ test("a detached runner resumes an interrupted turn only after an explicit recov
   await waitForExit(child);
 }, 10_000);
 
+test("an interrupted runner reports only the recovery actions declared by its runtime", async () => {
+  const root = await fixture();
+  const missionId = "mission-runtime-without-recovery";
+  const timeline = new FileMissionTimeline(missionRunnerDirectory(root, missionId));
+  const anchor = await seedTimeline(timeline, missionId);
+  await timeline.startTurn(missionId, {
+    version: MISSION_TURN_VERSION,
+    turnId: "turn-runtime-without-recovery",
+    baselineWatermark: 0,
+    anchorDigest: digestAnchor(anchor),
+    sourceRefs: ["mission-envelope:r1"],
+  });
+  const runtimeModule = fileURLToPath(
+    new URL("./fixtures/finished-mission-runtime.ts", import.meta.url),
+  );
+  const child = startRunner(root, missionId, runtimeModule);
+
+  expect((await waitForLiveStatus(root, missionId, child)).state).toBe("interrupted");
+  expect(requireSuccess(await requestMissionRunner(
+    root,
+    missionId,
+    missionRunnerRequest({ kind: "status" }),
+  )).recoveryCapabilities).toEqual({
+    abandon: true,
+    resume: false,
+    replace: false,
+  });
+
+  await requestMissionRunner(root, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
+  await waitForExit(child);
+}, 10_000);
+
 test("replacement is atomic and abandon needs no runtime module", async () => {
   const root = await fixture();
   const runtimeModule = fileURLToPath(new URL("./fixtures/recovery-mission-runtime.ts", import.meta.url));

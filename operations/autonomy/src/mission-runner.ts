@@ -34,7 +34,11 @@ import {
   type MissionTurnRecoveryCommand,
   type MissionTurnStart,
 } from "./mission-turn";
-import type { MissionRuntimeFactory } from "./mission-runtime";
+import {
+  MissionRuntimeRecoveryCapabilitiesSchema,
+  type MissionRuntimeFactory,
+  type MissionRuntimeRecoveryCapabilities,
+} from "./mission-runtime";
 import { stableStringify } from "./canonical-json";
 import {
   missionRunnerDirectory,
@@ -218,6 +222,7 @@ export interface RunMissionRunnerOptions {
   readonly missionId: string;
   readonly now?: () => string;
   readonly prepareExecution?: MissionRuntimeFactory;
+  readonly runtimeRecoveryCapabilities?: MissionRuntimeRecoveryCapabilities;
   readonly initialAnchor?: MissionAnchorSeed;
 }
 
@@ -255,6 +260,11 @@ export async function readMissionRunnerStatus(
 export async function runMissionRunner(options: RunMissionRunnerOptions): Promise<MissionRunnerStatus> {
   const root = resolve(options.root);
   const missionId = z.string().min(1).parse(options.missionId);
+  const runtimeRecoveryCapabilities = options.prepareExecution === undefined
+    ? undefined
+    : MissionRuntimeRecoveryCapabilitiesSchema.parse(
+      options.runtimeRecoveryCapabilities ?? { resume: false, replace: false },
+    );
   const now = options.now ?? (() => new Date().toISOString());
   const runnerId = randomUUID();
   const startedAt = now();
@@ -333,7 +343,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
                 request.requestId,
                 status,
                 undefined,
-                recoveryCapabilities(status, options.prepareExecution !== undefined),
+                recoveryCapabilities(status, runtimeRecoveryCapabilities),
               ));
               return;
             }
@@ -991,13 +1001,13 @@ function assertRequiredExpectedRunnerTarget(
 
 function recoveryCapabilities(
   status: MissionRunnerStatus,
-  hasRuntime: boolean,
+  runtime: MissionRuntimeRecoveryCapabilities | undefined,
 ): MissionRecoveryCapabilities {
   const interrupted = status.state === "interrupted";
   return {
     abandon: interrupted,
-    resume: interrupted && hasRuntime,
-    replace: interrupted && hasRuntime,
+    resume: interrupted && runtime?.resume === true,
+    replace: interrupted && runtime?.replace === true,
   };
 }
 

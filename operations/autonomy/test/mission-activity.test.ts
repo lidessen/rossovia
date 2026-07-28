@@ -18,6 +18,12 @@ test("projects bounded Mission activity without exposing contribution or result 
       turnId: "turn-1",
       baselineWatermark: 0,
       sourceRefs: ["mission:test"],
+      launchAuthorizationRef: {
+        authorizationId: "11111111-1111-4111-8111-111111111111",
+        proposalDigest: "a".repeat(64),
+        claimSourceRef:
+          "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+      },
     });
     await timeline.appendInput(missionId, {
       id: "input-1",
@@ -64,7 +70,14 @@ test("projects bounded Mission activity without exposing contribution or result 
         state: "settled",
         settlementKind: "finished",
         runStatus: "returned",
+        launchAuthorizationRef: {
+          authorizationId: "11111111-1111-4111-8111-111111111111",
+          proposalDigest: "a".repeat(64),
+          claimSourceRef:
+            "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+        },
       },
+      currentVerifiedResult: null,
     });
     expect(activity.recentEvents).toHaveLength(2);
     expect(activity.lastEvent?.type).toBe("mission.turn-settled");

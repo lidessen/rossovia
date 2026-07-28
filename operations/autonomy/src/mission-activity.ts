@@ -31,6 +31,7 @@ import {
   projectMissionReconciliationAction,
   type MissionReconciliationActionProjection,
 } from "./mission-reconciliation-action";
+import type { LaunchAuthorizationRef } from "./mission-turn";
 
 export interface MissionActivityEvent {
   readonly sequence: number;
@@ -56,6 +57,7 @@ export interface MissionActivityProjection {
   readonly anchorMigrationProposal: MissionAnchorMigrationProposalProjection;
   readonly reconciliationAction: MissionReconciliationActionProjection;
   readonly currentEffect: CurrentEffectProjection | null;
+  readonly currentVerifiedResult: CurrentVerifiedResultProjection | null;
   readonly currentCorrection: LocalCorrectionActivityProjection | null;
   readonly recentCorrections: readonly LocalCorrectionActivityProjection[];
   readonly currentTurn: {
@@ -65,9 +67,19 @@ export interface MissionActivityProjection {
     readonly state: "open" | "settled";
     readonly settlementKind?: "finished" | "input-pending" | "failed";
     readonly runStatus?: string;
+    readonly launchAuthorizationRef?: LaunchAuthorizationRef;
   } | null;
   readonly lastEvent: MissionActivityEvent | null;
   readonly recentEvents: readonly MissionActivityEvent[];
+}
+
+export interface CurrentVerifiedResultProjection {
+  readonly standing: "verified-current";
+  readonly selector: {
+    readonly kind: "autonomy-effect-verification.v1";
+    readonly effectId: string;
+    readonly verificationEventId: string;
+  };
 }
 
 export interface LocalCorrectionActivityProjection {
@@ -118,6 +130,7 @@ export interface LocalCorrectionActivityProjection {
 
 export interface CurrentEffectProjection {
   readonly effectId: string;
+  readonly launchAuthorizationRef?: LaunchAuthorizationRef;
   readonly phase: "prepared" | "executing" | "writing" | "quiesced" | "settled" | "uncertain";
   readonly writer: {
     readonly cellId: string;
@@ -212,6 +225,9 @@ export async function projectMissionActivity(
       startedAt: latestStart.at,
       baselineWatermark: latestStart.data.start.baselineWatermark,
       state: settlement === undefined ? "open" as const : "settled" as const,
+      ...(latestStart.data.start.launchAuthorizationRef === undefined
+        ? {}
+        : { launchAuthorizationRef: latestStart.data.start.launchAuthorizationRef }),
       ...(settlement === undefined
         ? {}
         : {
@@ -221,10 +237,12 @@ export async function projectMissionActivity(
             : {}),
         }),
     };
-  const currentEffect = await projectCurrentEffect(
+  const projectedEffect = await projectCurrentEffect(
     missionRunnerDirectory(home, missionId),
     events,
   );
+  const currentEffect = projectedEffect?.currentEffect ?? null;
+  const currentVerifiedResult = projectedEffect?.currentVerifiedResult ?? null;
   const recentCorrections = await projectLocalCorrections(
     missionRunnerDirectory(home, missionId),
     missionEvents,
@@ -242,12 +260,18 @@ export async function projectMissionActivity(
     anchorMigrationProposal,
     reconciliationAction,
     currentEffect,
+    currentVerifiedResult,
     currentCorrection: recentCorrections.at(-1) ?? null,
     recentCorrections: recentCorrections.slice(-4),
     currentTurn,
     lastEvent: recentEvents.at(-1) ?? null,
     recentEvents,
   };
+}
+
+interface ProjectedCurrentEffect {
+  readonly currentEffect: CurrentEffectProjection;
+  readonly currentVerifiedResult: CurrentVerifiedResultProjection | null;
 }
 
 async function projectLocalCorrections(
@@ -515,7 +539,7 @@ async function isCorrectionApplyManifestStale(
 async function projectCurrentEffect(
   runnerRoot: string,
   events: readonly TimelineEvent[],
-): Promise<CurrentEffectProjection | null> {
+): Promise<ProjectedCurrentEffect | null> {
   const journal = new FileEffectJournal(runnerRoot);
   const batchIds = [...events]
     .reverse()
@@ -529,6 +553,34 @@ async function projectCurrentEffect(
     if (effect !== undefined) break;
   }
   if (effect === undefined) return null;
+  const effectTurn = events.find(
+    (event): event is Extract<TimelineEvent, { type: "mission.turn-started" }> =>
+      event.type === "mission.turn-started"
+      && event.data.start.turnId === effect?.prepared.turnId,
+  );
+  if (effectTurn === undefined) {
+    throw new Error(
+      `effect ${effect.effectId} names Mission turn ${effect.prepared.turnId}, but no matching turn-start evidence exists`,
+    );
+  }
+  const turnAuthorization = effectTurn.data.start.launchAuthorizationRef;
+  const effectAuthorization = effect.prepared.launchAuthorizationRef;
+  if (
+    (turnAuthorization === undefined) !== (effectAuthorization === undefined)
+    || (
+      turnAuthorization !== undefined
+      && effectAuthorization !== undefined
+      && (
+        turnAuthorization.authorizationId !== effectAuthorization.authorizationId
+        || turnAuthorization.proposalDigest !== effectAuthorization.proposalDigest
+        || turnAuthorization.claimSourceRef !== effectAuthorization.claimSourceRef
+      )
+    )
+  ) {
+    throw new Error(
+      `effect ${effect.effectId} launch authorization does not match Mission turn ${effect.prepared.turnId}`,
+    );
+  }
 
   let gitStatus: Awaited<ReturnType<typeof readGitStatus>> = {
     added: [],
@@ -558,44 +610,79 @@ async function projectCurrentEffect(
   const stale = observationFailed || (
     settlement !== undefined && !sameStrings(changedPaths, retainedChangedPaths)
   ) || verificationSubjectStale;
+  const uncertain = effect.state === "uncertain" || observationFailed;
   return {
-    effectId: effect.effectId,
-    phase: phaseFor(effect, currentTool),
-    writer: {
-      cellId: effect.prepared.cellId,
-      runId: effect.runId ?? null,
+    currentEffect: {
+      effectId: effect.effectId,
+      ...(effectAuthorization === undefined
+        ? {}
+        : { launchAuthorizationRef: effectAuthorization }),
+      phase: phaseFor(effect, currentTool),
+      writer: {
+        cellId: effect.prepared.cellId,
+        runId: effect.runId ?? null,
+      },
+      workspace: {
+        root: effect.prepared.worktree.root,
+        baseHead: effect.prepared.worktree.baseHead,
+        baselineClean: true,
+      },
+      scope: {
+        writePaths: effect.prepared.writePaths,
+        allowedCommands: effect.prepared.allowedCommands,
+      },
+      currentTool: currentTool === undefined ? null : projectTool(currentTool),
+      recentTools: effect.tools.slice(-6).map(projectTool),
+      diff: {
+        changed: gitStatus.changed,
+        added: gitStatus.added,
+        removed: gitStatus.removed,
+        patchRef: settlement?.patch.ref ?? null,
+        patchDigest: settlement?.patch.digest ?? null,
+        outsideScope: settlement?.outsideScope.paths ?? outsideScope,
+      },
+      verification: {
+        mechanical: settlement?.acceptance.mechanical ?? { verdict: "pending" },
+        independent: effect.independentVerification
+          ?? settlement?.acceptance.independent
+          ?? { verdict: "not-run" },
+        principal: settlement?.acceptance.principal ?? { verdict: "withheld" },
+      },
+      authority: {
+        commit: "withheld",
+        merge: "withheld",
+        publish: "withheld",
+      },
+      stale,
+      uncertain,
     },
-    workspace: {
-      root: effect.prepared.worktree.root,
-      baseHead: effect.prepared.worktree.baseHead,
-      baselineClean: true,
+    currentVerifiedResult: currentVerifiedResultFor(effect, stale, uncertain),
+  };
+}
+
+function currentVerifiedResultFor(
+  effect: EffectActivity,
+  stale: boolean,
+  uncertain: boolean,
+): CurrentVerifiedResultProjection | null {
+  if (
+    effect.state !== "settled"
+    || effect.runId === undefined
+    || effect.settlement?.acceptance.mechanical.verdict !== "passed"
+    || effect.settlement.outsideScope.verdict !== "clear"
+    || effect.independentVerification?.verdict !== "passed"
+    || effect.independentVerification.subject === undefined
+    || effect.independentVerificationEventId === undefined
+    || stale
+    || uncertain
+  ) return null;
+  return {
+    standing: "verified-current",
+    selector: {
+      kind: "autonomy-effect-verification.v1",
+      effectId: effect.effectId,
+      verificationEventId: effect.independentVerificationEventId,
     },
-    scope: {
-      writePaths: effect.prepared.writePaths,
-      allowedCommands: effect.prepared.allowedCommands,
-    },
-    currentTool: currentTool === undefined ? null : projectTool(currentTool),
-    recentTools: effect.tools.slice(-6).map(projectTool),
-    diff: {
-      changed: gitStatus.changed,
-      added: gitStatus.added,
-      removed: gitStatus.removed,
-      patchRef: settlement?.patch.ref ?? null,
-      patchDigest: settlement?.patch.digest ?? null,
-      outsideScope: settlement?.outsideScope.paths ?? outsideScope,
-    },
-    verification: {
-      mechanical: settlement?.acceptance.mechanical ?? { verdict: "pending" },
-      independent: effect.independentVerification ?? settlement?.acceptance.independent ?? { verdict: "not-run" },
-      principal: settlement?.acceptance.principal ?? { verdict: "withheld" },
-    },
-    authority: {
-      commit: "withheld",
-      merge: "withheld",
-      publish: "withheld",
-    },
-    stale,
-    uncertain: effect.state === "uncertain" || observationFailed,
   };
 }
 

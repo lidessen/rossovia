@@ -12,6 +12,7 @@ import {
   type EffectActivity,
   type EffectToolFinishedData,
 } from "./effect-journal";
+import type { LaunchAuthorizationRef } from "./mission-turn";
 
 interface GitEffectObserverOptions {
   readonly missionId: string;
@@ -19,6 +20,7 @@ interface GitEffectObserverOptions {
   readonly journalRoot: string;
   /** Workbench-home-wide lease directory; two Missions cannot lease one root. */
   readonly leaseRoot: string;
+  readonly launchAuthorizationRef?: LaunchAuthorizationRef;
 }
 
 interface GitStatusProjection {
@@ -109,6 +111,9 @@ export class IsolatedGitEffectObserver implements DelegateExecutionObserver {
         writePaths: [...state.writePaths],
         allowedCommands: [],
         authority: "withheld",
+        ...(this.options.launchAuthorizationRef === undefined
+          ? {}
+          : { launchAuthorizationRef: this.options.launchAuthorizationRef }),
       });
     } catch (error) {
       this.states.delete(checkpoint.id);
