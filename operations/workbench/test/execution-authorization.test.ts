@@ -9,10 +9,14 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import {
   ExecutionAuthorizationReceiptSchema,
 } from "../src/execution-authorization";
+import {
+  executionAuthorizationClaimPath,
+  executionAuthorizationReceiptDigest,
+} from "../src/execution-authorization-claim";
 import {
   missionExecutionProposalDigest,
   MissionExecutionProposalSchema,
@@ -207,7 +211,7 @@ function inspect(home: string, missionId = "blog-run") {
 
 describe("local Principal execution authorization", () => {
   test("issues one receipt bound to the tracked Mission, exact proposal, and selected results", () => {
-    const { home, missionPath } = fixture();
+    const { home, repository, missionPath } = fixture();
     const sourceBefore = readFileSync(missionPath, "utf8");
     const inspectedBefore = inspect(home);
     expect(inspectedBefore.exitCode).toBe(0);
@@ -215,10 +219,12 @@ describe("local Principal execution authorization", () => {
     const proposalDigest = inspection.proposalDigest;
     expect(proposalDigest).toBe(missionExecutionProposalDigest(proposal()));
     expect(inspection).toEqual(expect.objectContaining({
-      version: "rosso.execution-inspection.v1",
+      version: "rosso.execution-inspection.v2",
       projectId: "repository:blog",
       missionId: "blog-run",
       proposalId: "blog-run-v1",
+      proposalStatus: "awaiting-principal-authorization",
+      status: "awaiting-principal-authorization",
       runtimeRef: "source-project:operations/autonomy/experiments/blog-runtime.ts",
       runtimeDigest: "1".repeat(64),
       provider: {
@@ -242,6 +248,11 @@ describe("local Principal execution authorization", () => {
         publish: "withheld",
       },
       receiptStanding: "absent",
+      authorizationId: null,
+      claimPath: null,
+      claimStanding: null,
+      consumption: null,
+      evidenceIssue: null,
     }));
     expect(inspection.budget.estimatedTokensSemantics).toBe("forecast-only-not-stop-condition");
     expect(inspection.pendingDecisions[0].options[1]).toEqual({
@@ -324,7 +335,55 @@ describe("local Principal execution authorization", () => {
       gitHead: expect.stringMatching(/^[0-9a-f]{40}$/),
     });
     expect(readFileSync(missionPath, "utf8")).toBe(sourceBefore);
-    expect(JSON.parse(inspect(home).stdout).receiptStanding).toBe("valid");
+    const issuedInspection = JSON.parse(inspect(home).stdout);
+    expect(issuedInspection).toEqual(expect.objectContaining({
+      proposalStatus: "awaiting-principal-authorization",
+      status: "authorized-awaiting-execution",
+      receiptStanding: "valid",
+      authorizationId: receipt.authorizationId,
+      claimStanding: "absent",
+      consumption: null,
+      evidenceIssue: null,
+    }));
+
+    const canonicalHome = realpathSync(home);
+    const claimPath = executionAuthorizationClaimPath(
+      canonicalHome,
+      receipt.authorizationId,
+    );
+    mkdirSync(join(claimPath, ".."), { recursive: true });
+    writeFileSync(claimPath, `${JSON.stringify({
+      version: "rosso.execution-authorization-claim.v1",
+      authorizationId: receipt.authorizationId,
+      projectId: receipt.projectId,
+      missionId: receipt.missionId,
+      proposalId: receipt.proposalId,
+      proposalDigest: receipt.proposalDigest,
+      receipt: {
+        ref: relative(canonicalHome, result.receiptPath),
+        digest: executionAuthorizationReceiptDigest(receipt),
+      },
+      localEvidence: {
+        worktree: realpathSync(repository),
+        gitHead: receipt.missionSource.gitHead,
+      },
+      claimedAt: "2026-07-26T11:00:00Z",
+    }, null, 2)}\n`);
+    expect(JSON.parse(inspect(home).stdout)).toEqual(expect.objectContaining({
+      proposalStatus: "awaiting-principal-authorization",
+      status: "authorization-consumed",
+      receiptStanding: "valid",
+      authorizationId: receipt.authorizationId,
+      claimPath,
+      claimStanding: "valid",
+      consumption: {
+        claimedAt: "2026-07-26T11:00:00Z",
+        candidateWorktree: realpathSync(repository),
+        candidateHead: receipt.missionSource.gitHead,
+        evidenceBoundary: "proves-one-launch-authorization-consumed-only",
+      },
+      evidenceIssue: null,
+    }));
 
     const duplicate = authorize(home, proposalDigest);
     expect(duplicate.exitCode).toBe(2);
@@ -337,7 +396,16 @@ describe("local Principal execution authorization", () => {
     const inspection = JSON.parse(inspect(home).stdout);
     mkdirSync(join(inspection.receiptPath, ".."), { recursive: true });
     writeFileSync(inspection.receiptPath, "not-json\n");
-    expect(JSON.parse(inspect(home).stdout).receiptStanding).toBe("malformed");
+    expect(JSON.parse(inspect(home).stdout)).toEqual(expect.objectContaining({
+      status: "invalid-receipt-evidence",
+      proposalStatus: "awaiting-principal-authorization",
+      receiptStanding: "malformed",
+      claimStanding: null,
+      evidenceIssue: expect.objectContaining({
+        kind: "receipt",
+        sourcePath: inspection.receiptPath,
+      }),
+    }));
 
     rmSync(inspection.receiptPath);
     const authorized = authorize(home, inspection.proposalDigest);
@@ -345,7 +413,58 @@ describe("local Principal execution authorization", () => {
     const receipt = JSON.parse(readFileSync(inspection.receiptPath, "utf8"));
     receipt.proposalDigest = "0".repeat(64);
     writeFileSync(inspection.receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
-    expect(JSON.parse(inspect(home).stdout).receiptStanding).toBe("stale");
+    expect(JSON.parse(inspect(home).stdout)).toEqual(expect.objectContaining({
+      status: "invalid-receipt-evidence",
+      proposalStatus: "awaiting-principal-authorization",
+      receiptStanding: "stale",
+      authorizationId: receipt.authorizationId,
+      claimStanding: null,
+      evidenceIssue: expect.objectContaining({
+        kind: "receipt",
+        sourcePath: inspection.receiptPath,
+      }),
+    }));
+  });
+
+  test("fails closed when a valid receipt has invalid consumption evidence", () => {
+    const { home, repository } = fixture();
+    const inspection = JSON.parse(inspect(home).stdout);
+    expect(authorize(home, inspection.proposalDigest).exitCode).toBe(0);
+    const issued = JSON.parse(inspect(home).stdout);
+    const claimPath = issued.claimPath;
+    mkdirSync(join(claimPath, ".."), { recursive: true });
+    writeFileSync(claimPath, `${JSON.stringify({
+      version: "rosso.execution-authorization-claim.v1",
+      authorizationId: issued.authorizationId,
+      projectId: "repository:another-project",
+      missionId: "blog-run",
+      proposalId: "blog-run-v1",
+      proposalDigest: inspection.proposalDigest,
+      receipt: {
+        ref: relative(realpathSync(home), inspection.receiptPath),
+        digest: "0".repeat(64),
+      },
+      localEvidence: {
+        worktree: realpathSync(repository),
+        gitHead: command(["git", "-C", repository, "rev-parse", "HEAD"]).stdout.trim(),
+      },
+      claimedAt: "2026-07-26T11:00:00Z",
+    }, null, 2)}\n`);
+
+    expect(JSON.parse(inspect(home).stdout)).toEqual(expect.objectContaining({
+      proposalStatus: "awaiting-principal-authorization",
+      status: "invalid-consumption-evidence",
+      receiptStanding: "valid",
+      authorizationId: issued.authorizationId,
+      claimPath,
+      claimStanding: "invalid",
+      consumption: null,
+      evidenceIssue: expect.objectContaining({
+        kind: "consumption",
+        sourcePath: claimPath,
+        reason: expect.stringContaining("execution authorization consumption claim is invalid"),
+      }),
+    }));
   });
 
   test("treats a receipt bound to different runtime source content as stale", () => {

@@ -5,6 +5,7 @@ import {
   anchorMigrationDecisionBriefPresentation,
   candidateEvidencePresentation,
   correctionPresentation,
+  isIndependentWorkbenchTask,
   reconciliationActionDecisionBriefPresentation,
   runnerPresentation,
   verifiedCorrectionAwaitsSystemSettlement,
@@ -93,6 +94,34 @@ function pendingRunner(live: boolean | null) {
 }
 
 describe("Principal Workbench operational semantics", () => {
+  test("recognizes only explicitly unscoped Workbench tasks as independent", () => {
+    expect(isIndependentWorkbenchTask({
+      binding: {
+        kind: "workbench-task",
+        projectContext: null,
+      },
+    })).toBe(true);
+    expect(isIndependentWorkbenchTask({
+      binding: {
+        kind: "workbench-task",
+        projectContext: {
+          projectId: "project-a",
+        },
+      },
+    })).toBe(false);
+    expect(isIndependentWorkbenchTask({
+      binding: {
+        kind: "mission",
+        projectContext: null,
+      },
+    })).toBe(false);
+    expect(isIndependentWorkbenchTask({
+      binding: {
+        kind: "workbench-task",
+      },
+    })).toBe(false);
+  });
+
   test("forms a current Candidate conclusion only from an exact worktree, effect, correction, report, and authority join", () => {
     const effect = {
       ...failedEffect,

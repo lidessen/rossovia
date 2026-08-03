@@ -18,6 +18,9 @@ import { randomUUID } from "node:crypto";
 import { existsSync as existsSync3, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname as dirname2, join as join3 } from "node:path";
 
+// src/contracts.ts
+import { isAbsolute } from "node:path";
+
 // node_modules/zod/v4/classic/external.js
 var exports_external = {};
 __export(exports_external, {
@@ -14296,6 +14299,8 @@ function date4(params) {
 config(en_default());
 // src/contracts.ts
 var nonempty = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
+var sha256 = exports_external.string().regex(/^[0-9a-f]{64}$/);
+var relativeEvidenceRef = nonempty.refine((value) => !isAbsolute(value) && value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== "." && segment !== ".."), "must be a normalized relative evidence reference");
 var ManifestSchema = exports_external.object({
   version: exports_external.literal("rosso.home.v1"),
   namespace: exports_external.literal("rosso"),
@@ -14345,6 +14350,181 @@ var PreferencesSchema = exports_external.object({
   version: exports_external.literal("rosso.preferences.v1"),
   preferences: exports_external.array(PreferenceSchema)
 }).passthrough();
+var PrincipalTaskBindingSchema = exports_external.discriminatedUnion("kind", [
+  exports_external.object({
+    kind: exports_external.literal("independent")
+  }).strict(),
+  exports_external.object({
+    kind: exports_external.literal("project-context"),
+    projectId: nonempty,
+    worktreePath: nonempty.optional(),
+    missionId: exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/).optional()
+  }).strict()
+]);
+var PrincipalTaskCorrectionDeliverySchema = exports_external.object({
+  authorizationId: exports_external.string().uuid(),
+  proposalDigest: sha256,
+  claimSourceRef: relativeEvidenceRef,
+  missionId: exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  inputId: nonempty,
+  inputEventId: nonempty,
+  inputWatermark: exports_external.number().int().positive(),
+  payloadDigest: sha256,
+  recordedAt: exports_external.string().datetime({ offset: true }),
+  sourceRef: nonempty,
+  deliveredViaRunnerId: nonempty
+}).strict();
+var PrincipalTaskCorrectionSchema = exports_external.object({
+  id: nonempty,
+  at: nonempty,
+  statement: nonempty,
+  sourceRef: nonempty,
+  deliveries: exports_external.array(PrincipalTaskCorrectionDeliverySchema).default([])
+}).strict();
+var AutonomyEffectVerificationSelectorSchema = exports_external.object({
+  kind: exports_external.literal("autonomy-effect-verification.v1"),
+  effectId: nonempty,
+  verificationEventId: nonempty
+}).strict();
+var PrincipalTaskResultEvidenceSchema = exports_external.discriminatedUnion("kind", [
+  exports_external.object({
+    kind: exports_external.literal("agent-references-unverified")
+  }).strict(),
+  exports_external.object({
+    kind: exports_external.literal("runtime-verified-effect"),
+    authorizationId: exports_external.string().uuid(),
+    selector: AutonomyEffectVerificationSelectorSchema
+  }).strict()
+]);
+var PrincipalTaskResultClaimSchema = exports_external.object({
+  id: nonempty,
+  submittedAt: nonempty,
+  summary: nonempty,
+  evidenceRefs: exports_external.array(nonempty).min(1),
+  evidence: PrincipalTaskResultEvidenceSchema.default({
+    kind: "agent-references-unverified"
+  }),
+  sourceRef: nonempty,
+  standing: exports_external.enum(["submitted", "accepted", "superseded"]),
+  resolution: exports_external.discriminatedUnion("kind", [
+    exports_external.object({
+      kind: exports_external.literal("accepted"),
+      at: nonempty,
+      sourceRef: nonempty,
+      acceptanceBoundary: exports_external.literal("workbench-local-task-only"),
+      basis: exports_external.enum([
+        "agent-claim",
+        "runtime-verified-effect"
+      ]).default("agent-claim")
+    }).strict(),
+    exports_external.object({
+      kind: exports_external.literal("superseded"),
+      at: nonempty,
+      reason: exports_external.enum(["correction", "reopen"])
+    }).strict()
+  ]).nullable()
+}).strict().superRefine((claim, context) => {
+  const expectedResolution = claim.standing === "accepted" ? "accepted" : claim.standing === "superseded" ? "superseded" : null;
+  const observedResolution = claim.resolution === null ? null : claim.resolution.kind;
+  if (observedResolution !== expectedResolution) {
+    context.addIssue({
+      code: "custom",
+      path: ["resolution"],
+      message: `result claim standing ${claim.standing} requires ${expectedResolution ?? "no"} resolution`
+    });
+  }
+});
+var PrincipalTaskExecutionLinkSchema = exports_external.object({
+  authorizationId: exports_external.string().uuid(),
+  proposalDigest: sha256,
+  claimSourceRef: relativeEvidenceRef,
+  linkedAt: exports_external.string().datetime({ offset: true }),
+  sourceRef: nonempty
+}).strict();
+var PrincipalTaskWorktreeRebindingSchema = exports_external.object({
+  fromWorktreePath: nonempty,
+  toWorktreePath: nonempty,
+  reboundAt: exports_external.string().datetime({ offset: true }),
+  sourceRef: nonempty
+}).strict();
+var PrincipalTaskSchema = exports_external.object({
+  id: nonempty,
+  title: nonempty,
+  objective: nonempty,
+  acceptance: exports_external.array(nonempty).min(1),
+  origin: exports_external.object({
+    kind: exports_external.literal("principal-explicit"),
+    sourceRef: nonempty
+  }).strict(),
+  binding: PrincipalTaskBindingSchema,
+  lifecycle: exports_external.enum(["open", "in-progress", "waiting", "verifying", "settled"]),
+  nextActor: exports_external.enum(["principal", "agent", "external", "none"]),
+  revision: exports_external.number().int().positive(),
+  corrections: exports_external.array(PrincipalTaskCorrectionSchema),
+  resultClaims: exports_external.array(PrincipalTaskResultClaimSchema),
+  executionLinks: exports_external.array(PrincipalTaskExecutionLinkSchema).default([]),
+  worktreeRebindings: exports_external.array(PrincipalTaskWorktreeRebindingSchema).optional(),
+  createdAt: nonempty,
+  updatedAt: nonempty
+}).strict().superRefine((task, context) => {
+  const submitted = task.resultClaims.filter((claim) => claim.standing === "submitted");
+  if (submitted.length > 1) {
+    context.addIssue({
+      code: "custom",
+      path: ["resultClaims"],
+      message: "a task may retain at most one submitted result claim"
+    });
+  }
+  if (task.lifecycle === "verifying") {
+    if (task.nextActor !== "principal") {
+      context.addIssue({
+        code: "custom",
+        path: ["nextActor"],
+        message: "a verifying task must return to the Principal"
+      });
+    }
+    if (submitted.length !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["resultClaims"],
+        message: "a verifying task requires one submitted result claim"
+      });
+    }
+  } else if (submitted.length !== 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["resultClaims"],
+      message: "a submitted result claim requires verifying lifecycle"
+    });
+  }
+  if (task.lifecycle === "settled") {
+    if (task.nextActor !== "none") {
+      context.addIssue({
+        code: "custom",
+        path: ["nextActor"],
+        message: "a settled task has no next actor"
+      });
+    }
+    if (task.resultClaims.at(-1)?.standing !== "accepted") {
+      context.addIssue({
+        code: "custom",
+        path: ["resultClaims"],
+        message: "a settled task requires its latest result claim to be locally accepted"
+      });
+    }
+  } else if (task.nextActor === "none") {
+    context.addIssue({
+      code: "custom",
+      path: ["nextActor"],
+      message: "an unsettled task requires a next actor"
+    });
+  }
+});
+var PrincipalTasksSchema = exports_external.object({
+  version: exports_external.literal("rosso.principal-tasks.v1"),
+  sourceRevision: exports_external.number().int().nonnegative(),
+  tasks: exports_external.array(PrincipalTaskSchema)
+}).strict();
 var PreferenceReceiptSchema = exports_external.object({
   version: exports_external.literal("rosso.preference-receipt.v2"),
   at: nonempty,
@@ -14659,6 +14839,11 @@ function initializeHome(homeArgument) {
     version: "rosso.preferences.v1",
     preferences: []
   }, (value) => validatePreferences(value, "user preferences"));
+  ensureJson(join3(home, "state", "tasks.json"), PrincipalTasksSchema, {
+    version: "rosso.principal-tasks.v1",
+    sourceRevision: 0,
+    tasks: []
+  });
   ensureJson(join3(home, "config", "setup.json"), SetupSelectionSchema, {
     version: "rosso.setup-selection.v1",
     selections: []
@@ -14747,7 +14932,7 @@ function attachWorkspace(homeArgument, query, path) {
 }
 
 // src/execution-authorization.ts
-import { createHash as createHash2, randomUUID as randomUUID2 } from "node:crypto";
+import { createHash as createHash3, randomUUID as randomUUID2 } from "node:crypto";
 import {
   existsSync as existsSync5,
   lstatSync,
@@ -14755,18 +14940,95 @@ import {
   readFileSync as readFileSync3,
   writeFileSync as writeFileSync2
 } from "node:fs";
-import { dirname as dirname4, join as join6, relative as relative2 } from "node:path";
+import { dirname as dirname4, join as join7, relative as relative3 } from "node:path";
 
-// src/mission-execution-proposal.ts
+// src/execution-authorization-claim.ts
 import { createHash } from "node:crypto";
-var nonempty2 = exports_external.string().min(1);
+import { isAbsolute as isAbsolute2, join as join5, normalize, relative } from "node:path";
+var nonempty2 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
 var missionId = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 var digest = exports_external.string().regex(/^[0-9a-f]{64}$/);
+var gitHead = exports_external.string().regex(/^[0-9a-f]{40,64}$/);
+var relativeEvidenceRef2 = nonempty2.refine((value) => !isAbsolute2(value) && value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== "." && segment !== ".."), "must be a normalized relative evidence reference");
+var canonicalAbsolutePath = nonempty2.refine(isAbsolute2, "must be an absolute path").refine((value) => normalize(value) === value, "must be a normalized absolute path");
+var ExecutionAuthorizationClaimSchema = exports_external.object({
+  version: exports_external.literal("rosso.execution-authorization-claim.v1"),
+  authorizationId: exports_external.string().uuid(),
+  projectId: nonempty2,
+  missionId,
+  proposalId: missionId,
+  proposalDigest: digest,
+  receipt: exports_external.object({
+    ref: relativeEvidenceRef2,
+    digest
+  }).strict(),
+  localEvidence: exports_external.object({
+    worktree: canonicalAbsolutePath,
+    gitHead
+  }).strict(),
+  claimedAt: exports_external.string().datetime({ offset: true })
+}).strict();
+function executionAuthorizationClaimPath(home, authorizationId) {
+  const checkedAuthorizationId = exports_external.string().uuid().parse(authorizationId);
+  return join5(home, "state", "execution-authorization-claims", `${checkedAuthorizationId}.json`);
+}
+function executionAuthorizationReceiptDigest(receipt) {
+  return createHash("sha256").update(stableStringify(receipt)).digest("hex");
+}
+function validateExecutionAuthorizationClaim(unparsed, context) {
+  const claim = ExecutionAuthorizationClaimSchema.parse(unparsed);
+  const receipt = context.receipt;
+  const mismatches = [];
+  if (claim.authorizationId !== receipt.authorizationId) {
+    mismatches.push(`authorization ID mismatch: expected ${receipt.authorizationId}, observed ${claim.authorizationId}`);
+  }
+  if (claim.projectId !== context.projectId || claim.projectId !== receipt.projectId) {
+    mismatches.push(`project mismatch: expected ${context.projectId}, observed ${claim.projectId}`);
+  }
+  if (claim.missionId !== context.missionId || claim.missionId !== receipt.missionId) {
+    mismatches.push(`Mission mismatch: expected ${context.missionId}, observed ${claim.missionId}`);
+  }
+  if (claim.proposalId !== context.proposalId || claim.proposalId !== receipt.proposalId) {
+    mismatches.push(`proposal mismatch: expected ${context.proposalId}, observed ${claim.proposalId}`);
+  }
+  if (claim.proposalDigest !== context.proposalDigest || claim.proposalDigest !== receipt.proposalDigest) {
+    mismatches.push(`proposal digest mismatch: expected ${context.proposalDigest}, observed ${claim.proposalDigest}`);
+  }
+  const expectedClaimPath = executionAuthorizationClaimPath(context.home, receipt.authorizationId);
+  if (context.claimPath !== expectedClaimPath) {
+    mismatches.push(`claim source mismatch: expected ${expectedClaimPath}, observed ${context.claimPath}`);
+  }
+  const expectedReceiptRef = relative(context.home, context.receiptPath);
+  if (claim.receipt.ref !== expectedReceiptRef) {
+    mismatches.push(`receipt reference mismatch: expected ${expectedReceiptRef}, observed ${claim.receipt.ref}`);
+  }
+  const expectedReceiptDigest = executionAuthorizationReceiptDigest(receipt);
+  if (claim.receipt.digest !== expectedReceiptDigest) {
+    mismatches.push(`receipt digest mismatch: expected ${expectedReceiptDigest}, observed ${claim.receipt.digest}`);
+  }
+  if (mismatches.length > 0) {
+    throw new Error(`execution authorization consumption claim is invalid: ${mismatches.join("; ")}`);
+  }
+  return claim;
+}
+function stableStringify(value) {
+  if (value === null || typeof value !== "object")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(stableStringify).join(",")}]`;
+  return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(",")}}`;
+}
+
+// src/mission-execution-proposal.ts
+import { createHash as createHash2 } from "node:crypto";
+var nonempty3 = exports_external.string().min(1);
+var missionId2 = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
+var digest2 = exports_external.string().regex(/^[0-9a-f]{64}$/);
 var replyKey = exports_external.string().min(1).max(24).regex(/^[A-Z0-9][A-Z0-9_-]*$/, "reply key must use uppercase letters, digits, underscores, or hyphens");
-var relativeWriteScope = nonempty2.refine((value) => value === "." || isSafeRelativePath(value), "write path must be relative and cannot traverse to a parent");
-var relativeReadScope = nonempty2.refine((value) => isSafeRelativePath(value), "read path must be a specific relative path and cannot traverse to a parent");
-var relativeExcludeScope = nonempty2.refine((value) => isSafeRelativePath(value), "excluded path must be relative and cannot traverse to a parent");
-var uniqueNonemptyList = exports_external.array(nonempty2).min(1).superRefine((values, context) => {
+var relativeWriteScope = nonempty3.refine((value) => value === "." || isSafeRelativePath(value), "write path must be relative and cannot traverse to a parent");
+var relativeReadScope = nonempty3.refine((value) => isSafeRelativePath(value), "read path must be a specific relative path and cannot traverse to a parent");
+var relativeExcludeScope = nonempty3.refine((value) => isSafeRelativePath(value), "excluded path must be relative and cannot traverse to a parent");
+var uniqueNonemptyList = exports_external.array(nonempty3).min(1).superRefine((values, context) => {
   if (new Set(values).size !== values.length) {
     context.addIssue({ code: "custom", message: "values must be unique" });
   }
@@ -14788,15 +15050,15 @@ var uniqueWritePaths = exports_external.array(relativeWriteScope).min(1).superRe
 });
 var positiveInteger = exports_external.number().int().positive();
 var PendingDecisionSchema = exports_external.object({
-  id: missionId,
-  label: nonempty2,
-  proposal: nonempty2,
+  id: missionId2,
+  label: nonempty3,
+  proposal: nonempty3,
   status: exports_external.literal("pending"),
   options: exports_external.array(exports_external.object({
     replyKey,
-    label: nonempty2,
-    immediateResult: nonempty2,
-    tradeoff: nonempty2
+    label: nonempty3,
+    immediateResult: nonempty3,
+    tradeoff: nonempty3
   }).strict()).min(2).max(4).superRefine((options, context) => {
     const keys = options.map((option) => option.replyKey);
     if (new Set(keys).size !== keys.length) {
@@ -14818,11 +15080,11 @@ var PendingDecisionSchema = exports_external.object({
   }
 });
 var CandidateWorktreeSchema = exports_external.object({
-  rootRef: nonempty2.regex(/^environment:[A-Z][A-Z0-9_]*$/, "candidate worktree rootRef must name an environment-owned variable"),
+  rootRef: nonempty3.regex(/^environment:[A-Z][A-Z0-9_]*$/, "candidate worktree rootRef must name an environment-owned variable"),
   binding: exports_external.literal("operator-selected-at-launch")
 }).strict();
 var ExternalProviderSchema = exports_external.object({
-  name: nonempty2,
+  name: nonempty3,
   boundary: exports_external.literal("external")
 }).strict();
 var ExternalDisclosureSchema = exports_external.object({
@@ -14861,11 +15123,11 @@ var MissionExecutionAuthoritySchema = exports_external.object({
   publish: exports_external.literal("withheld")
 }).strict();
 var MissionExecutionProposalCommonShape = {
-  proposalId: missionId,
+  proposalId: missionId2,
   mode: exports_external.literal("supervised"),
   status: exports_external.literal("awaiting-principal-authorization"),
-  runtimeRef: nonempty2,
-  runtimeDigest: digest,
+  runtimeRef: nonempty3,
+  runtimeDigest: digest2,
   externalProvider: ExternalProviderSchema,
   externalDisclosure: ExternalDisclosureSchema,
   candidateWorktree: CandidateWorktreeSchema,
@@ -14891,8 +15153,8 @@ var MissionExecutionProposalSchema = exports_external.discriminatedUnion("versio
   }).strict()
 ]);
 var MissionExecutionBoundarySchema = exports_external.object({
-  runtimeRef: nonempty2,
-  runtimeDigest: digest,
+  runtimeRef: nonempty3,
+  runtimeDigest: digest2,
   externalProvider: ExternalProviderSchema,
   externalDisclosure: ExternalDisclosureSchema,
   candidateWorktree: CandidateWorktreeSchema,
@@ -14904,7 +15166,7 @@ var MissionExecutionBoundarySchema = exports_external.object({
 }).strict();
 function missionExecutionProposalDigest(proposal) {
   const validated = MissionExecutionProposalSchema.parse(proposal);
-  return createHash("sha256").update(JSON.stringify(canonical(validated))).digest("hex");
+  return createHash2("sha256").update(JSON.stringify(canonical(validated))).digest("hex");
 }
 function isSafeRelativePath(value) {
   if (value.startsWith("/") || value.includes("\\") || value.includes("\x00"))
@@ -14922,7 +15184,7 @@ function canonical(value) {
 
 // src/missions.ts
 import { existsSync as existsSync4, readdirSync, readFileSync as readFileSync2, realpathSync as realpathSync3, rmSync as rmSync2 } from "node:fs";
-import { dirname as dirname3, join as join5, relative, resolve as resolve2 } from "node:path";
+import { dirname as dirname3, join as join6, relative as relative2, resolve as resolve2 } from "node:path";
 var idPattern = /^[a-z0-9][a-z0-9-]*$/;
 var branchKinds = new Set(["implementation", "investigation", "review", "correction"]);
 var branchStatuses = new Set(["open", "integrating", "suspended", "closed"]);
@@ -14930,7 +15192,7 @@ var dispositions = new Set(["integrate", "no-change", "abandon"]);
 function now2() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
-function nonempty3(value, label) {
+function nonempty4(value, label) {
   if (typeof value !== "string" || !value.trim())
     throw new Error(`${label} must be a non-empty string`);
   return value;
@@ -14944,13 +15206,13 @@ function stringList(value, label, minimum = 0) {
   return value;
 }
 function validId(value, label) {
-  const id = nonempty3(value, label);
+  const id = nonempty4(value, label);
   if (!idPattern.test(id))
     throw new Error(`${label} must use lowercase letters, digits, and hyphens`);
   return id;
 }
 function missionPath(root, id) {
-  return join5(root, `${validId(id, "mission id")}.json`);
+  return join6(root, `${validId(id, "mission id")}.json`);
 }
 function validateMission(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -14960,12 +15222,12 @@ function validateMission(value) {
   if (record2.version !== "mission-record.v1")
     throw new Error("version must be mission-record.v1");
   validId(record2.id, "id");
-  nonempty3(record2.title, "title");
+  nonempty4(record2.title, "title");
   const sources = stringList(record2.sources, "sources", 1);
   if (new Set(sources).size !== sources.length)
     throw new Error("sources must be unique");
-  nonempty3(record2.createdAt, "createdAt");
-  nonempty3(record2.updatedAt, "updatedAt");
+  nonempty4(record2.createdAt, "createdAt");
+  nonempty4(record2.updatedAt, "updatedAt");
   if (record2.executionProposal !== undefined) {
     const result = MissionExecutionProposalSchema.safeParse(record2.executionProposal);
     if (!result.success) {
@@ -14976,7 +15238,7 @@ function validateMission(value) {
     throw new Error("mainline must be an object");
   }
   const mainline = record2.mainline;
-  nonempty3(mainline.contradiction, "mainline.contradiction");
+  nonempty4(mainline.contradiction, "mainline.contradiction");
   stringList(mainline.acceptance, "mainline.acceptance", 1);
   if (mainline.status !== "active" && mainline.status !== "settled") {
     throw new Error("mainline.status must be active or settled");
@@ -15000,8 +15262,8 @@ function validateMission(value) {
     byId.set(id, branch);
     if (!branchKinds.has(branch.kind))
       throw new Error(`branch ${id} has an invalid kind`);
-    nonempty3(branch.purpose, `branch ${id}.purpose`);
-    nonempty3(branch.returnCondition, `branch ${id}.returnCondition`);
+    nonempty4(branch.purpose, `branch ${id}.purpose`);
+    nonempty4(branch.returnCondition, `branch ${id}.returnCondition`);
     const branchSources = stringList(branch.sources, `branch ${id}.sources`, 1);
     if (new Set(branchSources).size !== branchSources.length) {
       throw new Error(`branch ${id}.sources must be unique`);
@@ -15013,12 +15275,12 @@ function validateMission(value) {
       throw new Error(`branch ${id}.parent must be mainline or a branch ID`);
     }
     if (branch.status === "suspended")
-      nonempty3(branch.reactivationSignal, `branch ${id}.reactivationSignal`);
+      nonempty4(branch.reactivationSignal, `branch ${id}.reactivationSignal`);
     if (branch.status === "closed") {
       if (!dispositions.has(branch.disposition)) {
         throw new Error(`closed branch ${id} needs an allowed disposition`);
       }
-      nonempty3(branch.mainlineDelta, `closed branch ${id}.mainlineDelta`);
+      nonempty4(branch.mainlineDelta, `closed branch ${id}.mainlineDelta`);
     }
   }
   for (const [id, branch] of byId) {
@@ -15071,6 +15333,9 @@ function parseMissionRecord(value) {
   validateMission(value);
   return value;
 }
+function loadMissionRecord(path) {
+  return loadMission(path);
+}
 function saveMission(path, record2) {
   validateMission(record2);
   saveJson(path, record2);
@@ -15107,7 +15372,7 @@ function requiredGit2(arguments_, cwd) {
 }
 function gitState(path, requireCommitted) {
   const repository = requiredGit2(["rev-parse", "--show-toplevel"], dirname3(path)).trim();
-  const relativePath = relative(realpathSync3(repository), realpathSync3(path));
+  const relativePath = relative2(realpathSync3(repository), realpathSync3(path));
   if (runGit2(["ls-files", "--error-unmatch", "--", relativePath], repository, true).exitCode !== 0) {
     throw new Error(`mission record is not Git-tracked: git add -- ${relativePath}`);
   }
@@ -15207,7 +15472,7 @@ function runMissionCommand(rawArguments) {
     parseCommand(raw, 0);
     if (!existsSync4(root))
       throw new Error(`mission root not found: ${root}`);
-    const records = readdirSync(root).filter((name) => name.endsWith(".json")).sort().map((name) => loadMission(join5(root, name)));
+    const records = readdirSync(root).filter((name) => name.endsWith(".json")).sort().map((name) => loadMission(join6(root, name)));
     return {
       activeMissions: records.filter((record2) => record2.mainline.status === "active").map((record2) => ({
         id: record2.id,
@@ -15360,30 +15625,30 @@ function runMissionCommand(rawArguments) {
 }
 
 // src/execution-authorization.ts
-var nonempty4 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
-var missionId2 = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
-var digest2 = exports_external.string().regex(/^[0-9a-f]{64}$/);
+var nonempty5 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
+var missionId3 = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
+var digest3 = exports_external.string().regex(/^[0-9a-f]{64}$/);
 var structuredRef = exports_external.string().regex(/^[a-z][a-z0-9-]*:[^\s]+$/, "must be a structured reference such as conversation:thread/turn");
 var principalRef = exports_external.string().regex(/^principal:[^\s]+$/, "must identify the authorizing Principal as principal:<identity>");
 var ExecutionBoundarySchema = MissionExecutionBoundarySchema;
 var AuthorizedChoiceSchema = exports_external.object({
-  decisionId: missionId2,
-  replyKey: nonempty4
+  decisionId: missionId3,
+  replyKey: nonempty5
 }).strict();
 var ImmediateAuthorizedResultSchema = exports_external.object({
-  decisionId: missionId2,
-  result: nonempty4
+  decisionId: missionId3,
+  result: nonempty5
 }).strict();
 var ExecutionAuthorizationReceiptBaseShape = {
   authorizationId: exports_external.string().uuid(),
-  projectId: nonempty4,
-  missionId: missionId2,
+  projectId: nonempty5,
+  missionId: missionId3,
   missionSource: exports_external.object({
-    path: nonempty4,
+    path: nonempty5,
     gitHead: exports_external.string().regex(/^[0-9a-f]{40,64}$/)
   }).strict(),
-  proposalId: missionId2,
-  proposalDigest: digest2,
+  proposalId: missionId3,
+  proposalDigest: digest3,
   choices: exports_external.array(AuthorizedChoiceSchema).min(1),
   immediateAuthorizedResults: exports_external.array(ImmediateAuthorizedResultSchema).min(1),
   executionBoundary: ExecutionBoundarySchema,
@@ -15402,7 +15667,7 @@ var ExecutionAuthorizationReceiptBaseShape = {
   actorRef: principalRef,
   sourceRef: structuredRef,
   attributionBoundary: exports_external.literal("references-are-attribution-not-authentication"),
-  authorizedAt: nonempty4
+  authorizedAt: nonempty5
 };
 var PrincipalWorkbenchActionSchema = exports_external.object({
   requestId: exports_external.string().uuid(),
@@ -15428,16 +15693,17 @@ var ExecutionAuthorizationReceiptSchema = exports_external.discriminatedUnion("v
   ExecutionAuthorizationReceiptV2Schema
 ]);
 function executionAuthorizationReceiptPath(home, projectId, missionIdArgument, proposalIdArgument) {
-  const checkedMissionId = missionId2.parse(missionIdArgument);
-  const checkedProposalId = missionId2.parse(proposalIdArgument);
-  const projectKey = createHash2("sha256").update(projectId).digest("hex");
-  return join6(home, "receipts", "execution-authorizations", projectKey, checkedMissionId, `${checkedProposalId}.json`);
+  const checkedMissionId = missionId3.parse(missionIdArgument);
+  const checkedProposalId = missionId3.parse(proposalIdArgument);
+  const projectKey = createHash3("sha256").update(projectId).digest("hex");
+  return join7(home, "receipts", "execution-authorizations", projectKey, checkedMissionId, `${checkedProposalId}.json`);
 }
 function inspectExecution(homeArgument, projectArgument, missionIdArgument) {
   const context = loadExecutionProposalContext(homeArgument, projectArgument, missionIdArgument);
   const proposal = context.proposal;
+  const evidence = inspectAuthorizationEvidence(context);
   return {
-    version: "rosso.execution-inspection.v1",
+    version: "rosso.execution-inspection.v2",
     projectId: context.projectId,
     missionId: context.missionId,
     missionSource: {
@@ -15447,7 +15713,8 @@ function inspectExecution(homeArgument, projectArgument, missionIdArgument) {
     proposalId: proposal.proposalId,
     proposalDigest: context.proposalDigest,
     mode: proposal.mode,
-    status: proposal.status,
+    proposalStatus: proposal.status,
+    status: evidence.status,
     runtimeRef: proposal.runtimeRef,
     runtimeDigest: proposal.runtimeDigest,
     provider: proposal.externalProvider,
@@ -15458,13 +15725,18 @@ function inspectExecution(homeArgument, projectArgument, missionIdArgument) {
     pendingDecisions: proposal.pendingDecisions,
     authority: proposal.authority,
     receiptPath: context.receiptPath,
-    receiptStanding: inspectReceiptStanding(context)
+    receiptStanding: evidence.receiptStanding,
+    authorizationId: evidence.authorizationId,
+    claimPath: evidence.claimPath,
+    claimStanding: evidence.claimStanding,
+    consumption: evidence.consumption,
+    evidenceIssue: evidence.evidenceIssue
   };
 }
 function authorizeExecution(homeArgument, arguments_, now3 = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z")) {
   const context = loadExecutionProposalContext(homeArgument, arguments_.project, arguments_.missionId);
-  const checkedProposalId = missionId2.parse(arguments_.proposalId);
-  const suppliedDigest = digest2.parse(arguments_.proposalDigest);
+  const checkedProposalId = missionId3.parse(arguments_.proposalId);
+  const suppliedDigest = digest3.parse(arguments_.proposalDigest);
   const actorRef = principalRef.parse(arguments_.actorRef);
   const sourceRef = structuredRef.parse(arguments_.sourceRef);
   const proposal = context.proposal;
@@ -15523,24 +15795,24 @@ function loadExecutionProposalContext(homeArgument, projectArgument, missionIdAr
   const project = registeredProjectByQuery(current.projects, projectArgument);
   const workspace = workspaceFor(current.workspaces, project.id);
   const observed = observeWorkspace(project, workspace);
-  const checkedMissionId = missionId2.parse(missionIdArgument);
-  const sourcePath = join6(observed.path, "operations", "missions", `${checkedMissionId}.json`);
+  const checkedMissionId = missionId3.parse(missionIdArgument);
+  const sourcePath = join7(observed.path, "operations", "missions", `${checkedMissionId}.json`);
   if (!existsSync5(sourcePath))
     throw new Error(`mission record not found: ${sourcePath}`);
   if (!lstatSync(sourcePath).isFile()) {
     throw new Error(`mission record must be a regular Git-tracked file: ${sourcePath}`);
   }
-  const sourceRelativePath = relative2(observed.path, sourcePath);
-  const gitHead = requiredGit(["rev-parse", "HEAD"], observed.path);
-  const trackedAtHead = runCommand("git", ["-C", observed.path, "cat-file", "-e", `${gitHead}:${sourceRelativePath}`]);
+  const sourceRelativePath = relative3(observed.path, sourcePath);
+  const gitHead2 = requiredGit(["rev-parse", "HEAD"], observed.path);
+  const trackedAtHead = runCommand("git", ["-C", observed.path, "cat-file", "-e", `${gitHead2}:${sourceRelativePath}`]);
   if (trackedAtHead.exitCode !== 0) {
     throw new Error(`mission record is not Git-tracked at HEAD: ${sourceRelativePath}`);
   }
-  const sourceDiff = runCommand("git", ["-C", observed.path, "diff", "--quiet", gitHead, "--", sourceRelativePath]);
+  const sourceDiff = runCommand("git", ["-C", observed.path, "diff", "--quiet", gitHead2, "--", sourceRelativePath]);
   if (sourceDiff.exitCode !== 0) {
     throw new Error(`mission record must match HEAD before execution inspection or authorization: ${sourceRelativePath}`);
   }
-  const committedSource = requiredGit(["show", `${gitHead}:${sourceRelativePath}`], observed.path);
+  const committedSource = requiredGit(["show", `${gitHead2}:${sourceRelativePath}`], observed.path);
   let committedRecord;
   try {
     committedRecord = JSON.parse(committedSource);
@@ -15554,49 +15826,130 @@ function loadExecutionProposalContext(homeArgument, projectArgument, missionIdAr
   const proposal = record2.executionProposal;
   if (proposal === undefined)
     throw new Error(`mission ${checkedMissionId} has no pending executionProposal`);
-  if (requiredGit(["rev-parse", "HEAD"], observed.path) !== gitHead) {
+  if (requiredGit(["rev-parse", "HEAD"], observed.path) !== gitHead2) {
     throw new Error("repository HEAD changed during execution proposal inspection; retry against one stable revision");
   }
   const proposalDigest = missionExecutionProposalDigest(proposal);
   return {
+    home: current.home,
     projectId: project.id,
     missionId: checkedMissionId,
     sourceRelativePath,
-    gitHead,
+    gitHead: gitHead2,
     proposal,
     proposalDigest,
     receiptPath: executionAuthorizationReceiptPath(current.home, project.id, checkedMissionId, proposal.proposalId)
   };
 }
-function inspectReceiptStanding(context) {
-  if (!existsSync5(context.receiptPath))
-    return "absent";
+function inspectAuthorizationEvidence(context) {
+  if (!existsSync5(context.receiptPath)) {
+    return {
+      status: "awaiting-principal-authorization",
+      receiptStanding: "absent",
+      authorizationId: null,
+      claimPath: null,
+      claimStanding: null,
+      consumption: null,
+      evidenceIssue: null
+    };
+  }
   let value;
   try {
     value = JSON.parse(readFileSync3(context.receiptPath, "utf8"));
-  } catch {
-    return "malformed";
+  } catch (error51) {
+    return invalidReceiptEvidence(context.receiptPath, `authorization receipt is not valid JSON: ${errorMessage(error51)}`, "malformed");
   }
   const parsed = ExecutionAuthorizationReceiptSchema.safeParse(value);
-  if (!parsed.success)
-    return "malformed";
+  if (!parsed.success) {
+    return invalidReceiptEvidence(context.receiptPath, exports_external.prettifyError(parsed.error), "malformed");
+  }
   const receipt = parsed.data;
   try {
     if (receipt.projectId !== context.projectId || receipt.missionId !== context.missionId || receipt.proposalId !== context.proposal.proposalId || receipt.proposalDigest !== context.proposalDigest || receipt.missionSource.path !== context.sourceRelativePath || receipt.missionSource.gitHead !== context.gitHead || !sameValue(receipt.executionBoundary, executionBoundary(context.proposal))) {
-      return "stale";
+      return invalidReceiptEvidence(context.receiptPath, "authorization receipt does not match the current committed proposal", "stale", receipt.authorizationId);
     }
     const selected = new Map(receipt.choices.map((choice) => [choice.decisionId, choice.replyKey]));
     if (selected.size !== receipt.choices.length || selected.get("external-disclosure") !== "ALLOW") {
-      return "stale";
+      return invalidReceiptEvidence(context.receiptPath, "authorization receipt choices do not release the current declared disclosure", "stale", receipt.authorizationId);
     }
     const expected = resolveSelectedChoices(context.proposal, selected);
     if (!sameValue(receipt.choices, expected.choices) || !sameValue(receipt.immediateAuthorizedResults, expected.immediateAuthorizedResults)) {
-      return "stale";
+      return invalidReceiptEvidence(context.receiptPath, "authorization receipt choices or immediate results do not match the current proposal", "stale", receipt.authorizationId);
     }
-    return "valid";
-  } catch {
-    return "stale";
+  } catch (error51) {
+    return invalidReceiptEvidence(context.receiptPath, `authorization receipt cannot be resolved against the current proposal: ${errorMessage(error51)}`, "stale", receipt.authorizationId);
   }
+  const claimPath = executionAuthorizationClaimPath(context.home, receipt.authorizationId);
+  if (!existsSync5(claimPath)) {
+    return {
+      status: "authorized-awaiting-execution",
+      receiptStanding: "valid",
+      authorizationId: receipt.authorizationId,
+      claimPath,
+      claimStanding: "absent",
+      consumption: null,
+      evidenceIssue: null
+    };
+  }
+  let claim;
+  try {
+    claim = validateExecutionAuthorizationClaim(JSON.parse(readFileSync3(claimPath, "utf8")), {
+      home: context.home,
+      claimPath,
+      receiptPath: context.receiptPath,
+      receipt,
+      projectId: context.projectId,
+      missionId: context.missionId,
+      proposalId: context.proposal.proposalId,
+      proposalDigest: context.proposalDigest
+    });
+  } catch (error51) {
+    return {
+      status: "invalid-consumption-evidence",
+      receiptStanding: "valid",
+      authorizationId: receipt.authorizationId,
+      claimPath,
+      claimStanding: "invalid",
+      consumption: null,
+      evidenceIssue: {
+        kind: "consumption",
+        sourcePath: claimPath,
+        reason: errorMessage(error51)
+      }
+    };
+  }
+  return {
+    status: "authorization-consumed",
+    receiptStanding: "valid",
+    authorizationId: receipt.authorizationId,
+    claimPath,
+    claimStanding: "valid",
+    consumption: {
+      claimedAt: claim.claimedAt,
+      candidateWorktree: claim.localEvidence.worktree,
+      candidateHead: claim.localEvidence.gitHead,
+      evidenceBoundary: "proves-one-launch-authorization-consumed-only"
+    },
+    evidenceIssue: null
+  };
+}
+function invalidReceiptEvidence(sourcePath, reason, receiptStanding, authorizationId = null) {
+  return {
+    status: "invalid-receipt-evidence",
+    receiptStanding,
+    authorizationId,
+    claimPath: null,
+    claimStanding: null,
+    consumption: null,
+    evidenceIssue: {
+      kind: "receipt",
+      sourcePath,
+      reason
+    }
+  };
+}
+function errorMessage(error51) {
+  return error51 instanceof Error ? error51.message : String(error51);
 }
 function executionBoundary(proposal) {
   return {
@@ -15644,7 +15997,7 @@ function parseChoices(values) {
     if (separator <= 0 || separator === value.length - 1 || value.indexOf("=", separator + 1) !== -1) {
       throw new Error(`invalid execution choice '${value}'; expected decisionId=replyKey`);
     }
-    const decisionId = missionId2.parse(value.slice(0, separator));
+    const decisionId = missionId3.parse(value.slice(0, separator));
     const replyKey2 = value.slice(separator + 1);
     if (choices.has(decisionId))
       throw new Error(`duplicate execution decision: ${decisionId}`);
@@ -15681,7 +16034,7 @@ function persistNewReceipt(path, receipt) {
 }
 
 // src/hooks.ts
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 import {
   appendFileSync,
   existsSync as existsSync7,
@@ -15690,13 +16043,13 @@ import {
   rmSync as rmSync3
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname as dirname6, isAbsolute, relative as relative3, resolve as resolve4, sep } from "node:path";
+import { dirname as dirname6, isAbsolute as isAbsolute3, relative as relative4, resolve as resolve4, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/interventions.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 import { existsSync as existsSync6, readFileSync as readFileSync4, readdirSync as readdirSync2 } from "node:fs";
-import { join as join7, resolve as resolve3 } from "node:path";
+import { join as join8, resolve as resolve3 } from "node:path";
 var ObservationSchema = exports_external.object({
   turnId: exports_external.string().min(1),
   at: exports_external.string().min(1),
@@ -15726,17 +16079,17 @@ var HookPayloadSchema = exports_external.object({
 function now3() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
-function digest3(value) {
-  return createHash3("sha256").update(value).digest("hex");
+function digest4(value) {
+  return createHash4("sha256").update(value).digest("hex");
 }
 function stateRoot(value, homeArgument) {
-  return value ? expandPath(value) : join7(resolveHome(homeArgument), "state", "interventions");
+  return value ? expandPath(value) : join8(resolveHome(homeArgument), "state", "interventions");
 }
 function workspaceKey(cwd) {
-  return digest3(resolve3(cwd)).slice(0, 24);
+  return digest4(resolve3(cwd)).slice(0, 24);
 }
 function statePath(root, cwd, sessionId) {
-  return join7(root, workspaceKey(cwd), `${digest3(sessionId).slice(0, 32)}.json`);
+  return join8(root, workspaceKey(cwd), `${digest4(sessionId).slice(0, 32)}.json`);
 }
 function readState(path) {
   if (!existsSync6(path))
@@ -15746,8 +16099,8 @@ function readState(path) {
 function stateForSession(root, sessionId) {
   if (!existsSync6(root))
     throw new Error(`no observed intervention session: ${sessionId}`);
-  const filename = `${digest3(sessionId).slice(0, 32)}.json`;
-  const states = readdirSync2(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join7(root, entry.name, filename)).filter(existsSync6);
+  const filename = `${digest4(sessionId).slice(0, 32)}.json`;
+  const states = readdirSync2(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join8(root, entry.name, filename)).filter(existsSync6);
   if (states.length === 0)
     throw new Error(`no observed intervention session: ${sessionId}`);
   if (states.length > 1)
@@ -15826,7 +16179,7 @@ function runInterventionCommand(raw, stdin = "", homeArgument) {
     const observation = {
       turnId: payload.turn_id,
       at: now3(),
-      promptSha256: digest3(payload.prompt),
+      promptSha256: digest4(payload.prompt),
       promptBytes: Buffer.byteLength(payload.prompt)
     };
     state.observations = [...state.observations, observation].slice(-50);
@@ -15952,11 +16305,11 @@ function currentInvocation() {
 function shellQuote(value) {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
-function digest4(value) {
-  return createHash4("sha256").update(value).digest("hex");
+function digest5(value) {
+  return createHash5("sha256").update(value).digest("hex");
 }
 function sessionStatePath(platform, id) {
-  const identity = digest4(`${repositoryRoot}\x00${platform}\x00${id}`).slice(0, 40);
+  const identity = digest5(`${repositoryRoot}\x00${platform}\x00${id}`).slice(0, 40);
   return resolve4(tmpdir(), "rossovia-hooks", "artifact-consistency", `${identity}.jsonl`);
 }
 function readPaths(path) {
@@ -16005,9 +16358,9 @@ function rawChangedPaths(platform, event, payload) {
   return [];
 }
 function repositoryPath(rawPath, cwd) {
-  const absolute = isAbsolute(rawPath) ? resolve4(rawPath) : resolve4(cwd, rawPath);
-  const local = relative3(repositoryRoot, absolute);
-  if (!local || local === ".." || local.startsWith(`..${sep}`) || isAbsolute(local))
+  const absolute = isAbsolute3(rawPath) ? resolve4(rawPath) : resolve4(cwd, rawPath);
+  const local = relative4(repositoryRoot, absolute);
+  if (!local || local === ".." || local.startsWith(`..${sep}`) || isAbsolute3(local))
     return;
   return local.split(sep).join("/");
 }
@@ -16076,21 +16429,504 @@ function stopOutput(platform, payload, path) {
   return platform === "cursor" ? { followup_message: reminder } : { decision: "block", reason: reminder };
 }
 
+// src/tasks.ts
+import { randomUUID as randomUUID3 } from "node:crypto";
+import { existsSync as existsSync8, readFileSync as readFileSync6, realpathSync as realpathSync4 } from "node:fs";
+import { join as join9, relative as relative5 } from "node:path";
+class PrincipalTaskError extends Error {
+  code;
+  constructor(code, message, options = {}) {
+    super(message, options);
+    this.code = code;
+  }
+}
+function principalTasksPath(homeArgument) {
+  return join9(resolveHome(homeArgument), "state", "tasks.json");
+}
+function loadPrincipalTasks(homeArgument) {
+  return readPrincipalTaskSource(homeArgument).source;
+}
+function listPrincipalTasks(homeArgument) {
+  return loadPrincipalTasks(homeArgument);
+}
+function showPrincipalTask(homeArgument, idArgument) {
+  const source = loadPrincipalTasks(homeArgument);
+  return {
+    sourceRevision: source.sourceRevision,
+    task: taskById(source, idArgument)
+  };
+}
+function createPrincipalTask(homeArgument, arguments_) {
+  const { current, source } = readPrincipalTaskSource(homeArgument);
+  assertSourceRevision(source, arguments_.expectedSourceRevision);
+  const timestamp = now4();
+  const task = {
+    id: randomUUID3(),
+    title: nonempty6(arguments_.title, "task title"),
+    objective: nonempty6(arguments_.objective, "task objective"),
+    acceptance: nonemptyList(arguments_.acceptance, "task acceptance"),
+    origin: {
+      kind: "principal-explicit",
+      sourceRef: nonempty6(arguments_.sourceRef, "task source ref")
+    },
+    binding: bindingFor(current, arguments_.project, arguments_.worktree, arguments_.mission),
+    lifecycle: "open",
+    nextActor: arguments_.nextActor,
+    revision: 1,
+    corrections: [],
+    resultClaims: [],
+    executionLinks: [],
+    worktreeRebindings: [],
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  source.tasks.push(task);
+  source.tasks.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
+  source.sourceRevision += 1;
+  persistPrincipalTasks(current.home, source, current.projects.projects.map((project) => project.id));
+  return { sourceRevision: source.sourceRevision, task };
+}
+function assignPrincipalTask(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task) => {
+    assertUnsettled(task, "assign");
+    if (task.lifecycle === "verifying") {
+      throw new Error(`task ${task.id} has a submitted result awaiting Principal acceptance; correct it instead of reassigning it`);
+    }
+    task.nextActor = arguments_.nextActor;
+  });
+}
+function correctPrincipalTask(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task, timestamp) => {
+    assertUnsettled(task, "correct");
+    supersedeSubmittedClaim(task, timestamp, "correction");
+    task.corrections.push({
+      id: randomUUID3(),
+      at: timestamp,
+      statement: nonempty6(arguments_.statement, "task correction"),
+      sourceRef: nonempty6(arguments_.sourceRef, "task correction source ref"),
+      deliveries: []
+    });
+    task.lifecycle = "open";
+    task.nextActor = arguments_.nextActor;
+  });
+}
+function submitPrincipalTaskResult(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task, timestamp) => {
+    assertUnsettled(task, "submit");
+    if (task.lifecycle === "verifying" || submittedClaim(task) !== undefined) {
+      throw new Error(`task ${task.id} already has a submitted result awaiting Principal acceptance`);
+    }
+    task.resultClaims.push({
+      id: randomUUID3(),
+      submittedAt: timestamp,
+      summary: nonempty6(arguments_.summary, "task result summary"),
+      evidenceRefs: nonemptyList(arguments_.evidenceRefs, "task result evidence"),
+      evidence: PrincipalTaskResultEvidenceSchema.parse(arguments_.evidence ?? { kind: "agent-references-unverified" }),
+      sourceRef: nonempty6(arguments_.sourceRef, "task result source ref"),
+      standing: "submitted",
+      resolution: null
+    });
+    task.lifecycle = "verifying";
+    task.nextActor = "principal";
+  });
+}
+function acceptPrincipalTaskResult(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task, timestamp) => {
+    if (task.lifecycle !== "verifying") {
+      throw new Error(`task ${task.id} is ${task.lifecycle}; only a verifying task may be accepted`);
+    }
+    const claim = submittedClaim(task);
+    if (claim === undefined) {
+      throw new Error(`task ${task.id} has no submitted result claim`);
+    }
+    if (claim.evidence.kind === "runtime-verified-effect") {
+      if (arguments_.runtimeVerificationSelector === undefined || !sameRuntimeVerificationSelector(claim.evidence.selector, arguments_.runtimeVerificationSelector)) {
+        throw new Error(`task ${task.id} runtime-verified result must be revalidated through the live Workbench before acceptance`);
+      }
+    } else if (arguments_.runtimeVerificationSelector !== undefined) {
+      throw new Error(`task ${task.id} unverified result claim cannot be accepted as runtime-verified`);
+    }
+    claim.standing = "accepted";
+    claim.resolution = {
+      kind: "accepted",
+      at: timestamp,
+      sourceRef: nonempty6(arguments_.sourceRef, "task acceptance source ref"),
+      acceptanceBoundary: "workbench-local-task-only",
+      basis: claim.evidence.kind === "runtime-verified-effect" ? "runtime-verified-effect" : "agent-claim"
+    };
+    task.lifecycle = "settled";
+    task.nextActor = "none";
+  });
+}
+function reopenPrincipalTask(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task, timestamp) => {
+    if (task.lifecycle !== "settled") {
+      throw new Error(`task ${task.id} is ${task.lifecycle}; only a settled task may reopen`);
+    }
+    task.corrections.push({
+      id: randomUUID3(),
+      at: timestamp,
+      statement: nonempty6(arguments_.statement, "task reopen statement"),
+      sourceRef: nonempty6(arguments_.sourceRef, "task reopen source ref"),
+      deliveries: []
+    });
+    task.lifecycle = "open";
+    task.nextActor = arguments_.nextActor;
+  });
+}
+function linkPrincipalTaskExecution(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task, timestamp, home) => {
+    if (task.binding.kind !== "project-context" || task.binding.missionId === undefined) {
+      throw new PrincipalTaskError("invalid-transition", `task ${task.id} requires exact registered project and Mission context before execution can be linked`);
+    }
+    if (task.lifecycle === "settled" || task.lifecycle === "verifying") {
+      throw new PrincipalTaskError("invalid-transition", `task ${task.id} is ${task.lifecycle}; execution may link only while work remains active`);
+    }
+    if (task.executionLinks.some((link) => link.authorizationId === arguments_.authorizationId)) {
+      throw new PrincipalTaskError("invalid-transition", `task ${task.id} already links execution authorization ${arguments_.authorizationId}`);
+    }
+    const claimPath = executionAuthorizationClaimPath(home, arguments_.authorizationId);
+    const claim = readExecutionEvidence(claimPath, ExecutionAuthorizationClaimSchema, "claim");
+    const receiptPath = join9(home, claim.receipt.ref);
+    const expectedReceiptPath = executionAuthorizationReceiptPath(home, task.binding.projectId, task.binding.missionId, claim.proposalId);
+    if (receiptPath !== expectedReceiptPath) {
+      throw new Error(`execution authorization receipt source mismatch: expected ${expectedReceiptPath}, observed ${receiptPath}`);
+    }
+    const receipt = readExecutionEvidence(receiptPath, ExecutionAuthorizationReceiptSchema, "receipt");
+    const validated = validateExecutionAuthorizationClaim(claim, {
+      home,
+      claimPath,
+      receiptPath,
+      receipt,
+      projectId: task.binding.projectId,
+      missionId: task.binding.missionId,
+      proposalId: receipt.proposalId,
+      proposalDigest: receipt.proposalDigest
+    });
+    if (validated.authorizationId !== arguments_.authorizationId) {
+      throw new Error(`execution authorization ID mismatch: expected ${arguments_.authorizationId}, observed ${validated.authorizationId}`);
+    }
+    if (validated.projectId !== task.binding.projectId || validated.missionId !== task.binding.missionId) {
+      throw new Error(`execution authorization does not belong to task ${task.id} project and Mission context`);
+    }
+    task.executionLinks.push({
+      authorizationId: validated.authorizationId,
+      proposalDigest: validated.proposalDigest,
+      claimSourceRef: relative5(home, claimPath),
+      linkedAt: timestamp,
+      sourceRef: nonempty6(arguments_.sourceRef, "task execution link source ref")
+    });
+  });
+}
+function rebindPrincipalTaskWorktree(homeArgument, arguments_) {
+  return mutateTask(homeArgument, arguments_, (task, timestamp) => {
+    assertUnsettled(task, "rebind Worktree for");
+    if (task.binding.kind !== "project-context" || task.binding.missionId === undefined || task.binding.worktreePath === undefined) {
+      throw new Error(`task ${task.id} requires exact registered project, Mission, and current Worktree context before Worktree rebinding`);
+    }
+    const expectedWorktreePath = nonempty6(arguments_.expectedWorktreePath, "expected task Worktree path");
+    if (task.binding.worktreePath !== expectedWorktreePath) {
+      throw new PrincipalTaskError("task-drift", `task Worktree is stale for ${task.id}: expected ${expectedWorktreePath}, current ${task.binding.worktreePath}`);
+    }
+    const current = loadHome(homeArgument);
+    const primaryWorkspace = workspaceFor(current.workspaces, task.binding.projectId);
+    const toWorktreePath = observedWorktree(primaryWorkspace.path, arguments_.worktree);
+    if (toWorktreePath === task.binding.worktreePath) {
+      throw new Error(`task ${task.id} is already bound to Worktree ${toWorktreePath}`);
+    }
+    const replacementStatus = requiredGit(["status", "--porcelain"], toWorktreePath) ?? "";
+    if (replacementStatus.trim().length > 0) {
+      throw new Error(`task ${task.id} replacement Worktree is not clean: ${toWorktreePath}`);
+    }
+    (task.worktreeRebindings ??= []).push({
+      fromWorktreePath: task.binding.worktreePath,
+      toWorktreePath,
+      reboundAt: timestamp,
+      sourceRef: nonempty6(arguments_.sourceRef, "task Worktree rebind source ref")
+    });
+    task.binding.worktreePath = toWorktreePath;
+  });
+}
+function mutateTask(homeArgument, expectation, change) {
+  const { current, source } = readPrincipalTaskSource(homeArgument);
+  const projectIds = current.projects.projects.map((project) => project.id);
+  assertSourceRevision(source, expectation.expectedSourceRevision);
+  const task = taskById(source, expectation.id);
+  if (task.revision !== expectation.expectedRevision) {
+    throw new PrincipalTaskError("task-drift", `task revision is stale for ${task.id}: expected ${expectation.expectedRevision}, current ${task.revision}`);
+  }
+  const timestamp = now4();
+  change(task, timestamp, current.home);
+  task.revision += 1;
+  task.updatedAt = timestamp;
+  source.sourceRevision += 1;
+  persistPrincipalTasks(current.home, source, projectIds);
+  return { sourceRevision: source.sourceRevision, task };
+}
+function persistPrincipalTasks(home, source, projectIds) {
+  try {
+    const validated = validatePrincipalTasks(PrincipalTasksSchema.parse(source), new Set(projectIds));
+    saveJson(principalTasksPath(home), validated);
+  } catch (error51) {
+    if (error51 instanceof PrincipalTaskError)
+      throw error51;
+    throw new PrincipalTaskError("source-unavailable", errorMessage2(error51), { cause: error51 });
+  }
+}
+function readPrincipalTaskSource(homeArgument) {
+  try {
+    const current = loadHome(homeArgument);
+    return {
+      current,
+      source: validatePrincipalTasks(loadJson(principalTasksPath(current.home), PrincipalTasksSchema), new Set(current.projects.projects.map((project) => project.id)))
+    };
+  } catch (error51) {
+    if (error51 instanceof PrincipalTaskError)
+      throw error51;
+    throw new PrincipalTaskError("source-unavailable", errorMessage2(error51), { cause: error51 });
+  }
+}
+function validatePrincipalTasks(source, projectIds) {
+  const taskIds = new Set;
+  for (const task of source.tasks) {
+    const taskKey = task.id.toLowerCase();
+    if (taskIds.has(taskKey))
+      throw new Error(`duplicate Principal task id: ${task.id}`);
+    taskIds.add(taskKey);
+    if (task.binding.kind === "project-context" && !projectIds.has(task.binding.projectId)) {
+      throw new Error(`Principal task ${task.id} references unknown registered project id: ${task.binding.projectId}`);
+    }
+    assertUniqueIds(task.corrections, `Principal task ${task.id} correction`);
+    assertUniqueIds(task.resultClaims, `Principal task ${task.id} result claim`);
+    const deliveryInputIds = new Set;
+    const deliveryEventIds = new Set;
+    for (const correction of task.corrections) {
+      for (const delivery of correction.deliveries) {
+        if (deliveryInputIds.has(delivery.inputId)) {
+          throw new Error(`duplicate Principal task ${task.id} correction delivery input: ${delivery.inputId}`);
+        }
+        deliveryInputIds.add(delivery.inputId);
+        if (deliveryEventIds.has(delivery.inputEventId)) {
+          throw new Error(`duplicate Principal task ${task.id} correction delivery event: ${delivery.inputEventId}`);
+        }
+        deliveryEventIds.add(delivery.inputEventId);
+      }
+    }
+    const authorizationIds = new Set;
+    for (const link of task.executionLinks) {
+      if (authorizationIds.has(link.authorizationId)) {
+        throw new Error(`duplicate Principal task ${task.id} execution authorization: ${link.authorizationId}`);
+      }
+      authorizationIds.add(link.authorizationId);
+    }
+  }
+  return source;
+}
+function readExecutionEvidence(path, schema, kind) {
+  let source;
+  try {
+    source = readFileSync6(path, "utf8");
+  } catch (error51) {
+    throw new PrincipalTaskError("source-unavailable", `cannot read execution authorization ${kind} ${path}: ${error51 instanceof Error ? error51.message : String(error51)}`, { cause: error51 });
+  }
+  try {
+    return schema.parse(JSON.parse(source));
+  } catch (error51) {
+    throw new PrincipalTaskError("source-unavailable", `invalid execution authorization ${kind} ${path}: ${error51 instanceof Error ? error51.message : String(error51)}`, { cause: error51 });
+  }
+}
+function assertUniqueIds(entries, label) {
+  const ids = new Set;
+  for (const entry of entries) {
+    const key = entry.id.toLowerCase();
+    if (ids.has(key))
+      throw new Error(`duplicate ${label} id: ${entry.id}`);
+    ids.add(key);
+  }
+}
+function bindingFor(current, projectQuery, worktreeArgument, missionArgument) {
+  if (projectQuery === undefined) {
+    if (worktreeArgument !== undefined) {
+      throw new Error("task worktree context requires a registered project");
+    }
+    if (missionArgument !== undefined) {
+      throw new Error("task Mission context requires a registered project");
+    }
+    return { kind: "independent" };
+  }
+  const project = registeredProjectByQuery(current.projects, projectQuery);
+  const workspace = workspaceFor(current.workspaces, project.id);
+  return {
+    kind: "project-context",
+    projectId: project.id,
+    ...worktreeArgument === undefined ? {} : { worktreePath: observedWorktree(workspace.path, worktreeArgument) },
+    ...missionArgument === undefined ? {} : { missionId: primaryMissionContext(workspace.path, missionArgument) }
+  };
+}
+function primaryMissionContext(primaryWorkspace, missionArgument) {
+  const missionId4 = nonempty6(missionArgument, "task Mission context");
+  if (!/^[a-z0-9][a-z0-9-]*$/u.test(missionId4)) {
+    throw new Error("task Mission context must use lowercase letters, digits, and hyphens");
+  }
+  const path = join9(primaryWorkspace, "operations", "missions", `${missionId4}.json`);
+  const mission = loadMissionRecord(path);
+  if (mission.id !== missionId4) {
+    throw new Error(`task Mission context id mismatch: expected ${missionId4}, observed ${mission.id}`);
+  }
+  return mission.id;
+}
+function observedWorktree(primaryWorkspace, worktreeArgument) {
+  const candidate = expandPath(worktreeArgument);
+  if (!existsSync8(candidate))
+    throw new Error(`task worktree context does not exist: ${candidate}`);
+  const canonical3 = realpathSync4(candidate);
+  const observed = requiredGit(["worktree", "list", "--porcelain"], primaryWorkspace).split(/\r?\n/).filter((line) => line.startsWith("worktree ")).map((line) => realpathSync4(line.slice("worktree ".length)));
+  if (!observed.includes(canonical3)) {
+    throw new Error(`task worktree context is not an observed worktree of the registered project: ${canonical3}`);
+  }
+  return canonical3;
+}
+function taskById(source, idArgument) {
+  const id = nonempty6(idArgument, "task id");
+  const folded = id.toLowerCase();
+  const matches = source.tasks.filter((task) => task.id.toLowerCase() === folded);
+  if (matches.length === 0) {
+    throw new PrincipalTaskError("task-not-found", `Principal task not found: ${id}`);
+  }
+  if (matches.length > 1)
+    throw new Error(`Principal task id is ambiguous: ${id}`);
+  return matches[0];
+}
+function assertSourceRevision(source, expected) {
+  if (!Number.isSafeInteger(expected) || expected < 0) {
+    throw new Error("expected source revision must be a non-negative integer");
+  }
+  if (source.sourceRevision !== expected) {
+    throw new PrincipalTaskError("task-drift", `Principal task source revision is stale: expected ${expected}, current ${source.sourceRevision}`);
+  }
+}
+function assertUnsettled(task, action) {
+  if (task.lifecycle === "settled") {
+    throw new Error(`cannot ${action} settled task ${task.id}; reopen it first`);
+  }
+}
+function submittedClaim(task) {
+  return task.resultClaims.find((claim) => claim.standing === "submitted");
+}
+function supersedeSubmittedClaim(task, timestamp, reason) {
+  const claim = submittedClaim(task);
+  if (claim === undefined)
+    return;
+  claim.standing = "superseded";
+  claim.resolution = {
+    kind: "superseded",
+    at: timestamp,
+    reason
+  };
+}
+function nonempty6(value, label) {
+  const normalized = value.trim();
+  if (!normalized)
+    throw new Error(`${label} must be a non-empty string`);
+  return normalized;
+}
+function nonemptyList(values, label) {
+  if (values.length === 0)
+    throw new Error(`${label} must contain at least one item`);
+  return values.map((value) => nonempty6(value, label));
+}
+function sameRuntimeVerificationSelector(left, right) {
+  return left.kind === right.kind && left.effectId === right.effectId && left.verificationEventId === right.verificationEventId;
+}
+function now4() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+function errorMessage2(error51) {
+  return error51 instanceof Error ? error51.message : String(error51);
+}
+
+// src/local-task-control-plane.ts
+class LocalTaskControlError extends Error {
+  code;
+  constructor(code, message, options = {}) {
+    super(message, options);
+    this.code = code;
+  }
+}
+var defaultDependencies = {
+  list: listPrincipalTasks,
+  show: showPrincipalTask,
+  create: createPrincipalTask,
+  assign: assignPrincipalTask,
+  correct: correctPrincipalTask,
+  linkExecution: linkPrincipalTaskExecution,
+  rebindWorktree: rebindPrincipalTaskWorktree,
+  submit: submitPrincipalTaskResult,
+  accept: acceptPrincipalTaskResult,
+  reopen: reopenPrincipalTask
+};
+function createLocalTaskControlPlane(home, dependencies = defaultDependencies) {
+  return {
+    list() {
+      return executeTaskOperation("source-unavailable", () => dependencies.list(home));
+    },
+    show(id) {
+      return executeTaskOperation("source-unavailable", () => dependencies.show(home, id));
+    },
+    execute(command) {
+      if (command.kind === "create") {
+        return executeTaskOperation("invalid-task", () => dependencies.create(home, command.arguments));
+      }
+      if (command.kind === "assign") {
+        return executeTaskOperation("invalid-transition", () => dependencies.assign(home, command.arguments));
+      }
+      if (command.kind === "correct") {
+        return executeTaskOperation("invalid-transition", () => dependencies.correct(home, command.arguments));
+      }
+      if (command.kind === "link-execution") {
+        return executeTaskOperation("source-unavailable", () => dependencies.linkExecution(home, command.arguments));
+      }
+      if (command.kind === "rebind-worktree") {
+        return executeTaskOperation("invalid-transition", () => dependencies.rebindWorktree(home, command.arguments));
+      }
+      if (command.kind === "submit") {
+        return executeTaskOperation("invalid-transition", () => dependencies.submit(home, command.arguments));
+      }
+      if (command.kind === "accept") {
+        return executeTaskOperation("invalid-transition", () => dependencies.accept(home, command.arguments));
+      }
+      return executeTaskOperation("invalid-transition", () => dependencies.reopen(home, command.arguments));
+    }
+  };
+}
+function executeTaskOperation(fallback, operation) {
+  try {
+    return operation();
+  } catch (error51) {
+    if (error51 instanceof LocalTaskControlError)
+      throw error51;
+    if (error51 instanceof PrincipalTaskError) {
+      throw new LocalTaskControlError(error51.code, error51.message, { cause: error51 });
+    }
+    throw new LocalTaskControlError(fallback, error51 instanceof Error ? error51.message : String(error51), { cause: error51 });
+  }
+}
+
 // src/migration.ts
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 import {
   cpSync,
-  existsSync as existsSync8,
+  existsSync as existsSync9,
   mkdirSync as mkdirSync4,
-  readFileSync as readFileSync6,
+  readFileSync as readFileSync7,
   readdirSync as readdirSync3,
   rmSync as rmSync4,
   statSync as statSync2,
   writeFileSync as writeFileSync3
 } from "node:fs";
-import { join as join8 } from "node:path";
-function digest5(path) {
-  return createHash5("sha256").update(readFileSync6(path)).digest("hex");
+import { join as join10 } from "node:path";
+function digest6(path) {
+  return createHash6("sha256").update(readFileSync7(path)).digest("hex");
 }
 function migrateRecord(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -16109,7 +16945,7 @@ function filesBelow(root) {
   while (pending.length > 0) {
     const current = pending.pop();
     for (const entry of readdirSync3(current, { withFileTypes: true })) {
-      const path = join8(current, entry.name);
+      const path = join10(current, entry.name);
       if (entry.isSymbolicLink())
         continue;
       if (entry.isDirectory())
@@ -16123,14 +16959,14 @@ function filesBelow(root) {
 function migrateNamespaceFiles(home) {
   for (const path of filesBelow(home)) {
     if (path.endsWith(".json")) {
-      const current = JSON.parse(readFileSync6(path, "utf8"));
+      const current = JSON.parse(readFileSync7(path, "utf8"));
       const migrated = migrateRecord(current);
       if (JSON.stringify(migrated) !== JSON.stringify(current)) {
         writeFileSync3(path, `${JSON.stringify(migrated, null, 2)}
 `, "utf8");
       }
     } else if (path.endsWith(".jsonl")) {
-      const original = readFileSync6(path, "utf8");
+      const original = readFileSync7(path, "utf8");
       let changed = false;
       const lines = original.split(/\r?\n/).map((line, index) => {
         if (!line.trim())
@@ -16153,37 +16989,37 @@ function migrateNamespaceFiles(home) {
   }
 }
 function readObject(path) {
-  const value = JSON.parse(readFileSync6(path, "utf8"));
+  const value = JSON.parse(readFileSync7(path, "utf8"));
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`expected a JSON object in ${path}`);
   }
   return value;
 }
 function validateLegacySource(source) {
-  const manifest = readObject(join8(source, "manifest.json"));
+  const manifest = readObject(join10(source, "manifest.json"));
   if (manifest.version !== "atthis.home.v1")
     throw new Error("legacy manifest version must be atthis.home.v1");
   if (manifest.namespace !== "atthis")
     throw new Error("legacy manifest namespace must be atthis");
-  const projects = readObject(join8(source, "config", "projects.json"));
+  const projects = readObject(join10(source, "config", "projects.json"));
   if (projects.version !== "atthis.projects.v1")
     throw new Error("legacy projects version must be atthis.projects.v1");
 }
 function reconcileObsoleteMachinePreferences(home) {
-  const path = join8(home, "state", "preferences.json");
-  if (!existsSync8(path))
+  const path = join10(home, "state", "preferences.json");
+  if (!existsSync9(path))
     return;
-  const parsed = PreferencesSchema.parse(JSON.parse(readFileSync6(path, "utf8")));
+  const parsed = PreferencesSchema.parse(JSON.parse(readFileSync7(path, "utf8")));
   if (parsed.preferences.length > 0) {
     throw new Error("legacy machine preferences require explicit environment reconciliation before migration");
   }
   rmSync4(path);
 }
 function reconcileLegacyPreferenceReceipts(home) {
-  const path = join8(home, "receipts", "preferences.jsonl");
-  if (!existsSync8(path))
+  const path = join10(home, "receipts", "preferences.jsonl");
+  if (!existsSync9(path))
     return;
-  const original = readFileSync6(path, "utf8");
+  const original = readFileSync7(path, "utf8");
   let changed = false;
   const lines = original.split(/\r?\n/).map((line, index) => {
     if (!line.trim())
@@ -16246,14 +17082,14 @@ function clearMigrationTarget(target) {
   for (const entry of readdirSync3(target, { withFileTypes: true })) {
     if (entry.name === migrationMarkerName)
       continue;
-    rmSync4(join8(target, entry.name), { recursive: true, force: true });
+    rmSync4(join10(target, entry.name), { recursive: true, force: true });
   }
 }
 function prepareMigrationTarget(source, target) {
-  const marker = join8(target, migrationMarkerName);
-  if (existsSync8(target)) {
-    if (existsSync8(marker)) {
-      const interrupted = MigrationMarkerSchema.parse(JSON.parse(readFileSync6(marker, "utf8")));
+  const marker = join10(target, migrationMarkerName);
+  if (existsSync9(target)) {
+    if (existsSync9(marker)) {
+      const interrupted = MigrationMarkerSchema.parse(JSON.parse(readFileSync7(marker, "utf8")));
       if (interrupted.sourceHome !== source || interrupted.targetHome !== target) {
         throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
       }
@@ -16272,11 +17108,11 @@ function prepareMigrationTarget(source, target) {
   return marker;
 }
 function copyLegacyHome(source, target) {
-  if (existsSync8(join8(source, migrationMarkerName))) {
+  if (existsSync9(join10(source, migrationMarkerName))) {
     throw new Error(`legacy source contains reserved migration marker: ${migrationMarkerName}`);
   }
   for (const entry of readdirSync3(source, { withFileTypes: true })) {
-    cpSync(join8(source, entry.name), join8(target, entry.name), { recursive: true, dereference: false });
+    cpSync(join10(source, entry.name), join10(target, entry.name), { recursive: true, dereference: false });
   }
 }
 function migrateLegacyHome(homeArgument, fromHomeArgument) {
@@ -16284,19 +17120,19 @@ function migrateLegacyHome(homeArgument, fromHomeArgument) {
   const target = expandPath(homeArgument ?? process.env.ROSSO_HOME ?? "~/.rosso");
   if (source === target)
     throw new Error("legacy source and rossovia workbench target home must differ");
-  if (!existsSync8(source) || !statSync2(source).isDirectory()) {
+  if (!existsSync9(source) || !statSync2(source).isDirectory()) {
     throw new Error(`legacy Atthis home does not exist: ${source}`);
   }
-  const sourceManifest = join8(source, "manifest.json");
-  const sourceProjects = join8(source, "config", "projects.json");
+  const sourceManifest = join10(source, "manifest.json");
+  const sourceProjects = join10(source, "config", "projects.json");
   for (const required2 of [sourceManifest, sourceProjects]) {
-    if (!existsSync8(required2) || !statSync2(required2).isFile()) {
+    if (!existsSync9(required2) || !statSync2(required2).isFile()) {
       throw new Error(`required legacy Atthis source not found: ${required2}`);
     }
   }
   validateLegacySource(source);
-  const sourceManifestDigest = digest5(sourceManifest);
-  const sourceProjectsDigest = digest5(sourceProjects);
+  const sourceManifestDigest = digest6(sourceManifest);
+  const sourceProjectsDigest = digest6(sourceProjects);
   let verifiedProjectId = null;
   const marker = prepareMigrationTarget(source, target);
   try {
@@ -16330,7 +17166,7 @@ function migrateLegacyHome(homeArgument, fromHomeArgument) {
       sourceProjectsDigest,
       verifiedProjectId
     };
-    writeFileSync3(join8(target, "receipts", "namespace-migrations.jsonl"), `${sortedJson(receipt)}
+    writeFileSync3(join10(target, "receipts", "namespace-migrations.jsonl"), `${sortedJson(receipt)}
 `, "utf8");
     rmSync4(marker);
   } catch (error51) {
@@ -16344,28 +17180,28 @@ function migrateLegacyHome(homeArgument, fromHomeArgument) {
     sourceHome: source,
     targetHome: target,
     verifiedProjectId,
-    receipt: join8(target, "receipts", "namespace-migrations.jsonl")
+    receipt: join10(target, "receipts", "namespace-migrations.jsonl")
   };
 }
 
 // src/preferences.ts
-import { createHash as createHash6 } from "node:crypto";
-import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync3, rmSync as rmSync5, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname7, join as join9 } from "node:path";
-function nonempty5(value, label) {
+import { createHash as createHash7 } from "node:crypto";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync8, renameSync as renameSync3, rmSync as rmSync5, writeFileSync as writeFileSync4 } from "node:fs";
+import { dirname as dirname7, join as join11 } from "node:path";
+function nonempty7(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
   return normalized;
 }
-function now4() {
+function now5() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 function preferencePath(home) {
-  return join9(home, "config", "preferences.json");
+  return join11(home, "config", "preferences.json");
 }
 function receiptPath(home) {
-  return join9(home, "receipts", "preferences.jsonl");
+  return join11(home, "receipts", "preferences.jsonl");
 }
 function canonical3(value) {
   if (Array.isArray(value))
@@ -16375,8 +17211,8 @@ function canonical3(value) {
   }
   return value;
 }
-function digest6(preference) {
-  return createHash6("sha256").update(JSON.stringify(canonical3(preference))).digest("hex");
+function digest7(preference) {
+  return createHash7("sha256").update(JSON.stringify(canonical3(preference))).digest("hex");
 }
 function validateReceiptStream(value) {
   for (const [index, line] of value.split(/\r?\n/).entries()) {
@@ -16405,15 +17241,15 @@ function loadPreferences(home, projectIds) {
 function commitPreferenceChange(home, source, action, preference) {
   const sourcePath = preferencePath(home);
   const receiptsPath = receiptPath(home);
-  const existingReceipts = existsSync9(receiptsPath) ? readFileSync7(receiptsPath, "utf8") : "";
+  const existingReceipts = existsSync10(receiptsPath) ? readFileSync8(receiptsPath, "utf8") : "";
   validateReceiptStream(existingReceipts);
   const receipt = {
     version: "rosso.preference-receipt.v2",
-    at: now4(),
+    at: now5(),
     action,
     id: preference.id,
     projectId: preference.projectId ?? null,
-    recordDigest: digest6(preference)
+    recordDigest: digest7(preference)
   };
   const nextSource = `${JSON.stringify(source, null, 2)}
 `;
@@ -16423,7 +17259,7 @@ function commitPreferenceChange(home, source, action, preference) {
   mkdirSync5(dirname7(receiptsPath), { recursive: true });
   const sourceTemporary = `${sourcePath}.preference-txn.tmp`;
   const receiptTemporary = `${receiptsPath}.preference-txn.tmp`;
-  const previousSource = readFileSync7(sourcePath, "utf8");
+  const previousSource = readFileSync8(sourcePath, "utf8");
   writeFileSync4(sourceTemporary, nextSource, "utf8");
   try {
     writeFileSync4(receiptTemporary, nextReceipts, "utf8");
@@ -16456,11 +17292,11 @@ function setPreference(homeArgument, arguments_) {
   const current = loadHome(homeArgument);
   const preferences = loadPreferences(current.home, new Set(current.projects.projects.map((project) => project.id)));
   const projectId = projectIdFor(current.projects, arguments_.project);
-  const id = nonempty5(arguments_.id, "preference id");
-  const statement = nonempty5(arguments_.statement, "preference statement");
-  const reopenWhen = arguments_.reopenWhen === undefined ? undefined : nonempty5(arguments_.reopenWhen, "reopen condition");
+  const id = nonempty7(arguments_.id, "preference id");
+  const statement = nonempty7(arguments_.statement, "preference statement");
+  const reopenWhen = arguments_.reopenWhen === undefined ? undefined : nonempty7(arguments_.reopenWhen, "reopen condition");
   const previous = preferences.preferences.find((preference2) => preference2.id.toLowerCase() === id.toLowerCase() && preference2.projectId === projectId);
-  const timestamp = now4();
+  const timestamp = now5();
   const preference = {
     id,
     statement,
@@ -16514,7 +17350,7 @@ function retirePreference(homeArgument, arguments_) {
   const current = loadHome(homeArgument);
   const preferences = loadPreferences(current.home, new Set(current.projects.projects.map((project) => project.id)));
   const projectId = projectIdFor(current.projects, arguments_.project);
-  const id = nonempty5(arguments_.id, "preference id");
+  const id = nonempty7(arguments_.id, "preference id");
   const preference = preferences.preferences.find((entry) => entry.id.toLowerCase() === id.toLowerCase() && entry.projectId === projectId);
   if (!preference)
     throw new Error(`no ${scopeFor(projectId)} preference matches '${id}' for ${projectId ?? "all projects"}`);
@@ -16525,8 +17361,8 @@ function retirePreference(homeArgument, arguments_) {
 }
 
 // src/register.ts
-import { basename as basename2, join as join10 } from "node:path";
-function nonempty6(value, label) {
+import { basename as basename2, join as join12 } from "node:path";
+function nonempty8(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
@@ -16541,8 +17377,8 @@ function registerProject(homeArgument, arguments_) {
   const current = loadHome(homeArgument);
   const root = gitRoot(arguments_.path);
   const repository = repositoryLocator(requiredGit(["remote", "get-url", "origin"], root));
-  const additions = [basename2(root), repositoryBasename(repository), ...arguments_.aliases].map((alias) => nonempty6(alias, "alias"));
-  const projectId = nonempty6(arguments_.id, "project id");
+  const additions = [basename2(root), repositoryBasename(repository), ...arguments_.aliases].map((alias) => nonempty8(alias, "alias"));
+  const projectId = nonempty8(arguments_.id, "project id");
   let project = current.projects.projects.find((entry) => entry.id === projectId);
   if (!project) {
     project = { id: projectId, repository, aliases: [] };
@@ -16561,13 +17397,13 @@ function registerProject(homeArgument, arguments_) {
   }
   validateProjects(current.projects);
   validateWorkspaces(current.workspaces);
-  saveJson(join10(current.home, "config", "projects.json"), current.projects);
-  saveJson(join10(current.home, "state", "workspaces.json"), current.workspaces);
+  saveJson(join12(current.home, "config", "projects.json"), current.projects);
+  saveJson(join12(current.home, "state", "workspaces.json"), current.workspaces);
   return { project, workspace };
 }
 
 // src/resolve.ts
-function nonempty7(value, label) {
+function nonempty9(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
@@ -16578,7 +17414,7 @@ function fold2(value) {
 }
 function resolveProject(homeArgument, queryArgument) {
   const { home, projects, workspaces } = loadHome(homeArgument);
-  const query = nonempty7(queryArgument, "query");
+  const query = nonempty9(queryArgument, "query");
   const folded = fold2(query);
   const matches = projects.projects.filter((project2) => fold2(project2.id) === folded || project2.aliases.some((alias) => fold2(alias) === folded));
   if (matches.length > 1)
@@ -16614,8 +17450,8 @@ function resolveProject(homeArgument, queryArgument) {
 }
 
 // src/roots.ts
-import { existsSync as existsSync10, readdirSync as readdirSync4, realpathSync as realpathSync4, statSync as statSync3 } from "node:fs";
-import { basename as basename3, join as join11 } from "node:path";
+import { existsSync as existsSync11, readdirSync as readdirSync4, realpathSync as realpathSync5, statSync as statSync3 } from "node:fs";
+import { basename as basename3, join as join13 } from "node:path";
 function foldedCompare3(left, right) {
   const leftFolded = left.toLowerCase();
   const rightFolded = right.toLowerCase();
@@ -16638,7 +17474,7 @@ function addRoots(home, current, paths) {
     version: "rosso.roots.v1",
     roots: [...new Set([...current.roots, ...additions])].sort(foldedCompare3)
   });
-  saveJson(join11(home, "state", "roots.json"), roots);
+  saveJson(join13(home, "state", "roots.json"), roots);
   return roots;
 }
 function discoverGitRoots(root, maximumDepth = 2) {
@@ -16647,7 +17483,7 @@ function discoverGitRoots(root, maximumDepth = 2) {
   const skipped = new Set(["node_modules", "vendor", "dist", "build"]);
   while (pending.length > 0) {
     const current = pending.shift();
-    if (existsSync10(join11(current.path, ".git"))) {
+    if (existsSync11(join13(current.path, ".git"))) {
       discovered.add(gitRoot(current.path));
       continue;
     }
@@ -16659,7 +17495,7 @@ function discoverGitRoots(root, maximumDepth = 2) {
     } catch (error51) {
       throw new Error(`cannot scan workspace root ${current.path}: ${error51 instanceof Error ? error51.message : String(error51)}`);
     }
-    pending.push(...children.map((entry) => ({ path: join11(current.path, entry.name), depth: current.depth + 1 })));
+    pending.push(...children.map((entry) => ({ path: join13(current.path, entry.name), depth: current.depth + 1 })));
   }
   return [...discovered].sort(foldedCompare3);
 }
@@ -16675,8 +17511,8 @@ function scanRoots(home, roots) {
       const aliases = new Set([basename3(repositoryRoot2)]);
       if (repository)
         aliases.add(repositoryBasename(repository));
-      entries.set(realpathSync4(repositoryRoot2), {
-        path: realpathSync4(repositoryRoot2),
+      entries.set(realpathSync5(repositoryRoot2), {
+        path: realpathSync5(repositoryRoot2),
         repository,
         aliases: [...aliases].sort(foldedCompare3)
       });
@@ -16687,22 +17523,22 @@ function scanRoots(home, roots) {
     generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
     entries: [...entries.values()].sort((left, right) => foldedCompare3(left.path, right.path))
   });
-  saveJson(join11(home, "cache", "workspaces.json"), index);
+  saveJson(join13(home, "cache", "workspaces.json"), index);
   return index;
 }
 
 // src/setup.ts
-import { createHash as createHash7, randomUUID as randomUUID3 } from "node:crypto";
-import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync8, renameSync as renameSync4, rmSync as rmSync6, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname8, join as join13, relative as relative4, resolve as resolve5 } from "node:path";
+import { createHash as createHash8, randomUUID as randomUUID4 } from "node:crypto";
+import { existsSync as existsSync12, mkdirSync as mkdirSync6, readFileSync as readFileSync9, renameSync as renameSync4, rmSync as rmSync6, writeFileSync as writeFileSync5 } from "node:fs";
+import { dirname as dirname8, join as join15, relative as relative6, resolve as resolve5 } from "node:path";
 
 // src/setup-adapters.ts
-import { join as join12 } from "node:path";
+import { join as join14 } from "node:path";
 var codexAdapter = {
   harness: "codex",
   projectionPath(targetRoot) {
     const root = expandPath(targetRoot ?? process.env.CODEX_HOME ?? "~/.codex");
-    return join12(root, "AGENTS.md");
+    return join14(root, "AGENTS.md");
   },
   render(module) {
     const startMarker = `<!-- rossovia:workbench.setup.${module.id}:start -->`;
@@ -16746,7 +17582,7 @@ var supportedSelection = {
 var changelogModule = multiAgentDelegationModule.changelogPrefix;
 function selectSetupModules(homeArgument, requested) {
   const home = resolveHome(homeArgument);
-  const path = join13(home, "config", "setup.json");
+  const path = join15(home, "config", "setup.json");
   const current = loadJson(path, SetupSelectionSchema);
   const selections = [...current.selections];
   for (const value of requested) {
@@ -16764,7 +17600,7 @@ function setupStatus(homeArgument, options = {}) {
   const sourceRoot = resolveSourceRoot();
   assertSetupSourceClean(sourceRoot);
   const sourceRevision = gitOutput(sourceRoot, ["rev-parse", "HEAD"], "resolve setup source revision");
-  const selection = loadJson(join13(home, "config", "setup.json"), SetupSelectionSchema);
+  const selection = loadJson(join15(home, "config", "setup.json"), SetupSelectionSchema);
   return {
     version: "rosso.setup-status.v1",
     sourceRevision,
@@ -16776,7 +17612,7 @@ function applySetup(homeArgument, options = {}) {
   const sourceRoot = resolveSourceRoot();
   assertSetupSourceClean(sourceRoot);
   const sourceRevision = gitOutput(sourceRoot, ["rev-parse", "HEAD"], "resolve setup source revision");
-  const selection = loadJson(join13(home, "config", "setup.json"), SetupSelectionSchema);
+  const selection = loadJson(join15(home, "config", "setup.json"), SetupSelectionSchema);
   for (const entry of selection.selections) {
     applyModule(home, entry, sourceRoot, sourceRevision, options.targetRoot);
   }
@@ -16794,7 +17630,7 @@ function resolveSourceRoot() {
     throw new Error("cannot resolve setup source: executable path is unavailable");
   const executable = resolve5(entry);
   const sourceRoot = gitOutput(dirname8(executable), ["rev-parse", "--show-toplevel"], "resolve setup source root");
-  const sourceRelative = relative4(sourceRoot, executable);
+  const sourceRelative = relative6(sourceRoot, executable);
   if (sourceRelative.startsWith("..") || sourceRelative.length === 0) {
     throw new Error("cannot resolve setup source: executable is outside its Git checkout");
   }
@@ -16805,11 +17641,11 @@ function resolveSourceRoot() {
   return sourceRoot;
 }
 function receiptPath2(home, entry) {
-  return join13(home, "receipts", "setup", `${entry.harness}.${entry.module}.json`);
+  return join15(home, "receipts", "setup", `${entry.harness}.${entry.module}.json`);
 }
 function readReceipt(home, entry) {
   const path = receiptPath2(home, entry);
-  return existsSync11(path) ? loadJson(path, SetupReceiptSchema) : null;
+  return existsSync12(path) ? loadJson(path, SetupReceiptSchema) : null;
 }
 function moduleStatus(home, entry, sourceRoot, sourceRevision, targetRoot) {
   const adapter = setupAdapter(entry.harness);
@@ -16824,8 +17660,8 @@ function moduleStatus(home, entry, sourceRoot, sourceRevision, targetRoot) {
   }
   const changes = applicableChanges(sourceRoot, receipt.sourceRevision, sourceRevision);
   const current = readManagedBlock(path, projection.startMarker, projection.endMarker);
-  const drifted = current === null || digest7(current) !== receipt.projectionDigest;
-  const desiredChanged = receipt.projectionDigest !== digest7(projection.content);
+  const drifted = current === null || digest8(current) !== receipt.projectionDigest;
+  const desiredChanged = receipt.projectionDigest !== digest8(projection.content);
   if (drifted) {
     return statusResult(entry, desiredChanged || changes.length > 0 ? "conflict" : "drifted", sourceRevision, receipt.sourceRevision, path, changes);
   }
@@ -16850,9 +17686,9 @@ function applyModule(home, entry, sourceRoot, sourceRevision, targetRoot) {
   if (receipt && !gitSucceeds(sourceRoot, ["cat-file", "-e", `${receipt.sourceRevision}^{commit}`])) {
     throw new Error(`setup applied baseline is unavailable: ${receipt.sourceRevision}. ` + "Rossovia will not apply until that Git commit is available for reconciliation.");
   }
-  const existing = existsSync11(path) ? readFileSync8(path, "utf8") : "";
+  const existing = existsSync12(path) ? readFileSync9(path, "utf8") : "";
   const current = readManagedBlockFromText(existing, projection.startMarker, projection.endMarker);
-  if (receipt && (current === null || digest7(current) !== receipt.projectionDigest)) {
+  if (receipt && (current === null || digest8(current) !== receipt.projectionDigest)) {
     throw new Error(`setup projection drift requires reconciliation before apply: ${path}. ` + "Rossovia will not overwrite a missing or locally changed managed block.");
   }
   if (!receipt && current !== null) {
@@ -16871,8 +17707,8 @@ function applyModule(home, entry, sourceRoot, sourceRevision, targetRoot) {
     sourceRevision,
     sourceRoot,
     projectionPath: path,
-    projectionDigest: digest7(projection.content),
-    appliedAt: now5(),
+    projectionDigest: digest8(projection.content),
+    appliedAt: now6(),
     rollbackPath
   };
   saveJson(receiptPath2(home, entry), nextReceipt);
@@ -16887,7 +17723,7 @@ function appendManagedBlock(existing, projection) {
 `;
 }
 function readManagedBlock(path, startMarker, endMarker) {
-  return existsSync11(path) ? readManagedBlockFromText(readFileSync8(path, "utf8"), startMarker, endMarker) : null;
+  return existsSync12(path) ? readManagedBlockFromText(readFileSync9(path, "utf8"), startMarker, endMarker) : null;
 }
 function readManagedBlockFromText(value, startMarker, endMarker) {
   const starts = occurrences(value, startMarker);
@@ -16938,13 +17774,13 @@ function applicableChanges(sourceRoot, from, to) {
   return entries.filter((entry) => entry.length > 0);
 }
 function saveRollback(home, target, content) {
-  const path = join13(home, "receipts", "setup", "backups", `${Date.now()}-${randomUUID3()}.md`);
+  const path = join15(home, "receipts", "setup", "backups", `${Date.now()}-${randomUUID4()}.md`);
   mkdirSync6(dirname8(path), { recursive: true });
   writeFileSync5(path, content, "utf8");
   return path;
 }
 function writeTarget(path, content) {
-  const temporary = `${path}.${randomUUID3()}.tmp`;
+  const temporary = `${path}.${randomUUID4()}.tmp`;
   try {
     mkdirSync6(dirname8(path), { recursive: true });
     writeFileSync5(temporary, content, "utf8");
@@ -16958,7 +17794,7 @@ function writeTarget(path, content) {
 }
 function assertSetupSourceClean(sourceRoot) {
   const executable = resolve5(process.argv[1]);
-  const sourceRelative = relative4(sourceRoot, executable);
+  const sourceRelative = relative6(sourceRoot, executable);
   const result = runCommand("git", [
     "status",
     "--porcelain",
@@ -16986,10 +17822,10 @@ function resolveGitPathOutput(args, value) {
 function gitSucceeds(cwd, args) {
   return runCommand("git", args, { cwd, quiet: true }).exitCode === 0;
 }
-function digest7(value) {
-  return createHash7("sha256").update(value).digest("hex");
+function digest8(value) {
+  return createHash8("sha256").update(value).digest("hex");
 }
-function now5() {
+function now6() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
@@ -17063,6 +17899,8 @@ try {
     console.log(JSON.stringify(inspectExecution(home, args[2], args[3]), null, 2));
   } else if (args[0] === "execution" && args[1] === "authorize") {
     console.log(JSON.stringify(authorizeExecution(home, parseExecutionAuthorize(args.slice(2))), null, 2));
+  } else if (args[0] === "task") {
+    console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
   } else if (args[0] === "mission") {
     const result = runMissionCommand(args.slice(1));
     if (result !== undefined) {
@@ -17100,6 +17938,16 @@ function printUsage() {
   console.log("  preference retire <id> [--project <project>]");
   console.log("  execution inspect <project> <mission-id>");
   console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
+  console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
+  console.log("  task list");
+  console.log("  task show <id>");
+  console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task rebind-worktree <id> --expected-worktree <path> --worktree <path> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task submit <id> --summary <text> --evidence-ref <reference>... --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task accept <id> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task reopen <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
   console.log("  intervention observe [--state-root <path>]");
   console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
@@ -17108,6 +17956,230 @@ function printUsage() {
   console.log("  root list");
   console.log("  root add <path>...");
   console.log("  scan");
+}
+function runTaskCli(home, raw) {
+  const controlPlane = createLocalTaskControlPlane(home);
+  const command = raw[0];
+  if (!command)
+    throw new Error("task requires a subcommand");
+  if (command === "list") {
+    if (raw.length !== 1)
+      throw new Error("task list accepts no arguments");
+    return controlPlane.list();
+  }
+  if (command === "show") {
+    if (raw.length !== 2)
+      throw new Error("task show requires exactly one task id");
+    return controlPlane.show(raw[1]);
+  }
+  if (command === "create") {
+    const parsed2 = parseTaskOptions(raw.slice(1), 0, new Set([
+      "--title",
+      "--objective",
+      "--next-actor",
+      "--source-ref",
+      "--expected-source-revision",
+      "--project",
+      "--worktree",
+      "--mission"
+    ]), new Set(["--accept"]));
+    return controlPlane.execute({
+      kind: "create",
+      arguments: {
+        title: taskOption(parsed2, "--title"),
+        objective: taskOption(parsed2, "--objective"),
+        acceptance: taskOptions(parsed2, "--accept"),
+        nextActor: taskActor(parsed2),
+        sourceRef: taskOption(parsed2, "--source-ref"),
+        expectedSourceRevision: taskRevision(parsed2, "--expected-source-revision", true),
+        ...parsed2.values.has("--project") ? { project: taskOption(parsed2, "--project") } : {},
+        ...parsed2.values.has("--worktree") ? { worktree: taskOption(parsed2, "--worktree") } : {},
+        ...parsed2.values.has("--mission") ? { mission: taskOption(parsed2, "--mission") } : {}
+      }
+    });
+  }
+  const parsed = parseTaskOptions(raw.slice(1), 1, new Set([
+    "--next-actor",
+    "--statement",
+    "--summary",
+    "--source-ref",
+    "--expected-source-revision",
+    "--expected-revision",
+    "--authorization-id",
+    "--expected-worktree",
+    "--worktree"
+  ]), new Set(["--evidence-ref"]));
+  const expectation = {
+    id: parsed.positionals[0],
+    expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
+    expectedRevision: taskRevision(parsed, "--expected-revision", false)
+  };
+  if (command === "assign") {
+    assertTaskOptions(parsed, new Set([
+      "--next-actor",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "assign",
+      arguments: {
+        ...expectation,
+        nextActor: taskActor(parsed)
+      }
+    });
+  }
+  if (command === "correct") {
+    assertTaskOptions(parsed, new Set([
+      "--statement",
+      "--source-ref",
+      "--next-actor",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "correct",
+      arguments: {
+        ...expectation,
+        statement: taskOption(parsed, "--statement"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+        nextActor: taskActor(parsed)
+      }
+    });
+  }
+  if (command === "link-execution") {
+    assertTaskOptions(parsed, new Set([
+      "--authorization-id",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "link-execution",
+      arguments: {
+        ...expectation,
+        authorizationId: taskOption(parsed, "--authorization-id"),
+        sourceRef: taskOption(parsed, "--source-ref")
+      }
+    });
+  }
+  if (command === "rebind-worktree") {
+    assertTaskOptions(parsed, new Set([
+      "--expected-worktree",
+      "--worktree",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "rebind-worktree",
+      arguments: {
+        ...expectation,
+        expectedWorktreePath: taskOption(parsed, "--expected-worktree"),
+        worktree: taskOption(parsed, "--worktree"),
+        sourceRef: taskOption(parsed, "--source-ref")
+      }
+    });
+  }
+  if (command === "submit") {
+    assertTaskOptions(parsed, new Set([
+      "--summary",
+      "--evidence-ref",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "submit",
+      arguments: {
+        ...expectation,
+        summary: taskOption(parsed, "--summary"),
+        evidenceRefs: taskOptions(parsed, "--evidence-ref"),
+        sourceRef: taskOption(parsed, "--source-ref")
+      }
+    });
+  }
+  if (command === "accept") {
+    assertTaskOptions(parsed, new Set([
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "accept",
+      arguments: {
+        ...expectation,
+        sourceRef: taskOption(parsed, "--source-ref")
+      }
+    });
+  }
+  if (command === "reopen") {
+    assertTaskOptions(parsed, new Set([
+      "--statement",
+      "--source-ref",
+      "--next-actor",
+      "--expected-source-revision",
+      "--expected-revision"
+    ]));
+    return controlPlane.execute({
+      kind: "reopen",
+      arguments: {
+        ...expectation,
+        statement: taskOption(parsed, "--statement"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+        nextActor: taskActor(parsed)
+      }
+    });
+  }
+  throw new Error(`unknown task command: ${command}`);
+}
+function parseTaskOptions(raw, positionalCount, singles, repeated) {
+  const positionals = raw.slice(0, positionalCount);
+  if (positionals.length !== positionalCount || positionals.some((value) => value.startsWith("--"))) {
+    throw new Error("missing required task command argument");
+  }
+  const values = new Map;
+  for (let index = positionalCount;index < raw.length; index += 2) {
+    const option2 = raw[index];
+    const value = raw[index + 1];
+    if (!option2 || !singles.has(option2) && !repeated.has(option2) || !value || value.startsWith("--") || singles.has(option2) && values.has(option2)) {
+      throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
+    }
+    values.set(option2, [...values.get(option2) ?? [], value]);
+  }
+  return { positionals, values };
+}
+function assertTaskOptions(parsed, allowed) {
+  for (const option2 of parsed.values.keys()) {
+    if (!allowed.has(option2))
+      throw new Error(`invalid task option: ${option2}`);
+  }
+}
+function taskOption(parsed, option2) {
+  const value = parsed.values.get(option2)?.[0];
+  if (!value)
+    throw new Error(`task command requires ${option2} <value>`);
+  return value;
+}
+function taskOptions(parsed, option2) {
+  const values = parsed.values.get(option2);
+  if (!values?.length)
+    throw new Error(`task command requires ${option2} <value>`);
+  return values;
+}
+function taskRevision(parsed, option2, allowZero) {
+  const raw = taskOption(parsed, option2);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1)) {
+    throw new Error(`${option2} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
+  }
+  return value;
+}
+function taskActor(parsed) {
+  const value = taskOption(parsed, "--next-actor");
+  if (value !== "principal" && value !== "agent" && value !== "external") {
+    throw new Error("--next-actor must be principal, agent, or external");
+  }
+  return value;
 }
 function optionalFromHome(raw) {
   const options = namedOptions(raw, new Set(["--from-home"]));
@@ -17137,8 +18209,8 @@ function optionalProject(raw) {
 }
 function parseExecutionAuthorize(raw) {
   const project = raw[0];
-  const missionId3 = raw[1];
-  if (!project || project.startsWith("--") || !missionId3 || missionId3.startsWith("--")) {
+  const missionId4 = raw[1];
+  if (!project || project.startsWith("--") || !missionId4 || missionId4.startsWith("--")) {
     throw new Error("execution authorize requires <project> <mission-id>");
   }
   const choices = [];
@@ -17165,7 +18237,7 @@ function parseExecutionAuthorize(raw) {
   };
   return {
     project,
-    missionId: missionId3,
+    missionId: missionId4,
     proposalId: required2("--proposal-id"),
     proposalDigest: required2("--proposal-digest"),
     choices,

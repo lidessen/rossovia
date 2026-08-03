@@ -24,6 +24,12 @@ function runnerStatus(runner) {
   return candidate && typeof candidate === "object" ? candidate : object(runner);
 }
 
+export function isIndependentWorkbenchTask(item) {
+  const binding = object(valueAt(item, "binding"));
+  return valueAt(binding, "kind") === "workbench-task"
+    && valueAt(binding, "projectContext") === null;
+}
+
 export function intentLineagePresentation(activity) {
   const lineage = object(valueAt(activity, "intentLineage"));
   const standing = valueAt(lineage, "standing");

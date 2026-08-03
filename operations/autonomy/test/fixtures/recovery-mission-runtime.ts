@@ -1,5 +1,13 @@
-import type { MissionRuntimeFactory } from "../../src/mission-runtime";
+import type {
+  MissionRuntimeFactory,
+  MissionRuntimeRecoveryCapabilities,
+} from "../../src/mission-runtime";
 import { MISSION_TURN_VERSION } from "../../src/mission-turn";
+
+export const missionRuntimeRecoveryCapabilities = {
+  resume: true,
+  replace: true,
+} as const satisfies MissionRuntimeRecoveryCapabilities;
 
 export const createMissionRuntime: MissionRuntimeFactory = async (context) => {
   const recovery = context.recovery;

@@ -38,6 +38,22 @@ probe proves the current policy solves the actual project problem.
 
 This is a collection of agent skills — reusable methodology plugins for AI-assisted development. Skills are installed into a project and invoked via slash commands (e.g., `/design-driven`).
 
+## Direct agent delegation entry
+
+When a request entered through this repository contains bounded contributions
+that can settle independently, or a consequential candidate benefits from a
+non-producing reviewer, use the
+[agent-delegation](skills/agent-delegation/SKILL.md) Skill and the active
+harness's native sub-agent capabilities. Actively inspect for those
+contributions rather than waiting for the human to enumerate them. Keep coupled
+judgment and shared mutable effects under one owner, reconstruct returned claims
+against authoritative sources, and retain Main-Agent ownership of the whole.
+
+This is a direct Agent method from the repository entry. Do not initialize or
+route through Rossovia Workbench, Work Cell, Autonomy, or another task system
+merely to delegate. Use those systems only when their separately owned
+persistent state or runtime capability is actually requested.
+
 ## Rossovia workbench entry
 
 Treat a natural-language request to initialize, extend, register, or use the
@@ -61,12 +77,14 @@ mechanical action their words authorize:
   for the exact `ROSSO_HOME` through the selected harness's user-level setup,
   then verify it from a fresh session.
 - When initialization explicitly includes the `multi-agent-delegation` setup
-  capability, add `--setup multi-agent-delegation`. The module owns
-  tool-neutral delegation judgment; each harness adapter owns its projection
-  path, syntax, and supported mechanics. The current Codex adapter writes one
-  delimited user-instruction projection; this does not authorize other setup
-  modules or whole-file replacement. After a repository update, a request
-  to inspect or apply selected setup changes maps to
+  capability, add `--setup multi-agent-delegation`. The module projects a
+  compact fallback trigger into the selected harness; it is not a delegation
+  runtime or a second owner of the method in
+  [agent-delegation](skills/agent-delegation/SKILL.md). Each harness adapter
+  owns only its projection path, syntax, and supported mechanics. The current
+  Codex adapter writes one delimited user-instruction projection; this does not
+  authorize other setup modules or whole-file replacement. After a repository
+  update, a request to inspect or apply selected setup changes maps to
   `./operations/workbench/rossovia setup status` or `setup apply`. Status uses
   the last applied Git revision to filter the general `CHANGELOG.md` by selected
   functional-module prefix and the managed-block digest to distinguish source
@@ -138,6 +156,77 @@ one could change the choice. A preference cannot override a current human
 instruction, project constraint, authorization boundary, or contrary runtime
 evidence; state the reason when departing from it.
 
+## Rossovia local task entry
+
+Treat an explicit natural-language request to create, inspect, assign, correct,
+rebind the Worktree context, link an already authorized execution, deliver a
+retained correction, recover the linked execution, submit, accept, or reopen a
+locally Principal-attributed task as authority to use the corresponding
+existing Workbench task surface. Before the first operation, apply the
+legacy-home guard above and run
+`./operations/workbench/rossovia init` without workspace roots so the exact
+Workbench home has a task source.
+
+- Run `task list` or `task show <id>` before mutating an existing task and pass
+  the returned source and task revisions to the requested mutation.
+- Create a task only from an explicit current request. Do not turn an inferred
+  preference, observation, project history, or Agent suggestion into task
+  state.
+- Add project, Worktree, or Mission context only when the human identifies it
+  and the registered project's current primary observation verifies it. This
+  remains local context; it is not a target-project task, execution
+  association, write authority, or execution authorization. A current carrier
+  for the same project and Mission remains execution-unproven unless
+  runtime-owned evidence exposes the exact launch-authorization lineage.
+- Rebind Worktree context only through `task rebind-worktree` for an unsettled
+  task that already has exact project, Mission, and Worktree context. Pass the
+  currently retained Worktree path as `--expected-worktree`; the command
+  verifies a Git-clean replacement against the same registered project's
+  observed Worktrees, preserves project and Mission identity, and appends the
+  transition to task history. Rebinding does not launch work or authorize the
+  new carrier.
+- Link an execution only through `task link-execution` after the task has exact
+  registered-project and Mission context. The command must revalidate the
+  authorization claim and receipt before appending their stable selector and
+  canonical claim reference. A link is evidence, not launch authority or
+  lifecycle movement; exact current attribution additionally requires matching
+  structured launch references on the runtime-owned turn and effect.
+- `assign ... --next-actor agent` identifies the next responsible actor but
+  does not launch an Agent or claim live Agent work. Starting execution still
+  follows its separately accepted Mission/runtime boundary. For a bounded
+  contribution that fits the current harness, delegate directly through
+  [agent-delegation](skills/agent-delegation/SKILL.md); Workbench retains the
+  obligation and returned claim, not the sub-agent runtime or coordination
+  state.
+- `task submit` retains actor-supplied references as an unverified result claim;
+  their wording or prefix never establishes verification. The Workbench UI may
+  instead submit the current Autonomy-verified execution only when the task's
+  latest execution link, structured turn/effect lineage, candidate Worktree,
+  and runtime-owned verification selector all match. The task retains that
+  selector rather than copying runtime verdicts, and the UI must revalidate it
+  before acceptance; stale or unavailable runtime evidence returns the result
+  for correction or resubmission. Only an explicit, locally
+  Principal-attributed acceptance settles the Workbench task. Attribution is
+  not identity authentication, and local settlement never implies Mission,
+  product, integration, merge, or publication acceptance.
+- Keep corrections on the same task. Recording a correction changes only the
+  local task. Deliver it to an Agent only through the Workbench UI's explicit
+  delivery action after the task's latest execution link resolves to one exact
+  current turn and live runner. The retained Mission input receipt proves
+  delivery to that carrier, not that the Agent understood, applied, verified,
+  or reconciled the correction. Exact replay is a no-op; target drift leaves
+  the correction local-only. Do not manufacture delivery evidence through the
+  task CLI or its domain helper.
+- Recover a task-linked execution only through the Workbench UI's explicit
+  recovery action when the latest execution link resolves to one exact
+  interrupted turn, live runner, and runtime-declared `resume` capability. The
+  server must revalidate the authorization, proposal digest, canonical claim,
+  turn ID, runner, and interrupted state on its final activity read. Recovery
+  changes Autonomy state only; it does not reuse authorization, replace or
+  abandon the runner, move the task lifecycle, or prove resumed production.
+- Reopen a settled task before new work rather than erasing its accepted result
+  history.
+
 ## Rossovia cross-project task entry
 
 When the human asks for work in progress across registered projects, run
@@ -193,7 +282,13 @@ Treat the result as a projection of the exact committed Mission proposal, not
 as execution authority. Present its proposal ID and digest, runtime reference
 and source digest, consequential choices and immediate results, external
 disclosure, hard execution limits, forecast-only token estimate, write/command
-scope, and withheld authorities.
+scope, and withheld authorities. Read `proposalStatus` as the committed
+proposal's semantic state and `status` as the current local
+authorization-evidence standing: receipt issuance changes the latter to
+`authorized-awaiting-execution`, and an exactly validated consumption claim
+changes it to `authorization-consumed`. Invalid receipt or consumption
+evidence fails closed under its own standing; it does not restore reusable
+launch authority.
 Only the registered primary workspace's committed Mission is an authorization
 source; the same Mission observed in another worktree remains observation-only.
 

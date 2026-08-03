@@ -112,6 +112,12 @@ export interface DelegateLoopOptions {
   readonly prepareContribution: (call: DelegateCall) => Promise<PreparedDelegateExecution>;
   /** Enables `delegate_file`; the model can name files only inside this host-owned root. */
   readonly delegateInputRoot?: string;
+  /**
+   * Forces the first submission boundary through one delegate tool when the
+   * caller already owns the delegation decision. The model supplies only that
+   * tool's typed input; admission and dispatch remain host-owned.
+   */
+  readonly initialDelegateTool?: "delegate" | "delegate_file";
   /** Optional host-scoped writer. Supplying it enables an ordinary `write_file` preparation tool. */
   readonly delegateFileWriter?: DelegateFileWriter;
   readonly timeline: DelegateTimeline;
@@ -406,7 +412,9 @@ export class DelegateLoopSession {
         tasks: this.tasks.snapshot(),
       }),
       tools,
-      toolChoice: "auto",
+      toolChoice: this.options.initialDelegateTool === undefined
+        ? "auto"
+        : { type: "tool", toolName: this.options.initialDelegateTool },
       stopWhen: isStepCount(remainingModelSteps),
       prepareStep: ({ messages }) => ({ messages: compactWriteFileMessages(messages) }),
       maxRetries: 0,
@@ -693,6 +701,9 @@ function compactToolResult(
 function validateLoopOptions(options: DelegateLoopOptions): void {
   if (options.delegateFileWriter !== undefined && options.delegateInputRoot === undefined) {
     throw new Error("delegateFileWriter requires delegateInputRoot so written packets can be resolved");
+  }
+  if (options.initialDelegateTool === "delegate_file" && options.delegateInputRoot === undefined) {
+    throw new Error("initialDelegateTool delegate_file requires delegateInputRoot");
   }
   for (const [name, value] of [
     ["maxModelSteps", options.maxModelSteps],

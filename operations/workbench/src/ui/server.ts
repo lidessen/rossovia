@@ -18,12 +18,41 @@ import {
   reconciliationActionDecisionBriefPresentation,
   verifiedCorrectionAwaitsSystemSettlement,
 } from "../../ui/operational-semantics.js";
-import { buildWorkItemProjection } from "./work-items";
+import {
+  buildWorkItemProjection,
+  type PrincipalTaskSourceObservation,
+} from "./work-items";
+import {
+  executeTaskCreateAction,
+  executeTaskMutationAction,
+  TaskActionError,
+} from "./task-actions";
+import {
+  prepareTaskCorrectionDelivery,
+  recordTaskCorrectionDelivery,
+} from "./task-correction-delivery";
+import {
+  executeTaskExecutionLaunch,
+  prepareTaskExecutionLaunch,
+  TaskExecutionLaunchError,
+  type TaskExecutionLaunchResult,
+} from "./task-execution-launch";
+import { executeTaskExecutionRecovery } from "./task-execution-recovery";
+import {
+  acceptTaskResult,
+  submitVerifiedTaskResult,
+} from "./task-verified-result";
+import { loadPrincipalTasks, principalTasksPath } from "../tasks";
+import type { LocalTaskControlPlane } from "../local-task-control-plane";
 
 export interface ServerOptions {
   readonly home?: string;
   readonly port: number;
   readonly roots: readonly string[];
+}
+
+export interface WorkbenchRequestHandlerDependencies {
+  readonly localTaskControlPlane?: LocalTaskControlPlane;
 }
 
 const repositoryRoot = resolve(import.meta.dir, "../../../..");
@@ -34,7 +63,10 @@ const maximumRequestBytes = 64 * 1024;
 export function createWorkbenchRequestHandler(
   options: ServerOptions,
   client: AutonomyClient,
+  dependencies: WorkbenchRequestHandlerDependencies = {},
 ): (request: Request) => Promise<Response> {
+  const taskActionsInFlight = new Set<string>();
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -46,6 +78,99 @@ export function createWorkbenchRequestHandler(
           error: "snapshot-failed",
           message: error instanceof Error ? error.message : String(error),
         }, 500);
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/tasks") {
+      if (!exactWorkbenchOrigin(request, options.port)) {
+        return json({
+          error: "origin-rejected",
+          message: "Workbench task actions accept only the explicit loopback Workbench origin.",
+        }, 403);
+      }
+      try {
+        const result = executeTaskCreateAction(
+          options.home,
+          await readJsonRequest(request, "task creation"),
+        );
+        return json({ ok: true, result }, 200);
+      } catch (error: unknown) {
+        return taskActionErrorResponse(error);
+      }
+    }
+
+    const taskActionId = taskActionIdFromPath(url.pathname);
+    if (request.method === "POST" && taskActionId !== null) {
+      if (!exactWorkbenchOrigin(request, options.port)) {
+        return json({
+          error: "origin-rejected",
+          message: "Workbench task actions accept only the explicit loopback Workbench origin.",
+        }, 403);
+      }
+      try {
+        const body = await readJsonRequest(request, "task mutation");
+        const kind =
+          body !== null
+          && typeof body === "object"
+          && "kind" in body
+          && typeof body.kind === "string"
+            ? body.kind
+            : null;
+        if (taskActionsInFlight.has(taskActionId)) {
+          return json({
+            error: "task-action-in-flight",
+            message:
+              `task ${taskActionId} already has an execution action in flight`,
+          }, 409);
+        }
+        const reservesTask =
+          kind === "launch-authorized-execution"
+          || kind === "recover-linked-execution";
+        if (reservesTask) taskActionsInFlight.add(taskActionId);
+        try {
+          const result = kind === "launch-authorized-execution"
+            ? await launchTaskExecution(
+              options,
+              client,
+              taskActionId,
+              body,
+            )
+            : kind === "deliver-correction"
+            ? await deliverTaskCorrection(
+              options,
+              client,
+              taskActionId,
+              body,
+            )
+            : kind === "recover-linked-execution"
+            ? await executeTaskExecutionRecovery(
+              (await buildLiveSnapshot(options, client)).workItems,
+              taskActionId,
+              body,
+              client,
+            )
+            : kind === "submit-verified-execution"
+              ? submitVerifiedTaskResult(
+                options.home,
+                (await buildLiveSnapshot(options, client)).workItems,
+                taskActionId,
+                body,
+              )
+              : kind === "accept"
+                ? acceptTaskResult(
+                  options.home,
+                  (await buildLiveSnapshot(options, client)).workItems,
+                  taskActionId,
+                  body,
+                  dependencies.localTaskControlPlane,
+                )
+                : executeTaskMutationAction(options.home, taskActionId, body);
+          return json({ ok: true, result }, 200);
+        } finally {
+          if (reservesTask) taskActionsInFlight.delete(taskActionId);
+        }
+      } catch (error: unknown) {
+        return taskActionErrorResponse(error);
       }
     }
 
@@ -170,11 +295,26 @@ if (import.meta.main) {
 async function buildLiveSnapshot(
   options: ServerOptions,
   client: AutonomyClient,
-): Promise<unknown> {
+) {
   const snapshot = buildWorkbenchSnapshot({
     ...(options.home === undefined ? {} : { home: options.home }),
     localRepositoryRoots: options.roots,
   });
+  const taskSourceRef = principalTasksPath(options.home);
+  let taskSource: PrincipalTaskSourceObservation;
+  try {
+    taskSource = {
+      standing: "available",
+      sourceRef: taskSourceRef,
+      source: loadPrincipalTasks(options.home),
+    };
+  } catch (error: unknown) {
+    taskSource = {
+      standing: "unavailable",
+      sourceRef: taskSourceRef,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
   const observedRunners = await Promise.all(snapshot.runners.map(async (runner) => {
     const activity = await readRunnerActivity(client, runner.status.missionId);
     try {
@@ -227,17 +367,107 @@ async function buildLiveSnapshot(
       message: activity.error,
     }];
   });
+  const taskErrors = taskSource.standing === "available"
+    ? []
+    : [{
+      scope: "home" as const,
+      source: taskSource.sourceRef,
+      message: taskSource.reason,
+    }];
+  const taskAttention = taskSource.standing === "available"
+    ? []
+    : [{
+      priority: "warning" as const,
+      code: "source-error" as const,
+      summary: taskSource.reason,
+      source: taskSource.sourceRef,
+    }];
   const liveSnapshot = {
     ...snapshot,
-    complete: snapshot.complete && activityErrors.length === 0,
+    complete:
+      snapshot.complete
+      && activityErrors.length === 0
+      && taskSource.standing === "available",
     runners,
-    attention: refineLiveRunnerAttention(snapshot.attention, runners),
-    errors: [...snapshot.errors, ...activityErrors],
+    attention: [
+      ...refineLiveRunnerAttention(snapshot.attention, runners),
+      ...taskAttention,
+    ],
+    errors: [...snapshot.errors, ...activityErrors, ...taskErrors],
   };
   return {
     ...liveSnapshot,
-    workItems: buildWorkItemProjection(liveSnapshot),
+    workItems: buildWorkItemProjection(liveSnapshot, taskSource),
   };
+}
+
+async function deliverTaskCorrection(
+  options: ServerOptions,
+  client: AutonomyClient,
+  taskId: string,
+  request: unknown,
+) {
+  const snapshot = await buildLiveSnapshot(options, client);
+  const plan = prepareTaskCorrectionDelivery(
+    snapshot.workItems,
+    taskId,
+    request,
+  );
+  if (plan.retainedResult !== null) return plan.retainedResult;
+  const runnerResult = await executeWorkbenchAction({
+    kind: "contribution",
+    target: plan.target,
+    text: plan.correction.statement,
+  }, client, plan.attribution);
+  return recordTaskCorrectionDelivery(options.home, plan, runnerResult);
+}
+
+async function launchTaskExecution(
+  options: ServerOptions,
+  client: AutonomyClient,
+  taskId: string,
+  request: unknown,
+): Promise<TaskExecutionLaunchResult> {
+  const home = resolveHome(options.home);
+  const snapshot = await buildLiveSnapshot(options, client);
+  const initial = await executeTaskExecutionLaunch(
+    home,
+    snapshot.workItems,
+    taskId,
+    request,
+    client,
+  );
+  if (initial.standing !== "launch-started-awaiting-consumption") {
+    return initial;
+  }
+
+  const refreshed = await buildLiveSnapshot(options, client);
+  try {
+    const refreshedPlan = prepareTaskExecutionLaunch(
+      home,
+      refreshed.workItems,
+      taskId,
+      request,
+    );
+    if (refreshedPlan.kind === "start") {
+      return initial;
+    }
+    return await executeTaskExecutionLaunch(
+      home,
+      refreshed.workItems,
+      taskId,
+      request,
+      client,
+    );
+  } catch (error: unknown) {
+    if (
+      error instanceof TaskExecutionLaunchError
+      && error.code === "launch-unavailable"
+    ) {
+      return initial;
+    }
+    throw error;
+  }
 }
 
 function projectAnchorMigrationSource(
@@ -550,6 +780,72 @@ function exactWorkbenchOrigin(request: Request, port: number): boolean {
 
 function isJsonContentType(value: string | null): boolean {
   return value?.split(";", 1)[0]?.trim().toLowerCase() === "application/json";
+}
+
+async function readJsonRequest(request: Request, label: string): Promise<unknown> {
+  if (!isJsonContentType(request.headers.get("content-type"))) {
+    throw new TaskActionError(
+      415,
+      "invalid-task",
+      `${label} requires Content-Type: application/json.`,
+    );
+  }
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength !== null) {
+    const contentLength = Number(declaredLength);
+    if (
+      !Number.isSafeInteger(contentLength)
+      || contentLength < 0
+      || contentLength > maximumRequestBytes
+    ) {
+      throw new TaskActionError(
+        contentLength > maximumRequestBytes ? 413 : 400,
+        "invalid-task",
+        contentLength > maximumRequestBytes
+          ? "task request is too large"
+          : "task request has invalid Content-Length",
+      );
+    }
+  }
+  const body = await request.text();
+  if (new TextEncoder().encode(body).byteLength > maximumRequestBytes) {
+    throw new TaskActionError(413, "invalid-task", "task request is too large");
+  }
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new TaskActionError(
+      400,
+      "invalid-task",
+      `${label} requires a valid JSON object.`,
+    );
+  }
+}
+
+function taskActionIdFromPath(pathname: string): string | null {
+  const match = /^\/api\/tasks\/([^/]+)\/actions$/u.exec(pathname);
+  if (match === null) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return "";
+  }
+}
+
+function taskActionErrorResponse(error: unknown): Response {
+  if (error instanceof TaskExecutionLaunchError) {
+    return json({ error: error.code, message: error.message }, error.status);
+  }
+  if (error instanceof TaskActionError) {
+    return json({ error: error.code, message: error.message }, error.status);
+  }
+  if (error instanceof WorkbenchActionError) {
+    return json({ error: error.code, message: error.message }, error.status);
+  }
+  return json({
+    error: "task-action-failed",
+    message: error instanceof Error ? error.message : String(error),
+  }, 500);
 }
 
 function assetPath(pathname: string): string | null {

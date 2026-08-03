@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { CellRunRecord } from "../../../packages/work-cell/src/contracts";
 import {
   type DelegateBatchRun,
 } from "./delegate-admission";
@@ -80,6 +81,7 @@ export interface RecoveredDelegateBatch {
   readonly checkpoint: DelegateBatchCheckpoint;
   readonly children: readonly DelegateChildReference[];
   readonly outcomes?: readonly CompactDelegateOutcome[];
+  readonly run?: DelegateBatchRun;
   readonly ready: boolean;
 }
 
@@ -676,6 +678,7 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     if (prepared === undefined) throw new Error(`delegate batch ${batchId} is not present in parent timeline ${parentTimelineId}`);
     const checkpoint = parseCheckpoint(prepared.data.checkpoint);
     const outcomes: CompactDelegateOutcome[] = [];
+    const settlements: ChildSettledEvent[] = [];
     for (const child of prepared.data.children) {
       const events = await this.readTimeline(child.timelineId);
       requireOpened(events, checkpoint, child, prepared.data.checkpointDigest);
@@ -683,12 +686,30 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       if (settlement === undefined) {
         return { checkpoint, children: prepared.data.children, ready: false };
       }
+      settlements.push(settlement);
       outcomes.push({
         ...compactOutcome(settlement.data.outcome),
         resultFile: this.timelinePath(child.timelineId),
       });
     }
-    return { checkpoint, children: prepared.data.children, outcomes, ready: true };
+    const onlySettlement = settlements[0];
+    const run =
+      settlements.length === 1
+      && checkpoint.admission.contributions.length === 1
+      && onlySettlement?.data.evidence.kind === "cell-run"
+        ? {
+          kind: "direct" as const,
+          admission: checkpoint.admission,
+          record: onlySettlement.data.evidence.record as CellRunRecord,
+        }
+        : undefined;
+    return {
+      checkpoint,
+      children: prepared.data.children,
+      outcomes,
+      ...(run === undefined ? {} : { run }),
+      ready: true,
+    };
   }
 
   timelinePath(timelineId: string): string {

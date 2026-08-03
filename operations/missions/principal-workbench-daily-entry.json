@@ -1,0 +1,31 @@
+{
+  "version": "mission-record.v1",
+  "id": "principal-workbench-daily-entry",
+  "title": "Make the Principal Workbench usable for daily multi-project work",
+  "sources": [
+    "principal:conversation:2026-08-03:option-a"
+  ],
+  "createdAt": "2026-08-03T15:30:00Z",
+  "updatedAt": "2026-08-03T15:30:07Z",
+  "mainline": {
+    "contradiction": "main",
+    "acceptance": [
+      "Current Workbench and Autonomy slice is coherently committed, independently reviewed at the exact head, and published as an unmerged pull request."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "integration-baseline",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Create a reviewable integration baseline on Git branch mission/principal-workbench-daily-entry for the current Principal Workbench, Autonomy, delegation, and Blog dogfood slice.",
+      "returnCondition": "The exact Git branch head has passed scoped verification and named independent review, and is handed off through an unmerged pull request or an explicit blocked publication report.",
+      "sources": [
+        "principal:conversation:2026-08-03:option-a"
+      ],
+      "status": "open"
+    }
+  ],
+  "currentFocus": "integration-baseline"
+}

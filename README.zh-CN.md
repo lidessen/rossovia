@@ -31,9 +31,11 @@ skill 则是在具体语境中对所选条目的表达。
 
 - 在本仓库中完整实践项目的运行、验证与演进体系；
 - 向其他项目独立安装一个 Skill，针对性采用一种方法；
-- 用 coding agent 打开本仓库，把它作为进入其他项目的工作台。
+- 用 coding agent 打开本仓库，把它作为进入其他项目的 Main Agent 工作入口。
+  Agent 可以直接使用当前宿主的原生 sub-agent 能力，不需要先初始化 Rossovia
+  Workbench。
 
-使用工作台时，直接告诉 Agent：
+需要可选的持久 Workbench 能力时，直接告诉 Agent：
 
 ```text
 初始化 Rossovia 工作台，我的日常工作区在 ~/workspaces。
@@ -95,6 +97,7 @@ skill 则是在具体语境中对所选条目的表达。
 
 | Skill | 命令 | 用途 |
 |-------|------|------|
+| [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | 判断并运行有边界的原生 sub-agent 贡献，同时由 Main Agent 保留整体、综合与确保验证发生的责任；不依赖 Workbench 或其他编排运行时。 |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | 原则序列的自身验证守护者。先保留带引文的研究，再提出候选、召开选择性的 P-ID 审议，并试行由人指定的替代项；只有经人批准的采纳才能进入核心。 |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | 依据真实运行时，判断权威项目信息如何在能够改变行动的时刻抵达 Agent，而不预设固定层级或文件名约定。 |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | 定位现有项目中真实的 Agent 工作失败，修改最小的责任界面，并通过日常 Agent 入口验证改进。 |
@@ -148,6 +151,7 @@ turn、委派证据、对账与本地恢复。只读路径和正常重启下的�
 
 | 如果你正在…… | 使用 |
 |---|---|
+| 判断何时使用原生 sub-agent、如何划分独立贡献、隔离写入所有权或安排 fresh reviewer | `/agent-delegation` |
 | 研究重复出现的证据是否足以形成可复用的核心原则 | `/principle-cultivation research` |
 | 设计、审计或验证项目上下文如何抵达 Agent | `/context-engineering` |
 | 在现有项目中安装一个入口，以便从已观察行为出发改进 Agent skills、指令、工具、验证或交接 | `/improve-agent-workflow` |

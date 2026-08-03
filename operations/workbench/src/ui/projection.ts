@@ -4,7 +4,7 @@ import {
   readFileSync,
   realpathSync,
 } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { Project } from "../contracts";
@@ -397,6 +397,28 @@ const RunnerStatusSchema = z.object({
 
 const CurrentEffectToolSchema = z.record(z.string(), z.unknown());
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+const RelativeEvidenceRefSchema = nonempty.refine(
+  (value) =>
+    !isAbsolute(value)
+    && value.split(/[\\/]/u).every((segment) =>
+      segment.length > 0 && segment !== "." && segment !== ".."
+    ),
+  "must be a normalized relative evidence reference",
+);
+const LaunchAuthorizationRefProjectionSchema = z.object({
+  authorizationId: z.string().uuid(),
+  proposalDigest: Sha256Schema,
+  claimSourceRef: RelativeEvidenceRefSchema,
+}).strict();
+
+export const CurrentVerifiedResultProjectionSchema = z.object({
+  standing: z.literal("verified-current"),
+  selector: z.object({
+    kind: z.literal("autonomy-effect-verification.v1"),
+    effectId: nonempty,
+    verificationEventId: nonempty,
+  }).strict(),
+}).strict();
 
 /**
  * A read-only projection of one in-flight or retained writable effect.
@@ -405,6 +427,7 @@ const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
  */
 export const CurrentEffectProjectionSchema = z.object({
   effectId: nonempty,
+  launchAuthorizationRef: LaunchAuthorizationRefProjectionSchema.optional(),
   phase: nonempty,
   writer: z.object({
     cellId: nonempty,
@@ -748,7 +771,29 @@ export const WorkbenchRunnerActivityProjectionSchema = z.object({
   intentLineage: MissionIntentLineageProjectionSchema,
   anchorMigrationProposal: MissionAnchorMigrationProposalProjectionSchema.optional(),
   reconciliationAction: MissionReconciliationActionProjectionSchema.optional(),
+  currentVerifiedResult: CurrentVerifiedResultProjectionSchema.nullable().optional(),
   currentEffect: CurrentEffectProjectionSchema.nullable().optional(),
+  currentTurn: z.object({
+    turnId: nonempty,
+    turnStartEventId: nonempty.optional(),
+    startDigest: Sha256Schema.optional(),
+    startedAt: nonempty,
+    baselineWatermark: z.number().int().nonnegative(),
+    state: z.enum(["open", "settled"]),
+    settlementKind: z.enum(["finished", "input-pending", "failed"]).optional(),
+    runStatus: nonempty.optional(),
+    launchAuthorizationRef: LaunchAuthorizationRefProjectionSchema.optional(),
+    guidanceRefs: z.array(z.object({
+      version: z.literal("rosso.turn-guidance-ref.v1"),
+      kind: z.literal("workbench-task-correction"),
+      guidanceId: nonempty,
+      taskId: nonempty,
+      correctionId: nonempty,
+      sourceRef: nonempty,
+      payloadDigest: Sha256Schema,
+      taskContextDigest: Sha256Schema,
+    }).strict()).optional(),
+  }).strict().nullable().optional(),
   currentCorrection: LocalCorrectionProjectionSchema.nullable().optional(),
   recentCorrections: z.array(LocalCorrectionProjectionSchema).optional(),
 }).passthrough();

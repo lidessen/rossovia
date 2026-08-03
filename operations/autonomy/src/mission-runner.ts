@@ -34,7 +34,11 @@ import {
   type MissionTurnRecoveryCommand,
   type MissionTurnStart,
 } from "./mission-turn";
-import type { MissionRuntimeFactory } from "./mission-runtime";
+import {
+  MissionRuntimeRecoveryCapabilitiesSchema,
+  type MissionRuntimeFactory,
+  type MissionRuntimeRecoveryCapabilities,
+} from "./mission-runtime";
 import { stableStringify } from "./canonical-json";
 import {
   missionRunnerDirectory,
@@ -218,6 +222,7 @@ export interface RunMissionRunnerOptions {
   readonly missionId: string;
   readonly now?: () => string;
   readonly prepareExecution?: MissionRuntimeFactory;
+  readonly runtimeRecoveryCapabilities?: MissionRuntimeRecoveryCapabilities;
   readonly initialAnchor?: MissionAnchorSeed;
 }
 
@@ -255,6 +260,11 @@ export async function readMissionRunnerStatus(
 export async function runMissionRunner(options: RunMissionRunnerOptions): Promise<MissionRunnerStatus> {
   const root = resolve(options.root);
   const missionId = z.string().min(1).parse(options.missionId);
+  const runtimeRecoveryCapabilities = options.prepareExecution === undefined
+    ? undefined
+    : MissionRuntimeRecoveryCapabilitiesSchema.parse(
+      options.runtimeRecoveryCapabilities ?? { resume: false, replace: false },
+    );
   const now = options.now ?? (() => new Date().toISOString());
   const runnerId = randomUUID();
   const startedAt = now();
@@ -333,7 +343,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
                 request.requestId,
                 status,
                 undefined,
-                recoveryCapabilities(status, options.prepareExecution !== undefined),
+                recoveryCapabilities(status, runtimeRecoveryCapabilities),
               ));
               return;
             }
@@ -358,8 +368,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
                   `Mission ${missionId} has no authorized intent anchor; only status, shutdown, or guarded anchor adoption is allowed`,
                 );
               }
-              assertExpectedRunnerTarget(request, status);
-              await recoverExecution(request.recovery);
+              await recoverExecution(request);
               status = await projectStatus({
                 timeline,
                 missionId,
@@ -630,9 +639,13 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
     hostExecution(turn, prepared.controller);
   }
 
-  async function recoverExecution(command: MissionTurnRecoveryCommand): Promise<void> {
+  async function recoverExecution(
+    request: Extract<MissionRunnerRequest, { kind: "recovery" }>,
+  ): Promise<void> {
+    const command = request.recovery;
     const recorded = await timeline.findTurnRecovery(missionId, command.id);
     if (recorded !== undefined) {
+      assertExpectedRunnerIdentity(request, status);
       if (
         recorded.actorRef !== command.actorRef
         || recorded.sourceRef !== command.sourceRef
@@ -640,6 +653,7 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
       ) throw new Error(`Mission recovery ${command.id} conflicts with its recorded event`);
       return;
     }
+    assertExpectedRunnerTarget(request, status);
     if (execution !== undefined) throw new Error(`Mission ${missionId} already has a live turn`);
     if (status.state !== "interrupted") {
       throw new Error(`Mission ${missionId} cannot recover a turn while its state is ${status.state}`);
@@ -647,6 +661,14 @@ export async function runMissionRunner(options: RunMissionRunnerOptions): Promis
     const interrupted = await timeline.latestTurn(missionId);
     if (interrupted === undefined || !missionTurnNeedsRecovery(interrupted)) {
       throw new Error(`Mission ${missionId} has no interrupted turn to recover`);
+    }
+    if (
+      command.action !== "abandon"
+      && runtimeRecoveryCapabilities?.[command.action] !== true
+    ) {
+      throw new Error(
+        `Mission ${missionId} runtime does not support ${command.action} recovery`,
+      );
     }
     if (command.action === "abandon") {
       await timeline.recoverTurn(missionId, MissionTurnRecoverySchema.parse({
@@ -959,22 +981,37 @@ function assertExpectedRunnerTarget(
   }>,
   status: MissionRunnerStatus,
 ): void {
-  const hasExpectedRunner = request.expectedRunnerId !== undefined;
-  const hasExpectedState = request.expectedState !== undefined;
-  if (hasExpectedRunner !== hasExpectedState) {
-    throw new Error("guarded Mission action requires both expectedRunnerId and expectedState");
-  }
-  if (!hasExpectedRunner || !hasExpectedState) return;
-  if (request.expectedRunnerId !== status.runnerId) {
-    throw new Error(
-      `Mission ${status.missionId} runner changed from ${request.expectedRunnerId} to ${status.runnerId}`,
-    );
-  }
+  if (!assertExpectedRunnerIdentity(request, status)) return;
   if (request.expectedState !== status.state) {
     throw new Error(
       `Mission ${status.missionId} state changed from ${request.expectedState} to ${status.state}`,
     );
   }
+}
+
+function assertExpectedRunnerIdentity(
+  request: Extract<MissionRunnerRequest, {
+    kind:
+      | "input"
+      | "recovery"
+      | "reconciliation-commit"
+      | "anchor-adoption"
+      | "anchor-migration-adoption";
+  }>,
+  status: MissionRunnerStatus,
+): boolean {
+  const hasExpectedRunner = request.expectedRunnerId !== undefined;
+  const hasExpectedState = request.expectedState !== undefined;
+  if (hasExpectedRunner !== hasExpectedState) {
+    throw new Error("guarded Mission action requires both expectedRunnerId and expectedState");
+  }
+  if (!hasExpectedRunner || !hasExpectedState) return false;
+  if (request.expectedRunnerId !== status.runnerId) {
+    throw new Error(
+      `Mission ${status.missionId} runner changed from ${request.expectedRunnerId} to ${status.runnerId}`,
+    );
+  }
+  return true;
 }
 
 function assertRequiredExpectedRunnerTarget(
@@ -991,13 +1028,13 @@ function assertRequiredExpectedRunnerTarget(
 
 function recoveryCapabilities(
   status: MissionRunnerStatus,
-  hasRuntime: boolean,
+  runtime: MissionRuntimeRecoveryCapabilities | undefined,
 ): MissionRecoveryCapabilities {
   const interrupted = status.state === "interrupted";
   return {
     abandon: interrupted,
-    resume: interrupted && hasRuntime,
-    replace: interrupted && hasRuntime,
+    resume: interrupted && runtime?.resume === true,
+    replace: interrupted && runtime?.replace === true,
   };
 }
 

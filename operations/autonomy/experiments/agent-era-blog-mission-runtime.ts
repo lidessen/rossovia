@@ -32,6 +32,7 @@ import type { MissionExecutionController } from "../src/mission-execution-host";
 import { missionRunnerDirectory } from "../src/mission-runner";
 import type {
   MissionRuntimeFactory,
+  MissionRuntimeRecoveryCapabilities,
   PreparedMissionExecution,
 } from "../src/mission-runtime";
 import { digestAnchor } from "../src/mission-reconciliation";
@@ -82,6 +83,11 @@ const route = [{
   credential: { source: "env" as const, name: "DEEPSEEK_API_KEY" },
   model: "deepseek-v4-flash",
 }];
+
+export const missionRuntimeRecoveryCapabilities = {
+  resume: false,
+  replace: false,
+} as const satisfies MissionRuntimeRecoveryCapabilities;
 
 export function currentBlogRuntimeDigest(): string {
   return createHash("sha256")
@@ -137,6 +143,11 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
   });
   const activeAnchor = await context.timeline.latestReconciledAnchor(context.missionId);
   const baselineWatermark = activeAnchor?.reconciledWatermark ?? 0;
+  const launchAuthorizationRef = {
+    authorizationId: authorization.receipt.authorizationId,
+    proposalDigest: authorization.receipt.proposalDigest,
+    claimSourceRef: relative(context.root, authorization.claimPath),
+  };
   const turn: MissionTurnStart = {
     version: MISSION_TURN_VERSION,
     turnId: `agent-era-blog-${randomUUID()}`,
@@ -148,6 +159,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       `authorization:${authorization.receipt.authorizationId}`,
       `proposal:${authorization.receipt.proposalId}@${authorization.receipt.proposalDigest}`,
     ],
+    launchAuthorizationRef,
   };
   const selection = createValidationModel({ route });
   const abort = new AbortController();
@@ -191,6 +203,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       missionId: context.missionId,
       journalRoot: missionRunnerDirectory(context.root, context.missionId),
       leaseRoot: context.root,
+      launchAuthorizationRef,
     }),
     concurrency: 1,
     maxModelSteps: 4,

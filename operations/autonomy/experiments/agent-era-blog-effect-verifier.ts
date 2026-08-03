@@ -62,10 +62,57 @@ const EffectManifestSchema = z.object({
 
 export interface AgentEraBlogEffectVerificationResult {
   readonly verdict: "passed" | "failed" | "unverifiable";
-  readonly admittedClaim?: typeof ADMITTED_CLAIM;
+  readonly admittedClaim?: string;
   readonly reportRef?: string;
   readonly journalEventId?: string;
   readonly reason?: string;
+}
+
+export interface AgentEraBlogCandidateVerification {
+  readonly verdict: "passed" | "failed" | "unverifiable";
+  readonly reason?: string;
+  readonly candidate: {
+    readonly root: string;
+    readonly head: string;
+    readonly changedPaths: readonly string[];
+  };
+  readonly checks: readonly {
+    readonly id: string;
+    readonly command: string;
+    readonly exitCode: number;
+    readonly outputDigest: string;
+    readonly diagnostic: string;
+  }[];
+}
+
+export interface AgentEraBlogEffectVerifierProfile {
+  readonly version: string;
+  readonly admittedClaim: string;
+  readonly verifierSources: readonly {
+    readonly ref: string;
+    readonly path: string;
+  }[];
+  readonly residualRisks: readonly string[];
+  readonly verifyCandidate: (input: {
+    readonly candidateRoot: string;
+    readonly dependencyRoot: string;
+  }) => Promise<AgentEraBlogCandidateVerification>;
+}
+
+export interface RetainedAgentEraBlogSettledEffect {
+  readonly journalRoot: string;
+  readonly activity: EffectActivity & {
+    readonly settlement: NonNullable<EffectActivity["settlement"]>;
+  };
+  readonly candidateRoot: string;
+  readonly candidate: {
+    readonly head: string;
+    readonly changedPaths: readonly string[];
+    readonly files: readonly {
+      readonly path: string;
+      readonly digest: string | null;
+    }[];
+  };
 }
 
 export async function verifyAgentEraBlogEffect(input: {
@@ -73,8 +120,35 @@ export async function verifyAgentEraBlogEffect(input: {
   readonly missionId: string;
   readonly effectId: string;
 }): Promise<AgentEraBlogEffectVerificationResult> {
+  return verifyAgentEraBlogEffectWithProfile(input, {
+    version: VERIFIER_VERSION,
+    admittedClaim: ADMITTED_CLAIM,
+    verifierSources: [{
+      ref: "source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts",
+      path: fileURLToPath(import.meta.url),
+    }, {
+      ref: "source-project:operations/autonomy/experiments/verify-agent-era-blog-candidate.ts",
+      path: fileURLToPath(new URL("./verify-agent-era-blog-candidate.ts", import.meta.url)),
+    }],
+    residualRisks: [
+      "This verdict does not establish reader or studio UI behavior.",
+      "This verdict does not establish D1 runtime behavior, authentication, publication, or product acceptance.",
+      "This is time-point evidence; later candidate mutation requires fresh verification.",
+    ],
+    verifyCandidate: verifyAgentEraBlogCandidate,
+  });
+}
+
+export async function verifyAgentEraBlogEffectWithProfile(
+  input: {
+    readonly home: string;
+    readonly missionId: string;
+    readonly effectId: string;
+  },
+  profile: AgentEraBlogEffectVerifierProfile,
+): Promise<AgentEraBlogEffectVerificationResult> {
   try {
-    return await verifySettledEffect(input);
+    return await verifySettledEffect(input, profile);
   } catch (error) {
     return {
       verdict: "unverifiable",
@@ -87,47 +161,20 @@ async function verifySettledEffect(input: {
   readonly home: string;
   readonly missionId: string;
   readonly effectId: string;
-}): Promise<AgentEraBlogEffectVerificationResult> {
-  if (input.missionId !== BLOG_MISSION_ID) {
-    throw new Error(`Blog verifier only accepts Mission ${BLOG_MISSION_ID}`);
-  }
-  const journalRoot = missionRunnerDirectory(resolve(input.home), input.missionId);
-  const journal = new FileEffectJournal(journalRoot);
-  const activity = await journal.activity(input.effectId);
+}, profile: AgentEraBlogEffectVerifierProfile): Promise<AgentEraBlogEffectVerificationResult> {
+  const retained = await validateAgentEraBlogSettledEffectEvidence(input);
+  const { journalRoot, activity, candidateRoot, candidate: initial } = retained;
   assertVerifiableActivity(activity, input.effectId);
-
-  const settlement = activity.settlement!;
-  const candidateRoot = await realpath(activity.prepared.worktree.root);
-  const initial = await observeCandidate(candidateRoot);
-  if (initial.head !== activity.prepared.worktree.baseHead) {
-    throw new Error("candidate HEAD no longer matches the effect base HEAD");
-  }
-  if (!sameStrings(initial.changedPaths, settlement.changedPaths)) {
-    throw new Error("candidate changed paths no longer match the settled effect");
-  }
-
+  const settlement = activity.settlement;
   const manifestRef = settlement.acceptance.mechanical.evidenceRefs.find(
     (ref) => ref.startsWith("file:") && ref.endsWith(".manifest.json"),
-  );
-  if (manifestRef === undefined) {
-    throw new Error("settled effect has no retained manifest evidence");
-  }
-  const manifestPath = resolveEvidencePath(journalRoot, manifestRef.slice("file:".length));
-  const manifest = EffectManifestSchema.parse(
-    JSON.parse(await readFile(manifestPath, "utf8")),
-  );
-  await verifyRetainedEffectEvidence({
-    journalRoot,
-    activity,
-    manifest,
-    candidateRoot,
-  });
+  )!;
 
   const dependencyRoot = await discoverDependencyRoot(
     candidateRoot,
     activity.prepared.worktree.baseHead,
   );
-  const candidateReport = await verifyAgentEraBlogCandidate({
+  const candidateReport = await profile.verifyCandidate({
     candidateRoot,
     dependencyRoot,
   });
@@ -136,11 +183,17 @@ async function verifySettledEffect(input: {
   if (JSON.stringify(final) !== JSON.stringify(initial)) {
     throw new Error("candidate changed while independent verification was running");
   }
+  if (candidateReport.verdict === "unverifiable") {
+    return {
+      verdict: "unverifiable",
+      reason: candidateReport.reason ?? "candidate verification could not reach a verdict",
+    };
+  }
 
-  const verifierSources = await verifierSourceDigests();
+  const verifierSources = await verifierSourceDigests(profile.verifierSources);
   const report = {
-    version: VERIFIER_VERSION,
-    admittedClaim: candidateReport.verdict === "passed" ? ADMITTED_CLAIM : null,
+    version: profile.version,
+    admittedClaim: candidateReport.verdict === "passed" ? profile.admittedClaim : null,
     effect: {
       missionId: input.missionId,
       effectId: input.effectId,
@@ -153,11 +206,7 @@ async function verifySettledEffect(input: {
     candidate: candidateReport.candidate,
     checks: candidateReport.checks,
     verdict: candidateReport.verdict,
-    residualRisks: [
-      "This verdict does not establish reader or studio UI behavior.",
-      "This verdict does not establish D1 runtime behavior, authentication, publication, or product acceptance.",
-      "This is time-point evidence; later candidate mutation requires fresh verification.",
-    ],
+    residualRisks: profile.residualRisks,
   };
   const reportSource = `${JSON.stringify(report, null, 2)}\n`;
   const reportDigest = sha256(reportSource);
@@ -169,7 +218,7 @@ async function verifySettledEffect(input: {
   await durableCreate(reportPath, reportSource);
 
   const verification = EffectVerifiedDataSchema.parse({
-    verifierRef: `source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts@sha256:${verifierSources[0]!.digest}`,
+    verifierRef: `${verifierSources[0]!.ref}@sha256:${verifierSources[0]!.digest}`,
     verdict: candidateReport.verdict,
     checks: candidateReport.checks.map(({ command, exitCode, outputDigest }) => ({
       command,
@@ -180,7 +229,7 @@ async function verifySettledEffect(input: {
       `file:${relative(journalRoot, reportPath)}`,
       `sha256:${reportDigest}`,
       `git-head:${candidateReport.candidate.head}`,
-      ...(candidateReport.verdict === "passed" ? [`claim:${ADMITTED_CLAIM}`] : []),
+      ...(candidateReport.verdict === "passed" ? [`claim:${profile.admittedClaim}`] : []),
     ],
     subject: {
       gitHead: initial.head,
@@ -190,25 +239,84 @@ async function verifySettledEffect(input: {
       })),
     },
   });
+  const journal = new FileEffectJournal(journalRoot);
   const event = await journal.verify(input.effectId, verification);
   return {
     verdict: candidateReport.verdict,
-    ...(candidateReport.verdict === "passed" ? { admittedClaim: ADMITTED_CLAIM } : {}),
+    ...(candidateReport.verdict === "passed"
+      ? { admittedClaim: profile.admittedClaim }
+      : {}),
     reportRef: `file:${relative(journalRoot, reportPath)}`,
     journalEventId: event.eventId,
   };
+}
+
+/**
+ * Rechecks the retained and live Git evidence for one settled Blog effect
+ * without running product verification or appending a verification event.
+ */
+export async function validateAgentEraBlogSettledEffectEvidence(input: {
+  readonly home: string;
+  readonly missionId: string;
+  readonly effectId: string;
+}): Promise<RetainedAgentEraBlogSettledEffect> {
+  if (input.missionId !== BLOG_MISSION_ID) {
+    throw new Error(`Blog verifier only accepts Mission ${BLOG_MISSION_ID}`);
+  }
+  const journalRoot = missionRunnerDirectory(resolve(input.home), input.missionId);
+  const journal = new FileEffectJournal(journalRoot);
+  const activity = await journal.activity(input.effectId);
+  assertSettledEffectActivity(activity, input.effectId);
+  const settlement = activity.settlement;
+  const candidateRoot = await realpath(activity.prepared.worktree.root);
+  const candidate = await observeCandidate(candidateRoot);
+  if (candidate.head !== activity.prepared.worktree.baseHead) {
+    throw new Error("candidate HEAD no longer matches the effect base HEAD");
+  }
+  if (!sameStrings(candidate.changedPaths, settlement.changedPaths)) {
+    throw new Error("candidate changed paths no longer match the settled effect");
+  }
+  const manifestRef = settlement.acceptance.mechanical.evidenceRefs.find(
+    (ref) => ref.startsWith("file:") && ref.endsWith(".manifest.json"),
+  );
+  if (manifestRef === undefined) {
+    throw new Error("settled effect has no retained manifest evidence");
+  }
+  const manifestPath = resolveEvidencePath(
+    journalRoot,
+    manifestRef.slice("file:".length),
+  );
+  const manifest = EffectManifestSchema.parse(
+    JSON.parse(await readFile(manifestPath, "utf8")),
+  );
+  await verifyRetainedEffectEvidence({
+    journalRoot,
+    activity,
+    manifest,
+    candidateRoot,
+  });
+  return { journalRoot, activity, candidateRoot, candidate };
 }
 
 function assertVerifiableActivity(
   activity: EffectActivity | undefined,
   effectId: string,
 ): asserts activity is EffectActivity & { readonly settlement: NonNullable<EffectActivity["settlement"]> } {
+  assertSettledEffectActivity(activity, effectId);
+  if (activity.independentVerification !== undefined) {
+    throw new Error(`effect ${effectId} already has independent verification`);
+  }
+}
+
+function assertSettledEffectActivity(
+  activity: EffectActivity | undefined,
+  effectId: string,
+): asserts activity is EffectActivity & {
+  readonly settlement: NonNullable<EffectActivity["settlement"]>;
+} {
   if (activity === undefined) throw new Error(`effect ${effectId} does not exist`);
   if (activity.state !== "settled" || activity.settlement === undefined) {
     throw new Error(`effect ${effectId} is ${activity.state}, not settled`);
-  }
-  if (activity.independentVerification !== undefined) {
-    throw new Error(`effect ${effectId} already has independent verification`);
   }
   if (activity.settlement.acceptance.mechanical.verdict !== "passed") {
     throw new Error(`effect ${effectId} did not pass mechanical acceptance`);
@@ -317,17 +425,9 @@ async function observeCandidate(root: string) {
   };
 }
 
-async function verifierSourceDigests() {
-  const sources = [
-    {
-      ref: "source-project:operations/autonomy/experiments/agent-era-blog-effect-verifier.ts",
-      path: fileURLToPath(import.meta.url),
-    },
-    {
-      ref: "source-project:operations/autonomy/experiments/verify-agent-era-blog-candidate.ts",
-      path: fileURLToPath(new URL("./verify-agent-era-blog-candidate.ts", import.meta.url)),
-    },
-  ];
+async function verifierSourceDigests(
+  sources: AgentEraBlogEffectVerifierProfile["verifierSources"],
+) {
   return await Promise.all(sources.map(async (source) => ({
     ref: source.ref,
     digest: sha256(await readFile(source.path)),

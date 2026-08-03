@@ -1467,7 +1467,8 @@ test("a detached runner resumes an interrupted turn only after an explicit recov
   const runtimeModule = fileURLToPath(new URL("./fixtures/recovery-mission-runtime.ts", import.meta.url));
   const child = startRunner(root, missionId, runtimeModule);
 
-  expect((await waitForLiveStatus(root, missionId, child)).state).toBe("interrupted");
+  const interruptedStatus = await waitForLiveStatus(root, missionId, child);
+  expect(interruptedStatus.state).toBe("interrupted");
   expect(requireSuccess(await requestMissionRunner(
     root,
     missionId,
@@ -1480,6 +1481,8 @@ test("a detached runner resumes an interrupted turn only after an explicit recov
   expect((await timeline.latestTurn(missionId))?.recoveries).toBeUndefined();
   const recovered = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
     kind: "recovery",
+    expectedRunnerId: interruptedStatus.runnerId,
+    expectedState: "interrupted",
     recovery: {
       id: "recover-resume-1",
       actorRef: "principal:local",
@@ -1502,6 +1505,8 @@ test("a detached runner resumes an interrupted turn only after an explicit recov
   });
   const replayed = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
     kind: "recovery",
+    expectedRunnerId: interruptedStatus.runnerId,
+    expectedState: "interrupted",
     recovery: {
       id: "recover-resume-1",
       actorRef: "principal:local",
@@ -1511,8 +1516,39 @@ test("a detached runner resumes an interrupted turn only after an explicit recov
   })));
   expect(replayed.status.state).toBe("running");
   expect((await Bun.file(timeline.timelinePath(missionId)).text()).match(/recover-resume-1/g)?.length).toBe(1);
+  const halfGuard = await requestMissionRunner(root, missionId, missionRunnerRequest({
+    kind: "recovery",
+    expectedRunnerId: interruptedStatus.runnerId,
+    recovery: {
+      id: "recover-resume-1",
+      actorRef: "principal:local",
+      sourceRef: "terminal:primary",
+      action: "resume",
+    },
+  }));
+  expect(halfGuard).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("requires both expectedRunnerId and expectedState"),
+  });
+  const runnerDrift = await requestMissionRunner(root, missionId, missionRunnerRequest({
+    kind: "recovery",
+    expectedRunnerId: "replacement-runner",
+    expectedState: "interrupted",
+    recovery: {
+      id: "recover-resume-1",
+      actorRef: "principal:local",
+      sourceRef: "terminal:primary",
+      action: "resume",
+    },
+  }));
+  expect(runnerDrift).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("runner changed from replacement-runner"),
+  });
   const conflict = await requestMissionRunner(root, missionId, missionRunnerRequest({
     kind: "recovery",
+    expectedRunnerId: interruptedStatus.runnerId,
+    expectedState: "interrupted",
     recovery: {
       id: "recover-resume-1",
       actorRef: "different-actor",
@@ -1521,6 +1557,122 @@ test("a detached runner resumes an interrupted turn only after an explicit recov
     },
   }));
   expect(conflict).toMatchObject({ ok: false });
+
+  await requestMissionRunner(root, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
+  await waitForExit(child);
+}, 10_000);
+
+test("an interrupted runner reports only the recovery actions declared by its runtime", async () => {
+  const root = await fixture();
+  const missionId = "mission-runtime-without-recovery";
+  const timeline = new FileMissionTimeline(missionRunnerDirectory(root, missionId));
+  const anchor = await seedTimeline(timeline, missionId);
+  await timeline.startTurn(missionId, {
+    version: MISSION_TURN_VERSION,
+    turnId: "turn-runtime-without-recovery",
+    baselineWatermark: 0,
+    anchorDigest: digestAnchor(anchor),
+    sourceRefs: ["mission-envelope:r1"],
+  });
+  const runtimeModule = fileURLToPath(
+    new URL("./fixtures/finished-mission-runtime.ts", import.meta.url),
+  );
+  const child = startRunner(root, missionId, runtimeModule);
+
+  expect((await waitForLiveStatus(root, missionId, child)).state).toBe("interrupted");
+  expect(requireSuccess(await requestMissionRunner(
+    root,
+    missionId,
+    missionRunnerRequest({ kind: "status" }),
+  )).recoveryCapabilities).toEqual({
+    abandon: true,
+    resume: false,
+    replace: false,
+  });
+
+  await requestMissionRunner(root, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
+  await waitForExit(child);
+}, 10_000);
+
+test("an interrupted runner rejects undeclared recovery without invoking its runtime", async () => {
+  const root = await fixture();
+  const missionId = "mission-runtime-recovery-withheld";
+  const timeline = new FileMissionTimeline(missionRunnerDirectory(root, missionId));
+  const anchor = await seedTimeline(timeline, missionId);
+  await timeline.startTurn(missionId, {
+    version: MISSION_TURN_VERSION,
+    turnId: "turn-runtime-recovery-withheld",
+    baselineWatermark: 0,
+    anchorDigest: digestAnchor(anchor),
+    sourceRefs: ["mission-envelope:r1"],
+  });
+  const runtimeInvocationPath = join(root, "runtime-recovery-invoked.json");
+  const runtimeModule = join(root, "runtime-with-recovery-withheld.ts");
+  await writeFile(runtimeModule, `
+import { writeFile } from "node:fs/promises";
+
+export const missionRuntimeRecoveryCapabilities = {
+  resume: false,
+  replace: false,
+};
+
+export async function createMissionRuntime(context) {
+  await writeFile(${JSON.stringify(runtimeInvocationPath)}, JSON.stringify(context.recovery));
+  const interrupted = context.recovery?.interruptedTurn;
+  if (interrupted === undefined) throw new Error("expected recovery context");
+  const turn = context.recovery.action === "resume"
+    ? interrupted
+    : { ...interrupted, turnId: \`\${interrupted.turnId}-replacement\` };
+  return {
+    turn,
+    controller: {
+      async advance() {
+        return {
+          kind: "failed",
+          error: "runtime recovery should not have been invoked",
+        };
+      },
+      async resume() {
+        throw new Error("runtime recovery should not have been invoked");
+      },
+      observeInput() {},
+      cancel() {},
+    },
+  };
+}
+`, "utf8");
+  const child = startRunner(root, missionId, runtimeModule);
+  const interrupted = await waitForLiveStatus(root, missionId, child);
+  expect(interrupted.state).toBe("interrupted");
+  const historyBefore = await timeline.readEvents(missionId);
+
+  for (const action of ["resume", "replace"] as const) {
+    const response = await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "recovery",
+      expectedRunnerId: interrupted.runnerId,
+      expectedState: "interrupted",
+      recovery: {
+        id: `recover-unsupported-${action}`,
+        actorRef: "principal:local",
+        sourceRef: "terminal:primary",
+        action,
+      },
+    }));
+    expect(response).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(`runtime does not support ${action} recovery`),
+    });
+  }
+
+  expect(requireSuccess(await requestMissionRunner(
+    root,
+    missionId,
+    missionRunnerRequest({ kind: "status" }),
+  )).status.state).toBe("interrupted");
+  expect(await timeline.readEvents(missionId)).toEqual(historyBefore);
+  expect(historyBefore.filter((event) => event.type === "mission.turn-started")).toHaveLength(1);
+  expect(historyBefore.filter((event) => event.type === "mission.turn-recovered")).toHaveLength(0);
+  await expect(stat(runtimeInvocationPath)).rejects.toMatchObject({ code: "ENOENT" });
 
   await requestMissionRunner(root, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
   await waitForExit(child);

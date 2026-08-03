@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +11,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  CellRunRecordSchema,
+  type CellRunRecord,
+} from "../../../packages/work-cell/src/contracts";
 import {
   executionAuthorizationReceiptPath,
   type ExecutionAuthorizationReceipt,
@@ -24,16 +28,33 @@ import {
   type MissionExecutionProposal,
 } from "../../workbench/src/mission-execution-proposal";
 import {
+  WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+  WorkbenchTaskExecutionContextSchema,
+  workbenchTaskCorrectionGuidanceRefs,
+  workbenchTaskExecutionContextDigest,
+} from "../../workbench/src/ui/task-execution-context";
+import {
+  blogPublicationCell,
   blogPublicationWorkspace,
   blogPublicationAuthorizationContract,
+  blogPublicationExecutionProposal,
   createMissionRuntime,
   currentBlogPublicationRuntimeDigest,
+  missionRuntimeRecoveryCapabilities,
+  publicationCall,
 } from "../experiments/agent-era-blog-publication-runtime";
 import {
   claimProjectExecutionAuthorization,
   consumeProjectExecutionAuthorization,
   validateProjectExecutionAuthorization,
 } from "../experiments/project-execution-authorization";
+import { admitPreparedDelegateBatch } from "../src/delegate-admission";
+import type { DelegateBatchCheckpoint } from "../src/delegate-loop";
+import { FileMissionTimeline } from "../src/delegate-timeline";
+import { IsolatedGitEffectObserver } from "../src/git-effect-observer";
+import { missionRunnerDirectory } from "../src/mission-runner";
+import { digestAnchor } from "../src/mission-reconciliation";
+import { MISSION_TURN_VERSION } from "../src/mission-turn";
 
 const roots: string[] = [];
 
@@ -43,10 +64,14 @@ afterEach(() => {
   }
 });
 
-test("the publication runtime declares one exact v2 read, exclusion, write, and empty command boundary", () => {
+test("the publication runtime declares one exact v3 read, exclusion, write, and empty command boundary", () => {
   const contract = blogPublicationAuthorizationContract();
+  expect(missionRuntimeRecoveryCapabilities).toEqual({
+    resume: true,
+    replace: false,
+  });
   expect(contract.proposalId).toBe(
-    "agent-era-blog-seeded-publication-roundtrip-v1",
+    "agent-era-blog-personal-publication-roundtrip-v3",
   );
   expect(contract.proposalVersion).toBe("mission-execution-proposal.v2");
   expect(contract.runtimeDigest).toBe(currentBlogPublicationRuntimeDigest());
@@ -56,18 +81,12 @@ test("the publication runtime declares one exact v2 read, exclusion, write, and 
       "DESIGN.md",
       "operations/missions/principal-workbench-dogfood.json",
       "package.json",
-      "package-lock.json",
       "tsconfig.json",
       "drizzle.config.ts",
-      "vite.config.ts",
-      "next.config.ts",
-      "worker/index.ts",
+      "app/chatgpt-auth.ts",
       "app/page.tsx",
       "app/layout.tsx",
       "app/globals.css",
-      "app/chatgpt-auth.ts",
-      "app/blog/content.ts",
-      "db/index.ts",
       "db/schema.ts",
       "drizzle/meta/_journal.json",
       "tests/rendered-html.test.mjs",
@@ -83,18 +102,25 @@ test("the publication runtime declares one exact v2 read, exclusion, write, and 
       ".next",
     ],
     writePaths: [
-      "db/schema.ts",
-      "db/publications.ts",
-      "app/blog",
-      "app/studio",
-      "app/api/publications",
+      "DESIGN.md",
+      "package.json",
       "app/page.tsx",
       "app/layout.tsx",
       "app/globals.css",
-      "drizzle",
+      "app/blog/SiteChrome.tsx",
+      "app/blog/content.ts",
+      "app/blog/reader.tsx",
+      "app/blog/[slug]/page.tsx",
+      "app/blog/[slug]/revision/[revisionId]/[view]/page.tsx",
+      "app/studio/page.tsx",
+      "app/studio/StudioComposer.tsx",
+      "app/api/publications/route.ts",
+      "db/schema.ts",
+      "db/publications.ts",
+      "drizzle/0000_seeded_publication.sql",
+      "drizzle/meta/_journal.json",
       "tests/rendered-html.test.mjs",
       "tests/author-reader-flow.test.mjs",
-      "package.json",
     ],
     commands: [],
   });
@@ -117,6 +143,22 @@ test("the publication runtime declares one exact v2 read, exclusion, write, and 
     contract.scope.writePaths,
   );
   expect(workspace.allowedCommands).toEqual([]);
+});
+
+test("the publication call carries the exact Workbench task and retained Principal corrections", () => {
+  const context = taskExecutionContext(
+    "22222222-2222-4222-8222-222222222222",
+    "a".repeat(64),
+  );
+  const call = publicationCall(context);
+  expect(call.task).toContain(context.objective);
+  expect(call.task).toContain(context.corrections[0]!.id);
+  expect(call.task).toContain(context.corrections[0]!.statement);
+  expect(call.acceptance).toContain(context.acceptance[0]!);
+  expect(call.sourceRefs).toContain(context.corrections[0]!.sourceRef);
+  expect(call.sourceRefs).toContain(
+    `workbench-task:${context.taskId}@${context.taskRevision}`,
+  );
 });
 
 test("one exact v2 receipt is consumed once and records the clean detached candidate", () => {
@@ -274,8 +316,16 @@ test("a missing reconciled anchor does not consume the runtime authorization", a
   const fixture = authorizationFixture();
   const priorRoot = process.env.ROSSO_BLOG_EFFECT_ROOT;
   const priorReceipt = process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT;
+  const priorTaskContext =
+    process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV];
   process.env.ROSSO_BLOG_EFFECT_ROOT = fixture.worktree;
   process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT = fixture.receiptPath;
+  process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV] = JSON.stringify(
+    taskExecutionContext(
+      fixture.receipt.authorizationId,
+      fixture.receipt.proposalDigest,
+    ),
+  );
   try {
     await expect(createMissionRuntime({
       root: fixture.home,
@@ -294,6 +344,10 @@ test("a missing reconciled anchor does not consume the runtime authorization", a
   } finally {
     restoreEnvironment("ROSSO_BLOG_EFFECT_ROOT", priorRoot);
     restoreEnvironment("ROSSO_BLOG_AUTHORIZATION_RECEIPT", priorReceipt);
+    restoreEnvironment(
+      WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+      priorTaskContext,
+    );
   }
 });
 
@@ -301,9 +355,17 @@ test("the runtime claims only after all local launch preconditions succeed", asy
   const fixture = authorizationFixture();
   const priorRoot = process.env.ROSSO_BLOG_EFFECT_ROOT;
   const priorReceipt = process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT;
+  const priorTaskContext =
+    process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV];
   const priorKey = process.env.DEEPSEEK_API_KEY;
   process.env.ROSSO_BLOG_EFFECT_ROOT = fixture.worktree;
   process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT = fixture.receiptPath;
+  const taskContext = taskExecutionContext(
+    fixture.receipt.authorizationId,
+    fixture.receipt.proposalDigest,
+  );
+  process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV] =
+    JSON.stringify(taskContext);
   process.env.DEEPSEEK_API_KEY = "test-only-not-sent";
   try {
     const prepared = await createMissionRuntime({
@@ -321,6 +383,21 @@ test("the runtime claims only after all local launch preconditions succeed", asy
       recovery: undefined,
     } as unknown as Parameters<typeof createMissionRuntime>[0]);
     expect(prepared.turn.anchorDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(prepared.turn.launchAuthorizationRef).toEqual({
+      authorizationId: fixture.receipt.authorizationId,
+      proposalDigest: fixture.receipt.proposalDigest,
+      claimSourceRef: join(
+        "state",
+        "execution-authorization-claims",
+        `${fixture.receipt.authorizationId}.json`,
+      ),
+    });
+    expect(prepared.turn.sourceRefs).toContain(
+      `workbench-task:${taskContext.taskId}@${taskContext.taskRevision}`,
+    );
+    expect(prepared.turn.sourceRefs).toContain(
+      taskContext.corrections[0]!.sourceRef,
+    );
     expect(claimExists(
       fixture.home,
       fixture.receipt.authorizationId,
@@ -329,6 +406,265 @@ test("the runtime claims only after all local launch preconditions succeed", asy
   } finally {
     restoreEnvironment("ROSSO_BLOG_EFFECT_ROOT", priorRoot);
     restoreEnvironment("ROSSO_BLOG_AUTHORIZATION_RECEIPT", priorReceipt);
+    restoreEnvironment(
+      WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+      priorTaskContext,
+    );
+    restoreEnvironment("DEEPSEEK_API_KEY", priorKey);
+  }
+});
+
+test("recovery settles one retained child and Git effect without replaying a model or writer", async () => {
+  const fixture = authorizationFixture();
+  const consumed = consume(fixture);
+  const missionId = "principal-workbench-dogfood";
+  const timeline = new FileMissionTimeline(
+    missionRunnerDirectory(fixture.home, missionId),
+  );
+  const anchor = {
+    id: "intent:principal-workbench-dogfood",
+    revision: "r1",
+    statement: "Complete the supervised Blog roundtrip.",
+    sourceRefs: ["principal:test"],
+    reconciledWatermark: 0,
+  };
+  await timeline.seedAnchor({
+    version: "rosso.mission-anchor-seed.v1",
+    id: "seed:principal-workbench-dogfood",
+    missionId,
+    authorityRef: "principal:test",
+    sourceRef: "test:publication-recovery",
+    anchor,
+  });
+  const taskContext = taskExecutionContext(
+    fixture.receipt.authorizationId,
+    fixture.receipt.proposalDigest,
+  );
+  const call = publicationCall(taskContext);
+  const turnId = "agent-era-blog-publication-recovery-test";
+  const launchAuthorizationRef = {
+    authorizationId: fixture.receipt.authorizationId,
+    proposalDigest: fixture.receipt.proposalDigest,
+    claimSourceRef: join(
+      "state",
+      "execution-authorization-claims",
+      `${fixture.receipt.authorizationId}.json`,
+    ),
+  };
+  const turn = {
+    version: MISSION_TURN_VERSION,
+    turnId,
+    baselineWatermark: 0,
+    anchorDigest: digestAnchor(anchor),
+    sourceRefs: [
+      ...call.sourceRefs,
+      `workbench-task-context:sha256:${
+        workbenchTaskExecutionContextDigest(taskContext)
+      }`,
+    ],
+    launchAuthorizationRef,
+    guidanceRefs: workbenchTaskCorrectionGuidanceRefs(taskContext),
+  };
+  await timeline.startTurn(missionId, turn);
+
+  const batchId = `${turnId}:batch:1`;
+  const cell = blogPublicationCell(fixture.worktree, call);
+  const admission = admitPreparedDelegateBatch({
+    id: batchId,
+    whole: {
+      revision: "agent-era-blog-personal-publication-roundtrip-v3",
+      sourceRefs: [...call.sourceRefs],
+      obligations: [...call.obligationRefs],
+      settledContributionKeys: [],
+      guardRefs: [
+        "guard:isolated-worktree-publication-contract-and-browser-verification",
+      ],
+      capabilityNeeds: [call.capabilityNeed],
+      reconstructionOwner: "principal:agent-era-blog-supervisor",
+      workspace: blogPublicationWorkspace(fixture.worktree),
+      effectPolicy: {
+        kind: "isolated-writable-trial",
+        root: fixture.worktree,
+      },
+    },
+    contributions: [{
+      ...call,
+      dependsOn: [],
+      taskShape: {
+        referenceProfile: {
+          id: "agent-era-blog-publication-writer-v1",
+          revision: "2026-07-29-personal-blog-correction-roundtrip",
+        },
+        evidence: {
+          status: "provisional-observed",
+          revision: "2026-07-29-personal-blog-correction-roundtrip",
+          refs: ["evidence:test-retained-recovery"],
+        },
+        disposition: "guarded",
+        principalInstability: "cross-layer publication change",
+        guardRefs: [
+          "guard:isolated-worktree-publication-contract-and-browser-verification",
+        ],
+        reconstructionOwner: "principal:agent-era-blog-supervisor",
+        overloadDisposition: "repartition",
+      },
+      cell,
+    }],
+  });
+  const checkpoint: DelegateBatchCheckpoint = {
+    id: batchId,
+    parentLoopId: turnId,
+    wholeRevision: admission.whole.revision,
+    parentUsage: zeroUsage(),
+    tasks: [{
+      id: call.taskId,
+      subject: "Implement the corrected Blog roundtrip",
+      description: call.task,
+      status: "in_progress",
+      owner: `delegate:${call.key}`,
+      blockedBy: [],
+    }],
+    invocations: [{
+      toolCallId: "tool-recovery-test",
+      toolName: "delegate",
+      call,
+      input: { kind: "inline" },
+    }],
+    responseMessages: [],
+    admission,
+  };
+  const observer = new IsolatedGitEffectObserver({
+    missionId,
+    journalRoot: missionRunnerDirectory(fixture.home, missionId),
+    leaseRoot: fixture.home,
+    launchAuthorizationRef,
+  });
+  await timeline.prepareBatch(checkpoint);
+  await observer.prepare(checkpoint);
+  await timeline.markBatchDispatched(checkpoint);
+  await observer.start(checkpoint);
+
+  const designPath = join(fixture.worktree, "DESIGN.md");
+  const designSource = `${readFileSync(designPath, "utf8")}\nRecovered candidate.\n`;
+  writeFileSync(designPath, designSource);
+  const runId = "run-publication-recovery-test";
+  observer.trace(checkpoint, {
+    at: "2026-07-29T12:00:00Z",
+    type: "cell.started",
+    data: { runId },
+  });
+  const record = CellRunRecordSchema.parse({
+    version: "work-cell.run.v4",
+    runId,
+    cellId: cell.id,
+    driver: {
+      adapter: "test-no-replay",
+      provider: "test",
+      model: "retained-record",
+    },
+    startedAt: "2026-07-29T12:00:00Z",
+    finishedAt: "2026-07-29T12:00:01Z",
+    durationMs: 1_000,
+    status: "passed",
+    input: cell,
+    finalText: "The retained writer completed.",
+    output: {
+      status: "completed",
+      summary: "retained settlement",
+      files: ["DESIGN.md"],
+      remainingRisk: "independent verification pending",
+    },
+    artifacts: [{
+      path: "DESIGN.md",
+      bytes: Buffer.byteLength(designSource),
+      sha256: createHash("sha256").update(designSource).digest("hex"),
+    }],
+    verification: {
+      passed: true,
+      terminal: {
+        passed: true,
+        required: [],
+        called: [],
+      },
+      artifacts: { passed: true, errors: [] },
+    },
+    workspaceDiff: {
+      added: [],
+      changed: ["DESIGN.md"],
+      removed: [],
+    },
+    usage: zeroUsage(),
+    usageByPhase: {
+      preparation: zeroUsage(),
+      execution: zeroUsage(),
+    },
+    executionObservation: {
+      executionProfileId: "agent-era-blog-publication-writer-v1",
+    },
+    trace: [],
+    rawSteps: [],
+  });
+  const run = {
+    kind: "direct" as const,
+    admission,
+    record: record as CellRunRecord,
+  };
+  await observer.settle(checkpoint, run);
+  await timeline.recordBatchSettlements({
+    checkpoint,
+    run,
+    outcomes: [{
+      key: call.key,
+      cellId: cell.id,
+      status: "completed",
+      runId,
+      artifactRefs: ["DESIGN.md"],
+    }],
+  });
+
+  const priorRoot = process.env.ROSSO_BLOG_EFFECT_ROOT;
+  const priorReceipt = process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT;
+  const priorTaskContext =
+    process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV];
+  const priorKey = process.env.DEEPSEEK_API_KEY;
+  process.env.ROSSO_BLOG_EFFECT_ROOT = fixture.worktree;
+  process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT = fixture.receiptPath;
+  process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV] =
+    JSON.stringify(taskContext);
+  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    const prepared = await createMissionRuntime({
+      root: fixture.home,
+      missionId,
+      timeline,
+      recovery: {
+        action: "resume",
+        interruptedTurn: turn,
+      },
+    });
+    const transition = await prepared.controller.advance();
+    expect(transition).toMatchObject({
+      kind: "finished",
+      run: {
+        status: "needs-attention",
+        text: expect.stringContaining("without replaying"),
+        uncoveredObligations: [],
+        tasks: [{
+          id: call.taskId,
+          status: "completed",
+        }],
+      },
+    });
+    expect(readFileSync(consumed.claimPath, "utf8")).toContain(
+      fixture.receipt.authorizationId,
+    );
+  } finally {
+    restoreEnvironment("ROSSO_BLOG_EFFECT_ROOT", priorRoot);
+    restoreEnvironment("ROSSO_BLOG_AUTHORIZATION_RECEIPT", priorReceipt);
+    restoreEnvironment(
+      WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+      priorTaskContext,
+    );
     restoreEnvironment("DEEPSEEK_API_KEY", priorKey);
   }
 });
@@ -428,57 +764,7 @@ function publicationProposal(): Extract<
   MissionExecutionProposal,
   { version: "mission-execution-proposal.v2" }
 > {
-  const contract = blogPublicationAuthorizationContract();
-  return MissionExecutionProposalSchema.parse({
-    version: "mission-execution-proposal.v2",
-    proposalId: contract.proposalId,
-    mode: "supervised",
-    status: "awaiting-principal-authorization",
-    runtimeRef: contract.runtimeRef,
-    runtimeDigest: contract.runtimeDigest,
-    externalProvider: contract.externalProvider,
-    externalDisclosure: contract.externalDisclosure,
-    candidateWorktree: {
-      rootRef: contract.candidateRootRef,
-      binding: "operator-selected-at-launch",
-    },
-    scope: contract.scope,
-    budget: contract.budget,
-    authority: {
-      externalDisclosure: "withheld",
-      budgetRelease: "withheld",
-      write: "withheld",
-      execute: "withheld",
-      commit: "withheld",
-      merge: "withheld",
-      publish: "withheld",
-    },
-    pendingDecisions: [{
-      id: "external-disclosure",
-      label: "Authorize the declared DeepSeek disclosure",
-      proposal: "ALLOW the exact v2 read boundary",
-      status: "pending",
-      options: [{
-        replyKey: "ALLOW",
-        label: "Authorize exact disclosure",
-        immediateResult:
-          "Run one supervised publication writer with only the declared read and write paths.",
-        tradeoff:
-          "The declared project sources leave the local boundary and may incur model cost.",
-      }, {
-        replyKey: "HOLD",
-        label: "Keep blocked",
-        immediateResult:
-          "Do not disclose project sources or start the publication writer.",
-        tradeoff:
-          "The author-reader MVP remains incomplete.",
-      }],
-      compactReplyKey: "ALLOW",
-    }],
-  }) as Extract<
-    MissionExecutionProposal,
-    { version: "mission-execution-proposal.v2" }
-  >;
+  return blogPublicationExecutionProposal();
 }
 
 function missionRecord(proposal: MissionExecutionProposal) {
@@ -554,6 +840,37 @@ function authorizationReceipt(
   };
 }
 
+function taskExecutionContext(
+  authorizationId: string,
+  proposalDigest: string,
+) {
+  return WorkbenchTaskExecutionContextSchema.parse({
+    version: "rosso.workbench-task-execution-context.v1",
+    taskId: "11111111-1111-4111-8111-111111111111",
+    sourceRevision: 12,
+    taskRevision: 7,
+    objective:
+      "Make the personal Blog the primary reader experience while preserving inspectable projections.",
+    acceptance: [
+      "Desktop and mobile both lead with Lidessen, sustained prose, and editorial hierarchy.",
+    ],
+    corrections: [{
+      id: "33333333-3333-4333-8333-333333333333",
+      statement:
+        "This is a personal Blog; keep Reading Field visibly secondary.",
+      sourceRef: "conversation:test/personal-blog-correction",
+    }],
+    binding: {
+      projectId: "appgprj_6a66e0a058b081919d4bce580c0ed1ac",
+      missionId: "principal-workbench-dogfood",
+    },
+    execution: {
+      authorizationId,
+      proposalDigest,
+    },
+  });
+}
+
 function consume(fixture: Fixture) {
   return consumeProjectExecutionAuthorization({
     home: fixture.home,
@@ -594,4 +911,13 @@ function git(cwd: string, ...arguments_: string[]): string {
 function restoreEnvironment(name: string, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
+}
+
+function zeroUsage() {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cachedInputTokens: 0,
+  };
 }

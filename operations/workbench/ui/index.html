@@ -92,6 +92,10 @@
             <span>总览</span>
             <small>项目与当前工作</small>
           </button>
+          <button class="view-button" type="button" data-view="tasks">
+            <span>任务</span>
+            <strong id="all-task-count">—</strong>
+          </button>
           <button class="view-button" type="button" data-view="principal">
             <span>待我处理</span>
             <strong id="principal-task-count">—</strong>
@@ -177,16 +181,22 @@
               <h2 id="view-title">总览</h2>
               <p id="view-summary">跨项目查看需要你处理、Agent 正在进行和状态未知的工作。</p>
             </div>
-            <div class="observation-state" id="observation-state">
-              <span>运行投影</span>
-              <strong>正在读取</strong>
+            <div class="unified-header-actions">
+              <button class="task-create-trigger" id="create-task-button" type="button">
+                新建任务
+              </button>
+              <div class="observation-state" id="observation-state">
+                <span>运行投影</span>
+                <strong>正在读取</strong>
+              </div>
             </div>
           </header>
 
           <div class="task-filter-bar" id="task-filter-bar" hidden>
             <button class="task-filter is-active" type="button" data-task-filter="all">全部</button>
             <button class="task-filter" type="button" data-task-filter="principal">待我</button>
-            <button class="task-filter" type="button" data-task-filter="agent">Agent</button>
+            <button class="task-filter" type="button" data-task-filter="agent">Agent 工作</button>
+            <button class="task-filter" type="button" data-task-filter="agent-pending">待 Agent</button>
             <button class="task-filter" type="button" data-task-filter="independent">独立</button>
             <button class="task-filter" type="button" data-task-filter="verification">待验证</button>
             <button class="task-filter" type="button" data-task-filter="completed">已完成</button>
@@ -342,6 +352,289 @@
             <div><dt>证据状态</dt><dd id="peek-freshness">—</dd></div>
           </dl>
         </section>
+
+        <section class="task-create-panel" id="task-create-panel" hidden>
+          <header>
+            <p class="eyebrow">Workbench-owned task</p>
+            <h3>创建任务</h3>
+            <p>任务归 Workbench 所有；项目和 Worktree 只提供上下文，不获得项目事实权。</p>
+          </header>
+          <form id="task-create-form">
+            <label for="task-create-title">标题</label>
+            <input id="task-create-title" name="title" autocomplete="off" required />
+
+            <label for="task-create-objective">要解决的问题</label>
+            <textarea id="task-create-objective" name="objective" rows="3" required></textarea>
+
+            <label for="task-create-acceptance">验收条件 <small>每行一项</small></label>
+            <textarea id="task-create-acceptance" name="acceptance" rows="3" required></textarea>
+
+            <div class="task-form-grid">
+              <label>
+                下一责任方
+                <select id="task-create-actor" name="nextActor">
+                  <option value="principal">我</option>
+                  <option value="agent">Agent</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <label>
+                项目上下文
+                <select id="task-create-project" name="project">
+                  <option value="">独立任务</option>
+                </select>
+              </label>
+            </div>
+
+            <label id="task-create-mission-label" hidden>
+              Mission 上下文
+              <select id="task-create-mission" name="mission"></select>
+            </label>
+
+            <label id="task-create-worktree-label" hidden>
+              Worktree 上下文
+              <select id="task-create-worktree" name="worktree"></select>
+            </label>
+
+            <p class="task-boundary-note">
+              Project、Worktree 与 Mission 都只提供上下文。分配给 Agent
+              不表示 Agent 已经运行；只有精确实时执行证据才会进入 Agent 工作视图。
+            </p>
+            <div class="task-primary-actions">
+              <button class="primary-action" id="task-create-submit" type="submit">
+                创建任务
+              </button>
+            </div>
+          </form>
+          <p class="action-result" id="task-create-result" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="local-task-detail" id="local-task-detail" hidden>
+          <header class="local-task-heading">
+            <div>
+              <p class="eyebrow">Workbench-owned task</p>
+              <h3>任务要求与处理</h3>
+            </div>
+            <span>本地任务边界</span>
+          </header>
+
+          <dl class="local-task-facts">
+            <div><dt>任务源</dt><dd id="local-task-source">—</dd></div>
+            <div><dt>修订</dt><dd id="local-task-revision">—</dd></div>
+            <div><dt>交互身份保证</dt><dd id="local-task-identity-assurance">—</dd></div>
+            <div><dt>所有权</dt><dd>Workbench 本地任务</dd></div>
+            <div><dt>项目关系</dt><dd id="local-task-project-boundary">—</dd></div>
+            <div><dt>Mission 关系</dt><dd id="local-task-mission-boundary">—</dd></div>
+            <div><dt>Worktree 关系</dt><dd id="local-task-worktree-boundary">—</dd></div>
+          </dl>
+
+          <section class="local-task-mission-context" id="local-task-mission-context">
+            <div>
+              <span>Mission context</span>
+              <strong id="local-task-mission-context-heading">未声明 Mission 上下文</strong>
+              <p id="local-task-mission-context-summary">
+                本地任务尚未引用项目中的 Mission。
+              </p>
+            </div>
+            <div class="local-task-carrier-context" id="local-task-carrier-context" hidden>
+              <span class="context-relation">same-mission-current-carrier</span>
+              <span class="context-boundary">execution-unproven</span>
+              <strong id="local-task-carrier-title">—</strong>
+              <small id="local-task-carrier-source">—</small>
+              <p>
+                这是同一项目与 Mission 的当前载体观察；没有证据证明它正在执行此本地任务。
+              </p>
+            </div>
+          </section>
+
+          <section class="local-task-execution-context" id="local-task-execution-context">
+            <header>
+              <div>
+                <span>Exact execution evidence</span>
+                <h3>执行关联</h3>
+              </div>
+              <strong id="local-task-execution-standing">当前执行不可证明</strong>
+            </header>
+            <ol class="execution-evidence-layers">
+              <li id="task-execution-authorization-layer">
+                <span>1</span>
+                <div>
+                  <strong>Authorization consumption</strong>
+                  <small id="task-execution-authorization-standing">unavailable</small>
+                  <p id="task-execution-authorization-sources">尚无当前证据来源</p>
+                </div>
+              </li>
+              <li id="task-execution-turn-layer">
+                <span>2</span>
+                <div>
+                  <strong>Current turn</strong>
+                  <small id="task-execution-turn-standing">unavailable</small>
+                  <p id="task-execution-turn-sources">尚无当前证据来源</p>
+                </div>
+              </li>
+              <li id="task-execution-effect-layer">
+                <span>3</span>
+                <div>
+                  <strong>Current effect</strong>
+                  <small id="task-execution-effect-standing">unavailable</small>
+                  <p id="task-execution-effect-sources">尚无当前证据来源</p>
+                </div>
+              </li>
+            </ol>
+            <section class="task-launch-readiness" id="task-launch-readiness" hidden>
+              <header>
+                <span>下一次 Agent execution</span>
+                <strong id="task-launch-readiness-standing">—</strong>
+              </header>
+              <p id="task-launch-readiness-summary">—</p>
+              <ul id="task-launch-readiness-blockers"></ul>
+            </section>
+            <form class="task-launch-execution" id="task-launch-execution-form" hidden>
+              <div>
+                <span>Authorized launch</span>
+                <strong>启动已授权 Agent</strong>
+                <small id="task-launch-execution-reference">—</small>
+                <p>
+                  此动作会消费当前已存在的一次性执行授权；不会授予 commit、merge 或 publish 权限。
+                </p>
+              </div>
+              <button class="primary-action" type="submit">启动已授权 Agent</button>
+            </form>
+            <form class="task-link-execution" id="task-link-execution-form" hidden>
+              <label for="task-link-execution-candidate">
+                可关联的当前已消费执行
+                <select id="task-link-execution-candidate"></select>
+              </label>
+              <div>
+                <span>证据来源</span>
+                <ul id="task-link-execution-evidence"></ul>
+              </div>
+              <button type="submit">关联当前已消费执行</button>
+            </form>
+            <p class="task-boundary-note">
+              关联只保留精确执行引用；不会改变任务生命周期、证明 Agent 正在执行此任务，
+              或授予 Mission、提交、合并、发布与产品验收权。
+            </p>
+          </section>
+
+          <section class="local-task-requirements">
+            <span>目标</span>
+            <p id="local-task-objective">—</p>
+            <span>验收条件</span>
+            <ul id="local-task-acceptance"></ul>
+          </section>
+
+          <section class="local-task-history">
+            <div class="field-heading compact">
+              <div>
+                <p class="eyebrow">Traceable history</p>
+                <h3>纠正与结果</h3>
+              </div>
+            </div>
+            <div id="local-task-history"></div>
+            <form class="task-correction-delivery" id="task-correction-delivery-form" hidden>
+              <span>当前精确执行</span>
+              <strong id="task-correction-delivery-summary">—</strong>
+              <p>
+                发送后，Mission timeline 会保留幂等 input receipt；任务只在回读该
+                receipt 后记录“已送达”，不会把送达当作理解、完成或验收。
+              </p>
+              <button type="submit">发送纠正到当前 Agent</button>
+            </form>
+            <form class="task-correction-delivery" id="task-execution-recovery-form" hidden>
+              <span>当前精确执行已中断</span>
+              <strong id="task-execution-recovery-summary">—</strong>
+              <p>
+                此动作只恢复任务最新精确执行的 interrupted turn；不会重用授权、
+                创建替代 Runner，或授予提交、合并与发布权限。
+              </p>
+              <button type="submit">续接当前任务执行</button>
+            </form>
+          </section>
+
+          <section class="local-task-actions">
+            <form class="local-task-action" id="task-rebind-worktree-form" hidden>
+              <label>
+                切换 Worktree 上下文
+                <select id="task-rebind-worktree"></select>
+              </label>
+              <small>
+                只更新本地任务的 Worktree 上下文；项目与 Mission 保持不变，也不会启动执行。
+              </small>
+              <button id="task-rebind-worktree-submit" type="submit" disabled>
+                切换 Worktree
+              </button>
+            </form>
+
+            <form class="local-task-action" id="task-assign-form">
+              <label>
+                下一责任方
+                <select id="task-assign-actor">
+                  <option value="principal">我</option>
+                  <option value="agent">Agent</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <button type="submit">更新责任方</button>
+            </form>
+
+            <form class="local-task-action" id="task-correct-form">
+              <label for="task-correct-statement">纠正当前任务</label>
+              <textarea id="task-correct-statement" rows="3" required></textarea>
+              <label>
+                纠正后责任方
+                <select id="task-correct-actor">
+                  <option value="agent">Agent</option>
+                  <option value="principal">我</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <button type="submit">记录纠正</button>
+            </form>
+
+            <form class="local-task-action" id="task-result-form">
+              <label for="task-result-summary">提交结果</label>
+              <textarea id="task-result-summary" rows="3" required></textarea>
+              <label for="task-result-evidence">Agent 提供的证据引用 <small>每行一个引用</small></label>
+              <textarea id="task-result-evidence" rows="3" required></textarea>
+              <small>
+                引用会作为 Agent 声明保存，不会因此成为运行时验证。
+              </small>
+              <button type="submit">提交结果声明</button>
+              <div class="task-verified-result-candidate" id="task-verified-result-candidate" hidden>
+                <span>当前运行时核验</span>
+                <strong id="task-verified-result-effect">—</strong>
+                <p id="task-verified-result-source">—</p>
+                <button id="task-submit-verified-result" type="button">
+                  提交当前已验证执行结果
+                </button>
+              </div>
+            </form>
+
+            <form class="local-task-action" id="task-reopen-form">
+              <label for="task-reopen-statement">重新打开原因</label>
+              <textarea id="task-reopen-statement" rows="3" required></textarea>
+              <label>
+                下一责任方
+                <select id="task-reopen-actor">
+                  <option value="agent">Agent</option>
+                  <option value="principal">我</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <button type="submit">重新打开任务</button>
+            </form>
+
+            <div class="task-primary-actions" id="task-accept-actions">
+              <button class="primary-action" id="task-accept-button" type="button">
+                接受本地任务结果
+              </button>
+              <small id="task-accept-boundary">只接受 Workbench 本地任务，不代表产品、Mission、提交、合并或发布接受。</small>
+            </div>
+          </section>
+          <p class="action-result" id="local-task-action-result" role="status" aria-live="polite"></p>
+        </section>
+
         <header class="action-header">
           <div>
             <p class="eyebrow">Human participation</p>

@@ -148,7 +148,7 @@ function assertCurrentProposal(
   inspection: ExecutionInspection,
 ): void {
   if (
-    inspection.status !== action.target.expectedStanding
+    inspection.proposalStatus !== action.target.expectedStanding
     || inspection.proposalId !== action.target.proposalId
     || inspection.proposalDigest !== action.target.proposalDigest
   ) {

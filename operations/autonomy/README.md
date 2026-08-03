@@ -5,6 +5,14 @@ continuously steerable Mission. It preserves ordered human input, bounded Agent
 turns, delegation evidence, interruption, reconciliation, and recovery without
 granting the runtime semantic, acceptance, or publication authority.
 
+Supervision is a transitional capability, not Rossovia's final operating form.
+The Principal-directed draft
+[autonomous collective-intelligence
+program](../../design/AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md) investigates fully
+autonomous collective operation with natural human interaction. This package
+supplies evidence about sustained loops and recovery; it does not define that
+future system by extending today's manual control surface.
+
 **Current status:** the
 [first-slice settlement](../../design/organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
 recognizes this implemented and mechanically verified first slice as an active,
@@ -48,8 +56,16 @@ The retained evidence supports these bounded mechanism claims:
   safe point, drains an active child to actual settlement, and requires
   reconciliation before a successor turn;
 - a graceful carrier restart preserves a partially reconciled input backlog;
-- interrupted turns require an explicit `resume`, `replace`, or `abandon`
-  recovery action;
+- interrupted turns expose only the recovery actions explicitly supported by
+  the selected runtime; `abandon` remains a runner capability, while `resume`
+  and `replace` are never inferred merely because a runtime module exists;
+- the Blog publication runtime supports only a settlement-only form of
+  `resume`: it requires one already child-settled direct batch and one settled,
+  launch-bound Git effect whose current HEAD, paths, file hashes, and patch
+  still reproduce the retained evidence. It reconstructs a
+  `needs-attention` turn settlement without invoking the parent model, child
+  driver, or writer. Prepared, active, uncertain, or effect-only interruption
+  remains unrecoverable;
 - a guarded Principal action carries the expected runner identity and state
   into the same serialized runner request that records the input or recovery,
   so a replacement carrier cannot receive an action authorized for its
@@ -61,6 +77,25 @@ The retained evidence supports these bounded mechanism claims:
   bounded turn activity, so `legacy-unanchored` carries the exact prior Mission
   event count and timeline digest required by guarded adoption rather than
   inferring lineage from cached runner state or `recentEvents`;
+- the Blog runtimes retain the consumed execution authorization ID, proposal
+  digest, and canonical claim reference as one structured launch reference on
+  both the Mission turn and its prepared writable effect; activity rejects a
+  missing-one-side or mismatched pair and exposes matching evidence for an
+  exact external join, while legacy descriptive `sourceRefs` remain
+  execution-unproven;
+- the Blog publication turn additionally retains digest-backed
+  `guidanceRefs` for the exact Workbench corrections supplied at launch.
+  Activity exposes only their identities and digests; Workbench can therefore
+  distinguish launch guidance from a later correction without copying its
+  text into runtime activity;
+- a settled writable effect exposes `currentVerifiedResult` only as a
+  runtime-owned selector after mechanical and independent verification pass,
+  the independent report binds a subject, the changed bytes remain current,
+  scope is clear, and uncertainty is absent. The selector retains the exact
+  effect and `effect-verified` event IDs; arbitrary evidence-reference text,
+  a low-level passed verdict without a subject, or stale bytes cannot form it.
+  This projection grants no task acceptance, commit, merge, publication, or
+  product authority;
 - one proposal-only legacy migration brief may be retained beside the runner
   projection after binding a committed Mission source, candidate anchor, exact
   runner identity/state/liveness, and complete-history count/digest; activity
@@ -282,12 +317,17 @@ scope, budget, and the SHA-256 digest of the loaded supervisor-owned runtime
 source, then atomically consumes its authorization ID under
 `ROSSO_HOME/state/execution-authorization-claims/`; the immutable receipt remains
 under `ROSSO_HOME/receipts/`, and the runtime never falls back to an
-unreceipted run. The worktree variable selects location only; the runtime still
-fixes source, write scope, task, acceptance, provider route, and withheld
-integration authority. Starting it sends the declared Blog sources and bounded
-task context to its configured external model provider. The effect journal
-never turns mechanical or independent verification into commit, merge,
-publication, or product acceptance.
+unreceipted run. The runtime records the resulting structured authorization
+reference on its Mission turn and passes the same value into the prepared
+effect journal; the activity projection fails closed if only one side is
+present or their fields differ. Older turns whose free-form `sourceRefs`
+mention an authorization are not upgraded into exact lineage. The worktree
+variable selects location only; the runtime still fixes source, write scope,
+task, acceptance, provider route, and withheld integration authority. Starting
+it sends the declared Blog sources and bounded task context to its configured
+external model provider. The effect journal never turns mechanical or
+independent verification into commit, merge, publication, or product
+acceptance.
 
 After that Cell settles, the Blog-specific verifier derives the candidate
 worktree, base HEAD, patch, manifest, and changed paths from the effect journal;
@@ -303,6 +343,27 @@ instead of leaving a historical pass attached to new bytes. A pass admits only
 D1 runtime behavior, publication, or product acceptance. The generic
 `effect verify` command remains a low-level journal operation and must not
 replace this evidence-producing verifier for the Blog trial.
+
+The next Blog slice uses
+[`experiments/agent-era-blog-publication-runtime.ts`](experiments/agent-era-blog-publication-runtime.ts)
+and its separately scoped verifier:
+
+```text
+bun experiments/agent-era-blog-publication-effect-verifier.ts \
+  <mission-id> <effect-id> --home <ROSSO_HOME> \
+  --browser-evidence <browser-evidence.json>
+```
+
+The verifier reuses the effect-owned worktree, manifest, patch, and
+before/after byte checks, then requires the exact publication-v2 changed-path
+scope, build, test, migration, and author-reader contract probes. Browser
+evidence must cover anonymous desktop and mobile reading, protected studio
+access, and exact-revision view continuity, and must bind the candidate HEAD
+plus every current changed-file digest. Missing, malformed, or stale browser
+evidence returns `unverifiable` and appends no `effect-verified` event. A pass
+admits only `seeded-publication-roundtrip-ready-for-principal-review`; it still
+withholds commit, merge, deployment, production publication, and product
+acceptance.
 
 The strict receipt reader accepts the current supervisor-mediated v1 contract
 and the current Workbench-UI v2 contract. Both require `runtimeDigest`; an older

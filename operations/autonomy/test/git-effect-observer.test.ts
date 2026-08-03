@@ -17,6 +17,12 @@ import { missionRunnerDirectory } from "../src/mission-runner";
 import { MISSION_TURN_VERSION } from "../src/mission-turn";
 
 const roots: string[] = [];
+const launchAuthorizationRef = {
+  authorizationId: "11111111-1111-4111-8111-111111111111",
+  proposalDigest: "a".repeat(64),
+  claimSourceRef:
+    "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+} as const;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -30,6 +36,7 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
     missionId: "blog-mission",
     journalRoot: runnerRoot,
     leaseRoot: home,
+    launchAuthorizationRef,
   });
   const checkpoint = writableCheckpoint(fixture.worktree, "effect-1");
 
@@ -39,6 +46,7 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
     turnId: checkpoint.parentLoopId,
     baselineWatermark: 0,
     sourceRefs: ["mission:test"],
+    launchAuthorizationRef,
   });
   await timeline.prepareBatch(checkpoint);
   await observer.prepare(checkpoint);
@@ -77,6 +85,7 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
     prepared: {
       missionId: "blog-mission",
       cellId: "blog-writer",
+      launchAuthorizationRef,
       writePaths: ["src"],
       allowedCommands: [],
       authority: "withheld",
@@ -109,8 +118,10 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
     publish: "withheld",
   });
   expect(await readdir(join(home, "effect-leases"))).toEqual([]);
-  expect((await projectMissionActivity(home, "blog-mission")).currentEffect).toMatchObject({
+  const settledActivity = await projectMissionActivity(home, "blog-mission");
+  expect(settledActivity.currentEffect).toMatchObject({
     effectId: "effect-1",
+    launchAuthorizationRef,
     phase: "settled",
     writer: { cellId: "blog-writer", runId: "run-1" },
     scope: { writePaths: ["src"], allowedCommands: [] },
@@ -127,9 +138,10 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
     stale: false,
     uncertain: false,
   });
+  expect(settledActivity.currentVerifiedResult).toBeNull();
 
   const journal = new FileEffectJournal(runnerRoot);
-  await journal.verify("effect-1", {
+  const verificationEvent = await journal.verify("effect-1", {
     verifierRef: "supervisor:content-model-verifier",
     verdict: "passed",
     checks: [{
@@ -146,7 +158,8 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
       }],
     },
   });
-  expect((await projectMissionActivity(home, "blog-mission")).currentEffect).toMatchObject({
+  const verifiedActivity = await projectMissionActivity(home, "blog-mission");
+  expect(verifiedActivity.currentEffect).toMatchObject({
     verification: {
       independent: {
         verdict: "passed",
@@ -155,15 +168,106 @@ test("an isolated writer retains lease, tool, patch, hash manifest, and withheld
     },
     stale: false,
   });
+  expect(verifiedActivity.currentVerifiedResult).toEqual({
+    standing: "verified-current",
+    selector: {
+      kind: "autonomy-effect-verification.v1",
+      effectId: "effect-1",
+      verificationEventId: verificationEvent.eventId,
+    },
+  });
 
   await writeFile(
     join(fixture.worktree, "src/article.ts"),
     "export const thesis = 'changed after verification';\n",
     "utf8",
   );
-  expect((await projectMissionActivity(home, "blog-mission")).currentEffect).toMatchObject({
+  const staleActivity = await projectMissionActivity(home, "blog-mission");
+  expect(staleActivity.currentEffect).toMatchObject({
     stale: true,
   });
+  expect(staleActivity.currentVerifiedResult).toBeNull();
+});
+
+test("a passed low-level verification without a bound subject is not a current verified result", async () => {
+  const fixture = await gitWorktree();
+  const home = join(fixture.root, "rosso-home");
+  const runnerRoot = missionRunnerDirectory(home, "blog-mission");
+  const observer = new IsolatedGitEffectObserver({
+    missionId: "blog-mission",
+    journalRoot: runnerRoot,
+    leaseRoot: home,
+    launchAuthorizationRef,
+  });
+  const checkpoint = writableCheckpoint(fixture.worktree, "effect-unbound-verification");
+  const timeline = new FileMissionTimeline(runnerRoot);
+  await timeline.startTurn("blog-mission", {
+    version: MISSION_TURN_VERSION,
+    turnId: checkpoint.parentLoopId,
+    baselineWatermark: 0,
+    sourceRefs: ["mission:test"],
+    launchAuthorizationRef,
+  });
+  await timeline.prepareBatch(checkpoint);
+  await observer.prepare(checkpoint);
+  await observer.start(checkpoint);
+  observer.trace(checkpoint, {
+    at: "2026-07-26T12:00:00.000Z",
+    type: "cell.started",
+    data: { runId: "run-1", cellId: "blog-writer" },
+  });
+  await observer.settle(checkpoint, directRun(checkpoint, {
+    added: [],
+    changed: [],
+    removed: [],
+  }));
+  const journal = new FileEffectJournal(runnerRoot);
+  await journal.verify(checkpoint.id, {
+    verifierRef: "operator:low-level-verification",
+    verdict: "passed",
+    checks: [{
+      command: "claim passed without binding candidate bytes",
+      exitCode: 0,
+      outputDigest: "b".repeat(64),
+    }],
+    evidenceRefs: ["claim:passed"],
+  });
+
+  const activity = await projectMissionActivity(home, "blog-mission");
+  expect(activity.currentEffect?.verification.independent).toMatchObject({
+    verdict: "passed",
+  });
+  expect(activity.currentVerifiedResult).toBeNull();
+});
+
+test("activity fails closed when an effect names a different launch than its Mission turn", async () => {
+  const fixture = await gitWorktree();
+  const home = join(fixture.root, "rosso-home");
+  const runnerRoot = missionRunnerDirectory(home, "blog-mission");
+  const observer = new IsolatedGitEffectObserver({
+    missionId: "blog-mission",
+    journalRoot: runnerRoot,
+    leaseRoot: home,
+    launchAuthorizationRef: {
+      ...launchAuthorizationRef,
+      authorizationId: "22222222-2222-4222-8222-222222222222",
+    },
+  });
+  const checkpoint = writableCheckpoint(fixture.worktree, "effect-mismatched-launch");
+  const timeline = new FileMissionTimeline(runnerRoot);
+  await timeline.startTurn("blog-mission", {
+    version: MISSION_TURN_VERSION,
+    turnId: checkpoint.parentLoopId,
+    baselineWatermark: 0,
+    sourceRefs: ["mission:test"],
+    launchAuthorizationRef,
+  });
+  await timeline.prepareBatch(checkpoint);
+  await observer.prepare(checkpoint);
+
+  await expect(projectMissionActivity(home, "blog-mission")).rejects.toThrow(
+    "launch authorization does not match Mission turn",
+  );
 });
 
 test("a dirty baseline or an existing root lease prevents dispatch", async () => {

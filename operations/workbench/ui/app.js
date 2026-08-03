@@ -9,16 +9,251 @@ import {
   anchorMigrationDecisionBriefPresentation,
   candidateEvidencePresentation,
   correctionPresentation,
+  isIndependentWorkbenchTask,
   intentLineagePresentation,
   reconciliationActionDecisionBriefPresentation,
   runnerPresentation,
   verifiedCorrectionAwaitsSystemSettlement,
 } from "./operational-semantics.js";
 
+const principalLocusViews = new Set([
+  "overview",
+  "tasks",
+  "principal",
+  "agent",
+  "projects",
+  "project",
+  "independent",
+  "completed",
+]);
+const principalLocusFilters = new Set([
+  "all",
+  "principal",
+  "agent",
+  "agent-pending",
+  "independent",
+  "verification",
+  "completed",
+]);
+function stableLocusIdentifier(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (
+    normalized.length === 0
+    || normalized.length > 512
+    || /[\u0000-\u001f\u007f]/.test(normalized)
+  ) return null;
+  return normalized;
+}
+
+export function persistablePrincipalWorkItemIdentifier(value) {
+  const normalized = stableLocusIdentifier(value);
+  if (normalized === null) return false;
+  if (
+    /^principal-task:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      normalized,
+    )
+  ) return true;
+  return /^attention:(?:runner-anchor-migration-decision|runner-reconciliation-decision|mission-execution-awaiting-authorization):registered:[a-z0-9._-]{1,128}:[a-z0-9._-]{1,128}$/iu.test(
+    normalized,
+  );
+}
+
+export function parsePrincipalLocus(href) {
+  const url = new URL(href, "http://rossovia.local/");
+  const raw = {
+    view: url.searchParams.get("view"),
+    filter: url.searchParams.get("filter"),
+    project: url.searchParams.get("project"),
+    item: url.searchParams.get("item"),
+  };
+  const present = {
+    view: url.searchParams.has("view"),
+    filter: url.searchParams.has("filter"),
+    project: url.searchParams.has("project"),
+    item: url.searchParams.has("item"),
+  };
+  const view = principalLocusViews.has(raw.view) ? raw.view : null;
+  const filter = principalLocusFilters.has(raw.filter) ? raw.filter : null;
+  const projectId = stableLocusIdentifier(raw.project);
+  const workItemId = stableLocusIdentifier(raw.item);
+  const invalidFields = [
+    present.view && view === null ? "view" : null,
+    present.filter && filter === null ? "filter" : null,
+    present.project && projectId === null ? "project" : null,
+    present.item && workItemId === null ? "item" : null,
+  ].filter(Boolean);
+  return {
+    requested:
+      Object.values(present).some(Boolean)
+      || url.search.length > 0
+      || url.hash.length > 0,
+    invalidFields,
+    view,
+    filter,
+    projectId,
+    workItemId,
+  };
+}
+
+export function hasPrincipalLocusRequest(request) {
+  return request?.requested === true
+    || [
+      request?.view,
+      request?.filter,
+      request?.projectId,
+      request?.workItemId,
+    ].some((value) => value !== null && value !== undefined);
+}
+
+export function principalLocusHref(currentHref, locus) {
+  const url = new URL(currentHref, "http://rossovia.local/");
+  const query = new URLSearchParams();
+  const view =
+    locus.view === "project"
+    && locus.projectId
+    && locus.projectPersistable !== true
+      ? "projects"
+      : locus.view;
+  if (view && view !== "overview") {
+    query.set("view", view);
+  }
+  if (locus.filter && locus.filter !== "all") {
+    query.set("filter", locus.filter);
+  }
+  const projectId = stableLocusIdentifier(locus.projectId);
+  const workItemId = stableLocusIdentifier(locus.workItemId);
+  if (projectId && locus.projectPersistable === true) {
+    query.set("project", projectId);
+  }
+  if (workItemId && locus.workItemPersistable === true) {
+    query.set("item", workItemId);
+  }
+  const search = query.toString();
+  return `${url.pathname}${search ? `?${search}` : ""}`;
+}
+
+export function resolvePrincipalLocus(request, projection) {
+  const projects = Array.isArray(projection?.projects) ? projection.projects : [];
+  const workItems = Array.isArray(projection?.workItems) ? projection.workItems : [];
+  const project = request.projectId
+    ? projects.find(
+      (candidate) =>
+        candidate.id === request.projectId
+        && candidate.persistable === true,
+    )
+    : null;
+  const workItem = request.workItemId
+    ? workItems.find(
+      (candidate) =>
+        candidate.id === request.workItemId
+        && candidate.persistable === true,
+    )
+    : null;
+  const activeView = request.view
+    ?? (
+      request.workItemId || request.filter
+        ? "tasks"
+        : request.projectId
+          ? "project"
+          : "overview"
+    );
+  const taskFilter = request.filter ?? "all";
+
+  if (Array.isArray(request.invalidFields) && request.invalidFields.length > 0) {
+    return {
+      standing: "unavailable",
+      kind: "invalid",
+      requestedId: request.invalidFields.join(", "),
+      activeView,
+      taskFilter,
+      peekOpen: Boolean(request.workItemId),
+      reason: "The requested location contains an invalid explicit identifier.",
+    };
+  }
+  if (request.workItemId && workItem === undefined) {
+    return {
+      standing: "unavailable",
+      kind: "work-item",
+      requestedId: request.workItemId,
+      activeView,
+      taskFilter,
+      peekOpen: true,
+      reason: "The requested work item is not present in the current projection.",
+    };
+  }
+  if (request.projectId && project === undefined) {
+    return {
+      standing: "unavailable",
+      kind: "project",
+      requestedId: request.projectId,
+      activeView,
+      taskFilter,
+      peekOpen: Boolean(request.workItemId),
+      reason: "The requested project is not present in the current projection.",
+    };
+  }
+  if (
+    request.projectId
+    && workItem
+    && workItem.projectId !== request.projectId
+  ) {
+    return {
+      standing: "unavailable",
+      kind: "relation",
+      requestedId: request.workItemId,
+      activeView,
+      taskFilter,
+      peekOpen: true,
+      reason: "The requested work item no longer belongs to the requested project context.",
+    };
+  }
+  if (activeView === "project" && !project && !workItem?.projectId) {
+    return {
+      standing: "unavailable",
+      kind: "project",
+      requestedId: request.projectId,
+      activeView,
+      taskFilter,
+      peekOpen: Boolean(request.workItemId),
+      reason: "A project detail view requires one current project identifier.",
+    };
+  }
+
+  return {
+    standing: "available",
+    activeView,
+    taskFilter,
+    selectedProjectId: workItem?.projectId ?? project?.id ?? null,
+    selectedWorkItemId: workItem?.id ?? null,
+    selectedMissionId: workItem?.missionId ?? null,
+    peekOpen: workItem !== null && workItem !== undefined,
+  };
+}
+
+export function restoredPrincipalLocusState(resolved) {
+  const available = resolved.standing === "available";
+  return {
+    activeView: resolved.activeView,
+    taskFilter: resolved.taskFilter,
+    selectedProjectId: available ? resolved.selectedProjectId : null,
+    selectedMissionId: available ? resolved.selectedMissionId : null,
+    selectedWorktreeId: null,
+    selectedWorkItemId: available ? resolved.selectedWorkItemId : null,
+    peekOpen: resolved.peekOpen === true,
+    taskCreateOpen: false,
+    detailRevalidationPending: false,
+  };
+}
+
 (() => {
   "use strict";
 
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+
   const POLL_INTERVAL_MS = 5000;
+  const initialLocusRequest = parsePrincipalLocus(window.location.href);
+  const initialLocusRequested = hasPrincipalLocusRequest(initialLocusRequest);
   const state = {
     snapshot: null,
     source: "loading",
@@ -29,6 +264,7 @@ import {
     activeView: "overview",
     taskFilter: "all",
     peekOpen: false,
+    taskCreateOpen: false,
     detailRevalidationPending: false,
     actionKind: "contribution",
     pollTimer: null,
@@ -39,9 +275,14 @@ import {
     snapshotError: null,
     actionPending: false,
     actionReceipt: null,
+    taskActionPending: false,
+    taskActionReceipt: null,
     authorizationPending: false,
     authorizationDraft: null,
     authorizationSubmission: null,
+    locusRequest: initialLocusRequest,
+    locusRestorePending: initialLocusRequested,
+    unavailableLocus: null,
   };
 
   const demoSnapshot = {
@@ -501,8 +742,32 @@ import {
     return list(first(first(state.snapshot, ["workItems"], {}), ["items"], []));
   }
 
+  function taskSourceCapability() {
+    return first(
+      first(first(state.snapshot, ["workItems"], {}), ["capabilities"], {}),
+      ["independentTasks"],
+      {},
+    );
+  }
+
   function selectedWorkItem() {
     return workItems().find((item) => item.id === state.selectedWorkItemId) || null;
+  }
+
+  function isWorkbenchTask(item) {
+    return first(first(item, ["binding"], {}), ["kind"]) === "workbench-task"
+      && first(first(item, ["taskDetail"], {}), ["ownership"]) === "workbench-local";
+  }
+
+  function taskDetail(item = selectedWorkItem()) {
+    return isWorkbenchTask(item) ? first(item, ["taskDetail"]) : null;
+  }
+
+  function lines(value) {
+    return String(value ?? "")
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
   }
 
   function workItemFreshnessLabel(item) {
@@ -624,6 +889,176 @@ import {
     );
   }
 
+  function projectedPrincipalLocusProject(project, index) {
+    const id = identifier(project, `project-${index}`);
+    const identityId = stableLocusIdentifier(
+      text(first(first(project, ["identity"], {}), ["id"]), ""),
+    );
+    return {
+      id,
+      persistable:
+        first(project, ["registration"]) === "registered"
+        && identityId !== null
+        && id === `registered:${identityId}`,
+    };
+  }
+
+  function principalLocusProjection() {
+    return {
+      projects: projects().map(projectedPrincipalLocusProject),
+      workItems: workItems().map((item) => ({
+        id: item.id,
+        persistable: persistablePrincipalWorkItemIdentifier(item.id),
+        projectId: item.projectKey || null,
+        missionId: item.missionId || null,
+      })),
+    };
+  }
+
+  function currentPrincipalLocus() {
+    const item = state.peekOpen ? selectedWorkItem() : null;
+    const projectRelevant =
+      state.activeView === "project"
+      || item !== null;
+    const selectedProjectIndex = projects().findIndex(
+      (project, index) =>
+        identifier(project, `project-${index}`) === state.selectedProjectId,
+    );
+    const selectedProject = selectedProjectIndex < 0
+      ? null
+      : projectedPrincipalLocusProject(
+        projects()[selectedProjectIndex],
+        selectedProjectIndex,
+      );
+    return {
+      view: state.activeView,
+      filter: state.taskFilter,
+      projectId: projectRelevant ? state.selectedProjectId : null,
+      projectPersistable:
+        projectRelevant
+        && selectedProject?.persistable === true,
+      workItemId:
+        state.peekOpen && !state.taskCreateOpen
+          ? state.selectedWorkItemId
+          : null,
+      workItemPersistable:
+        state.peekOpen
+        && !state.taskCreateOpen
+        && persistablePrincipalWorkItemIdentifier(state.selectedWorkItemId),
+    };
+  }
+
+  function writePrincipalLocus({ replace = false } = {}) {
+    if (state.locusRestorePending) return;
+    const href = principalLocusHref(
+      window.location.href,
+      currentPrincipalLocus(),
+    );
+    state.locusRequest = parsePrincipalLocus(
+      new URL(href, window.location.href).href,
+    );
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (href === current) return;
+    const method = replace ? "replaceState" : "pushState";
+    window.history[method](
+      { kind: "rosso.principal-locus.v1" },
+      "",
+      href,
+    );
+  }
+
+  function selectWorkItemContext(item) {
+    state.selectedWorkItemId = item.id;
+    state.peekOpen = true;
+    state.selectedProjectId = item.projectKey || null;
+    state.selectedMissionId = item.missionId || null;
+    const worktreePath = text(
+      first(first(item, ["worktreeContext"], {}), ["path"]),
+      "",
+    );
+    if (worktreePath && item.projectKey) {
+      const project = projects().find(
+        (candidate, index) =>
+          identifier(candidate, `project-${index}`) === item.projectKey,
+      );
+      const worktree = projectWorktrees(project).find(
+        (candidate) =>
+          text(first(candidate, ["path", "worktreePath"]), "") === worktreePath,
+      );
+      state.selectedWorktreeId = worktree ? identifier(worktree, "") : null;
+    } else {
+      state.selectedWorktreeId = null;
+    }
+  }
+
+  function applyPrincipalLocusRequest() {
+    const request = state.locusRequest;
+    state.locusRestorePending = false;
+    state.unavailableLocus = null;
+    const canonicalHref = principalLocusHref(
+      window.location.href,
+      {
+        view: request.view,
+        filter: request.filter,
+        projectId: request.projectId,
+        projectPersistable:
+          request.projectId?.startsWith("registered:") === true,
+        workItemId: request.workItemId,
+        workItemPersistable:
+          persistablePrincipalWorkItemIdentifier(request.workItemId),
+      },
+    );
+    const currentHref =
+      `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (canonicalHref !== currentHref) {
+      window.history.replaceState(
+        { kind: "rosso.principal-locus.v1" },
+        "",
+        canonicalHref,
+      );
+    }
+
+    if (state.source !== "live") {
+      Object.assign(state, restoredPrincipalLocusState({
+        standing: "unavailable",
+        activeView: request.view ?? "overview",
+        taskFilter: request.filter ?? "all",
+      }));
+      state.unavailableLocus = {
+        kind: "projection",
+        requestedId: request.workItemId ?? request.projectId,
+        reason:
+          "无法从当前非实时投影恢复此位置。请恢复实时连接后重试；当前位置没有启用任何任务动作。",
+      };
+      return;
+    }
+
+    const resolved = resolvePrincipalLocus(
+      request,
+      principalLocusProjection(),
+    );
+    Object.assign(state, restoredPrincipalLocusState(resolved));
+    if (resolved.standing === "unavailable") {
+      state.unavailableLocus = {
+        kind: resolved.kind,
+        requestedId: resolved.requestedId,
+        reason:
+          resolved.kind === "work-item"
+            ? "请求的任务不在当前实时投影中。它可能已结束、被移除，或其来源当前不可用。"
+            : resolved.kind === "project"
+              ? "请求的项目不在当前实时投影中。它可能未注册，或其来源当前不可用。"
+              : resolved.kind === "relation"
+                ? "请求的任务与项目关系已变化，Workbench 不会把它静默绑定到另一个现场。"
+                : "请求的位置包含无效的显式标识。Workbench 不会把它解释成“未请求位置”。",
+      };
+      return;
+    }
+
+    const item = selectedWorkItem();
+    if (item) selectWorkItemContext(item);
+    writePrincipalLocus({ replace: true });
+  }
+
   function runnerForMission(project, mission) {
     if (!project || !mission) return null;
     const projectId = identifier(project, "");
@@ -642,6 +1077,13 @@ import {
   }
 
   function ensureSelections() {
+    if (state.locusRestorePending || state.unavailableLocus !== null) return;
+    if (
+      state.peekOpen
+      && (state.taskCreateOpen || isWorkbenchTask(selectedWorkItem()))
+    ) {
+      return;
+    }
     const projectList = projects();
     if (!projectList.length) {
       state.selectedProjectId = null;
@@ -776,24 +1218,25 @@ import {
     none: "无需行动",
   };
 
+  function isExactLiveAgentWork(item) {
+    return item.kind === "agent-work"
+      && item.lifecycle === "in-progress"
+      && first(first(item.evidence, ["freshness"], {}), ["kind"]) === "live";
+  }
+
   function workItemMatchesView(item, view = state.activeView) {
     if (view === "principal") return item.nextActor === "principal";
-    if (view === "agent") {
-      return item.kind === "agent-work"
-        && item.lifecycle === "in-progress"
-        && first(first(item.evidence, ["freshness"], {}), ["kind"]) === "live";
-    }
-    if (view === "independent") return first(item.binding, ["kind"]) === "explicit-independent";
+    if (view === "agent") return isExactLiveAgentWork(item);
+    if (view === "independent") return isIndependentWorkbenchTask(item);
     if (view === "completed") return item.lifecycle === "settled";
     if (view === "tasks") {
       if (state.taskFilter === "principal") return item.nextActor === "principal";
-      if (state.taskFilter === "agent") {
-        return item.kind === "agent-work"
-          && item.lifecycle === "in-progress"
-          && first(first(item.evidence, ["freshness"], {}), ["kind"]) === "live";
+      if (state.taskFilter === "agent") return isExactLiveAgentWork(item);
+      if (state.taskFilter === "agent-pending") {
+        return item.nextActor === "agent" && !isExactLiveAgentWork(item);
       }
       if (state.taskFilter === "independent") {
-        return first(item.binding, ["kind"]) === "explicit-independent";
+        return isIndependentWorkbenchTask(item);
       }
       if (state.taskFilter === "verification") {
         return item.lifecycle === "verifying";
@@ -845,27 +1288,13 @@ import {
     const item = workItems().find((candidate) => candidate.id === id);
     if (!item) return;
     clearActionReceipt();
-    state.selectedWorkItemId = item.id;
-    state.peekOpen = true;
-    if (item.projectKey) state.selectedProjectId = item.projectKey;
-    if (item.missionId) state.selectedMissionId = item.missionId;
-    const worktreePath = text(
-      first(first(item, ["worktreeContext"], {}), ["path"]),
-      "",
-    );
-    if (worktreePath && item.projectKey) {
-      const project = projects().find(
-        (candidate, index) => identifier(candidate, `project-${index}`) === item.projectKey,
-      );
-      const worktree = projectWorktrees(project).find(
-        (candidate) => text(first(candidate, ["path", "worktreePath"]), "") === worktreePath,
-      );
-      state.selectedWorktreeId = worktree ? identifier(worktree, "") : null;
-    } else {
-      state.selectedWorktreeId = null;
-    }
-    ensureSelections();
+    state.taskCreateOpen = false;
+    state.taskActionReceipt = null;
+    state.unavailableLocus = null;
+    selectWorkItemContext(item);
+    if (!isWorkbenchTask(item)) ensureSelections();
     render();
+    writePrincipalLocus();
     if (item.consequence === "high" && window.matchMedia("(max-width: 700px)").matches) {
       state.detailRevalidationPending = true;
       render();
@@ -879,26 +1308,18 @@ import {
   function renderViewNavigation() {
     const items = workItems();
     const counts = {
+      all: items.length,
       principal: items.filter((item) => item.nextActor === "principal").length,
-      agent: items.filter(
-        (item) => item.kind === "agent-work"
-          && item.lifecycle === "in-progress"
-          && first(first(item.evidence, ["freshness"], {}), ["kind"]) === "live",
-      ).length,
-      independent: items.filter(
-        (item) => first(item.binding, ["kind"]) === "explicit-independent",
-      ).length,
+      agent: items.filter(isExactLiveAgentWork).length,
+      independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
+    $("#all-task-count").textContent = String(counts.all);
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
-    const independentCapability = first(
-      first(first(state.snapshot, ["workItems"], {}), ["capabilities"], {}),
-      ["independentTasks"],
-      {},
-    );
+    const independentCapability = taskSourceCapability();
     $("#independent-task-count").textContent =
-      first(independentCapability, ["standing"]) === "unsupported"
+      first(independentCapability, ["standing"]) !== "available"
         ? "—"
         : String(counts.independent);
     $("#completed-task-count").textContent = String(counts.completed);
@@ -1004,24 +1425,93 @@ import {
     bindWorkItemRows(container);
     container.querySelectorAll("[data-open-project]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         state.selectedProjectId = button.dataset.openProject;
         state.activeView = "project";
         state.peekOpen = false;
+        state.taskCreateOpen = false;
         ensureSelections();
         render();
+        writePrincipalLocus();
       });
     });
     container.querySelectorAll("[data-overview-worktree]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         state.selectedProjectId = button.dataset.overviewProject;
         state.selectedWorktreeId = button.dataset.overviewWorktree;
         state.activeView = "project";
         state.peekOpen = false;
+        state.taskCreateOpen = false;
         ensureSelections();
         state.selectedWorktreeId = button.dataset.overviewWorktree;
         render();
+        writePrincipalLocus();
       });
     });
+  }
+
+  function renderLocusGate({
+    overview,
+    projectDetail,
+    taskView,
+    taskFilters,
+    attentionOverview,
+    projectOverview,
+  }) {
+    const pending = state.locusRestorePending;
+    const unavailable = state.unavailableLocus;
+    overview.hidden = false;
+    projectDetail.hidden = true;
+    taskView.hidden = false;
+    taskFilters.hidden = true;
+    attentionOverview.hidden = true;
+    projectOverview.hidden = true;
+    $("#view-eyebrow").textContent = pending
+      ? "Restoring location"
+      : "Unavailable location";
+    $("#view-title").textContent = pending ? "正在恢复位置" : "请求的位置不可用";
+    $("#view-summary").textContent = pending
+      ? "正在读取新的运行投影；完成前不会恢复或启用此位置上的动作。"
+      : unavailable.reason;
+    $("#create-task-button").disabled = true;
+    $("#task-view-heading").textContent = pending ? "正在读取实时投影" : "无法恢复";
+    $("#task-view-count").textContent = "—";
+    const requestedId = text(first(unavailable, ["requestedId"]), "");
+    $("#task-view-list").innerHTML = pending
+      ? '<div class="surface-empty"><span>…</span><p>等待当前投影后解析稳定标识。</p></div>'
+      : `
+          <div class="surface-empty">
+            <span>—</span>
+            <p>${escapeHtml(unavailable.reason)}${
+              requestedId ? `<br /><code>${escapeHtml(requestedId)}</code>` : ""
+            }</p>
+            <button class="text-action" type="button" data-clear-principal-locus>
+              返回当前总览
+            </button>
+          </div>
+        `;
+    const clear = $("[data-clear-principal-locus]");
+    if (clear) {
+      clear.addEventListener("click", () => {
+        state.unavailableLocus = null;
+        state.locusRequest = {
+          view: "overview",
+          filter: "all",
+          projectId: null,
+          workItemId: null,
+        };
+        state.activeView = "overview";
+        state.taskFilter = "all";
+        state.selectedProjectId = null;
+        state.selectedMissionId = null;
+        state.selectedWorktreeId = null;
+        state.selectedWorkItemId = null;
+        state.peekOpen = false;
+        render();
+        writePrincipalLocus();
+      });
+    }
   }
 
   function renderUnifiedSurface() {
@@ -1035,6 +1525,18 @@ import {
     const isProjectView = state.activeView === "project";
     const isProjectsView = state.activeView === "projects";
     const isOverview = state.activeView === "overview";
+
+    if (state.locusRestorePending || state.unavailableLocus !== null) {
+      renderLocusGate({
+        overview,
+        projectDetail,
+        taskView,
+        taskFilters,
+        attentionOverview,
+        projectOverview,
+      });
+      return;
+    }
 
     overview.hidden = isProjectView;
     projectDetail.hidden = !isProjectView;
@@ -1058,6 +1560,15 @@ import {
     $("#view-summary").textContent = summary;
 
     const observation = $("#observation-state");
+    const taskCapability = taskSourceCapability();
+    $("#create-task-button").disabled =
+      state.source !== "live"
+      || first(taskCapability, ["standing"]) !== "available"
+      || state.taskActionPending;
+    $("#create-task-button").title =
+      first(taskCapability, ["standing"]) === "available"
+        ? ""
+        : text(first(taskCapability, ["reason"]), "任务源当前不可用");
     observation.dataset.complete = first(state.snapshot, ["complete"]) === true ? "true" : "false";
     observation.querySelector("strong").textContent =
       state.source === "live"
@@ -1098,14 +1609,48 @@ import {
   function renderPeek() {
     const peek = $("#work-item-peek");
     const item = selectedWorkItem();
-    const open = state.peekOpen && item !== null;
+    const unavailableWorkItem =
+      state.unavailableLocus !== null
+      && Boolean(state.locusRequest.workItemId);
+    const open =
+      state.peekOpen
+      && (item !== null || state.taskCreateOpen || unavailableWorkItem);
     peek.hidden = !open;
     document.body.dataset.peekOpen = open ? "true" : "false";
-    document.body.dataset.peekContext = item?.projectKey && item?.missionId
-      ? "bound"
-      : "observation";
+    document.body.dataset.peekContext = state.taskCreateOpen
+      ? "task-create"
+      : isWorkbenchTask(item)
+        ? "workbench-task"
+        : item?.projectKey && item?.missionId
+          ? "bound"
+          : "observation";
     document.body.dataset.peekConsequence = item?.consequence || "normal";
     if (!open) return;
+
+    if (unavailableWorkItem) {
+      $("#peek-context").textContent = "Workbench · 请求位置";
+      $("#peek-item-state").textContent = "不可用";
+      $("#peek-item-title").textContent = "请求的任务不可用";
+      $("#peek-item-summary").textContent = state.unavailableLocus.reason;
+      $("#peek-next-actor").textContent = "等待重新出现或返回总览";
+      $("#peek-freshness").textContent =
+        state.source === "live" ? "实时投影已重验" : "实时投影不可用";
+      return;
+    }
+
+    if (state.taskCreateOpen) {
+      $("#peek-context").textContent = "Workbench · 新建任务";
+      $("#peek-item-state").textContent = "草稿";
+      $("#peek-item-title").textContent = "创建一个可持续跟踪的任务";
+      $("#peek-item-summary").textContent =
+        "任务可以独立存在，或引用一个已注册项目与已观察 Worktree 作为上下文。";
+      $("#peek-next-actor").textContent = "创建时选择";
+      $("#peek-freshness").textContent =
+        first(taskSourceCapability(), ["standing"]) === "available"
+          ? "实时任务源"
+          : "任务源不可用";
+      return;
+    }
 
     $("#peek-context").textContent = item.context;
     $("#peek-item-state").textContent = workItemCopy[item.lifecycle] || item.lifecycle;
@@ -1118,6 +1663,530 @@ import {
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
+  }
+
+  function renderTaskPanels() {
+    const createPanel = $("#task-create-panel");
+    const detailPanel = $("#local-task-detail");
+    const detail = taskDetail();
+    createPanel.hidden = !state.taskCreateOpen;
+    detailPanel.hidden = state.taskCreateOpen || detail === null;
+
+    if (state.taskCreateOpen) {
+      const projectSelect = $("#task-create-project");
+      const retainedProject = projectSelect.value;
+      const registered = projects().filter(
+        (project) =>
+          first(project, ["registration"]) === "registered"
+          && text(first(first(project, ["identity"], {}), ["id"]), "") !== "",
+      );
+      projectSelect.innerHTML = [
+        '<option value="">独立任务</option>',
+        ...registered.map((project) => {
+          const id = text(first(first(project, ["identity"], {}), ["id"]), "");
+          return `<option value="${escapeHtml(id)}">${escapeHtml(projectName(project))}</option>`;
+        }),
+      ].join("");
+      if ([...projectSelect.options].some((option) => option.value === retainedProject)) {
+        projectSelect.value = retainedProject;
+      }
+      renderTaskCreateWorktrees();
+      renderTaskCreateMissions();
+      $("#task-create-submit").disabled =
+        state.taskActionPending
+        || state.source !== "live"
+        || first(taskSourceCapability(), ["standing"]) !== "available";
+      renderTaskActionReceipt($("#task-create-result"), "create");
+      return;
+    }
+
+    if (detail === null) return;
+    const task = detail.task;
+    $("#local-task-source").textContent = detail.sourceRef;
+    $("#local-task-revision").textContent =
+      `source ${detail.sourceRevision} · task ${task.revision}`;
+    $("#local-task-identity-assurance").textContent = detail.identityAssurance;
+    $("#local-task-project-boundary").textContent =
+      task.binding.kind === "project-context"
+        ? `${task.binding.projectId} · 仅上下文`
+        : "无项目绑定 · Workbench 独立任务";
+    const missionContext = first(detail, ["missionContext"], {});
+    const missionId = text(first(missionContext, ["missionId"]), "");
+    const missionStanding = text(
+      first(missionContext, ["standing"]),
+      missionId ? "unavailable" : "not-declared",
+    );
+    const missionReason = text(first(missionContext, ["reason"]), "");
+    $("#local-task-mission-boundary").textContent =
+      missionStanding === "observed"
+        ? `${missionId} · 当前已观察 · 仅上下文`
+        : missionStanding === "unavailable"
+          ? `${missionId || "已声明 Mission"} · 当前不可用 · 仅上下文`
+          : "未声明 Mission 上下文";
+    $("#local-task-mission-context-heading").textContent =
+      missionStanding === "observed"
+        ? `${missionId} 当前可用`
+        : missionStanding === "unavailable"
+          ? `${missionId || "Mission"} 当前不可用`
+          : "未声明 Mission 上下文";
+    $("#local-task-mission-context-summary").textContent =
+      missionStanding === "observed"
+        ? missionReason
+          ? `Mission 当前可用，但当前载体无法唯一确认：${missionReason}。执行此任务仍未证明。`
+          : "任务仅引用这个 Mission 的当前观察；关联不启动执行，也不授予 Mission 权限。"
+        : missionStanding === "unavailable"
+          ? `保留的 Mission 上下文无法由当前投影确认${
+              missionReason ? `：${missionReason}` : "。"
+            }`
+          : "本地任务尚未引用项目中的 Mission。";
+    const carrierContext = $("#local-task-carrier-context");
+    const currentCarrier = first(missionContext, ["currentCarrier"]);
+    carrierContext.hidden = currentCarrier === null || currentCarrier === undefined;
+    if (!carrierContext.hidden) {
+      const carrierRunnerId = text(first(currentCarrier, ["runnerId"]), "未声明 Runner ID");
+      const carrierState = text(first(currentCarrier, ["state"]), "状态未知");
+      const carrierLive = first(currentCarrier, ["live"]);
+      const carrierFreshness = first(first(currentCarrier, ["freshness"], {}), ["kind"]);
+      $("#local-task-carrier-title").textContent =
+        `${carrierRunnerId} · ${carrierState} · ${
+          carrierLive === true && carrierFreshness === "live"
+            ? "实时"
+            : carrierLive === false
+              ? "缓存"
+              : "可达性未验证"
+        }`;
+      $("#local-task-carrier-source").textContent =
+        text(first(currentCarrier, ["sourceRef"]), "载体来源未声明");
+    }
+    const executionContext = first(detail, ["executionContext"], {});
+    const executionStanding = text(
+      first(executionContext, ["standing"]),
+      "unavailable",
+    );
+    const executionStandingCopy = {
+      "current-effect-exact": "current effect exact",
+      "current-turn-exact": "current turn exact",
+      "authorization-consumption-verified": "authorization consumption verified",
+      "legacy-unproven": "legacy execution-unproven",
+      unavailable: "current execution unavailable",
+    };
+    $("#local-task-execution-standing").textContent =
+      executionStandingCopy[executionStanding] || executionStanding;
+    $("#local-task-execution-context").dataset.standing = executionStanding;
+    for (const [layerName, layer] of [
+      ["authorization", first(executionContext, ["authorizationConsumption"], {})],
+      ["turn", first(executionContext, ["currentTurn"], {})],
+      ["effect", first(executionContext, ["currentEffect"], {})],
+    ]) {
+      const layerStanding = text(first(layer, ["standing"]), "unavailable");
+      const reason = text(first(layer, ["reason"]), "");
+      const standingCopy = layerStanding === "verified"
+        ? "authorization consumption verified"
+        : layerStanding === "exact"
+          ? layerName === "turn" ? "current turn exact" : "current effect exact"
+          : layerStanding === "legacy-unproven"
+            ? "legacy execution-unproven"
+            : `unavailable${reason ? ` · ${reason}` : ""}`;
+      const layerElement = $(`#task-execution-${layerName}-layer`);
+      layerElement.dataset.standing = layerStanding;
+      $(`#task-execution-${layerName}-standing`).textContent = standingCopy;
+      const sources = list(first(layer, ["sourceRefs"], []));
+      $(`#task-execution-${layerName}-sources`).textContent = sources.length
+        ? sources.join(" · ")
+        : "尚无当前证据来源";
+    }
+    const launchReadiness = first(executionContext, ["launchReadiness"]);
+    const launchReadinessStanding = text(
+      first(launchReadiness, ["standing"]),
+      "not-applicable",
+    );
+    const launchReadinessPanel = $("#task-launch-readiness");
+    launchReadinessPanel.hidden =
+      launchReadiness === null
+      || launchReadiness === undefined
+      || launchReadinessStanding === "not-applicable";
+    if (!launchReadinessPanel.hidden) {
+      const blockers = list(first(launchReadiness, ["blockers"], []));
+      const blockerCopy = {
+        "exact-context-required": "需要精确的项目、Mission 与 Worktree 上下文",
+        "mission-unavailable": "当前 Mission 不可用",
+        "execution-proposal-unavailable": "当前没有可执行的 proposal",
+        "fresh-authorization-required": "需要新的未消费一次性授权",
+        "worktree-unavailable": "当前 Worktree 不可用",
+        "clean-detached-worktree-required": "需要干净的 detached Worktree",
+        "mission-head-mismatch": "Mission HEAD 与 proposal 不一致",
+        "live-carrier-present": "当前已经存在 live carrier",
+        "runtime-adapter-unavailable": "当前 runtime adapter 不可用",
+      };
+      launchReadinessPanel.dataset.standing = launchReadinessStanding;
+      $("#task-launch-readiness-standing").textContent =
+        launchReadinessStanding === "ready" ? "已就绪" : "需要准备";
+      $("#task-launch-readiness-summary").textContent =
+        launchReadinessStanding === "ready"
+          ? "现有一次性授权与候选 Worktree 已满足启动条件。"
+          : `启动前还有 ${blockers.length} 项准备未完成。`;
+      $("#task-launch-readiness-blockers").innerHTML = blockers
+        .map((blocker) => {
+          const code = text(first(blocker, ["code"]), "未识别阻断");
+          const message = text(
+            first(blocker, ["message"]),
+            blockerCopy[code] || code,
+          );
+          return `
+            <li>
+              <strong>${escapeHtml(blockerCopy[code] || code)}</strong>
+              <small>${escapeHtml(message)}</small>
+            </li>
+          `;
+        })
+        .join("");
+    }
+    const launchCandidate = first(executionContext, ["launchCandidate"]);
+    const launchForm = $("#task-launch-execution-form");
+    launchForm.hidden =
+      launchCandidate === null
+      || launchCandidate === undefined;
+    if (!launchForm.hidden) {
+      const authorizationId = text(
+        first(launchCandidate, ["authorizationId"]),
+        "未识别授权",
+      );
+      const proposalDigest = text(
+        first(launchCandidate, ["proposalDigest"]),
+        "未识别 proposal",
+      );
+      $("#task-launch-execution-reference").textContent =
+        `authorization ${authorizationId} · proposal ${proposalDigest}`;
+    }
+    const linkCandidate = first(executionContext, ["linkCandidate"]);
+    const linkForm = $("#task-link-execution-form");
+    linkForm.hidden = linkCandidate === null || linkCandidate === undefined;
+    if (!linkForm.hidden) {
+      const authorizationId = text(first(linkCandidate, ["authorizationId"]), "");
+      const proposalDigest = text(first(linkCandidate, ["proposalDigest"]), "");
+      $("#task-link-execution-candidate").innerHTML = `
+        <option value="${escapeHtml(authorizationId)}">
+          ${escapeHtml(authorizationId)} · ${escapeHtml(proposalDigest)}
+        </option>
+      `;
+      const evidenceRefs = list(first(linkCandidate, ["evidenceRefs"], []));
+      $("#task-link-execution-evidence").innerHTML = evidenceRefs
+        .map((source) => `<li>${escapeHtml(source)}</li>`)
+        .join("");
+    }
+    $("#local-task-worktree-boundary").textContent =
+      task.binding.kind === "project-context" && task.binding.worktreePath
+        ? detail.worktreeStanding === "observed"
+          ? `${task.binding.worktreePath} · 当前已观察 · 无执行权限`
+          : `${task.binding.worktreePath} · 预期上下文当前不可用${
+              detail.worktreeReason ? ` · ${detail.worktreeReason}` : ""
+            }`
+        : "未声明 Worktree 上下文";
+    $("#local-task-objective").textContent = task.objective;
+    $("#local-task-acceptance").innerHTML = task.acceptance
+      .map((criterion) => `<li>${escapeHtml(criterion)}</li>`)
+      .join("");
+
+    const currentTurnGuidance = first(
+      first(executionContext, ["currentTurn"], {}),
+      ["guidance"],
+      {},
+    );
+    const guidanceMode = text(
+      first(currentTurnGuidance, ["mode"]),
+      "",
+    );
+    const guidedCorrectionIds = new Set(
+      list(first(currentTurnGuidance, ["correctionIds"], [])),
+    );
+    const pendingNextTurnCorrectionIds = new Set(
+      list(first(currentTurnGuidance, ["missingCorrectionIds"], [])),
+    );
+    const history = [
+      ...list(first(task, ["worktreeRebindings"], [])).map((entry) => ({
+        at: entry.reboundAt,
+        kind: "Worktree 上下文已切换",
+        summary: `${entry.fromWorktreePath} → ${entry.toWorktreePath}`,
+        source: entry.sourceRef,
+      })),
+      ...task.corrections.map((entry) => {
+        const deliveries = list(first(entry, ["deliveries"], []));
+        const delivery = deliveries.at(-1);
+        const guided = guidedCorrectionIds.has(entry.id);
+        const pendingNextTurn =
+          guidanceMode === "launch-snapshot"
+          && pendingNextTurnCorrectionIds.has(entry.id);
+        return {
+          at: delivery
+            ? text(first(delivery, ["recordedAt"]), entry.at)
+            : entry.at,
+          kind: delivery
+            ? `纠正 · 已送达 watermark ${text(first(delivery, ["inputWatermark"]), "—")}`
+            : guided
+              ? "纠正 · 已作为当前执行指导"
+              : pendingNextTurn
+                ? "纠正 · 待下一次授权执行"
+                : "纠正 · 仅保留在本地任务",
+          summary: entry.statement,
+          source: delivery
+            ? [
+              entry.sourceRef,
+              text(first(delivery, ["sourceRef"]), ""),
+              text(first(delivery, ["inputEventId"]), ""),
+            ].filter(Boolean).join(" · ")
+            : entry.sourceRef,
+        };
+      }),
+      ...task.resultClaims.map((claim) => {
+        const evidence = first(claim, ["evidence"], {
+          kind: "agent-references-unverified",
+        });
+        const runtimeVerified =
+          first(evidence, ["kind"]) === "runtime-verified-effect";
+        const selector = first(evidence, ["selector"], {});
+        return {
+          at: claim.submittedAt,
+          kind: claim.standing === "accepted"
+            ? runtimeVerified
+              ? "已接受结果 · 接受时运行时已验证"
+              : "已接受结果 · Agent 声明未验证"
+            : claim.standing === "superseded"
+              ? "已被后续要求取代"
+              : runtimeVerified
+                ? "待接受结果 · 运行时已验证"
+                : "待接受结果 · Agent 声明未验证",
+          summary: claim.summary,
+          source: [
+            claim.sourceRef,
+            ...(runtimeVerified
+              ? [
+                text(first(selector, ["effectId"]), ""),
+                text(first(selector, ["verificationEventId"]), ""),
+              ]
+              : []),
+            ...claim.evidenceRefs,
+          ].filter(Boolean).join(" · "),
+        };
+      }),
+    ].sort((left, right) => left.at.localeCompare(right.at));
+    $("#local-task-history").innerHTML = history.length
+      ? history.map((entry) => `
+          <article class="local-task-history-entry">
+            <span>${escapeHtml(entry.kind)} · ${escapeHtml(formatTime(entry.at, entry.at))}</span>
+            <strong>${escapeHtml(entry.summary)}</strong>
+            <small>${escapeHtml(entry.source)}</small>
+          </article>
+        `).join("")
+      : '<p class="empty-note">尚无纠正或结果声明。</p>';
+    const correctionDeliveryCandidate = first(
+      executionContext,
+      ["correctionDeliveryCandidate"],
+    );
+    const correctionDeliveryForm = $("#task-correction-delivery-form");
+    correctionDeliveryForm.hidden =
+      correctionDeliveryCandidate === null
+      || correctionDeliveryCandidate === undefined;
+    if (!correctionDeliveryForm.hidden) {
+      const correctionId = text(
+        first(correctionDeliveryCandidate, ["correctionId"]),
+        "",
+      );
+      const correction = task.corrections.find(
+        (entry) => entry.id === correctionId,
+      );
+      $("#task-correction-delivery-summary").textContent =
+        correction?.statement || "待发送纠正";
+    }
+    const recoveryCandidate = first(
+      executionContext,
+      ["recoveryCandidate"],
+    );
+    const recoveryForm = $("#task-execution-recovery-form");
+    recoveryForm.hidden =
+      recoveryCandidate === null
+      || recoveryCandidate === undefined;
+    if (!recoveryForm.hidden) {
+      const target = first(recoveryCandidate, ["target"], {});
+      $("#task-execution-recovery-summary").textContent =
+        `${text(first(target, ["runnerId"]), "未识别 Runner")} · interrupted · authorization ${
+          text(first(recoveryCandidate, ["authorizationId"]), "未识别")
+        }`;
+    }
+    const verifiedResultCandidate = first(
+      executionContext,
+      ["verifiedResultCandidate"],
+    );
+    const verifiedResultPanel = $("#task-verified-result-candidate");
+    verifiedResultPanel.hidden =
+      verifiedResultCandidate === null
+      || verifiedResultCandidate === undefined;
+    if (!verifiedResultPanel.hidden) {
+      const selector = first(verifiedResultCandidate, ["selector"], {});
+      $("#task-verified-result-effect").textContent =
+        `${text(first(selector, ["effectId"]), "未识别 Effect")} · verification ${text(first(selector, ["verificationEventId"]), "未识别")}`;
+      const evidenceRefs = list(
+        first(verifiedResultCandidate, ["evidenceRefs"], []),
+      );
+      $("#task-verified-result-source").textContent =
+        evidenceRefs.length
+          ? evidenceRefs.join(" · ")
+          : "运行时 selector 已形成；引用来源未投影。";
+    }
+
+    const settled = task.lifecycle === "settled";
+    const verifying = task.lifecycle === "verifying";
+    const rebindForm = $("#task-rebind-worktree-form");
+    const currentWorktreePath =
+      task.binding.kind === "project-context"
+        ? text(first(task.binding, ["worktreePath"]), "")
+        : "";
+    const taskProject =
+      task.binding.kind === "project-context"
+        ? projects().find(
+          (candidate) =>
+            text(first(first(candidate, ["identity"], {}), ["id"]), "")
+              === task.binding.projectId,
+        )
+        : null;
+    const rebindCandidates = taskProject === null
+      ? []
+      : projectWorktrees(taskProject).filter(
+        (worktree) =>
+          text(first(worktree, ["path", "worktreePath"]), "")
+            !== currentWorktreePath,
+      ).filter(
+        (worktree) => first(worktree, ["dirty"]) !== true,
+      );
+    rebindForm.hidden =
+      settled
+      || !currentWorktreePath
+      || !task.binding.missionId
+      || rebindCandidates.length === 0;
+    $("#task-rebind-worktree").innerHTML = [
+      '<option value="" selected disabled>选择新的 Worktree…</option>',
+      ...rebindCandidates.map((worktree) => {
+        const path = text(first(worktree, ["path", "worktreePath"]), "");
+        const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
+        return `<option value="${escapeHtml(path)}">${escapeHtml(branch)} · ${escapeHtml(path)}</option>`;
+      }),
+    ].join("");
+    $("#task-assign-form").hidden = settled || verifying;
+    $("#task-correct-form").hidden = settled;
+    $("#task-result-form").hidden = settled || verifying;
+    $("#task-reopen-form").hidden = !settled;
+    $("#task-accept-actions").hidden = !verifying;
+    for (const id of [
+      "task-assign-actor",
+      "task-correct-actor",
+      "task-reopen-actor",
+    ]) {
+      const control = $(`#${id}`);
+      if (
+        document.activeElement !== control
+        && task.nextActor !== "none"
+        && [...control.options].some((option) => option.value === task.nextActor)
+      ) {
+        control.value = task.nextActor;
+      }
+      control.disabled = state.taskActionPending;
+    }
+    detailPanel.querySelectorAll("button, textarea, select").forEach((control) => {
+      control.disabled = state.taskActionPending;
+    });
+    $("#task-rebind-worktree-submit").disabled =
+      state.taskActionPending || $("#task-rebind-worktree").value.length === 0;
+    const latestResultVerification = first(
+      detail,
+      ["latestResultVerification"],
+      { standing: "none" },
+    );
+    const resultStanding = text(
+      first(latestResultVerification, ["standing"]),
+      "none",
+    );
+    const acceptButton = $("#task-accept-button");
+    acceptButton.textContent =
+      resultStanding === "verified-current"
+        ? "接受已验证的本地结果"
+        : resultStanding === "unverified-agent-claim"
+          ? "接受未验证的 Agent 声明"
+          : resultStanding === "runtime-evidence-unavailable"
+            ? "运行时验证已失效"
+            : "接受本地任务结果";
+    acceptButton.disabled =
+      state.taskActionPending
+      || (verifying && resultStanding === "runtime-evidence-unavailable");
+    $("#task-accept-boundary").textContent =
+      resultStanding === "verified-current"
+        ? "运行时 selector 当前仍精确；此动作仍只接受 Workbench 本地任务。"
+        : resultStanding === "runtime-evidence-unavailable"
+          ? "当前运行时无法重新确认提交时的 selector；请纠正或重新提交。"
+          : "只接受 Workbench 本地任务，不代表产品、Mission、提交、合并或发布接受。";
+    renderTaskActionReceipt($("#local-task-action-result"), "mutation");
+  }
+
+  function renderTaskCreateWorktrees() {
+    const projectId = $("#task-create-project").value;
+    const label = $("#task-create-worktree-label");
+    const select = $("#task-create-worktree");
+    const retained = select.value;
+    const project = projects().find(
+      (candidate) =>
+        text(first(first(candidate, ["identity"], {}), ["id"]), "") === projectId,
+    );
+    const worktrees = project ? projectWorktrees(project) : [];
+    label.hidden = projectId === "";
+    select.innerHTML = [
+      '<option value="">仅关联项目</option>',
+      ...worktrees.map((worktree) => {
+        const path = text(first(worktree, ["path"]), "");
+        const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
+        return `<option value="${escapeHtml(path)}">${escapeHtml(branch)} · ${escapeHtml(path)}</option>`;
+      }),
+    ].join("");
+    if ([...select.options].some((option) => option.value === retained)) {
+      select.value = retained;
+    }
+  }
+
+  function renderTaskCreateMissions() {
+    const projectId = $("#task-create-project").value;
+    const label = $("#task-create-mission-label");
+    const select = $("#task-create-mission");
+    const retained = select.value;
+    const project = projects().find(
+      (candidate) =>
+        text(first(first(candidate, ["identity"], {}), ["id"]), "") === projectId,
+    );
+    const missions = project ? projectMissions(project) : [];
+    label.hidden = projectId === "";
+    select.innerHTML = [
+      '<option value="">仅关联项目</option>',
+      ...missions.map((mission) => {
+        const id = identifier(mission, "");
+        const title = text(first(mission, ["title"]), id);
+        return `<option value="${escapeHtml(id)}">${escapeHtml(title)} · ${escapeHtml(id)}</option>`;
+      }),
+    ].join("");
+    if ([...select.options].some((option) => option.value === retained)) {
+      select.value = retained;
+    }
+  }
+
+  function renderTaskActionReceipt(target, kind) {
+    const receipt = state.taskActionReceipt;
+    target.className = "action-result";
+    if (state.taskActionPending) {
+      target.textContent = "任务动作正在提交，等待权威任务源回执。";
+      return;
+    }
+    if (receipt === null || receipt.kind !== kind) {
+      target.textContent = "";
+      return;
+    }
+    if (receipt.phase === "failed") target.classList.add("is-error");
+    else target.classList.add("is-success");
+    target.textContent = receipt.message;
   }
 
   function renderAttention() {
@@ -1176,6 +2245,7 @@ import {
     $$(".attention-item").forEach((button) => {
       button.addEventListener("click", () => {
         clearActionReceipt();
+        state.unavailableLocus = null;
         if (button.dataset.projectId) state.selectedProjectId = button.dataset.projectId;
         if (button.dataset.missionId) state.selectedMissionId = button.dataset.missionId;
         state.selectedWorktreeId = null;
@@ -1189,6 +2259,7 @@ import {
         state.selectedWorkItemId = item?.id ?? null;
         state.peekOpen = item !== undefined;
         render();
+        writePrincipalLocus();
         if (
           button.dataset.attentionCode === "runner-legacy-unanchored"
           || button.dataset.attentionCode === "runner-anchor-migration-decision"
@@ -1251,13 +2322,16 @@ import {
     $$(".project-button").forEach((button) => {
       button.addEventListener("click", () => {
         clearActionReceipt();
+        state.unavailableLocus = null;
         state.selectedProjectId = button.dataset.projectId;
         state.selectedMissionId = null;
         state.selectedWorktreeId = null;
         state.activeView = "project";
         state.peekOpen = false;
+        state.taskCreateOpen = false;
         ensureSelections();
         render();
+        writePrincipalLocus();
       });
     });
   }
@@ -1394,6 +2468,7 @@ import {
     $$(".mission-button").forEach((button) => {
       button.addEventListener("click", () => {
         clearActionReceipt();
+        state.unavailableLocus = null;
         state.selectedMissionId = button.dataset.missionId;
         state.selectedWorktreeId = null;
         ensureSelections();
@@ -1405,11 +2480,13 @@ import {
         state.selectedWorkItemId = item?.id ?? null;
         state.peekOpen = item !== undefined;
         render();
+        writePrincipalLocus();
       });
     });
 
     $$(".worktree-button").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         state.selectedMissionId = button.dataset.missionId;
         state.selectedWorktreeId = button.dataset.worktreeId;
         const item = workItems().find(
@@ -1420,6 +2497,7 @@ import {
         state.selectedWorkItemId = item?.id ?? null;
         state.peekOpen = item !== undefined;
         render();
+        writePrincipalLocus();
       });
     });
   }
@@ -1453,8 +2531,10 @@ import {
       .join("");
     $$("[data-inventory-worktree]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         state.selectedWorktreeId = button.dataset.inventoryWorktree;
         render();
+        writePrincipalLocus();
       });
     });
   }
@@ -2663,6 +3743,7 @@ import {
     renderEvidence();
     renderActionForm();
     renderPeek();
+    renderTaskPanels();
   }
 
   async function loadSnapshot({ manual = false, ensure = false } = {}) {
@@ -2714,6 +3795,19 @@ import {
         state.requestInFlight = false;
         $("#refresh-button").disabled = false;
         $("#retry-button").disabled = false;
+        const persistedRequest = parsePrincipalLocus(window.location.href);
+        if (
+          state.source === "live"
+          && (
+            state.locusRestorePending
+            || hasPrincipalLocusRequest(persistedRequest)
+          )
+        ) {
+          state.locusRequest = persistedRequest;
+          applyPrincipalLocusRequest();
+        } else if (state.locusRestorePending) {
+          applyPrincipalLocusRequest();
+        }
         render();
         if (!state.refreshQueued) schedulePoll();
       }
@@ -2867,6 +3961,138 @@ import {
     }
   }
 
+  async function sendTaskCreate() {
+    const capability = taskSourceCapability();
+    const expectedSourceRevision = first(capability, ["sourceRevision"]);
+    const result = $("#task-create-result");
+    if (
+      state.source !== "live"
+      || first(capability, ["standing"]) !== "available"
+      || !Number.isInteger(expectedSourceRevision)
+    ) {
+      result.className = "action-result is-error";
+      result.textContent = "任务源不是可写的实时投影，未创建任务。";
+      return;
+    }
+    const project = $("#task-create-project").value;
+    const worktree = $("#task-create-worktree").value;
+    const mission = $("#task-create-mission").value;
+    const request = {
+      title: $("#task-create-title").value.trim(),
+      objective: $("#task-create-objective").value.trim(),
+      acceptance: lines($("#task-create-acceptance").value),
+      nextActor: $("#task-create-actor").value,
+      expectedSourceRevision,
+      ...(project ? { project } : {}),
+      ...(project && worktree ? { worktree } : {}),
+      ...(project && mission ? { mission } : {}),
+    };
+    await sendTaskRequest({
+      receiptKind: "create",
+      path: "/api/tasks",
+      request,
+      onSuccess(body) {
+        const task = first(first(body, ["result"], {}), ["task"], {});
+        const id = text(first(task, ["id"]), "");
+        $("#task-create-form").reset();
+        state.taskCreateOpen = false;
+        state.selectedWorkItemId = id ? `principal-task:${id}` : null;
+        state.peekOpen = id !== "";
+        writePrincipalLocus({ replace: true });
+      },
+    });
+  }
+
+  async function sendTaskMutation(kind, payload = {}) {
+    const item = selectedWorkItem();
+    const detail = taskDetail(item);
+    if (detail === null) return;
+    const task = detail.task;
+    const request = {
+      kind,
+      expectedSourceRevision: detail.sourceRevision,
+      expectedRevision: task.revision,
+      ...payload,
+    };
+    await sendTaskRequest({
+      receiptKind: "mutation",
+      path: `/api/tasks/${encodeURIComponent(task.id)}/actions`,
+      request,
+      onSuccess() {
+        state.selectedWorkItemId = `principal-task:${task.id}`;
+        state.peekOpen = true;
+      },
+    });
+  }
+
+  async function sendTaskRequest({
+    receiptKind,
+    path,
+    request,
+    onSuccess,
+  }) {
+    if (state.taskActionPending) return;
+    if (state.source !== "live") {
+      state.taskActionReceipt = {
+        kind: receiptKind,
+        phase: "failed",
+        message: "当前不是实时投影，任务动作未发送。",
+      };
+      renderTaskPanels();
+      return;
+    }
+    state.taskActionPending = true;
+    state.taskActionReceipt = {
+      kind: receiptKind,
+      phase: "pending",
+      message: "任务动作正在提交。",
+    };
+    render();
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(request),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(
+          text(first(body, ["message", "error"]), `HTTP ${response.status}`),
+        );
+        error.status = response.status;
+        error.code = first(body, ["error"]);
+        throw error;
+      }
+      onSuccess(body);
+      state.taskActionReceipt = {
+        kind: receiptKind,
+        phase: "accepted",
+        message: "任务源已接受动作；刷新后显示当前修订。",
+      };
+      await loadSnapshot({ manual: true, ensure: true });
+    } catch (error) {
+      state.taskActionReceipt = {
+        kind: receiptKind,
+        phase: "failed",
+        message: `任务动作未完成：${error instanceof Error ? error.message : text(error)}`,
+      };
+      if (
+        error?.status === 409
+        || error?.code === "task-drift"
+        || error?.code === "source-unavailable"
+        || error?.status >= 500
+      ) {
+        await loadSnapshot({ manual: true, ensure: true });
+      }
+    } finally {
+      state.taskActionPending = false;
+      render();
+    }
+  }
+
   async function sendExecutionAuthorization() {
     const project = selectedProject();
     const mission = selectedMission();
@@ -2987,45 +4213,226 @@ import {
   }
 
   function bindEvents() {
-    $("#refresh-button").addEventListener("click", () => loadSnapshot({ manual: true }));
-    $("#retry-button").addEventListener("click", () => loadSnapshot({ manual: true }));
+    const refreshFromCurrentLocation = () => {
+      if (state.unavailableLocus !== null) {
+        state.locusRequest = parsePrincipalLocus(window.location.href);
+        state.locusRestorePending = true;
+        state.unavailableLocus = null;
+        render();
+      }
+      loadSnapshot({ manual: true, ensure: true });
+    };
+    $("#refresh-button").addEventListener("click", refreshFromCurrentLocation);
+    $("#retry-button").addEventListener("click", refreshFromCurrentLocation);
+    $("#create-task-button").addEventListener("click", () => {
+      state.unavailableLocus = null;
+      state.taskCreateOpen = true;
+      state.selectedWorkItemId = null;
+      state.selectedProjectId = null;
+      state.selectedMissionId = null;
+      state.selectedWorktreeId = null;
+      state.taskActionReceipt = null;
+      state.peekOpen = true;
+      render();
+      writePrincipalLocus({ replace: true });
+      $("#task-create-title").focus();
+    });
     $("#peek-close").addEventListener("click", () => {
       state.peekOpen = false;
+      state.taskCreateOpen = false;
       render();
+      writePrincipalLocus();
+    });
+
+    $("#task-create-project").addEventListener("change", () => {
+      $("#task-create-worktree").value = "";
+      $("#task-create-mission").value = "";
+      renderTaskCreateWorktrees();
+      renderTaskCreateMissions();
+    });
+    $("#task-create-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendTaskCreate();
+    });
+    $("#task-assign-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendTaskMutation("assign", {
+        nextActor: $("#task-assign-actor").value,
+      });
+    });
+    $("#task-link-execution-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const authorizationId = $("#task-link-execution-candidate").value;
+      if (!authorizationId) return;
+      sendTaskMutation("link-execution", { authorizationId });
+    });
+    $("#task-launch-execution-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const detail = taskDetail();
+      const candidate = first(
+        first(detail, ["executionContext"], {}),
+        ["launchCandidate"],
+      );
+      if (candidate === null || candidate === undefined) return;
+      sendTaskMutation("launch-authorized-execution", {
+        authorizationId: first(candidate, ["authorizationId"]),
+        proposalDigest: first(candidate, ["proposalDigest"]),
+      });
+    });
+    $("#task-rebind-worktree").addEventListener("change", () => {
+      $("#task-rebind-worktree-submit").disabled =
+        state.taskActionPending || $("#task-rebind-worktree").value.length === 0;
+    });
+    $("#task-rebind-worktree-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const detail = taskDetail();
+      const worktree = $("#task-rebind-worktree").value;
+      const expectedWorktreePath = text(
+        first(
+          first(first(detail, ["task"], {}), ["binding"], {}),
+          ["worktreePath"],
+        ),
+        "",
+      );
+      if (!worktree || !expectedWorktreePath) return;
+      sendTaskMutation("rebind-worktree", {
+        expectedWorktreePath,
+        worktree,
+      });
+    });
+    $("#task-correction-delivery-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const detail = taskDetail();
+      const candidate = first(
+        first(detail, ["executionContext"], {}),
+        ["correctionDeliveryCandidate"],
+      );
+      if (candidate === null || candidate === undefined) return;
+      sendTaskMutation("deliver-correction", {
+        correctionId: first(candidate, ["correctionId"]),
+        authorizationId: first(candidate, ["authorizationId"]),
+        target: first(candidate, ["target"]),
+      });
+    });
+    $("#task-execution-recovery-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const detail = taskDetail();
+      const candidate = first(
+        first(detail, ["executionContext"], {}),
+        ["recoveryCandidate"],
+      );
+      if (candidate === null || candidate === undefined) return;
+      sendTaskMutation("recover-linked-execution", {
+        authorizationId: first(candidate, ["authorizationId"]),
+        proposalDigest: first(candidate, ["proposalDigest"]),
+        turn: first(candidate, ["turn"]),
+        target: first(candidate, ["target"]),
+        command: first(candidate, ["command"]),
+      });
+    });
+    $("#task-correct-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const statement = $("#task-correct-statement").value.trim();
+      if (!statement) return;
+      sendTaskMutation("correct", {
+        statement,
+        nextActor: $("#task-correct-actor").value,
+      });
+    });
+    $("#task-result-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const summary = $("#task-result-summary").value.trim();
+      const evidenceRefs = lines($("#task-result-evidence").value);
+      if (!summary || evidenceRefs.length === 0) return;
+      sendTaskMutation("submit", { summary, evidenceRefs });
+    });
+    $("#task-submit-verified-result").addEventListener("click", () => {
+      const summary = $("#task-result-summary").value.trim();
+      const detail = taskDetail();
+      const candidate = first(
+        first(detail, ["executionContext"], {}),
+        ["verifiedResultCandidate"],
+      );
+      if (!summary || candidate === null || candidate === undefined) return;
+      sendTaskMutation("submit-verified-execution", {
+        summary,
+        authorizationId: first(candidate, ["authorizationId"]),
+        selector: first(candidate, ["selector"]),
+      });
+    });
+    $("#task-accept-button").addEventListener("click", () => {
+      sendTaskMutation("accept");
+    });
+    $("#task-reopen-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const statement = $("#task-reopen-statement").value.trim();
+      if (!statement) return;
+      sendTaskMutation("reopen", {
+        statement,
+        nextActor: $("#task-reopen-actor").value,
+      });
     });
 
     $$("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         state.activeView = button.dataset.view;
         state.peekOpen = false;
+        state.taskCreateOpen = false;
         render();
+        writePrincipalLocus();
       });
     });
 
     $$("[data-mobile-view]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         if (button.dataset.mobileView === "overview") state.activeView = "overview";
         if (button.dataset.mobileView === "tasks") state.activeView = "tasks";
         if (button.dataset.mobileView === "projects") state.activeView = "projects";
         state.peekOpen = false;
+        state.taskCreateOpen = false;
         render();
+        writePrincipalLocus();
       });
     });
 
     $$("[data-task-filter]").forEach((button) => {
       button.addEventListener("click", () => {
+        state.unavailableLocus = null;
         state.activeView = "tasks";
         state.taskFilter = button.dataset.taskFilter;
         render();
+        writePrincipalLocus();
       });
     });
 
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && state.peekOpen) {
         state.peekOpen = false;
+        state.taskCreateOpen = false;
         render();
+        writePrincipalLocus();
         $("#project-surface").focus({ preventScroll: true });
       }
+    });
+
+    window.addEventListener("popstate", () => {
+      state.locusRequest = parsePrincipalLocus(window.location.href);
+      Object.assign(
+        state,
+        restoredPrincipalLocusState(
+          resolvePrincipalLocus(state.locusRequest, {
+            projects: [],
+            workItems: [],
+          }),
+        ),
+      );
+      state.locusRestorePending = true;
+      state.unavailableLocus = null;
+      renderPeek();
+      render();
+      loadSnapshot({ manual: true, ensure: true });
     });
 
     $$(".kind-button").forEach((button) => {

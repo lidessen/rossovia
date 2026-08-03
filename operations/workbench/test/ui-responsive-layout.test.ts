@@ -36,6 +36,9 @@ describe("Workbench responsive layout", () => {
     expect(styles).toMatch(
       /\.workbench-shell\s*\{[^}]*grid-template-columns:\s*232px minmax\(0,\s*1fr\);/s,
     );
+    expect(html).toContain('data-view="tasks"');
+    expect(html).toContain('id="all-task-count"');
+    expect(app).toContain('$("#all-task-count").textContent = String(counts.all)');
     expect(styles).toMatch(
       /\.action-surface\s*\{[^}]*height:\s*100dvh;[^}]*position:\s*fixed;[^}]*right:\s*0;[^}]*top:\s*0;[^}]*width:\s*min\(620px,\s*48vw\);/s,
     );
@@ -66,6 +69,106 @@ describe("Workbench responsive layout", () => {
     );
     expect(app).toContain("detailRevalidationPending");
     expect(app).toContain("正在重验当前目标");
+  });
+
+  test("keeps Workbench-owned task creation and lifecycle actions in the same Peek", () => {
+    expect(html).toContain('id="create-task-button"');
+    expect(html).toContain('id="task-create-panel"');
+    expect(html).toContain('id="local-task-detail"');
+    expect(html).toContain('id="task-assign-form"');
+    expect(html).toContain('id="task-correct-form"');
+    expect(html).toContain("<button type=\"submit\">记录纠正</button>");
+    expect(html).toContain('id="task-result-form"');
+    expect(html).toContain('id="task-accept-button"');
+    expect(html).toContain('id="task-reopen-form"');
+    expect(html).toContain('id="local-task-identity-assurance"');
+    expect(html).toContain('id="task-create-mission"');
+    expect(html).toContain('id="local-task-mission-context"');
+    expect(html).toContain('id="local-task-execution-context"');
+    expect(html).toContain('id="task-launch-readiness"');
+    expect(html).toContain("下一次 Agent execution");
+    expect(html).toContain('id="task-launch-execution-form"');
+    expect(html).toContain("启动已授权 Agent");
+    expect(html).toContain("消费当前已存在的一次性执行授权");
+    expect(html).toContain("不会授予 commit、merge 或 publish 权限");
+    expect(html).toContain('id="task-link-execution-form"');
+    expect(html).toContain('id="task-correction-delivery-form"');
+    expect(html).toContain("发送纠正到当前 Agent");
+    expect(html).toContain('id="task-verified-result-candidate"');
+    expect(html).toContain("Agent 提供的证据引用");
+    expect(html).toContain("提交当前已验证执行结果");
+    expect(html).toContain("Authorization consumption");
+    expect(html).toContain("Current turn");
+    expect(html).toContain("Current effect");
+    expect(html).toContain("same-mission-current-carrier");
+    expect(html).toContain("execution-unproven");
+    expect(html).toContain("接受本地任务结果");
+    expect(styles).toMatch(
+      /body\[data-peek-context="workbench-task"\] \.action-surface > :not\(\.peek-bar\):not\(\.peek-summary\):not\(\.local-task-detail\)/,
+    );
+    expect(app).toContain('path: "/api/tasks"');
+    expect(app).toContain("...(project && mission ? { mission } : {})");
+    expect(app).toContain('sendTaskMutation("link-execution", { authorizationId })');
+    expect(app).toContain('first(executionContext, ["launchCandidate"])');
+    expect(app).toContain('first(executionContext, ["launchReadiness"])');
+    expect(app).toContain('launchReadinessStanding === "not-applicable"');
+    expect(app).toContain('launchReadinessStanding === "ready" ? "已就绪" : "需要准备"');
+    expect(app).toContain('"clean-detached-worktree-required"');
+    expect(app).toContain('sendTaskMutation("launch-authorized-execution"');
+    expect(app).toContain(
+      'authorizationId: first(candidate, ["authorizationId"])',
+    );
+    expect(app).toContain(
+      'proposalDigest: first(candidate, ["proposalDigest"])',
+    );
+    expect(app).toContain('sendTaskMutation("deliver-correction"');
+    expect(app).toContain('sendTaskMutation("submit-verified-execution"');
+    expect(app).toContain("接受未验证的 Agent 声明");
+    expect(app).toContain("接受已验证的本地结果");
+    expect(app).toContain("纠正 · 仅保留在本地任务");
+    expect(app).toContain("纠正 · 已送达 watermark");
+    expect(app).toContain("authorization consumption verified");
+    expect(app).toContain("legacy execution-unproven");
+    expect(app).toContain("当前载体无法唯一确认");
+    expect(app).toContain('`/api/tasks/${encodeURIComponent(task.id)}/actions`');
+    expect(app).toContain('sendTaskMutation("rebind-worktree"');
+    expect(html).toContain('id="task-rebind-worktree-form"');
+    expect(html).toContain('id="task-rebind-worktree-submit"');
+    expect(html).toContain('id="task-rebind-worktree-submit" type="submit" disabled');
+    expect(app).toContain("选择新的 Worktree…");
+    expect(app).toContain(
+      'state.taskActionPending || $("#task-rebind-worktree").value.length === 0',
+    );
+    expect(app).toContain("detail.identityAssurance");
+  });
+
+  test("keeps the authorized Agent launch reachable on mobile without a second authorization form", () => {
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+
+    expect(html.match(/id="task-launch-execution-form"/g)).toHaveLength(1);
+    expect(html).not.toContain("task-launch-authorization-input");
+    expect(mobile).toMatch(
+      /\.task-launch-execution\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-launch-readiness > header\s*\{[^}]*display:\s*grid;/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-launch-readiness li strong,\s*\.task-launch-readiness li small\s*\{[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-launch-execution button\s*\{[^}]*min-height:\s*46px;[^}]*width:\s*100%;/s,
+    );
+  });
+
+  test("separates pending Agent responsibility from exact live Agent work", () => {
+    expect(html).toContain('data-task-filter="agent">Agent 工作</button>');
+    expect(html).toContain('data-task-filter="agent-pending">待 Agent</button>');
+    expect(app).toContain('state.taskFilter === "agent-pending"');
+    expect(app).toContain(
+      'item.nextActor === "agent" && !isExactLiveAgentWork(item)',
+    );
+    expect(app).toContain('item.kind === "agent-work"');
   });
 
   test("keeps full worktree identities inside the mobile viewport", () => {
@@ -137,5 +240,36 @@ describe("Workbench responsive layout", () => {
     expect(styles).toMatch(
       /\.raw-evidence\s*\{[^}]*max-width:\s*100%;[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word;/s,
     );
+  });
+
+  test("keeps local task primary actions reachable on mobile", () => {
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    expect(mobile).toMatch(
+      /\.task-primary-actions\s*\{[^}]*bottom:\s*0;[^}]*position:\s*sticky;/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-form-grid,\s*\.local-task-facts\s*\{[^}]*grid-template-columns:\s*1fr;/s,
+    );
+    expect(mobile).toMatch(
+      /\.local-task-mission-context\s*\{[^}]*grid-template-columns:\s*1fr;/s,
+    );
+    expect(mobile).toMatch(
+      /\.local-task-carrier-context\s*\{[^}]*border-left:\s*0;[^}]*border-top:\s*1px solid var\(--line-light\);/s,
+    );
+    expect(mobile).toMatch(
+      /\.local-task-execution-context > header\s*\{[^}]*display:\s*grid;/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-link-execution button\s*\{[^}]*min-height:\s*44px;[^}]*width:\s*100%;/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-primary-actions \.primary-action\s*\{[^}]*min-height:\s*46px;[^}]*width:\s*100%;/s,
+    );
+  });
+
+  test("refreshes the factual snapshot after a task source failure", () => {
+    expect(app).toContain('error?.code === "source-unavailable"');
+    expect(app).toContain("await loadSnapshot({ manual: true, ensure: true })");
+    expect(app).toContain("实时 · 部分来源不可用");
   });
 });

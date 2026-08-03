@@ -386,6 +386,41 @@ export function assertSettlementIdentity(
     result.data.checkpointDigest !== checkpointDigest ||
     result.data.outcome.key !== child.key
   ) throw new Error(`child timeline ${child.timelineId} has a conflicting settlement identity`);
+  if (
+    result.data.settlementDigest
+    !== digest({
+      outcome: result.data.outcome,
+      evidence: result.data.evidence,
+    })
+  ) {
+    throw new Error(`child timeline ${child.timelineId} has a damaged settlement digest`);
+  }
+  if (result.data.evidence.kind === "cell-run") {
+    const record = result.data.evidence.record;
+    const structuredStatus = (
+      record.output !== null && typeof record.output === "object"
+        ? record.output as Record<string, unknown>
+        : {}
+    ).status;
+    const expectedStatus = record.status !== "passed"
+      ? record.status
+      : structuredStatus === "completed"
+          || structuredStatus === "needs_repartition"
+          || structuredStatus === "unverifiable"
+        ? structuredStatus
+        : "unverifiable";
+    if (
+      result.data.outcome.cellId !== record.cellId
+      || result.data.outcome.runId !== record.runId
+      || result.data.outcome.status !== expectedStatus
+      || stableStringify(result.data.outcome.artifactRefs)
+        !== stableStringify(record.artifacts.map((artifact) => artifact.path))
+    ) {
+      throw new Error(
+        `child timeline ${child.timelineId} compact outcome conflicts with its retained Cell run`,
+      );
+    }
+  }
 }
 
 export function evidenceFor(run: DelegateBatchRun, index: number): DelegateChildEvidence {

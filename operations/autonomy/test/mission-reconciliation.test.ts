@@ -49,11 +49,14 @@ test("reconciliation runs as one terminal-tool Work Cell with only the anchor an
     "Use continue when, after applying the input, the active Mission anchor remains truthful and sufficient verbatim and the retained authority boundary is unchanged. Describe candidate or effect changes in inputEffect and preserve each still-live consequence as a response obligation.",
   );
   expect(driver.input?.instructions).toContain(
+    "On continue, preserve every decision-relevant field present in a structured input as an explicit response obligation: the implementation instruction, cause and provenance, pinned subject identity including Git head and file digests, full scope including external-disclosure prohibitions, planned verification reference, and withheld authorities. Do not summarize away identifiers, exact bounds, or prohibitions.",
+  );
+  expect(driver.input?.instructions).toContain(
     "Use correction only when the next active Mission anchor statement itself must change. A payload label, file-level implementation requirement, failed probe, completed local correction, or verification result is not by itself a Mission invariant.",
   );
   expect(driver.input?.terminalTools?.find((tool) =>
     tool.name === "submit_continue"
-  )?.description).toContain("tactical implementation and verification constraints");
+  )?.description).toContain("every structured input constraint");
   expect(driver.input?.terminalTools?.find((tool) =>
     tool.name === "submit_correction"
   )?.description).toContain("Mission-level constraint encoded by the active anchor");

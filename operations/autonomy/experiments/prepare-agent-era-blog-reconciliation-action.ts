@@ -161,12 +161,12 @@ const proposal = MissionReconciliationActionProposalSchema.parse({
     adapter: "codex-app-server.v1",
     carrier: codexCarrier,
     profile: {
-      id: `codex-app-server-${arguments_.model}-reconciliation-v1`,
+      id: `codex-app-server-${arguments_.model}-reconciliation-v2`,
       version: "execution-profile.v1",
       provider: "openai",
       model: arguments_.model,
       contextPolicy:
-        "exact active anchor and watermark-1 correction input; verifier additionally receives the bounded proposal",
+        "exact active anchor and watermark-1 structured correction; proposer must enumerate every decision-relevant input field, and verifier additionally receives the bounded proposal",
       toolSurface:
         "one schema-constrained terminal decision per fresh no-environment Codex app-server process; only the non-I/O plan tool remains built in",
       parallelism: "serial",

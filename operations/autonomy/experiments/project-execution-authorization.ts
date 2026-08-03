@@ -72,6 +72,14 @@ export interface ValidatedProjectExecutionAuthorization {
   readonly gitHead: string;
 }
 
+export interface RecoveredProjectExecutionAuthorization {
+  readonly receipt: ExecutionAuthorizationReceipt;
+  readonly proposal: MissionExecutionProposal;
+  readonly claimPath: string;
+  readonly gitHead: string;
+  readonly worktree: string;
+}
+
 /**
  * Adapter-neutral one-use authorization consumption for project-specific
  * Mission runtimes. The contract is supplied by the runtime source; the
@@ -171,6 +179,106 @@ export function validateProjectExecutionAuthorization(
     receipt,
     proposal,
     gitHead,
+  };
+}
+
+/**
+ * Revalidates an already-consumed one-use authorization without requiring the
+ * candidate to be clean. This is a read-only recovery boundary: it can
+ * recognize the exact dirty worktree produced by the consumed execution, but
+ * it cannot create another claim or authorize another execution.
+ */
+export function validateConsumedProjectExecutionAuthorization(
+  arguments_: ConsumeProjectExecutionAuthorizationArguments,
+): RecoveredProjectExecutionAuthorization {
+  const contract = arguments_.contract;
+  const home = resolve(arguments_.home);
+  const worktree = realpathSync(resolve(arguments_.worktree));
+  if (arguments_.missionId !== contract.missionId) {
+    throw new Error(
+      `execution authorization Mission mismatch: expected ${contract.missionId}, received ${arguments_.missionId}`,
+    );
+  }
+  const expectedReceiptPath = executionAuthorizationReceiptPath(
+    home,
+    contract.projectId,
+    contract.missionId,
+    contract.proposalId,
+  );
+  const receiptPath = resolve(arguments_.receiptPath);
+  if (receiptPath !== expectedReceiptPath) {
+    throw new Error(
+      `execution authorization receipt must equal the deterministic path ${expectedReceiptPath}`,
+    );
+  }
+  const receipt = readReceipt(receiptPath);
+  assertReceiptIdentity(receipt, contract);
+  const claimPath = executionAuthorizationClaimPath(
+    home,
+    receipt.authorizationId,
+  );
+  const claim = ExecutionAuthorizationClaimSchema.parse(
+    JSON.parse(readFileSync(claimPath, "utf8")),
+  );
+  validateExecutionAuthorizationClaim(claim, {
+    home,
+    claimPath,
+    receiptPath,
+    receipt,
+    projectId: contract.projectId,
+    missionId: contract.missionId,
+    proposalId: contract.proposalId,
+    proposalDigest: receipt.proposalDigest,
+  });
+  assertCandidateIdentity(worktree);
+  const gitHead = worktreeHead(worktree);
+  if (
+    claim.localEvidence.worktree !== worktree
+    || claim.localEvidence.gitHead !== gitHead
+    || receipt.missionSource.gitHead !== gitHead
+  ) {
+    throw new Error(
+      "consumed execution authorization no longer matches the candidate worktree and HEAD",
+    );
+  }
+  const missionDiff = gitResult(
+    worktree,
+    ["diff", "--quiet", gitHead, "--", contract.missionSource],
+  );
+  if (missionDiff.status !== 0) {
+    throw new Error(
+      "candidate Mission source changed after the execution authorization was consumed",
+    );
+  }
+  const record = readCandidateMission(join(worktree, contract.missionSource));
+  const proposal = record.executionProposal;
+  if (
+    record.id !== contract.missionId
+    || proposal === undefined
+    || proposal.version !== contract.proposalVersion
+    || proposal.proposalId !== contract.proposalId
+    || missionExecutionProposalDigest(proposal) !== receipt.proposalDigest
+  ) {
+    throw new Error(
+      "candidate Mission proposal no longer matches the consumed execution authorization",
+    );
+  }
+  assertAdapterBoundary(proposal, contract);
+  if (
+    stableStringify(receipt.executionBoundary)
+    !== stableStringify(executionBoundary(proposal))
+  ) {
+    throw new Error(
+      "consumed execution authorization boundary no longer matches the candidate Mission proposal",
+    );
+  }
+  assertAuthorizedChoices(receipt, proposal, contract.requiredChoices);
+  return {
+    receipt,
+    proposal,
+    claimPath,
+    gitHead,
+    worktree,
   };
 }
 
@@ -375,6 +483,16 @@ function worktreeHead(worktree: string): string {
 }
 
 function assertCandidatePreflight(worktree: string): void {
+  assertCandidateIdentity(worktree);
+  if (
+    gitText(worktree, ["status", "--porcelain=v1", "--untracked-files=all"])
+      .length !== 0
+  ) {
+    throw new Error("candidate worktree must be clean before consuming authorization");
+  }
+}
+
+function assertCandidateIdentity(worktree: string): void {
   const canonicalRoot = realpathSync(worktree);
   if (canonicalRoot !== worktree) {
     throw new Error(
@@ -387,12 +505,6 @@ function assertCandidatePreflight(worktree: string): void {
   }
   if (!lstatSync(join(worktree, ".git")).isFile()) {
     throw new Error("candidate workspace must be a linked Git worktree");
-  }
-  if (
-    gitText(worktree, ["status", "--porcelain=v1", "--untracked-files=all"])
-      .length !== 0
-  ) {
-    throw new Error("candidate worktree must be clean before consuming authorization");
   }
   const symbolicHead = gitResult(worktree, ["symbolic-ref", "-q", "HEAD"]);
   if (symbolicHead.status === 0) {

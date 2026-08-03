@@ -43,7 +43,7 @@ test("the journal persists one effect lifecycle and reconstructs its safe activi
     activeToolCalls: [],
   });
   await journal.settle("effect-1", settled());
-  await journal.verify("effect-1", {
+  const verificationEvent = await journal.verify("effect-1", {
     verifierRef: "supervisor:codex",
     verdict: "passed",
     checks: [{
@@ -75,6 +75,12 @@ test("the journal persists one effect lifecycle and reconstructs its safe activi
       missionId: "mission-1",
       turnId: "turn-1",
       cellId: "cell-1",
+      launchAuthorizationRef: {
+        authorizationId: "11111111-1111-4111-8111-111111111111",
+        proposalDigest: "e".repeat(64),
+        claimSourceRef:
+          "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+      },
       allowedCommands: [],
       authority: "withheld",
     }),
@@ -108,6 +114,7 @@ test("the journal persists one effect lifecycle and reconstructs its safe activi
       }],
       evidenceRefs: ["log:effect-1/npm-test"],
     },
+    independentVerificationEventId: verificationEvent.eventId,
   }));
 
   const raw = await readFile(journal.effectPath("effect-1"), "utf8");
@@ -237,6 +244,12 @@ function prepared(): EffectPreparedData {
     writePaths: ["src"],
     allowedCommands: [],
     authority: "withheld",
+    launchAuthorizationRef: {
+      authorizationId: "11111111-1111-4111-8111-111111111111",
+      proposalDigest: "e".repeat(64),
+      claimSourceRef:
+        "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+    },
   };
 }
 

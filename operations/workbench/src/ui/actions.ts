@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { intentLineagePresentation } from "../../ui/operational-semantics.js";
 
-const RunnerTargetSchema = z.object({
+export const RunnerTargetSchema = z.object({
   missionId: z.string().min(1),
   runnerId: z.string().min(1),
   expectedState: z.enum([
@@ -18,6 +18,12 @@ const RunnerTargetSchema = z.object({
 }).strict();
 
 export type RunnerTarget = z.infer<typeof RunnerTargetSchema>;
+
+export interface ContributionAttribution {
+  readonly inputId: string;
+  readonly actorRef: string;
+  readonly sourceRef: string;
+}
 
 export const WorkbenchActionRequestSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -54,7 +60,11 @@ export interface RunnerStatusProof {
 export interface MissionRunnerActionClient {
   status(missionId: string): Promise<RunnerStatusProof>;
   activity(missionId: string): Promise<unknown>;
-  contribute(target: RunnerTarget, text: string): Promise<unknown>;
+  contribute(
+    target: RunnerTarget,
+    text: string,
+    attribution?: ContributionAttribution,
+  ): Promise<unknown>;
   /**
    * `resume` releases the durable pause. It does not reconcile the pause/resume
    * inputs or claim production restarted; the runner normally returns
@@ -77,6 +87,8 @@ export class WorkbenchActionError extends Error {
 export async function executeWorkbenchAction(
   unparsed: unknown,
   client: MissionRunnerActionClient,
+  contributionAttribution?: ContributionAttribution,
+  recoveryActivityVerifier?: (activity: unknown) => void,
 ): Promise<unknown> {
   const parsed = WorkbenchActionRequestSchema.safeParse(unparsed);
   if (!parsed.success) {
@@ -117,7 +129,11 @@ export async function executeWorkbenchAction(
   }
 
   if (action.kind === "contribution") {
-    return await client.contribute(action.target, action.text);
+    return await client.contribute(
+      action.target,
+      action.text,
+      contributionAttribution,
+    );
   }
   if (action.kind === "control") {
     const requiredState = action.command === "pause" ? "running" : "paused";
@@ -144,6 +160,7 @@ export async function executeWorkbenchAction(
       `Mission ${action.target.missionId} carrier does not support recovery ${action.command}`,
     );
   }
+  recoveryActivityVerifier?.(activity);
   return await client.recover(action.target, action.command);
 }
 

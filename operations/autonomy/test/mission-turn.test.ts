@@ -13,6 +13,7 @@ import {
 import {
   MISSION_TURN_RECOVERY_VERSION,
   MISSION_TURN_VERSION,
+  MissionTurnStartSchema,
   settlementFromExecution,
   type MissionTurnRecovery,
   type MissionTurnStart,
@@ -33,6 +34,12 @@ test("an open turn survives carrier replacement and cannot be replayed as fresh 
     turnId: "turn-1",
     baselineWatermark: 0,
     sourceRefs: ["mission-envelope:r1"],
+    launchAuthorizationRef: {
+      authorizationId: "11111111-1111-4111-8111-111111111111",
+      proposalDigest: "a".repeat(64),
+      claimSourceRef:
+        "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+    },
   };
   await first.startTurn(missionId, start);
   expect(await first.latestTurn(missionId)).toEqual({ start });
@@ -65,6 +72,26 @@ test("an open turn survives carrier replacement and cannot be replayed as fresh 
 
   await replacement.startTurn(missionId, { ...start, turnId: "turn-2" });
   expect((await replacement.latestTurn(missionId))?.start.turnId).toBe("turn-2");
+});
+
+test("a launch authorization reference is structured while legacy turns remain valid", () => {
+  expect(MissionTurnStartSchema.safeParse({
+    version: MISSION_TURN_VERSION,
+    turnId: "legacy-turn",
+    baselineWatermark: 0,
+    sourceRefs: ["mission-envelope:r1"],
+  }).success).toBe(true);
+  expect(MissionTurnStartSchema.safeParse({
+    version: MISSION_TURN_VERSION,
+    turnId: "invalid-launch-ref",
+    baselineWatermark: 0,
+    sourceRefs: ["mission-envelope:r1"],
+    launchAuthorizationRef: {
+      authorizationId: "11111111-1111-4111-8111-111111111111",
+      proposalDigest: "a".repeat(64),
+      claimSourceRef: "../claim.json",
+    },
+  }).success).toBe(false);
 });
 
 test("a seeded Mission rejects a turn that is not bound to its current intent anchor", async () => {

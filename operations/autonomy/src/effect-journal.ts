@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
+import { LaunchAuthorizationRefSchema } from "./mission-turn";
 
 export const EFFECT_JOURNAL_EVENT_VERSION = "rosso.effect-journal-event.v1" as const;
 
@@ -38,6 +39,7 @@ export const EffectPreparedDataSchema = z.object({
   writePaths: UniqueScopesSchema,
   allowedCommands: z.tuple([]),
   authority: z.literal("withheld"),
+  launchAuthorizationRef: LaunchAuthorizationRefSchema.optional(),
 }).strict();
 
 export const EffectStartedDataSchema = z.object({}).strict();
@@ -283,6 +285,7 @@ export interface EffectActivity {
   readonly tools: readonly EffectToolActivity[];
   readonly settlement?: EffectSettledData;
   readonly independentVerification?: EffectVerifiedData;
+  readonly independentVerificationEventId?: string;
   readonly uncertainty?: EffectUncertainData;
   readonly lastEventId: string;
   readonly lastSequence: number;
@@ -309,6 +312,7 @@ export function projectEffectActivity(
   let uncertainty: EffectUncertainData | undefined;
   let runId: string | undefined;
   let independentVerification: EffectVerifiedData | undefined;
+  let independentVerificationEventId: string | undefined;
 
   for (const [index, event] of events.entries()) {
     if (event.effectId !== effectId) {
@@ -390,6 +394,7 @@ export function projectEffectActivity(
           throw new Error(`effect ${effectId} already has independent verification`);
         }
         independentVerification = event.data;
+        independentVerificationEventId = event.eventId;
         break;
       case "effect-uncertain":
         uncertainty = event.data;
@@ -407,6 +412,9 @@ export function projectEffectActivity(
     tools: [...tools.values()],
     ...(settlement === undefined ? {} : { settlement }),
     ...(independentVerification === undefined ? {} : { independentVerification }),
+    ...(independentVerificationEventId === undefined
+      ? {}
+      : { independentVerificationEventId }),
     ...(uncertainty === undefined ? {} : { uncertainty }),
     lastEventId: last.eventId,
     lastSequence: last.sequence,

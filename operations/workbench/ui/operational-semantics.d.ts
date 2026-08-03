@@ -7,6 +7,8 @@ export interface CorrectionPresentation {
   readonly boundary: string;
 }
 
+export function isIndependentWorkbenchTask(item: unknown): boolean;
+
 export function correctionPresentation(
   correction: unknown,
   currentEffect: unknown,

@@ -40,6 +40,29 @@ test("the UI client carries the exact runner guard into the mutating CLI invocat
     "/tmp/rosso-home",
   ]);
 
+  await expect(client.contribute(target, "Apply the retained task correction.", {
+    inputId: "task:task-a:correction:correction-a",
+    actorRef: "principal:local-workbench",
+    sourceRef: "workbench-task:task-a/correction:correction-a",
+  })).resolves.toEqual([
+    "mission",
+    "input",
+    "mission-a",
+    "Apply the retained task correction.",
+    "--expected-runner",
+    "runner-a",
+    "--expected-state",
+    "running",
+    "--id",
+    "task:task-a:correction:correction-a",
+    "--actor",
+    "principal:local-workbench",
+    "--source",
+    "workbench-task:task-a/correction:correction-a",
+    "--home",
+    "/tmp/rosso-home",
+  ]);
+
   await expect(client.activity("mission-a") as Promise<unknown>).resolves.toEqual([
     "runner",
     "activity",

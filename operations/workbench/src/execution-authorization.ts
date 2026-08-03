@@ -8,6 +8,11 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { z } from "zod";
+import {
+  executionAuthorizationClaimPath,
+  type ExecutionAuthorizationClaim,
+  validateExecutionAuthorizationClaim,
+} from "./execution-authorization-claim";
 import { loadHome, workspaceFor } from "./home";
 import {
   MissionExecutionBoundarySchema,
@@ -122,7 +127,7 @@ export interface ExecutionAuthorizationResult {
 }
 
 export interface ExecutionInspection {
-  readonly version: "rosso.execution-inspection.v1";
+  readonly version: "rosso.execution-inspection.v2";
   readonly projectId: string;
   readonly missionId: string;
   readonly missionSource: {
@@ -132,7 +137,20 @@ export interface ExecutionInspection {
   readonly proposalId: string;
   readonly proposalDigest: string;
   readonly mode: "supervised";
-  readonly status: "awaiting-principal-authorization";
+  /**
+   * The committed Mission proposal remains pending semantic source state even
+   * after its one-use launch authority is issued or consumed.
+   */
+  readonly proposalStatus: "awaiting-principal-authorization";
+  /**
+   * Current local authority/evidence standing for this exact proposal.
+   */
+  readonly status:
+    | "awaiting-principal-authorization"
+    | "authorized-awaiting-execution"
+    | "authorization-consumed"
+    | "invalid-receipt-evidence"
+    | "invalid-consumption-evidence";
   readonly runtimeRef: string;
   readonly runtimeDigest: string;
   readonly provider: MissionExecutionProposal["externalProvider"];
@@ -144,9 +162,24 @@ export interface ExecutionInspection {
   readonly authority: MissionExecutionProposal["authority"];
   readonly receiptPath: string;
   readonly receiptStanding: "absent" | "valid" | "malformed" | "stale";
+  readonly authorizationId: string | null;
+  readonly claimPath: string | null;
+  readonly claimStanding: "absent" | "valid" | "invalid" | null;
+  readonly consumption: {
+    readonly claimedAt: string;
+    readonly candidateWorktree: string;
+    readonly candidateHead: string;
+    readonly evidenceBoundary: "proves-one-launch-authorization-consumed-only";
+  } | null;
+  readonly evidenceIssue: {
+    readonly kind: "receipt" | "consumption";
+    readonly sourcePath: string;
+    readonly reason: string;
+  } | null;
 }
 
 interface ExecutionProposalContext {
+  readonly home: string;
   readonly projectId: string;
   readonly missionId: string;
   readonly sourceRelativePath: string;
@@ -182,8 +215,9 @@ export function inspectExecution(
 ): ExecutionInspection {
   const context = loadExecutionProposalContext(homeArgument, projectArgument, missionIdArgument);
   const proposal = context.proposal;
+  const evidence = inspectAuthorizationEvidence(context);
   return {
-    version: "rosso.execution-inspection.v1",
+    version: "rosso.execution-inspection.v2",
     projectId: context.projectId,
     missionId: context.missionId,
     missionSource: {
@@ -193,7 +227,8 @@ export function inspectExecution(
     proposalId: proposal.proposalId,
     proposalDigest: context.proposalDigest,
     mode: proposal.mode,
-    status: proposal.status,
+    proposalStatus: proposal.status,
+    status: evidence.status,
     runtimeRef: proposal.runtimeRef,
     runtimeDigest: proposal.runtimeDigest,
     provider: proposal.externalProvider,
@@ -204,7 +239,12 @@ export function inspectExecution(
     pendingDecisions: proposal.pendingDecisions,
     authority: proposal.authority,
     receiptPath: context.receiptPath,
-    receiptStanding: inspectReceiptStanding(context),
+    receiptStanding: evidence.receiptStanding,
+    authorizationId: evidence.authorizationId,
+    claimPath: evidence.claimPath,
+    claimStanding: evidence.claimStanding,
+    consumption: evidence.consumption,
+    evidenceIssue: evidence.evidenceIssue,
   };
 }
 
@@ -340,6 +380,7 @@ function loadExecutionProposalContext(
   }
   const proposalDigest = missionExecutionProposalDigest(proposal);
   return {
+    home: current.home,
     projectId: project.id,
     missionId: checkedMissionId,
     sourceRelativePath,
@@ -355,18 +396,49 @@ function loadExecutionProposalContext(
   };
 }
 
-function inspectReceiptStanding(
+type AuthorizationEvidenceInspection = Pick<
+  ExecutionInspection,
+  | "status"
+  | "receiptStanding"
+  | "authorizationId"
+  | "claimPath"
+  | "claimStanding"
+  | "consumption"
+  | "evidenceIssue"
+>;
+
+function inspectAuthorizationEvidence(
   context: ExecutionProposalContext,
-): ExecutionInspection["receiptStanding"] {
-  if (!existsSync(context.receiptPath)) return "absent";
+): AuthorizationEvidenceInspection {
+  if (!existsSync(context.receiptPath)) {
+    return {
+      status: "awaiting-principal-authorization",
+      receiptStanding: "absent",
+      authorizationId: null,
+      claimPath: null,
+      claimStanding: null,
+      consumption: null,
+      evidenceIssue: null,
+    };
+  }
   let value: unknown;
   try {
     value = JSON.parse(readFileSync(context.receiptPath, "utf8"));
-  } catch {
-    return "malformed";
+  } catch (error: unknown) {
+    return invalidReceiptEvidence(
+      context.receiptPath,
+      `authorization receipt is not valid JSON: ${errorMessage(error)}`,
+      "malformed",
+    );
   }
   const parsed = ExecutionAuthorizationReceiptSchema.safeParse(value);
-  if (!parsed.success) return "malformed";
+  if (!parsed.success) {
+    return invalidReceiptEvidence(
+      context.receiptPath,
+      z.prettifyError(parsed.error),
+      "malformed",
+    );
+  }
   const receipt = parsed.data;
   try {
     if (
@@ -378,23 +450,129 @@ function inspectReceiptStanding(
       || receipt.missionSource.gitHead !== context.gitHead
       || !sameValue(receipt.executionBoundary, executionBoundary(context.proposal))
     ) {
-      return "stale";
+      return invalidReceiptEvidence(
+        context.receiptPath,
+        "authorization receipt does not match the current committed proposal",
+        "stale",
+        receipt.authorizationId,
+      );
     }
     const selected = new Map(receipt.choices.map((choice) => [choice.decisionId, choice.replyKey]));
     if (selected.size !== receipt.choices.length || selected.get("external-disclosure") !== "ALLOW") {
-      return "stale";
+      return invalidReceiptEvidence(
+        context.receiptPath,
+        "authorization receipt choices do not release the current declared disclosure",
+        "stale",
+        receipt.authorizationId,
+      );
     }
     const expected = resolveSelectedChoices(context.proposal, selected);
     if (
       !sameValue(receipt.choices, expected.choices)
       || !sameValue(receipt.immediateAuthorizedResults, expected.immediateAuthorizedResults)
     ) {
-      return "stale";
+      return invalidReceiptEvidence(
+        context.receiptPath,
+        "authorization receipt choices or immediate results do not match the current proposal",
+        "stale",
+        receipt.authorizationId,
+      );
     }
-    return "valid";
-  } catch {
-    return "stale";
+  } catch (error: unknown) {
+    return invalidReceiptEvidence(
+      context.receiptPath,
+      `authorization receipt cannot be resolved against the current proposal: ${errorMessage(error)}`,
+      "stale",
+      receipt.authorizationId,
+    );
   }
+
+  const claimPath = executionAuthorizationClaimPath(
+    context.home,
+    receipt.authorizationId,
+  );
+  if (!existsSync(claimPath)) {
+    return {
+      status: "authorized-awaiting-execution",
+      receiptStanding: "valid",
+      authorizationId: receipt.authorizationId,
+      claimPath,
+      claimStanding: "absent",
+      consumption: null,
+      evidenceIssue: null,
+    };
+  }
+
+  let claim: ExecutionAuthorizationClaim;
+  try {
+    claim = validateExecutionAuthorizationClaim(
+      JSON.parse(readFileSync(claimPath, "utf8")),
+      {
+        home: context.home,
+        claimPath,
+        receiptPath: context.receiptPath,
+        receipt,
+        projectId: context.projectId,
+        missionId: context.missionId,
+        proposalId: context.proposal.proposalId,
+        proposalDigest: context.proposalDigest,
+      },
+    );
+  } catch (error: unknown) {
+    return {
+      status: "invalid-consumption-evidence",
+      receiptStanding: "valid",
+      authorizationId: receipt.authorizationId,
+      claimPath,
+      claimStanding: "invalid",
+      consumption: null,
+      evidenceIssue: {
+        kind: "consumption",
+        sourcePath: claimPath,
+        reason: errorMessage(error),
+      },
+    };
+  }
+
+  return {
+    status: "authorization-consumed",
+    receiptStanding: "valid",
+    authorizationId: receipt.authorizationId,
+    claimPath,
+    claimStanding: "valid",
+    consumption: {
+      claimedAt: claim.claimedAt,
+      candidateWorktree: claim.localEvidence.worktree,
+      candidateHead: claim.localEvidence.gitHead,
+      evidenceBoundary: "proves-one-launch-authorization-consumed-only",
+    },
+    evidenceIssue: null,
+  };
+}
+
+function invalidReceiptEvidence(
+  sourcePath: string,
+  reason: string,
+  receiptStanding: "malformed" | "stale",
+  authorizationId: string | null = null,
+): AuthorizationEvidenceInspection {
+  return {
+    status: "invalid-receipt-evidence",
+    receiptStanding,
+    authorizationId,
+    claimPath: null,
+    claimStanding: null,
+    consumption: null,
+    evidenceIssue: {
+      kind: "receipt",
+      sourcePath,
+      reason,
+    },
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function executionBoundary(proposal: MissionExecutionProposal): z.infer<typeof ExecutionBoundarySchema> {

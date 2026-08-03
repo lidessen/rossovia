@@ -228,6 +228,7 @@ test("delegate_file keeps a large semantic task out of parent model messages and
   const result = await runDelegateLoop(loopInput(root), {
     model,
     delegateInputRoot: root,
+    initialDelegateTool: "delegate_file",
     prepareContribution: async (delegateCall) => {
       preparedTask = delegateCall.task;
       await writeFile(join(root, "delegate-call.json"), `${JSON.stringify({ ...packet, task: "replacement" })}\n`, "utf8");
@@ -243,6 +244,10 @@ test("delegate_file keeps a large semantic task out of parent model messages and
 
   expect(preparedTask).toContain(largeMarker);
   expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain("delegate_file");
+  expect(model.doGenerateCalls[0]?.toolChoice).toEqual({
+    type: "tool",
+    toolName: "delegate_file",
+  });
   expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).not.toContain(largeMarker);
   expect(JSON.stringify(secondPrompt)).not.toContain(largeMarker);
   const invocation = result.batches[0]!.invocations[0]!;

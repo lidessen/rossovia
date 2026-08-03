@@ -7,8 +7,15 @@ import {
   WorkbenchRunnerActivityProjectionSchema,
 } from "../src/ui/projection";
 
+const launchAuthorizationRef = {
+  authorizationId: "11111111-1111-4111-8111-111111111111",
+  proposalDigest: "a".repeat(64),
+  claimSourceRef: "execution-authorizations/claims/claim-a.json",
+};
+
 const currentEffect = CurrentEffectProjectionSchema.parse({
   effectId: "effect-blog-1",
+  launchAuthorizationRef,
   phase: "writing",
   writer: {
     cellId: "blog-writer",
@@ -101,6 +108,52 @@ const authorizedIntentLineage = {
 describe("Principal Workbench current writable effect projection", () => {
   test("accepts the bounded writable effect without closing verification or authority", () => {
     expect(CurrentEffectProjectionSchema.parse(currentEffect)).toEqual(currentEffect);
+  });
+
+  test("validates structured launch authorization refs on both current turn and effect", () => {
+    expect(WorkbenchRunnerActivityProjectionSchema.parse({
+      intentLineage: authorizedIntentLineage,
+      currentTurn: {
+        turnId: "turn-blog-1",
+        startedAt: "2026-07-27T08:00:00Z",
+        baselineWatermark: 0,
+        state: "open",
+        launchAuthorizationRef,
+      },
+      currentEffect,
+    })).toMatchObject({
+      currentTurn: { launchAuthorizationRef },
+      currentEffect: { launchAuthorizationRef },
+    });
+    expect(WorkbenchRunnerActivityProjectionSchema.safeParse({
+      intentLineage: authorizedIntentLineage,
+      currentTurn: {
+        turnId: "turn-blog-legacy",
+        startedAt: "2026-07-27T08:00:00Z",
+        baselineWatermark: 0,
+        state: "open",
+      },
+      currentEffect: {
+        ...currentEffect,
+        launchAuthorizationRef: {
+          ...launchAuthorizationRef,
+          proposalDigest: "not-a-digest",
+        },
+      },
+    }).success).toBe(false);
+    expect(WorkbenchRunnerActivityProjectionSchema.safeParse({
+      intentLineage: authorizedIntentLineage,
+      currentTurn: {
+        turnId: "turn-blog-invalid",
+        startedAt: "2026-07-27T08:00:00Z",
+        baselineWatermark: 0,
+        state: "open",
+        launchAuthorizationRef: {
+          ...launchAuthorizationRef,
+          claimSourceRef: "../claim.json",
+        },
+      },
+    }).success).toBe(false);
   });
 
   test("keeps activity without currentEffect backward compatible and rejects invented commit authority", () => {

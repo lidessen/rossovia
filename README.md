@@ -38,10 +38,11 @@ specific method.
 - Develop Rossovia itself through this repository's full operating and evidence
   system.
 - Install one self-contained Skill into another project for a specific method.
-- Enter this checkout with a coding agent and use it as a workbench for other
-  projects.
+- Enter this checkout with a coding agent as the Main-Agent work entry for
+  other projects. The agent may use the current harness's native sub-agents
+  directly; this does not require initializing Rossovia Workbench.
 
-For the workbench path, ask the agent directly:
+For the optional persistent Workbench path, ask the agent directly:
 
 ```text
 Initialize the Rossovia workbench. My workspace root is ~/workspaces.
@@ -82,8 +83,10 @@ Rossovia home. Existing readable state is not enough: if this observation is abs
 user-level harness permission and start a fresh session. Initialization does not
 install project hooks or move shared state into the current repository.
 
-Initialization may also select the bounded, tool-neutral multi-agent module.
-The current Codex adapter projects it into that harness's user instructions:
+Initialization may also select a compact fallback delegation trigger. The
+current Codex adapter projects it into that harness's user instructions; this
+is persistent setup guidance, not a delegation runtime or a replacement for
+the `agent-delegation` Skill:
 
 ```sh
 ./operations/workbench/rossovia init --setup multi-agent-delegation
@@ -130,6 +133,7 @@ confirmation.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
+| [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | Decide and operate bounded native sub-agent contributions while the Main Agent retains the whole, synthesis, and responsibility for ensuring verification; it does not require Workbench or another orchestration runtime. |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | Decide how authoritative project information reaches an agent at the moment it changes action, using the actual runtime rather than a fixed layer or filename convention. |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | Diagnose a real agent-work failure in an existing project, change the smallest owning surface, and verify the improvement through the ordinary agent entry path. |
