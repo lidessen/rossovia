@@ -187,7 +187,8 @@ claim, the latest link's Workbench task-context reference on that claim and the
 Mission turn, the required current task Worktree against the consumed candidate,
 turn ID, Mission, runner ID, and expected interrupted state. Immediately before
 sending the guarded recovery command, the server re-reads the task source and
-revisions as well as the runner's current activity. Missing task Worktree or turn identity,
+revisions, canonical consumption claim and receipt, and the runner's current
+activity. Missing task Worktree or turn identity,
 selector or task-context drift, another runner, or a capability change rejects
 the action without a runner mutation. Recovery remains Autonomy state: the task
 records no synthetic recovery event and changes neither lifecycle nor next
@@ -281,8 +282,9 @@ The first implementation is supported only when:
    interrupted execution with a current turn ID and runtime-declared resume
    capability, requires the latest link's Workbench task-context reference on
    the consumption claim and Mission turn, requires a current task Worktree to
-   remain the consumed candidate, re-reads the task source/revisions and full
-   activity selector immediately before recovery, and, for the Blog adapter, can settle only
+   remain the consumed candidate, re-reads the task source/revisions,
+   claim/receipt, and full activity selector immediately before recovery, and,
+   for the Blog adapter, can settle only
    already-retained child and Git-effect evidence without replay; it leaves task
    lifecycle and responsibility unchanged; and
 8. desktop and mobile operation can complete the movement without CLI or raw

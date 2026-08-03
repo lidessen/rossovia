@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { realpathSync } from "node:fs";
+import { relative } from "node:path";
+import { inspectExecution } from "../execution-authorization";
+import { resolveHome } from "../home";
 import type { LocalTaskControlPlane } from "../local-task-control-plane";
 import {
   sameWorkbenchTaskExecutionContextRef,
@@ -52,6 +56,7 @@ export type TaskExecutionRecoveryRequest = z.infer<
 
 export interface TaskExecutionRecoveryPlan {
   readonly taskId: string;
+  readonly projectId: string;
   readonly expectedSourceRevision: number;
   readonly expectedTaskRevision: number;
   readonly expectedWorktreePath: string;
@@ -107,12 +112,10 @@ export function prepareTaskExecutionRecovery(
     );
   }
   const latestExecutionLink = task.executionLinks.at(-1);
-  const expectedWorktreePath = task.binding.kind === "project-context"
-    ? task.binding.worktreePath
-    : undefined;
   if (
     latestExecutionLink?.taskContext === undefined
-    || expectedWorktreePath === undefined
+    || task.binding.kind !== "project-context"
+    || task.binding.worktreePath === undefined
   ) {
     throw new TaskActionError(
       409,
@@ -120,6 +123,7 @@ export function prepareTaskExecutionRecovery(
       `task ${taskId} recovery requires exact task context and a current Worktree`,
     );
   }
+  const expectedWorktreePath = task.binding.worktreePath;
   if (
     candidate.data.authorizationId !== request.authorizationId
     || candidate.data.proposalDigest !== request.proposalDigest
@@ -139,6 +143,7 @@ export function prepareTaskExecutionRecovery(
 
   return {
     taskId: task.id,
+    projectId: task.binding.projectId,
     expectedSourceRevision: detail.sourceRevision,
     expectedTaskRevision: task.revision,
     expectedWorktreePath,
@@ -153,6 +158,7 @@ export function prepareTaskExecutionRecovery(
 }
 
 export async function executeTaskExecutionRecovery(
+  home: string | undefined,
   workItems: WorkItemSetProjection,
   taskId: string,
   unparsed: unknown,
@@ -167,6 +173,7 @@ export async function executeTaskExecutionRecovery(
   }, client, undefined, (activity) => {
     assertCurrentRecoveryTurn(activity, plan);
     assertCurrentRecoveryTask(controlPlane, plan);
+    assertCurrentRecoveryAuthorization(home, plan);
   });
 }
 
@@ -237,6 +244,69 @@ function assertCurrentRecoveryTask(
       "task-drift",
       `task ${plan.taskId} source or Worktree changed before execution recovery`,
     );
+  }
+}
+
+function assertCurrentRecoveryAuthorization(
+  home: string | undefined,
+  plan: TaskExecutionRecoveryPlan,
+): void {
+  let observed: ReturnType<typeof inspectExecution>;
+  try {
+    observed = inspectExecution(home, plan.projectId, plan.target.missionId);
+  } catch (error: unknown) {
+    throw new TaskActionError(
+      409,
+      "task-drift",
+      `task ${plan.taskId} authorization consumption could not be revalidated before execution recovery: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const claimSourceRef = observed.claimPath === null
+    ? null
+    : relative(resolveHome(home), observed.claimPath);
+  const mismatches: string[] = [];
+  if (observed.projectId !== plan.projectId) mismatches.push("project");
+  if (observed.missionId !== plan.target.missionId) mismatches.push("Mission");
+  if (observed.status !== "authorization-consumed") mismatches.push("standing");
+  if (observed.authorizationId !== plan.authorizationId) mismatches.push("authorization");
+  if (observed.proposalDigest !== plan.proposalDigest) mismatches.push("proposal");
+  if (claimSourceRef !== plan.turn.claimSourceRef) mismatches.push("claim source");
+  if (observed.consumption === null) {
+    mismatches.push("consumption");
+  } else {
+    if (!sameObservedPath(
+      observed.consumption.candidateWorktree,
+      plan.expectedWorktreePath,
+    )) {
+      mismatches.push("candidate Worktree");
+    }
+    if (
+      observed.consumption.workbenchTaskContext === null
+      || !sameWorkbenchTaskExecutionContextRef(
+        observed.consumption.workbenchTaskContext,
+        plan.taskContext,
+      )
+    ) {
+      mismatches.push("task context");
+    }
+  }
+  if (mismatches.length > 0) {
+    throw new TaskActionError(
+      409,
+      "task-drift",
+      `task ${plan.taskId} authorization consumption changed before execution recovery: ${mismatches.join(", ")}`,
+    );
+  }
+}
+
+function sameObservedPath(left: string, right: string): boolean {
+  if (left === right) return true;
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return false;
   }
 }
 

@@ -149,6 +149,7 @@ export function createWorkbenchRequestHandler(
             )
             : kind === "recover-linked-execution"
             ? await executeTaskExecutionRecovery(
+              options.home,
               (await buildLiveSnapshot(options, client)).workItems,
               taskActionId,
               body,

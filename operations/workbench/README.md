@@ -221,9 +221,10 @@ If that same exact execution is interrupted, the UI offers
 activity still exposes the linked authorization, proposal digest, canonical
 claim, and turn ID, and a currently declared task Worktree still equals the
 consumed candidate. The server binds those fields to the task and source
-revisions, rebuilds the candidate, then re-reads both the task source and final
-live activity immediately before sending a guarded recovery request to the exact
-runner. Missing task Worktree, turn identity, or any selector, Worktree, runner, state, or capability
+revisions, rebuilds the candidate, then re-reads the task source, canonical
+claim/receipt, and final live activity immediately before sending a guarded
+recovery request to the exact runner. Missing task Worktree, turn identity, or
+any selector, Worktree, runner, state, or capability
 drift returns a conflict without calling recovery. The Blog runtime advertises
 resume only for settlement-only recovery: one child run and Git effect must
 already be durably settled and still reproduce their authorization, task

@@ -1535,7 +1535,7 @@ describe("Workbench task UI actions", () => {
     expect(recovery.recoveries).toHaveLength(1);
   });
 
-  test("rejects recovery when the exact turn authorization drifts after projection", async () => {
+  test("rejects recovery when final runtime lineage drifts after projection", async () => {
     const { home, origin, root } = fixture();
     const project = projectWithMission(root);
     registerProject(home, {
@@ -1640,6 +1640,78 @@ describe("Workbench task UI actions", () => {
       ),
     });
     expect(recovery.recoveries).toEqual([]);
+
+    const claimPath = join(home, execution.claimSourceRef);
+    const originalClaim = ExecutionAuthorizationClaimSchema.parse(
+      JSON.parse(readFileSync(claimPath, "utf8")),
+    );
+    recovery.runBeforeNextActivityOffset(2, () => {
+      writeJson(claimPath, ExecutionAuthorizationClaimSchema.parse({
+        ...originalClaim,
+        workbenchTaskContext: {
+          ...originalClaim.workbenchTaskContext!,
+          taskId: "another-task",
+        },
+      }));
+    });
+    const claimContextRejected = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      {
+        kind: "recover-linked-execution",
+        authorizationId: candidate.authorizationId,
+        proposalDigest: candidate.proposalDigest,
+        turn: candidate.turn,
+        target: candidate.target,
+        command: candidate.command,
+        expectedSourceRevision: 2,
+        expectedRevision: 2,
+      },
+    );
+    expect(claimContextRejected.status).toBe(409);
+    expect(await claimContextRejected.json()).toMatchObject({
+      error: "task-drift",
+      message: expect.stringContaining(
+        "authorization consumption changed before execution recovery",
+      ),
+    });
+    expect(recovery.recoveries).toEqual([]);
+    writeJson(claimPath, originalClaim);
+
+    recovery.runBeforeNextActivityOffset(2, () => {
+      writeJson(claimPath, ExecutionAuthorizationClaimSchema.parse({
+        ...originalClaim,
+        localEvidence: {
+          ...originalClaim.localEvidence,
+          worktree: realpathSync(home),
+        },
+      }));
+    });
+    const claimWorktreeRejected = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      {
+        kind: "recover-linked-execution",
+        authorizationId: candidate.authorizationId,
+        proposalDigest: candidate.proposalDigest,
+        turn: candidate.turn,
+        target: candidate.target,
+        command: candidate.command,
+        expectedSourceRevision: 2,
+        expectedRevision: 2,
+      },
+    );
+    expect(claimWorktreeRejected.status).toBe(409);
+    expect(await claimWorktreeRejected.json()).toMatchObject({
+      error: "task-drift",
+      message: expect.stringContaining(
+        "authorization consumption changed before execution recovery",
+      ),
+    });
+    expect(recovery.recoveries).toEqual([]);
+    writeJson(claimPath, originalClaim);
   });
 
   test("rejects recovery when the task Worktree is rebound after projection", async () => {

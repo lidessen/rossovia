@@ -227,8 +227,9 @@ Workbench home has a task source.
   consumption claim and Mission turn, then revalidate the authorization,
   proposal digest, canonical claim, the required current task Worktree against
   the consumed candidate, turn ID, runner, and interrupted state. Immediately
-  before recovery it must re-read both the task source/revisions and runner
-  activity; either drift blocks the mutation. Recovery changes Autonomy state only; it does not
+  before recovery it must re-read the task source/revisions, canonical
+  claim/receipt, and runner activity; any drift blocks the mutation. Recovery
+  changes Autonomy state only; it does not
   reuse authorization, replace or abandon the runner, move the task lifecycle,
   or prove resumed production.
 - Reopen a settled task before new work rather than erasing its accepted result
