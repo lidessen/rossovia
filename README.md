@@ -45,15 +45,15 @@ specific method.
 For the optional persistent Workbench path, ask the agent directly:
 
 ```text
-Initialize the Rossovia workbench. My workspace root is ~/workspaces.
-Add ~/client-work as another workspace root.
-Register ~/workspaces/meowask and keep meowask and survey as spoken aliases.
+Initialize the Rossovia workbench. My workspace root is /path/to/workspaces.
+Add /path/to/another-workspace-root as another workspace root.
+Register /path/to/project and keep example-project and example-alias as spoken aliases.
 Remember across projects that stable bounded tasks should prefer Work Cell.
-For survey, prefer native sub-agents when they provide a required subscription.
-Show the preferences that apply to survey.
-Continue survey.
+For example-project, prefer native sub-agents when they provide a required subscription.
+Show the preferences that apply to example-project.
+Continue example-project.
 Show work in progress across my registered projects.
-Create a local task to verify survey's release notes, then show my Workbench
+Create a local task to verify example-project's release notes, then show my Workbench
 tasks.
 ```
 
@@ -72,11 +72,11 @@ For automation, debugging, or an environment without an agent, the equivalent
 manual entry remains available:
 
 ```sh
-./operations/workbench/rossovia init --workspace-root ~/workspaces
-./operations/workbench/rossovia root add ~/client-work
+./operations/workbench/rossovia init --workspace-root /path/to/workspaces
+./operations/workbench/rossovia root add /path/to/another-workspace-root
 ./operations/workbench/rossovia project list
-./operations/workbench/rossovia resolve survey
-./operations/workbench/rossovia preference list --project survey
+./operations/workbench/rossovia resolve example-project
+./operations/workbench/rossovia preference list --project example-project
 ```
 
 For daily task work, open the Principal Workbench UI or inspect the same durable

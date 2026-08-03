@@ -38,15 +38,15 @@ skill 则是在具体语境中对所选条目的表达。
 需要可选的持久 Workbench 能力时，直接告诉 Agent：
 
 ```text
-初始化 Rossovia 工作台，我的日常工作区在 ~/workspaces。
-把 ~/client-work 加为另一个工作区根目录。
-登记 ~/workspaces/meowask，并保留 meowask 和 survey 两个口头别名。
+初始化 Rossovia 工作台，我的日常工作区在 /path/to/workspaces。
+把 /path/to/another-workspace-root 加为另一个工作区根目录。
+登记 /path/to/project，并保留 example-project 和 example-alias 两个口头别名。
 记住：跨项目遇到稳定、有边界的任务时，优先考虑 Work Cell。
-仅对 survey，原生 sub-agent 提供必要订阅能力时优先使用它。
-显示适用于 survey 的偏好。
-继续 survey。
+仅对 example-project，原生 sub-agent 提供必要订阅能力时优先使用它。
+显示适用于 example-project 的偏好。
+继续 example-project。
 显示所有已登记项目中正在进行的工作。
-创建一个本地任务来核对 survey 的发布说明，然后显示我的 Workbench 任务。
+创建一个本地任务来核对 example-project 的发布说明，然后显示我的 Workbench 任务。
 ```
 
 仓库指引会通过可移植的 Node 入口把这些意图转换为有边界的工作台操作。登记时如果无法
@@ -60,11 +60,11 @@ skill 则是在具体语境中对所选条目的表达。
 在自动化、调试或没有 Agent 的环境中，仍可使用等价的手动入口：
 
 ```sh
-./operations/workbench/rossovia init --workspace-root ~/workspaces
-./operations/workbench/rossovia root add ~/client-work
+./operations/workbench/rossovia init --workspace-root /path/to/workspaces
+./operations/workbench/rossovia root add /path/to/another-workspace-root
 ./operations/workbench/rossovia project list
-./operations/workbench/rossovia resolve survey
-./operations/workbench/rossovia preference list --project survey
+./operations/workbench/rossovia resolve example-project
+./operations/workbench/rossovia preference list --project example-project
 ```
 
 日常管理任务时，可以打开 Principal Workbench UI，或通过 control-plane CLI
@@ -85,6 +85,23 @@ help 会列出已支持的本地任务变更及其必需的 revision guards。
 这个观察结果，应为准确的 home 协调用户级 harness 权限并新开会话。初始化不会
 安装项目 hooks，也不会把共享状态移进当前仓库。
 
+初始化也可以选择一条紧凑的 fallback delegation 触发说明。当前 Codex adapter
+会把它投影到该宿主的用户级指引中；这是持久 setup 指引，不是 delegation
+runtime，也不能替代 `agent-delegation` Skill：
+
+```sh
+./operations/workbench/rossovia init --setup multi-agent-delegation
+./operations/workbench/rossovia setup status
+./operations/workbench/rossovia setup apply
+```
+
+Workbench 会记录已应用的 Git revision 和 managed-block digest。仓库更新后，
+status 会按所选模块前缀过滤通用 [`CHANGELOG.md`](CHANGELOG.md)，digest 则独立
+检测目标侧的本地漂移。source revision 始终属于包含当前 Git-tracked Rossovia
+可执行入口的 checkout，不能由另一个仓库提供。apply 会保留非受管用户指引，
+并拒绝覆盖已改变或缺失的 managed block。只有相关 setup 来源已提交，才能把
+Git revision 记录为已应用。
+
 工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它的持久本地任务来源
 和 control-plane UI 不会使其成为调度器、目标项目的任务来源，也不会使其取得
 另一个项目的执行权。显式个人偏好与项目共同约束分别保存；未经人确认，推断出的
@@ -95,6 +112,7 @@ memory 不会成为生效偏好。
 | 路径 | 负责 | 不负责 |
 |---|---|---|
 | [`principles/`](principles/) | 单行原则序列、解读、研究、候选及审议/采纳证据 | skill 工作流或项目执行 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 按稳定功能模块前缀标记的仓库变更及其本地响应 | 已应用的 setup 状态或发布权威 |
 | [`skills/`](skills/) | 当前可安装的方法论与行为表达 | 它们所表达的语义来源 |
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
 | [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
