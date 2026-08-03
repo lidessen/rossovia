@@ -44,7 +44,7 @@ import {
 
 const WORKTREE_ENV = "ROSSO_BLOG_EFFECT_ROOT";
 const AUTHORIZATION_RECEIPT_ENV = "ROSSO_BLOG_AUTHORIZATION_RECEIPT";
-const PROJECT_ID = "appgprj_6a66e0a058b081919d4bce580c0ed1ac";
+const PROJECT_ID_ENV = "ROSSO_BLOG_PROJECT_ID";
 const MISSION_ID = "principal-workbench-dogfood";
 const PROPOSAL_ID = "agent-era-blog-first-supervised-run-v1";
 const MISSION_SOURCE = "operations/missions/principal-workbench-dogfood.json";
@@ -138,6 +138,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
   const worktree = requiredWorktree();
   const authorization = consumeBlogExecutionAuthorization({
     home: context.root,
+    projectId: requiredProjectId(),
     missionId: context.missionId,
     worktree,
   });
@@ -229,6 +230,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
 
 export interface ConsumeBlogExecutionAuthorizationArguments {
   readonly home: string;
+  readonly projectId: string;
   readonly missionId: string;
   readonly worktree: string;
   readonly receiptPath?: string;
@@ -251,19 +253,20 @@ export function consumeBlogExecutionAuthorization(
 ): ConsumedBlogExecutionAuthorization {
   const home = resolve(arguments_.home);
   const worktree = realpathSync(resolve(arguments_.worktree));
+  const projectId = nonempty(arguments_.projectId, "registered Blog project ID");
   if (arguments_.missionId !== MISSION_ID) {
     throw new Error(`Blog authorization mission mismatch: expected ${MISSION_ID}, received ${arguments_.missionId}`);
   }
   const expectedReceiptPath = executionAuthorizationReceiptPath(
     home,
-    PROJECT_ID,
+    projectId,
     MISSION_ID,
     PROPOSAL_ID,
   );
   const receiptPath = requiredReceiptPath(arguments_.receiptPath, expectedReceiptPath);
   const receipt = readReceipt(receiptPath);
-  if (receipt.projectId !== PROJECT_ID) {
-    throw new Error(`Blog authorization project mismatch: expected ${PROJECT_ID}, received ${receipt.projectId}`);
+  if (receipt.projectId !== projectId) {
+    throw new Error(`Blog authorization project mismatch: expected ${projectId}, received ${receipt.projectId}`);
   }
   if (receipt.missionId !== MISSION_ID) {
     throw new Error(`Blog authorization receipt names Mission ${receipt.missionId}, expected ${MISSION_ID}`);
@@ -415,6 +418,19 @@ function requiredWorktree(): string {
   }
   if (!isAbsolute(value)) throw new Error(`${WORKTREE_ENV} must be an absolute path`);
   return realpathSync(resolve(value));
+}
+
+function requiredProjectId(): string {
+  return nonempty(
+    process.env[PROJECT_ID_ENV] ?? "",
+    `server-formed ${PROJECT_ID_ENV}`,
+  );
+}
+
+function nonempty(value: string, label: string): string {
+  const checked = value.trim();
+  if (checked.length === 0) throw new Error(`${label} must not be empty`);
+  return checked;
 }
 
 function requiredReceiptPath(explicitPath: string | undefined, expectedPath: string): string {

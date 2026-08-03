@@ -28,19 +28,23 @@ import {
 import { FileMissionTimeline } from "../src/delegate-timeline";
 
 const roots: string[] = [];
+const projectId = "repository:agent-era-blog-authorization-test";
 const originalEffectRoot = process.env.ROSSO_BLOG_EFFECT_ROOT;
 const originalReceipt = process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT;
+const originalProjectId = process.env.ROSSO_BLOG_PROJECT_ID;
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   restoreEnv("ROSSO_BLOG_EFFECT_ROOT", originalEffectRoot);
   restoreEnv("ROSSO_BLOG_AUTHORIZATION_RECEIPT", originalReceipt);
+  restoreEnv("ROSSO_BLOG_PROJECT_ID", originalProjectId);
 });
 
 test("one valid receipt is claimed atomically and cannot authorize a second execution", () => {
   const fixture = authorizationFixture();
   const first = consumeBlogExecutionAuthorization({
     home: fixture.home,
+    projectId: fixture.receipt.projectId,
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
@@ -63,6 +67,7 @@ test("one valid receipt is claimed atomically and cannot authorize a second exec
   }));
   expect(() => consumeBlogExecutionAuthorization({
     home: fixture.home,
+    projectId: fixture.receipt.projectId,
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
@@ -77,6 +82,7 @@ test("stale proposal digests and wrong candidate heads fail closed without creat
   });
   expect(() => consumeBlogExecutionAuthorization({
     home: fixture.home,
+    projectId: fixture.receipt.projectId,
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
@@ -92,6 +98,7 @@ test("stale proposal digests and wrong candidate heads fail closed without creat
   });
   expect(() => consumeBlogExecutionAuthorization({
     home: fixture.home,
+    projectId: fixture.receipt.projectId,
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
@@ -152,6 +159,7 @@ test("a copied or symlinked receipt and a dirty candidate fail before the one-ti
   writeReceipt(copiedPath, copied.receipt);
   expect(() => consumeBlogExecutionAuthorization({
     home: copied.home,
+    projectId: copied.receipt.projectId,
     missionId: "principal-workbench-dogfood",
     worktree: copied.worktree,
     receiptPath: copiedPath,
@@ -180,6 +188,7 @@ test("the Mission runtime rejects an invalid receipt before model or effect setu
   });
   process.env.ROSSO_BLOG_EFFECT_ROOT = fixture.worktree;
   process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT = fixture.receiptPath;
+  process.env.ROSSO_BLOG_PROJECT_ID = fixture.receipt.projectId;
 
   await expect(createMissionRuntime({
     root: fixture.home,
@@ -188,6 +197,20 @@ test("the Mission runtime rejects an invalid receipt before model or effect setu
   })).rejects.toThrow("proposal digest mismatch");
   expect(claimExists(fixture.home, fixture.receipt.authorizationId)).toBe(false);
   expect(existsSync(join(fixture.home, "missions"))).toBe(false);
+});
+
+test("the Mission runtime requires its registered project identity from the environment", async () => {
+  const fixture = authorizationFixture();
+  process.env.ROSSO_BLOG_EFFECT_ROOT = fixture.worktree;
+  process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT = fixture.receiptPath;
+  delete process.env.ROSSO_BLOG_PROJECT_ID;
+
+  await expect(createMissionRuntime({
+    root: fixture.home,
+    missionId: "principal-workbench-dogfood",
+    timeline: new FileMissionTimeline(join(fixture.home, "timeline")),
+  })).rejects.toThrow("ROSSO_BLOG_PROJECT_ID");
+  expect(claimExists(fixture.home, fixture.receipt.authorizationId)).toBe(false);
 });
 
 interface AuthorizationFixture {
@@ -350,7 +373,7 @@ function authorizationReceipt(
   return {
     version: "rosso.execution-authorization-receipt.v1",
     authorizationId: randomUUID(),
-    projectId: "appgprj_6a66e0a058b081919d4bce580c0ed1ac",
+    projectId,
     missionId: "principal-workbench-dogfood",
     missionSource: {
       path: "operations/missions/principal-workbench-dogfood.json",
@@ -397,6 +420,7 @@ function authorizationReceipt(
 function consume(fixture: AuthorizationFixture) {
   return consumeBlogExecutionAuthorization({
     home: fixture.home,
+    projectId: fixture.receipt.projectId,
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,

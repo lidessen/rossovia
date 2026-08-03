@@ -41,6 +41,9 @@ jobs:
       - name: Install Autonomy dependencies
         working-directory: operations/autonomy
         run: bun install --frozen-lockfile
+      - name: Install Agent-Era Blog dependencies
+        working-directory: experiments/agent-era-blog
+        run: npm ci
       - name: Install Workbench dependencies
         working-directory: operations/workbench
         run: bun install --frozen-lockfile
@@ -56,6 +59,9 @@ jobs:
       - name: Test Autonomy
         working-directory: operations/autonomy
         run: bun test
+      - name: Test Agent-Era Blog
+        working-directory: experiments/agent-era-blog
+        run: npm test
       - name: Typecheck Workbench
         working-directory: operations/workbench
         run: bun run typecheck

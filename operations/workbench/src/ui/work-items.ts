@@ -758,6 +758,10 @@ function principalTaskWorkItems(
       ? "multiple current carriers were observed for the same project and Mission"
       : undefined;
     const latestExecutionLink = task.executionLinks.at(-1) ?? null;
+    const expectedWorktreePath =
+      task.binding.kind === "project-context"
+        ? task.binding.worktreePath
+        : undefined;
     const authorization = mission?.authorization;
     const launchAuthorization =
       authorization?.standing === "authorized-awaiting-execution"
@@ -778,6 +782,13 @@ function principalTaskWorkItems(
       && sameWorkbenchTaskExecutionContextRef(
         latestExecutionLink.taskContext,
         consumedAuthorization.consumption.workbenchTaskContext,
+      )
+      && (
+        expectedWorktreePath === undefined
+        || sameObservedPath(
+          expectedWorktreePath,
+          consumedAuthorization.consumption.candidateWorktree,
+        )
       );
     const authorizationSourceRefs = consumedAuthorization === undefined
       ? mission === undefined ? [] : [mission.sourcePath]
@@ -1122,10 +1133,6 @@ function principalTaskWorkItems(
           ],
         }
         : null;
-    const expectedWorktreePath =
-      task.binding.kind === "project-context"
-        ? task.binding.worktreePath
-        : undefined;
     const projectedVerifiedResult = CurrentVerifiedResultProjectionSchema.safeParse(
       carrierActivity?.currentVerifiedResult,
     );

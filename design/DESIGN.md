@@ -185,10 +185,12 @@ and formal operation remains human-initiated. See
   [decision 038](decisions/038-atthis-workbench-entry.md).
 - **Supervised autonomy experiment** — Owns the project-local mechanism for
   ordered Mission input, bounded Agent turns, reconciliation, delegation,
-  interruption, and local recovery. It does not own project purpose, task
-  discovery, provider policy, acceptance, remote authentication, writable
-  effects, publication, or merge. Its first slice is an accepted, active
-  experimental capability under the
+  interruption, and local recovery. It admits exactly one guarded writable
+  trial for the Blog runtime in an isolated Git worktree; it does not own
+  project purpose, task discovery, provider policy, acceptance, remote
+  authentication, general or shared-worktree writable effects, publication,
+  or merge. Its first slice is an accepted, active experimental capability
+  under the
   [Principal settlement](organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md),
   not accepted autonomous operation. Supervision is transitional evidence for
   reducing later supervision, not the target system form.

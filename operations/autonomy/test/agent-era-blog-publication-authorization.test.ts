@@ -59,6 +59,7 @@ import { digestAnchor } from "../src/mission-reconciliation";
 import { MISSION_TURN_VERSION } from "../src/mission-turn";
 
 const roots: string[] = [];
+const projectId = "repository:agent-era-blog-publication-test";
 
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -67,7 +68,7 @@ afterEach(() => {
 });
 
 test("the publication runtime declares one exact v3 read, exclusion, write, and empty command boundary", () => {
-  const contract = blogPublicationAuthorizationContract();
+  const contract = blogPublicationAuthorizationContract(projectId);
   expect(missionRuntimeRecoveryCapabilities).toEqual({
     resume: true,
     replace: false,
@@ -75,6 +76,7 @@ test("the publication runtime declares one exact v3 read, exclusion, write, and 
   expect(contract.proposalId).toBe(
     "agent-era-blog-personal-publication-roundtrip-v3",
   );
+  expect(contract.projectId).toBe(projectId);
   expect(contract.proposalVersion).toBe("mission-execution-proposal.v2");
   expect(contract.runtimeDigest).toBe(currentBlogPublicationRuntimeDigest());
   expect(contract.scope).toEqual({
@@ -188,7 +190,7 @@ test("an invalid claim timestamp fails before the receipt is consumed", () => {
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
-    contract: blogPublicationAuthorizationContract(),
+    contract: blogPublicationAuthorizationContract(projectId),
     now: () => "not-a-timestamp",
   })).toThrow();
   expect(claimExists(
@@ -299,7 +301,7 @@ test("dirty, attached, and stale-head candidates fail before claim", () => {
     missionId: "principal-workbench-dogfood",
     worktree: attached.repository,
     receiptPath: attached.receiptPath,
-    contract: blogPublicationAuthorizationContract(),
+    contract: blogPublicationAuthorizationContract(projectId),
   })).toThrow("linked Git worktree");
   expect(claimExists(
     attached.home,
@@ -807,7 +809,7 @@ test("claim revalidation rejects candidate drift after side-effect-free prefligh
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
-    contract: blogPublicationAuthorizationContract(),
+    contract: blogPublicationAuthorizationContract(projectId),
   });
   writeFileSync(join(fixture.worktree, "late-drift.txt"), "late drift\n");
   expect(() => claimProjectExecutionAuthorization(validated)).toThrow(
@@ -928,7 +930,7 @@ function authorizationReceipt(
   return {
     version: "rosso.execution-authorization-receipt.v1",
     authorizationId: randomUUID(),
-    projectId: "appgprj_6a66e0a058b081919d4bce580c0ed1ac",
+    projectId,
     missionId: "principal-workbench-dogfood",
     missionSource: {
       path: "operations/missions/principal-workbench-dogfood.json",
@@ -991,7 +993,7 @@ function taskExecutionContext(
       sourceRef: "conversation:test/personal-blog-correction",
     }],
     binding: {
-      projectId: "appgprj_6a66e0a058b081919d4bce580c0ed1ac",
+      projectId,
       missionId: "principal-workbench-dogfood",
     },
     execution: {
@@ -1012,7 +1014,7 @@ function consume(
         missionId: "principal-workbench-dogfood",
         worktree: fixture.worktree,
         receiptPath: fixture.receiptPath,
-        contract: blogPublicationAuthorizationContract(),
+        contract: blogPublicationAuthorizationContract(projectId),
       }),
       { binding: { workbenchTaskContext } },
     );
@@ -1022,7 +1024,7 @@ function consume(
     missionId: "principal-workbench-dogfood",
     worktree: fixture.worktree,
     receiptPath: fixture.receiptPath,
-    contract: blogPublicationAuthorizationContract(),
+    contract: blogPublicationAuthorizationContract(projectId),
   });
 }
 

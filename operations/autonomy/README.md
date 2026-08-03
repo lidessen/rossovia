@@ -312,11 +312,13 @@ The repository's first real writable adapter is
 It requires the operator to supply `ROSSO_BLOG_EFFECT_ROOT` as one already
 created, clean, detached linked worktree and
 `ROSSO_BLOG_AUTHORIZATION_RECEIPT` as the absolute path to one strict local
-execution-authorization receipt. Before creating a model driver or writable
-effect, the runtime binds that receipt to the exact project, Mission source,
-proposal digest, candidate `HEAD`, declared external disclosure, choices,
-scope, budget, and the SHA-256 digest of the loaded supervisor-owned runtime
-source, then atomically consumes its authorization ID under
+execution-authorization receipt. `ROSSO_BLOG_PROJECT_ID` supplies the
+environment-owned registered project identity; the portable runtime retains no
+concrete deployment or local registration ID. Before creating a model driver
+or writable effect, the runtime binds that receipt to the exact project,
+Mission source, proposal digest, candidate `HEAD`, declared external
+disclosure, choices, scope, budget, and the SHA-256 digest of the loaded
+supervisor-owned runtime source, then atomically consumes its authorization ID under
 `ROSSO_HOME/state/execution-authorization-claims/`; the immutable receipt remains
 under `ROSSO_HOME/receipts/`, and the runtime never falls back to an
 unreceipted run. The runtime records the resulting structured authorization

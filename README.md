@@ -53,6 +53,8 @@ For survey, prefer native sub-agents when they provide a required subscription.
 Show the preferences that apply to survey.
 Continue survey.
 Show work in progress across my registered projects.
+Create a local task to verify survey's release notes, then show my Workbench
+tasks.
 ```
 
 The repository instructions translate those intents into bounded Workbench
@@ -76,6 +78,21 @@ manual entry remains available:
 ./operations/workbench/rossovia resolve survey
 ./operations/workbench/rossovia preference list --project survey
 ```
+
+For daily task work, open the Principal Workbench UI or inspect the same durable
+local task source through the control-plane CLI:
+
+```sh
+bun run --cwd operations/workbench ui
+./operations/workbench/rossovia task list
+./operations/workbench/rossovia task show <task-id>
+```
+
+The UI supports creating, assigning, correcting, submitting, accepting, and
+reopening locally Principal-attributed tasks. Cross-boundary launch, correction
+delivery, recovery, and runtime-verified submission remain guarded UI actions;
+the CLI help lists the supported local task mutations and their required
+revision guards.
 
 A successful `init` reports `writeAccess: "verified"` after exercising and
 cleaning up a real write on every write-bearing surface under the resolved
@@ -104,11 +121,11 @@ or missing managed block. Relevant setup source files must be committed before
 a Git revision can be recorded as applied.
 
 The workbench keeps stable project identity separate from repository names,
-spoken aliases, and machine-local paths. It does not turn this repository into
-a global task board or grant authority to execute in another project. Explicit
-personal defaults remain separate from project requirements and machine-local
-environment configuration; inferred memory never becomes active preference without human
-confirmation.
+spoken aliases, and machine-local paths. Its durable local task source and
+control-plane UI do not make it a scheduler, a target project's task source, or
+authority to execute in another project. Explicit personal defaults remain
+separate from project requirements and machine-local environment configuration;
+inferred memory never becomes active preference without human confirmation.
 
 ## Repository map
 
@@ -120,7 +137,7 @@ confirmation.
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
 | [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, recovery, and one explicitly admitted isolated-worktree Blog writable trial | accepted autonomous operation, task discovery, general or shared-worktree writable-effect authority, remote authority, publication, or merge |
-| [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, and explicit user/project defaults | task scheduling, inferred preference, machine capability, target-project facts, or execution authority |
+| [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |

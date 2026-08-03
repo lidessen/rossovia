@@ -146,11 +146,13 @@ unproven; it cannot place the task in `Agent work`.
 Exact execution references are append-only task evidence links, not task
 lifecycle state. Each link retains the authorization ID, proposal digest,
 canonical home-relative claim reference, local link time, and action source.
-Before presenting a link as current, the Workbench revalidates the claim and receipt, then
-compares the selector with the runtime-owned structured launch reference on the
-Mission turn and effect. A missing legacy reference, a changed selector, or a
-turn/effect mismatch remains visible as unavailable or unproven evidence; it
-never rewrites or silently removes the task link.
+Before presenting a link as current, the Workbench revalidates the claim and
+receipt, requires the consumption claim and Mission turn to carry the same
+Workbench task-context reference retained by the link, then compares the
+selector with the runtime-owned structured launch reference on the Mission turn
+and effect. A missing legacy reference, a changed selector, a task-context
+mismatch, or a turn/effect mismatch remains visible as unavailable or unproven
+evidence; it never rewrites or silently removes the task link.
 
 A task correction is local task state first. For a runtime with no structured
 turn-guidance contract, an explicit delivery action is available only when the
@@ -181,13 +183,16 @@ An explicit recovery action is available only for the task's latest exact
 execution when that execution resolves to one identified interrupted turn, one
 live runner, and an advertised `resume` capability. The request binds the task
 and source revisions, authorization ID, proposal digest, canonical consumption
-claim, turn ID, Mission, runner ID, and expected interrupted state. The server
-rebuilds the candidate and re-reads the runner's current activity immediately
-before sending the guarded recovery command. Missing turn identity, selector
-drift, another runner, or a capability change rejects the action without a
-runner mutation. Recovery remains Autonomy state: the task records no synthetic
-recovery event and changes neither lifecycle nor next actor. The first Blog
-recovery implementation is narrower than arbitrary resume: it settles only
+claim, the latest link's Workbench task-context reference on that claim and the
+Mission turn, the current task Worktree against the consumed candidate, turn
+ID, Mission, runner ID, and expected interrupted state. The server rebuilds the
+candidate and re-reads the runner's current activity immediately before sending
+the guarded recovery command. Missing turn identity,
+selector or task-context drift, another runner, or a capability change rejects
+the action without a runner mutation. Recovery remains Autonomy state: the task
+records no synthetic recovery event and changes neither lifecycle nor next
+actor. The first Blog recovery implementation is narrower than arbitrary
+resume: it settles only
 when one direct child run and its Git effect are already durably settled and
 still reproduce the consumed authorization, task guidance, Worktree, HEAD,
 scope, changed paths, file hashes, and patch digest. It invokes no parent
@@ -202,13 +207,14 @@ It never interprets a filename, `claim:` prefix, or other reference text as a
 verdict. A separate UI-only submission may retain a runtime verification
 selector when Autonomy projects an exact current verified effect and the
 Workbench joins it to the task's latest authorization, structured turn/effect
-lineage, consumed candidate Worktree, and declared task Worktree when present.
-The retained evidence link contains the authorization ID plus an effect and
-unique verification-event selector; runtime verdicts, subject bytes, scope, and
-freshness stay in Autonomy. Acceptance re-resolves the same selector. Drift
-leaves the task in verification, while an explicit acceptance of an ordinary
-claim records `agent-claim` as its basis. Both remain Workbench-local
-acceptance only.
+lineage, the latest link's Workbench task-context reference on the consumption
+claim and Mission turn, consumed candidate Worktree, and declared task Worktree
+when present. The retained evidence link contains the authorization ID plus an
+effect and unique verification-event selector; runtime verdicts, subject bytes,
+scope, and freshness stay in Autonomy. Acceptance re-resolves the same
+selector. Drift leaves the task in verification, while an explicit acceptance
+of an ordinary claim records `agent-claim` as its basis. Both remain
+Workbench-local acceptance only.
 
 Starting a new Agent execution from a task is a separate bounded operating
 trial. It requires an exact task revision, declared target project and
@@ -265,17 +271,20 @@ The first implementation is supported only when:
    Principal-attributed acceptance action settles the local task, with identity
    assurance still reported as unverified; actor-supplied references stay
    unverified, while a runtime-verified result must retain and revalidate an
-   exact Autonomy selector at acceptance;
+   exact Autonomy selector and the latest link's Workbench task-context
+   reference on its consumption claim and Mission turn at acceptance;
 6. ordinary local task mutations never change Mission, Git, runner, effect,
    integration, or publication state; the explicit correction-delivery action
    may append one exact-target Mission contribution but gains no
    reconciliation, effect, acceptance, integration, or publication authority;
 7. the explicit task recovery action is offered only for the latest exact
    interrupted execution with a current turn ID and runtime-declared resume
-   capability, revalidates the full selector on the final activity read, and,
-   for the Blog adapter, can settle only already-retained child and Git-effect
-   evidence without replay; it leaves task lifecycle and responsibility
-   unchanged; and
+   capability, requires the latest link's Workbench task-context reference on
+   the consumption claim and Mission turn, requires the current task Worktree
+   to remain the consumed candidate, revalidates the full selector on the final
+   activity read, and, for the Blog adapter, can settle only
+   already-retained child and Git-effect evidence without replay; it leaves task
+   lifecycle and responsibility unchanged; and
 8. desktop and mobile operation can complete the movement without CLI or raw
    JSON.
 

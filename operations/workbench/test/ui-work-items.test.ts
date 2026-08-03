@@ -141,6 +141,7 @@ function exactTaskExecution(
 function snapshotWithTaskContext(
   source: any,
   taskContext: WorkbenchTaskExecutionContextRef,
+  candidateWorktree?: string,
 ): any {
   return {
     ...source,
@@ -155,6 +156,9 @@ function snapshotWithTaskContext(
               ...mission.authorization,
               consumption: {
                 ...mission.authorization.consumption,
+                ...(candidateWorktree === undefined
+                  ? {}
+                  : { candidateWorktree }),
                 workbenchTaskContext: taskContext,
               },
             },
@@ -283,7 +287,11 @@ describe("Workbench work-item shell projection", () => {
       updatedAt: "2026-07-27T09:00:00Z",
     };
     const projection = buildWorkItemProjection(
-      snapshotWithTaskContext(snapshot, exactExecution.taskContext) as never,
+      snapshotWithTaskContext(
+        snapshot,
+        exactExecution.taskContext,
+        "/workspace/skills-ui",
+      ) as never,
       {
       standing: "available",
       sourceRef: "/home/state/tasks.json",
@@ -477,6 +485,120 @@ describe("Workbench work-item shell projection", () => {
       "exact",
     );
     expect(item?.taskDetail?.executionContext.recoveryCandidate).toBeNull();
+  });
+
+  test("withholds an old execution lineage after the task Worktree is rebound", () => {
+    const launchTask = {
+      id: "task-rebound-after-launch",
+      title: "Rebind an interrupted task",
+      objective: "Do not recover execution from the former Worktree",
+      acceptance: ["The old execution lineage becomes unavailable"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-rebound-after-launch",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      worktreeRebindings: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const exactExecution = exactTaskExecution(launchTask);
+    const oldLineageSnapshot = snapshotWithTaskContext({
+      ...snapshot,
+      projects: [{
+        ...snapshot.projects[0],
+        missions: snapshot.projects[0]!.missions.map((mission) =>
+          mission.id !== "agent-run"
+            ? mission
+            : {
+              ...mission,
+              authorization: {
+                ...mission.authorization,
+                consumption: {
+                  ...mission.authorization!.consumption,
+                  candidateWorktree: "/workspace/skills",
+                  candidateHead: "a".repeat(40),
+                },
+              },
+            }
+        ),
+      }],
+      runners: [{
+        ...snapshot.runners[0],
+        status: {
+          ...snapshot.runners[0]!.status,
+          state: "interrupted",
+          recoveryCapabilities: {
+            abandon: false,
+            resume: true,
+            replace: false,
+          },
+        },
+        activity: {
+          ...snapshot.runners[0]!.activity,
+          currentEffect: {
+            ...snapshot.runners[0]!.activity!.currentEffect,
+            workspace: { root: "/workspace/skills" },
+          },
+          currentVerifiedResult: {
+            standing: "verified-current",
+            selector: {
+              kind: "autonomy-effect-verification.v1",
+              effectId: "effect-agent-run",
+              verificationEventId: "verification-event-old-worktree",
+            },
+          },
+        },
+      }],
+    }, exactExecution.taskContext);
+    const reboundTask = {
+      ...launchTask,
+      binding: {
+        ...launchTask.binding,
+        worktreePath: "/workspace/skills-ui",
+      },
+      revision: 2,
+      executionLinks: [exactExecution.link],
+      worktreeRebindings: [{
+        fromWorktreePath: "/workspace/skills",
+        toWorktreePath: "/workspace/skills-ui",
+        reboundAt: "2026-07-27T09:00:00Z",
+        sourceRef: "conversation:task-rebound-after-launch",
+      }],
+      updatedAt: "2026-07-27T09:00:00Z",
+    };
+    const projection = buildWorkItemProjection(oldLineageSnapshot as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 5,
+        tasks: [reboundTask],
+      },
+    });
+    const executionContext = projection.items.find(
+      (item) => item.id === `principal-task:${reboundTask.id}`,
+    )!.taskDetail!.executionContext;
+
+    expect(executionContext).toMatchObject({
+      standing: "unavailable",
+      authorizationConsumption: { standing: "unavailable" },
+      currentTurn: { standing: "unavailable" },
+      currentEffect: { standing: "unavailable" },
+      recoveryCandidate: null,
+      verifiedResultCandidate: null,
+    });
   });
 
   test("offers one same-Mission consumption only to its exact task context", () => {

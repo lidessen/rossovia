@@ -188,9 +188,11 @@ Workbench home has a task source.
 - Link an execution only through `task link-execution` after the task has exact
   registered-project and Mission context. The command must revalidate the
   authorization claim and receipt before appending their stable selector and
-  canonical claim reference. A link is evidence, not launch authority or
-  lifecycle movement; exact current attribution additionally requires matching
-  structured launch references on the runtime-owned turn and effect.
+  canonical claim reference, and require the consumption claim and Mission turn
+  to carry the same Workbench task-context reference retained by the link. A
+  link is evidence, not launch authority or lifecycle movement; exact current
+  attribution additionally requires matching structured launch references on
+  the runtime-owned turn and effect.
 - `assign ... --next-actor agent` identifies the next responsible actor but
   does not launch an Agent or claim live Agent work. Starting execution still
   follows its separately accepted Mission/runtime boundary. For a bounded
@@ -201,11 +203,12 @@ Workbench home has a task source.
 - `task submit` retains actor-supplied references as an unverified result claim;
   their wording or prefix never establishes verification. The Workbench UI may
   instead submit the current Autonomy-verified execution only when the task's
-  latest execution link, structured turn/effect lineage, candidate Worktree,
-  and runtime-owned verification selector all match. The task retains that
-  selector rather than copying runtime verdicts, and the UI must revalidate it
-  before acceptance; stale or unavailable runtime evidence returns the result
-  for correction or resubmission. Only an explicit, locally
+  latest execution link, that link's Workbench task-context reference on the
+  consumption claim and Mission turn, structured turn/effect lineage, candidate
+  Worktree, and runtime-owned verification selector all match. The task retains
+  that selector rather than copying runtime verdicts, and the UI must revalidate
+  it before acceptance; stale or unavailable runtime evidence returns the
+  result for correction or resubmission. Only an explicit, locally
   Principal-attributed acceptance settles the Workbench task. Attribution is
   not identity authentication, and local settlement never implies Mission,
   product, integration, merge, or publication acceptance.
@@ -220,10 +223,13 @@ Workbench home has a task source.
 - Recover a task-linked execution only through the Workbench UI's explicit
   recovery action when the latest execution link resolves to one exact
   interrupted turn, live runner, and runtime-declared `resume` capability. The
-  server must revalidate the authorization, proposal digest, canonical claim,
-  turn ID, runner, and interrupted state on its final activity read. Recovery
-  changes Autonomy state only; it does not reuse authorization, replace or
-  abandon the runner, move the task lifecycle, or prove resumed production.
+  server must require the latest link's Workbench task-context reference on the
+  consumption claim and Mission turn, then revalidate the authorization,
+  proposal digest, canonical claim, the current task Worktree against the
+  consumed candidate, turn ID, runner, and interrupted state on its final
+  activity read. Recovery changes Autonomy state only; it does not
+  reuse authorization, replace or abandon the runner, move the task lifecycle,
+  or prove resumed production.
 - Reopen a settled task before new work rather than erasing its accepted result
   history.
 

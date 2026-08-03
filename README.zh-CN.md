@@ -46,6 +46,7 @@ skill 则是在具体语境中对所选条目的表达。
 显示适用于 survey 的偏好。
 继续 survey。
 显示所有已登记项目中正在进行的工作。
+创建一个本地任务来核对 survey 的发布说明，然后显示我的 Workbench 任务。
 ```
 
 仓库指引会通过可移植的 Node 入口把这些意图转换为有边界的工作台操作。登记时如果无法
@@ -66,14 +67,28 @@ skill 则是在具体语境中对所选条目的表达。
 ./operations/workbench/rossovia preference list --project survey
 ```
 
+日常管理任务时，可以打开 Principal Workbench UI，或通过 control-plane CLI
+查看同一份持久本地任务来源：
+
+```sh
+bun run --cwd operations/workbench ui
+./operations/workbench/rossovia task list
+./operations/workbench/rossovia task show <task-id>
+```
+
+UI 支持创建、指派、纠正、提交、接受和重新打开本地 Principal-attributed 任务。
+跨边界启动、纠正交付、恢复和 runtime-verified 提交仍是有保护的 UI 操作；CLI
+help 会列出已支持的本地任务变更及其必需的 revision guards。
+
 成功的 `init` 会在 Rossovia home 的每个可写载体中实际执行并清理一次写入探针，
 然后返回 `writeAccess: "verified"`。仅能读取既有状态并不代表环境可用；如果没有
 这个观察结果，应为准确的 home 协调用户级 harness 权限并新开会话。初始化不会
 安装项目 hooks，也不会把共享状态移进当前仓库。
 
-工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它不会把本仓库变成
-全局任务板，也不会仅凭定位结果取得另一个项目的执行权。显式个人偏好与项目
-共同约束分别保存；未经人确认，推断出的 memory 不会成为生效偏好。
+工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它的持久本地任务来源
+和 control-plane UI 不会使其成为调度器、目标项目的任务来源，也不会使其取得
+另一个项目的执行权。显式个人偏好与项目共同约束分别保存；未经人确认，推断出的
+memory 不会成为生效偏好。
 
 ## 仓库地图
 
@@ -84,7 +99,7 @@ skill 则是在具体语境中对所选条目的表达。
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
 | [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
 | [`operations/autonomy/`](operations/autonomy/) | 实验性的本地受监督 Mission 机制，负责有序输入、有边界 turn、委派、对账、恢复，以及一个被显式准入的 Blog 隔离 worktree 可写试验 | 已接受的自治运行、任务发现、通用或共享 worktree 可写 effect 权威、远程权威、发布或合并 |
-| [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位与显式的用户/项目偏好 | 任务调度、推断偏好、目标项目事实或执行权 |
+| [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位、显式的用户/项目偏好，以及本地 Principal-attributed 任务的持久生命周期和 control-plane UI | 任务调度、推断偏好、本机能力、目标项目任务事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |

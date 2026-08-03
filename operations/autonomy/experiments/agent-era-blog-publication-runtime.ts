@@ -53,7 +53,6 @@ import {
 
 const WORKTREE_ENV = "ROSSO_BLOG_EFFECT_ROOT";
 const AUTHORIZATION_RECEIPT_ENV = "ROSSO_BLOG_AUTHORIZATION_RECEIPT";
-const PROJECT_ID = "appgprj_6a66e0a058b081919d4bce580c0ed1ac";
 const MISSION_ID = "principal-workbench-dogfood";
 const PROPOSAL_ID = "agent-era-blog-personal-publication-roundtrip-v3";
 const MISSION_SOURCE = "operations/missions/principal-workbench-dogfood.json";
@@ -210,10 +209,16 @@ export function currentBlogPublicationRuntimeDigest(): string {
     .digest("hex");
 }
 
-export function blogPublicationAuthorizationContract():
+function requiredNonempty(value: string, label: string): string {
+  const checked = value.trim();
+  if (checked.length === 0) throw new Error(`${label} must not be empty`);
+  return checked;
+}
+
+export function blogPublicationAuthorizationContract(projectId: string):
   ProjectExecutionAuthorizationContract {
   return {
-    projectId: PROJECT_ID,
+    projectId: requiredNonempty(projectId, "registered Blog project ID"),
     missionId: MISSION_ID,
     proposalId: PROPOSAL_ID,
     missionSource: MISSION_SOURCE,
@@ -249,7 +254,10 @@ export function blogPublicationExecutionProposal(): Extract<
   MissionExecutionProposal,
   { version: "mission-execution-proposal.v2" }
 > {
-  const contract = blogPublicationAuthorizationContract();
+  // Project identity belongs to the local Workbench/task binding and is not a
+  // proposal field. Use a neutral value only to reuse the project-independent
+  // execution boundary below.
+  const contract = blogPublicationAuthorizationContract("proposal-unbound");
   return MissionExecutionProposalSchema.parse({
     version: contract.proposalVersion,
     proposalId: contract.proposalId,
@@ -333,9 +341,12 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
     missionId: context.missionId,
     worktree,
     receiptPath,
-    contract: blogPublicationAuthorizationContract(),
+    contract: blogPublicationAuthorizationContract(
+      taskContext.binding.projectId,
+    ),
   });
   assertTaskExecutionContext(taskContext, {
+    projectId: authorizationValidation.receipt.projectId,
     missionId: context.missionId,
     authorizationId: authorizationValidation.receipt.authorizationId,
     proposalDigest: authorizationValidation.receipt.proposalDigest,
@@ -478,9 +489,12 @@ async function recoverSettledPublicationExecution(input: {
     missionId: context.missionId,
     worktree,
     receiptPath,
-    contract: blogPublicationAuthorizationContract(),
+    contract: blogPublicationAuthorizationContract(
+      taskContext.binding.projectId,
+    ),
   });
   assertTaskExecutionContext(taskContext, {
+    projectId: authorization.receipt.projectId,
     missionId: context.missionId,
     authorizationId: authorization.receipt.authorizationId,
     proposalDigest: authorization.receipt.proposalDigest,
@@ -817,13 +831,14 @@ function requiredTaskExecutionContext(): WorkbenchTaskExecutionContext {
 function assertTaskExecutionContext(
   taskContext: WorkbenchTaskExecutionContext,
   expected: {
+    readonly projectId: string;
     readonly missionId: string;
     readonly authorizationId: string;
     readonly proposalDigest: string;
   },
 ): void {
   if (
-    taskContext.binding.projectId !== PROJECT_ID
+    taskContext.binding.projectId !== expected.projectId
     || taskContext.binding.missionId !== expected.missionId
     || taskContext.execution.authorizationId !== expected.authorizationId
     || taskContext.execution.proposalDigest !== expected.proposalDigest

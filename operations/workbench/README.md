@@ -219,11 +219,12 @@ misrepresented as applied to the already-running turn.
 If that same exact execution is interrupted, the UI offers
 `续接当前任务执行` only when the runtime advertises `resume` and the current
 activity still exposes the linked authorization, proposal digest, canonical
-claim, and turn ID. The server binds those fields to the task and source
+claim, and turn ID, and the task's currently declared Worktree still equals the
+consumed candidate. The server binds those fields to the task and source
 revisions, rebuilds the candidate, and checks the final live activity read
 immediately before sending a guarded recovery request to the exact runner.
-Missing turn identity or any selector, runner, state, or capability drift
-returns a conflict without calling recovery. The Blog runtime advertises
+Missing turn identity or any selector, Worktree, runner, state, or capability
+drift returns a conflict without calling recovery. The Blog runtime advertises
 resume only for settlement-only recovery: one child run and Git effect must
 already be durably settled and still reproduce their authorization, task
 guidance, Worktree, HEAD, scope, file hashes, and patch. Recovery then settles
