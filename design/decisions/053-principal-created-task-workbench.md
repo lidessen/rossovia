@@ -184,10 +184,10 @@ execution when that execution resolves to one identified interrupted turn, one
 live runner, and an advertised `resume` capability. The request binds the task
 and source revisions, authorization ID, proposal digest, canonical consumption
 claim, the latest link's Workbench task-context reference on that claim and the
-Mission turn, the current task Worktree against the consumed candidate, turn
-ID, Mission, runner ID, and expected interrupted state. The server rebuilds the
-candidate and re-reads the runner's current activity immediately before sending
-the guarded recovery command. Missing turn identity,
+Mission turn, the required current task Worktree against the consumed candidate,
+turn ID, Mission, runner ID, and expected interrupted state. Immediately before
+sending the guarded recovery command, the server re-reads the task source and
+revisions as well as the runner's current activity. Missing task Worktree or turn identity,
 selector or task-context drift, another runner, or a capability change rejects
 the action without a runner mutation. Recovery remains Autonomy state: the task
 records no synthetic recovery event and changes neither lifecycle nor next
@@ -280,9 +280,9 @@ The first implementation is supported only when:
 7. the explicit task recovery action is offered only for the latest exact
    interrupted execution with a current turn ID and runtime-declared resume
    capability, requires the latest link's Workbench task-context reference on
-   the consumption claim and Mission turn, requires the current task Worktree
-   to remain the consumed candidate, revalidates the full selector on the final
-   activity read, and, for the Blog adapter, can settle only
+   the consumption claim and Mission turn, requires a current task Worktree to
+   remain the consumed candidate, re-reads the task source/revisions and full
+   activity selector immediately before recovery, and, for the Blog adapter, can settle only
    already-retained child and Git-effect evidence without replay; it leaves task
    lifecycle and responsibility unchanged; and
 8. desktop and mobile operation can complete the movement without CLI or raw

@@ -43,7 +43,10 @@ import {
   submitVerifiedTaskResult,
 } from "./task-verified-result";
 import { loadPrincipalTasks, principalTasksPath } from "../tasks";
-import type { LocalTaskControlPlane } from "../local-task-control-plane";
+import {
+  createLocalTaskControlPlane,
+  type LocalTaskControlPlane,
+} from "../local-task-control-plane";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -66,6 +69,8 @@ export function createWorkbenchRequestHandler(
   dependencies: WorkbenchRequestHandlerDependencies = {},
 ): (request: Request) => Promise<Response> {
   const taskActionsInFlight = new Set<string>();
+  const localTaskControlPlane = dependencies.localTaskControlPlane
+    ?? createLocalTaskControlPlane(options.home);
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -148,6 +153,7 @@ export function createWorkbenchRequestHandler(
               taskActionId,
               body,
               client,
+              localTaskControlPlane,
             )
             : kind === "submit-verified-execution"
               ? submitVerifiedTaskResult(
@@ -162,7 +168,7 @@ export function createWorkbenchRequestHandler(
                   (await buildLiveSnapshot(options, client)).workItems,
                   taskActionId,
                   body,
-                  dependencies.localTaskControlPlane,
+                  localTaskControlPlane,
                 )
                 : executeTaskMutationAction(options.home, taskActionId, body);
           return json({ ok: true, result }, 200);

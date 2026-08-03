@@ -423,6 +423,7 @@ describe("Workbench work-item shell projection", () => {
       binding: {
         kind: "project-context" as const,
         projectId: "skills",
+        worktreePath: "/workspace/skills",
         missionId: "agent-run",
       },
       lifecycle: "open" as const,
@@ -438,6 +439,7 @@ describe("Workbench work-item shell projection", () => {
     const exactSnapshot = snapshotWithTaskContext(
       snapshot,
       exactExecution.taskContext,
+      "/workspace/skills",
     );
     const runner = exactSnapshot.runners[0]!;
     const activity = runner.activity!;
@@ -479,6 +481,76 @@ describe("Workbench work-item shell projection", () => {
     });
     const item = projection.items.find(
       (candidate) => candidate.id === "principal-task:task-without-turn-id",
+    );
+
+    expect(item?.taskDetail?.executionContext.currentTurn.standing).toBe(
+      "exact",
+    );
+    expect(item?.taskDetail?.executionContext.recoveryCandidate).toBeNull();
+  });
+
+  test("withholds task recovery when the task declares no current Worktree", () => {
+    const launchTask = {
+      id: "task-without-current-worktree",
+      title: "Require a Worktree for recovery",
+      objective: "Do not recover from contextual project and Mission alone",
+      acceptance: ["A missing task Worktree withholds recovery"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-without-current-worktree",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      worktreeRebindings: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const exactExecution = exactTaskExecution(launchTask);
+    const exactSnapshot = snapshotWithTaskContext(
+      snapshot,
+      exactExecution.taskContext,
+    );
+    const runner = exactSnapshot.runners[0]!;
+    const projection = buildWorkItemProjection({
+      ...exactSnapshot,
+      runners: [{
+        ...runner,
+        status: {
+          ...runner.status,
+          state: "interrupted",
+          recoveryCapabilities: {
+            abandon: false,
+            resume: true,
+            replace: false,
+          },
+        },
+      }],
+    } as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 4,
+        tasks: [{
+          ...launchTask,
+          revision: 2,
+          executionLinks: [exactExecution.link],
+          updatedAt: "2026-07-27T09:00:00Z",
+        }],
+      },
+    });
+    const item = projection.items.find(
+      (candidate) =>
+        candidate.id === "principal-task:task-without-current-worktree",
     );
 
     expect(item?.taskDetail?.executionContext.currentTurn.standing).toBe(

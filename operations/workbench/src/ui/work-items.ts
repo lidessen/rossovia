@@ -1100,6 +1100,7 @@ function principalTaskWorkItems(
     const recoveryCandidate =
       latestExecutionLink !== null
       && authorizationMatches
+      && expectedWorktreePath !== undefined
       && currentTurn.standing === "exact"
       && currentTurnRef !== undefined
       && currentTurnId !== undefined

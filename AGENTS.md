@@ -225,9 +225,10 @@ Workbench home has a task source.
   interrupted turn, live runner, and runtime-declared `resume` capability. The
   server must require the latest link's Workbench task-context reference on the
   consumption claim and Mission turn, then revalidate the authorization,
-  proposal digest, canonical claim, the current task Worktree against the
-  consumed candidate, turn ID, runner, and interrupted state on its final
-  activity read. Recovery changes Autonomy state only; it does not
+  proposal digest, canonical claim, the required current task Worktree against
+  the consumed candidate, turn ID, runner, and interrupted state. Immediately
+  before recovery it must re-read both the task source/revisions and runner
+  activity; either drift blocks the mutation. Recovery changes Autonomy state only; it does not
   reuse authorization, replace or abandon the runner, move the task lifecycle,
   or prove resumed production.
 - Reopen a settled task before new work rather than erasing its accepted result

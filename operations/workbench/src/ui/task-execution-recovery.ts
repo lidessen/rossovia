@@ -1,7 +1,13 @@
 import { z } from "zod";
+import type { LocalTaskControlPlane } from "../local-task-control-plane";
+import {
+  sameWorkbenchTaskExecutionContextRef,
+  WorkbenchTaskExecutionContextRefSchema,
+  type WorkbenchTaskExecutionContextRef,
+} from "../task-execution-context";
 import { executeWorkbenchAction, RunnerTargetSchema } from "./actions";
 import type { AutonomyClient } from "./autonomy-client";
-import { TaskActionError } from "./task-actions";
+import { classifyTaskError, TaskActionError } from "./task-actions";
 import type {
   WorkItemProjection,
   WorkItemSetProjection,
@@ -46,6 +52,10 @@ export type TaskExecutionRecoveryRequest = z.infer<
 
 export interface TaskExecutionRecoveryPlan {
   readonly taskId: string;
+  readonly expectedSourceRevision: number;
+  readonly expectedTaskRevision: number;
+  readonly expectedWorktreePath: string;
+  readonly taskContext: WorkbenchTaskExecutionContextRef;
   readonly authorizationId: string;
   readonly proposalDigest: string;
   readonly turn: z.infer<typeof TaskExecutionRecoveryTurnSchema>;
@@ -96,6 +106,20 @@ export function prepareTaskExecutionRecovery(
       `task ${taskId} has no exact interrupted execution available to recover`,
     );
   }
+  const latestExecutionLink = task.executionLinks.at(-1);
+  const expectedWorktreePath = task.binding.kind === "project-context"
+    ? task.binding.worktreePath
+    : undefined;
+  if (
+    latestExecutionLink?.taskContext === undefined
+    || expectedWorktreePath === undefined
+  ) {
+    throw new TaskActionError(
+      409,
+      "invalid-transition",
+      `task ${taskId} recovery requires exact task context and a current Worktree`,
+    );
+  }
   if (
     candidate.data.authorizationId !== request.authorizationId
     || candidate.data.proposalDigest !== request.proposalDigest
@@ -115,6 +139,10 @@ export function prepareTaskExecutionRecovery(
 
   return {
     taskId: task.id,
+    expectedSourceRevision: detail.sourceRevision,
+    expectedTaskRevision: task.revision,
+    expectedWorktreePath,
+    taskContext: latestExecutionLink.taskContext,
     authorizationId: candidate.data.authorizationId,
     proposalDigest: candidate.data.proposalDigest,
     turn: candidate.data.turn,
@@ -129,6 +157,7 @@ export async function executeTaskExecutionRecovery(
   taskId: string,
   unparsed: unknown,
   client: AutonomyClient,
+  controlPlane: LocalTaskControlPlane,
 ): Promise<unknown> {
   const plan = prepareTaskExecutionRecovery(workItems, taskId, unparsed);
   return await executeWorkbenchAction({
@@ -137,6 +166,7 @@ export async function executeTaskExecutionRecovery(
     command: plan.command,
   }, client, undefined, (activity) => {
     assertCurrentRecoveryTurn(activity, plan);
+    assertCurrentRecoveryTask(controlPlane, plan);
   });
 }
 
@@ -152,19 +182,60 @@ function assertCurrentRecoveryTurn(
         proposalDigest: digest,
         claimSourceRef: z.string().min(1),
       }).strict(),
+      workbenchTaskContext: WorkbenchTaskExecutionContextRefSchema,
     }).passthrough(),
   }).passthrough().safeParse(activity);
   const observed = parsed.success
     ? {
       turnId: parsed.data.currentTurn.turnId,
       ...parsed.data.currentTurn.launchAuthorizationRef,
+      taskContext: parsed.data.currentTurn.workbenchTaskContext,
     }
     : null;
-  if (observed === null || !sameTurn(observed, plan.turn)) {
+  if (
+    observed === null
+    || !sameTurn(observed, plan.turn)
+    || !sameWorkbenchTaskExecutionContextRef(observed.taskContext, plan.taskContext)
+  ) {
     throw new TaskActionError(
       409,
       "task-drift",
       `task ${plan.taskId} current turn changed before execution recovery`,
+    );
+  }
+}
+
+function assertCurrentRecoveryTask(
+  controlPlane: LocalTaskControlPlane,
+  plan: TaskExecutionRecoveryPlan,
+): void {
+  let observed: ReturnType<LocalTaskControlPlane["show"]>;
+  try {
+    observed = controlPlane.show(plan.taskId);
+  } catch (error: unknown) {
+    throw classifyTaskError(error);
+  }
+  const latestExecutionLink = observed.task.executionLinks.at(-1);
+  const currentWorktreePath = observed.task.binding.kind === "project-context"
+    ? observed.task.binding.worktreePath
+    : undefined;
+  if (
+    observed.sourceRevision !== plan.expectedSourceRevision
+    || observed.task.revision !== plan.expectedTaskRevision
+    || currentWorktreePath !== plan.expectedWorktreePath
+    || latestExecutionLink?.authorizationId !== plan.authorizationId
+    || latestExecutionLink.proposalDigest !== plan.proposalDigest
+    || latestExecutionLink.claimSourceRef !== plan.turn.claimSourceRef
+    || latestExecutionLink.taskContext === undefined
+    || !sameWorkbenchTaskExecutionContextRef(
+      latestExecutionLink.taskContext,
+      plan.taskContext,
+    )
+  ) {
+    throw new TaskActionError(
+      409,
+      "task-drift",
+      `task ${plan.taskId} source or Worktree changed before execution recovery`,
     );
   }
 }

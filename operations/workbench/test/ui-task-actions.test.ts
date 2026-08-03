@@ -452,6 +452,11 @@ function taskRecoveryClient(
   let resumeAvailable = true;
   let activityCalls = 0;
   let driftAtActivityCall: number | null = null;
+  let taskContextDriftAtActivityCall: number | null = null;
+  let beforeActivityCall: {
+    readonly call: number;
+    readonly run: () => void;
+  } | null = null;
   const client: AutonomyClient = {
     async status() {
       return {
@@ -465,6 +470,11 @@ function taskRecoveryClient(
     },
     async activity() {
       activityCalls += 1;
+      if (activityCalls === beforeActivityCall?.call) {
+        const run = beforeActivityCall.run;
+        beforeActivityCall = null;
+        run();
+      }
       const turnExecution = activityCalls === driftAtActivityCall
         ? {
           authorizationId: "33333333-3333-4333-8333-333333333333",
@@ -495,7 +505,14 @@ function taskRecoveryClient(
             proposalDigest: turnExecution.proposalDigest,
             claimSourceRef: turnExecution.claimSourceRef,
           },
-          workbenchTaskContext: execution.workbenchTaskContext ?? undefined,
+          workbenchTaskContext:
+            activityCalls === taskContextDriftAtActivityCall
+              && execution.workbenchTaskContext !== null
+              ? {
+                ...execution.workbenchTaskContext,
+                taskId: "another-task",
+              }
+              : execution.workbenchTaskContext ?? undefined,
         },
       };
     },
@@ -525,6 +542,12 @@ function taskRecoveryClient(
     },
     driftAtNextActivityOffset(offset: number) {
       driftAtActivityCall = activityCalls + offset;
+    },
+    driftTaskContextAtNextActivityOffset(offset: number) {
+      taskContextDriftAtActivityCall = activityCalls + offset;
+    },
+    runBeforeNextActivityOffset(offset: number, run: () => void) {
+      beforeActivityCall = { call: activityCalls + offset, run };
     },
   };
 }
@@ -1375,6 +1398,7 @@ describe("Workbench task UI actions", () => {
       nextActor: "agent",
       expectedSourceRevision: 0,
       project: "fixture",
+      worktree: project,
       mission: "daily-task-loop",
     });
     const taskId = (await created.json()).result.task.id as string;
@@ -1542,6 +1566,7 @@ describe("Workbench task UI actions", () => {
       nextActor: "agent",
       expectedSourceRevision: 0,
       project: "fixture",
+      worktree: project,
       mission: "daily-task-loop",
     });
     const taskId = (await created.json()).result.task.id as string;
@@ -1588,6 +1613,133 @@ describe("Workbench task UI actions", () => {
       message: expect.stringContaining(
         "current turn changed before execution recovery",
       ),
+    });
+    expect(recovery.recoveries).toEqual([]);
+
+    recovery.driftTaskContextAtNextActivityOffset(2);
+    const taskContextRejected = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      {
+        kind: "recover-linked-execution",
+        authorizationId: candidate.authorizationId,
+        proposalDigest: candidate.proposalDigest,
+        turn: candidate.turn,
+        target: candidate.target,
+        command: candidate.command,
+        expectedSourceRevision: 2,
+        expectedRevision: 2,
+      },
+    );
+    expect(taskContextRejected.status).toBe(409);
+    expect(await taskContextRejected.json()).toMatchObject({
+      error: "task-drift",
+      message: expect.stringContaining(
+        "current turn changed before execution recovery",
+      ),
+    });
+    expect(recovery.recoveries).toEqual([]);
+  });
+
+  test("rejects recovery when the task Worktree is rebound after projection", async () => {
+    const { home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const oldWorktree = join(root, "recovery-old-worktree");
+    const newWorktree = join(root, "recovery-new-worktree");
+    git(project, "worktree", "add", "-b", "task/recovery-old", oldWorktree);
+    git(project, "worktree", "add", "-b", "task/recovery-new", newWorktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const execution = consumedAuthorization(
+      home,
+      oldWorktree,
+      "repository:task-ui-fixture",
+      "daily-task-loop",
+    );
+    const recovery = taskRecoveryClient("daily-task-loop", execution);
+    writeJson(
+      join(home, "missions", "daily-task-loop", "runner-status.json"),
+      recovery.persistedStatus,
+    );
+    const controlPlane = createLocalTaskControlPlane(home);
+    const handler = createWorkbenchRequestHandler({
+      home,
+      port: 4317,
+      roots: [],
+    }, recovery.client, { localTaskControlPlane: controlPlane });
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Reject recovery after Worktree rebind",
+      objective: "Keep recovery bound to the current task Worktree",
+      acceptance: ["A post-projection rebind prevents old execution recovery"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree: oldWorktree,
+      mission: "daily-task-loop",
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    bindConsumedAuthorizationToTask(
+      home,
+      execution,
+      controlPlane.show(taskId).task,
+    );
+    expect((await post(handler, origin, `/api/tasks/${taskId}/actions`, {
+      kind: "link-execution",
+      authorizationId: execution.authorizationId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    })).status).toBe(200);
+
+    const snapshot = await (
+      await handler(new Request(`${origin}/api/snapshot`))
+    ).json();
+    const taskItem = snapshot.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${taskId}`,
+    );
+    const candidate = taskItem.taskDetail.executionContext.recoveryCandidate;
+    expect(candidate).not.toBeNull();
+
+    recovery.runBeforeNextActivityOffset(2, () => {
+      controlPlane.execute({
+        kind: "rebind-worktree",
+        arguments: {
+          id: taskId,
+          expectedWorktreePath: realpathSync(oldWorktree),
+          worktree: newWorktree,
+          sourceRef: "test:concurrent-worktree-rebind",
+          expectedSourceRevision: 2,
+          expectedRevision: 2,
+        },
+      });
+    });
+    const rejected = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      {
+        kind: "recover-linked-execution",
+        authorizationId: candidate.authorizationId,
+        proposalDigest: candidate.proposalDigest,
+        turn: candidate.turn,
+        target: candidate.target,
+        command: candidate.command,
+        expectedSourceRevision: 2,
+        expectedRevision: 2,
+      },
+    );
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toMatchObject({
+      error: "task-drift",
+      message: expect.stringContaining(
+        "source or Worktree changed before execution recovery",
+      ),
+    });
+    expect(controlPlane.show(taskId).task.binding).toMatchObject({
+      worktreePath: realpathSync(newWorktree),
     });
     expect(recovery.recoveries).toEqual([]);
   });
