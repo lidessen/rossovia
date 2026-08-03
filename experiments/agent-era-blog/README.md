@@ -13,10 +13,10 @@ for the retained experiment obligation.
 ## Current Status
 
 The checked-in mainline is an intentionally pre-implementation vinext shell.
-It proves the build and hosting surface but does not yet implement the content
-model or final blog UI described in `DESIGN.md`. A Mission proposal, Agent
-claim, or candidate worktree does not make that product work part of this
-mainline until it is independently verified and integrated.
+It proves the build and optional hosting-packaging surface but does not yet
+implement the content model or final blog UI described in `DESIGN.md`. A
+Mission proposal, Agent claim, or candidate worktree does not make that product
+work part of this mainline until it is independently verified and integrated.
 
 ## Prerequisites
 
@@ -35,12 +35,31 @@ This starter does not use `wrangler.jsonc`.
 ## Current Shape
 
 - edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
+- `.openai/hosting.json` declares portable D1 and R2 binding names without a
+  Sites project identity
+- `OPENAI_SITES_PROJECT_ID` may supply an environment-local Sites project
+  identity during a build
 - `vite.config.ts` simulates declared bindings for local development
 - `db/schema.ts` remains intentionally empty until the first content-model
   candidate returns through the Mission
 - `examples/d1/` contains an optional D1 example surface
 - `drizzle.config.ts` supports local migration generation when needed
+
+## Environment-local Sites identity
+
+Portable source does not retain a Sites project identity. When a developer or
+deployment environment already has an authorized Sites project, it may supply
+that identity only to the build process:
+
+```bash
+OPENAI_SITES_PROJECT_ID=your-environment-local-project-id npm run build
+```
+
+The build combines that value with the tracked portable bindings in
+`dist/.openai/hosting.json`. When the variable is absent, the build succeeds
+with a projectless portable hosting config. Supplying the variable neither
+creates a remote project nor grants deployment or publication authority; those
+remain separate environment and human-controlled actions.
 
 ## Workspace Auth Headers
 

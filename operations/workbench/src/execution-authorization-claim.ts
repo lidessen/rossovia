@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { isAbsolute, join, normalize, relative } from "node:path";
 import { z } from "zod";
 import type { ExecutionAuthorizationReceipt } from "./execution-authorization";
+import {
+  WorkbenchTaskExecutionContextRefSchema,
+  type WorkbenchTaskExecutionContextRef,
+} from "./task-execution-context";
 
 const nonempty = z.string().refine(
   (value) => value.trim().length > 0,
@@ -37,6 +41,7 @@ export const ExecutionAuthorizationClaimSchema = z.object({
     worktree: canonicalAbsolutePath,
     gitHead,
   }).strict(),
+  workbenchTaskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
   claimedAt: z.string().datetime({ offset: true }),
 }).strict();
 
@@ -53,6 +58,10 @@ export interface ExecutionAuthorizationClaimContext {
   readonly missionId: string;
   readonly proposalId: string;
   readonly proposalDigest: string;
+}
+
+export interface ExecutionAuthorizationClaimBinding {
+  readonly workbenchTaskContext?: WorkbenchTaskExecutionContextRef;
 }
 
 export function executionAuthorizationClaimPath(

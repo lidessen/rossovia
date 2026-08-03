@@ -79,10 +79,12 @@ The retained evidence supports these bounded mechanism claims:
   inferring lineage from cached runner state or `recentEvents`;
 - the Blog runtimes retain the consumed execution authorization ID, proposal
   digest, and canonical claim reference as one structured launch reference on
-  both the Mission turn and its prepared writable effect; activity rejects a
-  missing-one-side or mismatched pair and exposes matching evidence for an
-  exact external join, while legacy descriptive `sourceRefs` remain
-  execution-unproven;
+  both the Mission turn and its prepared writable effect; a task-launched Blog
+  publication also binds the same task-local context reference into the
+  consumption claim and Mission turn, so a same-Mission task cannot reuse that
+  lineage. Activity rejects a missing-one-side or mismatched pair and exposes
+  matching evidence for an exact external join, while legacy descriptive
+  `sourceRefs` remain execution-unproven;
 - the Blog publication turn additionally retains digest-backed
   `guidanceRefs` for the exact Workbench corrections supplied at launch.
   Activity exposes only their identities and digests; Workbench can therefore

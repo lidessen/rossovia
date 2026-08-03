@@ -28,6 +28,11 @@ import { loadMissionRecord } from "./missions";
 import { expandPath } from "./paths";
 import { registeredProjectByQuery } from "./projects";
 import { requiredGit } from "./workspace";
+import {
+  sameWorkbenchTaskExecutionContextRef,
+  workbenchTaskExecutionContextFor,
+  workbenchTaskExecutionContextRef,
+} from "./task-execution-context";
 
 export interface TaskCreateArguments {
   title: string;
@@ -310,7 +315,7 @@ export function linkPrincipalTaskExecution(
   homeArgument: string | undefined,
   arguments_: TaskLinkExecutionArguments,
 ): TaskMutationResult {
-  return mutateTask(homeArgument, arguments_, (task, timestamp, home) => {
+  return mutateTask(homeArgument, arguments_, (task, timestamp, home, source) => {
     if (task.binding.kind !== "project-context" || task.binding.missionId === undefined) {
       throw new PrincipalTaskError(
         "invalid-transition",
@@ -376,10 +381,29 @@ export function linkPrincipalTaskExecution(
         `execution authorization does not belong to task ${task.id} project and Mission context`,
       );
     }
+    const expectedTaskContext = workbenchTaskExecutionContextRef(
+      workbenchTaskExecutionContextFor(task, {
+        authorizationId: validated.authorizationId,
+        proposalDigest: validated.proposalDigest,
+      }),
+    );
+    if (
+      claim.workbenchTaskContext === undefined
+      || !sameWorkbenchTaskExecutionContextRef(
+        claim.workbenchTaskContext,
+        expectedTaskContext,
+      )
+    ) {
+      throw new PrincipalTaskError(
+        "invalid-transition",
+        `execution authorization ${validated.authorizationId} was not consumed for the exact current context of task ${task.id}`,
+      );
+    }
     task.executionLinks.push({
       authorizationId: validated.authorizationId,
       proposalDigest: validated.proposalDigest,
       claimSourceRef: relative(home, claimPath),
+      taskContext: expectedTaskContext,
       linkedAt: timestamp,
       sourceRef: nonempty(arguments_.sourceRef, "task execution link source ref"),
     });
@@ -520,7 +544,12 @@ export function recordPrincipalTaskCorrectionDelivery(
 function mutateTask(
   homeArgument: string | undefined,
   expectation: TaskMutationExpectation,
-  change: (task: PrincipalTask, timestamp: string, home: string) => void,
+  change: (
+    task: PrincipalTask,
+    timestamp: string,
+    home: string,
+    source: PrincipalTasks,
+  ) => void,
 ): TaskMutationResult {
   const { current, source } = readPrincipalTaskSource(homeArgument);
   const projectIds = current.projects.projects.map((project) => project.id);
@@ -533,7 +562,7 @@ function mutateTask(
     );
   }
   const timestamp = now();
-  change(task, timestamp, current.home);
+  change(task, timestamp, current.home, source);
   task.revision += 1;
   task.updatedAt = timestamp;
   source.sourceRevision += 1;
@@ -583,6 +612,7 @@ function readPrincipalTaskSource(homeArgument?: string): {
 
 function validatePrincipalTasks(source: PrincipalTasks, projectIds: ReadonlySet<string>): PrincipalTasks {
   const taskIds = new Set<string>();
+  const executionAuthorizationOwners = new Map<string, string>();
   for (const task of source.tasks) {
     const taskKey = task.id.toLowerCase();
     if (taskIds.has(taskKey)) throw new Error(`duplicate Principal task id: ${task.id}`);
@@ -620,6 +650,13 @@ function validatePrincipalTasks(source: PrincipalTasks, projectIds: ReadonlySet<
         );
       }
       authorizationIds.add(link.authorizationId);
+      const priorOwner = executionAuthorizationOwners.get(link.authorizationId);
+      if (priorOwner !== undefined) {
+        throw new Error(
+          `execution authorization ${link.authorizationId} is linked to both Principal task ${priorOwner} and ${task.id}`,
+        );
+      }
+      executionAuthorizationOwners.set(link.authorizationId, task.id);
     }
   }
   return source;

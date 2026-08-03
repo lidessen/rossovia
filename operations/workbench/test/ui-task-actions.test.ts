@@ -31,6 +31,13 @@ import {
   type LocalTaskControlPlane,
 } from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
+import {
+  WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+  WorkbenchTaskExecutionContextSchema,
+  workbenchTaskExecutionContextFor,
+  workbenchTaskExecutionContextRef,
+  type WorkbenchTaskExecutionContextRef,
+} from "../src/task-execution-context";
 import { principalTasksPath } from "../src/tasks";
 import type {
   AutonomyClient,
@@ -266,7 +273,31 @@ function consumedAuthorization(
     authorizationId,
     proposalDigest,
     claimSourceRef: relative(home, claimPath),
+    workbenchTaskContext: null as WorkbenchTaskExecutionContextRef | null,
   };
+}
+
+function bindConsumedAuthorizationToTask(
+  home: string,
+  execution: ReturnType<typeof consumedAuthorization>,
+  task: unknown,
+): WorkbenchTaskExecutionContextRef {
+  const claimPath = join(home, execution.claimSourceRef);
+  const claim = ExecutionAuthorizationClaimSchema.parse(
+    JSON.parse(readFileSync(claimPath, "utf8")),
+  );
+  const taskContext = workbenchTaskExecutionContextRef(
+    workbenchTaskExecutionContextFor(task as never, {
+      authorizationId: execution.authorizationId,
+      proposalDigest: execution.proposalDigest,
+    }),
+  );
+  writeJson(claimPath, ExecutionAuthorizationClaimSchema.parse({
+    ...claim,
+    workbenchTaskContext: taskContext,
+  }));
+  execution.workbenchTaskContext = taskContext;
+  return taskContext;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -364,6 +395,7 @@ function correctionDeliveryClient(
             proposalDigest: execution.proposalDigest,
             claimSourceRef: execution.claimSourceRef,
           },
+          workbenchTaskContext: execution.workbenchTaskContext ?? undefined,
         },
       };
     },
@@ -463,6 +495,7 @@ function taskRecoveryClient(
             proposalDigest: turnExecution.proposalDigest,
             claimSourceRef: turnExecution.claimSourceRef,
           },
+          workbenchTaskContext: execution.workbenchTaskContext ?? undefined,
         },
       };
     },
@@ -537,6 +570,7 @@ function verifiedExecutionClient(
             proposalDigest: execution.proposalDigest,
             claimSourceRef: execution.claimSourceRef,
           },
+          workbenchTaskContext: execution.workbenchTaskContext ?? undefined,
         },
         currentEffect: {
           effectId: selector.effectId,
@@ -889,6 +923,7 @@ describe("Workbench task UI actions", () => {
       "repository:task-ui-fixture",
       "daily-task-loop",
     );
+    bindConsumedAuthorizationToTask(home, execution, body.result.task);
     const linked = await post(
       handler,
       origin,
@@ -909,7 +944,10 @@ describe("Workbench task UI actions", () => {
           nextActor: "agent",
           revision: 2,
           executionLinks: [{
-            ...execution,
+            authorizationId: execution.authorizationId,
+            proposalDigest: execution.proposalDigest,
+            claimSourceRef: execution.claimSourceRef,
+            taskContext: execution.workbenchTaskContext,
             sourceRef: "workbench-ui:unverified-local-interaction",
           }],
         },
@@ -957,6 +995,11 @@ describe("Workbench task UI actions", () => {
       async start(start: TrustedRunnerStart) {
         starts.push(start);
         const canonicalHome = realpathSync(home);
+        const workbenchTaskContext = workbenchTaskExecutionContextRef(
+          WorkbenchTaskExecutionContextSchema.parse(JSON.parse(
+            start.environment[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV]!,
+          )),
+        );
         const claimPath = executionAuthorizationClaimPath(
           canonicalHome,
           authorized.receipt.authorizationId,
@@ -976,6 +1019,7 @@ describe("Workbench task UI actions", () => {
             worktree: realpathSync(candidate),
             gitHead: git(candidate, "rev-parse", "HEAD"),
           },
+          workbenchTaskContext,
           claimedAt: "2026-07-29T12:00:00Z",
         }));
         return {
@@ -1045,6 +1089,12 @@ describe("Workbench task UI actions", () => {
             executionLinks: [{
               authorizationId: authorized.receipt.authorizationId,
               proposalDigest: missionExecutionProposalDigest(proposal),
+              taskContext: workbenchTaskExecutionContextRef(
+                workbenchTaskExecutionContextFor(task, {
+                  authorizationId: authorized.receipt.authorizationId,
+                  proposalDigest: missionExecutionProposalDigest(proposal),
+                }),
+              ),
             }],
           },
         },
@@ -1201,6 +1251,7 @@ describe("Workbench task UI actions", () => {
     });
     const createdBody = await created.json();
     const taskId = createdBody.result.task.id as string;
+    bindConsumedAuthorizationToTask(home, execution, createdBody.result.task);
     const linked = await post(handler, origin, `/api/tasks/${taskId}/actions`, {
       kind: "link-execution",
       authorizationId: execution.authorizationId,
@@ -1327,6 +1378,11 @@ describe("Workbench task UI actions", () => {
       mission: "daily-task-loop",
     });
     const taskId = (await created.json()).result.task.id as string;
+    bindConsumedAuthorizationToTask(
+      home,
+      execution,
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks[0],
+    );
     const linked = await post(handler, origin, `/api/tasks/${taskId}/actions`, {
       kind: "link-execution",
       authorizationId: execution.authorizationId,
@@ -1489,6 +1545,11 @@ describe("Workbench task UI actions", () => {
       mission: "daily-task-loop",
     });
     const taskId = (await created.json()).result.task.id as string;
+    bindConsumedAuthorizationToTask(
+      home,
+      execution,
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks[0],
+    );
     expect((await post(handler, origin, `/api/tasks/${taskId}/actions`, {
       kind: "link-execution",
       authorizationId: execution.authorizationId,
@@ -1570,6 +1631,11 @@ describe("Workbench task UI actions", () => {
       mission: "daily-task-loop",
     });
     const taskId = (await created.json()).result.task.id as string;
+    bindConsumedAuthorizationToTask(
+      home,
+      execution,
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks[0],
+    );
     const linked = await post(handler, origin, `/api/tasks/${taskId}/actions`, {
       kind: "link-execution",
       authorizationId: execution.authorizationId,

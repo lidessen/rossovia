@@ -180,12 +180,17 @@ new paths to task history. This is a context change only; it neither launches
 work nor transfers old execution evidence to the new candidate. The task may
 append one stable authorization selector and canonical claim reference after
 `task link-execution` revalidates the consumed claim and its receipt against the
-task's exact project and Mission. The link does not change lifecycle or next
-actor and does not launch work. On every snapshot, the UI re-resolves the
-Mission and compares the latest link with the current authorization, turn, and
-effect evidence. Only matching runtime-owned structured launch references can
-make that current association exact; a missing legacy reference, mismatch, or
-mere `projectId + missionId` relationship remains unavailable or unproven.
+task's exact project and Mission. A new link also requires the claim's
+task-local context reference—task ID, task revision, and digest of the launch
+objective, acceptance, corrections, binding, and execution selector—to match
+the current task; an unrelated task-source revision does not alter that
+identity. The same authorization cannot link to two tasks. The link does not
+change lifecycle or next actor and does not launch work. On every snapshot, the
+UI re-resolves the Mission and compares the latest link with the current
+authorization, turn, task-context reference, and effect evidence. Only matching
+runtime-owned structured references can make that current association exact; a
+missing legacy reference, mismatch, or mere `projectId + missionId`
+relationship remains unavailable or unproven.
 
 Recording a correction with `task correct` leaves it local. The UI offers
 `发送纠正到当前 Agent` only when the latest execution link resolves to one
@@ -408,12 +413,15 @@ When the trusted adapter retains
 `state/execution-authorization-claims/<authorizationId>.json`, Workbench joins
 it only after strictly binding its authorization, project, Mission, proposal
 and proposal digest, receipt reference, and canonical receipt digest to the
-still-valid receipt and committed proposal. A valid `authorization-consumed`
-standing shows the claim time, selected candidate worktree and HEAD, and claim
-source. It proves only that the receipt's one launch authority was consumed; it
-does not prove runner start, effect admission, execution success, integration,
-or product acceptance. A malformed or mismatched claim is invalid evidence and
-fails closed rather than restoring reusable launch authority.
+still-valid receipt and committed proposal. A task-launched claim additionally
+carries the same task-context reference retained on its Mission turn; legacy
+claims without it remain readable but cannot become task-link, recovery, or
+verified-result evidence. A valid `authorization-consumed` standing shows the
+claim time, selected candidate worktree and HEAD, and claim source. It proves
+only that the receipt's one launch authority was consumed; it does not prove
+runner start, effect admission, execution success, integration, or product
+acceptance. A malformed or mismatched claim is invalid evidence and fails
+closed rather than restoring reusable launch authority.
 
 Before asking for a launch choice, inspect the exact committed proposal:
 

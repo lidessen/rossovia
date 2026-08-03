@@ -1,4 +1,8 @@
 import {
+  WorkbenchTaskExecutionContextRefSchema,
+  type WorkbenchTaskExecutionContextRef,
+} from "../task-execution-context";
+import {
   existsSync,
   readdirSync,
   readFileSync,
@@ -129,6 +133,7 @@ export type ExecutionAuthorizationProjection =
       readonly receiptRef: string;
       readonly receiptDigest: string;
       readonly claimSourcePath: string;
+      readonly workbenchTaskContext: WorkbenchTaskExecutionContextRef | null;
       readonly evidenceBoundary:
         "proves-one-launch-authorization-consumed-only";
     };
@@ -783,6 +788,7 @@ export const WorkbenchRunnerActivityProjectionSchema = z.object({
     settlementKind: z.enum(["finished", "input-pending", "failed"]).optional(),
     runStatus: nonempty.optional(),
     launchAuthorizationRef: LaunchAuthorizationRefProjectionSchema.optional(),
+    workbenchTaskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
     guidanceRefs: z.array(z.object({
       version: z.literal("rosso.turn-guidance-ref.v1"),
       kind: z.literal("workbench-task-correction"),
@@ -950,6 +956,7 @@ function projectConsumedExecutionAuthorization(
       receiptRef: claim.receipt.ref,
       receiptDigest: claim.receipt.digest,
       claimSourcePath: claimPath,
+      workbenchTaskContext: claim.workbenchTaskContext ?? null,
       evidenceBoundary: "proves-one-launch-authorization-consumed-only",
     },
   };

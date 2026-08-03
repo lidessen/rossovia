@@ -32,7 +32,9 @@ import {
   WorkbenchTaskExecutionContextSchema,
   workbenchTaskCorrectionGuidanceRefs,
   workbenchTaskExecutionContextDigest,
-} from "../../workbench/src/ui/task-execution-context";
+  workbenchTaskExecutionContextRef,
+  type WorkbenchTaskExecutionContextRef,
+} from "../../workbench/src/task-execution-context";
 import {
   blogPublicationCell,
   blogPublicationWorkspace,
@@ -392,6 +394,20 @@ test("the runtime claims only after all local launch preconditions succeed", asy
         `${fixture.receipt.authorizationId}.json`,
       ),
     });
+    const expectedTaskContextRef = workbenchTaskExecutionContextRef(taskContext);
+    expect(prepared.turn.workbenchTaskContext).toEqual(expectedTaskContextRef);
+    const claim = ExecutionAuthorizationClaimSchema.parse(
+      JSON.parse(readFileSync(
+        join(
+          fixture.home,
+          prepared.turn.launchAuthorizationRef!.claimSourceRef,
+        ),
+        "utf8",
+      )),
+    );
+    expect(claim.workbenchTaskContext).toEqual(
+      prepared.turn.workbenchTaskContext,
+    );
     expect(prepared.turn.sourceRefs).toContain(
       `workbench-task:${taskContext.taskId}@${taskContext.taskRevision}`,
     );
@@ -416,7 +432,6 @@ test("the runtime claims only after all local launch preconditions succeed", asy
 
 test("recovery settles one retained child and Git effect without replaying a model or writer", async () => {
   const fixture = authorizationFixture();
-  const consumed = consume(fixture);
   const missionId = "principal-workbench-dogfood";
   const timeline = new FileMissionTimeline(
     missionRunnerDirectory(fixture.home, missionId),
@@ -440,6 +455,8 @@ test("recovery settles one retained child and Git effect without replaying a mod
     fixture.receipt.authorizationId,
     fixture.receipt.proposalDigest,
   );
+  const taskContextRef = workbenchTaskExecutionContextRef(taskContext);
+  const consumed = consume(fixture, taskContextRef);
   const call = publicationCall(taskContext);
   const turnId = "agent-era-blog-publication-recovery-test";
   const launchAuthorizationRef = {
@@ -463,6 +480,7 @@ test("recovery settles one retained child and Git effect without replaying a mod
       }`,
     ],
     launchAuthorizationRef,
+    workbenchTaskContext: taskContextRef,
     guidanceRefs: workbenchTaskCorrectionGuidanceRefs(taskContext),
   };
   await timeline.startTurn(missionId, turn);
@@ -669,6 +687,119 @@ test("recovery settles one retained child and Git effect without replaying a mod
   }
 });
 
+test("recovery fails closed when the consumed claim or Mission turn lacks the exact Workbench task context", async () => {
+  const cases: readonly {
+    readonly label: string;
+    readonly claimContext: "exact" | "missing" | "wrong";
+    readonly turnContext: "exact" | "missing" | "wrong";
+  }[] = [
+    {
+      label: "claim context missing",
+      claimContext: "missing",
+      turnContext: "exact",
+    },
+    {
+      label: "claim context wrong",
+      claimContext: "wrong",
+      turnContext: "exact",
+    },
+    {
+      label: "Mission turn context missing",
+      claimContext: "exact",
+      turnContext: "missing",
+    },
+    {
+      label: "Mission turn context wrong",
+      claimContext: "exact",
+      turnContext: "wrong",
+    },
+  ];
+
+  for (const scenario of cases) {
+    const fixture = authorizationFixture();
+    const taskContext = taskExecutionContext(
+      fixture.receipt.authorizationId,
+      fixture.receipt.proposalDigest,
+    );
+    const exactRef = workbenchTaskExecutionContextRef(taskContext);
+    const wrongRef = {
+      ...exactRef,
+      contextDigest: "0".repeat(64),
+    };
+    consume(
+      fixture,
+      scenario.claimContext === "missing"
+        ? undefined
+        : scenario.claimContext === "exact"
+        ? exactRef
+        : wrongRef,
+    );
+    const launchAuthorizationRef = {
+      authorizationId: fixture.receipt.authorizationId,
+      proposalDigest: fixture.receipt.proposalDigest,
+      claimSourceRef: join(
+        "state",
+        "execution-authorization-claims",
+        `${fixture.receipt.authorizationId}.json`,
+      ),
+    };
+    const turn = {
+      version: MISSION_TURN_VERSION,
+      turnId: `publication-recovery-${scenario.label.replaceAll(" ", "-")}`,
+      baselineWatermark: 0,
+      sourceRefs: [
+        `workbench-task-context:sha256:${
+          workbenchTaskExecutionContextDigest(taskContext)
+        }`,
+      ],
+      launchAuthorizationRef,
+      ...(scenario.turnContext === "missing"
+        ? {}
+        : {
+          workbenchTaskContext:
+            scenario.turnContext === "exact" ? exactRef : wrongRef,
+        }),
+      guidanceRefs: workbenchTaskCorrectionGuidanceRefs(taskContext),
+    };
+    let retainedRecoveryRead = false;
+    const priorRoot = process.env.ROSSO_BLOG_EFFECT_ROOT;
+    const priorReceipt = process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT;
+    const priorTaskContext =
+      process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV];
+    process.env.ROSSO_BLOG_EFFECT_ROOT = fixture.worktree;
+    process.env.ROSSO_BLOG_AUTHORIZATION_RECEIPT = fixture.receiptPath;
+    process.env[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV] =
+      JSON.stringify(taskContext);
+    try {
+      await expect(createMissionRuntime({
+        root: fixture.home,
+        missionId: "principal-workbench-dogfood",
+        timeline: {
+          recoverBatch: async () => {
+            retainedRecoveryRead = true;
+            throw new Error("invalid context must fail before retained recovery");
+          },
+        },
+        recovery: {
+          action: "resume",
+          interruptedTurn: turn,
+        },
+      } as unknown as Parameters<typeof createMissionRuntime>[0]), scenario.label)
+        .rejects.toThrow(
+          "interrupted Blog turn does not match its consumed authorization and Workbench task guidance",
+        );
+      expect(retainedRecoveryRead, scenario.label).toBe(false);
+    } finally {
+      restoreEnvironment("ROSSO_BLOG_EFFECT_ROOT", priorRoot);
+      restoreEnvironment("ROSSO_BLOG_AUTHORIZATION_RECEIPT", priorReceipt);
+      restoreEnvironment(
+        WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+        priorTaskContext,
+      );
+    }
+  }
+});
+
 test("claim revalidation rejects candidate drift after side-effect-free preflight", () => {
   const fixture = authorizationFixture();
   const validated = validateProjectExecutionAuthorization({
@@ -847,7 +978,6 @@ function taskExecutionContext(
   return WorkbenchTaskExecutionContextSchema.parse({
     version: "rosso.workbench-task-execution-context.v1",
     taskId: "11111111-1111-4111-8111-111111111111",
-    sourceRevision: 12,
     taskRevision: 7,
     objective:
       "Make the personal Blog the primary reader experience while preserving inspectable projections.",
@@ -871,7 +1001,22 @@ function taskExecutionContext(
   });
 }
 
-function consume(fixture: Fixture) {
+function consume(
+  fixture: Fixture,
+  workbenchTaskContext?: WorkbenchTaskExecutionContextRef,
+) {
+  if (workbenchTaskContext !== undefined) {
+    return claimProjectExecutionAuthorization(
+      validateProjectExecutionAuthorization({
+        home: fixture.home,
+        missionId: "principal-workbench-dogfood",
+        worktree: fixture.worktree,
+        receiptPath: fixture.receiptPath,
+        contract: blogPublicationAuthorizationContract(),
+      }),
+      { binding: { workbenchTaskContext } },
+    );
+  }
   return consumeProjectExecutionAuthorization({
     home: fixture.home,
     missionId: "principal-workbench-dogfood",

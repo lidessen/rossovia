@@ -119,7 +119,7 @@ confirmation.
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
-| [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, and recovery | accepted autonomous operation, task discovery, writable effects, remote authority, publication, or merge |
+| [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, recovery, and one explicitly admitted isolated-worktree Blog writable trial | accepted autonomous operation, task discovery, general or shared-worktree writable-effect authority, remote authority, publication, or merge |
 | [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, and explicit user/project defaults | task scheduling, inferred preference, machine capability, target-project facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
@@ -186,8 +186,11 @@ resume are future domain methods over this mechanism, not its defining schema; s
 supervised-Mission experiment. Its implemented first slice retains ordered
 human input, bounded Agent turns, delegation evidence, reconciliation, and
 local recovery. Read-only and graceful-restart mechanism claims have guarded
-support; writable effects, autonomous completion, remote authority, and
-production advantage remain unproved. The
+support. One exact supervised Blog mechanism for a guarded writable Cell in an
+isolated Git worktree is implemented and mechanically verified; this does not
+establish general or shared-worktree writable effects, autonomous completion,
+remote authority, integration, publication, product acceptance, or production
+advantage. The
 [Principal settlement](design/organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
 recognizes it as an active, bounded experimental capability; the ordinary
 operating mode remains human-initiated.

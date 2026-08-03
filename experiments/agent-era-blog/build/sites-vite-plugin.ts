@@ -1,4 +1,4 @@
-import { access, cp, mkdir, rm } from "node:fs/promises";
+import { access, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
@@ -33,7 +33,18 @@ export function sites(): Plugin {
       await mkdir(outputDirectory, { recursive: true });
 
       if (await exists(hostingConfig)) {
-        await cp(hostingConfig, resolve(outputDirectory, "hosting.json"));
+        const portableConfig = JSON.parse(
+          await readFile(hostingConfig, "utf8"),
+        ) as Record<string, unknown>;
+        const projectId = process.env.OPENAI_SITES_PROJECT_ID?.trim();
+        const outputConfig = projectId
+          ? { ...portableConfig, project_id: projectId }
+          : portableConfig;
+
+        await writeFile(
+          resolve(outputDirectory, "hosting.json"),
+          `${JSON.stringify(outputConfig, null, 2)}\n`,
+        );
       }
       if (await exists(drizzleSource)) {
         await cp(drizzleSource, resolve(outputDirectory, "drizzle"), {

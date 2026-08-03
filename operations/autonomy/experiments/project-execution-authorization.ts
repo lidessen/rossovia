@@ -16,6 +16,7 @@ import {
   executionAuthorizationClaimPath,
   executionAuthorizationReceiptDigest,
   ExecutionAuthorizationClaimSchema,
+  type ExecutionAuthorizationClaimBinding,
   validateExecutionAuthorizationClaim,
 } from "../../workbench/src/execution-authorization-claim";
 import {
@@ -23,6 +24,7 @@ import {
   type MissionExecutionProposal,
 } from "../../workbench/src/mission-execution-proposal";
 import { parseMissionRecord } from "../../workbench/src/missions";
+import type { WorkbenchTaskExecutionContextRef } from "../../workbench/src/task-execution-context";
 import { stableStringify } from "../src/canonical-json";
 
 export interface ProjectExecutionAuthorizationContract {
@@ -78,6 +80,7 @@ export interface RecoveredProjectExecutionAuthorization {
   readonly claimPath: string;
   readonly gitHead: string;
   readonly worktree: string;
+  readonly workbenchTaskContext: WorkbenchTaskExecutionContextRef | null;
 }
 
 /**
@@ -90,7 +93,7 @@ export function consumeProjectExecutionAuthorization(
 ): ConsumedProjectExecutionAuthorization {
   return claimProjectExecutionAuthorization(
     validateProjectExecutionAuthorization(arguments_),
-    arguments_.now,
+    arguments_.now === undefined ? {} : { now: arguments_.now },
   );
 }
 
@@ -279,6 +282,7 @@ export function validateConsumedProjectExecutionAuthorization(
     claimPath,
     gitHead,
     worktree,
+    workbenchTaskContext: claim.workbenchTaskContext ?? null,
   };
 }
 
@@ -289,7 +293,10 @@ export function validateConsumedProjectExecutionAuthorization(
  */
 export function claimProjectExecutionAuthorization(
   validated: ValidatedProjectExecutionAuthorization,
-  now: () => string = () => new Date().toISOString(),
+  options: {
+    readonly now?: () => string;
+    readonly binding?: ExecutionAuthorizationClaimBinding;
+  } = {},
 ): ConsumedProjectExecutionAuthorization {
   const refreshed = validateProjectExecutionAuthorization({
     home: validated.home,
@@ -315,7 +322,8 @@ export function claimProjectExecutionAuthorization(
     refreshed.receipt,
     refreshed.worktree,
     refreshed.gitHead,
-    now,
+    options.binding,
+    options.now ?? (() => new Date().toISOString()),
   );
   return {
     receipt: refreshed.receipt,
@@ -574,6 +582,7 @@ function claimAuthorization(
   receipt: ExecutionAuthorizationReceipt,
   worktree: string,
   gitHead: string,
+  binding: ExecutionAuthorizationClaimBinding | undefined,
   now: () => string,
 ): string {
   const claimPath = executionAuthorizationClaimPath(
@@ -593,6 +602,9 @@ function claimAuthorization(
       digest: executionAuthorizationReceiptDigest(receipt),
     },
     localEvidence: { worktree, gitHead },
+    ...(binding?.workbenchTaskContext === undefined
+      ? {}
+      : { workbenchTaskContext: binding.workbenchTaskContext }),
     claimedAt: now(),
   });
   validateExecutionAuthorizationClaim(claim, {

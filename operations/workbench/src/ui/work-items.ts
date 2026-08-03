@@ -13,8 +13,11 @@ import type {
   PrincipalTasks,
 } from "../contracts";
 import {
-  WorkbenchTaskExecutionContextSchema,
+  WorkbenchTaskExecutionContextRefSchema,
+  sameWorkbenchTaskExecutionContextRef,
   workbenchTaskCorrectionGuidanceRefs,
+  workbenchTaskExecutionContextFor,
+  workbenchTaskExecutionContextRef,
 } from "./task-execution-context";
 
 type PrincipalTaskExecutionLink = PrincipalTask["executionLinks"][number];
@@ -413,6 +416,13 @@ function exactAuthorizationRef(
     && link.claimSourceRef === reference.claimSourceRef;
 }
 
+function workbenchTaskContextRef(
+  value: unknown,
+) {
+  const parsed = WorkbenchTaskExecutionContextRefSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 function sameTurnGuidanceRef(
   expected: ReturnType<typeof workbenchTaskCorrectionGuidanceRefs>[number],
   observed: Record<string, unknown>,
@@ -761,7 +771,14 @@ function principalTaskWorkItems(
       latestExecutionLink !== null
       && consumedAuthorization !== undefined
       && latestExecutionLink.authorizationId === consumedAuthorization.authorizationId
-      && latestExecutionLink.proposalDigest === consumedAuthorization.proposalDigest;
+      && latestExecutionLink.proposalDigest === consumedAuthorization.proposalDigest
+      && latestExecutionLink.taskContext !== undefined
+      && consumedAuthorization.consumption.workbenchTaskContext !== null
+      && consumedAuthorization.consumption.workbenchTaskContext !== undefined
+      && sameWorkbenchTaskExecutionContextRef(
+        latestExecutionLink.taskContext,
+        consumedAuthorization.consumption.workbenchTaskContext,
+      );
     const authorizationSourceRefs = consumedAuthorization === undefined
       ? mission === undefined ? [] : [mission.sourcePath]
       : [
@@ -810,6 +827,9 @@ function principalTaskWorkItems(
       currentTurnValue !== null && typeof currentTurnValue === "object"
         ? currentTurnValue as Record<string, unknown>
         : undefined;
+    const currentTurnTaskContext = workbenchTaskContextRef(
+      currentTurnObject?.workbenchTaskContext,
+    );
     const observedGuidanceRefs = Array.isArray(
         currentTurnObject?.guidanceRefs,
       )
@@ -826,27 +846,13 @@ function principalTaskWorkItems(
       && task.binding.kind === "project-context"
       && task.binding.missionId !== undefined
         ? workbenchTaskCorrectionGuidanceRefs(
-          WorkbenchTaskExecutionContextSchema.parse({
-            version: "rosso.workbench-task-execution-context.v1",
-            taskId: task.id,
-            sourceRevision: observation.source.sourceRevision,
-            taskRevision: task.revision,
-            objective: task.objective,
-            acceptance: task.acceptance,
-            corrections: task.corrections.map((correction) => ({
-              id: correction.id,
-              statement: correction.statement,
-              sourceRef: correction.sourceRef,
-            })),
-            binding: {
-              projectId: task.binding.projectId,
-              missionId: task.binding.missionId,
-            },
-            execution: {
+          workbenchTaskExecutionContextFor(
+            task,
+            {
               authorizationId: latestExecutionLink.authorizationId,
               proposalDigest: latestExecutionLink.proposalDigest,
             },
-          }),
+          ),
         )
         : [];
     const guidedCorrectionIds = new Set(
@@ -854,6 +860,9 @@ function principalTaskWorkItems(
         .filter((expected) =>
           observedGuidanceRefs.some((observed) =>
             sameTurnGuidanceRef(expected, observed)
+            && latestExecutionLink?.taskContext !== undefined
+            && observed.taskContextDigest
+              === latestExecutionLink.taskContext.contextDigest
           )
         )
         .map((guidance) => guidance.correctionId),
@@ -900,8 +909,22 @@ function principalTaskWorkItems(
                 reason: "current turn has no structured launch authorization reference",
                 sourceRefs: [currentCarrier.sourcePath],
               }
-              : latestExecutionLink !== null
+              : currentTurnTaskContext === undefined
+                ? {
+                  standing: "legacy-unproven" as const,
+                  reason: "current turn has no structured Workbench task context reference",
+                  sourceRefs: [
+                    currentCarrier.sourcePath,
+                    currentTurnRef.claimSourceRef,
+                  ],
+                }
+                : latestExecutionLink !== null
+                  && latestExecutionLink.taskContext !== undefined
                   && exactAuthorizationRef(latestExecutionLink, currentTurnRef)
+                  && sameWorkbenchTaskExecutionContextRef(
+                    latestExecutionLink.taskContext,
+                    currentTurnTaskContext,
+                  )
                 ? {
                   standing: "exact" as const,
                   sourceRefs: [
@@ -919,7 +942,7 @@ function principalTaskWorkItems(
                 }
                 : {
                   standing: "unavailable" as const,
-                  reason: "current turn launch authorization reference does not match the latest task execution link",
+                  reason: "current turn authorization or Workbench task context does not match the latest task execution link",
                   sourceRefs: [
                     currentCarrier.sourcePath,
                     currentTurnRef.claimSourceRef,
@@ -996,12 +1019,35 @@ function principalTaskWorkItems(
               : "unavailable" as const;
     const currentAuthorizationAlreadyLinked =
       consumedAuthorization !== undefined
-      && task.executionLinks.some(
-        (link) => link.authorizationId === consumedAuthorization.authorizationId,
+      && observation.source.tasks.some(
+        (candidateTask) => candidateTask.executionLinks.some(
+          (link) => link.authorizationId === consumedAuthorization.authorizationId,
+        ),
+      );
+    const expectedUnlinkedTaskContext =
+      consumedAuthorization === undefined
+        ? undefined
+        : workbenchTaskExecutionContextRef(
+          workbenchTaskExecutionContextFor(
+            task,
+            {
+              authorizationId: consumedAuthorization.authorizationId,
+              proposalDigest: consumedAuthorization.proposalDigest,
+            },
+          ),
+        );
+    const consumptionBelongsToCurrentTask =
+      consumedAuthorization?.consumption.workbenchTaskContext !== null
+      && consumedAuthorization?.consumption.workbenchTaskContext !== undefined
+      && expectedUnlinkedTaskContext !== undefined
+      && sameWorkbenchTaskExecutionContextRef(
+        consumedAuthorization.consumption.workbenchTaskContext,
+        expectedUnlinkedTaskContext,
       );
     const linkCandidate =
       consumedAuthorization !== undefined
       && !currentAuthorizationAlreadyLinked
+      && consumptionBelongsToCurrentTask
       && task.lifecycle !== "settled"
       && task.lifecycle !== "verifying"
         ? {

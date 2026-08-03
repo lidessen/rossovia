@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { buildWorkItemProjection } from "../src/ui/work-items";
-import { workbenchTaskCorrectionGuidanceRefs } from "../src/ui/task-execution-context";
+import {
+  workbenchTaskCorrectionGuidanceRefs,
+  workbenchTaskExecutionContextFor,
+  workbenchTaskExecutionContextRef,
+  type WorkbenchTaskExecutionContextRef,
+} from "../src/ui/task-execution-context";
 
 const executionAuthorizationId = "11111111-1111-4111-8111-111111111111";
 const executionProposalDigest = "a".repeat(64);
@@ -15,6 +20,11 @@ const executionLink = {
   claimSourceRef: executionClaimSourceRef,
   linkedAt: "2026-07-27T08:30:00Z",
   sourceRef: "workbench-ui:unverified-local-interaction",
+};
+
+const executionSelector = {
+  authorizationId: executionAuthorizationId,
+  proposalDigest: executionProposalDigest,
 };
 
 const snapshot = {
@@ -113,6 +123,61 @@ const snapshot = {
   }],
 };
 
+function exactTaskExecution(
+  launchTask: unknown,
+): {
+  taskContext: WorkbenchTaskExecutionContextRef;
+  link: typeof executionLink & { taskContext: WorkbenchTaskExecutionContextRef };
+} {
+  const taskContext = workbenchTaskExecutionContextRef(
+    workbenchTaskExecutionContextFor(launchTask as never, executionSelector),
+  );
+  return {
+    taskContext,
+    link: { ...executionLink, taskContext },
+  };
+}
+
+function snapshotWithTaskContext(
+  source: any,
+  taskContext: WorkbenchTaskExecutionContextRef,
+): any {
+  return {
+    ...source,
+    projects: source.projects.map((project: any) => ({
+      ...project,
+      missions: project.missions.map((mission: any) =>
+        mission.id !== "agent-run" || mission.authorization === undefined
+          ? mission
+          : {
+            ...mission,
+            authorization: {
+              ...mission.authorization,
+              consumption: {
+                ...mission.authorization.consumption,
+                workbenchTaskContext: taskContext,
+              },
+            },
+          }
+      ),
+    })),
+    runners: source.runners.map((runner: any, index: number) =>
+      index !== 0 || runner.activity === undefined
+        ? runner
+        : {
+          ...runner,
+          activity: {
+            ...runner.activity,
+            currentTurn: {
+              ...runner.activity.currentTurn,
+              workbenchTaskContext: taskContext,
+            },
+          },
+        }
+    ),
+  };
+}
+
 describe("Workbench work-item shell projection", () => {
   test("keeps human decisions, live Agent work, and observation anomalies distinct", () => {
     const items = buildWorkItemProjection(snapshot as never).items;
@@ -186,36 +251,46 @@ describe("Workbench work-item shell projection", () => {
   });
 
   test("joins Mission context and its current carrier without upgrading Agent responsibility into task execution", () => {
-    const projection = buildWorkItemProjection(snapshot as never, {
+    const launchTask = {
+      id: "task-a",
+      title: "Implement the task UI",
+      objective: "Close the daily task-management loop",
+      acceptance: ["The result has inspectable evidence"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-a",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-ui",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const exactExecution = exactTaskExecution(launchTask);
+    const task = {
+      ...launchTask,
+      revision: 2,
+      executionLinks: [exactExecution.link],
+      updatedAt: "2026-07-27T09:00:00Z",
+    };
+    const projection = buildWorkItemProjection(
+      snapshotWithTaskContext(snapshot, exactExecution.taskContext) as never,
+      {
       standing: "available",
       sourceRef: "/home/state/tasks.json",
       source: {
         version: "rosso.principal-tasks.v1",
         sourceRevision: 4,
-        tasks: [{
-          id: "task-a",
-          title: "Implement the task UI",
-          objective: "Close the daily task-management loop",
-          acceptance: ["The result has inspectable evidence"],
-          origin: {
-            kind: "principal-explicit",
-            sourceRef: "conversation:task-a",
-          },
-          binding: {
-            kind: "project-context",
-            projectId: "skills",
-            worktreePath: "/workspace/skills-ui",
-            missionId: "agent-run",
-          },
-          lifecycle: "open",
-          nextActor: "agent",
-          revision: 2,
-          corrections: [],
-          executionLinks: [executionLink],
-          resultClaims: [],
-          createdAt: "2026-07-27T08:00:00Z",
-          updatedAt: "2026-07-27T09:00:00Z",
-        }],
+        tasks: [task],
       },
     });
 
@@ -264,7 +339,7 @@ describe("Workbench work-item shell projection", () => {
           },
         },
         executionContext: {
-          latestLink: executionLink,
+          latestLink: exactExecution.link,
           standing: "current-effect-exact",
           authorizationConsumption: {
             standing: "verified",
@@ -328,10 +403,38 @@ describe("Workbench work-item shell projection", () => {
   });
 
   test("withholds task recovery when exact activity has no turn identity", () => {
-    const runner = snapshot.runners[0]!;
+    const launchTask = {
+      id: "task-without-turn-id",
+      title: "Recover an exact interrupted turn",
+      objective: "Require an exact turn identity",
+      acceptance: ["A missing turn ID withholds recovery"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-without-turn-id",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const exactExecution = exactTaskExecution(launchTask);
+    const exactSnapshot = snapshotWithTaskContext(
+      snapshot,
+      exactExecution.taskContext,
+    );
+    const runner = exactSnapshot.runners[0]!;
     const activity = runner.activity!;
     const projection = buildWorkItemProjection({
-      ...snapshot,
+      ...exactSnapshot,
       runners: [{
         ...runner,
         status: {
@@ -348,6 +451,7 @@ describe("Workbench work-item shell projection", () => {
           currentTurn: {
             launchAuthorizationRef:
               activity.currentTurn.launchAuthorizationRef,
+            workbenchTaskContext: activity.currentTurn.workbenchTaskContext,
           },
         },
       }],
@@ -358,26 +462,9 @@ describe("Workbench work-item shell projection", () => {
         version: "rosso.principal-tasks.v1",
         sourceRevision: 4,
         tasks: [{
-          id: "task-without-turn-id",
-          title: "Recover an exact interrupted turn",
-          objective: "Require an exact turn identity",
-          acceptance: ["A missing turn ID withholds recovery"],
-          origin: {
-            kind: "principal-explicit",
-            sourceRef: "conversation:task-without-turn-id",
-          },
-          binding: {
-            kind: "project-context",
-            projectId: "skills",
-            missionId: "agent-run",
-          },
-          lifecycle: "open",
-          nextActor: "agent",
+          ...launchTask,
           revision: 2,
-          corrections: [],
-          executionLinks: [executionLink],
-          resultClaims: [],
-          createdAt: "2026-07-27T08:00:00Z",
+          executionLinks: [exactExecution.link],
           updatedAt: "2026-07-27T09:00:00Z",
         }],
       },
@@ -390,6 +477,108 @@ describe("Workbench work-item shell projection", () => {
       "exact",
     );
     expect(item?.taskDetail?.executionContext.recoveryCandidate).toBeNull();
+  });
+
+  test("offers one same-Mission consumption only to its exact task context", () => {
+    const task = {
+      id: "task-context-owner",
+      title: "Own one exact consumed authorization",
+      objective: "Bind this consumption to only its launch task",
+      acceptance: ["A sibling task in the same Mission receives no link candidate"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-context-owner",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const sibling = {
+      ...task,
+      id: "task-context-sibling",
+      title: "Sibling task in the same Mission",
+      objective: "Remain distinct from the owner's execution",
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-context-sibling",
+      },
+    };
+    const exactExecution = exactTaskExecution(task);
+    const projection = buildWorkItemProjection(
+      snapshotWithTaskContext(snapshot, exactExecution.taskContext) as never,
+      {
+        standing: "available",
+        sourceRef: "/home/state/tasks.json",
+        source: {
+          version: "rosso.principal-tasks.v1",
+          sourceRevision: 2,
+          tasks: [task, sibling],
+        },
+      },
+    );
+    const contextFor = (taskId: string) => projection.items.find(
+      (item) => item.id === `principal-task:${taskId}`,
+    )!.taskDetail!.executionContext;
+
+    expect(contextFor(task.id).linkCandidate).toMatchObject({
+      authorizationId: executionAuthorizationId,
+      proposalDigest: executionProposalDigest,
+    });
+    expect(contextFor(sibling.id).linkCandidate).toBeNull();
+    expect(contextFor(sibling.id).recoveryCandidate).toBeNull();
+    expect(contextFor(sibling.id).verifiedResultCandidate).toBeNull();
+  });
+
+  test("withholds a link candidate from legacy consumption without task context", () => {
+    const task = {
+      id: "task-legacy-consumption",
+      title: "Inspect a legacy consumption claim",
+      objective: "Do not bind a task from project and Mission alone",
+      acceptance: ["Missing task context produces no execution candidate"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-legacy-consumption",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const projection = buildWorkItemProjection(snapshot as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 1,
+        tasks: [task],
+      },
+    });
+    const executionContext = projection.items.find(
+      (item) => item.id === `principal-task:${task.id}`,
+    )!.taskDetail!.executionContext;
+
+    expect(executionContext.linkCandidate).toBeNull();
+    expect(executionContext.recoveryCandidate).toBeNull();
+    expect(executionContext.verifiedResultCandidate).toBeNull();
   });
 
   test("offers runtime-verified submission only for the exact Autonomy selector and Worktree", () => {
@@ -451,18 +640,27 @@ describe("Workbench work-item shell projection", () => {
       nextActor: "agent" as const,
       revision: 2,
       corrections: [],
-      executionLinks: [executionLink],
+      executionLinks: [],
       resultClaims: [],
       createdAt: "2026-07-27T08:00:00Z",
       updatedAt: "2026-07-27T09:00:00Z",
     };
-    const projection = buildWorkItemProjection(verifiedSnapshot as never, {
+    const exactExecution = exactTaskExecution({ ...task, revision: 1 });
+    const linkedTask = {
+      ...task,
+      executionLinks: [exactExecution.link],
+    };
+    const exactVerifiedSnapshot = snapshotWithTaskContext(
+      verifiedSnapshot,
+      exactExecution.taskContext,
+    );
+    const projection = buildWorkItemProjection(exactVerifiedSnapshot as never, {
       standing: "available",
       sourceRef: "/home/state/tasks.json",
       source: {
         version: "rosso.principal-tasks.v1",
         sourceRevision: 4,
-        tasks: [task],
+        tasks: [linkedTask],
       },
     });
     const detail = projection.items.find(
@@ -480,13 +678,13 @@ describe("Workbench work-item shell projection", () => {
     });
 
     const wrongWorktree = buildWorkItemProjection({
-      ...verifiedSnapshot,
+      ...exactVerifiedSnapshot,
       runners: [{
-        ...verifiedSnapshot.runners[0],
+        ...exactVerifiedSnapshot.runners[0],
         activity: {
-          ...verifiedSnapshot.runners[0]!.activity,
+          ...exactVerifiedSnapshot.runners[0]!.activity,
           currentEffect: {
-            ...verifiedSnapshot.runners[0]!.activity!.currentEffect,
+            ...exactVerifiedSnapshot.runners[0]!.activity!.currentEffect,
             workspace: { root: "/workspace/other" },
           },
         },
@@ -497,7 +695,7 @@ describe("Workbench work-item shell projection", () => {
       source: {
         version: "rosso.principal-tasks.v1",
         sourceRevision: 4,
-        tasks: [task],
+        tasks: [linkedTask],
       },
     });
     expect(
@@ -513,23 +711,6 @@ describe("Workbench work-item shell projection", () => {
       statement: "Keep the personal editorial hierarchy primary.",
       sourceRef: "workbench-task:task-guided/correction:correction-at-launch",
     };
-    const launchGuidance = workbenchTaskCorrectionGuidanceRefs({
-      version: "rosso.workbench-task-execution-context.v1",
-      taskId: "task-guided",
-      sourceRevision: 3,
-      taskRevision: 2,
-      objective: "Implement the personal Blog roundtrip",
-      acceptance: ["The result is runtime verified"],
-      corrections: [launchCorrection],
-      binding: {
-        projectId: "skills",
-        missionId: "agent-run",
-      },
-      execution: {
-        authorizationId: executionAuthorizationId,
-        proposalDigest: executionProposalDigest,
-      },
-    });
     const postLaunchCorrection = {
       id: "correction-after-launch",
       at: "2026-07-27T09:30:00Z",
@@ -560,10 +741,29 @@ describe("Workbench work-item shell projection", () => {
         at: "2026-07-27T08:15:00Z",
         deliveries: [],
       }, postLaunchCorrection],
-      executionLinks: [executionLink],
+      executionLinks: [],
       resultClaims: [],
       createdAt: "2026-07-27T08:00:00Z",
       updatedAt: "2026-07-27T09:30:00Z",
+    };
+    const launchTask = {
+      ...guidedTask,
+      revision: 2,
+      corrections: [{
+        ...launchCorrection,
+        at: "2026-07-27T08:15:00Z",
+        deliveries: [],
+      }],
+    };
+    const launchContext = workbenchTaskExecutionContextFor(
+      launchTask,
+      executionSelector,
+    );
+    const exactExecution = exactTaskExecution(launchTask);
+    const launchGuidance = workbenchTaskCorrectionGuidanceRefs(launchContext);
+    const linkedGuidedTask = {
+      ...guidedTask,
+      executionLinks: [exactExecution.link],
     };
     const guidedSnapshot = {
       ...snapshot,
@@ -608,14 +808,18 @@ describe("Workbench work-item shell projection", () => {
         },
       }],
     };
+    const exactGuidedSnapshot = snapshotWithTaskContext(
+      guidedSnapshot,
+      exactExecution.taskContext,
+    );
 
-    const projection = buildWorkItemProjection(guidedSnapshot as never, {
+    const projection = buildWorkItemProjection(exactGuidedSnapshot as never, {
       standing: "available",
       sourceRef: "/home/state/tasks.json",
       source: {
         version: "rosso.principal-tasks.v1",
         sourceRevision: 7,
-        tasks: [guidedTask],
+        tasks: [linkedGuidedTask],
       },
     });
     const executionContext = projection.items.find(
@@ -706,9 +910,37 @@ describe("Workbench work-item shell projection", () => {
   });
 
   test("keeps a legacy current turn execution-unproven when structured refs are absent", () => {
-    const liveRunner = snapshot.runners[0]!;
+    const launchTask = {
+      id: "task-legacy-execution",
+      title: "Inspect legacy blog execution",
+      objective: "Do not infer exact execution from an old Mission turn",
+      acceptance: ["Legacy evidence remains explicitly unproven"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "workbench-ui:unverified-local-interaction",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        missionId: "agent-run",
+      },
+      lifecycle: "open" as const,
+      nextActor: "agent" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-07-27T08:00:00Z",
+      updatedAt: "2026-07-27T08:00:00Z",
+    };
+    const exactExecution = exactTaskExecution(launchTask);
+    const exactSnapshot = snapshotWithTaskContext(
+      snapshot,
+      exactExecution.taskContext,
+    );
+    const liveRunner = exactSnapshot.runners[0]!;
     const projection = buildWorkItemProjection({
-      ...snapshot,
+      ...exactSnapshot,
       runners: [{
         ...liveRunner,
         activity: {
@@ -727,26 +959,9 @@ describe("Workbench work-item shell projection", () => {
         version: "rosso.principal-tasks.v1",
         sourceRevision: 7,
         tasks: [{
-          id: "task-legacy-execution",
-          title: "Inspect legacy blog execution",
-          objective: "Do not infer exact execution from an old Mission turn",
-          acceptance: ["Legacy evidence remains explicitly unproven"],
-          origin: {
-            kind: "principal-explicit",
-            sourceRef: "workbench-ui:unverified-local-interaction",
-          },
-          binding: {
-            kind: "project-context",
-            projectId: "skills",
-            missionId: "agent-run",
-          },
-          lifecycle: "open",
-          nextActor: "agent",
+          ...launchTask,
           revision: 2,
-          corrections: [],
-          executionLinks: [executionLink],
-          resultClaims: [],
-          createdAt: "2026-07-27T08:00:00Z",
+          executionLinks: [exactExecution.link],
           updatedAt: "2026-07-27T09:00:00Z",
         }],
       },
@@ -770,6 +985,9 @@ describe("Workbench work-item shell projection", () => {
           currentEffect: expect.objectContaining({
             standing: "legacy-unproven",
           }),
+          linkCandidate: null,
+          recoveryCandidate: null,
+          verifiedResultCandidate: null,
         }),
       }),
     }));
@@ -830,9 +1048,7 @@ describe("Workbench work-item shell projection", () => {
           currentTurn: expect.objectContaining({
             standing: "unavailable",
           }),
-          linkCandidate: expect.objectContaining({
-            authorizationId: executionAuthorizationId,
-          }),
+          linkCandidate: null,
         }),
       }),
     }));
@@ -897,15 +1113,7 @@ describe("Workbench work-item shell projection", () => {
         executionContext: expect.objectContaining({
           standing: "unavailable",
           latestLink: null,
-          linkCandidate: {
-            authorizationId: executionAuthorizationId,
-            proposalDigest: executionProposalDigest,
-            evidenceRefs: [
-              "/workspace/skills/RUN.json",
-              "/home/state/execution-authorizations/authorization.json",
-              `/home/${executionClaimSourceRef}`,
-            ],
-          },
+          linkCandidate: null,
         }),
       }),
     }));

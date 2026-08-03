@@ -264,7 +264,6 @@ describe("task execution launch", () => {
     expect(context).toEqual({
       version: "rosso.workbench-task-execution-context.v1",
       taskId,
-      sourceRevision: 4,
       taskRevision: 3,
       objective: "Start the authorized Mission from this task",
       acceptance: ["Consumption becomes linkable"],

@@ -528,6 +528,7 @@ describe("Principal Workbench operational projection", () => {
         receiptRef: claim.receipt.ref,
         receiptDigest: claim.receipt.digest,
         claimSourcePath: claimPath,
+        workbenchTaskContext: null,
         evidenceBoundary: "proves-one-launch-authorization-consumed-only",
       },
     });

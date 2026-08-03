@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { z } from "zod";
+import type { WorkbenchTaskExecutionContextRef } from "./task-execution-context";
 import {
   executionAuthorizationClaimPath,
   type ExecutionAuthorizationClaim,
@@ -169,6 +170,7 @@ export interface ExecutionInspection {
     readonly claimedAt: string;
     readonly candidateWorktree: string;
     readonly candidateHead: string;
+    readonly workbenchTaskContext: WorkbenchTaskExecutionContextRef | null;
     readonly evidenceBoundary: "proves-one-launch-authorization-consumed-only";
   } | null;
   readonly evidenceIssue: {
@@ -544,6 +546,7 @@ function inspectAuthorizationEvidence(
       claimedAt: claim.claimedAt,
       candidateWorktree: claim.localEvidence.worktree,
       candidateHead: claim.localEvidence.gitHead,
+      workbenchTaskContext: claim.workbenchTaskContext ?? null,
       evidenceBoundary: "proves-one-launch-authorization-consumed-only",
     },
     evidenceIssue: null,

@@ -22,6 +22,11 @@ import {
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
 import {
+  workbenchTaskExecutionContextFor,
+  workbenchTaskExecutionContextRef,
+  type WorkbenchTaskExecutionContextRef,
+} from "../src/task-execution-context";
+import {
   acceptPrincipalTaskResult,
   correctPrincipalTask,
   createPrincipalTask,
@@ -77,6 +82,7 @@ describe("Principal task execution links", () => {
           authorizationId,
           proposalDigest: fixture.receipt.proposalDigest,
           claimSourceRef: relative(fixture.home, fixture.claimPath),
+          taskContext: fixture.taskContext,
           sourceRef: "operator:test-link",
         }],
       },
@@ -114,6 +120,7 @@ describe("Principal task execution links", () => {
           authorizationId,
           proposalDigest: fixture.receipt.proposalDigest,
           claimSourceRef: relative(fixture.home, fixture.claimPath),
+          taskContext: fixture.taskContext,
           sourceRef: "operator:cli-link",
         }],
       },
@@ -209,6 +216,56 @@ describe("Principal task execution links", () => {
         expectedRevision: 1,
       })).toThrow("requires exact registered project and Mission context");
     }
+  });
+
+  test("rejects binding one same-Mission task's consumed authorization to another task", () => {
+    const fixture = setup();
+    const other = createPrincipalTask(fixture.home, {
+      title: "Other task in the same Mission",
+      objective: "Remain distinct from the execution launched for the first task",
+      acceptance: ["Same-Mission context cannot substitute for exact task lineage"],
+      nextActor: "agent",
+      sourceRef: "principal:same-mission-other-task",
+      expectedSourceRevision: 1,
+      project: "fixture",
+      mission: missionId,
+    });
+
+    expect(() => linkPrincipalTaskExecution(fixture.home, {
+      id: other.task.id,
+      authorizationId,
+      sourceRef: "operator:wrong-task-link",
+      expectedSourceRevision: 2,
+      expectedRevision: 1,
+    })).toThrow("was not consumed for the exact current context");
+    const retained = listPrincipalTasks(fixture.home);
+    expect(retained.sourceRevision).toBe(2);
+    expect(retained.tasks.find((task) => task.id === fixture.taskId)).toMatchObject({
+      revision: 1,
+      executionLinks: [],
+    });
+    expect(retained.tasks.find((task) => task.id === other.task.id)).toMatchObject({
+      revision: 1,
+      executionLinks: [],
+    });
+  });
+
+  test("rejects a legacy consumption claim without exact task context", () => {
+    const fixture = setup();
+    const { workbenchTaskContext: _taskContext, ...legacyClaim } = fixture.claim;
+    writeJson(fixture.claimPath, legacyClaim);
+
+    expect(() => linkPrincipalTaskExecution(fixture.home, {
+      id: fixture.taskId,
+      authorizationId,
+      sourceRef: "operator:legacy-context-link",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    })).toThrow("was not consumed for the exact current context");
+    expect(listPrincipalTasks(fixture.home)).toMatchObject({
+      sourceRevision: 1,
+      tasks: [{ revision: 1, executionLinks: [] }],
+    });
   });
 
   test.each([
@@ -475,6 +532,7 @@ interface Fixture {
   receipt: ExecutionAuthorizationReceipt;
   claimPath: string;
   claim: ExecutionAuthorizationClaim;
+  taskContext: WorkbenchTaskExecutionContextRef;
 }
 
 function prepareCorrectionDelivery(): {
@@ -580,6 +638,12 @@ function setup(): Fixture {
   );
   writeJson(receiptPath, receipt);
   const claimPath = executionAuthorizationClaimPath(home, authorizationId);
+  const taskContext = workbenchTaskExecutionContextRef(
+    workbenchTaskExecutionContextFor(task.task, {
+      authorizationId,
+      proposalDigest: receipt.proposalDigest,
+    }),
+  );
   const claim = ExecutionAuthorizationClaimSchema.parse({
     version: "rosso.execution-authorization-claim.v1",
     authorizationId,
@@ -595,6 +659,7 @@ function setup(): Fixture {
       worktree: repository,
       gitHead: git(repository, "rev-parse", "HEAD"),
     },
+    workbenchTaskContext: taskContext,
     claimedAt: "2026-07-28T12:00:00Z",
   });
   writeClaim(claimPath, claim);
@@ -605,6 +670,7 @@ function setup(): Fixture {
     receipt,
     claimPath,
     claim,
+    taskContext,
   };
 }
 

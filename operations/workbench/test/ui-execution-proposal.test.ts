@@ -170,6 +170,7 @@ const consumedAuthorization = {
     receiptDigest: "3".repeat(64),
     claimSourcePath:
       "/workbench/state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
+    workbenchTaskContext: null,
     evidenceBoundary: "proves-one-launch-authorization-consumed-only",
   },
 } satisfies ExecutionAuthorizationProjection;

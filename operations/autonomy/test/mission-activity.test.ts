@@ -11,6 +11,12 @@ import { MISSION_TURN_VERSION } from "../src/mission-turn";
 test("projects bounded Mission activity without exposing contribution or result text", async () => {
   const home = await mkdtemp(join(tmpdir(), "rosso-mission-activity-"));
   const missionId = "activity-projection";
+  const workbenchTaskContext = {
+    version: "rosso.workbench-task-execution-context-ref.v1" as const,
+    taskId: "22222222-2222-4222-8222-222222222222",
+    taskRevision: 7,
+    contextDigest: "b".repeat(64),
+  };
   try {
     const timeline = new FileMissionTimeline(missionRunnerDirectory(home, missionId));
     await timeline.startTurn(missionId, {
@@ -24,6 +30,7 @@ test("projects bounded Mission activity without exposing contribution or result 
         claimSourceRef:
           "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
       },
+      workbenchTaskContext,
     });
     await timeline.appendInput(missionId, {
       id: "input-1",
@@ -76,6 +83,7 @@ test("projects bounded Mission activity without exposing contribution or result 
           claimSourceRef:
             "state/execution-authorization-claims/11111111-1111-4111-8111-111111111111.json",
         },
+        workbenchTaskContext,
       },
       currentVerifiedResult: null,
     });

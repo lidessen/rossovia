@@ -14297,27 +14297,105 @@ function date4(params) {
 
 // node_modules/zod/v4/classic/external.js
 config(en_default());
+// src/task-execution-context.ts
+import { createHash } from "node:crypto";
+var nonempty = exports_external.string().trim().min(1);
+var digest = exports_external.string().regex(/^[a-f0-9]{64}$/);
+var WORKBENCH_TASK_EXECUTION_CONTEXT_VERSION = "rosso.workbench-task-execution-context.v1";
+var WORKBENCH_TASK_EXECUTION_CONTEXT_REF_VERSION = "rosso.workbench-task-execution-context-ref.v1";
+var WorkbenchTaskExecutionContextSchema = exports_external.object({
+  version: exports_external.literal(WORKBENCH_TASK_EXECUTION_CONTEXT_VERSION),
+  taskId: nonempty,
+  taskRevision: exports_external.number().int().positive(),
+  objective: nonempty,
+  acceptance: exports_external.array(nonempty).min(1),
+  corrections: exports_external.array(exports_external.object({
+    id: nonempty,
+    statement: nonempty,
+    sourceRef: nonempty
+  }).strict()),
+  binding: exports_external.object({
+    projectId: nonempty,
+    missionId: nonempty
+  }).strict(),
+  execution: exports_external.object({
+    authorizationId: exports_external.string().uuid(),
+    proposalDigest: digest
+  }).strict()
+}).strict();
+var WorkbenchTaskExecutionContextRefSchema = exports_external.object({
+  version: exports_external.literal(WORKBENCH_TASK_EXECUTION_CONTEXT_REF_VERSION),
+  taskId: nonempty,
+  taskRevision: exports_external.number().int().positive(),
+  contextDigest: digest
+}).strict();
+function workbenchTaskExecutionContextDigest(context) {
+  const parsed = WorkbenchTaskExecutionContextSchema.parse(context);
+  return createHash("sha256").update(stableStringify(parsed)).digest("hex");
+}
+function workbenchTaskExecutionContextRef(context) {
+  const checked = WorkbenchTaskExecutionContextSchema.parse(context);
+  return WorkbenchTaskExecutionContextRefSchema.parse({
+    version: WORKBENCH_TASK_EXECUTION_CONTEXT_REF_VERSION,
+    taskId: checked.taskId,
+    taskRevision: checked.taskRevision,
+    contextDigest: workbenchTaskExecutionContextDigest(checked)
+  });
+}
+function workbenchTaskExecutionContextFor(task, execution) {
+  if (task.binding.kind !== "project-context" || task.binding.missionId === undefined) {
+    throw new Error(`task ${task.id} requires exact project and Mission context for execution`);
+  }
+  return WorkbenchTaskExecutionContextSchema.parse({
+    version: WORKBENCH_TASK_EXECUTION_CONTEXT_VERSION,
+    taskId: task.id,
+    taskRevision: task.revision,
+    objective: task.objective,
+    acceptance: task.acceptance,
+    corrections: task.corrections.map((correction) => ({
+      id: correction.id,
+      statement: correction.statement,
+      sourceRef: correction.sourceRef
+    })),
+    binding: {
+      projectId: task.binding.projectId,
+      missionId: task.binding.missionId
+    },
+    execution
+  });
+}
+function sameWorkbenchTaskExecutionContextRef(left, right) {
+  return left.version === right.version && left.taskId === right.taskId && left.taskRevision === right.taskRevision && left.contextDigest === right.contextDigest;
+}
+function stableStringify(value) {
+  if (value === null || typeof value !== "object")
+    return JSON.stringify(value);
+  if (Array.isArray(value))
+    return `[${value.map(stableStringify).join(",")}]`;
+  return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(",")}}`;
+}
+
 // src/contracts.ts
-var nonempty = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
+var nonempty2 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
 var sha256 = exports_external.string().regex(/^[0-9a-f]{64}$/);
-var relativeEvidenceRef = nonempty.refine((value) => !isAbsolute(value) && value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== "." && segment !== ".."), "must be a normalized relative evidence reference");
+var relativeEvidenceRef = nonempty2.refine((value) => !isAbsolute(value) && value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== "." && segment !== ".."), "must be a normalized relative evidence reference");
 var ManifestSchema = exports_external.object({
   version: exports_external.literal("rosso.home.v1"),
   namespace: exports_external.literal("rosso"),
-  createdAt: nonempty
+  createdAt: nonempty2
 }).passthrough();
 var ProjectSchema = exports_external.object({
-  id: nonempty,
-  repository: nonempty,
-  aliases: exports_external.array(nonempty).min(1)
+  id: nonempty2,
+  repository: nonempty2,
+  aliases: exports_external.array(nonempty2).min(1)
 }).passthrough();
 var ProjectsSchema = exports_external.object({
   version: exports_external.literal("rosso.projects.v1"),
   projects: exports_external.array(ProjectSchema)
 }).passthrough();
 var WorkspaceSchema = exports_external.object({
-  projectId: nonempty,
-  path: nonempty
+  projectId: nonempty2,
+  path: nonempty2
 }).passthrough();
 var WorkspacesSchema = exports_external.object({
   version: exports_external.literal("rosso.workspaces.v1"),
@@ -14325,26 +14403,26 @@ var WorkspacesSchema = exports_external.object({
 }).passthrough();
 var RootsSchema = exports_external.object({
   version: exports_external.literal("rosso.roots.v1"),
-  roots: exports_external.array(nonempty)
+  roots: exports_external.array(nonempty2)
 }).passthrough();
 var WorkspaceIndexEntrySchema = exports_external.object({
-  path: nonempty,
-  repository: nonempty.nullable(),
-  aliases: exports_external.array(nonempty).min(1)
+  path: nonempty2,
+  repository: nonempty2.nullable(),
+  aliases: exports_external.array(nonempty2).min(1)
 }).passthrough();
 var WorkspaceIndexSchema = exports_external.object({
   version: exports_external.literal("rosso.workspace-index.v1"),
-  generatedAt: nonempty,
+  generatedAt: nonempty2,
   entries: exports_external.array(WorkspaceIndexEntrySchema)
 }).passthrough();
 var PreferenceSchema = exports_external.object({
-  id: nonempty,
-  statement: nonempty,
+  id: nonempty2,
+  statement: nonempty2,
   source: exports_external.literal("user-explicit"),
-  recordedAt: nonempty,
-  updatedAt: nonempty,
-  projectId: nonempty.optional(),
-  reopenWhen: nonempty.optional()
+  recordedAt: nonempty2,
+  updatedAt: nonempty2,
+  projectId: nonempty2.optional(),
+  reopenWhen: nonempty2.optional()
 }).strict();
 var PreferencesSchema = exports_external.object({
   version: exports_external.literal("rosso.preferences.v1"),
@@ -14356,8 +14434,8 @@ var PrincipalTaskBindingSchema = exports_external.discriminatedUnion("kind", [
   }).strict(),
   exports_external.object({
     kind: exports_external.literal("project-context"),
-    projectId: nonempty,
-    worktreePath: nonempty.optional(),
+    projectId: nonempty2,
+    worktreePath: nonempty2.optional(),
     missionId: exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/).optional()
   }).strict()
 ]);
@@ -14366,25 +14444,25 @@ var PrincipalTaskCorrectionDeliverySchema = exports_external.object({
   proposalDigest: sha256,
   claimSourceRef: relativeEvidenceRef,
   missionId: exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/),
-  inputId: nonempty,
-  inputEventId: nonempty,
+  inputId: nonempty2,
+  inputEventId: nonempty2,
   inputWatermark: exports_external.number().int().positive(),
   payloadDigest: sha256,
   recordedAt: exports_external.string().datetime({ offset: true }),
-  sourceRef: nonempty,
-  deliveredViaRunnerId: nonempty
+  sourceRef: nonempty2,
+  deliveredViaRunnerId: nonempty2
 }).strict();
 var PrincipalTaskCorrectionSchema = exports_external.object({
-  id: nonempty,
-  at: nonempty,
-  statement: nonempty,
-  sourceRef: nonempty,
+  id: nonempty2,
+  at: nonempty2,
+  statement: nonempty2,
+  sourceRef: nonempty2,
   deliveries: exports_external.array(PrincipalTaskCorrectionDeliverySchema).default([])
 }).strict();
 var AutonomyEffectVerificationSelectorSchema = exports_external.object({
   kind: exports_external.literal("autonomy-effect-verification.v1"),
-  effectId: nonempty,
-  verificationEventId: nonempty
+  effectId: nonempty2,
+  verificationEventId: nonempty2
 }).strict();
 var PrincipalTaskResultEvidenceSchema = exports_external.discriminatedUnion("kind", [
   exports_external.object({
@@ -14397,20 +14475,20 @@ var PrincipalTaskResultEvidenceSchema = exports_external.discriminatedUnion("kin
   }).strict()
 ]);
 var PrincipalTaskResultClaimSchema = exports_external.object({
-  id: nonempty,
-  submittedAt: nonempty,
-  summary: nonempty,
-  evidenceRefs: exports_external.array(nonempty).min(1),
+  id: nonempty2,
+  submittedAt: nonempty2,
+  summary: nonempty2,
+  evidenceRefs: exports_external.array(nonempty2).min(1),
   evidence: PrincipalTaskResultEvidenceSchema.default({
     kind: "agent-references-unverified"
   }),
-  sourceRef: nonempty,
+  sourceRef: nonempty2,
   standing: exports_external.enum(["submitted", "accepted", "superseded"]),
   resolution: exports_external.discriminatedUnion("kind", [
     exports_external.object({
       kind: exports_external.literal("accepted"),
-      at: nonempty,
-      sourceRef: nonempty,
+      at: nonempty2,
+      sourceRef: nonempty2,
       acceptanceBoundary: exports_external.literal("workbench-local-task-only"),
       basis: exports_external.enum([
         "agent-claim",
@@ -14419,7 +14497,7 @@ var PrincipalTaskResultClaimSchema = exports_external.object({
     }).strict(),
     exports_external.object({
       kind: exports_external.literal("superseded"),
-      at: nonempty,
+      at: nonempty2,
       reason: exports_external.enum(["correction", "reopen"])
     }).strict()
   ]).nullable()
@@ -14438,23 +14516,24 @@ var PrincipalTaskExecutionLinkSchema = exports_external.object({
   authorizationId: exports_external.string().uuid(),
   proposalDigest: sha256,
   claimSourceRef: relativeEvidenceRef,
+  taskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
   linkedAt: exports_external.string().datetime({ offset: true }),
-  sourceRef: nonempty
+  sourceRef: nonempty2
 }).strict();
 var PrincipalTaskWorktreeRebindingSchema = exports_external.object({
-  fromWorktreePath: nonempty,
-  toWorktreePath: nonempty,
+  fromWorktreePath: nonempty2,
+  toWorktreePath: nonempty2,
   reboundAt: exports_external.string().datetime({ offset: true }),
-  sourceRef: nonempty
+  sourceRef: nonempty2
 }).strict();
 var PrincipalTaskSchema = exports_external.object({
-  id: nonempty,
-  title: nonempty,
-  objective: nonempty,
-  acceptance: exports_external.array(nonempty).min(1),
+  id: nonempty2,
+  title: nonempty2,
+  objective: nonempty2,
+  acceptance: exports_external.array(nonempty2).min(1),
   origin: exports_external.object({
     kind: exports_external.literal("principal-explicit"),
-    sourceRef: nonempty
+    sourceRef: nonempty2
   }).strict(),
   binding: PrincipalTaskBindingSchema,
   lifecycle: exports_external.enum(["open", "in-progress", "waiting", "verifying", "settled"]),
@@ -14464,8 +14543,8 @@ var PrincipalTaskSchema = exports_external.object({
   resultClaims: exports_external.array(PrincipalTaskResultClaimSchema),
   executionLinks: exports_external.array(PrincipalTaskExecutionLinkSchema).default([]),
   worktreeRebindings: exports_external.array(PrincipalTaskWorktreeRebindingSchema).optional(),
-  createdAt: nonempty,
-  updatedAt: nonempty
+  createdAt: nonempty2,
+  updatedAt: nonempty2
 }).strict().superRefine((task, context) => {
   const submitted = task.resultClaims.filter((claim) => claim.standing === "submitted");
   if (submitted.length > 1) {
@@ -14527,10 +14606,10 @@ var PrincipalTasksSchema = exports_external.object({
 }).strict();
 var PreferenceReceiptSchema = exports_external.object({
   version: exports_external.literal("rosso.preference-receipt.v2"),
-  at: nonempty,
+  at: nonempty2,
   action: exports_external.enum(["set", "retire"]),
-  id: nonempty,
-  projectId: nonempty.nullable(),
+  id: nonempty2,
+  projectId: nonempty2.nullable(),
   recordDigest: exports_external.string().regex(/^[0-9a-f]{64}$/)
 }).strict();
 var SetupSelectionEntrySchema = exports_external.object({
@@ -14545,12 +14624,12 @@ var SetupReceiptSchema = exports_external.object({
   version: exports_external.literal("rosso.setup-receipt.v1"),
   module: exports_external.literal("multi-agent-delegation"),
   harness: exports_external.literal("codex"),
-  sourceRevision: nonempty,
-  sourceRoot: nonempty,
-  projectionPath: nonempty,
+  sourceRevision: nonempty2,
+  sourceRoot: nonempty2,
+  projectionPath: nonempty2,
   projectionDigest: exports_external.string().regex(/^[0-9a-f]{64}$/),
-  appliedAt: nonempty,
-  rollbackPath: nonempty.nullable()
+  appliedAt: nonempty2,
+  rollbackPath: nonempty2.nullable()
 }).strict();
 
 // src/paths.ts
@@ -14932,7 +15011,7 @@ function attachWorkspace(homeArgument, query, path) {
 }
 
 // src/execution-authorization.ts
-import { createHash as createHash3, randomUUID as randomUUID2 } from "node:crypto";
+import { createHash as createHash4, randomUUID as randomUUID2 } from "node:crypto";
 import {
   existsSync as existsSync5,
   lstatSync,
@@ -14943,29 +15022,30 @@ import {
 import { dirname as dirname4, join as join7, relative as relative3 } from "node:path";
 
 // src/execution-authorization-claim.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 import { isAbsolute as isAbsolute2, join as join5, normalize, relative } from "node:path";
-var nonempty2 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
+var nonempty3 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
 var missionId = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
-var digest = exports_external.string().regex(/^[0-9a-f]{64}$/);
+var digest2 = exports_external.string().regex(/^[0-9a-f]{64}$/);
 var gitHead = exports_external.string().regex(/^[0-9a-f]{40,64}$/);
-var relativeEvidenceRef2 = nonempty2.refine((value) => !isAbsolute2(value) && value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== "." && segment !== ".."), "must be a normalized relative evidence reference");
-var canonicalAbsolutePath = nonempty2.refine(isAbsolute2, "must be an absolute path").refine((value) => normalize(value) === value, "must be a normalized absolute path");
+var relativeEvidenceRef2 = nonempty3.refine((value) => !isAbsolute2(value) && value.split(/[\\/]/u).every((segment) => segment.length > 0 && segment !== "." && segment !== ".."), "must be a normalized relative evidence reference");
+var canonicalAbsolutePath = nonempty3.refine(isAbsolute2, "must be an absolute path").refine((value) => normalize(value) === value, "must be a normalized absolute path");
 var ExecutionAuthorizationClaimSchema = exports_external.object({
   version: exports_external.literal("rosso.execution-authorization-claim.v1"),
   authorizationId: exports_external.string().uuid(),
-  projectId: nonempty2,
+  projectId: nonempty3,
   missionId,
   proposalId: missionId,
-  proposalDigest: digest,
+  proposalDigest: digest2,
   receipt: exports_external.object({
     ref: relativeEvidenceRef2,
-    digest
+    digest: digest2
   }).strict(),
   localEvidence: exports_external.object({
     worktree: canonicalAbsolutePath,
     gitHead
   }).strict(),
+  workbenchTaskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
   claimedAt: exports_external.string().datetime({ offset: true })
 }).strict();
 function executionAuthorizationClaimPath(home, authorizationId) {
@@ -14973,7 +15053,7 @@ function executionAuthorizationClaimPath(home, authorizationId) {
   return join5(home, "state", "execution-authorization-claims", `${checkedAuthorizationId}.json`);
 }
 function executionAuthorizationReceiptDigest(receipt) {
-  return createHash("sha256").update(stableStringify(receipt)).digest("hex");
+  return createHash2("sha256").update(stableStringify2(receipt)).digest("hex");
 }
 function validateExecutionAuthorizationClaim(unparsed, context) {
   const claim = ExecutionAuthorizationClaimSchema.parse(unparsed);
@@ -15011,24 +15091,24 @@ function validateExecutionAuthorizationClaim(unparsed, context) {
   }
   return claim;
 }
-function stableStringify(value) {
+function stableStringify2(value) {
   if (value === null || typeof value !== "object")
     return JSON.stringify(value);
   if (Array.isArray(value))
-    return `[${value.map(stableStringify).join(",")}]`;
-  return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`).join(",")}}`;
+    return `[${value.map(stableStringify2).join(",")}]`;
+  return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${stableStringify2(item)}`).join(",")}}`;
 }
 
 // src/mission-execution-proposal.ts
-import { createHash as createHash2 } from "node:crypto";
-var nonempty3 = exports_external.string().min(1);
+import { createHash as createHash3 } from "node:crypto";
+var nonempty4 = exports_external.string().min(1);
 var missionId2 = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
-var digest2 = exports_external.string().regex(/^[0-9a-f]{64}$/);
+var digest3 = exports_external.string().regex(/^[0-9a-f]{64}$/);
 var replyKey = exports_external.string().min(1).max(24).regex(/^[A-Z0-9][A-Z0-9_-]*$/, "reply key must use uppercase letters, digits, underscores, or hyphens");
-var relativeWriteScope = nonempty3.refine((value) => value === "." || isSafeRelativePath(value), "write path must be relative and cannot traverse to a parent");
-var relativeReadScope = nonempty3.refine((value) => isSafeRelativePath(value), "read path must be a specific relative path and cannot traverse to a parent");
-var relativeExcludeScope = nonempty3.refine((value) => isSafeRelativePath(value), "excluded path must be relative and cannot traverse to a parent");
-var uniqueNonemptyList = exports_external.array(nonempty3).min(1).superRefine((values, context) => {
+var relativeWriteScope = nonempty4.refine((value) => value === "." || isSafeRelativePath(value), "write path must be relative and cannot traverse to a parent");
+var relativeReadScope = nonempty4.refine((value) => isSafeRelativePath(value), "read path must be a specific relative path and cannot traverse to a parent");
+var relativeExcludeScope = nonempty4.refine((value) => isSafeRelativePath(value), "excluded path must be relative and cannot traverse to a parent");
+var uniqueNonemptyList = exports_external.array(nonempty4).min(1).superRefine((values, context) => {
   if (new Set(values).size !== values.length) {
     context.addIssue({ code: "custom", message: "values must be unique" });
   }
@@ -15051,14 +15131,14 @@ var uniqueWritePaths = exports_external.array(relativeWriteScope).min(1).superRe
 var positiveInteger = exports_external.number().int().positive();
 var PendingDecisionSchema = exports_external.object({
   id: missionId2,
-  label: nonempty3,
-  proposal: nonempty3,
+  label: nonempty4,
+  proposal: nonempty4,
   status: exports_external.literal("pending"),
   options: exports_external.array(exports_external.object({
     replyKey,
-    label: nonempty3,
-    immediateResult: nonempty3,
-    tradeoff: nonempty3
+    label: nonempty4,
+    immediateResult: nonempty4,
+    tradeoff: nonempty4
   }).strict()).min(2).max(4).superRefine((options, context) => {
     const keys = options.map((option) => option.replyKey);
     if (new Set(keys).size !== keys.length) {
@@ -15080,11 +15160,11 @@ var PendingDecisionSchema = exports_external.object({
   }
 });
 var CandidateWorktreeSchema = exports_external.object({
-  rootRef: nonempty3.regex(/^environment:[A-Z][A-Z0-9_]*$/, "candidate worktree rootRef must name an environment-owned variable"),
+  rootRef: nonempty4.regex(/^environment:[A-Z][A-Z0-9_]*$/, "candidate worktree rootRef must name an environment-owned variable"),
   binding: exports_external.literal("operator-selected-at-launch")
 }).strict();
 var ExternalProviderSchema = exports_external.object({
-  name: nonempty3,
+  name: nonempty4,
   boundary: exports_external.literal("external")
 }).strict();
 var ExternalDisclosureSchema = exports_external.object({
@@ -15126,8 +15206,8 @@ var MissionExecutionProposalCommonShape = {
   proposalId: missionId2,
   mode: exports_external.literal("supervised"),
   status: exports_external.literal("awaiting-principal-authorization"),
-  runtimeRef: nonempty3,
-  runtimeDigest: digest2,
+  runtimeRef: nonempty4,
+  runtimeDigest: digest3,
   externalProvider: ExternalProviderSchema,
   externalDisclosure: ExternalDisclosureSchema,
   candidateWorktree: CandidateWorktreeSchema,
@@ -15153,8 +15233,8 @@ var MissionExecutionProposalSchema = exports_external.discriminatedUnion("versio
   }).strict()
 ]);
 var MissionExecutionBoundarySchema = exports_external.object({
-  runtimeRef: nonempty3,
-  runtimeDigest: digest2,
+  runtimeRef: nonempty4,
+  runtimeDigest: digest3,
   externalProvider: ExternalProviderSchema,
   externalDisclosure: ExternalDisclosureSchema,
   candidateWorktree: CandidateWorktreeSchema,
@@ -15166,7 +15246,7 @@ var MissionExecutionBoundarySchema = exports_external.object({
 }).strict();
 function missionExecutionProposalDigest(proposal) {
   const validated = MissionExecutionProposalSchema.parse(proposal);
-  return createHash2("sha256").update(JSON.stringify(canonical(validated))).digest("hex");
+  return createHash3("sha256").update(JSON.stringify(canonical(validated))).digest("hex");
 }
 function isSafeRelativePath(value) {
   if (value.startsWith("/") || value.includes("\\") || value.includes("\x00"))
@@ -15192,7 +15272,7 @@ var dispositions = new Set(["integrate", "no-change", "abandon"]);
 function now2() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
-function nonempty4(value, label) {
+function nonempty5(value, label) {
   if (typeof value !== "string" || !value.trim())
     throw new Error(`${label} must be a non-empty string`);
   return value;
@@ -15206,7 +15286,7 @@ function stringList(value, label, minimum = 0) {
   return value;
 }
 function validId(value, label) {
-  const id = nonempty4(value, label);
+  const id = nonempty5(value, label);
   if (!idPattern.test(id))
     throw new Error(`${label} must use lowercase letters, digits, and hyphens`);
   return id;
@@ -15222,12 +15302,12 @@ function validateMission(value) {
   if (record2.version !== "mission-record.v1")
     throw new Error("version must be mission-record.v1");
   validId(record2.id, "id");
-  nonempty4(record2.title, "title");
+  nonempty5(record2.title, "title");
   const sources = stringList(record2.sources, "sources", 1);
   if (new Set(sources).size !== sources.length)
     throw new Error("sources must be unique");
-  nonempty4(record2.createdAt, "createdAt");
-  nonempty4(record2.updatedAt, "updatedAt");
+  nonempty5(record2.createdAt, "createdAt");
+  nonempty5(record2.updatedAt, "updatedAt");
   if (record2.executionProposal !== undefined) {
     const result = MissionExecutionProposalSchema.safeParse(record2.executionProposal);
     if (!result.success) {
@@ -15238,7 +15318,7 @@ function validateMission(value) {
     throw new Error("mainline must be an object");
   }
   const mainline = record2.mainline;
-  nonempty4(mainline.contradiction, "mainline.contradiction");
+  nonempty5(mainline.contradiction, "mainline.contradiction");
   stringList(mainline.acceptance, "mainline.acceptance", 1);
   if (mainline.status !== "active" && mainline.status !== "settled") {
     throw new Error("mainline.status must be active or settled");
@@ -15262,8 +15342,8 @@ function validateMission(value) {
     byId.set(id, branch);
     if (!branchKinds.has(branch.kind))
       throw new Error(`branch ${id} has an invalid kind`);
-    nonempty4(branch.purpose, `branch ${id}.purpose`);
-    nonempty4(branch.returnCondition, `branch ${id}.returnCondition`);
+    nonempty5(branch.purpose, `branch ${id}.purpose`);
+    nonempty5(branch.returnCondition, `branch ${id}.returnCondition`);
     const branchSources = stringList(branch.sources, `branch ${id}.sources`, 1);
     if (new Set(branchSources).size !== branchSources.length) {
       throw new Error(`branch ${id}.sources must be unique`);
@@ -15275,12 +15355,12 @@ function validateMission(value) {
       throw new Error(`branch ${id}.parent must be mainline or a branch ID`);
     }
     if (branch.status === "suspended")
-      nonempty4(branch.reactivationSignal, `branch ${id}.reactivationSignal`);
+      nonempty5(branch.reactivationSignal, `branch ${id}.reactivationSignal`);
     if (branch.status === "closed") {
       if (!dispositions.has(branch.disposition)) {
         throw new Error(`closed branch ${id} needs an allowed disposition`);
       }
-      nonempty4(branch.mainlineDelta, `closed branch ${id}.mainlineDelta`);
+      nonempty5(branch.mainlineDelta, `closed branch ${id}.mainlineDelta`);
     }
   }
   for (const [id, branch] of byId) {
@@ -15625,30 +15705,30 @@ function runMissionCommand(rawArguments) {
 }
 
 // src/execution-authorization.ts
-var nonempty5 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
+var nonempty6 = exports_external.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
 var missionId3 = exports_external.string().regex(/^[a-z0-9][a-z0-9-]*$/);
-var digest3 = exports_external.string().regex(/^[0-9a-f]{64}$/);
+var digest4 = exports_external.string().regex(/^[0-9a-f]{64}$/);
 var structuredRef = exports_external.string().regex(/^[a-z][a-z0-9-]*:[^\s]+$/, "must be a structured reference such as conversation:thread/turn");
 var principalRef = exports_external.string().regex(/^principal:[^\s]+$/, "must identify the authorizing Principal as principal:<identity>");
 var ExecutionBoundarySchema = MissionExecutionBoundarySchema;
 var AuthorizedChoiceSchema = exports_external.object({
   decisionId: missionId3,
-  replyKey: nonempty5
+  replyKey: nonempty6
 }).strict();
 var ImmediateAuthorizedResultSchema = exports_external.object({
   decisionId: missionId3,
-  result: nonempty5
+  result: nonempty6
 }).strict();
 var ExecutionAuthorizationReceiptBaseShape = {
   authorizationId: exports_external.string().uuid(),
-  projectId: nonempty5,
+  projectId: nonempty6,
   missionId: missionId3,
   missionSource: exports_external.object({
-    path: nonempty5,
+    path: nonempty6,
     gitHead: exports_external.string().regex(/^[0-9a-f]{40,64}$/)
   }).strict(),
   proposalId: missionId3,
-  proposalDigest: digest3,
+  proposalDigest: digest4,
   choices: exports_external.array(AuthorizedChoiceSchema).min(1),
   immediateAuthorizedResults: exports_external.array(ImmediateAuthorizedResultSchema).min(1),
   executionBoundary: ExecutionBoundarySchema,
@@ -15667,7 +15747,7 @@ var ExecutionAuthorizationReceiptBaseShape = {
   actorRef: principalRef,
   sourceRef: structuredRef,
   attributionBoundary: exports_external.literal("references-are-attribution-not-authentication"),
-  authorizedAt: nonempty5
+  authorizedAt: nonempty6
 };
 var PrincipalWorkbenchActionSchema = exports_external.object({
   requestId: exports_external.string().uuid(),
@@ -15695,7 +15775,7 @@ var ExecutionAuthorizationReceiptSchema = exports_external.discriminatedUnion("v
 function executionAuthorizationReceiptPath(home, projectId, missionIdArgument, proposalIdArgument) {
   const checkedMissionId = missionId3.parse(missionIdArgument);
   const checkedProposalId = missionId3.parse(proposalIdArgument);
-  const projectKey = createHash3("sha256").update(projectId).digest("hex");
+  const projectKey = createHash4("sha256").update(projectId).digest("hex");
   return join7(home, "receipts", "execution-authorizations", projectKey, checkedMissionId, `${checkedProposalId}.json`);
 }
 function inspectExecution(homeArgument, projectArgument, missionIdArgument) {
@@ -15736,7 +15816,7 @@ function inspectExecution(homeArgument, projectArgument, missionIdArgument) {
 function authorizeExecution(homeArgument, arguments_, now3 = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z")) {
   const context = loadExecutionProposalContext(homeArgument, arguments_.project, arguments_.missionId);
   const checkedProposalId = missionId3.parse(arguments_.proposalId);
-  const suppliedDigest = digest3.parse(arguments_.proposalDigest);
+  const suppliedDigest = digest4.parse(arguments_.proposalDigest);
   const actorRef = principalRef.parse(arguments_.actorRef);
   const sourceRef = structuredRef.parse(arguments_.sourceRef);
   const proposal = context.proposal;
@@ -15928,6 +16008,7 @@ function inspectAuthorizationEvidence(context) {
       claimedAt: claim.claimedAt,
       candidateWorktree: claim.localEvidence.worktree,
       candidateHead: claim.localEvidence.gitHead,
+      workbenchTaskContext: claim.workbenchTaskContext ?? null,
       evidenceBoundary: "proves-one-launch-authorization-consumed-only"
     },
     evidenceIssue: null
@@ -16034,7 +16115,7 @@ function persistNewReceipt(path, receipt) {
 }
 
 // src/hooks.ts
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 import {
   appendFileSync,
   existsSync as existsSync7,
@@ -16047,7 +16128,7 @@ import { dirname as dirname6, isAbsolute as isAbsolute3, relative as relative4, 
 import { fileURLToPath } from "node:url";
 
 // src/interventions.ts
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 import { existsSync as existsSync6, readFileSync as readFileSync4, readdirSync as readdirSync2 } from "node:fs";
 import { join as join8, resolve as resolve3 } from "node:path";
 var ObservationSchema = exports_external.object({
@@ -16079,17 +16160,17 @@ var HookPayloadSchema = exports_external.object({
 function now3() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
-function digest4(value) {
-  return createHash4("sha256").update(value).digest("hex");
+function digest5(value) {
+  return createHash5("sha256").update(value).digest("hex");
 }
 function stateRoot(value, homeArgument) {
   return value ? expandPath(value) : join8(resolveHome(homeArgument), "state", "interventions");
 }
 function workspaceKey(cwd) {
-  return digest4(resolve3(cwd)).slice(0, 24);
+  return digest5(resolve3(cwd)).slice(0, 24);
 }
 function statePath(root, cwd, sessionId) {
-  return join8(root, workspaceKey(cwd), `${digest4(sessionId).slice(0, 32)}.json`);
+  return join8(root, workspaceKey(cwd), `${digest5(sessionId).slice(0, 32)}.json`);
 }
 function readState(path) {
   if (!existsSync6(path))
@@ -16099,7 +16180,7 @@ function readState(path) {
 function stateForSession(root, sessionId) {
   if (!existsSync6(root))
     throw new Error(`no observed intervention session: ${sessionId}`);
-  const filename = `${digest4(sessionId).slice(0, 32)}.json`;
+  const filename = `${digest5(sessionId).slice(0, 32)}.json`;
   const states = readdirSync2(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => join8(root, entry.name, filename)).filter(existsSync6);
   if (states.length === 0)
     throw new Error(`no observed intervention session: ${sessionId}`);
@@ -16179,7 +16260,7 @@ function runInterventionCommand(raw, stdin = "", homeArgument) {
     const observation = {
       turnId: payload.turn_id,
       at: now3(),
-      promptSha256: digest4(payload.prompt),
+      promptSha256: digest5(payload.prompt),
       promptBytes: Buffer.byteLength(payload.prompt)
     };
     state.observations = [...state.observations, observation].slice(-50);
@@ -16305,11 +16386,11 @@ function currentInvocation() {
 function shellQuote(value) {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
-function digest5(value) {
-  return createHash5("sha256").update(value).digest("hex");
+function digest6(value) {
+  return createHash6("sha256").update(value).digest("hex");
 }
 function sessionStatePath(platform, id) {
-  const identity = digest5(`${repositoryRoot}\x00${platform}\x00${id}`).slice(0, 40);
+  const identity = digest6(`${repositoryRoot}\x00${platform}\x00${id}`).slice(0, 40);
   return resolve4(tmpdir(), "rossovia-hooks", "artifact-consistency", `${identity}.jsonl`);
 }
 function readPaths(path) {
@@ -16462,12 +16543,12 @@ function createPrincipalTask(homeArgument, arguments_) {
   const timestamp = now4();
   const task = {
     id: randomUUID3(),
-    title: nonempty6(arguments_.title, "task title"),
-    objective: nonempty6(arguments_.objective, "task objective"),
+    title: nonempty7(arguments_.title, "task title"),
+    objective: nonempty7(arguments_.objective, "task objective"),
     acceptance: nonemptyList(arguments_.acceptance, "task acceptance"),
     origin: {
       kind: "principal-explicit",
-      sourceRef: nonempty6(arguments_.sourceRef, "task source ref")
+      sourceRef: nonempty7(arguments_.sourceRef, "task source ref")
     },
     binding: bindingFor(current, arguments_.project, arguments_.worktree, arguments_.mission),
     lifecycle: "open",
@@ -16502,8 +16583,8 @@ function correctPrincipalTask(homeArgument, arguments_) {
     task.corrections.push({
       id: randomUUID3(),
       at: timestamp,
-      statement: nonempty6(arguments_.statement, "task correction"),
-      sourceRef: nonempty6(arguments_.sourceRef, "task correction source ref"),
+      statement: nonempty7(arguments_.statement, "task correction"),
+      sourceRef: nonempty7(arguments_.sourceRef, "task correction source ref"),
       deliveries: []
     });
     task.lifecycle = "open";
@@ -16519,10 +16600,10 @@ function submitPrincipalTaskResult(homeArgument, arguments_) {
     task.resultClaims.push({
       id: randomUUID3(),
       submittedAt: timestamp,
-      summary: nonempty6(arguments_.summary, "task result summary"),
+      summary: nonempty7(arguments_.summary, "task result summary"),
       evidenceRefs: nonemptyList(arguments_.evidenceRefs, "task result evidence"),
       evidence: PrincipalTaskResultEvidenceSchema.parse(arguments_.evidence ?? { kind: "agent-references-unverified" }),
-      sourceRef: nonempty6(arguments_.sourceRef, "task result source ref"),
+      sourceRef: nonempty7(arguments_.sourceRef, "task result source ref"),
       standing: "submitted",
       resolution: null
     });
@@ -16550,7 +16631,7 @@ function acceptPrincipalTaskResult(homeArgument, arguments_) {
     claim.resolution = {
       kind: "accepted",
       at: timestamp,
-      sourceRef: nonempty6(arguments_.sourceRef, "task acceptance source ref"),
+      sourceRef: nonempty7(arguments_.sourceRef, "task acceptance source ref"),
       acceptanceBoundary: "workbench-local-task-only",
       basis: claim.evidence.kind === "runtime-verified-effect" ? "runtime-verified-effect" : "agent-claim"
     };
@@ -16566,8 +16647,8 @@ function reopenPrincipalTask(homeArgument, arguments_) {
     task.corrections.push({
       id: randomUUID3(),
       at: timestamp,
-      statement: nonempty6(arguments_.statement, "task reopen statement"),
-      sourceRef: nonempty6(arguments_.sourceRef, "task reopen source ref"),
+      statement: nonempty7(arguments_.statement, "task reopen statement"),
+      sourceRef: nonempty7(arguments_.sourceRef, "task reopen source ref"),
       deliveries: []
     });
     task.lifecycle = "open";
@@ -16575,7 +16656,7 @@ function reopenPrincipalTask(homeArgument, arguments_) {
   });
 }
 function linkPrincipalTaskExecution(homeArgument, arguments_) {
-  return mutateTask(homeArgument, arguments_, (task, timestamp, home) => {
+  return mutateTask(homeArgument, arguments_, (task, timestamp, home, source) => {
     if (task.binding.kind !== "project-context" || task.binding.missionId === undefined) {
       throw new PrincipalTaskError("invalid-transition", `task ${task.id} requires exact registered project and Mission context before execution can be linked`);
     }
@@ -16609,12 +16690,20 @@ function linkPrincipalTaskExecution(homeArgument, arguments_) {
     if (validated.projectId !== task.binding.projectId || validated.missionId !== task.binding.missionId) {
       throw new Error(`execution authorization does not belong to task ${task.id} project and Mission context`);
     }
+    const expectedTaskContext = workbenchTaskExecutionContextRef(workbenchTaskExecutionContextFor(task, {
+      authorizationId: validated.authorizationId,
+      proposalDigest: validated.proposalDigest
+    }));
+    if (claim.workbenchTaskContext === undefined || !sameWorkbenchTaskExecutionContextRef(claim.workbenchTaskContext, expectedTaskContext)) {
+      throw new PrincipalTaskError("invalid-transition", `execution authorization ${validated.authorizationId} was not consumed for the exact current context of task ${task.id}`);
+    }
     task.executionLinks.push({
       authorizationId: validated.authorizationId,
       proposalDigest: validated.proposalDigest,
       claimSourceRef: relative5(home, claimPath),
+      taskContext: expectedTaskContext,
       linkedAt: timestamp,
-      sourceRef: nonempty6(arguments_.sourceRef, "task execution link source ref")
+      sourceRef: nonempty7(arguments_.sourceRef, "task execution link source ref")
     });
   });
 }
@@ -16624,7 +16713,7 @@ function rebindPrincipalTaskWorktree(homeArgument, arguments_) {
     if (task.binding.kind !== "project-context" || task.binding.missionId === undefined || task.binding.worktreePath === undefined) {
       throw new Error(`task ${task.id} requires exact registered project, Mission, and current Worktree context before Worktree rebinding`);
     }
-    const expectedWorktreePath = nonempty6(arguments_.expectedWorktreePath, "expected task Worktree path");
+    const expectedWorktreePath = nonempty7(arguments_.expectedWorktreePath, "expected task Worktree path");
     if (task.binding.worktreePath !== expectedWorktreePath) {
       throw new PrincipalTaskError("task-drift", `task Worktree is stale for ${task.id}: expected ${expectedWorktreePath}, current ${task.binding.worktreePath}`);
     }
@@ -16642,7 +16731,7 @@ function rebindPrincipalTaskWorktree(homeArgument, arguments_) {
       fromWorktreePath: task.binding.worktreePath,
       toWorktreePath,
       reboundAt: timestamp,
-      sourceRef: nonempty6(arguments_.sourceRef, "task Worktree rebind source ref")
+      sourceRef: nonempty7(arguments_.sourceRef, "task Worktree rebind source ref")
     });
     task.binding.worktreePath = toWorktreePath;
   });
@@ -16656,7 +16745,7 @@ function mutateTask(homeArgument, expectation, change) {
     throw new PrincipalTaskError("task-drift", `task revision is stale for ${task.id}: expected ${expectation.expectedRevision}, current ${task.revision}`);
   }
   const timestamp = now4();
-  change(task, timestamp, current.home);
+  change(task, timestamp, current.home, source);
   task.revision += 1;
   task.updatedAt = timestamp;
   source.sourceRevision += 1;
@@ -16688,6 +16777,7 @@ function readPrincipalTaskSource(homeArgument) {
 }
 function validatePrincipalTasks(source, projectIds) {
   const taskIds = new Set;
+  const executionAuthorizationOwners = new Map;
   for (const task of source.tasks) {
     const taskKey = task.id.toLowerCase();
     if (taskIds.has(taskKey))
@@ -16718,6 +16808,11 @@ function validatePrincipalTasks(source, projectIds) {
         throw new Error(`duplicate Principal task ${task.id} execution authorization: ${link.authorizationId}`);
       }
       authorizationIds.add(link.authorizationId);
+      const priorOwner = executionAuthorizationOwners.get(link.authorizationId);
+      if (priorOwner !== undefined) {
+        throw new Error(`execution authorization ${link.authorizationId} is linked to both Principal task ${priorOwner} and ${task.id}`);
+      }
+      executionAuthorizationOwners.set(link.authorizationId, task.id);
     }
   }
   return source;
@@ -16764,7 +16859,7 @@ function bindingFor(current, projectQuery, worktreeArgument, missionArgument) {
   };
 }
 function primaryMissionContext(primaryWorkspace, missionArgument) {
-  const missionId4 = nonempty6(missionArgument, "task Mission context");
+  const missionId4 = nonempty7(missionArgument, "task Mission context");
   if (!/^[a-z0-9][a-z0-9-]*$/u.test(missionId4)) {
     throw new Error("task Mission context must use lowercase letters, digits, and hyphens");
   }
@@ -16787,7 +16882,7 @@ function observedWorktree(primaryWorkspace, worktreeArgument) {
   return canonical3;
 }
 function taskById(source, idArgument) {
-  const id = nonempty6(idArgument, "task id");
+  const id = nonempty7(idArgument, "task id");
   const folded = id.toLowerCase();
   const matches = source.tasks.filter((task) => task.id.toLowerCase() === folded);
   if (matches.length === 0) {
@@ -16824,7 +16919,7 @@ function supersedeSubmittedClaim(task, timestamp, reason) {
     reason
   };
 }
-function nonempty6(value, label) {
+function nonempty7(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
@@ -16833,7 +16928,7 @@ function nonempty6(value, label) {
 function nonemptyList(values, label) {
   if (values.length === 0)
     throw new Error(`${label} must contain at least one item`);
-  return values.map((value) => nonempty6(value, label));
+  return values.map((value) => nonempty7(value, label));
 }
 function sameRuntimeVerificationSelector(left, right) {
   return left.kind === right.kind && left.effectId === right.effectId && left.verificationEventId === right.verificationEventId;
@@ -16913,7 +17008,7 @@ function executeTaskOperation(fallback, operation) {
 }
 
 // src/migration.ts
-import { createHash as createHash6 } from "node:crypto";
+import { createHash as createHash7 } from "node:crypto";
 import {
   cpSync,
   existsSync as existsSync9,
@@ -16925,8 +17020,8 @@ import {
   writeFileSync as writeFileSync3
 } from "node:fs";
 import { join as join10 } from "node:path";
-function digest6(path) {
-  return createHash6("sha256").update(readFileSync7(path)).digest("hex");
+function digest7(path) {
+  return createHash7("sha256").update(readFileSync7(path)).digest("hex");
 }
 function migrateRecord(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -17131,8 +17226,8 @@ function migrateLegacyHome(homeArgument, fromHomeArgument) {
     }
   }
   validateLegacySource(source);
-  const sourceManifestDigest = digest6(sourceManifest);
-  const sourceProjectsDigest = digest6(sourceProjects);
+  const sourceManifestDigest = digest7(sourceManifest);
+  const sourceProjectsDigest = digest7(sourceProjects);
   let verifiedProjectId = null;
   const marker = prepareMigrationTarget(source, target);
   try {
@@ -17185,10 +17280,10 @@ function migrateLegacyHome(homeArgument, fromHomeArgument) {
 }
 
 // src/preferences.ts
-import { createHash as createHash7 } from "node:crypto";
+import { createHash as createHash8 } from "node:crypto";
 import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync8, renameSync as renameSync3, rmSync as rmSync5, writeFileSync as writeFileSync4 } from "node:fs";
 import { dirname as dirname7, join as join11 } from "node:path";
-function nonempty7(value, label) {
+function nonempty8(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
@@ -17211,8 +17306,8 @@ function canonical3(value) {
   }
   return value;
 }
-function digest7(preference) {
-  return createHash7("sha256").update(JSON.stringify(canonical3(preference))).digest("hex");
+function digest8(preference) {
+  return createHash8("sha256").update(JSON.stringify(canonical3(preference))).digest("hex");
 }
 function validateReceiptStream(value) {
   for (const [index, line] of value.split(/\r?\n/).entries()) {
@@ -17249,7 +17344,7 @@ function commitPreferenceChange(home, source, action, preference) {
     action,
     id: preference.id,
     projectId: preference.projectId ?? null,
-    recordDigest: digest7(preference)
+    recordDigest: digest8(preference)
   };
   const nextSource = `${JSON.stringify(source, null, 2)}
 `;
@@ -17292,9 +17387,9 @@ function setPreference(homeArgument, arguments_) {
   const current = loadHome(homeArgument);
   const preferences = loadPreferences(current.home, new Set(current.projects.projects.map((project) => project.id)));
   const projectId = projectIdFor(current.projects, arguments_.project);
-  const id = nonempty7(arguments_.id, "preference id");
-  const statement = nonempty7(arguments_.statement, "preference statement");
-  const reopenWhen = arguments_.reopenWhen === undefined ? undefined : nonempty7(arguments_.reopenWhen, "reopen condition");
+  const id = nonempty8(arguments_.id, "preference id");
+  const statement = nonempty8(arguments_.statement, "preference statement");
+  const reopenWhen = arguments_.reopenWhen === undefined ? undefined : nonempty8(arguments_.reopenWhen, "reopen condition");
   const previous = preferences.preferences.find((preference2) => preference2.id.toLowerCase() === id.toLowerCase() && preference2.projectId === projectId);
   const timestamp = now5();
   const preference = {
@@ -17350,7 +17445,7 @@ function retirePreference(homeArgument, arguments_) {
   const current = loadHome(homeArgument);
   const preferences = loadPreferences(current.home, new Set(current.projects.projects.map((project) => project.id)));
   const projectId = projectIdFor(current.projects, arguments_.project);
-  const id = nonempty7(arguments_.id, "preference id");
+  const id = nonempty8(arguments_.id, "preference id");
   const preference = preferences.preferences.find((entry) => entry.id.toLowerCase() === id.toLowerCase() && entry.projectId === projectId);
   if (!preference)
     throw new Error(`no ${scopeFor(projectId)} preference matches '${id}' for ${projectId ?? "all projects"}`);
@@ -17362,7 +17457,7 @@ function retirePreference(homeArgument, arguments_) {
 
 // src/register.ts
 import { basename as basename2, join as join12 } from "node:path";
-function nonempty8(value, label) {
+function nonempty9(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
@@ -17377,8 +17472,8 @@ function registerProject(homeArgument, arguments_) {
   const current = loadHome(homeArgument);
   const root = gitRoot(arguments_.path);
   const repository = repositoryLocator(requiredGit(["remote", "get-url", "origin"], root));
-  const additions = [basename2(root), repositoryBasename(repository), ...arguments_.aliases].map((alias) => nonempty8(alias, "alias"));
-  const projectId = nonempty8(arguments_.id, "project id");
+  const additions = [basename2(root), repositoryBasename(repository), ...arguments_.aliases].map((alias) => nonempty9(alias, "alias"));
+  const projectId = nonempty9(arguments_.id, "project id");
   let project = current.projects.projects.find((entry) => entry.id === projectId);
   if (!project) {
     project = { id: projectId, repository, aliases: [] };
@@ -17403,7 +17498,7 @@ function registerProject(homeArgument, arguments_) {
 }
 
 // src/resolve.ts
-function nonempty9(value, label) {
+function nonempty10(value, label) {
   const normalized = value.trim();
   if (!normalized)
     throw new Error(`${label} must be a non-empty string`);
@@ -17414,7 +17509,7 @@ function fold2(value) {
 }
 function resolveProject(homeArgument, queryArgument) {
   const { home, projects, workspaces } = loadHome(homeArgument);
-  const query = nonempty9(queryArgument, "query");
+  const query = nonempty10(queryArgument, "query");
   const folded = fold2(query);
   const matches = projects.projects.filter((project2) => fold2(project2.id) === folded || project2.aliases.some((alias) => fold2(alias) === folded));
   if (matches.length > 1)
@@ -17528,7 +17623,7 @@ function scanRoots(home, roots) {
 }
 
 // src/setup.ts
-import { createHash as createHash8, randomUUID as randomUUID4 } from "node:crypto";
+import { createHash as createHash9, randomUUID as randomUUID4 } from "node:crypto";
 import { existsSync as existsSync12, mkdirSync as mkdirSync6, readFileSync as readFileSync9, renameSync as renameSync4, rmSync as rmSync6, writeFileSync as writeFileSync5 } from "node:fs";
 import { dirname as dirname8, join as join15, relative as relative6, resolve as resolve5 } from "node:path";
 
@@ -17660,8 +17755,8 @@ function moduleStatus(home, entry, sourceRoot, sourceRevision, targetRoot) {
   }
   const changes = applicableChanges(sourceRoot, receipt.sourceRevision, sourceRevision);
   const current = readManagedBlock(path, projection.startMarker, projection.endMarker);
-  const drifted = current === null || digest8(current) !== receipt.projectionDigest;
-  const desiredChanged = receipt.projectionDigest !== digest8(projection.content);
+  const drifted = current === null || digest9(current) !== receipt.projectionDigest;
+  const desiredChanged = receipt.projectionDigest !== digest9(projection.content);
   if (drifted) {
     return statusResult(entry, desiredChanged || changes.length > 0 ? "conflict" : "drifted", sourceRevision, receipt.sourceRevision, path, changes);
   }
@@ -17688,7 +17783,7 @@ function applyModule(home, entry, sourceRoot, sourceRevision, targetRoot) {
   }
   const existing = existsSync12(path) ? readFileSync9(path, "utf8") : "";
   const current = readManagedBlockFromText(existing, projection.startMarker, projection.endMarker);
-  if (receipt && (current === null || digest8(current) !== receipt.projectionDigest)) {
+  if (receipt && (current === null || digest9(current) !== receipt.projectionDigest)) {
     throw new Error(`setup projection drift requires reconciliation before apply: ${path}. ` + "Rossovia will not overwrite a missing or locally changed managed block.");
   }
   if (!receipt && current !== null) {
@@ -17707,7 +17802,7 @@ function applyModule(home, entry, sourceRoot, sourceRevision, targetRoot) {
     sourceRevision,
     sourceRoot,
     projectionPath: path,
-    projectionDigest: digest8(projection.content),
+    projectionDigest: digest9(projection.content),
     appliedAt: now6(),
     rollbackPath
   };
@@ -17822,8 +17917,8 @@ function resolveGitPathOutput(args, value) {
 function gitSucceeds(cwd, args) {
   return runCommand("git", args, { cwd, quiet: true }).exitCode === 0;
 }
-function digest8(value) {
-  return createHash8("sha256").update(value).digest("hex");
+function digest9(value) {
+  return createHash9("sha256").update(value).digest("hex");
 }
 function now6() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");

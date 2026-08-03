@@ -83,7 +83,7 @@ skill 则是在具体语境中对所选条目的表达。
 | [`skills/`](skills/) | 当前可安装的方法论与行为表达 | 它们所表达的语义来源 |
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
 | [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
-| [`operations/autonomy/`](operations/autonomy/) | 实验性的本地受监督 Mission 机制，负责有序输入、有边界 turn、委派、对账与恢复 | 已接受的自治运行、任务发现、可写 effect、远程权威、发布或合并 |
+| [`operations/autonomy/`](operations/autonomy/) | 实验性的本地受监督 Mission 机制，负责有序输入、有边界 turn、委派、对账、恢复，以及一个被显式准入的 Blog 隔离 worktree 可写试验 | 已接受的自治运行、任务发现、通用或共享 worktree 可写 effect 权威、远程权威、发布或合并 |
 | [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位与显式的用户/项目偏好 | 任务调度、推断偏好、目标项目事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
@@ -143,7 +143,9 @@ Git、prompt、模型和任务定位都不进入核心。项目认知和 Rossovi
 [`operations/autonomy`](operations/autonomy/README.md) 是项目本地的受监督
 Mission 实验。已经实现的 first slice 会保留有序的人类输入、有边界的 Agent
 turn、委派证据、对账与本地恢复。只读路径和正常重启下的机制主张已有带边界的
-支持；可写 effect、自治完成、远程权威与生产优势仍未得到证明。在
+支持。一个针对 Blog 的精确受监督机制已经实现并完成机械验证：它只允许在隔离
+Git worktree 中运行一个有守卫的可写 Cell。这不证明通用或共享 worktree 可写
+effect、自治完成、远程权威、集成、发布、产品验收或生产优势。在
 [Principal 结算](design/organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
 中，它被认定为活跃但有边界的实验能力；普通运行模式仍由人发起。
 

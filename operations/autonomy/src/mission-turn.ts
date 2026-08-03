@@ -1,6 +1,7 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { TaskSchema, UsageSchema } from "../../../packages/work-cell/src/contracts";
+import { WorkbenchTaskExecutionContextRefSchema } from "../../workbench/src/task-execution-context";
 import { DelegateResultReadReceiptSchema } from "./delegate-loop";
 import type { MissionExecutionOutcome } from "./mission-execution-host";
 
@@ -40,6 +41,7 @@ export const MissionTurnStartSchema = z.object({
   anchorDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   sourceRefs: z.array(z.string().min(1)).min(1),
   launchAuthorizationRef: LaunchAuthorizationRefSchema.optional(),
+  workbenchTaskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
   guidanceRefs: z.array(TurnGuidanceRefSchema).optional(),
 }).strict().superRefine((turn, context) => {
   if (

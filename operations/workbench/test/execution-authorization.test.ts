@@ -380,6 +380,7 @@ describe("local Principal execution authorization", () => {
         claimedAt: "2026-07-26T11:00:00Z",
         candidateWorktree: realpathSync(repository),
         candidateHead: receipt.missionSource.gitHead,
+        workbenchTaskContext: null,
         evidenceBoundary: "proves-one-launch-authorization-consumed-only",
       },
       evidenceIssue: null,

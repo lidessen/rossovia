@@ -41,9 +41,11 @@ and collaborative editing are later capabilities.
 
 ## First content-model contract
 
-The first implementation keeps one portable domain contract between D1,
-deterministic projection, and the later reader/studio UI. `db/schema.ts`
-exports six distinct Drizzle tables:
+This section specifies the pending first candidate contract; the checked-in
+pre-implementation shell does not implement it yet. That candidate would keep
+one portable domain contract between D1, deterministic projection, and the
+later reader/studio UI. `db/schema.ts` would export six distinct Drizzle
+tables:
 
 - `posts`: stable post identity, slug, and author;
 - `publicationRevisions`: immutable title, thesis, body, and publication time
@@ -57,7 +59,7 @@ exports six distinct Drizzle tables:
 Canonical tables never depend on `projections`. A projection points toward its
 source revision; the reverse relation cannot make the projection canonical.
 
-`app/blog/content.ts` exports these black-box test ports:
+`app/blog/content.ts` would export these black-box test ports:
 
 ```ts
 interface PublishedRevision {
@@ -91,13 +93,13 @@ export function buildReadingField(
 ): ReadingField;
 ```
 
-The seed contains at least two claims, two sources, and one closed
-claim-to-source relation. Projection is pure and deterministic. Every derived
-statement carries non-empty claim and source references that resolve within
-the supplied revision and agree with its claim-to-source relations. Calling
-the projector with a later revision of the same post must bind the result to
-that later `revisionId`; it cannot return or relabel a projection built from
-the earlier revision.
+The candidate seed would contain at least two claims, two sources, and one
+closed claim-to-source relation. Projection would be pure and deterministic.
+Every derived statement would carry non-empty claim and source references that
+resolve within the supplied revision and agree with its claim-to-source
+relations. Calling the projector with a later revision of the same post would
+have to bind the result to that later `revisionId`; it could not return or
+relabel a projection built from the earlier revision.
 
 ## Authority map
 

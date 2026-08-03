@@ -236,6 +236,9 @@ export async function projectMissionActivity(
       ...(latestStart.data.start.launchAuthorizationRef === undefined
         ? {}
         : { launchAuthorizationRef: latestStart.data.start.launchAuthorizationRef }),
+      ...(latestStart.data.start.workbenchTaskContext === undefined
+        ? {}
+        : { workbenchTaskContext: latestStart.data.start.workbenchTaskContext }),
       ...(latestStart.data.start.guidanceRefs === undefined
         ? {}
         : { guidanceRefs: latestStart.data.start.guidanceRefs }),

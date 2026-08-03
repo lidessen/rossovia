@@ -15,9 +15,8 @@ import type {
   WorkItemSetProjection,
 } from "./work-items";
 import {
-  WORKBENCH_TASK_EXECUTION_CONTEXT_VERSION,
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
-  WorkbenchTaskExecutionContextSchema,
+  workbenchTaskExecutionContextFor,
 } from "./task-execution-context";
 
 export { WORKBENCH_TASK_EXECUTION_CONTEXT_ENV } from "./task-execution-context";
@@ -255,26 +254,9 @@ export function prepareTaskExecutionLaunch(
         ROSSO_BLOG_EFFECT_ROOT: launchCandidate.data.worktreePath,
         ROSSO_BLOG_AUTHORIZATION_RECEIPT: launchCandidate.data.receiptPath,
         [WORKBENCH_TASK_EXECUTION_CONTEXT_ENV]: JSON.stringify(
-          WorkbenchTaskExecutionContextSchema.parse({
-            version: WORKBENCH_TASK_EXECUTION_CONTEXT_VERSION,
-            taskId: task.id,
-            sourceRevision: detail.sourceRevision,
-            taskRevision: task.revision,
-            objective: task.objective,
-            acceptance: task.acceptance,
-            corrections: task.corrections.map((correction) => ({
-              id: correction.id,
-              statement: correction.statement,
-              sourceRef: correction.sourceRef,
-            })),
-            binding: {
-              projectId: task.binding.projectId,
-              missionId: task.binding.missionId,
-            },
-            execution: {
-              authorizationId: launchCandidate.data.authorizationId,
-              proposalDigest: launchCandidate.data.proposalDigest,
-            },
+          workbenchTaskExecutionContextFor(task, {
+            authorizationId: launchCandidate.data.authorizationId,
+            proposalDigest: launchCandidate.data.proposalDigest,
           }),
         ),
       },

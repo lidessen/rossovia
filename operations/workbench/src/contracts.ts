@@ -1,5 +1,6 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod";
+import { WorkbenchTaskExecutionContextRefSchema } from "./task-execution-context";
 
 const nonempty = z.string().refine((value) => value.trim().length > 0, "must be a non-empty string");
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
@@ -169,6 +170,7 @@ export const PrincipalTaskExecutionLinkSchema = z.object({
   authorizationId: z.string().uuid(),
   proposalDigest: sha256,
   claimSourceRef: relativeEvidenceRef,
+  taskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
   linkedAt: z.string().datetime({ offset: true }),
   sourceRef: nonempty,
 }).strict();

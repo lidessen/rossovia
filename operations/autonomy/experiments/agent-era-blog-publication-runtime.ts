@@ -15,10 +15,12 @@ import {
 import {
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
   WorkbenchTaskExecutionContextSchema,
+  sameWorkbenchTaskExecutionContextRef,
   workbenchTaskCorrectionGuidanceRefs,
   workbenchTaskExecutionContextDigest,
+  workbenchTaskExecutionContextRef,
   type WorkbenchTaskExecutionContext,
-} from "../../workbench/src/ui/task-execution-context";
+} from "../../workbench/src/task-execution-context";
 import {
   DelegateLoopSession,
   type DelegateCall,
@@ -372,6 +374,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       `proposal:${authorizationValidation.receipt.proposalId}@${authorizationValidation.receipt.proposalDigest}`,
     ],
     launchAuthorizationRef,
+    workbenchTaskContext: workbenchTaskExecutionContextRef(taskContext),
     guidanceRefs: workbenchTaskCorrectionGuidanceRefs(taskContext),
   };
 
@@ -447,7 +450,14 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
     observeInput: (input) => supervisor.observeInput(input),
     cancel: (reason) => abort.abort(reason),
   };
-  const authorization = claimProjectExecutionAuthorization(authorizationValidation);
+  const authorization = claimProjectExecutionAuthorization(
+    authorizationValidation,
+    {
+      binding: {
+        workbenchTaskContext: workbenchTaskExecutionContextRef(taskContext),
+      },
+    },
+  );
   if (relative(context.root, authorization.claimPath) !== launchAuthorizationRef.claimSourceRef) {
     throw new Error("execution authorization claim source changed after launch preflight");
   }
@@ -476,6 +486,7 @@ async function recoverSettledPublicationExecution(input: {
     proposalDigest: authorization.receipt.proposalDigest,
   });
   const turn = context.recovery.interruptedTurn;
+  const expectedTaskContext = workbenchTaskExecutionContextRef(taskContext);
   const expectedClaimSourceRef = relative(
     context.root,
     authorization.claimPath,
@@ -486,6 +497,16 @@ async function recoverSettledPublicationExecution(input: {
     || turn.launchAuthorizationRef.proposalDigest
       !== authorization.receipt.proposalDigest
     || turn.launchAuthorizationRef.claimSourceRef !== expectedClaimSourceRef
+    || turn.workbenchTaskContext === undefined
+    || authorization.workbenchTaskContext === null
+    || !sameWorkbenchTaskExecutionContextRef(
+      turn.workbenchTaskContext,
+      expectedTaskContext,
+    )
+    || !sameWorkbenchTaskExecutionContextRef(
+      authorization.workbenchTaskContext,
+      expectedTaskContext,
+    )
     || stableStringify(turn.guidanceRefs ?? [])
       !== stableStringify(workbenchTaskCorrectionGuidanceRefs(taskContext))
     || !turn.sourceRefs.includes(
