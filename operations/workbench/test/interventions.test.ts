@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const cli = join(repositoryRoot, "operations", "workbench", "dist", "rossovia.mjs");
+const sourceCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
@@ -31,6 +33,27 @@ function command(
 
 function workbench(...args: string[]) {
   return command(["node", cli, ...args]);
+}
+
+function commandAsync(argv: string[], stdin = ""): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(argv[0]!, argv.slice(1), { cwd: repositoryRoot, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("close", (code) => {
+      resolveResult({
+        exitCode: code ?? 1,
+        stdout,
+        stderr,
+      });
+    });
+    child.stdin.end(stdin);
+  });
 }
 
 describe("intervention reconciliation", () => {
@@ -68,6 +91,17 @@ describe("intervention reconciliation", () => {
     expect(status.exitCode).toBe(0);
     expect(JSON.parse(status.stdout)).toEqual(expect.objectContaining({
       observations: 1,
+      receipts: [expect.objectContaining({ affectedSurfaces: ["contracts", "tests"] })],
+    }));
+
+    const laterObservation = command(
+      ["node", cli, "intervention", "observe", "--state-root", stateRoot],
+      { stdin: JSON.stringify({ session_id: "session-1", turn_id: "turn-2", cwd: repositoryRoot, prompt: "later" }) },
+    );
+    expect(laterObservation.exitCode).toBe(0);
+    const laterStatus = workbench("intervention", "status", "--state-file", statePath);
+    expect(JSON.parse(laterStatus.stdout)).toEqual(expect.objectContaining({
+      observations: 2,
       receipts: [expect.objectContaining({ affectedSurfaces: ["contracts", "tests"] })],
     }));
 
@@ -119,6 +153,121 @@ describe("intervention reconciliation", () => {
     );
     expect(ambiguousSession.exitCode).toBe(2);
     expect(ambiguousSession.stderr).toContain("intervention session is ambiguous");
+  });
+
+  test("retains concurrent observations and receipts as append-only witnesses", async () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-intervention-concurrent-"));
+    temporaryRoots.push(temporary);
+    const stateRoot = join(temporary, "state");
+    const observation = command(
+      [process.execPath, sourceCli, "intervention", "observe", "--state-root", stateRoot],
+      { stdin: JSON.stringify({ session_id: "concurrent", cwd: repositoryRoot, prompt: "parallel" }) },
+    );
+    expect(observation.exitCode).toBe(0);
+    const statePath = JSON.parse(observation.stdout).statePath as string;
+    const receiptCount = 32;
+    const observationCount = 32;
+
+    const corrections = Array.from({ length: receiptCount }, (_, index) => commandAsync([
+      process.execPath,
+      sourceCli,
+      "correct",
+      "--state-file",
+      statePath,
+      "--rejected-assumption",
+      `assumption-${index}`,
+      "--new-invariant",
+      `invariant-${index}`,
+      "--affected-surface",
+      `surface-${index}`,
+      "--next-probe",
+      `probe-${index}`,
+    ]));
+    const observations = Array.from({ length: observationCount }, (_, index) => commandAsync([
+      process.execPath,
+      sourceCli,
+      "intervention",
+      "observe",
+      "--state-root",
+      stateRoot,
+    ], JSON.stringify({ session_id: "concurrent", cwd: repositoryRoot, prompt: `parallel-${index}` })));
+
+    const concurrent = await Promise.all([...corrections, ...observations]);
+
+    expect(concurrent.every((result) => result.exitCode === 0)).toBe(true);
+    const status = command([
+      process.execPath,
+      sourceCli,
+      "intervention",
+      "status",
+      "--state-file",
+      statePath,
+    ]);
+    expect(status.exitCode).toBe(0);
+    const projection = JSON.parse(status.stdout) as {
+      observations: number;
+      receipts: Array<{ rejectedAssumption: string }>;
+    };
+    const receipts = projection.receipts;
+    expect(projection.observations).toBe(observationCount + 1);
+    expect(receipts).toHaveLength(receiptCount);
+    expect(readdirSync(`${statePath}.observations`).filter((entry) => entry.endsWith(".json"))).toHaveLength(
+      observationCount + 1,
+    );
+    expect(readdirSync(`${statePath}.receipts`).filter((entry) => entry.endsWith(".json"))).toHaveLength(receiptCount);
+    expect(new Set(receipts.map((receipt) => receipt.rejectedAssumption))).toEqual(
+      new Set(Array.from({ length: receiptCount }, (_, index) => `assumption-${index}`)),
+    );
+  });
+
+  test("failed corrections preserve the state boundary without residue", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-intervention-failure-boundary-"));
+    temporaryRoots.push(temporary);
+    const stateRoot = join(temporary, "state");
+    const observation = command(
+      [process.execPath, sourceCli, "intervention", "observe", "--state-root", stateRoot],
+      { stdin: JSON.stringify({ session_id: "recovery", cwd: repositoryRoot, prompt: "recover" }) },
+    );
+    expect(observation.exitCode).toBe(0);
+    const statePath = JSON.parse(observation.stdout).statePath as string;
+    const missingState = join(temporary, "not-created", "nested", "missing.json");
+    const missing = command([
+      process.execPath,
+      sourceCli,
+      "correct",
+      "--state-file",
+      missingState,
+      "--rejected-assumption",
+      "missing",
+      "--new-invariant",
+      "missing",
+      "--affected-surface",
+      "missing",
+      "--next-probe",
+      "missing",
+    ]);
+    expect(missing.exitCode).toBe(2);
+    expect(existsSync(join(temporary, "not-created"))).toBe(false);
+
+    writeFileSync(statePath, "not-json");
+    const malformed = command([
+      process.execPath,
+      sourceCli,
+      "correct",
+      "--state-file",
+      statePath,
+      "--rejected-assumption",
+      "malformed",
+      "--new-invariant",
+      "malformed",
+      "--affected-surface",
+      "malformed",
+      "--next-probe",
+      "malformed",
+    ]);
+    expect(malformed.exitCode).toBe(2);
+    expect(malformed.stderr).toContain("JSON Parse error");
+    expect(existsSync(`${statePath}.receipts`)).toBe(false);
   });
 
   test("Codex and Claude adapters use the Rossovia home across target switches", () => {
@@ -179,8 +328,18 @@ describe("intervention reconciliation", () => {
       }
       expect(new Set(paths).size).toBe(1);
       expect(statePath).toStartWith(join(realpathSync(home), "rossovia-home", "state", "interventions"));
-      const state = JSON.parse(readFileSync(statePath, "utf8"));
-      expect(state.receipts.map((receipt: { affectedSurfaces: string[] }) => receipt.affectedSurfaces)).toEqual(
+      const status = command([
+        "node",
+        cli,
+        "intervention",
+        "status",
+        "--state-file",
+        statePath,
+      ], { env: environment });
+      expect(status.exitCode).toBe(0);
+      expect(JSON.parse(status.stdout).receipts.map(
+        (receipt: { affectedSurfaces: string[] }) => receipt.affectedSurfaces,
+      )).toEqual(
         targets.map((target) => [target]),
       );
     }

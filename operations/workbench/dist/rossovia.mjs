@@ -16124,11 +16124,11 @@ import {
   rmSync as rmSync3
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname as dirname6, isAbsolute as isAbsolute3, relative as relative4, resolve as resolve4, sep } from "node:path";
+import { dirname as dirname5, isAbsolute as isAbsolute3, relative as relative4, resolve as resolve4, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/interventions.ts
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash5, randomUUID as randomUUID3 } from "node:crypto";
 import { existsSync as existsSync6, readFileSync as readFileSync4, readdirSync as readdirSync2 } from "node:fs";
 import { join as join8, resolve as resolve3 } from "node:path";
 var ObservationSchema = exports_external.object({
@@ -16172,10 +16172,61 @@ function workspaceKey(cwd) {
 function statePath(root, cwd, sessionId) {
   return join8(root, workspaceKey(cwd), `${digest5(sessionId).slice(0, 32)}.json`);
 }
-function readState(path) {
+function receiptWitnessDirectory(path) {
+  return `${path}.receipts`;
+}
+function observationWitnessDirectory(path) {
+  return `${path}.observations`;
+}
+function readStateSource(path) {
   if (!existsSync6(path))
     throw new Error(`intervention state not found: ${path}`);
   return StateSchema.parse(JSON.parse(readFileSync4(path, "utf8")));
+}
+function readState(path) {
+  const state = readStateSource(path);
+  const observationDirectory = observationWitnessDirectory(path);
+  const observations = [...state.observations];
+  if (existsSync6(observationDirectory)) {
+    const entries = readdirSync2(observationDirectory, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      observations.push(ObservationSchema.parse(JSON.parse(readFileSync4(join8(observationDirectory, entry.name), "utf8"))));
+    }
+  }
+  const receiptDirectory = receiptWitnessDirectory(path);
+  const receipts = [...state.receipts];
+  if (existsSync6(receiptDirectory)) {
+    const entries = readdirSync2(receiptDirectory, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith(".json")).sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      receipts.push(ReceiptSchema.parse(JSON.parse(readFileSync4(join8(receiptDirectory, entry.name), "utf8"))));
+    }
+  }
+  return StateSchema.parse({ ...state, observations: observations.slice(-50), receipts });
+}
+function persistenceError(path, error51) {
+  return new Error(`cannot persist Rossovia state at ${path}: ${error51 instanceof Error ? error51.message : String(error51)}. ` + "The current runtime must grant write access to this exact state location.");
+}
+function witnessFilename() {
+  return [
+    Date.now().toString().padStart(13, "0"),
+    process.hrtime.bigint().toString().padStart(20, "0"),
+    process.pid,
+    randomUUID3()
+  ].join("-") + ".json";
+}
+function persistObservationWitness(path, observation) {
+  try {
+    saveJson(join8(observationWitnessDirectory(path), witnessFilename()), ObservationSchema.parse(observation));
+  } catch (error51) {
+    throw persistenceError(path, error51);
+  }
+}
+function persistReceiptWitness(path, receipt) {
+  try {
+    saveJson(join8(receiptWitnessDirectory(path), witnessFilename()), ReceiptSchema.parse(receipt));
+  } catch (error51) {
+    throw persistenceError(path, error51);
+  }
 }
 function stateForSession(root, sessionId) {
   if (!existsSync6(root))
@@ -16250,21 +16301,24 @@ function runInterventionCommand(raw, stdin = "", homeArgument) {
     const payload = HookPayloadSchema.parse(JSON.parse(stdin || readFileSync4(0, "utf8")));
     const root = stateRoot(parsed.values.get("--state-root")?.[0], homeArgument);
     const path = statePath(root, payload.cwd, payload.session_id);
-    const state = existsSync6(path) ? readState(path) : {
-      version: "intervention-reconciliation.v2",
-      sessionId: payload.session_id,
-      workspace: resolve3(payload.cwd),
-      observations: [],
-      receipts: []
-    };
+    if (existsSync6(path)) {
+      readStateSource(path);
+    } else {
+      saveJson(path, StateSchema.parse({
+        version: "intervention-reconciliation.v2",
+        sessionId: payload.session_id,
+        workspace: resolve3(payload.cwd),
+        observations: [],
+        receipts: []
+      }));
+    }
     const observation = {
       turnId: payload.turn_id,
       at: now3(),
       promptSha256: digest5(payload.prompt),
       promptBytes: Buffer.byteLength(payload.prompt)
     };
-    state.observations = [...state.observations, observation].slice(-50);
-    saveJson(path, StateSchema.parse(state));
+    persistObservationWitness(path, observation);
     return { statePath: path, observation };
   }
   if (command === "status") {
@@ -16294,7 +16348,7 @@ function runCorrectionCommand(raw) {
     "--next-probe"
   ]));
   const path = expandPath(option(parsed, "--state-file"));
-  const state = readState(path);
+  readState(path);
   const receipt = ReceiptSchema.parse({
     at: now3(),
     rejectedAssumption: option(parsed, "--rejected-assumption"),
@@ -16302,13 +16356,12 @@ function runCorrectionCommand(raw) {
     affectedSurfaces: repeatedOption(parsed, "--affected-surface"),
     nextProbe: option(parsed, "--next-probe")
   });
-  state.receipts.push(receipt);
-  saveJson(path, StateSchema.parse(state));
+  persistReceiptWitness(path, receipt);
   return { statePath: path, receipt };
 }
 
 // src/hooks.ts
-var repositoryRoot = resolve4(dirname6(fileURLToPath(import.meta.url)), "../../..");
+var repositoryRoot = resolve4(dirname5(fileURLToPath(import.meta.url)), "../../..");
 function runHookCommand(raw, stdin, homeArgument) {
   const kind = raw[0];
   const platform = platformValue(raw[1]);
@@ -16408,7 +16461,7 @@ function readPaths(path) {
   return [...paths].sort();
 }
 function appendPaths(path, paths) {
-  mkdirSync3(dirname6(path), { recursive: true });
+  mkdirSync3(dirname5(path), { recursive: true });
   appendFileSync(path, `${JSON.stringify(paths)}
 `, "utf8");
 }
@@ -16511,7 +16564,7 @@ function stopOutput(platform, payload, path) {
 }
 
 // src/tasks.ts
-import { randomUUID as randomUUID3 } from "node:crypto";
+import { randomUUID as randomUUID4 } from "node:crypto";
 import { existsSync as existsSync8, readFileSync as readFileSync6, realpathSync as realpathSync4 } from "node:fs";
 import { join as join9, relative as relative5 } from "node:path";
 class PrincipalTaskError extends Error {
@@ -16542,7 +16595,7 @@ function createPrincipalTask(homeArgument, arguments_) {
   assertSourceRevision(source, arguments_.expectedSourceRevision);
   const timestamp = now4();
   const task = {
-    id: randomUUID3(),
+    id: randomUUID4(),
     title: nonempty7(arguments_.title, "task title"),
     objective: nonempty7(arguments_.objective, "task objective"),
     acceptance: nonemptyList(arguments_.acceptance, "task acceptance"),
@@ -16581,7 +16634,7 @@ function correctPrincipalTask(homeArgument, arguments_) {
     assertUnsettled(task, "correct");
     supersedeSubmittedClaim(task, timestamp, "correction");
     task.corrections.push({
-      id: randomUUID3(),
+      id: randomUUID4(),
       at: timestamp,
       statement: nonempty7(arguments_.statement, "task correction"),
       sourceRef: nonempty7(arguments_.sourceRef, "task correction source ref"),
@@ -16598,7 +16651,7 @@ function submitPrincipalTaskResult(homeArgument, arguments_) {
       throw new Error(`task ${task.id} already has a submitted result awaiting Principal acceptance`);
     }
     task.resultClaims.push({
-      id: randomUUID3(),
+      id: randomUUID4(),
       submittedAt: timestamp,
       summary: nonempty7(arguments_.summary, "task result summary"),
       evidenceRefs: nonemptyList(arguments_.evidenceRefs, "task result evidence"),
@@ -16645,7 +16698,7 @@ function reopenPrincipalTask(homeArgument, arguments_) {
       throw new Error(`task ${task.id} is ${task.lifecycle}; only a settled task may reopen`);
     }
     task.corrections.push({
-      id: randomUUID3(),
+      id: randomUUID4(),
       at: timestamp,
       statement: nonempty7(arguments_.statement, "task reopen statement"),
       sourceRef: nonempty7(arguments_.sourceRef, "task reopen source ref"),
@@ -17282,7 +17335,7 @@ function migrateLegacyHome(homeArgument, fromHomeArgument) {
 // src/preferences.ts
 import { createHash as createHash8 } from "node:crypto";
 import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync8, renameSync as renameSync3, rmSync as rmSync5, writeFileSync as writeFileSync4 } from "node:fs";
-import { dirname as dirname7, join as join11 } from "node:path";
+import { dirname as dirname6, join as join11 } from "node:path";
 function nonempty8(value, label) {
   const normalized = value.trim();
   if (!normalized)
@@ -17351,7 +17404,7 @@ function commitPreferenceChange(home, source, action, preference) {
   const nextReceipts = `${existingReceipts}${JSON.stringify(canonical3(receipt))}
 `;
   validateReceiptStream(nextReceipts);
-  mkdirSync5(dirname7(receiptsPath), { recursive: true });
+  mkdirSync5(dirname6(receiptsPath), { recursive: true });
   const sourceTemporary = `${sourcePath}.preference-txn.tmp`;
   const receiptTemporary = `${receiptsPath}.preference-txn.tmp`;
   const previousSource = readFileSync8(sourcePath, "utf8");
@@ -17623,9 +17676,9 @@ function scanRoots(home, roots) {
 }
 
 // src/setup.ts
-import { createHash as createHash9, randomUUID as randomUUID4 } from "node:crypto";
+import { createHash as createHash9, randomUUID as randomUUID5 } from "node:crypto";
 import { existsSync as existsSync12, mkdirSync as mkdirSync6, readFileSync as readFileSync9, renameSync as renameSync4, rmSync as rmSync6, writeFileSync as writeFileSync5 } from "node:fs";
-import { dirname as dirname8, join as join15, relative as relative6, resolve as resolve5 } from "node:path";
+import { dirname as dirname7, join as join15, relative as relative6, resolve as resolve5 } from "node:path";
 
 // src/setup-adapters.ts
 import { join as join14 } from "node:path";
@@ -17724,7 +17777,7 @@ function resolveSourceRoot() {
   if (!entry)
     throw new Error("cannot resolve setup source: executable path is unavailable");
   const executable = resolve5(entry);
-  const sourceRoot = gitOutput(dirname8(executable), ["rev-parse", "--show-toplevel"], "resolve setup source root");
+  const sourceRoot = gitOutput(dirname7(executable), ["rev-parse", "--show-toplevel"], "resolve setup source root");
   const sourceRelative = relative6(sourceRoot, executable);
   if (sourceRelative.startsWith("..") || sourceRelative.length === 0) {
     throw new Error("cannot resolve setup source: executable is outside its Git checkout");
@@ -17869,15 +17922,15 @@ function applicableChanges(sourceRoot, from, to) {
   return entries.filter((entry) => entry.length > 0);
 }
 function saveRollback(home, target, content) {
-  const path = join15(home, "receipts", "setup", "backups", `${Date.now()}-${randomUUID4()}.md`);
-  mkdirSync6(dirname8(path), { recursive: true });
+  const path = join15(home, "receipts", "setup", "backups", `${Date.now()}-${randomUUID5()}.md`);
+  mkdirSync6(dirname7(path), { recursive: true });
   writeFileSync5(path, content, "utf8");
   return path;
 }
 function writeTarget(path, content) {
-  const temporary = `${path}.${randomUUID4()}.tmp`;
+  const temporary = `${path}.${randomUUID5()}.tmp`;
   try {
-    mkdirSync6(dirname8(path), { recursive: true });
+    mkdirSync6(dirname7(path), { recursive: true });
     writeFileSync5(temporary, content, "utf8");
     renameSync4(temporary, path);
   } catch (error51) {

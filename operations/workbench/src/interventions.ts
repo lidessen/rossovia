@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
 import { resolveHome, saveJson } from "./home";
 import { expandPath } from "./paths";
@@ -36,6 +36,8 @@ const HookPayloadSchema = z.object({
 }).passthrough();
 
 type State = z.infer<typeof StateSchema>;
+type Observation = z.infer<typeof ObservationSchema>;
+type Receipt = z.infer<typeof ReceiptSchema>;
 
 interface ParsedOptions {
   positionals: string[];
@@ -64,9 +66,80 @@ function statePath(root: string, cwd: string, sessionId: string): string {
   return join(root, workspaceKey(cwd), `${digest(sessionId).slice(0, 32)}.json`);
 }
 
-function readState(path: string): State {
+function receiptWitnessDirectory(path: string): string {
+  return `${path}.receipts`;
+}
+
+function observationWitnessDirectory(path: string): string {
+  return `${path}.observations`;
+}
+
+function readStateSource(path: string): State {
   if (!existsSync(path)) throw new Error(`intervention state not found: ${path}`);
   return StateSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+}
+
+function readState(path: string): State {
+  const state = readStateSource(path);
+  const observationDirectory = observationWitnessDirectory(path);
+  const observations = [...state.observations];
+  if (existsSync(observationDirectory)) {
+    const entries = readdirSync(observationDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      observations.push(ObservationSchema.parse(
+        JSON.parse(readFileSync(join(observationDirectory, entry.name), "utf8")),
+      ));
+    }
+  }
+
+  const receiptDirectory = receiptWitnessDirectory(path);
+  const receipts = [...state.receipts];
+  if (existsSync(receiptDirectory)) {
+    const entries = readdirSync(receiptDirectory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      receipts.push(ReceiptSchema.parse(JSON.parse(readFileSync(join(receiptDirectory, entry.name), "utf8"))));
+    }
+  }
+  return StateSchema.parse({ ...state, observations: observations.slice(-50), receipts });
+}
+
+function persistenceError(path: string, error: unknown): Error {
+  return new Error(
+    `cannot persist Rossovia state at ${path}: ${error instanceof Error ? error.message : String(error)}. `
+    + "The current runtime must grant write access to this exact state location.",
+  );
+}
+
+function witnessFilename(): string {
+  return [
+    Date.now().toString().padStart(13, "0"),
+    process.hrtime.bigint().toString().padStart(20, "0"),
+    process.pid,
+    randomUUID(),
+  ].join("-") + ".json";
+}
+
+function persistObservationWitness(path: string, observation: Observation): void {
+  try {
+    saveJson(
+      join(observationWitnessDirectory(path), witnessFilename()),
+      ObservationSchema.parse(observation),
+    );
+  } catch (error: unknown) {
+    throw persistenceError(path, error);
+  }
+}
+
+function persistReceiptWitness(path: string, receipt: Receipt): void {
+  try {
+    saveJson(join(receiptWitnessDirectory(path), witnessFilename()), ReceiptSchema.parse(receipt));
+  } catch (error: unknown) {
+    throw persistenceError(path, error);
+  }
 }
 
 function stateForSession(root: string, sessionId: string): string {
@@ -140,23 +213,24 @@ export function runInterventionCommand(raw: string[], stdin = "", homeArgument?:
     const payload = HookPayloadSchema.parse(JSON.parse(stdin || readFileSync(0, "utf8")));
     const root = stateRoot(parsed.values.get("--state-root")?.[0], homeArgument);
     const path = statePath(root, payload.cwd, payload.session_id);
-    const state: State = existsSync(path)
-      ? readState(path)
-      : {
+    if (existsSync(path)) {
+      readStateSource(path);
+    } else {
+      saveJson(path, StateSchema.parse({
           version: "intervention-reconciliation.v2",
           sessionId: payload.session_id,
           workspace: resolve(payload.cwd),
           observations: [],
           receipts: [],
-        };
+      }));
+    }
     const observation = {
       turnId: payload.turn_id,
       at: now(),
       promptSha256: digest(payload.prompt),
       promptBytes: Buffer.byteLength(payload.prompt),
     };
-    state.observations = [...state.observations, observation].slice(-50);
-    saveJson(path, StateSchema.parse(state));
+    persistObservationWitness(path, observation);
     return { statePath: path, observation };
   }
 
@@ -189,7 +263,7 @@ export function runCorrectionCommand(raw: string[]): unknown {
     "--next-probe",
   ]));
   const path = expandPath(option(parsed, "--state-file"));
-  const state = readState(path);
+  readState(path);
   const receipt = ReceiptSchema.parse({
     at: now(),
     rejectedAssumption: option(parsed, "--rejected-assumption"),
@@ -197,7 +271,6 @@ export function runCorrectionCommand(raw: string[]): unknown {
     affectedSurfaces: repeatedOption(parsed, "--affected-surface"),
     nextProbe: option(parsed, "--next-probe"),
   });
-  state.receipts.push(receipt);
-  saveJson(path, StateSchema.parse(state));
+  persistReceiptWitness(path, receipt);
   return { statePath: path, receipt };
 }
