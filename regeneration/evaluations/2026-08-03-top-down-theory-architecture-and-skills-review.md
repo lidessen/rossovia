@@ -1,7 +1,6 @@
 # Top-down Theory, Architecture, and Skills Review
 
-**Status:** first independent review findings repaired; final exact-head review
-pending
+**Status:** candidate repair assembled; integration authority remains pending
 **Date:** 2026-08-03
 **Frozen baseline:** `cff6613fb18145990e973e74ebe189612bdedf24`
 **Authority:** review and candidate-change evidence only; no Principle adoption,
@@ -96,7 +95,7 @@ generic P-ID selector may miss.
 - The module list is explicitly a current capability map below the governing
   layers, not another architecture source.
 - Root `AGENTS.md` retains a compact Workbench route and falls from 437 to 181
-  lines. The 273-line command and authorization protocol moves intact to
+  lines. The command and authorization protocol moves intact to
   `operations/workbench/AGENTS.md`, where it is loaded only for Workbench
   requests.
 - Current-effect revalidation is stated as an architecture discipline while
@@ -166,6 +165,7 @@ the named retained claim; “partial” and “unproven” are first-class stand
 
 The upper theory is stable enough to retain, but its reliability depends on
 clear ownership, slower upper-layer change, source-bound interpretations,
-scoped context delivery, and honest behavior evidence below it. This candidate
-is not ready for integration until exact-head verification and fresh
-independent review confirm reference, inheritance, and boundary preservation.
+scoped context delivery, and honest behavior evidence below it. Exact-head
+verification and fresh independent review must still bind the integration
+candidate; this source record supplies neither integration nor acceptance
+authority.

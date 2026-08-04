@@ -182,8 +182,8 @@ and work log can be independent records with different semantics.
 #### Expression probes
 
 - An index can be deleted and rebuilt from authoritative entries.
-- A cached Workbench view can guide attention but cannot authorize mutation
-  after the source record it projects has changed.
+- A cached Workbench view can be deleted and rebuilt from its task source
+  without losing authoritative task state.
 
 #### Revision discipline
 
