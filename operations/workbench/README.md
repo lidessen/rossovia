@@ -497,6 +497,39 @@ The supervised runtime boundaries are recorded in
 local task ownership is recorded separately in
 [Decision 053](../../design/decisions/053-principal-created-task-workbench.md).
 
+## Status-line projections
+
+The repository entry includes a compact, read-only status line for retaining
+the current Git locus while working across projects:
+
+```sh
+./operations/workbench/rossovia statusline --cwd <git-path>
+```
+
+For a registered repository or Worktree, the line shows its verified project
+ID, canonical Git root, branch, dirty marker, and unsettled Workbench-local
+task counts by next actor. `待 Agent` means assigned responsibility, not a
+claim that an Agent is running. When the current Git locus is not registered,
+the same task counts are explicitly labeled `全局`; an unavailable task source
+is shown instead of silently becoming zero. The command does not create a
+session focus, active-task record, task mutation, or runtime claim.
+
+Claude Code uses its documented command-backed `statusLine` surface in
+`../../.claude/settings.json`. Claude supplies the current workspace on stdin;
+the adapter prefers `workspace.current_dir` and otherwise uses its scalar
+`cwd`. The project-local setting intentionally affects only this repository
+and may override a user-level status line while the repository is trusted. See
+the [Claude Code status-line contract](https://code.claude.com/docs/en/statusline).
+
+Codex does not support command-backed or custom TUI status-line items. The
+project-local `../../.codex/config.toml` therefore selects only its native
+`project-name`, `current-dir`, `git-branch`, and `task-progress` items. Here
+`task-progress` is Codex's own plan progress, not Workbench task state. This is
+an intentionally asymmetric adapter: it gives Codex the supported Git locus
+without pretending that Rossovia task counts reached its footer. See the
+[Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+and use `/statusline` inside Codex to inspect or change the native item order.
+
 ## Hook projections
 
 The portable hook behavior lives in `src/hooks.ts`; repository-root

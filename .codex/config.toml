@@ -1,0 +1,3 @@
+[tui]
+# Codex supports only native status-line items, not command-backed renderers.
+status_line = ["project-name", "current-dir", "git-branch", "task-progress"]

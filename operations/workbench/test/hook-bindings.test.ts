@@ -22,6 +22,7 @@ describe("project hook bindings", () => {
       "./operations/workbench/rossovia hook artifact codex stop",
     ]);
     expect(commands(bindings.claude)).toEqual([
+      "\"$(git rev-parse --show-toplevel)/operations/workbench/rossovia\" statusline claude",
       "./operations/workbench/rossovia hook intervention claude",
       "./operations/workbench/rossovia hook artifact claude post-tool-use",
       "./operations/workbench/rossovia hook artifact claude stop",

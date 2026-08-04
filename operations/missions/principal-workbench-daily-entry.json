@@ -6,7 +6,7 @@
     "principal:conversation:2026-08-03:option-a"
   ],
   "createdAt": "2026-08-03T15:30:00Z",
-  "updatedAt": "2026-08-03T15:30:07Z",
+  "updatedAt": "2026-08-04T11:42:53Z",
   "mainline": {
     "contradiction": "main",
     "acceptance": [
@@ -25,7 +25,18 @@
         "principal:conversation:2026-08-03:option-a"
       ],
       "status": "open"
+    },
+    {
+      "id": "statusline-adapters",
+      "parent": "integration-baseline",
+      "kind": "implementation",
+      "purpose": "Project a compact, read-only Rossovia status line through supported Claude and Codex host surfaces without reviving Atthis runtime ownership.",
+      "returnCondition": "The exact branch head exposes one source-owned status projection through every supported host adapter, passes focused and full Workbench verification, and receives named independent review before integration.",
+      "sources": [
+        "principal:conversation:2026-08-04:extract-statusline-claude-codex"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "integration-baseline"
+  "currentFocus": "statusline-adapters"
 }

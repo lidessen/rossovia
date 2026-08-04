@@ -5,6 +5,18 @@ that affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or
 `breaking`. Entries are append-only after publication; corrections add a later
 entry instead of rewriting the applied Git interval.
 
+## 2026-08-04
+
+### [workbench.statusline] Project the current work locus through host-native surfaces
+
+- Action: `none`
+- Change: Claude Code invokes the read-only Rossovia locus and task-queue
+  projection, while Codex uses its native project, directory, branch, and plan
+  progress fields because its footer does not accept external commands.
+- Verify: open this repository in each trusted host; confirm Claude shows the
+  current Git path, branch, dirty state, and explicitly scoped task queues, and
+  Codex shows only its supported native fields.
+
 ## 2026-07-23
 
 ### [workbench.setup.multi-agent-delegation] Add tool-neutral delegation setup
