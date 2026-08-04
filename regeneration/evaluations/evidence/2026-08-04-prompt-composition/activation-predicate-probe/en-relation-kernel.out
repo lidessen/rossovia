@@ -1,0 +1,117 @@
+I’d begin with one owner reconstructing the end-to-end data flow before anyone edits:
+
+`persisted record → parser/normalizer → internal task model → writer → CLI/UI → fixtures/tests`
+
+That owner identifies every read, write, serialization, type, fixture, snapshot, migration, and display reference to `taskRevision`, then defines the migration contract:
+
+- Canonical in-memory field: `revision`
+- Read compatibility: accept `revision`; otherwise fall back to `taskRevision`
+- Conflict rule: if both exist, `revision` wins
+- Write rule: serialize only `revision`
+- Compatibility duration: one release
+- UI and CLI consume only the canonical model, never the legacy key directly
+
+This contract remains under a single migration owner because parser behavior, precedence, types, and serialization are coupled semantic decisions.
+
+## Delegation packets
+
+I would not assign an agent independently to each suggested surface. That would invite four subtly different interpretations of compatibility. Instead:
+
+1. **Migration owner — persistence, parser, and canonical model**
+
+   Owns:
+
+   - Record/schema and type changes
+   - Read normalization and precedence
+   - Every write/serialization path
+   - Parser-focused tests
+   - The authoritative migration contract
+
+   Acceptance cases:
+
+   - `{revision: 2}` reads as `revision = 2`
+   - `{taskRevision: 2}` reads as `revision = 2`
+   - `{revision: 3, taskRevision: 2}` reads as `revision = 3`
+   - Every newly persisted record contains `revision`
+   - No new write contains `taskRevision`
+
+2. **CLI agent — CLI-only consumer changes**
+
+   Receives the canonical-model contract, relevant file list, and explicit instruction not to modify parsing or persistence.
+
+   Owns:
+
+   - CLI formatting, JSON/table output, help text, snapshots, and CLI tests
+   - Ensuring externally emitted new output uses `revision`
+
+   Returns changed references plus evidence from focused tests.
+
+3. **Workbench agent — UI-only consumer changes**
+
+   Also consumes the canonical model and must not implement its own fallback.
+
+   Owns:
+
+   - Components, selectors, view models, labels, UI fixtures, and UI tests
+   - Removing direct reads of `taskRevision`
+
+   Returns changed references, focused test results, and any generated artifacts needing regeneration.
+
+4. **Independent audit agent — read-only inventory and verification design**
+
+   This is safer and more useful than giving a fourth agent shared test files to edit.
+
+   Owns no edits. It independently searches for:
+
+   - Remaining `taskRevision` references
+   - Alternate writers, imports/exports, caches, fixtures, snapshots, docs, and generated schemas
+   - Tests required to prove old-read/new-write behavior
+   - Public compatibility concerns, such as machine-readable CLI output
+
+   Its report is advisory; the migration owner reconstructs every claim against repository code, schema definitions, and actual test behavior before acting on it.
+
+## Edit and decision ownership
+
+Each file has exactly one editing owner. Shared types, parser code, persistence code, common fixtures, and cross-surface integration tests belong to the migration owner. UI and CLI agents do not “helpfully” patch those files.
+
+The migration owner alone decides:
+
+- Field precedence when both keys exist
+- Whether absence, `null`, and invalid values differ
+- Where compatibility normalization occurs
+- Whether the legacy key remains in raw-record types
+- Exact external CLI/API compatibility behavior
+- How and when the fallback is removed next release
+
+Agents can flag issues, but they do not independently settle these semantics.
+
+## Reconciliation
+
+After focused contributions return, the migration owner:
+
+1. Reviews diffs against the contract, not merely test success.
+2. Re-runs searches and verifies every returned claim in authoritative code.
+3. Resolves overlaps centrally; agents do not merge competing edits to shared files.
+4. Checks that fallback logic exists once, at the ingestion boundary.
+5. Checks that no downstream code or new fixture depends on `taskRevision`.
+6. Adds or adjusts cross-surface tests centrally.
+7. Records a removal marker for the next release so compatibility does not become permanent.
+
+A remaining `taskRevision` occurrence is acceptable only when it intentionally represents an old input record, a compatibility test, or migration documentation. Each surviving occurrence should be reviewed explicitly.
+
+## Verification
+
+I would finish with layered verification:
+
+- Repository-wide searches for both field names, classifying every legacy occurrence
+- Parser/unit tests covering new-only, old-only, both-key, missing, null, and malformed cases
+- Writer round-trip test: load an old record, save it, and prove the result contains only `revision`
+- Tests for every write path, not just the primary serializer
+- CLI tests for human-readable and machine-readable output
+- Workbench component/integration tests using canonical and legacy-loaded records
+- Full type-check, lint, unit, integration, UI, and CLI suites
+- Inspection of snapshots and generated files after regeneration
+- A clean-run smoke test using a realistic old persisted record
+- A final diff review to ensure this is a field migration, not an accidental behavioral rewrite
+
+The key optimization is parallelizing independent consumers only after centralizing the migration semantics. That uses four agents effectively without distributing ownership of the most failure-prone decision: what the persisted compatibility boundary actually means.

@@ -128,6 +128,11 @@ memory 不会成为生效偏好。
 
 ## 活跃 Skills
 
+“Active” 只表示当前仓库入口可发现、可安装，不表示 Skill 在所有场景中的
+行为都已经得到证明。下表各项的当前证据指针和有限结论见
+[2026-08-03 系统复盘](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)；
+该投影只汇总保留的评估，不替代评估来源。
+
 | Skill | 命令 | 用途 |
 |-------|------|------|
 | [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | 判断并运行有边界的原生 sub-agent 贡献，同时由 Main Agent 保留整体、综合与确保验证发生的责任；不依赖 Workbench 或其他编排运行时。 |

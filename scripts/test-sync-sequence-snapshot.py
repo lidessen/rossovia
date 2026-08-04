@@ -59,6 +59,35 @@ class SequenceMarkdownTest(unittest.TestCase):
 
         self.assertEqual(SYNC.demote_headings(source, 2), expected)
 
+    def test_rebases_repository_links_but_not_fenced_examples(self) -> None:
+        source_path = SYNC.REPO_ROOT / "principles" / "interpretations" / "P13.md"
+        source = """[record](../adopted/fact-admission-gate.md#decision)
+[external](https://example.com/source)
+
+```markdown
+[example](../adopted/not-a-real-link.md)
+```
+"""
+        expected = f"""[record]({SYNC.CANONICAL_BLOB_BASE}principles/adopted/fact-admission-gate.md#decision)
+[external](https://example.com/source)
+
+```markdown
+[example](../adopted/not-a-real-link.md)
+```
+"""
+
+        self.assertEqual(
+            SYNC.rebase_relative_markdown_links(source, source_path),
+            expected,
+        )
+
+    def test_portable_link_validation_rejects_unresolved_relative_link(self) -> None:
+        with self.assertRaises(SystemExit):
+            SYNC.validate_portable_markdown_links(
+                "[record](../adopted/fact-admission-gate.md)",
+                Path("sequence.md"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

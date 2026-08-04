@@ -1,0 +1,17 @@
+Do not send the current two-arm packet as a naming decision packet.
+
+Next action: build a blinded, balanced three-arm packet:
+
+- Memory-field items
+- Retrieval-field items
+- Plain, directly generated names
+- Equal candidate counts, selected by the same predeclared “name-like” criteria
+- Randomized presentation with treatment labels removed
+
+Ask the Principal to shortlist, rank, and flag names they would genuinely use. Record “none acceptable” as a valid outcome.
+
+Reasoning: the current packet can test preference between two field treatments, but it cannot establish that the generative field helps naming at all. Because the field emits unclassified artifacts and a later projection selects name-like items, observed quality may come from that selection step rather than memory or retrieval. Retrieval’s higher cost and broader source participation are operational differences, not evidence of better names. The shared thematic concentration also suggests that retrieval did not clearly expand the practically relevant naming space.
+
+Evidence limits: the experiment supports claims about cost, source participation, and recurring vocabulary. It does not support claims about aesthetic quality, usability, treatment superiority, or improvement over ordinary name generation. A Principal’s preference would provide decision evidence for this project, not a general proof that one method is better.
+
+Decision boundary: send the packet only after adding the direct baseline and controlling presentation and selection. Choose a treatment only if the Principal shows a meaningful practical preference—for example, a usable finalist or a clearly stronger shortlist—and that benefit justifies retrieval’s added cost. If preferences are weak, mixed, or all candidates are rejected, do not claim a winner; iterate on the naming brief or use the simpler baseline.

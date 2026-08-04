@@ -10,12 +10,16 @@ Review the named skill read-only unless the user also requests a change.
    that Sequence and that their interpretations support the claimed judgment.
 3. Find the highest-risk mismatch first: no distinct action, ambiguous trigger,
    context in the wrong layer, unsupported rule, duplicated ownership, missing
-   boundary, mixed register or metaphor-as-canon, or a behavior claim without a
+   boundary, decorative role or qualifier, repeated predicate with no distinct
+   failure, mixed register or metaphor-as-canon, or a behavior claim without a
    test. Use references/expression-layers.md for P16 and doctrine-boundary
-   findings.
+   findings. Preserve the relation or hard boundary behind repeated wording;
+   frequency alone is not evidence that a predicate is removable.
 4. Use references/evaluation.md to assess whether its existing evidence can
-   prove the claimed improvement. Separate structural validity from behavioral
-   validity.
+   prove the claimed improvement. For an expression claim, look for a matched
+   ablation that isolates the carrier and a natural Chinese/English comparison
+   when multilingual behavior is claimed. Separate structural validity from
+   behavioral validity.
 5. Report findings in order of decision impact. For each, give source evidence,
    the violated expression principle, the smallest correction, and whether the
    correction belongs in the skill, an existing owner, or a sequence candidate.

@@ -1,0 +1,95 @@
+I’d use four agents, but divide by change boundaries rather than assigning independent agents to every named surface. The persisted schema and parser define the contract, so one agent must own that contract end-to-end.
+
+### Ownership and delegation packets
+
+**Agent 1 — Migration contract and persistence**
+
+Owns task-record types/schema, serialization, deserialization, migrations, and parser behavior.
+
+Packet:
+
+- Rename the canonical field from `taskRevision` to `revision`.
+- Read compatibility for one release:
+  - Accept `revision`.
+  - If absent, accept legacy `taskRevision` and normalize it to `revision`.
+  - If both exist, `revision` wins; add a test documenting this rule.
+- Every serialization/write path emits only `revision`.
+- Do not retain `taskRevision` in the normalized in-memory type.
+- Update focused persistence/parser tests.
+- Report the changed contract and any call sites that still expect the old field.
+
+This agent owns compatibility semantics and makes the binding decisions about precedence and normalization.
+
+**Agent 2 — CLI**
+
+Owns CLI formatting, commands, fixtures, snapshots, and CLI-specific tests.
+
+Packet:
+
+- Consume the canonical `revision` field established by Agent 1.
+- Rename labels, JSON output keys, table columns, and relevant help text from `taskRevision` to `revision`.
+- Ensure machine-readable CLI output never emits the legacy key.
+- Update CLI fixtures and snapshots.
+- Do not add an independent legacy fallback; compatibility belongs in the shared reader/parser.
+
+**Agent 3 — Workbench UI**
+
+Owns Workbench models, selectors, components, forms, API adapters, UI fixtures, and UI tests.
+
+Packet:
+
+- Replace UI references to `taskRevision` with `revision`.
+- Update displayed labels and edit/create payloads.
+- Ensure outbound payloads contain only `revision`.
+- Update UI fixtures, mocks, snapshots, and tests.
+- Do not normalize legacy records in components; use the canonical parsed model.
+
+**Agent 4 — Integration and repository-wide verification**
+
+Owns cross-surface tests and final reconciliation, while avoiding files actively owned by Agents 1–3 until their changes land.
+
+Packet:
+
+- Inventory all textual and structural references to `taskRevision`.
+- Classify each occurrence as production code, test fixture, compatibility code, documentation, or generated artifact.
+- Add or update end-to-end migration tests covering:
+  1. Legacy record reads successfully as `revision`.
+  2. Re-saving that record removes `taskRevision`.
+  3. New records contain only `revision`.
+  4. CLI and Workbench receive/display the normalized value.
+  5. Records containing both keys follow the agreed precedence rule.
+- Run the full validation suite after merging the other agents’ work.
+- Flag stale references rather than editing another agent’s owned files concurrently.
+
+### Execution sequence
+
+1. Agent 1 first publishes the contract immediately: canonical in-memory field, compatibility boundary, and conflict precedence.
+2. Agents 2 and 3 proceed in parallel against that contract.
+3. Agent 4 inventories references and prepares integration coverage concurrently.
+4. Agent 1’s persistence/parser changes land first, followed by CLI and UI changes.
+5. Agent 4 reconciles and runs repository-wide checks.
+
+### Reconciliation rules
+
+The coordinator retains ownership of scope and final acceptance. Conflicts are resolved by these rules:
+
+- `revision` is canonical everywhere after parsing.
+- Legacy handling exists only at the persisted-record read boundary.
+- No new write, API payload, CLI JSON, fixture representing current data, or UI mutation may emit `taskRevision`.
+- Compatibility fixtures may retain `taskRevision` only when explicitly testing old-record reads.
+- If generated files are involved, update their source and regenerate them rather than hand-editing outputs.
+- Unrelated failures or pre-existing changes are recorded separately and not folded into this migration.
+
+### Verification
+
+Run focused suites first, then the complete repository checks:
+
+- Parser and persistence unit tests.
+- CLI tests and snapshots.
+- Workbench unit/component tests.
+- Integration and migration tests.
+- Type checking, linting, and build.
+- Full test suite.
+- Repository-wide search for `taskRevision`.
+
+The final search should find only explicitly named legacy-compatibility code, migration tests/fixtures, and any release note explaining the temporary compatibility window. I would also inspect serialized outputs directly to confirm the old key is absent, because successful reads alone do not prove that new writes follow the migration requirement.

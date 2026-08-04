@@ -1,0 +1,31 @@
+Use only this packet. Do not inspect a repository, load Skills or memory, or discuss the experiment.
+
+Two candidates were compared.
+
+Candidate A:
+- route trace target: `ai-sdk-v7/kimi-coding/k3`
+- provider request: thinking enabled, interleaved reasoning history, temperature 1
+- completion: investigate in text, then run a private structured-settlement call
+
+Candidate B:
+- route trace target: `ai-sdk-v7/opencode-go/deepseek-v4-flash`
+- provider request: thinking disabled
+- completion: inline JSON-object response
+
+Both candidates received the same four read-only files, task instructions, output shape, 300-second duration boundary, and alternating serial schedule.
+
+The worker-visible `acceptance` array contained statements including:
+- “States that terminalTools is a caller-defined one-of action contract whose input remains trace evidence rather than the logical result”
+- “States that outputSchema independently validates the final logical output”
+- “Identifies Swarm as a closed fixed-manifest execution form with manifest-order projection”
+- “Keeps CellInput and runCell free of queue, dependency, retry, priority, and durability vocabulary”
+
+Repeated observations:
+- completion contracts: A passed twice in 148,557 ms and 199,191 ms; B passed twice in 10,453 ms and 10,048 ms;
+- orchestration boundary: A was cancelled once at 300,005 ms and passed once at 295,143 ms; B passed twice in 10,575 ms and 11,444 ms;
+- all seven settled outputs matched the worker-visible acceptance statements; and
+- the cancelled run completed its main model step and entered structured settlement before the duration boundary.
+
+The blind judge preferred A on the completion-contract case, claiming B did not reject substitution or cite concrete paths. The retained B outputs used the phrase `independent, non-substitutable` and listed the same complete paths. A second judge prompt emphasizing contrast evidence repeated the preference.
+
+What capability or allocation claim do these facts support? Return a validity judgment, supported observations or claims, unsupported claims, and the smallest next evaluation.

@@ -1,0 +1,85 @@
+I’d use three delegated agents plus the main agent, with file ownership chosen to prevent overlapping edits. The main agent owns the migration contract and integration.
+
+### Shared migration contract
+
+Before delegation, I’d define these invariants for every packet:
+
+- Canonical in-memory and persisted field: `revision`.
+- Reads accept `revision`, falling back to legacy `taskRevision`.
+- If both exist, `revision` wins.
+- New writes emit only `revision`; they must never preserve or re-emit `taskRevision`.
+- CLI and UI expose only the name `revision`.
+- Compatibility tests cover legacy-only, new-only, and both-fields records.
+
+### Delegation packets
+
+1. **Agent 1 — persistence and task model**
+
+   Owns task-record types/schema, serializers, deserializers, fixtures specific to persistence, and persistence tests.
+
+   Deliverables:
+
+   - Rename the canonical field.
+   - Implement the one-release read fallback.
+   - Ensure serialization strips the legacy field.
+   - Add round-trip and precedence tests.
+   - Report any public interfaces affected.
+
+2. **Agent 2 — parser and CLI**
+
+   Owns parser code/tests and CLI formatting/output tests, but does not modify shared persistence/model files.
+
+   Deliverables:
+
+   - Produce `revision` in parsed results.
+   - Remove `taskRevision` from CLI output.
+   - Update snapshots/golden files owned by these surfaces.
+   - Identify assumptions requiring changes to the shared model.
+
+3. **Agent 3 — Workbench UI**
+
+   Owns UI components, frontend types/adapters, state selectors, and UI tests.
+
+   Deliverables:
+
+   - Consume and display `revision`.
+   - Remove frontend references to `taskRevision`.
+   - Update UI fixtures and snapshots.
+   - Avoid adding a second compatibility shim; legacy normalization belongs at the record boundary.
+
+4. **Main agent — contract, integration, and cross-cutting tests**
+
+   Owns migration decisions, shared API/type conflicts, repository-wide reconciliation, documentation/release note if appropriate, and final verification. The main agent does not concurrently edit files assigned to another agent.
+
+### Execution and reconciliation
+
+I’d first locate references and assign exact file paths to each owner. Agents can then work concurrently. Any shared generated type or central fixture is reserved for the main agent; delegated agents report the required adjustment rather than editing it.
+
+After their work lands, I’d:
+
+1. Review persistence behavior first, since it defines the contract.
+2. Integrate parser/CLI and UI changes against that contract.
+3. Resolve conflicts centrally, preserving unrelated changes.
+4. Search the repository for `taskRevision`.
+5. Classify every remaining occurrence:
+   - Allowed only in the compatibility reader and explicit legacy-input tests.
+   - Disallowed in writers, canonical types, CLI/UI code, current fixtures, and expected output.
+6. Check diffs for accidental broad snapshot churn or unrelated formatting.
+
+### Verification
+
+I’d run focused tests in parallel where possible, followed by the complete suite:
+
+- Persistence tests:
+  - legacy `{taskRevision: 3}` reads as `revision: 3`;
+  - `{revision: 4}` reads normally;
+  - `{revision: 4, taskRevision: 3}` resolves to `4`;
+  - rewriting any of those produces only `{revision: ...}`.
+- Parser tests confirming canonical output.
+- CLI tests/snapshots confirming only `revision` appears.
+- Workbench component/state tests using canonical records.
+- Type checking and linting for backend and frontend.
+- Repository-wide search enforcing the legacy-name allowlist.
+- Full test suite and, if applicable, production builds.
+
+Completion requires both behavioral compatibility and proof that no new-write path can emit `taskRevision`.

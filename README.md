@@ -148,6 +148,12 @@ inferred memory never becomes active preference without human confirmation.
 
 ## Active Skills
 
+“Active” means installable and discoverable through the current repository
+entry; it does not by itself mean behavior-proven for every context. The
+[2026-08-03 system review](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
+is the current evidence projection for all entries below. Its pointers and
+standings summarize retained evaluations rather than replacing them.
+
 | Skill | Command | Description |
 |-------|---------|-------------|
 | [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | Decide and operate bounded native sub-agent contributions while the Main Agent retains the whole, synthesis, and responsibility for ensuring verification; it does not require Workbench or another orchestration runtime. |

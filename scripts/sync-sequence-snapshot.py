@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import posixpath
 import re
 import shutil
 import sys
@@ -30,6 +31,9 @@ SEQUENCE_PATH = PRINCIPLES_DIR / "SEQUENCE.md"
 INTERPRETATIONS_DIR = PRINCIPLES_DIR / "interpretations"
 CANONICAL_UPSTREAM = "https://github.com/lidessen/rossovia.git"
 REFRESH_REF = "main"
+CANONICAL_BLOB_BASE = (
+    f"https://github.com/lidessen/rossovia/blob/{REFRESH_REF}/"
+)
 FULL_INTERPRETATION_SKILLS = frozenset({"skill-engineering"})
 
 PRIMARY_RE = re.compile(r"^\*\*Primary:\*\*\s*(P\d+)\s*$", re.MULTILINE)
@@ -40,6 +44,9 @@ SEQUENCE_SOURCE_RE = re.compile(
 )
 SNAPSHOT_DATE_RE = re.compile(
     r"^\*\*Snapshot date:\*\*\s*(\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE
+)
+RELATIVE_MARKDOWN_LINK_RE = re.compile(
+    r"(?P<prefix>\]\()(?P<target>\.\.?/[^)\s]+)(?P<suffix>\))"
 )
 
 
@@ -190,6 +197,72 @@ def demote_headings(text: str, levels: int) -> str:
     return "\n".join(rendered)
 
 
+def rebase_relative_markdown_links(text: str, source_path: Path) -> str:
+    """Render repository-relative links as portable canonical-source links."""
+    trailing_newline = text.endswith("\n")
+    try:
+        source_relative = source_path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError as error:
+        raise SystemExit(f"{source_path}: source is outside repository root") from error
+
+    def replace(match: re.Match[str]) -> str:
+        target = match.group("target")
+        path_part, separator, fragment = target.partition("#")
+        resolved = posixpath.normpath(
+            posixpath.join(posixpath.dirname(source_relative), path_part)
+        )
+        if resolved == ".." or resolved.startswith("../"):
+            raise SystemExit(
+                f"{source_path}: relative Markdown link escapes repository: {target}"
+            )
+        anchor = f"#{fragment}" if separator else ""
+        return (
+            f"{match.group('prefix')}{CANONICAL_BLOB_BASE}{resolved}"
+            f"{anchor}{match.group('suffix')}"
+        )
+
+    rendered: list[str] = []
+    active_fence: tuple[str, int] | None = None
+    for line in text.splitlines():
+        fence = fence_marker(line)
+        if fence is not None:
+            marker, length, remainder = fence
+            if active_fence is None:
+                active_fence = (marker, length)
+            elif (
+                marker == active_fence[0]
+                and length >= active_fence[1]
+                and not remainder.strip()
+            ):
+                active_fence = None
+        elif active_fence is None:
+            line = RELATIVE_MARKDOWN_LINK_RE.sub(replace, line)
+        rendered.append(line)
+    return "\n".join(rendered) + ("\n" if trailing_newline else "")
+
+
+def validate_portable_markdown_links(text: str, label: Path) -> None:
+    """Fail when generated prose still depends on its repository location."""
+    active_fence: tuple[str, int] | None = None
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        fence = fence_marker(line)
+        if fence is not None:
+            marker, length, remainder = fence
+            if active_fence is None:
+                active_fence = (marker, length)
+            elif (
+                marker == active_fence[0]
+                and length >= active_fence[1]
+                and not remainder.strip()
+            ):
+                active_fence = None
+        elif active_fence is None and RELATIVE_MARKDOWN_LINK_RE.search(line):
+            raise SystemExit(
+                f"{label}:{line_number}: generated package retains a relative "
+                "Markdown link"
+            )
+
+
 def sequence_body() -> str:
     text = read_text(SEQUENCE_PATH).strip()
     if text.startswith("# "):
@@ -198,7 +271,7 @@ def sequence_body() -> str:
 
 
 def interpretation_body(path: Path) -> str:
-    lines = read_text(path).splitlines()
+    lines = rebase_relative_markdown_links(read_text(path), path).splitlines()
     if lines and lines[0] == "---":
         try:
             end = lines.index("---", 1)
@@ -283,7 +356,11 @@ def split_interpretations_match(path: Path, pids: list[str]) -> bool:
     if actual != expected:
         return False
     return all(
-        read_text(path / f"{pid}.md") == read_text(INTERPRETATIONS_DIR / f"{pid}.md")
+        read_text(path / f"{pid}.md")
+        == rebase_relative_markdown_links(
+            read_text(INTERPRETATIONS_DIR / f"{pid}.md"),
+            INTERPRETATIONS_DIR / f"{pid}.md",
+        )
         for pid in pids
     )
 
@@ -339,6 +416,7 @@ def sync_skill(
     expected_snapshot = render_sequence_md(
         skill_name, pids, effective_date, sequence_hash, use_full
     )
+    validate_portable_markdown_links(expected_snapshot, snapshot_path)
 
     if dry_run:
         shape = "split" if use_full else "single-file"
@@ -376,9 +454,13 @@ def sync_skill(
     if use_full:
         interpretations_out.mkdir(parents=True, exist_ok=True)
         for pid in pids:
-            shutil.copy2(
-                INTERPRETATIONS_DIR / f"{pid}.md",
-                interpretations_out / f"{pid}.md",
+            source = INTERPRETATIONS_DIR / f"{pid}.md"
+            rendered = rebase_relative_markdown_links(read_text(source), source)
+            destination = interpretations_out / f"{pid}.md"
+            validate_portable_markdown_links(rendered, destination)
+            destination.write_text(
+                rendered,
+                encoding="utf-8",
             )
 
     print(f"synced {skill_name}: {len(pids)} interpretations -> {snapshot_path}")

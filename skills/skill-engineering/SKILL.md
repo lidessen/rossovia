@@ -90,13 +90,19 @@ report the lineage difference. Do not merge, edit, or silently reconcile them.
    volatile detail, variants, and long protocols behind direct references.
    Use references/expression-layers.md for register, doctrine-file shape, and
    P16 probes. Domain skills own organizational or methodological doctrine;
-   this skill owns how that doctrine is expressed.
+   this skill owns how that doctrine is expressed. Compose the prompt around
+   the actor's object, governing relations, decision, and evidence path. A role
+   name, qualifier, repeated prohibition, or method step earns its place only
+   when it changes what the Agent notices, preserves, decides, or verifies; do
+   not mistake professional-sounding predicates for an activation method.
 5. **Test behavior, not prose.** Define a task that would reveal the intended
    behavior, a boundary task that should not trigger or should route elsewhere,
    and the evidence each outcome must provide. When claiming improvement, use
-   a comparable baseline or label attribution unproven. Use
-   references/evaluation.md. Revise from observed failure rather than from
-   aesthetic preference.
+   a comparable baseline or label attribution unproven. When the claim concerns
+   prompt expression itself, isolate the proposed carrier through predicate,
+   composition, or order ablation; use matched natural-language conditions for
+   every language covered by the claim. Use references/evaluation.md. Revise
+   from observed failure rather than from aesthetic preference.
 6. **Commit the smallest valid expression.** Preserve source links and record
    remaining uncertainty. In source-bearing research, interpretation, proposal,
    or review artifacts, keep descriptive inline links on the claims they support;

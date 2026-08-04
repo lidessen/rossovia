@@ -1,6 +1,7 @@
 # Strategic Advisory — First Action Probe
 
-**Status:** action probe supported; human review and boundary probe pending
+**Status:** action and ordinary-planning boundary supported; strategic quality
+and durable human adoption unproven
 **Date:** 2026-07-10
 **Runtime:** independent [Work Cell](../../packages/work-cell/README.md),
 `deepseek-v4-flash`
