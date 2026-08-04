@@ -6,7 +6,7 @@
     "principal:conversation:2026-08-03:option-a"
   ],
   "createdAt": "2026-08-03T15:30:00Z",
-  "updatedAt": "2026-08-04T11:42:53Z",
+  "updatedAt": "2026-08-04T12:12:37Z",
   "mainline": {
     "contradiction": "main",
     "acceptance": [
@@ -35,8 +35,10 @@
       "sources": [
         "principal:conversation:2026-08-04:extract-statusline-claude-codex"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "PR #67 returns the read-only Workbench status projection, Claude command adapter, and Codex-native footer configuration after Principal choice A, named exact-head review, and green verification."
     }
   ],
-  "currentFocus": "statusline-adapters"
+  "currentFocus": "integration-baseline"
 }
