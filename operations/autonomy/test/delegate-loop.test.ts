@@ -163,11 +163,13 @@ test("one AI SDK step collects an independent delegate batch before dispatch and
 test("the parent creates a host-owned task before delegating it and child settlement completes that task", async () => {
   const root = await fixture();
   let calls = 0;
+  const prompts: LanguageModelV4CallOptions["prompt"][] = [];
   let checkpoint: DelegateBatchCheckpoint | undefined;
   const delegateCall = call("contract", "inspect-contract", "source:contract");
   const model = new MockLanguageModelV4({
-    doGenerate: async () => {
+    doGenerate: async (options) => {
       calls += 1;
+      prompts.push(options.prompt);
       if (calls === 1) {
         return response([taskCreateToolCall(
           "create-contract-task",
@@ -203,6 +205,10 @@ test("the parent creates a host-owned task before delegating it and child settle
   })]);
   expect(result.tasks).toEqual([expect.objectContaining({ id: "task-1", status: "completed" })]);
   expect(calls).toBe(3);
+  expect(JSON.stringify(prompts[0])).toContain("Remaining parent model steps: 4");
+  expect(JSON.stringify(prompts[0])).toContain("Current tasks: []");
+  expect(JSON.stringify(prompts[1])).toContain("Remaining parent model steps: 3");
+  expect(JSON.stringify(prompts[1])).toContain('Current tasks: [{\\"id\\":\\"task-1\\"');
 });
 
 test("delegate_file keeps a large semantic task out of parent model messages and returns child evidence by file", async () => {
@@ -637,9 +643,11 @@ test("checkpoint admission rejects a Task snapshot that is not bound to its dele
 test("DelegateLoopSession parks the parent and resumes its model only after the child barrier", async () => {
   const root = await fixture();
   let modelCalls = 0;
+  const prompts: LanguageModelV4CallOptions["prompt"][] = [];
   const model = new MockLanguageModelV4({
-    doGenerate: async () => {
+    doGenerate: async (options) => {
       modelCalls += 1;
+      prompts.push(options.prompt);
       if (modelCalls === 1) {
         return response([
           toolCall("async-contract", call("contract", "inspect-contract", "source:contract")),
@@ -679,6 +687,24 @@ test("DelegateLoopSession parks the parent and resumes its model only after the 
   if (finished.kind !== "finished") throw new Error("expected finished delegate loop");
   expect(finished.run.text).toBe("Parent resumed after the child barrier.");
   expect(modelCalls).toBe(2);
+
+  const firstOrientation = JSON.stringify(prompts[0]);
+  expect(firstOrientation).toContain("## Current iteration orientation");
+  expect(firstOrientation).toContain("Remaining parent model steps: 3");
+  expect(firstOrientation).toContain("Remaining delegate batches: 2");
+  expect(firstOrientation).toContain("Guard references: guard:independent-claim-check");
+  expect(firstOrientation).toContain("Reconstruction owner: mission:turn-1-reconstruction");
+  expect(firstOrientation).toContain('\\"status\\":\\"pending\\"');
+  expect(firstOrientation).toContain(
+    "Uncovered contribution obligations: inspect-contract, inspect-callers, document-boundary",
+  );
+
+  const resumedOrientation = JSON.stringify(prompts[1]);
+  expect(resumedOrientation).toContain("Remaining parent model steps: 2");
+  expect(resumedOrientation).toContain("Remaining delegate batches: 1");
+  expect(resumedOrientation).toContain("Settled contribution keys: contract, callers");
+  expect(resumedOrientation).toContain('\\"status\\":\\"completed\\"');
+  expect(resumedOrientation).toContain("Uncovered contribution obligations: document-boundary");
 });
 
 test("Mission runner wakes a parked real Agent turn and withholds it after durable input advances", async () => {

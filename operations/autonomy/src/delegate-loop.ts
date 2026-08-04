@@ -361,6 +361,7 @@ export class DelegateLoopSession {
 
     const delegationOpen = this.batches.length < this.options.maxDelegateBatches;
     const remainingModelSteps = this.options.maxModelSteps - this.modelSteps;
+    const remainingDelegateBatches = this.options.maxDelegateBatches - this.batches.length;
     const readableResults = new Map<string, CompactDelegateOutcome>();
     for (const batch of this.batches) {
       for (const outcome of batch.outcomes) {
@@ -407,6 +408,8 @@ export class DelegateLoopSession {
       model: this.options.model,
       instructions: renderDelegateInstructions(this.input, {
         delegationOpen,
+        remainingModelSteps,
+        remainingDelegateBatches,
         settledContributionKeys: [...this.settledContributionKeys],
         uncoveredObligations: uncovered(this.input.whole.obligations, this.coveredObligations),
         tasks: this.tasks.snapshot(),
@@ -416,7 +419,17 @@ export class DelegateLoopSession {
         ? "auto"
         : { type: "tool", toolName: this.options.initialDelegateTool },
       stopWhen: isStepCount(remainingModelSteps),
-      prepareStep: ({ messages }) => ({ messages: compactWriteFileMessages(messages) }),
+      prepareStep: ({ messages, stepNumber }) => ({
+        instructions: renderDelegateInstructions(this.input, {
+          delegationOpen,
+          remainingModelSteps: remainingModelSteps - stepNumber,
+          remainingDelegateBatches,
+          settledContributionKeys: [...this.settledContributionKeys],
+          uncoveredObligations: uncovered(this.input.whole.obligations, this.coveredObligations),
+          tasks: this.tasks.snapshot(),
+        }),
+        messages: compactWriteFileMessages(messages),
+      }),
       maxRetries: 0,
       maxOutputTokens: this.options.maxOutputTokens ?? 4_000,
     });
@@ -622,6 +635,8 @@ function renderDelegateInstructions(
   input: DelegateLoopInput,
   state: {
     readonly delegationOpen: boolean;
+    readonly remainingModelSteps: number;
+    readonly remainingDelegateBatches: number;
     readonly settledContributionKeys: readonly string[];
     readonly uncoveredObligations: readonly string[];
     readonly tasks: readonly Task[];
@@ -641,9 +656,17 @@ Each call carries only the semantic contribution: stable key, taskId, task, decl
 
 Several calls in one response are one candidate batch. Emit several only when they are independent in this step; the host validates the complete batch before starting any Cell. A returned tool result is execution evidence, not semantic acceptance or Mission completion.
 
+## Current iteration orientation
+
+This read-only projection is rebuilt from host-owned state before each parent advance. Re-ground the next action in it rather than carrying a prior conclusion forward unexamined. It is coordination state, not proof of correctness or Mission acceptance.
+
 Delegation open: ${state.delegationOpen ? "yes" : "no"}
+Remaining parent model steps: ${state.remainingModelSteps}
+Remaining delegate batches: ${state.remainingDelegateBatches}
 Whole revision: ${input.whole.revision}
 Declared sources: ${input.whole.sourceRefs.join(", ")}
+Guard references: ${input.whole.guardRefs.join(", ") || "none"}
+Reconstruction owner: ${input.whole.reconstructionOwner}
 Uncovered contribution obligations: ${state.uncoveredObligations.join(", ") || "none"}
 Settled contribution keys: ${state.settledContributionKeys.join(", ") || "none"}
 Current tasks: ${JSON.stringify(state.tasks)}
