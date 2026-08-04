@@ -17977,6 +17977,109 @@ function now6() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+// src/statusline.ts
+import { existsSync as existsSync13, readFileSync as readFileSync10, realpathSync as realpathSync6 } from "node:fs";
+import { resolve as resolve6 } from "node:path";
+function statusLineProjection(homeArgument, cwdArgument) {
+  const cwd = canonicalPath(cwdArgument);
+  let workspace;
+  try {
+    workspace = observeWorkspace({ id: null, repository: null }, { path: gitRoot(cwd) });
+  } catch {
+    return unavailableGitProjection(cwd);
+  }
+  const branch = workspace.branch ?? workspace.head?.slice(0, 8) ?? null;
+  const base = {
+    version: "rosso.status-line.v1",
+    path: workspace.path,
+    git: {
+      available: true,
+      branch,
+      dirty: workspace.dirty
+    }
+  };
+  try {
+    const home = loadHome(homeArgument);
+    const projects = workspace.origin === null ? [] : home.projects.projects.filter((project2) => normalizedRepository(project2.repository) === normalizedRepository(workspace.origin));
+    const unsettled = listPrincipalTasks(home.home).tasks.filter((task) => task.lifecycle !== "settled");
+    if (projects.length !== 1) {
+      return {
+        ...base,
+        projectId: null,
+        tasks: taskCounts("global", unsettled)
+      };
+    }
+    const project = projects[0];
+    const tasks = unsettled.filter((task) => task.binding.kind === "project-context" && task.binding.projectId === project.id && (task.binding.worktreePath === undefined || canonicalPath(task.binding.worktreePath) === workspace.path));
+    return {
+      ...base,
+      projectId: project.id,
+      tasks: taskCounts("current-worktree", tasks)
+    };
+  } catch {
+    return {
+      ...base,
+      projectId: null,
+      tasks: emptyTasks("source-unavailable")
+    };
+  }
+}
+function renderStatusLine(projection) {
+  const locus = projection.git.available ? `${projection.path} · ${projection.git.branch ?? "unborn"}${projection.git.dirty ? " *" : ""}` : `${projection.path} · no Git`;
+  const project = projection.projectId === null ? "" : ` · ${projection.projectId}`;
+  if (projection.tasks.standing === "unregistered") {
+    return `Rossovia${project} · ${locus} · 未登记`;
+  }
+  if (projection.tasks.standing === "source-unavailable") {
+    return `Rossovia${project} · ${locus} · 任务源不可用`;
+  }
+  const scope = projection.tasks.standing === "global" ? " · 全局" : "";
+  const external2 = projection.tasks.external > 0 ? ` · 待外部 ${projection.tasks.external}` : "";
+  return `Rossovia${project} · ${locus}${scope} · 待我 ${projection.tasks.principal} · 待 Agent ${projection.tasks.agent}${external2}`;
+}
+function cwdFromStatusInput(rawInput, explicit) {
+  if (explicit?.trim())
+    return explicit;
+  if (!rawInput.trim())
+    return process.cwd();
+  try {
+    const input = JSON.parse(rawInput);
+    if (typeof input.workspace?.current_dir === "string" && input.workspace.current_dir.trim()) {
+      return input.workspace.current_dir;
+    }
+    if (typeof input.cwd === "string" && input.cwd.trim())
+      return input.cwd;
+  } catch {}
+  return process.cwd();
+}
+function statusLineInput(stdinIsTty) {
+  return stdinIsTty ? "" : readFileSync10(0, "utf8");
+}
+function canonicalPath(path) {
+  const resolved = resolve6(path);
+  return existsSync13(resolved) ? realpathSync6(resolved) : resolved;
+}
+function emptyTasks(standing) {
+  return { standing, principal: 0, agent: 0, external: 0 };
+}
+function taskCounts(standing, tasks) {
+  return {
+    standing,
+    principal: tasks.filter((task) => task.nextActor === "principal").length,
+    agent: tasks.filter((task) => task.nextActor === "agent").length,
+    external: tasks.filter((task) => task.nextActor === "external").length
+  };
+}
+function unavailableGitProjection(path) {
+  return {
+    version: "rosso.status-line.v1",
+    path,
+    git: { available: false, branch: null, dirty: false },
+    projectId: null,
+    tasks: emptyTasks("unregistered")
+  };
+}
+
 // src/cli.ts
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -18062,6 +18165,11 @@ try {
     const result = runHookCommand(args.slice(1), "", home);
     if (result !== undefined)
       console.log(JSON.stringify(result));
+  } else if (args[0] === "statusline") {
+    const options = parseStatusLineOptions(args.slice(1));
+    const input = statusLineInput(process.stdin.isTTY);
+    const cwd = cwdFromStatusInput(input, options.cwd);
+    console.log(renderStatusLine(statusLineProjection(home, cwd)));
   } else {
     throw new Error("invalid command; run rossovia --help");
   }
@@ -18101,9 +18209,18 @@ function printUsage() {
   console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
   console.log("  correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>");
   console.log("  hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop]");
+  console.log("  statusline [claude] [--cwd <path>]");
   console.log("  root list");
   console.log("  root add <path>...");
   console.log("  scan");
+}
+function parseStatusLineOptions(raw) {
+  const args = raw[0] === "claude" ? raw.slice(1) : raw;
+  if (args.length === 0)
+    return {};
+  if (args.length === 2 && args[0] === "--cwd" && args[1]?.trim())
+    return { cwd: args[1] };
+  throw new Error("statusline accepts optional 'claude' and --cwd <path>");
 }
 function runTaskCli(home, raw) {
   const controlPlane = createLocalTaskControlPlane(home);

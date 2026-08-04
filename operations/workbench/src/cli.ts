@@ -14,6 +14,12 @@ import { registerProject } from "./register";
 import { resolveProject } from "./resolve";
 import { addRoots, scanRoots } from "./roots";
 import { applySetup, selectSetupModules, setupStatus } from "./setup";
+import {
+  cwdFromStatusInput,
+  renderStatusLine,
+  statusLineInput,
+  statusLineProjection,
+} from "./statusline";
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -103,6 +109,11 @@ try {
   } else if (args[0] === "hook") {
     const result = runHookCommand(args.slice(1), "", home);
     if (result !== undefined) console.log(JSON.stringify(result));
+  } else if (args[0] === "statusline") {
+    const options = parseStatusLineOptions(args.slice(1));
+    const input = statusLineInput(process.stdin.isTTY);
+    const cwd = cwdFromStatusInput(input, options.cwd);
+    console.log(renderStatusLine(statusLineProjection(home, cwd)));
   } else {
     throw new Error("invalid command; run rossovia --help");
   }
@@ -143,9 +154,17 @@ function printUsage(): void {
   console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
   console.log("  correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>");
   console.log("  hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop]");
+  console.log("  statusline [claude] [--cwd <path>]");
   console.log("  root list");
   console.log("  root add <path>...");
   console.log("  scan");
+}
+
+function parseStatusLineOptions(raw: string[]): { cwd?: string } {
+  const args = raw[0] === "claude" ? raw.slice(1) : raw;
+  if (args.length === 0) return {};
+  if (args.length === 2 && args[0] === "--cwd" && args[1]?.trim()) return { cwd: args[1] };
+  throw new Error("statusline accepts optional 'claude' and --cwd <path>");
 }
 
 function runTaskCli(home: string | undefined, raw: string[]): unknown {

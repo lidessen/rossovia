@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "\"$(git rev-parse --show-toplevel)/operations/workbench/rossovia\" statusline claude"
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
