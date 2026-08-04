@@ -184,8 +184,8 @@ The review did expose four downstream expression failures:
   speed of a lower mechanism;
 - repeated recovery and authorization fixes showed that prior validation is
   evidence rather than present effect authority after source, target, or
-  authorization drift; P13 and the accepted architecture now state this
-  consequence without adding a new P-ID; and
+  authorization drift; accepted architecture and the responsible mechanisms
+  now own that control, while P13 remains limited to fact settlement; and
 - P14's Sequence-to-interpretation expression probe exceeded P14's
   reconstructibility predicate. It has been replaced with a source/projection
   case; semantic-source authority remains an architecture relation.

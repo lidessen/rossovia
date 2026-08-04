@@ -13,7 +13,7 @@ objective reality, inherited knowledge, and practice — not project-owned
                                 ▼
         ┌─────────────────────────────────────────────┐
         │ Founding Mandate          Principle Sequence│
-        │ purpose and values        general method    │
+        │ purpose, values, lines    core method       │
         └──────────────────────┬──────────────────────┘
                                ▼
                  accepted architecture and decisions
@@ -30,10 +30,11 @@ objective reality, inherited knowledge, and practice — not project-owned
 
 The Founding Mandate and the Principle Sequence are both high-level governing
 sources, but they answer different questions. The Mandate records the
-human-given purpose, value boundary, and constituency of the project. The
-Sequence is the sole semantic source of its compact core principles and governs
-how the project investigates and acts. Neither can be inferred from the other,
-and neither authorizes a concrete Mission, effect, or acceptance decision.
+human-given purpose, value boundary, constituency, and any explicitly adopted
+project-local working line. The Sequence is the sole semantic source of compact
+cross-context core principles; it does not absorb every project method. Neither
+can be inferred from the other, and neither authorizes a concrete Mission,
+effect, or acceptance decision.
 
 Accepted architecture owns the durable relations among authority, state,
 feedback, verification, and replaceable parts. Skills express reusable
@@ -47,7 +48,7 @@ promote their own policy or result into an upper source.
 | Layer | Owns | Changes only when | Must not absorb |
 |---|---|---|---|
 | Reality and practice | external conditions and consequences the project encounters | the world changes or a better observation corrects the project | project-owned claims of truth |
-| Founding Mandate | purpose, value boundary, and human constituency | the Principal or future accountable community explicitly revises it | implementation policy, runtime status, or performance claims |
+| Founding Mandate | purpose, value boundary, human constituency, and explicitly adopted project-local working lines | the Principal or future accountable community explicitly revises it | implementation policy, runtime status, or performance claims |
 | Principle Sequence | compact, cross-context method principles | recurring evidence survives research, selected review, and explicit human adoption | explanations, workflows, examples, or recent mechanism fixes |
 | Accepted architecture | stable ownership, authority, state, feedback, and substitution relations | representative practice exposes a decision-changing design failure and the accepted decision is revised | provider quirks, task-local fields, or current UI mechanics |
 | Skills and capabilities | reusable judgments and their action, boundary, and evidence contracts | repeated agent behavior shows expression or capability drift | project facts, durable acceptance, or orchestration policy |
@@ -100,10 +101,11 @@ artifacts, decisions, products, and effects (万物)
         └──► verified practice evidence ──► cognition and revision
 ```
 
-The Sequence alone is the semantic root of core principles. The Founding
-Mandate supplies project purpose and value constraints without becoming a
-method canon. Interpretations are the Sequence's first source-bound unfolding,
-not a coequal source. Skills are methods rather than authorities. A domain Skill
+The Sequence alone is the semantic root of cross-context core principles. The
+Founding Mandate supplies project purpose, value constraints, and its explicitly
+adopted local working lines without becoming a second Principle canon.
+Interpretations are the Sequence's first source-bound unfolding, not a coequal
+source. Skills are methods rather than authorities. A domain Skill
 remains reusable professional capacity; a concrete formation arises only when
 a method meets actual domain evidence, a present contradiction, bounded actors,
 and acceptance. Work Cell is the minimum differentiable execution unit, while

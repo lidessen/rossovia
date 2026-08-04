@@ -75,24 +75,25 @@ with agent self-report.
 
 - What evidence links this claim to the stated result?
 - Who verifies it, and where is the acceptance or settlement recorded?
-- Are the owning source, evidence, target, and authorization still current at
-  the moment the accepted effect is committed?
+- Are the owning source, evidence, and stated result still current when the
+  claim is admitted or settled as fact?
 
 #### Boundary and common misreading
 
 Exploration and drafts need not be submitted as durable facts. The gate applies
 when a result would otherwise gain shared authority or close a commitment.
-Prior validation remains evidence, not present effect authority after its
-source, target, or authorization drifts. The responsible mechanism must
-revalidate those current relations at a material mutation boundary; P14 still
-decides whether a cached representation is only a projection.
+Prior validation remains evidence, not fact authority for a later claim after
+its source, evidence, or stated result drifts. Reverify the claim at settlement.
+Effect authorization belongs to accepted architecture and the responsible
+mechanism; P14 still decides whether a cached representation is only a
+projection.
 
 #### Theoretical roots
 
 - Mao's [《实践论》](https://www.marxists.org/reference/archive/mao/selected-works/volume-1/mswv1_16.htm)
   supplies the practice-epistemology root: claims are tested in practice rather
   than declared true.
-- The adopted [fact-admission record](../adopted/fact-admission-gate.md)
+- The adopted [fact-admission record](https://github.com/lidessen/rossovia/blob/main/principles/adopted/fact-admission-gate.md)
   preserves the project's claim–verify–settle and
   explore–verify–codify evidence.
 
@@ -100,8 +101,8 @@ decides whether a cached representation is only a projection.
 
 - A sequence candidate remains pending until human adoption is recorded.
 - A task cannot close from a worker report alone.
-- A cached valid receipt or verification cannot authorize a later mutation
-  after the owning source or target has changed.
+- A cached verification cannot settle a later claim after the owning source or
+  stated result has changed.
 
 #### Revision discipline
 

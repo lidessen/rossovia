@@ -131,7 +131,7 @@ and work log can be independent records with different semantics.
 
 - Martin Fowler's [Event Sourcing pattern](https://martinfowler.com/eaaDev/EventSourcing.html)
   describes rebuilding application state from a retained event sequence.
-- The adopted [source/projection record](../adopted/source-projection-boundary.md)
+- The adopted [source/projection record](https://github.com/lidessen/rossovia/blob/main/principles/adopted/source-projection-boundary.md)
   preserves the project's cross-project evidence and its narrower
   reconstructibility boundary.
 

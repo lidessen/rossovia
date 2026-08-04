@@ -1,7 +1,7 @@
 # Top-down Theory, Architecture, and Skills Review
 
-**Status:** candidate repair assembled; exact-head verification and independent
-review pending
+**Status:** first independent review findings repaired; final exact-head review
+pending
 **Date:** 2026-08-03
 **Frozen baseline:** `cff6613fb18145990e973e74ebe189612bdedf24`
 **Authority:** review and candidate-change evidence only; no Principle adoption,
@@ -24,15 +24,16 @@ The baseline was frozen before synthesis. Three fresh, read-only Agents reviewed
 history, Principle coherence, and the complete active-Skill system
 independently. The Main Agent retained synthesis and writes, then reconstructed
 material claims through Git history, current sources, validation scripts, and
-two fresh boundary probes.
+two fresh boundary probes. The harness returns, exact dispatch boundaries, and
+their replay limitation are retained in the
+[agent-return evidence](evidence/2026-08-03-top-down-review-agent-returns.md).
 
 Observed historical shape:
 
-- `principles/SEQUENCE.md` changed in two commits since the regenerated
-  baseline;
-- `design/FOUNDING-MANDATE.md` changed in two commits;
-- `design/DESIGN.md` changed in 17 commits and had grown to 517 lines before
-  this candidate;
+- in the inclusive range `c0d80a5^..cff6613`,
+  `principles/SEQUENCE.md` and `design/FOUNDING-MANDATE.md` each appear in
+  two commits, while `design/DESIGN.md` appears in 17;
+- `design/DESIGN.md` had grown to 517 lines before this candidate;
 - root `AGENTS.md` grew from 99 lines at `c0d80a5` to 437 lines at the
   frozen baseline, mainly through Workbench-specific command and authorization
   protocols; and
@@ -46,9 +47,10 @@ The candidate makes the following ownership order explicit:
 
 1. objective reality, inherited knowledge, and practice remain outside project
    ownership;
-2. the Founding Mandate owns project purpose, value boundary, and human
-   constituency;
-3. the Principle Sequence is the sole semantic root of compact core method;
+2. the Founding Mandate owns project purpose, value boundary, human
+   constituency, and explicitly adopted project-local working lines;
+3. the Principle Sequence is the sole semantic root of compact cross-context
+   core principles, not every project method;
 4. accepted architecture owns durable authority, state, feedback,
    verification, and substitution relations;
 5. Skills own reusable judgments and their behavior contracts;
@@ -65,17 +67,20 @@ rewrite it directly.
 
 ## Principle review
 
-**Verdict: retain P01–P16.** No recurring decision failure required a new,
-revised, or retired Sequence line. The pending change-rate-layering inquiry does
-not gain adoption through this review; P09, P12, P14, and accepted architecture
-already carry the demonstrated consequence.
+**Verdict: retain P01–P16.** The
+[retained Principle review](evidence/2026-08-03-top-down-review-agent-returns.md#principle-coherence-return)
+found no recurring decision failure requiring a new, revised, or retired
+Sequence line. The pending change-rate-layering inquiry does not gain adoption
+through this review; P09, P12, P14, and accepted architecture already carry the
+demonstrated consequence.
 
 The review made three non-Sequence repairs:
 
 - twelve interpretations gained inline, claim-adjacent source links;
-- P13 now makes explicit that a prior valid check remains evidence rather than
-  present effect authority after the owning source, target, or authorization
-  drifts; and
+- P13 now remains narrowly explicit that fact settlement must use current,
+  traceable source, evidence, and stated-result relations. Current effect
+  authorization stays with accepted architecture and the responsible
+  mechanism; and
 - P14's overbroad Sequence-to-interpretation probe was replaced with a
   reconstructible source/projection case. Semantic-source authority belongs to
   architecture, not to P14's event-projection predicate.
@@ -90,7 +95,7 @@ generic P-ID selector may miss.
   situated formations, mechanisms, and evidence.
 - The module list is explicitly a current capability map below the governing
   layers, not another architecture source.
-- Root `AGENTS.md` retains a compact Workbench route and falls from 437 to 180
+- Root `AGENTS.md` retains a compact Workbench route and falls from 437 to 181
   lines. The 273-line command and authorization protocol moves intact to
   `operations/workbench/AGENTS.md`, where it is loaded only for Workbench
   requests.

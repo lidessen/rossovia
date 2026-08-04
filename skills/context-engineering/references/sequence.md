@@ -90,7 +90,7 @@ condition remains discoverable and available when it governs the task.
   layers supply learning and variation, while slow layers preserve continuity
   and constraints. It does not make P09 a general rule for module dependency
   direction.
-- The project's inherited [hierarchical context guidance](../../archive/skills/setup-lidessen-skills/references/cross-cutting-principles.md#hierarchical-context-management)
+- The project's inherited [hierarchical context guidance](https://github.com/lidessen/rossovia/blob/main/archive/skills/setup-lidessen-skills/references/cross-cutting-principles.md#hierarchical-context-management)
   records the L1/L2/L3 experience from which this portable timing rule was
   distilled.
 
@@ -175,7 +175,7 @@ and work log can be independent records with different semantics.
 
 - Martin Fowler's [Event Sourcing pattern](https://martinfowler.com/eaaDev/EventSourcing.html)
   describes rebuilding application state from a retained event sequence.
-- The adopted [source/projection record](../adopted/source-projection-boundary.md)
+- The adopted [source/projection record](https://github.com/lidessen/rossovia/blob/main/principles/adopted/source-projection-boundary.md)
   preserves the project's cross-project evidence and its narrower
   reconstructibility boundary.
 
