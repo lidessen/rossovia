@@ -247,13 +247,15 @@ ceiling across all conditions, and one packet leaked the desired diagnosis.
 The campaign supports an ablation and multilingual evaluation method, not a
 stable-path claim, a corpus-wide Skill rewrite, or a new Principle.
 
-A second, pre-frozen repeated campaign tested baseline headroom before any
-carrier treatment. Its 12 isolated outputs completed mechanically, but all four
-task-language strata hit the registered floor: every model-validity answer made
-an unsupported allocation, every Chinese notice invented causal purpose, and
-every English notice added unsupported continuation status. The campaign
-correctly stopped before treatment. This result neither supports nor refutes a
-carrier; it exposes fixture headroom as a prior validity condition. A prompt
+A second repeated session retained 12 mechanically completed baseline outputs.
+Post-run application of its retained rubric classifies all four task-language
+strata as floor: every model-validity answer made an unsupported allocation,
+every Chinese notice invented causal purpose, and every English notice added
+unsupported continuation status. No treatment ran. Because the contract,
+manifest, and score record were first committed after the runs, the repository
+does not establish pre-registration chronology or independent blind scoring.
+The result neither supports nor refutes a carrier; it still exposes fixture
+headroom as a validity condition for a future reconstructable campaign. A prompt
 composition cannot be credited merely because it rescues a baseline whose
 rubric or task makes every untreated response fail through the same boundary.
 

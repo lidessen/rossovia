@@ -158,13 +158,14 @@ matched natural-language probes for multilingual claims. No target-domain Skill
 is rewritten, no corpus-wide pruning begins, and no Principle change is
 proposed from this evidence.
 
-## Probe 4 — repeated baseline qualification stopped at floor
+## Probe 4 — retained repeated baseline analyzed as floor
 
-The proposed next campaign was frozen before output with two harder historical
-tasks, natural English and Chinese packets, three fresh repetitions per
-task-language stratum, exact run identities, task-specific rubrics, and an
-independent blinded semantic scorer. The reviewed contract and raw evidence are
-retained under the
+The session produced two harder historical tasks, natural English and Chinese
+packets, three fresh repetitions per task-language stratum, exact run identities,
+and task-specific rubrics. The repository contains a contract and semantic score
+sheet, but both were first committed after the runs; it cannot prove pre-run
+chronology, scorer blindness, or reviewer independence. The reconstructable
+artifacts and explicit evidence downgrade are retained under the
 [round-two evidence directory](evidence/2026-08-04-prompt-composition-round2/).
 
 All 12 baseline processes completed without tool use or runtime error. None was
@@ -178,12 +179,11 @@ fully correct:
 | clinic notice, Chinese | 0 / 3 | floor | all three invented a purpose from the prior chronology |
 
 This is not evidence against the relation kernel, Principle expression, example,
-or reordered carrier: none was run. It shows that the selected baseline tasks
-were nondiscriminating under the pre-registered headroom rule. A treatment can
+or reordered carrier: none was run. Post-run application of the retained rubric
+classifies the selected baseline tasks as nondiscriminating. A treatment can
 look impressive against a universal baseline failure while still leaving no
 way to distinguish useful redirection from answer injection or an over-demanding
-rubric. The campaign therefore stopped before its planned 48 treatment calls;
-the tasks were not replaced after observing results.
+rubric. No planned treatment call was made and the tasks were not replaced.
 
 The immediate methodological lesson is to qualify both sides of headroom before
 spending a carrier matrix: a repeated baseline must be imperfect but capable of
