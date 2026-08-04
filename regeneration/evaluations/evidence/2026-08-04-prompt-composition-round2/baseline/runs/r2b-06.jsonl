@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"019fcc31-de8d-7af3-9b2b-815e98630989"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"# 儿科当天就诊号源六周试行公告\n\n从 8 月 5 日起，Northside Community Clinic 将开展为期六周的试行，在每个工作日为紧急儿科病例预留 12 个当天就诊号源。开展这项试行是因为过去四周有 18 名为生病儿童来电的照护者被告知当天没有可用号源。\n\n照护者可致电诊所申请当天号源，无需使用应用程序或在线账户。分诊护士将按照诊所现行分诊规程判断病例是否紧急；前台工作人员不负责作出这一判断。当天号源不能保证一定可用。\n\n当天未使用的预留号源将在 14:00 释放到线上预约，供次日就诊使用。\n\n试行期间，诊所将测量儿科候诊时间和来电放弃数量。这项安排不会增加临床人员，也不会提高诊所的总预约容量。目前仅确认试行六周。"}}
+{"type":"turn.completed","usage":{"input_tokens":14357,"cached_input_tokens":9984,"cache_write_input_tokens":0,"output_tokens":227,"reasoning_output_tokens":0}}

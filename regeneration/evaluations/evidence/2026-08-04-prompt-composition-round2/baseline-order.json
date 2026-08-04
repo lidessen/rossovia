@@ -1,0 +1,34 @@
+{
+  "version": "prompt-composition-baseline-order.v1",
+  "frozenBeforeExecution": true,
+  "executionProfile": {
+    "client": "codex exec",
+    "clientVersion": "codex-cli 0.146.0",
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "low",
+    "sandbox": "read-only",
+    "ephemeral": true,
+    "ignoreUserConfig": true,
+    "ignoreRules": true,
+    "workspace": "/private/tmp",
+    "completion": "one final answer plus JSONL and stderr",
+    "timeout": "none imposed by experiment",
+    "scheduling": "sequential in launchOrder",
+    "seed": "unavailable",
+    "temperature": "unavailable"
+  },
+  "launchOrder": [
+    { "id": "r2b-01", "task": "t2-clinic-notice", "language": "zh", "repetition": 2 },
+    { "id": "r2b-02", "task": "t1-model-validity", "language": "en", "repetition": 1 },
+    { "id": "r2b-03", "task": "t2-clinic-notice", "language": "en", "repetition": 3 },
+    { "id": "r2b-04", "task": "t1-model-validity", "language": "zh", "repetition": 2 },
+    { "id": "r2b-05", "task": "t1-model-validity", "language": "en", "repetition": 3 },
+    { "id": "r2b-06", "task": "t2-clinic-notice", "language": "zh", "repetition": 1 },
+    { "id": "r2b-07", "task": "t2-clinic-notice", "language": "en", "repetition": 1 },
+    { "id": "r2b-08", "task": "t1-model-validity", "language": "zh", "repetition": 3 },
+    { "id": "r2b-09", "task": "t2-clinic-notice", "language": "zh", "repetition": 3 },
+    { "id": "r2b-10", "task": "t1-model-validity", "language": "en", "repetition": 2 },
+    { "id": "r2b-11", "task": "t1-model-validity", "language": "zh", "repetition": 1 },
+    { "id": "r2b-12", "task": "t2-clinic-notice", "language": "en", "repetition": 2 }
+  ]
+}

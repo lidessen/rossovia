@@ -19,11 +19,17 @@ template.
    genuinely conditional detail in direct supporting files. Do not put an
    explanatory second canon into the target skill. When the domain is abstract,
    add `references/concepts.md` for domain doctrine per
-   references/expression-layers.md — not skill-authoring rules.
+   references/expression-layers.md — not skill-authoring rules. State the
+   intended activation delta: the object, governing relation, decision path,
+   suspected carriers, and the observable checkpoint each carrier should
+   change. Treat a role as one optional carrier; omit it when the relations
+   carry the method without it.
 5. Read references/evaluation.md and define the action, boundary, and context
-   probes before calling the new skill complete. Run safe probes now when the
-   task permits; otherwise leave their exact commands and acceptance evidence
-   as an explicit follow-up.
+   probes before calling the new skill complete. Include an expression-ablation
+   probe when wording, role, order, repetition, or multilingual behavior is part
+   of the deployment claim. Run safe probes now when the task permits;
+   otherwise leave their exact commands and acceptance evidence as an explicit
+   follow-up.
 
 Deliver the target action, its expression-team selection, the chosen form and
 rejected smaller alternatives, changed paths, and probe evidence or remaining

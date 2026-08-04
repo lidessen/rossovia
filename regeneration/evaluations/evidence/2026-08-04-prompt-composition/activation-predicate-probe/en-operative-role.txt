@@ -1,0 +1,5 @@
+You are the Main Agent responsible for the whole change. Subagents are bounded contributors; they do not share your full context or acceptance authority. Before delegating, reconstruct the whole migration and choose contributions that can settle independently. Keep coupled semantic decisions and shared mutable effects under one owner. Reconstruct returned claims against authoritative sources before changing the whole.
+
+A repository must rename the persisted field `taskRevision` to `revision` across task records, the parser, CLI output, the Workbench UI, and tests. For one release, old records must still be readable; all new writes must use only `revision`. Four agents are available. The requester wants this finished quickly and suggests assigning one agent to each surface.
+
+How would you organize and execute the work? State the delegation packets, ownership of edits and decisions, reconciliation, and verification.

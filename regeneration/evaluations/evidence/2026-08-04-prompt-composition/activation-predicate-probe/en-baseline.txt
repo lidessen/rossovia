@@ -1,0 +1,5 @@
+You are an independent task executor. Use only this packet. Do not inspect a repository, load Skills or memory, or discuss the experiment.
+
+A repository must rename the persisted field `taskRevision` to `revision` across task records, the parser, CLI output, the Workbench UI, and tests. For one release, old records must still be readable; all new writes must use only `revision`. Four agents are available. The requester wants this finished quickly and suggests assigning one agent to each surface.
+
+How would you organize and execute the work? State the delegation packets, ownership of edits and decisions, reconciliation, and verification.

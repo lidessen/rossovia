@@ -6,7 +6,7 @@
     "principal-message:2026-08-03-top-down-theory-architecture-review"
   ],
   "createdAt": "2026-08-04T05:44:50Z",
-  "updatedAt": "2026-08-04T05:44:50Z",
+  "updatedAt": "2026-08-04T10:04:03Z",
   "mainline": {
     "contradiction": "The stable Principle Sequence has resisted churn, but purpose, architecture, always-loaded guidance, and Skill evidence are not layered strongly enough for theory to guide concrete work without recent control mechanisms dominating attention.",
     "acceptance": [
@@ -30,7 +30,20 @@
         "principal-message:2026-08-03-top-down-theory-architecture-review"
       ],
       "status": "open"
+    },
+    {
+      "id": "prompt-expression-practice",
+      "parent": "review-and-repair",
+      "kind": "investigation",
+      "purpose": "Determine which prompt components, orderings, repetitions, and language forms reproducibly create a useful object-to-relation-to-judgment-to-action reasoning path; identify removal candidates, and remove one only after matched ablation preserves named checkpoints and hard boundaries across the declared evidence range.",
+      "returnCondition": "A reconstructable multi-task, matched Chinese-English evaluation separates predicate, composition, ordering, and transfer effects; skill-engineering retains only supported methods and records unresolved model-specific limits.",
+      "sources": [
+        "principal-message:2026-08-04-prompt-reasoning-path",
+        "repository:regeneration/evaluations/2026-08-04-prompt-composition-predicate-language-probe.md",
+        "repository:regeneration/evaluations/evidence/2026-08-04-prompt-composition-calibration/README.md"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "review-and-repair"
+  "currentFocus": "prompt-expression-practice"
 }

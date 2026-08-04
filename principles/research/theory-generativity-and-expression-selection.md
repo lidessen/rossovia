@@ -6,9 +6,10 @@ yet still fail to generate the object-level correction later supplied by the
 Principal, and whether the remedy requires a new principle, a new runtime
 mechanism, or a repair to existing expression.
 **Source limitations:** The comparison uses two internal historical cases and
-matched Agent probes in one repository. It tests decision formation, not
-cross-model reliability, and does not establish that every skill or Work Cell
-activation has the same failure.
+matched Agent probes in one repository, plus a later single-model predicate,
+ordering, and Chinese/English campaign. It tests observed decision formation,
+not neural mechanism or cross-model reliability, and does not establish that
+every Skill or Work Cell activation has the same failure.
 
 > This record is cited, revisable research. It owns no P-ID, cannot redefine an
 > interpretation, and does not propose a Sequence change by itself.
@@ -195,3 +196,80 @@ delivery, interpretation provenance, and behavior evidence before changing the
 Sequence. Reopen the no-proposal conclusion only if the repaired layers still
 produce a recurring cross-context decision failure that no current P-ID can
 bear without semantic extension.
+
+## Prompt composition and reasoning paths
+
+The Principal later corrected the role-versus-rules framing. A role is one
+visible prompt carrier, not the object of study. The open question is whether a
+composition of role, Principle, object and relation predicates, examples,
+ordering, repetition, and hard rules can repeatedly lead a model through a
+useful reasoning path—and which words survive removal without losing that path.
+
+The mechanistic claim must remain narrow. Prompting conditions a model with
+fixed weights; it does not update its parameters. Causal-intervention work has
+identified compact [function vectors for some in-context tasks](https://arxiv.org/abs/2310.15213)
+and [task vectors formed from demonstrations](https://arxiv.org/abs/2310.15916).
+More recent work found trait-linked
+[persona vectors in two open-weight instruction models](https://arxiv.org/abs/2507.21509).
+These results support bounded activation mediators in tested models and tasks;
+they do not establish a universal stable pathway for arbitrary professional
+roles or Principles.
+
+Behavioral role evidence is mixed. Strategically constructed role-play prompts
+improved most tasks in one
+[twelve-benchmark reasoning study](https://aclanthology.org/2024.naacl-long.228/),
+while a study of 162 personas, four model families, and 2,410 factual questions
+found [no overall persona benefit and substantial context dependence](https://aclanthology.org/2024.findings-emnlp.888/).
+The defensible hypothesis is therefore not “role activates expertise.” It is:
+a prompt carrier may change attention and judgment when it encodes a
+load-bearing responsibility, object, relation, or contrast, and that delta must
+be isolated behaviorally.
+
+Wording and language are part of the treatment. Meaning-preserving prompt
+variants can transfer poorly across models and datasets
+([Leidinger et al.](https://aclanthology.org/2023.findings-emnlp.618/)), and even
+format changes can produce large accuracy differences in some model-task pairs
+([Sclar et al.](https://arxiv.org/abs/2310.11324)). Matched multilingual work
+found higher instruction-following error rates in several non-Latin-script
+conditions, including Chinese
+([Multi-IF](https://arxiv.org/abs/2410.15553)), while a later comparison showed
+that literal translation artifacts can exaggerate English advantages
+([Enomoto et al.](https://aclanthology.org/2025.naacl-short.55/)). Natural
+Chinese and English packets must therefore preserve semantic relations rather
+than assume literal translation or language equivalence.
+
+The first bounded campaign is retained in the
+[prompt-composition evaluation](../../regeneration/evaluations/2026-08-04-prompt-composition-predicate-language-probe.md).
+Its strongest negative result is useful: the single-run screen observed no
+decision delta from decorative expert adjectives or the Main-Agent role noun
+beyond the operative relations they named. Its reasoning-path tasks reached a
+ceiling across all conditions, and one packet leaked the desired diagnosis.
+The campaign supports an ablation and multilingual evaluation method, not a
+stable-path claim, a corpus-wide Skill rewrite, or a new Principle.
+
+A second, pre-frozen repeated campaign tested baseline headroom before any
+carrier treatment. Its 12 isolated outputs completed mechanically, but all four
+task-language strata hit the registered floor: every model-validity answer made
+an unsupported allocation, every Chinese notice invented causal purpose, and
+every English notice added unsupported continuation status. The campaign
+correctly stopped before treatment. This result neither supports nor refutes a
+carrier; it exposes fixture headroom as a prior validity condition. A prompt
+composition cannot be credited merely because it rescues a baseline whose
+rubric or task makes every untreated response fail through the same boundary.
+
+For the next campaign, treat the following as disconfirming observations:
+
+- a shorter relation kernel matches the full composition across repeated hard
+  tasks, so extra role, Principle, example, or order carriers are removable;
+- apparent gains disappear under natural Chinese/English alignment, a second
+  task, fresh samples, or another model family;
+- a carrier changes length, confidence, vocabulary, or style without changing
+  object formation, boundary retention, decision, or verification; or
+- the task packet itself states the intended diagnosis, making every condition
+  pass; or
+- every repeated baseline fails through the same decision or hard boundary,
+  making the fixture floor nondiscriminating before any carrier is compared.
+
+Until repeated decision-changing probes survive those tests, “reasoning path”
+is an operational evaluation target, not accepted neural or architectural
+doctrine. The research disposition remains `no-proposal`.

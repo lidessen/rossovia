@@ -1,0 +1,18 @@
+{
+  "version": "prompt-composition-baseline-mechanical-check.v1",
+  "checkedAgainstContractManifestSha256": "dd6e767b088f6ca171722dfb71793276f1632c6e720f2296d0d1851e60592fbe",
+  "rawRunManifestSha256": "c761da10eb51896b79c4a321632b00df5b6973d12d852e1fe665685bdd877a93",
+  "runCount": 12,
+  "distinctThreadCount": 12,
+  "allFinalOutputsNonempty": true,
+  "allLastEventsTurnCompleted": true,
+  "errorEventCount": 0,
+  "nonAgentMessageItemCount": 0,
+  "stderrBytes": 0,
+  "exitCodes": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "requestedRouteReconstructed": "gpt-5.6-sol",
+  "providerRouteExposedByJsonl": false,
+  "clientVersion": "codex-cli 0.146.0",
+  "identityStanding": "requested route and frozen CLI profile verified; provider identity unavailable and not inferred",
+  "mechanicallyValid": true
+}

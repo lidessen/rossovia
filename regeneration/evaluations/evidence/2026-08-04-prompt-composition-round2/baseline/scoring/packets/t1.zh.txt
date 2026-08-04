@@ -1,0 +1,31 @@
+只使用本任务包；不要检查仓库、加载 Skill 或记忆，也不要讨论实验本身。
+
+对候选 A 和候选 B 进行了比较。
+
+候选 A：
+- 路由轨迹记录的目标：`ai-sdk-v7/kimi-coding/k3`
+- provider 请求：启用 thinking，保留交错推理历史，temperature 为 1
+- 完成方式：先用文本调查，再发起一次私有的结构化结算调用
+
+候选 B：
+- 路由轨迹记录的目标：`ai-sdk-v7/opencode-go/deepseek-v4-flash`
+- provider 请求：关闭 thinking
+- 完成方式：直接返回内联 JSON 对象
+
+两个候选读取相同的四个只读文件，收到相同的任务说明和输出结构，采用相同的 300 秒时限，并按交替串行顺序运行。
+
+worker 可见的 `acceptance` 数组包含以下陈述：
+- “说明 terminalTools 是调用者定义的 one-of 行动契约，其输入只是轨迹证据，不是逻辑结果”
+- “说明 outputSchema 独立校验最终逻辑输出”
+- “把 Swarm 识别为封闭的固定 manifest 执行形式，并按 manifest 顺序投影”
+- “保持 CellInput 和 runCell 不含队列、依赖、重试、优先级和持久化语汇”
+
+重复观察：
+- completion contracts：A 两次通过，耗时 148,557 ms 和 199,191 ms；B 两次通过，耗时 10,453 ms 和 10,048 ms；
+- orchestration boundary：A 一次在 300,005 ms 被取消，一次在 295,143 ms 通过；B 两次通过，耗时 10,575 ms 和 11,444 ms；
+- 七个已结算输出全部符合 worker 可见的 acceptance 陈述；
+- 被取消的运行已经完成主要模型步骤并进入结构化结算，随后才达到时限。
+
+盲评者在 completion-contract 案例中偏好 A，理由是 B 没有拒绝替代关系，也没有引用具体路径。但保留的 B 输出使用了 `independent, non-substitutable`，并列出了同样完整的路径。改用第二个更强调对比证据的评审提示后，盲评者仍然偏好 A。
+
+这些事实支持什么能力或分配结论？请给出有效性判断、受到支持的观察或主张、不受支持的主张，以及最小的下一次评估。
