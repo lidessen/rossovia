@@ -779,6 +779,14 @@ harness. This proves that a supervisor need not block on the batch, but does not
 yet implement process-independent workers or per-Cell timeline settlement
 before the whole in-process Swarm promise returns.
 
+Before every parent advance, the loop now rebuilds a compact iteration
+orientation from the frozen whole, host-owned Task state, settled contribution
+keys, uncovered obligations, and remaining execution envelope. It also exposes
+the declared guards and reconstruction owner. This projection is deliberately
+not persisted as a new memory source and cannot establish correctness or
+acceptance: it helps the parent re-ground after a child barrier while each fact
+continues to be owned by its existing source.
+
 The following local slice adds the first Mission supervisor gate. Exact
 source-linked contribution and mechanical-control inputs are retained on the
 parent timeline with idempotent, monotonic input watermarks. A supervisor is
