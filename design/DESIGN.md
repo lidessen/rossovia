@@ -1,29 +1,86 @@
-# Skills — Design
+# Rossovia — Design
 
-> A principle-centered collection in which a compact sequence governs the
-> skills and project guidance that express it.
+> A human-directed, principle-centered engineering system in which stable
+> purpose and method generate revisable architecture, situated work, and
+> evidence that can return to correct them.
 
 ## Architecture
 
 ```
-practice / inherited sources
-        │
-        ▼
-principles/research/ ──► cited, non-authoritative inquiry
-        │                        │
-        │                        └──► no proposal is a valid disposition
-        ▼
-principles/candidates/ ──► selected review team ──► human decision
-        │                                             │
-        │                                             ▼
-principles/SEQUENCE.md ──► interpretations ──► selected P-ID expressions
-        │
-        ├── skills/*/SKILL.md ─────────────► contextual expressions
-        │
-        └── CLAUDE.md / AGENTS.md ─────────► inlined L1 projections
-                                                   │
-                                             CLAUDE.md / AGENTS.md
+objective reality, inherited knowledge, and practice — not project-owned
+                                │
+                     observation and inquiry
+                                ▼
+        ┌─────────────────────────────────────────────┐
+        │ Founding Mandate          Principle Sequence│
+        │ purpose and values        general method    │
+        └──────────────────────┬──────────────────────┘
+                               ▼
+                 accepted architecture and decisions
+                               ▼
+                  Skills and reusable capabilities
+                               ▼
+               situated Missions and temporary formations
+                               ▼
+                 mechanisms, adapters, and bounded effects
+                               ▼
+                    evidence, products, and projections
+                               └──────► renewed practice and inquiry
 ```
+
+The Founding Mandate and the Principle Sequence are both high-level governing
+sources, but they answer different questions. The Mandate records the
+human-given purpose, value boundary, and constituency of the project. The
+Sequence is the sole semantic source of its compact core principles and governs
+how the project investigates and acts. Neither can be inferred from the other,
+and neither authorizes a concrete Mission, effect, or acceptance decision.
+
+Accepted architecture owns the durable relations among authority, state,
+feedback, verification, and replaceable parts. Skills express reusable
+judgments within those relations. A live formation combines selected methods
+with the actual object, actors, constraints, and acceptance owner. Runtimes and
+adapters execute that already-formed work; their successful operation cannot
+promote their own policy or result into an upper source.
+
+### Governing layers
+
+| Layer | Owns | Changes only when | Must not absorb |
+|---|---|---|---|
+| Reality and practice | external conditions and consequences the project encounters | the world changes or a better observation corrects the project | project-owned claims of truth |
+| Founding Mandate | purpose, value boundary, and human constituency | the Principal or future accountable community explicitly revises it | implementation policy, runtime status, or performance claims |
+| Principle Sequence | compact, cross-context method principles | recurring evidence survives research, selected review, and explicit human adoption | explanations, workflows, examples, or recent mechanism fixes |
+| Accepted architecture | stable ownership, authority, state, feedback, and substitution relations | representative practice exposes a decision-changing design failure and the accepted decision is revised | provider quirks, task-local fields, or current UI mechanics |
+| Skills and capabilities | reusable judgments and their action, boundary, and evidence contracts | repeated agent behavior shows expression or capability drift | project facts, durable acceptance, or orchestration policy |
+| Situated formation | the current object, contradiction, roles, scope, and acceptance | work or source conditions change | portable doctrine or permanent organization |
+| Mechanism and adapter | execution, protocol, recovery, and one external system's semantics | tests or operation expose a local failure or the external system changes | project purpose, semantic task formation, or fact authority |
+| Evidence and projection | observations, claims, traces, indexes, and human-facing views | new events arrive or their named sources change | automatic authority over the sources they represent |
+
+### Change and reliability discipline
+
+Specificity and change normally increase downward. The burden for changing a
+layer increases upward: a local reversible mechanism repair may need a focused
+test, while changing architecture, mandate, or the Sequence requires broader
+recurrence, independent challenge, migration consequences, and the designated
+human decision. This is an evidence rule, not a calendar or a claim that an old
+artifact is true.
+
+Lower-layer evidence may reopen an upper layer but never rewrites it directly.
+Route a failure to the nearest owner capable of changing the decision: repair a
+provider quirk in its adapter, a repeated agent-action failure in the owning
+Skill, an authority or feedback failure in architecture, and only an
+irreducible cross-context method failure into Principle cultivation.
+
+Prior validation is evidence, not present authority for a later effect. At a
+material mutation boundary, the responsible mechanism revalidates the current
+owning source, target, and authorization rather than relying on a cached status,
+receipt projection, or earlier successful check. Concrete fields and protocols
+remain with the mechanism that can test them.
+
+Controls should make a useful operating loop run longer, expose material
+failure, or make recovery possible. Add them from demonstrated failure paths
+and give transitional supervision or approval surfaces an exit condition;
+mechanical safety success alone does not establish useful, autonomous, or
+economically sufficient operation.
 
 ## Generative system model
 
@@ -43,13 +100,15 @@ artifacts, decisions, products, and effects (万物)
         └──► verified practice evidence ──► cognition and revision
 ```
 
-The Sequence alone is the semantic root. Interpretations are its first
-source-bound unfolding, not a coequal canon. Skills are methods rather than
-authorities. A domain Skill remains reusable professional capacity; a concrete
-formation arises only when a method meets actual domain evidence, a present
-contradiction, bounded actors, and acceptance. Work Cell is the minimum
-differentiable execution unit, while orchestration supplies execution forms
-without inventing work or accepting results.
+The Sequence alone is the semantic root of core principles. The Founding
+Mandate supplies project purpose and value constraints without becoming a
+method canon. Interpretations are the Sequence's first source-bound unfolding,
+not a coequal source. Skills are methods rather than authorities. A domain Skill
+remains reusable professional capacity; a concrete formation arises only when
+a method meets actual domain evidence, a present contradiction, bounded actors,
+and acceptance. Work Cell is the minimum differentiable execution unit, while
+orchestration supplies execution forms without inventing work or accepting
+results.
 
 The Principal-directed draft
 [autonomous collective-intelligence
@@ -70,6 +129,13 @@ and formal operation remains human-initiated. See
 [decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
 
 ## Modules
+
+The list below is a current capability map beneath the governing layers, not a
+second architecture root. A module may change, split, or retire without
+changing the upper relations unless representative practice exposes a failure
+in authority, state, feedback, verification, or substitution. Its inclusion
+describes ownership and current evidence standing; it does not claim accepted
+autonomous capability.
 
 - **Principle sequence** — Owns the stable, one-line principle identifiers and
   names. Does not contain explanation, examples, workflows, or skill mappings.

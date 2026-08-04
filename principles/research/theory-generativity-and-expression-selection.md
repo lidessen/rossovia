@@ -165,3 +165,33 @@ following:
 
 Until then, do not propose a new P-ID or promote the comparison harness into a
 permanent mechanism.
+
+## 2026-08-03 top-down review
+
+The later architecture-and-Skills review did not produce evidence for adding,
+revising, or retiring a Sequence line. P01–P16 still cover the observed
+decision-changing failures. The strongest generic selector repair remains
+directional rather than universal: object-first replays improved the decision
+path, but domain methods were still needed to reconstruct the full object.
+
+The review did expose four downstream expression failures:
+
+- project purpose and core method had been described as if one semantic source
+  owned both; the Founding Mandate now owns purpose and value while the
+  Sequence remains the sole semantic root of core principles;
+- volatile Workbench command and authorization protocols had accumulated in the
+  repository-wide Agent entry, making an upper context carrier change at the
+  speed of a lower mechanism;
+- repeated recovery and authorization fixes showed that prior validation is
+  evidence rather than present effect authority after source, target, or
+  authorization drift; P13 and the accepted architecture now state this
+  consequence without adding a new P-ID; and
+- P14's Sequence-to-interpretation expression probe exceeded P14's
+  reconstructibility predicate. It has been replaced with a source/projection
+  case; semantic-source authority remains an architecture relation.
+
+These findings reinforce the existing disposition: repair ownership, context
+delivery, interpretation provenance, and behavior evidence before changing the
+Sequence. Reopen the no-proposal conclusion only if the repaired layers still
+produce a recurring cross-context decision failure that no current P-ID can
+bear without semantic extension.

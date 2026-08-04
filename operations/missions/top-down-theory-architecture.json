@@ -1,0 +1,36 @@
+{
+  "version": "mission-record.v1",
+  "id": "top-down-theory-architecture",
+  "title": "Stabilize Rossovia theory, architecture, and skill expressions",
+  "sources": [
+    "principal-message:2026-08-03-top-down-theory-architecture-review"
+  ],
+  "createdAt": "2026-08-04T05:44:50Z",
+  "updatedAt": "2026-08-04T05:44:50Z",
+  "mainline": {
+    "contradiction": "The stable Principle Sequence has resisted churn, but purpose, architecture, always-loaded guidance, and Skill evidence are not layered strongly enough for theory to guide concrete work without recent control mechanisms dominating attention.",
+    "acceptance": [
+      "Distinguish external reality, human mandate, Principle Sequence, accepted architecture, Skills, situated formations, execution mechanisms, and evidence without transferring authority between them.",
+      "Retain or propose Principle changes through source-bound review; no Sequence semantic change occurs without an explicit Principal decision.",
+      "Review every active Skill for ownership, lineage, context placement, and behavior evidence, then repair only material gaps.",
+      "Keep root agent guidance compact while preserving scoped Workbench commands and authority boundaries through an explicit activation path.",
+      "Verify the exact candidate structurally and behaviorally and obtain fresh independent review before an unmerged integration handoff."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "review-and-repair",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Reconstruct the governing stack from historical evidence, clarify derivative theory where it drifted, compact always-loaded guidance, and close the highest-value Skill evidence gaps.",
+      "returnCondition": "The exact branch head has passed scoped structure and behavior checks, fresh independent review, and is handed off through an unmerged stacked pull request or an explicit blocked-integration report.",
+      "sources": [
+        "git:cff6613fb18145990e973e74ebe189612bdedf24",
+        "principal-message:2026-08-03-top-down-theory-architecture-review"
+      ],
+      "status": "open"
+    }
+  ],
+  "currentFocus": "review-and-repair"
+}
