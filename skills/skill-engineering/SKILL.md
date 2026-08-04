@@ -74,10 +74,12 @@ report the lineage difference. Do not merge, edit, or silently reconcile them.
 2. **Form the target expression team.** Resolve the Sequence through the
    source resolver, then read only the interpretations for nominated P-IDs.
    Select exactly one Primary and at most three Supporting P-IDs for the target
-   expression. Record why each changes a decision and why an existing skill
-   cannot own the same gate. Use references/expression-team.md. If the host has
-   a human-nominated alternate candidate, keep it outside this lineage and add
-   it only as a separate, temporary trial with an explicit baseline, candidate
+   expression only after the concrete action gap and its governing relation are
+   formed. Record why each changes the core method and why an existing skill
+   cannot own the same gate. Remove a P-ID whose contribution does not survive
+   into the method. Use references/expression-team.md. If the host has a
+   human-nominated alternate candidate, keep it outside this lineage and add it
+   only as a separate, temporary trial with an explicit baseline, candidate
    delta, and disconfirming observation.
 3. **Choose the minimum form.** Prefer an existing skill, a command, a
    reference, or a project-local adapter when it already enables the action.

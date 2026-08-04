@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { saveJson } from "./home";
+import {
+  MissionExecutionProposalSchema,
+  type MissionExecutionProposal,
+} from "./mission-execution-proposal";
 import { runCommand } from "./process";
 
 type BranchKind = "implementation" | "investigation" | "review" | "correction";
@@ -20,7 +24,7 @@ interface MissionBranch {
   mainlineDelta?: string;
 }
 
-interface MissionRecord {
+export interface MissionRecord {
   version: "mission-record.v1";
   id: string;
   title: string;
@@ -35,6 +39,7 @@ interface MissionRecord {
   };
   branches: MissionBranch[];
   currentFocus: string;
+  executionProposal?: MissionExecutionProposal;
 }
 
 interface ParsedCommand {
@@ -87,6 +92,12 @@ function validateMission(value: unknown): asserts value is MissionRecord {
   if (new Set(sources).size !== sources.length) throw new Error("sources must be unique");
   nonempty(record.createdAt, "createdAt");
   nonempty(record.updatedAt, "updatedAt");
+  if (record.executionProposal !== undefined) {
+    const result = MissionExecutionProposalSchema.safeParse(record.executionProposal);
+    if (!result.success) {
+      throw new Error(`executionProposal is invalid: ${result.error.issues[0]?.message ?? "schema mismatch"}`);
+    }
+  }
 
   if (record.mainline === null || typeof record.mainline !== "object" || Array.isArray(record.mainline)) {
     throw new Error("mainline must be an object");
@@ -96,6 +107,9 @@ function validateMission(value: unknown): asserts value is MissionRecord {
   stringList(mainline.acceptance, "mainline.acceptance", 1);
   if (mainline.status !== "active" && mainline.status !== "settled") {
     throw new Error("mainline.status must be active or settled");
+  }
+  if (mainline.status === "settled" && record.executionProposal !== undefined) {
+    throw new Error("a settled mainline may not retain a pending executionProposal");
   }
 
   if (!Array.isArray(record.branches)) throw new Error("branches must be a list");
@@ -173,8 +187,16 @@ function loadMission(path: string): MissionRecord {
   } catch (error: unknown) {
     throw new Error(`invalid JSON in ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
-  validateMission(record);
-  return record;
+  return parseMissionRecord(record);
+}
+
+export function parseMissionRecord(value: unknown): MissionRecord {
+  validateMission(value);
+  return value;
+}
+
+export function loadMissionRecord(path: string): MissionRecord {
+  return loadMission(path);
 }
 
 function saveMission(path: string, record: MissionRecord): void {
@@ -452,6 +474,9 @@ export function runMissionCommand(rawArguments: string[]): unknown {
     const parsed = parseCommand(raw, 1, [], ["--closure-source"]);
     const path = missionPath(root, parsed.positionals[0]!);
     const record = loadMission(path);
+    if (record.executionProposal !== undefined) {
+      throw new Error("cannot settle a mission while executionProposal awaits Principal authorization");
+    }
     if (record.branches.some((branch) => branch.status !== "closed")) {
       throw new Error("close or resume every branch before settling the mission");
     }
@@ -467,6 +492,9 @@ export function runMissionCommand(rawArguments: string[]): unknown {
     const parsed = parseCommand(raw, 1);
     const path = missionPath(root, parsed.positionals[0]!);
     const record = loadMission(path);
+    if (record.executionProposal !== undefined) {
+      throw new Error("cannot prune a mission while executionProposal awaits Principal authorization");
+    }
     if (record.mainline.status !== "settled") throw new Error("only a settled mission may be pruned");
     gitState(path, true);
     rmSync(path);

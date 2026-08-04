@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -214,4 +214,144 @@ describe("mission continuity", () => {
     expect(missing.exitCode).toBe(2);
     expect(missing.stderr).toContain("mission root not found");
   });
+
+  test("accepts an optional execution proposal but rejects authority widening and unknown fields", () => {
+    const repository = mkdtempSync(join(tmpdir(), "rossovia-mission-proposal-"));
+    temporaryRoots.push(repository);
+    const root = join(repository, "operations", "missions");
+    expect(workbench(
+      repository,
+      root,
+      "init",
+      "blog-run",
+      "--title",
+      "Blog run",
+      "--mainline",
+      "Prepare one supervised Blog iteration",
+      "--accept",
+      "The Principal can authorize the declared boundary",
+      "--source",
+      "design/blog.md",
+    ).exitCode).toBe(0);
+    const path = join(root, "blog-run.json");
+    const record = JSON.parse(readFileSync(path, "utf8"));
+    record.executionProposal = executionProposal();
+    writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
+    expect(workbench(repository, root, "status", "blog-run").exitCode).toBe(0);
+
+    const close = workbench(
+      repository,
+      root,
+      "close",
+      "blog-run",
+      "--closure-source",
+      "design/blog-acceptance.md",
+    );
+    expect(close.exitCode).toBe(2);
+    expect(close.stderr).toContain("executionProposal awaits Principal authorization");
+    expect(JSON.parse(readFileSync(path, "utf8")).mainline.status).toBe("active");
+
+    const prune = workbench(repository, root, "prune", "blog-run");
+    expect(prune.exitCode).toBe(2);
+    expect(prune.stderr).toContain("executionProposal awaits Principal authorization");
+    expect(existsSync(path)).toBe(true);
+
+    const settledWithProposal = structuredClone(record);
+    settledWithProposal.mainline.status = "settled";
+    settledWithProposal.mainline.closureSources = ["design/blog-acceptance.md"];
+    writeFileSync(path, `${JSON.stringify(settledWithProposal, null, 2)}\n`);
+    const incompatible = workbench(repository, root, "status", "blog-run");
+    expect(incompatible.exitCode).toBe(2);
+    expect(incompatible.stderr).toContain("settled mainline may not retain");
+
+    record.executionProposal.authority.execute = "granted";
+    record.executionProposal.unexpected = true;
+    writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
+    const invalid = workbench(repository, root, "status", "blog-run");
+    expect(invalid.exitCode).toBe(2);
+    expect(invalid.stderr).toContain("executionProposal is invalid");
+  });
 });
+
+function executionProposal() {
+  return {
+    version: "mission-execution-proposal.v1",
+    proposalId: "blog-run-v1",
+    mode: "supervised",
+    status: "awaiting-principal-authorization",
+    runtimeRef: "runtime:deepseek-blog-v1",
+    runtimeDigest: "1".repeat(64),
+    externalProvider: {
+      name: "DeepSeek",
+      boundary: "external",
+    },
+    externalDisclosure: {
+      dataCategories: ["task instructions", "selected repository context"],
+    },
+    candidateWorktree: {
+      rootRef: "environment:ROSSO_BLOG_EFFECT_ROOT",
+      binding: "operator-selected-at-launch",
+    },
+    scope: {
+      writePaths: ["site"],
+      commands: [],
+    },
+    budget: {
+      parent: {
+        maxModelSteps: 4,
+        maxOutputTokensPerStep: 2_000,
+      },
+      delegatedCell: {
+        maxSteps: 14,
+        maxOutputTokensPerStep: 16_000,
+        maxDurationMs: 300_000,
+      },
+      estimatedTokens: 60_000,
+      estimatedTokensSemantics: "forecast-only-not-stop-condition",
+    },
+    authority: {
+      externalDisclosure: "withheld",
+      budgetRelease: "withheld",
+      write: "withheld",
+      execute: "withheld",
+      commit: "withheld",
+      merge: "withheld",
+      publish: "withheld",
+    },
+    pendingDecisions: [{
+      id: "visual-direction",
+      label: "Choose the visual direction",
+      proposal: "B - Reading Field",
+      status: "pending",
+      options: [{
+        replyKey: "A",
+        label: "Margin Ledger",
+        immediateResult: "Render the ledger direction",
+        tradeoff: "A denser editorial surface",
+      }, {
+        replyKey: "B",
+        label: "Reading Field",
+        immediateResult: "Render the recommended reading direction",
+        tradeoff: "Less operational density",
+      }],
+      compactReplyKey: "B",
+    }, {
+      id: "external-disclosure",
+      label: "Authorize the declared external disclosure",
+      proposal: "Send only the listed data categories to DeepSeek",
+      status: "pending",
+      options: [{
+        replyKey: "ALLOW",
+        label: "Authorize DeepSeek",
+        immediateResult: "Permit the declared external request",
+        tradeoff: "Declared project context crosses the external boundary",
+      }, {
+        replyKey: "HOLD",
+        label: "Keep blocked",
+        immediateResult: "Keep the external run stopped",
+        tradeoff: "The implementation trial cannot begin",
+      }],
+      compactReplyKey: "ALLOW",
+    }],
+  };
+}

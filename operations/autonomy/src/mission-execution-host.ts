@@ -91,8 +91,21 @@ export function startMissionExecution(
   async function drive(): Promise<MissionExecutionOutcome> {
     let transition = await controller.advance();
     while (true) {
-      if (cancelledReason !== undefined) return { kind: "cancelled", reason: cancelledReason };
-      if (transition.kind === "input-pending") return { kind: "input-pending", transition };
+      if (cancelledReason !== undefined) {
+        await drainActiveBatch();
+        return { kind: "cancelled", reason: cancelledReason };
+      }
+      if (transition.kind === "input-pending") {
+        const staleBatch = transition.activeBatch;
+        if (staleBatch !== undefined) {
+          staleBatch.handle.cancel(
+            `Mission input advanced from watermark ${transition.turnWatermark} to ${transition.currentWatermark}`,
+          );
+          active = staleBatch.handle;
+        }
+        await drainActiveBatch();
+        return { kind: "input-pending", transition };
+      }
       if (transition.kind === "finished") return { kind: "finished", run: transition.run };
       if (transition.kind === "ready") {
         transition = await controller.advance();
@@ -104,9 +117,25 @@ export function startMissionExecution(
         transition.handle.settled.then(() => undefined, () => undefined),
         waitForSignal(),
       ]);
-      if (cancelledReason !== undefined) return { kind: "cancelled", reason: cancelledReason };
+      if (cancelledReason !== undefined) {
+        await drainActiveBatch();
+        return { kind: "cancelled", reason: cancelledReason };
+      }
       transition = await controller.resume();
       if (transition.kind !== "parked") active = undefined;
     }
+  }
+
+  /**
+   * Cancellation and stale-input detection are requests to stop, not proof
+   * that filesystem effects have stopped. Keep the turn live until the active
+   * child has actually settled so reconciliation cannot start a replacement
+   * writer against the same candidate workspace.
+   */
+  async function drainActiveBatch(): Promise<void> {
+    const batch = active;
+    if (batch === undefined) return;
+    await batch.settled.then(() => undefined, () => undefined);
+    if (active === batch) active = undefined;
   }
 }

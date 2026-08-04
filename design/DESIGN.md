@@ -51,18 +51,23 @@ contradiction, bounded actors, and acceptance. Work Cell is the minimum
 differentiable execution unit, while orchestration supplies execution forms
 without inventing work or accepting results.
 
-The desired long direction is operational autonomy under human governance:
-retained signals may eventually form proposals and execute pre-authorized,
-bounded work, while purpose, doctrine, authority enlargement, consequential
-commitment, and residual-risk acceptance remain with their designated human or
-host owners. Human-led governance, administrative operation, execution, and
-independent verification stay distinct. The durable center is inspectable
-state, evidence, authority, and recovery—not a resident omniscient Agent.
+The Principal-directed draft
+[autonomous collective-intelligence
+program](AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md) investigates a longer-term
+operating form: a self-sensing, self-adaptive, self-organizing Agent system that
+receives naturally expressed human intent and sustains productive work through
+nested feedback loops without stepwise human operation. It is a direction for
+review, not an accepted amendment to the decisions below. The durable center it
+proposes is inspectable intent, state, evidence, and recovery—not a resident
+omniscient Agent or a permanent supervision UI.
 
-This target does not describe current runtime capability. Formal operation
-remains human-initiated until a separate supervised-autonomy Strategy Case,
-implementation decision, and representative pilot justify reopening that
-boundary. See [decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
+This target does not describe accepted autonomous runtime capability. The
+[Principal settlement](organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+recognizes a project-local supervised-autonomy first slice as an active,
+bounded experimental capability for ordered Mission input, bounded turns,
+reconciliation, delegation, and local recovery. Its evidence remains guarded,
+and formal operation remains human-initiated. See
+[decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
 
 ## Modules
 
@@ -80,6 +85,14 @@ boundary. See [decision 043](decisions/043-generative-system-and-human-governed-
   P-ID-shaped proposal is warranted. They own no P-ID or semantic authority; a
   declared disposition records whether the inquiry remains open, needs no proposal,
   feeds one candidate, clarifies one existing P-ID, or has been superseded.
+- **Draft autonomous collective-intelligence program** — Records and tests a
+  Principal-directed proposal for the long-term engineering operating form
+  under the Founding Mandate: fully autonomous, naturally interactive
+  collective operation. It does not amend accepted Decisions, claim current
+  capability, replace the Founding Mandate or Sequence, select one runtime
+  topology, or authorize an operating transition. Its
+  [research basis](research/autonomous-collective-agent-systems.md) remains
+  source-bound evidence rather than doctrine.
 - **Candidate records** — Hold only pending or incubating proposals in
   `principles/candidates/`. They may be reviewed, rejected, revised, or
   human-nominated for bounded alternate trials without gaining semantic authority.
@@ -160,12 +173,27 @@ boundary. See [decision 043](decisions/043-generative-system-and-human-governed-
 - **Rossovia workbench** — Owns relocatable user-level project identity and
   verified machine-local workspace resolution through separately versioned
   portable configuration, local state, and rebuildable discovery cache. Its
-  resolution output routes an agent but never owns task state, target-project
-  facts, or execution authority. Empty mission, memory, cognition, and receipt
-  directories are future ownership boundaries, not inferred schemas. See
+  resolution output routes an agent but never owns target-project facts or
+  execution authority. It also owns the local lifecycle of tasks explicitly
+  created by the Principal in Workbench, without turning project context into
+  project task authority or using Mission as a backlog; see
+  [decision 053](decisions/053-principal-created-task-workbench.md). Empty
+  mission, memory, cognition, and receipt directories remain future ownership
+  boundaries, not inferred schemas. See
   [decision 044](decisions/044-rosso-identity-and-namespace-migration.md) and
   its preserved functional predecessor,
   [decision 038](decisions/038-atthis-workbench-entry.md).
+- **Supervised autonomy experiment** — Owns the project-local mechanism for
+  ordered Mission input, bounded Agent turns, reconciliation, delegation,
+  interruption, and local recovery. It admits exactly one guarded writable
+  trial for the Blog runtime in an isolated Git worktree; it does not own
+  project purpose, task discovery, provider policy, acceptance, remote
+  authentication, general or shared-worktree writable effects, publication,
+  or merge. Its first slice is an accepted, active experimental capability
+  under the
+  [Principal settlement](organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md),
+  not accepted autonomous operation. Supervision is transitional evidence for
+  reducing later supervision, not the target system form.
 
 ## Data Flow
 

@@ -12,6 +12,7 @@ import {
   type ActiveIntentAnchor,
 } from "../src/mission-reconciliation";
 import type { MissionReconciliationCommit } from "../src/mission-reconciliation-commit";
+import { retainMissionReconciliationCellRecord } from "../src/mission-reconciliation-evidence";
 import { verifyMissionReconciliation } from "../src/mission-reconciliation-verification";
 import {
   missionRunnerDirectory,
@@ -185,22 +186,37 @@ async function reconcile(timeline: FileMissionTimeline, input: MissionInputRecei
     sourceRefs: [...new Set([...anchor.sourceRefs, input.sourceRef])],
     reconciledWatermark: input.watermark,
   };
+  const proposalEvidence = await retainMissionReconciliationCellRecord({
+    home,
+    missionId,
+    role: "proposal",
+    record: proposalResult.record,
+  });
+  const verificationEvidence = await retainMissionReconciliationCellRecord({
+    home,
+    missionId,
+    role: "verification",
+    record: verificationResult.record,
+  });
   const commit: MissionReconciliationCommit = {
     proposal: proposalResult.proposal,
     acceptance: {
       authorityRef: "principal:probe-fixture",
       verification: verificationResult.verification,
-      evidenceRefs: [
-        `work-cell:${proposalResult.proposal.executionRef.runId}`,
-        `work-cell:${verificationResult.verification.executionRef.runId}`,
-      ],
+      proposalEvidence,
+      verificationEvidence,
       nextAnchor,
     },
   };
   const commitPath = join(home, `reconciliation-${input.watermark}.json`);
   await writeFile(commitPath, `${JSON.stringify(commit, null, 2)}\n`, "utf8");
+  const reconciliationTarget = await requireCliSuccess([
+    "runner", "status", missionId, "--home", home,
+  ]);
   const commitResult = await requireCliSuccess([
     "mission", "reconcile", missionId, commitPath, "--home", home,
+    "--expected-runner", String(reconciliationTarget.runnerId),
+    "--expected-state", String(reconciliationTarget.state),
   ]);
   return {
     input,

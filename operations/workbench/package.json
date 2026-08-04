@@ -14,6 +14,7 @@
     "build:docker": "node scripts/build-portable.mjs --docker",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node scripts/build-portable.mjs && bun test",
+    "ui": "bun src/ui/server.ts",
     "workbench": "node dist/rossovia.mjs"
   },
   "dependencies": {

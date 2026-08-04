@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      name="description"
+      content="Rossovia Principal Workbench — supervise projects, Missions, worktrees, and Agent work."
+    />
+    <title>Rossovia 工作台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-projection-state="loading">
+    <a class="skip-link" href="#project-surface">跳到当前项目</a>
+
+    <header class="masthead">
+      <div class="identity">
+        <div class="identity-mark" aria-hidden="true">R</div>
+        <div>
+          <p class="eyebrow">多项目 · Agent 协作</p>
+          <h1>Rossovia 工作台</h1>
+        </div>
+      </div>
+
+      <div class="runtime-brief" aria-label="运行连接状态">
+        <div>
+          <span class="runtime-label">运行投影</span>
+          <strong id="connection-label">正在连接</strong>
+        </div>
+        <span class="connection-mark" id="connection-mark" aria-hidden="true"></span>
+        <time id="generated-at">尚未接收</time>
+        <button class="text-action" id="refresh-button" type="button">刷新</button>
+      </div>
+    </header>
+
+    <div class="source-warning" id="source-warning" role="status" hidden>
+      <strong>本地演示 · 非实时数据</strong>
+      <span>无法读取运行投影。当前界面只展示交互形式，不代表任何项目或 Agent 的真实状态。</span>
+      <button class="text-action" id="retry-button" type="button">重新连接</button>
+    </div>
+
+    <div class="projection-loading" id="projection-loading" role="status">
+      <strong>正在读取运行投影</strong>
+      <span>项目、决策与执行证据尚未形成；当前不是“零项目”或“无待办”的事实判断。</span>
+    </div>
+
+    <section class="target-strip" aria-labelledby="target-heading">
+      <div class="target-heading">
+        <span id="target-heading">当前作用地址</span>
+        <strong id="target-state">尚未选择现场</strong>
+      </div>
+      <ol id="target-address" aria-label="项目到工作现场的完整地址">
+        <li><span>Project</span><b>—</b></li>
+        <li><span>Mission</span><b>—</b></li>
+        <li><span>Worktree</span><b>—</b></li>
+        <li><span>Runner</span><b>—</b></li>
+      </ol>
+    </section>
+
+    <section class="principal-snapshot" aria-labelledby="principal-snapshot-heading">
+      <div class="snapshot-now">
+        <span id="principal-snapshot-heading">Now</span>
+        <strong id="summary-operation">正在读取运行投影</strong>
+        <small id="summary-mode">有监督 · 连接中</small>
+      </div>
+      <a class="snapshot-attention" id="snapshot-attention-link" href="#principal-attention-heading">
+        <span>Needs you</span>
+        <strong id="summary-attention">等待真实投影</strong>
+        <small id="summary-attention-detail">尚未形成 Principal attention 判断</small>
+      </a>
+      <div class="snapshot-target">
+        <span>Target</span>
+        <strong id="summary-target">尚未选择现场</strong>
+        <small id="summary-address">Project → Mission → Runner</small>
+      </div>
+      <nav class="snapshot-nav" aria-label="当前监督证据导航">
+        <a id="decision-nav-link" href="#anchor-migration-brief">Decision</a>
+        <a id="reconciliation-nav-link" href="#reconciliation-action">Reconcile</a>
+        <a href="#execution-proposal">Execution</a>
+        <a href="#effect-observer">Effect</a>
+        <a href="#correction-observer">Correction</a>
+        <a href="#candidate-evidence">Candidate</a>
+        <a href="#project-surface">Project</a>
+      </nav>
+    </section>
+
+    <main class="workbench-shell">
+      <aside class="principal-rail" aria-labelledby="principal-attention-heading">
+        <nav class="rail-section workbench-view-nav" aria-label="工作台视图">
+          <button class="view-button is-active" type="button" data-view="overview">
+            <span>总览</span>
+            <small>项目与当前工作</small>
+          </button>
+          <button class="view-button" type="button" data-view="tasks">
+            <span>任务</span>
+            <strong id="all-task-count">—</strong>
+          </button>
+          <button class="view-button" type="button" data-view="principal">
+            <span>待我处理</span>
+            <strong id="principal-task-count">—</strong>
+          </button>
+          <button class="view-button" type="button" data-view="agent">
+            <span>Agent 工作</span>
+            <strong id="agent-task-count">—</strong>
+          </button>
+        </nav>
+
+        <section class="rail-section principal-position">
+          <p class="eyebrow">运行模式</p>
+          <div class="supervision-relation">
+            <div>
+              <span>你</span>
+              <strong id="supervisor-name">Codex</strong>
+            </div>
+            <div class="relation-line" aria-hidden="true">
+              <i></i>
+              <span>监督</span>
+            </div>
+            <div>
+              <span>Agent 系统</span>
+              <strong id="subject-name">Agent system</strong>
+            </div>
+          </div>
+          <div class="mode-choice" aria-label="自治模式">
+            <span class="mode-option is-active">有监督</span>
+            <span class="mode-option is-unavailable" title="首个 MVP 不开放无监督运行">
+              无监督 · 暂不可用
+            </span>
+          </div>
+        </section>
+
+        <section class="rail-section attention-section">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Needs attention</p>
+              <h2 id="principal-attention-heading">运行异常</h2>
+            </div>
+            <span class="count-mark" id="attention-count">0</span>
+          </div>
+          <ol class="attention-list" id="attention-list">
+            <li class="empty-note">等待运行投影。</li>
+          </ol>
+        </section>
+
+        <nav class="rail-section project-section" aria-labelledby="projects-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Projects</p>
+              <h2 id="projects-heading">项目</h2>
+            </div>
+            <span class="count-mark" id="project-count">0</span>
+          </div>
+          <ul class="project-list" id="project-list">
+            <li class="empty-note">尚无项目。</li>
+          </ul>
+        </nav>
+
+        <nav class="rail-section secondary-view-nav" aria-label="其他任务视图">
+          <button class="view-button" type="button" data-view="independent">
+            <span>独立任务</span>
+            <strong id="independent-task-count">—</strong>
+          </button>
+          <button class="view-button" type="button" data-view="completed">
+            <span>已完成</span>
+            <strong id="completed-task-count">—</strong>
+          </button>
+        </nav>
+
+        <footer class="rail-footer">
+          <span id="projection-completeness">投影完整性未知</span>
+          <span id="snapshot-version">版本 —</span>
+        </footer>
+      </aside>
+
+      <section class="project-surface" id="project-surface" aria-labelledby="project-title" tabindex="-1">
+        <section class="unified-surface" id="unified-surface" aria-labelledby="view-title">
+          <header class="unified-header">
+            <div>
+              <p class="eyebrow" id="view-eyebrow">Workbench overview</p>
+              <h2 id="view-title">总览</h2>
+              <p id="view-summary">跨项目查看需要你处理、Agent 正在进行和状态未知的工作。</p>
+            </div>
+            <div class="unified-header-actions">
+              <button class="task-create-trigger" id="create-task-button" type="button">
+                新建任务
+              </button>
+              <div class="observation-state" id="observation-state">
+                <span>运行投影</span>
+                <strong>正在读取</strong>
+              </div>
+            </div>
+          </header>
+
+          <div class="task-filter-bar" id="task-filter-bar" hidden>
+            <button class="task-filter is-active" type="button" data-task-filter="all">全部</button>
+            <button class="task-filter" type="button" data-task-filter="principal">待我</button>
+            <button class="task-filter" type="button" data-task-filter="agent">Agent 工作</button>
+            <button class="task-filter" type="button" data-task-filter="agent-pending">待 Agent</button>
+            <button class="task-filter" type="button" data-task-filter="independent">独立</button>
+            <button class="task-filter" type="button" data-task-filter="verification">待验证</button>
+            <button class="task-filter" type="button" data-task-filter="completed">已完成</button>
+          </div>
+
+          <section class="attention-overview" id="attention-overview" aria-labelledby="attention-overview-heading">
+            <div class="surface-section-heading">
+              <div>
+                <span>需要关注</span>
+                <h3 id="attention-overview-heading">先处理会阻塞推进的事项</h3>
+              </div>
+              <strong id="overview-attention-count">—</strong>
+            </div>
+            <div class="work-item-list" id="overview-attention-list"></div>
+          </section>
+
+          <section class="project-overview" id="project-overview" aria-labelledby="project-overview-heading">
+            <div class="surface-section-heading">
+              <div>
+                <span>项目</span>
+                <h3 id="project-overview-heading">所有项目与工作现场</h3>
+              </div>
+              <strong id="overview-project-count">—</strong>
+            </div>
+            <div class="project-overview-list" id="project-overview-list"></div>
+          </section>
+
+          <section class="task-view" id="task-view" aria-labelledby="task-view-heading" hidden>
+            <div class="surface-section-heading">
+              <div>
+                <span>任务</span>
+                <h3 id="task-view-heading">当前视图</h3>
+              </div>
+              <strong id="task-view-count">—</strong>
+            </div>
+            <div class="work-item-list" id="task-view-list"></div>
+          </section>
+        </section>
+
+        <div class="project-detail" id="project-detail" hidden>
+        <header class="project-header">
+          <div>
+            <p class="eyebrow">项目组织面</p>
+            <h2 id="project-title">选择一个项目</h2>
+            <p id="project-path">项目事实、Mission 与工作现场会显示在这里。</p>
+          </div>
+          <div class="project-standing">
+            <span>mainline</span>
+            <strong id="mainline-ref">—</strong>
+            <small id="mainline-head">HEAD 未知</small>
+          </div>
+        </header>
+
+        <div class="organization-legend" aria-label="组织关系图例">
+          <span><i class="legend-line is-solid"></i> 已观察关系</span>
+          <span><i class="legend-line is-hollow"></i> 未验证绑定</span>
+          <span><i class="legend-line is-break"></i> 需要恢复</span>
+        </div>
+
+        <section class="mainline-band" aria-labelledby="mainline-heading">
+          <div class="band-label">
+            <p class="eyebrow">Return boundary</p>
+            <h3 id="mainline-heading">Mainline</h3>
+          </div>
+          <div class="mainline-body">
+            <strong id="mainline-name">尚未选择项目</strong>
+            <span id="mainline-description">所有分支最终必须在证据充分后回到这里。</span>
+          </div>
+          <div class="mainline-status" id="mainline-status">未观察</div>
+        </section>
+
+        <section class="worktree-inventory" aria-labelledby="worktree-inventory-heading">
+          <div class="inventory-heading">
+            <div>
+              <p class="eyebrow">Git execution sites</p>
+              <h3 id="worktree-inventory-heading">项目 Worktrees</h3>
+            </div>
+            <p>选择只改变查看现场；不自动建立 Mission 绑定。</p>
+          </div>
+          <div class="worktree-inventory-list" id="worktree-inventory-list">
+            <p class="empty-note">尚未观察到 Git worktree。</p>
+          </div>
+        </section>
+
+        <section
+          class="candidate-evidence"
+          id="candidate-evidence"
+          aria-labelledby="candidate-evidence-heading"
+          data-standing="none"
+          hidden
+        >
+          <header>
+            <div>
+              <p class="eyebrow">Candidate evidence</p>
+              <h3 id="candidate-evidence-heading">候选现场尚未形成可归并结论</h3>
+            </div>
+            <span id="candidate-evidence-standing">未观察</span>
+          </header>
+          <p class="candidate-conclusion" id="candidate-evidence-conclusion">—</p>
+          <dl>
+            <div>
+              <dt>候选现场</dt>
+              <dd id="candidate-evidence-identity">—</dd>
+            </div>
+            <div>
+              <dt>从失败主体改变</dt>
+              <dd id="candidate-evidence-change">—</dd>
+            </div>
+            <div>
+              <dt>证据时间</dt>
+              <dd id="candidate-evidence-time">—</dd>
+            </div>
+            <div>
+              <dt>独立报告</dt>
+              <dd id="candidate-evidence-report">—</dd>
+            </div>
+          </dl>
+          <p class="candidate-authority" id="candidate-evidence-authority">—</p>
+        </section>
+
+        <section class="mission-field" aria-labelledby="mission-field-heading">
+          <div class="field-heading">
+            <div>
+              <p class="eyebrow">Obligation branches</p>
+              <h3 id="mission-field-heading">Missions 与 Worktrees</h3>
+            </div>
+            <p>选择一条 Mission，再选择它实际占用的工作现场。</p>
+          </div>
+          <div class="mission-list" id="mission-list">
+            <div class="surface-empty">
+              <span>—</span>
+              <p>等待项目运行关系。</p>
+            </div>
+          </div>
+        </section>
+        </div>
+      </section>
+
+      <aside class="action-surface" id="work-item-peek" aria-labelledby="action-heading" hidden>
+        <div class="peek-bar">
+          <div>
+            <span>任务详情</span>
+            <strong id="peek-context">选择一项工作</strong>
+          </div>
+          <button class="peek-close" id="peek-close" type="button" aria-label="关闭任务详情">关闭</button>
+        </div>
+        <section class="peek-summary" aria-labelledby="peek-item-title">
+          <span id="peek-item-state">等待选择</span>
+          <h2 id="peek-item-title">选择一项工作</h2>
+          <p id="peek-item-summary">这里会说明为什么现在需要关注、谁负责下一步，以及当前证据的新鲜度。</p>
+          <dl>
+            <div><dt>下一责任方</dt><dd id="peek-next-actor">—</dd></div>
+            <div><dt>证据状态</dt><dd id="peek-freshness">—</dd></div>
+          </dl>
+        </section>
+
+        <section class="task-create-panel" id="task-create-panel" hidden>
+          <header>
+            <p class="eyebrow">Workbench-owned task</p>
+            <h3>创建任务</h3>
+            <p>任务归 Workbench 所有；项目和 Worktree 只提供上下文，不获得项目事实权。</p>
+          </header>
+          <form id="task-create-form">
+            <label for="task-create-title">标题</label>
+            <input id="task-create-title" name="title" autocomplete="off" required />
+
+            <label for="task-create-objective">要解决的问题</label>
+            <textarea id="task-create-objective" name="objective" rows="3" required></textarea>
+
+            <label for="task-create-acceptance">验收条件 <small>每行一项</small></label>
+            <textarea id="task-create-acceptance" name="acceptance" rows="3" required></textarea>
+
+            <div class="task-form-grid">
+              <label>
+                下一责任方
+                <select id="task-create-actor" name="nextActor">
+                  <option value="principal">我</option>
+                  <option value="agent">Agent</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <label>
+                项目上下文
+                <select id="task-create-project" name="project">
+                  <option value="">独立任务</option>
+                </select>
+              </label>
+            </div>
+
+            <label id="task-create-mission-label" hidden>
+              Mission 上下文
+              <select id="task-create-mission" name="mission"></select>
+            </label>
+
+            <label id="task-create-worktree-label" hidden>
+              Worktree 上下文
+              <select id="task-create-worktree" name="worktree"></select>
+            </label>
+
+            <p class="task-boundary-note">
+              Project、Worktree 与 Mission 都只提供上下文。分配给 Agent
+              不表示 Agent 已经运行；只有精确实时执行证据才会进入 Agent 工作视图。
+            </p>
+            <div class="task-primary-actions">
+              <button class="primary-action" id="task-create-submit" type="submit">
+                创建任务
+              </button>
+            </div>
+          </form>
+          <p class="action-result" id="task-create-result" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="local-task-detail" id="local-task-detail" hidden>
+          <header class="local-task-heading">
+            <div>
+              <p class="eyebrow">Workbench-owned task</p>
+              <h3>任务要求与处理</h3>
+            </div>
+            <span>本地任务边界</span>
+          </header>
+
+          <dl class="local-task-facts">
+            <div><dt>任务源</dt><dd id="local-task-source">—</dd></div>
+            <div><dt>修订</dt><dd id="local-task-revision">—</dd></div>
+            <div><dt>交互身份保证</dt><dd id="local-task-identity-assurance">—</dd></div>
+            <div><dt>所有权</dt><dd>Workbench 本地任务</dd></div>
+            <div><dt>项目关系</dt><dd id="local-task-project-boundary">—</dd></div>
+            <div><dt>Mission 关系</dt><dd id="local-task-mission-boundary">—</dd></div>
+            <div><dt>Worktree 关系</dt><dd id="local-task-worktree-boundary">—</dd></div>
+          </dl>
+
+          <section class="local-task-mission-context" id="local-task-mission-context">
+            <div>
+              <span>Mission context</span>
+              <strong id="local-task-mission-context-heading">未声明 Mission 上下文</strong>
+              <p id="local-task-mission-context-summary">
+                本地任务尚未引用项目中的 Mission。
+              </p>
+            </div>
+            <div class="local-task-carrier-context" id="local-task-carrier-context" hidden>
+              <span class="context-relation">same-mission-current-carrier</span>
+              <span class="context-boundary">execution-unproven</span>
+              <strong id="local-task-carrier-title">—</strong>
+              <small id="local-task-carrier-source">—</small>
+              <p>
+                这是同一项目与 Mission 的当前载体观察；没有证据证明它正在执行此本地任务。
+              </p>
+            </div>
+          </section>
+
+          <section class="local-task-execution-context" id="local-task-execution-context">
+            <header>
+              <div>
+                <span>Exact execution evidence</span>
+                <h3>执行关联</h3>
+              </div>
+              <strong id="local-task-execution-standing">当前执行不可证明</strong>
+            </header>
+            <ol class="execution-evidence-layers">
+              <li id="task-execution-authorization-layer">
+                <span>1</span>
+                <div>
+                  <strong>Authorization consumption</strong>
+                  <small id="task-execution-authorization-standing">unavailable</small>
+                  <p id="task-execution-authorization-sources">尚无当前证据来源</p>
+                </div>
+              </li>
+              <li id="task-execution-turn-layer">
+                <span>2</span>
+                <div>
+                  <strong>Current turn</strong>
+                  <small id="task-execution-turn-standing">unavailable</small>
+                  <p id="task-execution-turn-sources">尚无当前证据来源</p>
+                </div>
+              </li>
+              <li id="task-execution-effect-layer">
+                <span>3</span>
+                <div>
+                  <strong>Current effect</strong>
+                  <small id="task-execution-effect-standing">unavailable</small>
+                  <p id="task-execution-effect-sources">尚无当前证据来源</p>
+                </div>
+              </li>
+            </ol>
+            <section class="task-launch-readiness" id="task-launch-readiness" hidden>
+              <header>
+                <span>下一次 Agent execution</span>
+                <strong id="task-launch-readiness-standing">—</strong>
+              </header>
+              <p id="task-launch-readiness-summary">—</p>
+              <ul id="task-launch-readiness-blockers"></ul>
+            </section>
+            <form class="task-launch-execution" id="task-launch-execution-form" hidden>
+              <div>
+                <span>Authorized launch</span>
+                <strong>启动已授权 Agent</strong>
+                <small id="task-launch-execution-reference">—</small>
+                <p>
+                  此动作会消费当前已存在的一次性执行授权；不会授予 commit、merge 或 publish 权限。
+                </p>
+              </div>
+              <button class="primary-action" type="submit">启动已授权 Agent</button>
+            </form>
+            <form class="task-link-execution" id="task-link-execution-form" hidden>
+              <label for="task-link-execution-candidate">
+                可关联的当前已消费执行
+                <select id="task-link-execution-candidate"></select>
+              </label>
+              <div>
+                <span>证据来源</span>
+                <ul id="task-link-execution-evidence"></ul>
+              </div>
+              <button type="submit">关联当前已消费执行</button>
+            </form>
+            <p class="task-boundary-note">
+              关联只保留精确执行引用；不会改变任务生命周期、证明 Agent 正在执行此任务，
+              或授予 Mission、提交、合并、发布与产品验收权。
+            </p>
+          </section>
+
+          <section class="local-task-requirements">
+            <span>目标</span>
+            <p id="local-task-objective">—</p>
+            <span>验收条件</span>
+            <ul id="local-task-acceptance"></ul>
+          </section>
+
+          <section class="local-task-history">
+            <div class="field-heading compact">
+              <div>
+                <p class="eyebrow">Traceable history</p>
+                <h3>纠正与结果</h3>
+              </div>
+            </div>
+            <div id="local-task-history"></div>
+            <form class="task-correction-delivery" id="task-correction-delivery-form" hidden>
+              <span>当前精确执行</span>
+              <strong id="task-correction-delivery-summary">—</strong>
+              <p>
+                发送后，Mission timeline 会保留幂等 input receipt；任务只在回读该
+                receipt 后记录“已送达”，不会把送达当作理解、完成或验收。
+              </p>
+              <button type="submit">发送纠正到当前 Agent</button>
+            </form>
+            <form class="task-correction-delivery" id="task-execution-recovery-form" hidden>
+              <span>当前精确执行已中断</span>
+              <strong id="task-execution-recovery-summary">—</strong>
+              <p>
+                此动作只恢复任务最新精确执行的 interrupted turn；不会重用授权、
+                创建替代 Runner，或授予提交、合并与发布权限。
+              </p>
+              <button type="submit">续接当前任务执行</button>
+            </form>
+          </section>
+
+          <section class="local-task-actions">
+            <form class="local-task-action" id="task-rebind-worktree-form" hidden>
+              <label>
+                切换 Worktree 上下文
+                <select id="task-rebind-worktree"></select>
+              </label>
+              <small>
+                只更新本地任务的 Worktree 上下文；项目与 Mission 保持不变，也不会启动执行。
+              </small>
+              <button id="task-rebind-worktree-submit" type="submit" disabled>
+                切换 Worktree
+              </button>
+            </form>
+
+            <form class="local-task-action" id="task-assign-form">
+              <label>
+                下一责任方
+                <select id="task-assign-actor">
+                  <option value="principal">我</option>
+                  <option value="agent">Agent</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <button type="submit">更新责任方</button>
+            </form>
+
+            <form class="local-task-action" id="task-correct-form">
+              <label for="task-correct-statement">纠正当前任务</label>
+              <textarea id="task-correct-statement" rows="3" required></textarea>
+              <label>
+                纠正后责任方
+                <select id="task-correct-actor">
+                  <option value="agent">Agent</option>
+                  <option value="principal">我</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <button type="submit">记录纠正</button>
+            </form>
+
+            <form class="local-task-action" id="task-result-form">
+              <label for="task-result-summary">提交结果</label>
+              <textarea id="task-result-summary" rows="3" required></textarea>
+              <label for="task-result-evidence">Agent 提供的证据引用 <small>每行一个引用</small></label>
+              <textarea id="task-result-evidence" rows="3" required></textarea>
+              <small>
+                引用会作为 Agent 声明保存，不会因此成为运行时验证。
+              </small>
+              <button type="submit">提交结果声明</button>
+              <div class="task-verified-result-candidate" id="task-verified-result-candidate" hidden>
+                <span>当前运行时核验</span>
+                <strong id="task-verified-result-effect">—</strong>
+                <p id="task-verified-result-source">—</p>
+                <button id="task-submit-verified-result" type="button">
+                  提交当前已验证执行结果
+                </button>
+              </div>
+            </form>
+
+            <form class="local-task-action" id="task-reopen-form">
+              <label for="task-reopen-statement">重新打开原因</label>
+              <textarea id="task-reopen-statement" rows="3" required></textarea>
+              <label>
+                下一责任方
+                <select id="task-reopen-actor">
+                  <option value="agent">Agent</option>
+                  <option value="principal">我</option>
+                  <option value="external">外部条件</option>
+                </select>
+              </label>
+              <button type="submit">重新打开任务</button>
+            </form>
+
+            <div class="task-primary-actions" id="task-accept-actions">
+              <button class="primary-action" id="task-accept-button" type="button">
+                接受本地任务结果
+              </button>
+              <small id="task-accept-boundary">只接受 Workbench 本地任务，不代表产品、Mission、提交、合并或发布接受。</small>
+            </div>
+          </section>
+          <p class="action-result" id="local-task-action-result" role="status" aria-live="polite"></p>
+        </section>
+
+        <header class="action-header">
+          <div>
+            <p class="eyebrow">Human participation</p>
+            <h2 id="action-heading">监督与介入</h2>
+          </div>
+          <span class="mode-signal" id="mode-signal">未连接</span>
+        </header>
+
+        <section class="current-operation" aria-labelledby="operation-heading">
+          <div class="operation-pulse" id="operation-pulse" aria-hidden="true"></div>
+          <div>
+            <span>系统现在正在</span>
+            <h3 id="operation-heading">等待运行投影</h3>
+            <p id="operation-reason">连接后，这里会说明为什么处于当前模式、谁拥有下一决定。</p>
+          </div>
+        </section>
+
+        <section
+          class="intent-lineage-gate"
+          id="intent-lineage-gate"
+          aria-labelledby="intent-lineage-heading"
+          hidden
+        >
+          <header>
+            <div>
+              <p class="eyebrow">Lineage authority</p>
+              <h3 id="intent-lineage-heading">Intent Anchor 门</h3>
+            </div>
+            <span id="intent-lineage-standing">未投影</span>
+          </header>
+          <div class="intent-lineage-blocker">
+            <span>为何语义工作被阻断</span>
+            <strong id="intent-lineage-reason">等待完整 Mission timeline 投影。</strong>
+          </div>
+          <dl>
+            <div>
+              <dt>Lineage standing</dt>
+              <dd id="intent-lineage-status">—</dd>
+            </div>
+            <div>
+              <dt>Exact retained history</dt>
+              <dd id="intent-lineage-history">—</dd>
+            </div>
+            <div>
+              <dt>Active anchor</dt>
+              <dd id="intent-lineage-anchor">—</dd>
+            </div>
+            <div>
+              <dt>Principal decision surface</dt>
+              <dd id="intent-lineage-decision">—</dd>
+            </div>
+          </dl>
+          <section
+            class="anchor-migration-brief"
+            id="anchor-migration-brief"
+            aria-labelledby="anchor-migration-heading"
+            hidden
+          >
+            <header>
+              <div>
+                <p class="eyebrow">Principal Decision Brief</p>
+                <h4 id="anchor-migration-heading">Legacy Intent Anchor 迁移授权</h4>
+              </div>
+              <span id="anchor-migration-standing">PROPOSAL VIEW · READ-ONLY</span>
+            </header>
+            <p class="anchor-migration-invalid" id="anchor-migration-invalid" hidden>
+              当前提案不可决策。
+            </p>
+            <div id="anchor-migration-details">
+              <p class="anchor-migration-recommendation">
+                推荐
+                <strong id="anchor-migration-recommendation">AUTHORIZE MIGRATION</strong>
+              </p>
+              <p class="anchor-migration-mode">
+                <strong id="anchor-migration-path">—</strong>
+                <span id="anchor-migration-atomic-availability">—</span>
+              </p>
+              <div class="anchor-migration-effects">
+                <strong>授权后的实际改变</strong>
+                <ul id="anchor-migration-effects">
+                  <li>等待精确迁移行动投影。</li>
+                </ul>
+              </div>
+              <dl>
+                <div>
+                  <dt>Proposal</dt>
+                  <dd id="anchor-migration-proposal">—</dd>
+                </div>
+                <div>
+                  <dt>Exact live target</dt>
+                  <dd id="anchor-migration-target">—</dd>
+                </div>
+                <div>
+                  <dt>Exact retained history</dt>
+                  <dd id="anchor-migration-history">—</dd>
+                </div>
+                <div>
+                  <dt>Candidate anchor</dt>
+                  <dd id="anchor-migration-anchor">—</dd>
+                </div>
+                <div>
+                  <dt>Semantic source</dt>
+                  <dd id="anchor-migration-source">—</dd>
+                </div>
+              </dl>
+              <ol class="anchor-migration-steps" id="anchor-migration-steps"></ol>
+              <p class="anchor-migration-risk" id="anchor-migration-risk">—</p>
+              <p class="anchor-migration-authority" id="anchor-migration-authority">—</p>
+              <ol class="anchor-migration-options">
+                <li>
+                  <code>AUTHORIZE MIGRATION</code>
+                  <p>
+                    <b>立即结果</b>
+                    <span id="anchor-migration-authorize-result">—</span>
+                  </p>
+                  <p>
+                    <b>代价 / 重开信号</b>
+                    <span id="anchor-migration-authorize-tradeoff">—</span>
+                  </p>
+                </li>
+                <li>
+                  <code>HOLD</code>
+                  <p><b>立即结果</b><span id="anchor-migration-hold-result">—</span></p>
+                  <p><b>代价 / 重开信号</b><span id="anchor-migration-hold-tradeoff">—</span></p>
+                </li>
+              </ol>
+              <p class="anchor-migration-reply">
+                在当前监督对话回复
+                <code id="anchor-migration-reply-key">AUTHORIZE MIGRATION|HOLD</code>；
+                此界面只读，不会提交、签发 receipt 或写 timeline。
+                Supervisor 仅对当前 proposal ID/digest 将
+                <code>AUTHORIZE MIGRATION</code> 规范化为历史协议值
+                <code>ADOPT</code>。
+              </p>
+            </div>
+          </section>
+          <p id="intent-lineage-boundary">
+            此卡只投影 lineage 事实；不会写 timeline、外发、协调输入或授予集成权。
+          </p>
+        </section>
+
+        <section
+          class="reconciliation-action-brief"
+          id="reconciliation-action"
+          aria-labelledby="reconciliation-action-heading"
+          hidden
+        >
+          <header>
+            <div>
+              <p class="eyebrow">Principal Decision Brief</p>
+              <h3 id="reconciliation-action-heading">watermark 1 调和行动</h3>
+            </div>
+            <span id="reconciliation-action-standing">PROPOSAL VIEW · READ-ONLY</span>
+          </header>
+          <div class="reconciliation-action-blocker">
+            <span>当前唯一权限缺口</span>
+            <strong id="reconciliation-action-summary">
+              等待 exact reconciliation action 投影。
+            </strong>
+          </div>
+          <div
+            class="reconciliation-action-lineage-history"
+            id="reconciliation-action-lineage-history"
+          >
+            <span>Authority lineage</span>
+            <strong>Anchor migration · 已消费 → watermark 1 reconciliation · 待决策</strong>
+            <small>
+              <code>AUTHORIZE MIGRATION</code> 已一次性使用且不可重放；
+              当前三选一需要新的独立授权。
+            </small>
+          </div>
+          <p
+            class="reconciliation-action-invalid"
+            id="reconciliation-action-invalid"
+            hidden
+          >
+            当前提案不可决策。
+          </p>
+          <div id="reconciliation-action-details">
+            <p class="reconciliation-action-recommendation">
+              推荐
+              <strong id="reconciliation-action-recommendation">
+                SETTLE_CONTINUE
+              </strong>
+            </p>
+            <dl class="reconciliation-action-facts">
+              <div>
+                <dt>Proposal / Digest</dt>
+                <dd id="reconciliation-action-proposal">—</dd>
+              </div>
+              <div>
+                <dt>Exact live target</dt>
+                <dd id="reconciliation-action-target">—</dd>
+              </div>
+              <div>
+                <dt>Active lineage</dt>
+                <dd id="reconciliation-action-lineage">—</dd>
+              </div>
+              <div>
+                <dt>Input / Watermark</dt>
+                <dd id="reconciliation-action-input">—</dd>
+              </div>
+              <div>
+                <dt>Passed correction report</dt>
+                <dd id="reconciliation-action-report">—</dd>
+              </div>
+              <div>
+                <dt>Two independent Cells</dt>
+                <dd id="reconciliation-action-execution">—</dd>
+              </div>
+              <div>
+                <dt>External disclosure</dt>
+                <dd id="reconciliation-action-disclosure">—</dd>
+              </div>
+              <div>
+                <dt>Committed Mission source</dt>
+                <dd id="reconciliation-action-source">—</dd>
+              </div>
+            </dl>
+            <p class="reconciliation-action-condition" id="reconciliation-action-condition">
+              —
+            </p>
+            <p class="reconciliation-action-authority" id="reconciliation-action-authority">
+              —
+            </p>
+            <ol class="reconciliation-action-options">
+              <li>
+                <code>SETTLE_CONTINUE</code>
+                <p>
+                  <b>立即结果</b>
+                  <span id="reconciliation-action-settle-result">—</span>
+                </p>
+                <p>
+                  <b>代价 / 重开信号</b>
+                  <span id="reconciliation-action-settle-tradeoff">—</span>
+                </p>
+              </li>
+              <li>
+                <code>RECLASSIFY_CORRECTION</code>
+                <p>
+                  <b>立即结果</b>
+                  <span id="reconciliation-action-reclassify-result">—</span>
+                </p>
+                <p>
+                  <b>代价 / 重开信号</b>
+                  <span id="reconciliation-action-reclassify-tradeoff">—</span>
+                </p>
+              </li>
+              <li>
+                <code>HOLD</code>
+                <p>
+                  <b>立即结果</b>
+                  <span id="reconciliation-action-hold-result">—</span>
+                </p>
+                <p>
+                  <b>代价 / 重开信号</b>
+                  <span id="reconciliation-action-hold-tradeoff">—</span>
+                </p>
+              </li>
+            </ol>
+            <p class="reconciliation-action-reply">
+              在当前监督对话回复
+              <code id="reconciliation-action-reply-key">
+                SETTLE_CONTINUE|RECLASSIFY_CORRECTION|HOLD
+              </code>。
+              此界面只读；不会调用模型、外发、写 timeline 或暗含后续产品权限。
+            </p>
+          </div>
+        </section>
+
+        <section
+          class="execution-proposal"
+          id="execution-proposal"
+          aria-labelledby="execution-proposal-heading"
+          hidden
+        >
+          <header>
+            <div>
+              <p class="eyebrow">Execution authority</p>
+              <h3 id="execution-proposal-heading">执行提案阶段</h3>
+            </div>
+            <span class="proposal-standing" id="proposal-standing">未启动</span>
+          </header>
+
+          <div class="proposal-blocker">
+            <span>当前阶段与唯一下一判断</span>
+            <strong id="proposal-not-started">等待提案投影。</strong>
+          </div>
+
+          <details class="proposal-contract-details" id="proposal-contract-details" open>
+            <summary>
+              <span>Proposal contract</span>
+              <small>决策所依据的原始边界</small>
+            </summary>
+            <dl class="proposal-facts">
+            <div>
+              <dt>Proposal / Digest</dt>
+              <dd id="proposal-identity">—</dd>
+            </div>
+            <div>
+              <dt>Mode / Runtime</dt>
+              <dd id="proposal-runtime">—</dd>
+            </div>
+            <div>
+              <dt>外发目的地 / 数据类别</dt>
+              <dd id="proposal-disclosures">—</dd>
+            </div>
+            <div>
+              <dt>Worktree / 读写边界</dt>
+              <dd id="proposal-write-boundary">—</dd>
+            </div>
+            <div>
+              <dt>Allowed commands</dt>
+              <dd id="proposal-commands">—</dd>
+            </div>
+            <div>
+              <dt>Execution budget limits</dt>
+              <dd id="proposal-budget">—</dd>
+            </div>
+            <div>
+              <dt>Token forecast</dt>
+              <dd id="proposal-token-forecast">—</dd>
+            </div>
+            <div class="proposal-authority">
+              <dt id="proposal-authority-label">Proposal authority</dt>
+              <dd id="proposal-authority">尚未投影；提案本身不产生授权。</dd>
+            </div>
+            </dl>
+          </details>
+
+          <form id="proposal-authorization-form" novalidate>
+            <div class="proposal-decisions">
+              <div class="proposal-decisions-header">
+                <span>Principal 待决策</span>
+                <strong id="proposal-decision-count" aria-live="polite">0/0 已选择</strong>
+              </div>
+              <div class="proposal-decision-list" id="proposal-decision-list"></div>
+              <p>
+                建议组合 · 不会自动选择
+                <code id="proposal-reply-key">未投影</code>
+              </p>
+            </div>
+
+            <fieldset class="proposal-acknowledgements">
+              <legend>签发前逐项确认</legend>
+              <label for="ack-external-disclosure">
+                <input
+                  id="ack-external-disclosure"
+                  name="acknowledgement"
+                  type="checkbox"
+                  value="externalDisclosure"
+                />
+                <span>
+                  我明确允许将上方列出的数据类别发送给
+                  <strong id="proposal-provider-name">外部 provider</strong>。
+                </span>
+              </label>
+              <label for="ack-forecast-only-budget">
+                <input
+                  id="ack-forecast-only-budget"
+                  name="acknowledgement"
+                  type="checkbox"
+                  value="forecastOnlyBudget"
+                />
+                <span>
+                  我理解 token estimate 只是 forecast，不是硬停止条件；上方硬执行 limits
+                  只约束 steps、output tokens 与 duration，不是总 input tokens 或金额上限。
+                </span>
+              </label>
+              <label for="ack-one-use-boundary">
+                <input
+                  id="ack-one-use-boundary"
+                  name="acknowledgement"
+                  type="checkbox"
+                  value="oneUseLaunchAndIntegrationWithheld"
+                />
+                <span>
+                  我确认只签发一次 launch；本操作不会自动 start，且 commit、merge、publish
+                  与产品验收仍被扣留。
+                </span>
+              </label>
+            </fieldset>
+
+            <div class="proposal-submit">
+              <p id="proposal-authorization-guidance">
+                选择每项决策并确认全部边界后，才能创建一次 launch authorization receipt。
+              </p>
+              <button id="proposal-authorize-button" type="submit" disabled>
+                签发一次外部 provider 运行授权
+              </button>
+            </div>
+          </form>
+
+          <div class="proposal-authorization" id="proposal-authorization">
+            <div>
+              <span>Launch authorization receipt</span>
+              <strong id="proposal-authorization-standing">
+                awaiting-principal-authorization
+              </strong>
+            </div>
+            <dl>
+              <div>
+                <dt>Authorization / Time</dt>
+                <dd id="proposal-authorization-receipt">无有效 authorization receipt 投影</dd>
+              </div>
+              <div>
+                <dt>Authorized choices</dt>
+                <dd id="proposal-authorized-choices">尚未授权任何选择</dd>
+              </div>
+              <div>
+                <dt>Immediate authorized results</dt>
+                <dd id="proposal-authorized-results">尚未授权任何立即结果</dd>
+              </div>
+              <div>
+                <dt>Authority boundary</dt>
+                <dd id="proposal-authorized-boundary">launch authority 未投影</dd>
+              </div>
+              <div>
+                <dt>Principal action evidence</dt>
+                <dd id="proposal-principal-action-evidence">尚无 Principal action evidence</dd>
+              </div>
+            </dl>
+            <p id="proposal-authorization-notice">
+              Proposal 仍待授权；runner 与 effect 必须分别由各自投影证明。
+            </p>
+          </div>
+
+          <p
+            class="proposal-authorization-result"
+            id="proposal-authorization-result"
+            role="status"
+            aria-live="polite"
+          ></p>
+
+          <p class="proposal-boundary">
+            此控件只创建绑定当前 Proposal ID 与 digest 的一次 launch 回执；绝不自动启动
+            runner，也不授予 commit、merge、publish 或产品验收权。
+          </p>
+        </section>
+
+        <section class="effect-observer" id="effect-observer" aria-labelledby="effect-heading">
+          <header>
+            <div>
+              <p class="eyebrow">Writable effect</p>
+              <h3 id="effect-heading">当前无可证明的写入 Effect</h3>
+            </div>
+            <span class="effect-standing" id="effect-standing">未观察</span>
+          </header>
+
+          <p class="authority-warning">
+            写入权限不等于提交权限。Commit、merge、publish 始终由独立权力边界保留。
+          </p>
+
+          <dl class="effect-facts">
+            <div>
+              <dt>Phase / Writer</dt>
+              <dd id="effect-phase">—</dd>
+            </div>
+            <div>
+              <dt>Workspace / Baseline</dt>
+              <dd id="effect-workspace">—</dd>
+            </div>
+            <div>
+              <dt>Write scope</dt>
+              <dd id="effect-scope">—</dd>
+            </div>
+            <div>
+              <dt>Current tool</dt>
+              <dd id="effect-tool">—</dd>
+            </div>
+            <div>
+              <dt>Candidate diff</dt>
+              <dd id="effect-diff">—</dd>
+            </div>
+            <div>
+              <dt>Verification</dt>
+              <dd id="effect-verification">—</dd>
+            </div>
+            <div class="effect-authority">
+              <dt>Commit authority</dt>
+              <dd id="effect-authority">commit withheld · merge withheld · publish withheld</dd>
+            </div>
+          </dl>
+
+          <p class="rollback-boundary">
+            Pause 只阻止后续生产；replace 或 abandon 只处置运行 turn。它们都不会回滚已经写入 worktree 的 diff。
+          </p>
+        </section>
+
+        <section
+          class="correction-observer"
+          id="correction-observer"
+          aria-labelledby="correction-heading"
+          data-standing="none"
+        >
+          <header>
+            <div>
+              <p class="eyebrow">Local correction movement</p>
+              <h3 id="correction-heading">当前无可证明的本地修正</h3>
+            </div>
+            <span class="correction-standing" id="correction-standing">未观察</span>
+          </header>
+
+          <div class="correction-chain" aria-label="原失败到本地修正再到新验证的因果链">
+            <article class="correction-node correction-cause">
+              <span>01 · 原失败</span>
+              <strong id="correction-cause">未观察</strong>
+              <small>历史 verdict 保持不可变</small>
+            </article>
+            <span class="correction-arrow" aria-hidden="true">→</span>
+            <article class="correction-node correction-action">
+              <span>02 · 本地修正</span>
+              <strong id="correction-action">未观察</strong>
+              <small id="correction-attribution">input actor / input source 未投影 · executor 未保留</small>
+            </article>
+            <span class="correction-arrow" aria-hidden="true">→</span>
+            <article class="correction-node correction-verification">
+              <span>03 · 新验证</span>
+              <strong id="correction-verification">未运行</strong>
+              <small id="correction-report">report 未投影</small>
+            </article>
+          </div>
+
+          <p class="correction-boundary" id="correction-boundary">
+            external none · commit withheld · merge withheld · publish withheld · product acceptance withheld
+          </p>
+        </section>
+
+        <dl class="operation-facts">
+          <div>
+            <dt>下一决定</dt>
+            <dd id="decision-owner">未知</dd>
+          </div>
+          <div>
+            <dt>最近变化</dt>
+            <dd id="last-change">未观察</dd>
+          </div>
+          <div>
+            <dt>证据状态</dt>
+            <dd id="evidence-state">未观察</dd>
+          </div>
+        </dl>
+
+        <section class="human-input" aria-labelledby="human-input-heading">
+          <div class="field-heading compact">
+            <div>
+              <p class="eyebrow">Authorized input</p>
+              <h3 id="human-input-heading">向当前现场行动</h3>
+            </div>
+          </div>
+
+          <div class="action-kinds" role="tablist" aria-label="行动类型">
+            <button class="kind-button is-active" role="tab" aria-selected="true" data-kind="contribution" type="button">
+              补充
+            </button>
+            <button class="kind-button" role="tab" aria-selected="false" data-kind="correction" type="button">
+              纠偏 <small>MVP 未支持</small>
+            </button>
+            <button class="kind-button" role="tab" aria-selected="false" data-kind="decision" type="button">
+              决策 <small>MVP 未支持</small>
+            </button>
+            <button class="kind-button" role="tab" aria-selected="false" data-kind="control" type="button">
+              控制
+            </button>
+          </div>
+
+          <form id="action-form">
+            <div id="language-action-fields">
+              <label for="action-text" id="action-label">补充事实、约束或建议</label>
+              <textarea
+                id="action-text"
+                name="text"
+                rows="4"
+                placeholder="这段内容会进入当前 Mission 的有序输入，不会自动扩大授权。"
+              ></textarea>
+              <p class="field-help" id="action-help">
+                发送后，系统应先协调这项输入，再继续产生新工作。
+              </p>
+            </div>
+
+            <div class="control-actions" id="control-actions" hidden>
+              <button type="button" data-control="pause">暂停生产</button>
+              <button type="button" data-control="resume">解除暂停并待协调</button>
+            </div>
+
+            <div class="recovery-actions" id="recovery-actions" hidden>
+              <p>原 turn 已中断。选择如何处置它，不能用普通 resume 代替恢复判断。</p>
+              <button type="button" data-recovery="resume">续接原 turn</button>
+              <button type="button" data-recovery="replace">替换执行者</button>
+              <button class="danger-control" type="button" data-recovery="abandon">放弃本 turn</button>
+            </div>
+
+            <div class="action-target-preview">
+              <span>作用于</span>
+              <code id="action-target-preview">尚未选择完整现场</code>
+            </div>
+
+            <button class="primary-action" id="submit-action" type="submit" disabled>
+              发送补充
+            </button>
+          </form>
+
+          <p class="action-result" id="action-result" role="status" aria-live="polite"></p>
+        </section>
+
+        <details class="evidence-drawer">
+          <summary>
+            <span>证据与原始运行信息</span>
+            <small id="evidence-summary">尚无数据</small>
+          </summary>
+          <div id="evidence-content">
+            <p class="empty-note">选择 Mission 后查看可追溯证据。</p>
+          </div>
+        </details>
+      </aside>
+    </main>
+
+    <nav class="mobile-tab-bar" aria-label="移动端主导航">
+      <button class="mobile-tab is-active" type="button" data-mobile-view="overview">总览</button>
+      <button class="mobile-tab" type="button" data-mobile-view="tasks">任务</button>
+      <button class="mobile-tab" type="button" data-mobile-view="projects">项目</button>
+    </nav>
+
+    <template id="empty-template">
+      <div class="surface-empty">
+        <span>—</span>
+        <p></p>
+      </div>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

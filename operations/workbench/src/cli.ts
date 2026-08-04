@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 import { attachWorkspace } from "./attach";
+import { authorizeExecution, inspectExecution } from "./execution-authorization";
 import { initializeHome, loadHome } from "./home";
 import { runHookCommand } from "./hooks";
 import { runCorrectionCommand, runInterventionCommand } from "./interventions";
+import { createLocalTaskControlPlane } from "./local-task-control-plane";
 import { migrateLegacyHome } from "./migration";
 import { runMissionCommand } from "./missions";
 import { listPreferences, retirePreference, setPreference } from "./preferences";
@@ -83,6 +85,12 @@ try {
     console.log(JSON.stringify(listPreferences(home, optionalProject(args.slice(2))), null, 2));
   } else if (args[0] === "preference" && args[1] === "retire") {
     console.log(JSON.stringify(retirePreference(home, parsePreferenceRetire(args.slice(2))), null, 2));
+  } else if (args[0] === "execution" && args[1] === "inspect" && args.length === 4) {
+    console.log(JSON.stringify(inspectExecution(home, args[2]!, args[3]!), null, 2));
+  } else if (args[0] === "execution" && args[1] === "authorize") {
+    console.log(JSON.stringify(authorizeExecution(home, parseExecutionAuthorize(args.slice(2))), null, 2));
+  } else if (args[0] === "task") {
+    console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
   } else if (args[0] === "mission") {
     const result = runMissionCommand(args.slice(1));
     if (result !== undefined) {
@@ -118,6 +126,18 @@ function printUsage(): void {
   console.log("  preference set <id> --statement <text> [--project <project>] [--reopen-when <condition>]");
   console.log("  preference list [--project <project>]");
   console.log("  preference retire <id> [--project <project>]");
+  console.log("  execution inspect <project> <mission-id>");
+  console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
+  console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
+  console.log("  task list");
+  console.log("  task show <id>");
+  console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task rebind-worktree <id> --expected-worktree <path> --worktree <path> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task submit <id> --summary <text> --evidence-ref <reference>... --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task accept <id> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task reopen <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
   console.log("  intervention observe [--state-root <path>]");
   console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
@@ -126,6 +146,264 @@ function printUsage(): void {
   console.log("  root list");
   console.log("  root add <path>...");
   console.log("  scan");
+}
+
+function runTaskCli(home: string | undefined, raw: string[]): unknown {
+  const controlPlane = createLocalTaskControlPlane(home);
+  const command = raw[0];
+  if (!command) throw new Error("task requires a subcommand");
+  if (command === "list") {
+    if (raw.length !== 1) throw new Error("task list accepts no arguments");
+    return controlPlane.list();
+  }
+  if (command === "show") {
+    if (raw.length !== 2) throw new Error("task show requires exactly one task id");
+    return controlPlane.show(raw[1]!);
+  }
+  if (command === "create") {
+    const parsed = parseTaskOptions(
+      raw.slice(1),
+      0,
+      new Set([
+        "--title",
+        "--objective",
+        "--next-actor",
+        "--source-ref",
+        "--expected-source-revision",
+        "--project",
+        "--worktree",
+        "--mission",
+      ]),
+      new Set(["--accept"]),
+    );
+    return controlPlane.execute({
+      kind: "create",
+      arguments: {
+        title: taskOption(parsed, "--title"),
+        objective: taskOption(parsed, "--objective"),
+        acceptance: taskOptions(parsed, "--accept"),
+        nextActor: taskActor(parsed),
+        sourceRef: taskOption(parsed, "--source-ref"),
+        expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
+        ...(parsed.values.has("--project") ? { project: taskOption(parsed, "--project") } : {}),
+        ...(parsed.values.has("--worktree") ? { worktree: taskOption(parsed, "--worktree") } : {}),
+        ...(parsed.values.has("--mission") ? { mission: taskOption(parsed, "--mission") } : {}),
+      },
+    });
+  }
+
+  const parsed = parseTaskOptions(
+    raw.slice(1),
+    1,
+    new Set([
+      "--next-actor",
+      "--statement",
+      "--summary",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+      "--authorization-id",
+      "--expected-worktree",
+      "--worktree",
+    ]),
+    new Set(["--evidence-ref"]),
+  );
+  const expectation = {
+    id: parsed.positionals[0]!,
+    expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
+    expectedRevision: taskRevision(parsed, "--expected-revision", false),
+  };
+  if (command === "assign") {
+    assertTaskOptions(parsed, new Set([
+      "--next-actor",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "assign",
+      arguments: {
+        ...expectation,
+        nextActor: taskActor(parsed),
+      },
+    });
+  }
+  if (command === "correct") {
+    assertTaskOptions(parsed, new Set([
+      "--statement",
+      "--source-ref",
+      "--next-actor",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "correct",
+      arguments: {
+        ...expectation,
+        statement: taskOption(parsed, "--statement"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+        nextActor: taskActor(parsed),
+      },
+    });
+  }
+  if (command === "link-execution") {
+    assertTaskOptions(parsed, new Set([
+      "--authorization-id",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "link-execution",
+      arguments: {
+        ...expectation,
+        authorizationId: taskOption(parsed, "--authorization-id"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+      },
+    });
+  }
+  if (command === "rebind-worktree") {
+    assertTaskOptions(parsed, new Set([
+      "--expected-worktree",
+      "--worktree",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "rebind-worktree",
+      arguments: {
+        ...expectation,
+        expectedWorktreePath: taskOption(parsed, "--expected-worktree"),
+        worktree: taskOption(parsed, "--worktree"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+      },
+    });
+  }
+  if (command === "submit") {
+    assertTaskOptions(parsed, new Set([
+      "--summary",
+      "--evidence-ref",
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "submit",
+      arguments: {
+        ...expectation,
+        summary: taskOption(parsed, "--summary"),
+        evidenceRefs: taskOptions(parsed, "--evidence-ref"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+      },
+    });
+  }
+  if (command === "accept") {
+    assertTaskOptions(parsed, new Set([
+      "--source-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "accept",
+      arguments: {
+        ...expectation,
+        sourceRef: taskOption(parsed, "--source-ref"),
+      },
+    });
+  }
+  if (command === "reopen") {
+    assertTaskOptions(parsed, new Set([
+      "--statement",
+      "--source-ref",
+      "--next-actor",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    return controlPlane.execute({
+      kind: "reopen",
+      arguments: {
+        ...expectation,
+        statement: taskOption(parsed, "--statement"),
+        sourceRef: taskOption(parsed, "--source-ref"),
+        nextActor: taskActor(parsed),
+      },
+    });
+  }
+  throw new Error(`unknown task command: ${command}`);
+}
+
+interface ParsedTaskOptions {
+  positionals: string[];
+  values: Map<string, string[]>;
+}
+
+function parseTaskOptions(
+  raw: string[],
+  positionalCount: number,
+  singles: ReadonlySet<string>,
+  repeated: ReadonlySet<string>,
+): ParsedTaskOptions {
+  const positionals = raw.slice(0, positionalCount);
+  if (positionals.length !== positionalCount || positionals.some((value) => value.startsWith("--"))) {
+    throw new Error("missing required task command argument");
+  }
+  const values = new Map<string, string[]>();
+  for (let index = positionalCount; index < raw.length; index += 2) {
+    const option = raw[index];
+    const value = raw[index + 1];
+    if (
+      !option
+      || (!singles.has(option) && !repeated.has(option))
+      || !value
+      || value.startsWith("--")
+      || (singles.has(option) && values.has(option))
+    ) {
+      throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
+    }
+    values.set(option, [...(values.get(option) ?? []), value]);
+  }
+  return { positionals, values };
+}
+
+function assertTaskOptions(parsed: ParsedTaskOptions, allowed: ReadonlySet<string>): void {
+  for (const option of parsed.values.keys()) {
+    if (!allowed.has(option)) throw new Error(`invalid task option: ${option}`);
+  }
+}
+
+function taskOption(parsed: ParsedTaskOptions, option: string): string {
+  const value = parsed.values.get(option)?.[0];
+  if (!value) throw new Error(`task command requires ${option} <value>`);
+  return value;
+}
+
+function taskOptions(parsed: ParsedTaskOptions, option: string): string[] {
+  const values = parsed.values.get(option);
+  if (!values?.length) throw new Error(`task command requires ${option} <value>`);
+  return values;
+}
+
+function taskRevision(
+  parsed: ParsedTaskOptions,
+  option: string,
+  allowZero: boolean,
+): number {
+  const raw = taskOption(parsed, option);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1)) {
+    throw new Error(`${option} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
+  }
+  return value;
+}
+
+function taskActor(
+  parsed: ParsedTaskOptions,
+): "principal" | "agent" | "external" {
+  const value = taskOption(parsed, "--next-actor");
+  if (value !== "principal" && value !== "agent" && value !== "external") {
+    throw new Error("--next-actor must be principal, agent, or external");
+  }
+  return value;
 }
 
 function optionalFromHome(raw: string[]): string | undefined {
@@ -160,6 +438,49 @@ function parsePreferenceRetire(raw: string[]): { id: string; project?: string } 
 function optionalProject(raw: string[]): string | undefined {
   const options = namedOptions(raw, new Set(["--project"]));
   return options.get("--project");
+}
+
+function parseExecutionAuthorize(raw: string[]): {
+  project: string;
+  missionId: string;
+  proposalId: string;
+  proposalDigest: string;
+  choices: string[];
+  actorRef: string;
+  sourceRef: string;
+} {
+  const project = raw[0];
+  const missionId = raw[1];
+  if (!project || project.startsWith("--") || !missionId || missionId.startsWith("--")) {
+    throw new Error("execution authorize requires <project> <mission-id>");
+  }
+  const choices: string[] = [];
+  const singles = new Map<string, string>();
+  const allowedSingles = new Set(["--proposal-id", "--proposal-digest", "--actor-ref", "--source-ref"]);
+  for (let index = 2; index < raw.length; index += 2) {
+    const option = raw[index];
+    const value = raw[index + 1];
+    if (!option || !value || value.startsWith("--")) {
+      throw new Error(`invalid execution authorize option sequence: ${raw.join(" ")}`);
+    }
+    if (option === "--choice") choices.push(value);
+    else if (allowedSingles.has(option) && !singles.has(option)) singles.set(option, value);
+    else throw new Error(`invalid execution authorize option sequence: ${raw.join(" ")}`);
+  }
+  const required = (option: string): string => {
+    const value = singles.get(option);
+    if (!value) throw new Error(`execution authorize requires ${option} <value>`);
+    return value;
+  };
+  return {
+    project,
+    missionId,
+    proposalId: required("--proposal-id"),
+    proposalDigest: required("--proposal-digest"),
+    choices,
+    actorRef: required("--actor-ref"),
+    sourceRef: required("--source-ref"),
+  };
 }
 
 function positionalHead(raw: string[], command: string): string {

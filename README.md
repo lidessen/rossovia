@@ -38,20 +38,23 @@ specific method.
 - Develop Rossovia itself through this repository's full operating and evidence
   system.
 - Install one self-contained Skill into another project for a specific method.
-- Enter this checkout with a coding agent and use it as a workbench for other
-  projects.
+- Enter this checkout with a coding agent as the Main-Agent work entry for
+  other projects. The agent may use the current harness's native sub-agents
+  directly; this does not require initializing Rossovia Workbench.
 
-For the workbench path, ask the agent directly:
+For the optional persistent Workbench path, ask the agent directly:
 
 ```text
-Initialize the Rossovia workbench. My workspace root is ~/workspaces.
-Add ~/client-work as another workspace root.
-Register ~/workspaces/meowask and keep meowask and survey as spoken aliases.
+Initialize the Rossovia workbench. My workspace root is /path/to/workspaces.
+Add /path/to/another-workspace-root as another workspace root.
+Register /path/to/project and keep example-project and example-alias as spoken aliases.
 Remember across projects that stable bounded tasks should prefer Work Cell.
-For survey, prefer native sub-agents when they provide a required subscription.
-Show the preferences that apply to survey.
-Continue survey.
+For example-project, prefer native sub-agents when they provide a required subscription.
+Show the preferences that apply to example-project.
+Continue example-project.
 Show work in progress across my registered projects.
+Create a local task to verify example-project's release notes, then show my Workbench
+tasks.
 ```
 
 The repository instructions translate those intents into bounded Workbench
@@ -69,12 +72,27 @@ For automation, debugging, or an environment without an agent, the equivalent
 manual entry remains available:
 
 ```sh
-./operations/workbench/rossovia init --workspace-root ~/workspaces
-./operations/workbench/rossovia root add ~/client-work
+./operations/workbench/rossovia init --workspace-root /path/to/workspaces
+./operations/workbench/rossovia root add /path/to/another-workspace-root
 ./operations/workbench/rossovia project list
-./operations/workbench/rossovia resolve survey
-./operations/workbench/rossovia preference list --project survey
+./operations/workbench/rossovia resolve example-project
+./operations/workbench/rossovia preference list --project example-project
 ```
+
+For daily task work, open the Principal Workbench UI or inspect the same durable
+local task source through the control-plane CLI:
+
+```sh
+bun run --cwd operations/workbench ui
+./operations/workbench/rossovia task list
+./operations/workbench/rossovia task show <task-id>
+```
+
+The UI supports creating, assigning, correcting, submitting, accepting, and
+reopening locally Principal-attributed tasks. Cross-boundary launch, correction
+delivery, recovery, and runtime-verified submission remain guarded UI actions;
+the CLI help lists the supported local task mutations and their required
+revision guards.
 
 A successful `init` reports `writeAccess: "verified"` after exercising and
 cleaning up a real write on every write-bearing surface under the resolved
@@ -82,8 +100,10 @@ Rossovia home. Existing readable state is not enough: if this observation is abs
 user-level harness permission and start a fresh session. Initialization does not
 install project hooks or move shared state into the current repository.
 
-Initialization may also select the bounded, tool-neutral multi-agent module.
-The current Codex adapter projects it into that harness's user instructions:
+Initialization may also select a compact fallback delegation trigger. The
+current Codex adapter projects it into that harness's user instructions; this
+is persistent setup guidance, not a delegation runtime or a replacement for
+the `agent-delegation` Skill:
 
 ```sh
 ./operations/workbench/rossovia init --setup multi-agent-delegation
@@ -101,11 +121,11 @@ or missing managed block. Relevant setup source files must be committed before
 a Git revision can be recorded as applied.
 
 The workbench keeps stable project identity separate from repository names,
-spoken aliases, and machine-local paths. It does not turn this repository into
-a global task board or grant authority to execute in another project. Explicit
-personal defaults remain separate from project requirements and machine-local
-environment configuration; inferred memory never becomes active preference without human
-confirmation.
+spoken aliases, and machine-local paths. Its durable local task source and
+control-plane UI do not make it a scheduler, a target project's task source, or
+authority to execute in another project. Explicit personal defaults remain
+separate from project requirements and machine-local environment configuration;
+inferred memory never becomes active preference without human confirmation.
 
 ## Repository map
 
@@ -116,7 +136,8 @@ confirmation.
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
-| [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, and explicit user/project defaults | task scheduling, inferred preference, machine capability, target-project facts, or execution authority |
+| [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, recovery, and one explicitly admitted isolated-worktree Blog writable trial | accepted autonomous operation, task discovery, general or shared-worktree writable-effect authority, remote authority, publication, or merge |
+| [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
@@ -129,6 +150,7 @@ confirmation.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
+| [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | Decide and operate bounded native sub-agent contributions while the Main Agent retains the whole, synthesis, and responsibility for ensuring verification; it does not require Workbench or another orchestration runtime. |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | Decide how authoritative project information reaches an agent at the moment it changes action, using the actual runtime rather than a fixed layer or filename convention. |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | Diagnose a real agent-work failure in an existing project, change the smallest owning surface, and verify the improvement through the ordinary agent entry path. |
@@ -151,7 +173,7 @@ confirmation.
 | [project-cognition](skills/project-cognition/SKILL.md) | `/project-cognition` | Build or selectively refresh a source-linked, non-authoritative working model when later agents need reusable project understanding across substantial tasks. |
 | [agent-environment](skills/agent-environment/SKILL.md) | `/agent-environment` | Audit, set up, reconcile, verify, or migrate a person's non-secret user-level coding-agent workflow across devices and tools without copying opaque machine state. |
 
-## Experimental runtime
+## Experimental mechanisms
 
 [`packages/work-cell`](packages/work-cell/README.md) is the collection's
 independent practice and evaluation unit. Its core runs one caller-prepared,
@@ -176,6 +198,19 @@ only a rebuildable retrieval projection; projects, workspaces, Git, prompts,
 models, and task routing stay outside the core. Project cognition and Rossovia
 resume are future domain methods over this mechanism, not its defining schema; see
 [decision 039](design/decisions/039-general-cognition-experiment.md).
+
+[`operations/autonomy`](operations/autonomy/README.md) is the project-local
+supervised-Mission experiment. Its implemented first slice retains ordered
+human input, bounded Agent turns, delegation evidence, reconciliation, and
+local recovery. Read-only and graceful-restart mechanism claims have guarded
+support. One exact supervised Blog mechanism for a guarded writable Cell in an
+isolated Git worktree is implemented and mechanically verified; this does not
+establish general or shared-worktree writable effects, autonomous completion,
+remote authority, integration, publication, product acceptance, or production
+advantage. The
+[Principal settlement](design/organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+recognizes it as an active, bounded experimental capability; the ordinary
+operating mode remains human-initiated.
 
 ## Which skill, when?
 

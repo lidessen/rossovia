@@ -1,6 +1,7 @@
 # 043 — Generative System and Human-Governed Autonomy
 
-**Status:** accepted design; autonomous operating transition not yet implemented
+**Status:** accepted design; bounded experimental first slice accepted; no
+autonomous operating transition
 **Date:** 2026-07-20
 **Approved by:** principal
 
@@ -31,9 +32,13 @@ model, but remain explanatory projections.
 
 Do not add a Sequence entry, Skill, resident manager Agent, autonomous queue,
 or runtime schema in this decision. The model is a project-specific synthesis
-of the existing Sequence and accepted architecture. Its future runtime
-transition requires a separate Strategy Case, implementation decision, and
-representative operating evidence.
+of the existing Sequence and accepted architecture. A later experimental first
+slice was implemented along the shape described by the
+[supervised-autonomy Strategy Case](../organization/sessions/2026-07-20-supervised-autonomy-mvp-strategy-case.md),
+but the Case retained no Principal disposition. Its implementation and guarded
+evidence did not by themselves accept an operating transition. The later
+[first-slice settlement](../organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+recognizes it only as a maintained, project-local experimental capability.
 
 ## Sequence grounding
 
@@ -168,12 +173,17 @@ replacement.
 
 ## Relation to current operation
 
-The repository currently implements **human-initiated bounded adaptation**, not
-continuous autonomous operation. [Decision 012](012-bounded-adaptive-organization.md)
-already supplies conditional formation and correction boundaries;
+The repository's accepted operating mode remains **human-initiated bounded
+adaptation**, not continuous autonomous operation.
+[Decision 012](012-bounded-adaptive-organization.md) supplies conditional
+formation and correction boundaries;
 [Decision 015](015-human-initiated-formal-operations.md) keeps the active trigger
 human-authorized; and [Decision 031](031-extensible-work-cell-orchestration.md)
 supplies multi-Cell execution mechanics without semantic scheduling authority.
+The project-local [`operations/autonomy/`](../../operations/autonomy/README.md)
+experiment now implements ordered Mission input, bounded turns,
+reconciliation, delegation, and local recovery. Its supported mechanism claims
+remain guarded and do not change those accepted authorities.
 
 This decision changes the desired long direction and therefore creates a
 legitimate reopening condition for the human-only trigger boundary. It does not
@@ -183,23 +193,22 @@ submissions remain non-authoritative intake proposals.
 
 ## Smallest future transition
 
-The next step is a Strategy Case for **supervised autonomy**, followed by one
-bounded operating pilot. The case must decide, from real work:
+The
+[first-slice settlement](../organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+recognizes `operations/autonomy/` as a maintained, project-local experimental
+capability. This settles its project status, not an autonomous operating
+transition. It may preserve and exercise its existing local mechanism under
+explicit human authorization. Decision 050 later admits one narrower empirical
+exception: a single guarded writer may produce a candidate diff in a clean,
+disposable, exclusively leased Git worktree through scope-bound `write_file`,
+with commands and all integration authority withheld. This does not authorize
+shared-worktree effects, effect replay, automatic task discovery, semantic
+Mission completion, remote authority, publication, or merge.
 
-1. which retained signals may propose work;
-2. which low-consequence work classes, if any, have a pre-approved execution
-   envelope;
-3. which durable source owns mission eligibility and recoverable state;
-4. where human approval, independent verification, pause, takeover, rollback,
-   and budget escalation occur;
-5. how project cognition informs a proposal without becoming task or fact
-   authority; and
-6. what observation would show that autonomous operation adds ceremony,
-   correlated error, or unsafe authority rather than useful continuity.
-
-The first pilot may autonomously produce a proposal, evidence packet, branch,
-or pull request. It must not autonomously merge, amend the Sequence, expand its
-envelope, or claim that one clean run proves a reliable autonomous system.
+No broader transition is authorized here. Before any proposal to narrow
+Decision 015 or claim usefulness or economic advantage, a representative
+production comparison must test the supervised formation against the ordinary
+human-initiated path.
 
 ## Acceptance and reopening
 

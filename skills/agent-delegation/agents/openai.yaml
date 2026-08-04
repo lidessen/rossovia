@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Delegation"
+  short_description: "Shape and run bounded sub-agent contributions"
+  default_prompt: "Use $agent-delegation to decide and run the right bounded sub-agent contributions for this task."

@@ -152,6 +152,102 @@ test("one admitted contribution uses direct Cell execution rather than manufactu
   expect(result.admission.unassignedObligations).toEqual(["inspect-callers", "document-boundary"]);
 });
 
+test("an explicit isolated effect policy admits exactly one guarded writer inside the frozen whole", async () => {
+  const root = await fixture();
+  const input = batch(root, [
+    contribution(root, "contract", "inspect-contract", "guarded", "provisional-observed"),
+    contribution(root, "callers", "inspect-callers", "guarded", "provisional-observed"),
+  ]);
+  configureWritableTrial(input, root, "contract", "candidate/contract.md");
+
+  const admitted = admitPreparedDelegateBatch(input);
+
+  expect(admitted.whole.effectPolicy).toEqual({
+    kind: "isolated-writable-trial",
+    root,
+  });
+  expect(admitted.whole.workspace.allowedCommands).toEqual([]);
+  expect(admitted.contributions.filter((item) => item.cell.workspace.writePaths.length > 0))
+    .toHaveLength(1);
+  expect(admitted.contributions[0]!.cell.workspace.writePaths).toEqual(["candidate/contract.md"]);
+});
+
+test("writable admission rejects missing policy, commands, widened scope, root drift, multiple writers, and unguarded work", async () => {
+  const root = await fixture();
+  const cases: Array<{
+    name: string;
+    mutate: (input: DeepMutable<PreparedDelegateBatch>) => void;
+    issue: string;
+  }> = [
+    {
+      name: "missing effect policy",
+      mutate: (input) => { delete input.whole.effectPolicy; },
+      issue: "requires an explicit isolated writable trial effect policy",
+    },
+    {
+      name: "whole command authority",
+      mutate: (input) => { input.whole.workspace.allowedCommands = ["git"]; },
+      issue: "does not permit command execution",
+    },
+    {
+      name: "cell command authority",
+      mutate: (input) => {
+        (input.contributions[0]!.cell as CellInput).workspace.allowedCommands = ["git"];
+      },
+      issue: "cell is not permitted to execute commands",
+    },
+    {
+      name: "effect root drift",
+      mutate: (input) => { input.whole.effectPolicy!.root = join(root, "other"); },
+      issue: "whole workspace root does not match",
+    },
+    {
+      name: "cell root drift",
+      mutate: (input) => {
+        (input.contributions[0]!.cell as CellInput).workspace.root = join(root, "other");
+      },
+      issue: "cell workspace root does not match the isolated writable trial effect root",
+    },
+    {
+      name: "whole escapes effect root",
+      mutate: (input) => { input.whole.workspace.writePaths = ["../outside"]; },
+      issue: "outside the isolated writable trial root",
+    },
+    {
+      name: "cell exceeds whole maximum",
+      mutate: (input) => {
+        (input.contributions[0]!.cell as CellInput).workspace.writePaths = ["outside/result.md"];
+      },
+      issue: "cell write path is outside the frozen whole",
+    },
+    {
+      name: "two writable contributions",
+      mutate: (input) => {
+        configureWritableContribution(input, "callers", "candidate/callers.md");
+      },
+      issue: "requires exactly one writable contribution; received 2",
+    },
+    {
+      name: "unguarded writable contribution",
+      mutate: (input) => {
+        input.contributions[0]!.taskShape.disposition = "reliable-primitive";
+        input.contributions[0]!.taskShape.guardRefs = [];
+      },
+      issue: "writable cell requires a guarded Task Shape",
+    },
+  ];
+
+  for (const scenario of cases) {
+    const input = batch(root, [
+      contribution(root, "contract", "inspect-contract", "guarded", "provisional-observed"),
+      contribution(root, "callers", "inspect-callers", "guarded", "provisional-observed"),
+    ]);
+    configureWritableTrial(input, root, "contract", "candidate/contract.md");
+    scenario.mutate(input);
+    expect(() => admitPreparedDelegateBatch(input), scenario.name).toThrow(scenario.issue);
+  }
+});
+
 test("admission does not accept task process evidence as the sole delegate proof", async () => {
   const root = await fixture();
   const taskOnly = batch(root, [
@@ -248,6 +344,37 @@ function contribution(
     },
     cell: cell(root, key),
   };
+}
+
+function configureWritableTrial(
+  input: DeepMutable<PreparedDelegateBatch>,
+  root: string,
+  contributionKey: string,
+  writePath: string,
+): void {
+  input.whole.effectPolicy = {
+    kind: "isolated-writable-trial",
+    root,
+  };
+  input.whole.workspace.writePaths = ["candidate"];
+  if (!input.whole.capabilityNeeds.includes("write")) input.whole.capabilityNeeds.push("write");
+  configureWritableContribution(input, contributionKey, writePath);
+}
+
+function configureWritableContribution(
+  input: DeepMutable<PreparedDelegateBatch>,
+  contributionKey: string,
+  writePath: string,
+): void {
+  const selected = input.contributions.find((item) => item.key === contributionKey);
+  if (selected === undefined) throw new Error(`missing contribution ${contributionKey}`);
+  selected.capabilityNeed = "write";
+  selected.taskShape.disposition = "guarded";
+  selected.taskShape.guardRefs = ["guard:independent-claim-check"];
+  const selectedCell = selected.cell as DeepMutable<CellInput>;
+  selectedCell.workspace.writePaths = [writePath];
+  selectedCell.capabilities = ["read", "write"];
+  selectedCell.capabilitiesRequired = ["write"];
 }
 
 function cell(root: string, id: string): CellInput {

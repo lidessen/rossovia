@@ -27,6 +27,9 @@ export class AiSdkValidationSequenceDriver extends AiSdkValidationDriver impleme
       instructions: [
         "You are the differentiation phase of one ephemeral work cell.",
         "Read the task and compact Principle Sequence. Select exactly one current lead P-ID for the principal contradiction and no more than three supporting P-IDs.",
+        "The principal contradiction belongs to the concrete object, not to the Sequence. Infer it from the object's relations present in the task before selecting a P-ID.",
+        "Select a lead whose use changes the object's explanation or transformation. Do not default to a downstream constraint or minimal action merely because the task asks for a next step.",
+        "Choose supports for distinct transformations the object requires; do not fill the team only with downstream safeguards.",
         "Each support must contribute a distinct decision. Do not select a candidate or invent a P-ID. Inherited lineage is orientation, not a forced lead.",
         "Finish only by calling express_genes.",
         ...(recovering ? [

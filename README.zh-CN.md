@@ -31,19 +31,22 @@ skill 则是在具体语境中对所选条目的表达。
 
 - 在本仓库中完整实践项目的运行、验证与演进体系；
 - 向其他项目独立安装一个 Skill，针对性采用一种方法；
-- 用 coding agent 打开本仓库，把它作为进入其他项目的工作台。
+- 用 coding agent 打开本仓库，把它作为进入其他项目的 Main Agent 工作入口。
+  Agent 可以直接使用当前宿主的原生 sub-agent 能力，不需要先初始化 Rossovia
+  Workbench。
 
-使用工作台时，直接告诉 Agent：
+需要可选的持久 Workbench 能力时，直接告诉 Agent：
 
 ```text
-初始化 Rossovia 工作台，我的日常工作区在 ~/workspaces。
-把 ~/client-work 加为另一个工作区根目录。
-登记 ~/workspaces/meowask，并保留 meowask 和 survey 两个口头别名。
+初始化 Rossovia 工作台，我的日常工作区在 /path/to/workspaces。
+把 /path/to/another-workspace-root 加为另一个工作区根目录。
+登记 /path/to/project，并保留 example-project 和 example-alias 两个口头别名。
 记住：跨项目遇到稳定、有边界的任务时，优先考虑 Work Cell。
-仅对 survey，原生 sub-agent 提供必要订阅能力时优先使用它。
-显示适用于 survey 的偏好。
-继续 survey。
+仅对 example-project，原生 sub-agent 提供必要订阅能力时优先使用它。
+显示适用于 example-project 的偏好。
+继续 example-project。
 显示所有已登记项目中正在进行的工作。
+创建一个本地任务来核对 example-project 的发布说明，然后显示我的 Workbench 任务。
 ```
 
 仓库指引会通过可移植的 Node 入口把这些意图转换为有边界的工作台操作。登记时如果无法
@@ -57,31 +60,64 @@ skill 则是在具体语境中对所选条目的表达。
 在自动化、调试或没有 Agent 的环境中，仍可使用等价的手动入口：
 
 ```sh
-./operations/workbench/rossovia init --workspace-root ~/workspaces
-./operations/workbench/rossovia root add ~/client-work
+./operations/workbench/rossovia init --workspace-root /path/to/workspaces
+./operations/workbench/rossovia root add /path/to/another-workspace-root
 ./operations/workbench/rossovia project list
-./operations/workbench/rossovia resolve survey
-./operations/workbench/rossovia preference list --project survey
+./operations/workbench/rossovia resolve example-project
+./operations/workbench/rossovia preference list --project example-project
 ```
+
+日常管理任务时，可以打开 Principal Workbench UI，或通过 control-plane CLI
+查看同一份持久本地任务来源：
+
+```sh
+bun run --cwd operations/workbench ui
+./operations/workbench/rossovia task list
+./operations/workbench/rossovia task show <task-id>
+```
+
+UI 支持创建、指派、纠正、提交、接受和重新打开本地 Principal-attributed 任务。
+跨边界启动、纠正交付、恢复和 runtime-verified 提交仍是有保护的 UI 操作；CLI
+help 会列出已支持的本地任务变更及其必需的 revision guards。
 
 成功的 `init` 会在 Rossovia home 的每个可写载体中实际执行并清理一次写入探针，
 然后返回 `writeAccess: "verified"`。仅能读取既有状态并不代表环境可用；如果没有
 这个观察结果，应为准确的 home 协调用户级 harness 权限并新开会话。初始化不会
 安装项目 hooks，也不会把共享状态移进当前仓库。
 
-工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它不会把本仓库变成
-全局任务板，也不会仅凭定位结果取得另一个项目的执行权。显式个人偏好与项目
-共同约束分别保存；未经人确认，推断出的 memory 不会成为生效偏好。
+初始化也可以选择一条紧凑的 fallback delegation 触发说明。当前 Codex adapter
+会把它投影到该宿主的用户级指引中；这是持久 setup 指引，不是 delegation
+runtime，也不能替代 `agent-delegation` Skill：
+
+```sh
+./operations/workbench/rossovia init --setup multi-agent-delegation
+./operations/workbench/rossovia setup status
+./operations/workbench/rossovia setup apply
+```
+
+Workbench 会记录已应用的 Git revision 和 managed-block digest。仓库更新后，
+status 会按所选模块前缀过滤通用 [`CHANGELOG.md`](CHANGELOG.md)，digest 则独立
+检测目标侧的本地漂移。source revision 始终属于包含当前 Git-tracked Rossovia
+可执行入口的 checkout，不能由另一个仓库提供。apply 会保留非受管用户指引，
+并拒绝覆盖已改变或缺失的 managed block。只有相关 setup 来源已提交，才能把
+Git revision 记录为已应用。
+
+工作台将稳定项目身份与仓库名、口头别名和本机路径分开。它的持久本地任务来源
+和 control-plane UI 不会使其成为调度器、目标项目的任务来源，也不会使其取得
+另一个项目的执行权。显式个人偏好与项目共同约束分别保存；未经人确认，推断出的
+memory 不会成为生效偏好。
 
 ## 仓库地图
 
 | 路径 | 负责 | 不负责 |
 |---|---|---|
 | [`principles/`](principles/) | 单行原则序列、解读、研究、候选及审议/采纳证据 | skill 工作流或项目执行 |
+| [`CHANGELOG.md`](CHANGELOG.md) | 按稳定功能模块前缀标记的仓库变更及其本地响应 | 已应用的 setup 状态或发布权威 |
 | [`skills/`](skills/) | 当前可安装的方法论与行为表达 | 它们所表达的语义来源 |
 | [`packages/work-cell/`](packages/work-cell/) | 通用的有边界 Agent 运行时、可选适配器与实验性研究实现 | 规划、理论或人的验收 |
 | [`packages/cognition/`](packages/cognition/) | 领域声明的渐进形成、来源与认知工件谱系、采纳证据和可重建检索投影 | 通用固定认知层、领域解释、模型执行或采纳权威 |
-| [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位与显式的用户/项目偏好 | 任务调度、推断偏好、目标项目事实或执行权 |
+| [`operations/autonomy/`](operations/autonomy/) | 实验性的本地受监督 Mission 机制，负责有序输入、有边界 turn、委派、对账、恢复，以及一个被显式准入的 Blog 隔离 worktree 可写试验 | 已接受的自治运行、任务发现、通用或共享 worktree 可写 effect 权威、远程权威、发布或合并 |
+| [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位、显式的用户/项目偏好，以及本地 Principal-attributed 任务的持久生命周期和 control-plane UI | 任务调度、推断偏好、本机能力、目标项目任务事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |
@@ -94,6 +130,7 @@ skill 则是在具体语境中对所选条目的表达。
 
 | Skill | 命令 | 用途 |
 |-------|------|------|
+| [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | 判断并运行有边界的原生 sub-agent 贡献，同时由 Main Agent 保留整体、综合与确保验证发生的责任；不依赖 Workbench 或其他编排运行时。 |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | 原则序列的自身验证守护者。先保留带引文的研究，再提出候选、召开选择性的 P-ID 审议，并试行由人指定的替代项；只有经人批准的采纳才能进入核心。 |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | 依据真实运行时，判断权威项目信息如何在能够改变行动的时刻抵达 Agent，而不预设固定层级或文件名约定。 |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | 定位现有项目中真实的 Agent 工作失败，修改最小的责任界面，并通过日常 Agent 入口验证改进。 |
@@ -116,7 +153,7 @@ skill 则是在具体语境中对所选条目的表达。
 | [project-cognition](skills/project-cognition/SKILL.md) | `/project-cognition` | 当后续重大任务需要复用项目理解时，建立或选择性刷新带来源、无事实权的工作模型。 |
 | [agent-environment](skills/agent-environment/SKILL.md) | `/agent-environment` | 跨设备和工具审计、建立、调和、验证或迁移个人的非敏感用户级编码 Agent 工作流，不复制不透明的机器状态。 |
 
-## 实验性运行时
+## 实验性机制
 
 [`packages/work-cell`](packages/work-cell/README.md) 是本集合独立的实践与评估
 单元。其核心会运行一个由调用方准备的、有边界的 Agent 任务，并保留已声明的
@@ -136,10 +173,20 @@ Git、prompt、模型和任务定位都不进入核心。项目认知和 Rossovi
 后续领域方法，而不是它的定义性 schema；参见
 [决策 039](design/decisions/039-general-cognition-experiment.md)。
 
+[`operations/autonomy`](operations/autonomy/README.md) 是项目本地的受监督
+Mission 实验。已经实现的 first slice 会保留有序的人类输入、有边界的 Agent
+turn、委派证据、对账与本地恢复。只读路径和正常重启下的机制主张已有带边界的
+支持。一个针对 Blog 的精确受监督机制已经实现并完成机械验证：它只允许在隔离
+Git worktree 中运行一个有守卫的可写 Cell。这不证明通用或共享 worktree 可写
+effect、自治完成、远程权威、集成、发布、产品验收或生产优势。在
+[Principal 结算](design/organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
+中，它被认定为活跃但有边界的实验能力；普通运行模式仍由人发起。
+
 ## 何时使用哪个 Skill？
 
 | 如果你正在…… | 使用 |
 |---|---|
+| 判断何时使用原生 sub-agent、如何划分独立贡献、隔离写入所有权或安排 fresh reviewer | `/agent-delegation` |
 | 研究重复出现的证据是否足以形成可复用的核心原则 | `/principle-cultivation research` |
 | 设计、审计或验证项目上下文如何抵达 Agent | `/context-engineering` |
 | 在现有项目中安装一个入口，以便从已观察行为出发改进 Agent skills、指令、工具、验证或交接 | `/improve-agent-workflow` |

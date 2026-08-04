@@ -7,7 +7,13 @@ import {
   type ModelMessage,
 } from "ai";
 import { z } from "zod";
-import type { CellRunRecord, CellUsage, Task, TaskSeed } from "../../../packages/work-cell/src/contracts";
+import type {
+  CellRunRecord,
+  CellUsage,
+  Task,
+  TaskSeed,
+  TraceEvent,
+} from "../../../packages/work-cell/src/contracts";
 import {
   JsonFileInputRefSchema,
   readJsonFileInput,
@@ -53,6 +59,38 @@ const DelegateToolResultSchema = z.object({
   uncoveredObligationRefs: z.array(z.string()),
 }).strict();
 
+const ReadDelegateResultCallSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+}).strict();
+
+export const DelegateResultReadReceiptSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+  cellId: z.string().min(1),
+  status: z.string().min(1),
+  settlementDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  semanticDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  semanticBytes: z.number().int().nonnegative(),
+  projection: z.enum(["full", "metadata-only"]),
+}).strict();
+
+export type DelegateResultReadReceipt = z.infer<typeof DelegateResultReadReceiptSchema>;
+
+export interface DelegateResultProjection {
+  readonly receipt: DelegateResultReadReceipt;
+  readonly semantic?: {
+    readonly finalText: string;
+    readonly output?: unknown;
+    readonly artifacts: readonly unknown[];
+    readonly verification: unknown;
+  };
+  readonly omission?: {
+    readonly reason: "projection-too-large" | "runner-error";
+    readonly maxBytes: number;
+  };
+}
+
 /** Host-owned execution material. Model-authored semantic fields are merged separately. */
 export interface PreparedDelegateExecution {
   readonly label?: string;
@@ -74,6 +112,12 @@ export interface DelegateLoopOptions {
   readonly prepareContribution: (call: DelegateCall) => Promise<PreparedDelegateExecution>;
   /** Enables `delegate_file`; the model can name files only inside this host-owned root. */
   readonly delegateInputRoot?: string;
+  /**
+   * Forces the first submission boundary through one delegate tool when the
+   * caller already owns the delegation decision. The model supplies only that
+   * tool's typed input; admission and dispatch remain host-owned.
+   */
+  readonly initialDelegateTool?: "delegate" | "delegate_file";
   /** Optional host-scoped writer. Supplying it enables an ordinary `write_file` preparation tool. */
   readonly delegateFileWriter?: DelegateFileWriter;
   readonly timeline: DelegateTimeline;
@@ -83,7 +127,18 @@ export interface DelegateLoopOptions {
   readonly maxDelegateBatches: number;
   readonly maxCallsPerStep: number;
   readonly maxOutputTokens?: number;
+  /** Optional host-owned durable observation of one admitted execution. */
+  readonly executionObserver?: DelegateExecutionObserver;
   readonly signal?: AbortSignal;
+}
+
+export interface DelegateExecutionObserver {
+  prepare(checkpoint: DelegateBatchCheckpoint): Promise<void>;
+  start(checkpoint: DelegateBatchCheckpoint): Promise<void>;
+  rejectBeforeStart(checkpoint: DelegateBatchCheckpoint, error: unknown): Promise<void>;
+  trace(checkpoint: DelegateBatchCheckpoint, event: TraceEvent): void;
+  settle(checkpoint: DelegateBatchCheckpoint, run: DelegateBatchRun): Promise<void>;
+  uncertain(checkpoint: DelegateBatchCheckpoint, error: unknown): Promise<void>;
 }
 
 export interface DelegateFileWriter {
@@ -137,6 +192,11 @@ export interface DelegateTimeline {
     readonly outcomes: readonly CompactDelegateOutcome[];
   }): Promise<void>;
   resolveBatch(checkpoint: DelegateBatchCheckpoint): Promise<readonly CompactDelegateOutcome[] | undefined>;
+  readResult(
+    parentLoopId: string,
+    batchId: string,
+    key: string,
+  ): Promise<DelegateResultProjection>;
 }
 
 export class DelegateBarrierPendingError extends Error {
@@ -174,6 +234,8 @@ export interface DelegateLoopRun {
   readonly tasks: readonly Task[];
   /** Obligations not yet covered by a successfully settled contribution. */
   readonly uncoveredObligations: readonly string[];
+  /** Host-verified semantic child-result reads performed during reconstruction. */
+  readonly resultReads?: readonly DelegateResultReadReceipt[];
   readonly usage: CellUsage;
 }
 
@@ -210,11 +272,21 @@ function createWriteFileTool(writer: DelegateFileWriter) {
 
 export async function startDelegateBatch(
   checkpoint: DelegateBatchCheckpoint,
-  options: Pick<DelegateLoopOptions, "timeline" | "createDriver" | "concurrency" | "signal">,
+  options: Pick<
+    DelegateLoopOptions,
+    "timeline" | "createDriver" | "concurrency" | "executionObserver" | "signal"
+  >,
 ): Promise<DelegateBatchHandle> {
   await options.timeline.prepareBatch(checkpoint);
-  options.signal?.throwIfAborted();
-  await options.timeline.markBatchDispatched(checkpoint);
+  await options.executionObserver?.prepare(checkpoint);
+  try {
+    options.signal?.throwIfAborted();
+    await options.timeline.markBatchDispatched(checkpoint);
+    await options.executionObserver?.start(checkpoint);
+  } catch (error) {
+    await options.executionObserver?.rejectBeforeStart(checkpoint, error).catch(() => undefined);
+    throw error;
+  }
   const controller = new AbortController();
   const executionSignal = options.signal === undefined
     ? controller.signal
@@ -222,10 +294,22 @@ export async function startDelegateBatch(
   const settled = runAdmittedDelegateBatch(checkpoint.admission, options.createDriver, {
     concurrency: options.concurrency,
     signal: executionSignal,
+    ...(options.executionObserver === undefined
+      ? {}
+      : { onTrace: (event: TraceEvent) => options.executionObserver!.trace(checkpoint, event) }),
   }).then(async (run): Promise<DelegateBatchSettlement> => {
-    const outcomes = projectOutcomes(checkpoint.invocations.map((invocation) => invocation.call), run);
-    await options.timeline.recordBatchSettlements({ checkpoint, run, outcomes });
-    return { run, outcomes };
+    try {
+      await options.executionObserver?.settle(checkpoint, run);
+      const outcomes = projectOutcomes(checkpoint.invocations.map((invocation) => invocation.call), run);
+      await options.timeline.recordBatchSettlements({ checkpoint, run, outcomes });
+      return { run, outcomes };
+    } catch (error) {
+      await retainUncertain(options.executionObserver, checkpoint, error);
+      throw error;
+    }
+  }, async (error) => {
+    await retainUncertain(options.executionObserver, checkpoint, error);
+    throw error;
   });
   return {
     checkpoint,
@@ -243,6 +327,7 @@ export class DelegateLoopSession {
   private readonly settledContributionKeys: Set<string>;
   private readonly seenContributionKeys: Set<string>;
   private readonly coveredObligations = new Set<string>();
+  private readonly resultReads: DelegateResultReadReceipt[] = [];
   private readonly tasks: TaskStore;
   private usage = emptyUsage();
   private lastText = "";
@@ -276,12 +361,44 @@ export class DelegateLoopSession {
 
     const delegationOpen = this.batches.length < this.options.maxDelegateBatches;
     const remainingModelSteps = this.options.maxModelSteps - this.modelSteps;
+    const readableResults = new Map<string, CompactDelegateOutcome>();
+    for (const batch of this.batches) {
+      for (const outcome of batch.outcomes) {
+        readableResults.set(resultKey(batch.id, outcome.key), outcome);
+      }
+    }
     const tools = {
       ...(delegationOpen ? { delegate: delegateTool } : {}),
       ...(delegationOpen && this.options.delegateInputRoot !== undefined ? { delegate_file: delegateFileTool } : {}),
       ...(!delegationOpen || this.options.delegateFileWriter === undefined
         ? {}
         : { write_file: createWriteFileTool(this.options.delegateFileWriter) }),
+      ...(readableResults.size === 0
+        ? {}
+        : {
+          read_delegate_result: tool({
+            description:
+              "Read the bounded semantic projection of one settled child result from this parent loop. Name only a batchId and contribution key already returned by delegate; arbitrary file paths are not accepted.",
+            inputSchema: ReadDelegateResultCallSchema,
+            execute: async ({ batchId, key }) => {
+              const expected = readableResults.get(resultKey(batchId, key));
+              if (expected === undefined) {
+                throw new Error(`delegate result ${batchId}/${key} is not settled in parent loop ${this.input.id}`);
+              }
+              const projection = await this.options.timeline.readResult(this.input.id, batchId, key);
+              if (
+                projection.receipt.batchId !== batchId ||
+                projection.receipt.key !== key ||
+                projection.receipt.cellId !== expected.cellId ||
+                projection.receipt.status !== expected.status
+              ) {
+                throw new Error(`delegate result ${batchId}/${key} conflicts with its settled outcome`);
+              }
+              this.resultReads.push(DelegateResultReadReceiptSchema.parse(projection.receipt));
+              return projection;
+            },
+          }),
+        }),
       ...createTaskTools(this.tasks, {
         projection: { read: "all", create: true, update: "all", assignOwner: true },
       }),
@@ -295,7 +412,9 @@ export class DelegateLoopSession {
         tasks: this.tasks.snapshot(),
       }),
       tools,
-      toolChoice: "auto",
+      toolChoice: this.options.initialDelegateTool === undefined
+        ? "auto"
+        : { type: "tool", toolName: this.options.initialDelegateTool },
       stopWhen: isStepCount(remainingModelSteps),
       prepareStep: ({ messages }) => ({ messages: compactWriteFileMessages(messages) }),
       maxRetries: 0,
@@ -393,6 +512,9 @@ export class DelegateLoopSession {
       timeline: this.options.timeline,
       createDriver: this.options.createDriver,
       concurrency: this.options.concurrency,
+      ...(this.options.executionObserver === undefined
+        ? {}
+        : { executionObserver: this.options.executionObserver }),
       ...(this.options.signal === undefined ? {} : { signal: this.options.signal }),
     });
     this.pending = { checkpoint, invocations, handle };
@@ -458,9 +580,24 @@ export class DelegateLoopSession {
       this.tasks.snapshot(),
       this.input.whole.obligations,
       this.coveredObligations,
+      this.resultReads,
       this.usage,
     );
     return { kind: "finished", run: this.finished };
+  }
+}
+
+async function retainUncertain(
+  observer: DelegateExecutionObserver | undefined,
+  checkpoint: DelegateBatchCheckpoint,
+  error: unknown,
+): Promise<void> {
+  if (observer === undefined) return;
+  try {
+    await observer.uncertain(checkpoint, error);
+  } catch {
+    // Preserve the execution failure. The observer owns its own durable error
+    // surface and must not replace the causal failure returned to the runner.
   }
 }
 
@@ -497,6 +634,8 @@ function renderDelegateInstructions(
 Use \`delegate\` only for a contribution that has already been shaped against the declared execution profile and can be accepted from bounded evidence. When \`delegate_file\` is available, use it for the same semantic call already present as a JSON file so a large task description does not enter later parent model steps. Do not copy the file content into the delegate_file call. When \`write_file\` is available, write a complete DelegateCall JSON packet first, retain its returned digest, and call delegate_file in a later step. Never mix write_file and delegate calls in one submission step. A role label, confident wording, schema validity, or protocol completion is not capability evidence. If the work is still \`transform\` or \`unsupported-escalate\`, do not delegate it as an ordinary Cell.
 
 Use task_create/task_update/task_list/task_get as the shared coordination memory. Create a task before delegating it, then pass that task's host-assigned ID as taskId. The host binds an admitted delegate to that task, and child settlement advances its process status. Task completion is coordination evidence, never semantic correctness. Do not delegate a blocked or completed task.
+
+After a child settles, use \`read_delegate_result\` with its returned batchId and key when the child's semantic result is needed for reconstruction. This tool can read only settled children from this parent loop; it does not accept filesystem paths. A metadata-only projection means the bounded semantic payload was unavailable and must not be guessed.
 
 Each call carries only the semantic contribution: stable key, taskId, task, declared source and obligation references, local acceptance, and bounded capability need. Do not provide workspace paths, work-proof declarations, concurrency, provider choice, budgets, Task Shape internals, or nested delegation. The host supplies those after admission. The prepared Cell declares its mechanical completion needs directly through terminal tools, output schema, or artifacts. Do not add an opaque result-contract label.
 
@@ -563,6 +702,9 @@ function validateLoopOptions(options: DelegateLoopOptions): void {
   if (options.delegateFileWriter !== undefined && options.delegateInputRoot === undefined) {
     throw new Error("delegateFileWriter requires delegateInputRoot so written packets can be resolved");
   }
+  if (options.initialDelegateTool === "delegate_file" && options.delegateInputRoot === undefined) {
+    throw new Error("initialDelegateTool delegate_file requires delegateInputRoot");
+  }
   for (const [name, value] of [
     ["maxModelSteps", options.maxModelSteps],
     ["maxDelegateBatches", options.maxDelegateBatches],
@@ -601,6 +743,7 @@ function finish(
   tasks: readonly Task[],
   obligations: readonly string[],
   covered: ReadonlySet<string>,
+  resultReads: readonly DelegateResultReadReceipt[],
   usage: CellUsage,
 ): DelegateLoopRun {
   return {
@@ -610,8 +753,13 @@ function finish(
     batches,
     tasks,
     uncoveredObligations: uncovered(obligations, covered),
+    resultReads: [...resultReads],
     usage,
   };
+}
+
+function resultKey(batchId: string, key: string): string {
+  return `${batchId}\u0000${key}`;
 }
 
 function uncovered(obligations: readonly string[], covered: ReadonlySet<string>): string[] {

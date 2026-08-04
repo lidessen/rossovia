@@ -27,6 +27,57 @@ describe("portable Workbench runtime", () => {
       }));
       expect(JSON.parse(readFileSync(join(initialized.home, "state", "roots.json"), "utf8")).version)
         .toBe("rosso.roots.v1");
+      const created = spawnSync("node", [
+        cli,
+        "--home",
+        home,
+        "task",
+        "create",
+        "--title",
+        "Portable task",
+        "--objective",
+        "Prove the Node bundle retains Principal task state",
+        "--accept",
+        "The task survives a second process",
+        "--next-actor",
+        "agent",
+        "--source-ref",
+        "test:portable-runtime",
+        "--expected-source-revision",
+        "0",
+      ], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: nodeOnlyPath() },
+      });
+      expect(created.status).toBe(0);
+      expect(created.stderr).toBe("");
+      const createdTask = JSON.parse(created.stdout);
+      expect(createdTask).toMatchObject({
+        sourceRevision: 1,
+        task: {
+          title: "Portable task",
+          binding: { kind: "independent" },
+          lifecycle: "open",
+          nextActor: "agent",
+          revision: 1,
+        },
+      });
+      const listed = spawnSync("node", [
+        cli,
+        "--home",
+        home,
+        "task",
+        "list",
+      ], {
+        encoding: "utf8",
+        env: { ...process.env, PATH: nodeOnlyPath() },
+      });
+      expect(listed.status).toBe(0);
+      expect(JSON.parse(listed.stdout)).toEqual({
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 1,
+        tasks: [createdTask.task],
+      });
     } finally {
       rmSync(temporary, { recursive: true, force: true });
     }

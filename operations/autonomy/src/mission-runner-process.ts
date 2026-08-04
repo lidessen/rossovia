@@ -7,7 +7,7 @@ import { MissionAnchorSeedSchema } from "./mission-reconciliation";
 const options = parseOptions(process.argv.slice(2));
 
 try {
-  const prepareExecution = options.runtimeModule === undefined
+  const runtime = options.runtimeModule === undefined
     ? undefined
     : await loadMissionRuntimeFactory(options.runtimeModule);
   const initialAnchor = options.anchorFile === undefined
@@ -16,7 +16,12 @@ try {
   await runMissionRunner({
     root: options.home,
     missionId: options.missionId,
-    ...(prepareExecution === undefined ? {} : { prepareExecution }),
+    ...(runtime === undefined
+      ? {}
+      : {
+        prepareExecution: runtime.prepareExecution,
+        runtimeRecoveryCapabilities: runtime.recoveryCapabilities,
+      }),
     ...(initialAnchor === undefined ? {} : { initialAnchor }),
   });
 } catch (error) {

@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import type { z } from "zod";
 import {
   ManifestSchema,
+  PrincipalTasksSchema,
   PreferencesSchema,
   ProjectsSchema,
   RootsSchema,
@@ -216,6 +217,11 @@ export function initializeHome(homeArgument?: string): InitializedHome {
     version: "rosso.preferences.v1",
     preferences: [],
   }, (value) => validatePreferences(value, "user preferences"));
+  ensureJson(join(home, "state", "tasks.json"), PrincipalTasksSchema, {
+    version: "rosso.principal-tasks.v1",
+    sourceRevision: 0,
+    tasks: [],
+  });
   ensureJson(join(home, "config", "setup.json"), SetupSelectionSchema, {
     version: "rosso.setup-selection.v1",
     selections: [],

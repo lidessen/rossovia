@@ -25,6 +25,7 @@ import {
   type PreparedDelegateExecution,
 } from "../src/delegate-loop";
 import { FileMissionTimeline } from "../src/delegate-timeline";
+import { digestAnchor } from "../src/mission-reconciliation";
 import type { MissionExecutionController } from "../src/mission-execution-host";
 import {
   missionRunnerDirectory,
@@ -91,6 +92,14 @@ test("one AI SDK step collects an independent delegate batch before dispatch and
       drivers += 1;
       return new ResultDriver("completed");
     },
+    executionObserver: {
+      async prepare() { order.push("effect-prepare"); },
+      async start() { order.push("effect-start"); },
+      async rejectBeforeStart() { order.push("effect-prestart-rejected"); },
+      trace() {},
+      async settle() { order.push("effect-settle"); },
+      async uncertain() { order.push("effect-uncertain"); },
+    },
     concurrency: 8,
     maxModelSteps: 3,
     maxDelegateBatches: 2,
@@ -99,7 +108,17 @@ test("one AI SDK step collects an independent delegate batch before dispatch and
 
   expect(prepared).toBe(2);
   expect(drivers).toBe(2);
-  expect(order).toEqual(["prepare", "dispatch", "driver", "driver", "settle", "resolve"]);
+  expect(order).toEqual([
+    "prepare",
+    "effect-prepare",
+    "dispatch",
+    "effect-start",
+    "driver",
+    "driver",
+    "effect-settle",
+    "settle",
+    "resolve",
+  ]);
   expect(result.status).toBe("returned");
   expect(result.batches).toHaveLength(1);
   expect(result.batches[0]?.outcomes.map((outcome) => [outcome.key, outcome.status])).toEqual([
@@ -209,6 +228,7 @@ test("delegate_file keeps a large semantic task out of parent model messages and
   const result = await runDelegateLoop(loopInput(root), {
     model,
     delegateInputRoot: root,
+    initialDelegateTool: "delegate_file",
     prepareContribution: async (delegateCall) => {
       preparedTask = delegateCall.task;
       await writeFile(join(root, "delegate-call.json"), `${JSON.stringify({ ...packet, task: "replacement" })}\n`, "utf8");
@@ -224,6 +244,10 @@ test("delegate_file keeps a large semantic task out of parent model messages and
 
   expect(preparedTask).toContain(largeMarker);
   expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).toContain("delegate_file");
+  expect(model.doGenerateCalls[0]?.toolChoice).toEqual({
+    type: "tool",
+    toolName: "delegate_file",
+  });
   expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).not.toContain(largeMarker);
   expect(JSON.stringify(secondPrompt)).not.toContain(largeMarker);
   const invocation = result.batches[0]!.invocations[0]!;
@@ -236,6 +260,103 @@ test("delegate_file keeps a large semantic task out of parent model messages and
   expect(resultFile).toBeString();
   expect(await readFile(resultFile!, "utf8")).toContain("delegate.child-settled");
   expect(JSON.stringify(secondPrompt)).toContain(resultFile!);
+});
+
+test("the parent reads one settled child semantic result without gaining filesystem access", async () => {
+  const root = await fixture();
+  const timeline = new FileMissionTimeline(join(root, ".mission-result-read"));
+  let modelCalls = 0;
+  let reconstructionPrompt: LanguageModelV4CallOptions["prompt"] | undefined;
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        return response([
+          toolCall("delegate-contract", call("contract", "inspect-contract", "source:contract")),
+        ], "tool-calls");
+      }
+      if (modelCalls === 2) {
+        expect(JSON.stringify(options.tools)).toContain("read_delegate_result");
+        return response([
+          readResultToolCall("read-contract", "mission-turn-1:batch:1", "contract"),
+        ], "tool-calls");
+      }
+      reconstructionPrompt = options.prompt;
+      return response([{ type: "text", text: "Reconstructed child finding: result for contract." }], "stop");
+    },
+  });
+
+  const result = await runDelegateLoop(loopInput(root), {
+    model,
+    prepareContribution: async (delegateCall) => execution(root, delegateCall, "reliable-primitive"),
+    timeline,
+    createDriver: () => new ResultDriver("completed"),
+    concurrency: 1,
+    maxModelSteps: 4,
+    maxDelegateBatches: 1,
+    maxCallsPerStep: 1,
+  });
+
+  expect(modelCalls).toBe(3);
+  expect(JSON.stringify(reconstructionPrompt)).toContain("result for contract");
+  expect(result.text).toContain("result for contract");
+  expect(result.resultReads).toEqual([
+    expect.objectContaining({
+      batchId: "mission-turn-1:batch:1",
+      key: "contract",
+      status: "completed",
+      projection: "full",
+    }),
+  ]);
+  await expect(timeline.readResult("another-parent", "mission-turn-1:batch:1", "contract"))
+    .rejects.toThrow("is not present");
+  await expect(timeline.readResult("mission-turn-1", "mission-turn-1:batch:1", "another-child"))
+    .rejects.toThrow("has no child result");
+});
+
+test("an oversized child result exposes digest metadata without flooding parent context", async () => {
+  const root = await fixture();
+  const marker = `OVERSIZED_CHILD_RESULT_${"x".repeat(40_000)}`;
+  let modelCalls = 0;
+  let reconstructionPrompt: LanguageModelV4CallOptions["prompt"] | undefined;
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        return response([
+          toolCall("delegate-contract", call("contract", "inspect-contract", "source:contract")),
+        ], "tool-calls");
+      }
+      if (modelCalls === 2) {
+        return response([
+          readResultToolCall("read-contract", "mission-turn-1:batch:1", "contract"),
+        ], "tool-calls");
+      }
+      reconstructionPrompt = options.prompt;
+      return response([{ type: "text", text: "The child result exceeded the bounded projection." }], "stop");
+    },
+  });
+
+  const result = await runDelegateLoop(loopInput(root), {
+    model,
+    prepareContribution: async (delegateCall) => execution(root, delegateCall, "reliable-primitive"),
+    timeline: new FileMissionTimeline(join(root, ".mission-oversized-result")),
+    createDriver: () => new OversizedResultDriver(marker),
+    concurrency: 1,
+    maxModelSteps: 4,
+    maxDelegateBatches: 1,
+    maxCallsPerStep: 1,
+  });
+
+  expect(JSON.stringify(reconstructionPrompt)).toContain("projection-too-large");
+  expect(JSON.stringify(reconstructionPrompt)).not.toContain(marker);
+  expect(result.resultReads).toEqual([
+    expect.objectContaining({
+      key: "contract",
+      projection: "metadata-only",
+      semanticBytes: expect.any(Number),
+    }),
+  ]);
 });
 
 test("the convener writes a large packet in its tool loop, compacts it, then submits one atomic delegate_file step", async () => {
@@ -457,6 +578,8 @@ test("parent recovery remains pending until child timelines settle and rejects a
   await timeline.prepareBatch(checkpoint);
   await timeline.prepareBatch(checkpoint);
   expect(await timeline.resolveBatch(checkpoint)).toBeUndefined();
+  await expect(timeline.readResult(checkpoint.parentLoopId, checkpoint.id, "contract"))
+    .rejects.toThrow("has not settled");
   expect((await timeline.recoverBatch(checkpoint.parentLoopId, checkpoint.id)).ready).toBe(false);
 
   await timeline.markBatchDispatched(checkpoint);
@@ -576,6 +699,21 @@ test("Mission runner wakes a parked real Agent turn and withholds it after durab
     },
   });
   const timeline = new FileMissionTimeline(missionRunnerDirectory(runnerRoot, missionId));
+  const anchor = {
+    id: `anchor:${missionId}`,
+    revision: "r1",
+    statement: "Preserve the durable safe-point boundary.",
+    sourceRefs: ["test:durable-safe-point"],
+    reconciledWatermark: 0,
+  };
+  await timeline.seedAnchor({
+    version: "rosso.mission-anchor-seed.v1",
+    id: `seed:${missionId}`,
+    missionId,
+    authorityRef: "principal:test",
+    sourceRef: "test:mission-authorization",
+    anchor,
+  });
   const barrier = new ManualResultBarrier(2);
   const executionAbort = new AbortController();
   const delegate = new DelegateLoopSession(loopInput(root), {
@@ -622,6 +760,7 @@ test("Mission runner wakes a parked real Agent turn and withholds it after durab
           version: MISSION_TURN_VERSION,
           turnId: "turn-safe-point-1",
           baselineWatermark: 0,
+          anchorDigest: digestAnchor(anchor),
           sourceRefs: ["test:durable-safe-point"],
         },
         controller: executionController,
@@ -693,6 +832,18 @@ class BlockingResultDriver extends ResultDriver {
   override async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
     await this.barrier.enter();
     return super.run(input, context);
+  }
+}
+
+class OversizedResultDriver extends ResultDriver {
+  constructor(private readonly marker: string) { super("completed"); }
+
+  override async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
+    const result = await super.run(input, context);
+    return {
+      ...result,
+      output: { status: "completed", summary: this.marker },
+    };
   }
 }
 
@@ -886,6 +1037,15 @@ function writeFileToolCall(toolCallId: string, path: string, content: string) {
   };
 }
 
+function readResultToolCall(toolCallId: string, batchId: string, key: string) {
+  return {
+    type: "tool-call" as const,
+    toolCallId,
+    toolName: "read_delegate_result",
+    input: JSON.stringify({ batchId, key }),
+  };
+}
+
 function taskCreateToolCall(toolCallId: string, subject: string, description: string) {
   return {
     type: "tool-call" as const,
@@ -979,6 +1139,9 @@ function trackingTimeline(
       order.push("resolve");
       return timeline.resolveBatch(checkpoint);
     },
+    async readResult(parentLoopId, batchId, key) {
+      return timeline.readResult(parentLoopId, batchId, key);
+    },
   };
 }
 
@@ -988,5 +1151,6 @@ function failingTimeline(message: string): DelegateTimeline {
     async markBatchDispatched() { throw new Error("unreachable"); },
     async recordBatchSettlements() { throw new Error("unreachable"); },
     async resolveBatch() { throw new Error("unreachable"); },
+    async readResult() { throw new Error("unreachable"); },
   };
 }

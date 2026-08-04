@@ -11,6 +11,7 @@ import {
 import type { MissionExecutionController } from "../src/mission-execution-host";
 import type {
   MissionRuntimeFactory,
+  MissionRuntimeRecoveryCapabilities,
   PreparedMissionExecution,
 } from "../src/mission-runtime";
 import { digestAnchor } from "../src/mission-reconciliation";
@@ -56,6 +57,11 @@ const expectedCall: DelegateCall = {
   acceptance,
   capabilityNeed: CAPABILITY,
 };
+
+export const missionRuntimeRecoveryCapabilities = {
+  resume: true,
+  replace: true,
+} as const satisfies MissionRuntimeRecoveryCapabilities;
 
 /**
  * Low-consequence live evidence adapter. It deliberately permits only one

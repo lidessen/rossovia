@@ -1,0 +1,127 @@
+{
+  "version": "mission-record.v1",
+  "id": "principal-workbench-dogfood",
+  "title": "Build an agent-era blog system through the supervised Principal Workbench",
+  "sources": [
+    "principal:2026-07-26-supervised-principal-workbench-goal",
+    "principal:2026-07-26-agent-era-blog-experiment",
+    "source-project:design/decisions/050-principal-workbench-supervised-mvp.md",
+    "source-project:operations/autonomy/README.md"
+  ],
+  "createdAt": "2026-07-27T04:32:51Z",
+  "updatedAt": "2026-07-27T05:49:48Z",
+  "mainline": {
+    "contradiction": "Design and implement a useful agent-era blog system from a blank product surface while proving that the Principal Workbench can expose, supervise, and redirect the real design-to-implementation process without inventing authority or hiding runtime drift.",
+    "acceptance": [
+      "A from-scratch blog product has an explicit agent-era thesis, coherent interaction and information architecture, and one working end-to-end author-to-reader path verified in its own isolated Git project or worktree.",
+      "A live runner is bound to this exact Mission and the blog working site appears in the correct project projection without inferred worktree or Git-branch authority.",
+      "The Principal can observe bounded recent activity and at least one real intervention through the UI, with atomic target validation, an attributable receipt, and the resulting state change or failure.",
+      "The product and supervision experiment both record what the evidence admits, what remains unproven, and the reopening signal for another supervised or explicitly authorized unsupervised iteration."
+    ],
+    "status": "active"
+  },
+  "branches": [],
+  "currentFocus": "mainline",
+  "executionProposal": {
+    "version": "mission-execution-proposal.v1",
+    "proposalId": "agent-era-blog-first-supervised-run-v1",
+    "mode": "supervised",
+    "status": "awaiting-principal-authorization",
+    "runtimeRef": "source-project:operations/autonomy/experiments/agent-era-blog-mission-runtime.ts",
+    "runtimeDigest": "7072cb6f5d403791d5219263634e527584b0b59874be043579fa3f413728e1e5",
+    "externalProvider": {
+      "name": "DeepSeek",
+      "boundary": "external"
+    },
+    "externalDisclosure": {
+      "dataCategories": [
+        "Blog task and acceptance instructions",
+        "AGENTS.md, DESIGN.md, and the active Mission source",
+        "Repository file contents selected by the bounded read tools"
+      ]
+    },
+    "candidateWorktree": {
+      "rootRef": "environment:ROSSO_BLOG_EFFECT_ROOT",
+      "binding": "operator-selected-at-launch"
+    },
+    "scope": {
+      "writePaths": [
+        "db/schema.ts",
+        "app/blog"
+      ],
+      "commands": []
+    },
+    "budget": {
+      "parent": {
+        "maxModelSteps": 4,
+        "maxOutputTokensPerStep": 2000
+      },
+      "delegatedCell": {
+        "maxSteps": 14,
+        "maxOutputTokensPerStep": 16000,
+        "maxDurationMs": 300000
+      },
+      "estimatedTokens": 60000,
+      "estimatedTokensSemantics": "forecast-only-not-stop-condition"
+    },
+    "authority": {
+      "externalDisclosure": "withheld",
+      "budgetRelease": "withheld",
+      "write": "withheld",
+      "execute": "withheld",
+      "commit": "withheld",
+      "merge": "withheld",
+      "publish": "withheld"
+    },
+    "pendingDecisions": [
+      {
+        "id": "visual-direction",
+        "label": "Choose the first visual direction",
+        "proposal": "B — Reading Field",
+        "status": "pending",
+        "options": [
+          {
+            "replyKey": "A",
+            "label": "Margin Ledger",
+            "immediateResult": "Adopt a text-led editorial surface with source notes in a strong marginal column as the later UI direction; this run remains non-visual.",
+            "tradeoff": "Source provenance is prominent, but the reading experience is denser and less calm."
+          },
+          {
+            "replyKey": "B",
+            "label": "Reading Field (recommended)",
+            "immediateResult": "Adopt one spacious reading field for the canonical article and its derived lenses as the later UI direction; this run remains non-visual.",
+            "tradeoff": "The canonical/projection distinction relies on disciplined hierarchy instead of a strong dashboard frame."
+          },
+          {
+            "replyKey": "C",
+            "label": "Quiet Instrument",
+            "immediateResult": "Adopt an explicit instrument-like interface for switching among canonical, brief, and source-map views as the later UI direction; this run remains non-visual.",
+            "tradeoff": "Operational state is easiest to inspect, but the product can feel more like a tool than a publication."
+          }
+        ],
+        "compactReplyKey": "B"
+      },
+      {
+        "id": "external-disclosure",
+        "label": "Authorize the declared DeepSeek disclosure",
+        "proposal": "ALLOW — send only the declared categories to DeepSeek",
+        "status": "pending",
+        "options": [
+          {
+            "replyKey": "ALLOW",
+            "label": "Authorize DeepSeek",
+            "immediateResult": "Start one supervised non-visual content-model run against the clean candidate worktree with the declared disclosure and write scope.",
+            "tradeoff": "The declared project context leaves the local boundary and model usage may incur external cost."
+          },
+          {
+            "replyKey": "HOLD",
+            "label": "Keep the external run blocked",
+            "immediateResult": "Preserve the proposal and candidate worktree without sending project context or starting the runner.",
+            "tradeoff": "The supervised system remains observable but its real implementation path is not yet tested."
+          }
+        ],
+        "compactReplyKey": "ALLOW"
+      }
+    ]
+  }
+}
