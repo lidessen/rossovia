@@ -1,122 +1,90 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { loadHome } from "./home";
 import { gitRoot, normalizedRepository, observeWorkspace } from "./workspace";
-import { listPrincipalTasks } from "./tasks";
 
 interface HostStatusInput {
   readonly cwd?: unknown;
+  readonly session_name?: unknown;
   readonly workspace?: {
     readonly current_dir?: unknown;
   };
 }
 
+export interface StatusLineHostContext {
+  readonly cwd: string;
+  readonly projectName: string | null;
+}
+
 export interface StatusLineProjection {
-  readonly version: "rosso.status-line.v1";
-  readonly path: string;
-  readonly git: {
-    readonly available: boolean;
-    readonly branch: string | null;
-    readonly dirty: boolean;
-  };
-  readonly projectId: string | null;
-  readonly tasks: {
-    readonly standing: "current-worktree" | "global" | "unregistered" | "source-unavailable";
-    readonly principal: number;
-    readonly agent: number;
-    readonly external: number;
-  };
+  readonly version: "rosso.status-line.v2";
+  readonly project: string;
+  readonly source: "session-name" | "registered-project" | "git-root" | "directory";
 }
 
 export function statusLineProjection(
   homeArgument: string | undefined,
   cwdArgument: string,
+  projectName: string | null = null,
 ): StatusLineProjection {
-  const cwd = canonicalPath(cwdArgument);
-  let workspace: ReturnType<typeof observeWorkspace>;
-  try {
-    workspace = observeWorkspace({ id: null, repository: null }, { path: gitRoot(cwd) });
-  } catch {
-    return unavailableGitProjection(cwd);
+  if (projectName !== null) {
+    return { version: "rosso.status-line.v2", project: projectName, source: "session-name" };
   }
 
-  const branch = workspace.branch ?? workspace.head?.slice(0, 8) ?? null;
-  const base = {
-    version: "rosso.status-line.v1" as const,
-    path: workspace.path,
-    git: {
-      available: true,
-      branch,
-      dirty: workspace.dirty,
-    },
-  };
-
+  const cwd = canonicalPath(cwdArgument);
   try {
-    const home = loadHome(homeArgument);
-    const projects = workspace.origin === null
-      ? []
-      : home.projects.projects.filter((project) =>
-          normalizedRepository(project.repository) === normalizedRepository(workspace.origin!)
-        );
-    const unsettled = listPrincipalTasks(home.home).tasks.filter((task) => task.lifecycle !== "settled");
-    if (projects.length !== 1) {
-      return {
-        ...base,
-        projectId: null,
-        tasks: taskCounts("global", unsettled),
-      };
+    const workspace = observeWorkspace({ id: null, repository: null }, { path: gitRoot(cwd) });
+    try {
+      const home = loadHome(homeArgument);
+      const projects = workspace.origin === null
+        ? []
+        : home.projects.projects.filter((project) =>
+            normalizedRepository(project.repository) === normalizedRepository(workspace.origin!)
+          );
+      if (projects.length === 1) {
+        return {
+          version: "rosso.status-line.v2",
+          project: projects[0]!.id,
+          source: "registered-project",
+        };
+      }
+    } catch {
+      // Project registration is optional for this compact host projection.
     }
-
-    const project = projects[0]!;
-    const tasks = unsettled.filter((task) =>
-      task.binding.kind === "project-context"
-      && task.binding.projectId === project.id
-      && (task.binding.worktreePath === undefined
-        || canonicalPath(task.binding.worktreePath) === workspace.path)
-    );
     return {
-      ...base,
-      projectId: project.id,
-      tasks: taskCounts("current-worktree", tasks),
+      version: "rosso.status-line.v2",
+      project: basename(workspace.path) || workspace.path,
+      source: "git-root",
     };
   } catch {
     return {
-      ...base,
-      projectId: null,
-      tasks: emptyTasks("source-unavailable"),
+      version: "rosso.status-line.v2",
+      project: basename(cwd) || cwd,
+      source: "directory",
     };
   }
 }
 
 export function renderStatusLine(projection: StatusLineProjection): string {
-  const locus = projection.git.available
-    ? `${projection.path} · ${projection.git.branch ?? "unborn"}${projection.git.dirty ? " *" : ""}`
-    : `${projection.path} · no Git`;
-  const project = projection.projectId === null ? "" : ` · ${projection.projectId}`;
-  if (projection.tasks.standing === "unregistered") {
-    return `Rossovia${project} · ${locus} · 未登记`;
-  }
-  if (projection.tasks.standing === "source-unavailable") {
-    return `Rossovia${project} · ${locus} · 任务源不可用`;
-  }
-  const scope = projection.tasks.standing === "global" ? " · 全局" : "";
-  const external = projection.tasks.external > 0 ? ` · 待外部 ${projection.tasks.external}` : "";
-  return `Rossovia${project} · ${locus}${scope} · 待我 ${projection.tasks.principal} · 待 Agent ${projection.tasks.agent}${external}`;
+  return projection.project;
 }
 
-export function cwdFromStatusInput(rawInput: string, explicit?: string): string {
-  if (explicit?.trim()) return explicit;
-  if (!rawInput.trim()) return process.cwd();
+export function statusLineHostContext(rawInput: string, explicit?: string): StatusLineHostContext {
+  const fallback = explicit?.trim() || process.cwd();
+  if (!rawInput.trim()) return { cwd: fallback, projectName: null };
   try {
     const input = JSON.parse(rawInput) as HostStatusInput;
+    const projectName = compactLabel(input.session_name);
     if (typeof input.workspace?.current_dir === "string" && input.workspace.current_dir.trim()) {
-      return input.workspace.current_dir;
+      return { cwd: explicit?.trim() || input.workspace.current_dir, projectName };
     }
-    if (typeof input.cwd === "string" && input.cwd.trim()) return input.cwd;
+    if (typeof input.cwd === "string" && input.cwd.trim()) {
+      return { cwd: explicit?.trim() || input.cwd, projectName };
+    }
   } catch {
-    // A host status line must degrade visibly instead of leaving an empty UI.
+    // Fall back to the invocation directory rather than leaving the line blank.
   }
-  return process.cwd();
+  return { cwd: fallback, projectName: null };
 }
 
 export function statusLineInput(stdinIsTty: boolean | undefined): string {
@@ -128,28 +96,12 @@ function canonicalPath(path: string): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved;
 }
 
-function emptyTasks(standing: StatusLineProjection["tasks"]["standing"]): StatusLineProjection["tasks"] {
-  return { standing, principal: 0, agent: 0, external: 0 };
-}
-
-function taskCounts(
-  standing: StatusLineProjection["tasks"]["standing"],
-  tasks: ReturnType<typeof listPrincipalTasks>["tasks"],
-): StatusLineProjection["tasks"] {
-  return {
-    standing,
-    principal: tasks.filter((task) => task.nextActor === "principal").length,
-    agent: tasks.filter((task) => task.nextActor === "agent").length,
-    external: tasks.filter((task) => task.nextActor === "external").length,
-  };
-}
-
-function unavailableGitProjection(path: string): StatusLineProjection {
-  return {
-    version: "rosso.status-line.v1",
-    path,
-    git: { available: false, branch: null, dirty: false },
-    projectId: null,
-    tasks: emptyTasks("unregistered"),
-  };
+function compactLabel(value: unknown, maximum = 48): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  const characters = Array.from(normalized);
+  return characters.length <= maximum
+    ? normalized
+    : `${characters.slice(0, maximum - 1).join("")}…`;
 }

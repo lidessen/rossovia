@@ -1,3 +1,8 @@
 [tui]
 # Codex supports only native status-line items, not command-backed renderers.
-status_line = ["project-name", "current-dir", "git-branch", "task-progress"]
+# The thread name is the handled project. This repository is often only the
+# shared workbench, so cwd, branch, runtime, and progress are intentionally absent.
+status_line = ["thread-title"]
+# Mirror the same project name into terminal tabs. Use /rename <project> when
+# the generated title is vague.
+terminal_title = ["thread"]
