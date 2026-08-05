@@ -108,6 +108,46 @@ describe("Rossovia status-line projection", () => {
     expect(result.stdout).not.toContain(repository);
   });
 
+  test("never emits an absolute path from a host name or root-directory fallback", () => {
+    const named = command(
+      [process.execPath, cli, "--home", "/missing", "statusline", "claude"],
+      { stdin: JSON.stringify({ session_name: "/Users/alice/secret-project", cwd: "/" }) },
+    );
+    const root = command([
+      process.execPath,
+      cli,
+      "--home",
+      "/missing",
+      "statusline",
+      "--cwd",
+      "/",
+    ]);
+    expect(named.exitCode).toBe(0);
+    expect(named.stdout.trim()).toBe("secret-project");
+    expect(root.exitCode).toBe(0);
+    expect(root.stdout.trim()).toBe("root");
+  });
+
+  test("sanitizes a path-shaped registered project identity before rendering", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-safe-project-"));
+    temporaryRoots.push(temporary);
+    const home = join(temporary, "home");
+    const repository = createRepository(temporary, "registered");
+    expect(workbench(home, "init").exitCode).toBe(0);
+    expect(workbench(home, "register", repository, "--id", "/Users/alice/registered").exitCode).toBe(0);
+    const result = command([
+      process.execPath,
+      cli,
+      "--home",
+      home,
+      "statusline",
+      "--cwd",
+      repository,
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("registered");
+  });
+
   test("uses only project identity on the supported host-specific surfaces", () => {
     const claude = JSON.parse(readFileSync(join(repositoryRoot, ".claude", "settings.json"), "utf8"));
     expect(claude.statusLine).toEqual({

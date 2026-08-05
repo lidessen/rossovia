@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 import { loadHome } from "./home";
 import { gitRoot, normalizedRepository, observeWorkspace } from "./workspace";
 
@@ -53,20 +53,20 @@ export function statusLineProjection(
     }
     return {
       version: "rosso.status-line.v2",
-      project: basename(workspace.path) || workspace.path,
+      project: basename(workspace.path) || "root",
       source: "git-root",
     };
   } catch {
     return {
       version: "rosso.status-line.v2",
-      project: basename(cwd) || cwd,
+      project: basename(cwd) || "root",
       source: "directory",
     };
   }
 }
 
 export function renderStatusLine(projection: StatusLineProjection): string {
-  return projection.project;
+  return safeProjectLabel(projection.project) ?? "project";
 }
 
 export function statusLineHostContext(rawInput: string, explicit?: string): StatusLineHostContext {
@@ -74,7 +74,7 @@ export function statusLineHostContext(rawInput: string, explicit?: string): Stat
   if (!rawInput.trim()) return { cwd: fallback, projectName: null };
   try {
     const input = JSON.parse(rawInput) as HostStatusInput;
-    const projectName = compactLabel(input.session_name);
+    const projectName = safeProjectLabel(input.session_name);
     if (typeof input.workspace?.current_dir === "string" && input.workspace.current_dir.trim()) {
       return { cwd: explicit?.trim() || input.workspace.current_dir, projectName };
     }
@@ -96,12 +96,18 @@ function canonicalPath(path: string): string {
   return existsSync(resolved) ? realpathSync(resolved) : resolved;
 }
 
-function compactLabel(value: unknown, maximum = 48): string | null {
+function safeProjectLabel(value: unknown, maximum = 48): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized) return null;
-  const characters = Array.from(normalized);
+  const pathLike = isAbsolute(normalized)
+    || /^[A-Za-z]:[\\/]/.test(normalized)
+    || normalized.startsWith("\\\\");
+  const candidate = pathLike
+    ? normalized.split(/[\\/]+/).filter(Boolean).at(-1) ?? "root"
+    : normalized;
+  const characters = Array.from(candidate);
   return characters.length <= maximum
-    ? normalized
+    ? candidate
     : `${characters.slice(0, maximum - 1).join("")}…`;
 }

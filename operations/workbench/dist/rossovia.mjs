@@ -17979,7 +17979,7 @@ function now6() {
 
 // src/statusline.ts
 import { existsSync as existsSync13, readFileSync as readFileSync10, realpathSync as realpathSync6 } from "node:fs";
-import { basename as basename4, resolve as resolve6 } from "node:path";
+import { basename as basename4, isAbsolute as isAbsolute4, resolve as resolve6 } from "node:path";
 function statusLineProjection(homeArgument, cwdArgument, projectName = null) {
   if (projectName !== null) {
     return { version: "rosso.status-line.v2", project: projectName, source: "session-name" };
@@ -18000,19 +18000,19 @@ function statusLineProjection(homeArgument, cwdArgument, projectName = null) {
     } catch {}
     return {
       version: "rosso.status-line.v2",
-      project: basename4(workspace.path) || workspace.path,
+      project: basename4(workspace.path) || "root",
       source: "git-root"
     };
   } catch {
     return {
       version: "rosso.status-line.v2",
-      project: basename4(cwd) || cwd,
+      project: basename4(cwd) || "root",
       source: "directory"
     };
   }
 }
 function renderStatusLine(projection) {
-  return projection.project;
+  return safeProjectLabel(projection.project) ?? "project";
 }
 function statusLineHostContext(rawInput, explicit) {
   const fallback = explicit?.trim() || process.cwd();
@@ -18020,7 +18020,7 @@ function statusLineHostContext(rawInput, explicit) {
     return { cwd: fallback, projectName: null };
   try {
     const input = JSON.parse(rawInput);
-    const projectName = compactLabel(input.session_name);
+    const projectName = safeProjectLabel(input.session_name);
     if (typeof input.workspace?.current_dir === "string" && input.workspace.current_dir.trim()) {
       return { cwd: explicit?.trim() || input.workspace.current_dir, projectName };
     }
@@ -18037,14 +18037,16 @@ function canonicalPath(path) {
   const resolved = resolve6(path);
   return existsSync13(resolved) ? realpathSync6(resolved) : resolved;
 }
-function compactLabel(value, maximum = 48) {
+function safeProjectLabel(value, maximum = 48) {
   if (typeof value !== "string")
     return null;
   const normalized = value.replace(/\s+/g, " ").trim();
   if (!normalized)
     return null;
-  const characters = Array.from(normalized);
-  return characters.length <= maximum ? normalized : `${characters.slice(0, maximum - 1).join("")}…`;
+  const pathLike = isAbsolute4(normalized) || /^[A-Za-z]:[\\/]/.test(normalized) || normalized.startsWith("\\\\");
+  const candidate = pathLike ? normalized.split(/[\\/]+/).filter(Boolean).at(-1) ?? "root" : normalized;
+  const characters = Array.from(candidate);
+  return characters.length <= maximum ? candidate : `${characters.slice(0, maximum - 1).join("")}…`;
 }
 
 // src/cli.ts
