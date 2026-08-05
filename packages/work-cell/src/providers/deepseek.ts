@@ -1,38 +1,153 @@
 import { createDeepSeek, type DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
-import { APICallError, type LanguageModelV4 } from "@ai-sdk/provider";
+import {
+  APICallError,
+  type LanguageModelV4,
+  type LanguageModelV4CallOptions,
+  type LanguageModelV4GenerateResult,
+  type LanguageModelV4Middleware,
+  type LanguageModelV4StreamPart,
+  type LanguageModelV4StreamResult,
+} from "@ai-sdk/provider";
 import { defaultSettingsMiddleware, wrapLanguageModel } from "ai";
+import { z } from "zod";
 import type { ModelRouteFailure } from "../model-route";
 
 export const DEEPSEEK_PROVIDER_ID = "deepseek";
 
-const deepSeekProviderOptions = {
-  deepseek: {
-    thinking: { type: "disabled" },
-  } satisfies DeepSeekLanguageModelOptions,
-};
+export const DeepSeekInferencePolicySchema = z.discriminatedUnion("thinking", [
+  z.object({ thinking: z.literal("disabled") }).strict(),
+  z.object({
+    thinking: z.literal("enabled"),
+    reasoningEffort: z.enum(["low", "high", "xhigh", "max"]),
+  }).strict(),
+]);
+
+export type DeepSeekInferencePolicy = z.infer<typeof DeepSeekInferencePolicySchema>;
+
+export function deepSeekProviderOptions(
+  policy: DeepSeekInferencePolicy = { thinking: "disabled" },
+): { deepseek: DeepSeekLanguageModelOptions } {
+  return {
+    deepseek: {
+      thinking: { type: policy.thinking },
+      ...(policy.thinking === "enabled" ? { reasoningEffort: policy.reasoningEffort } : {}),
+    },
+  };
+}
+
+/**
+ * DeepSeek thinking mode supports tools but rejects forced tool selection.
+ * Work Cell still verifies the terminal or structured-settlement contract, so
+ * lowering a forced choice to auto changes transport compatibility, not
+ * acceptance authority.
+ */
+export function adaptDeepSeekToolChoice(
+  params: LanguageModelV4CallOptions,
+  policy: DeepSeekInferencePolicy,
+): LanguageModelV4CallOptions {
+  if (
+    policy.thinking !== "enabled"
+    || (params.toolChoice?.type !== "required" && params.toolChoice?.type !== "tool")
+  ) {
+    return params;
+  }
+  return { ...params, toolChoice: { type: "auto" } };
+}
+
+export function deepSeekRequestMiddleware(
+  policy: DeepSeekInferencePolicy,
+): LanguageModelV4Middleware {
+  return {
+    specificationVersion: "v4",
+    transformParams: async ({ type, params }) => ({
+      ...adaptDeepSeekToolChoice(params, policy),
+      ...(type === "stream" ? { includeRawChunks: true } : {}),
+    }),
+    wrapGenerate: async ({ doGenerate }) => retainGeneratedFingerprint(await doGenerate()),
+    wrapStream: async ({ doStream }) => retainStreamedFingerprint(await doStream()),
+  };
+}
+
+function retainGeneratedFingerprint(
+  result: LanguageModelV4GenerateResult,
+): LanguageModelV4GenerateResult {
+  const fingerprint = readDeepSeekFingerprint(result.response?.body);
+  return fingerprint
+    ? { ...result, providerMetadata: withDeepSeekFingerprint(result.providerMetadata, fingerprint) }
+    : result;
+}
+
+function retainStreamedFingerprint(
+  result: LanguageModelV4StreamResult,
+): LanguageModelV4StreamResult {
+  let fingerprint: string | undefined;
+  return {
+    ...result,
+    stream: result.stream.pipeThrough(new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
+      transform(part, controller) {
+        if (part.type === "raw") {
+          fingerprint ??= readDeepSeekFingerprint(part.rawValue);
+          return;
+        }
+        if (part.type === "finish" && fingerprint) {
+          controller.enqueue({
+            ...part,
+            providerMetadata: withDeepSeekFingerprint(part.providerMetadata, fingerprint),
+          });
+          return;
+        }
+        controller.enqueue(part);
+      },
+    })),
+  };
+}
+
+function readDeepSeekFingerprint(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const fingerprint = "system_fingerprint" in value ? value.system_fingerprint : undefined;
+  return typeof fingerprint === "string" && fingerprint.trim() ? fingerprint : undefined;
+}
+
+function withDeepSeekFingerprint(
+  metadata: LanguageModelV4GenerateResult["providerMetadata"],
+  fingerprint: string,
+): NonNullable<LanguageModelV4GenerateResult["providerMetadata"]> {
+  return {
+    ...metadata,
+    [DEEPSEEK_PROVIDER_ID]: {
+      ...metadata?.[DEEPSEEK_PROVIDER_ID],
+      systemFingerprint: fingerprint,
+    },
+  };
+}
 
 export const deepSeekFlashPricing = {
   inputPerMillionUsd: 0.14,
   cachedInputPerMillionUsd: 0.0028,
   outputPerMillionUsd: 0.28,
   source: "https://api-docs.deepseek.com/quick_start/pricing",
-  revision: "2026-07-16",
+  revision: "2026-07-31",
 };
 
 export function createDeepSeekModel(options: {
   apiKey: string;
   model: string;
   baseURL?: string;
+  inferencePolicy?: DeepSeekInferencePolicy;
 }): LanguageModelV4 {
+  const inferencePolicy = options.inferencePolicy ?? { thinking: "disabled" };
   const provider = createDeepSeek({
     apiKey: options.apiKey,
     ...(options.baseURL ? { baseURL: options.baseURL } : {}),
   });
   return wrapLanguageModel({
     model: provider(options.model),
-    middleware: defaultSettingsMiddleware({
-      settings: { providerOptions: deepSeekProviderOptions },
-    }),
+    middleware: [
+      defaultSettingsMiddleware({
+        settings: { providerOptions: deepSeekProviderOptions(inferencePolicy) },
+      }),
+      deepSeekRequestMiddleware(inferencePolicy),
+    ],
   });
 }
 

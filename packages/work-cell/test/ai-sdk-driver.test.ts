@@ -899,7 +899,12 @@ test("stops the main loop after one structured output step following a terminal 
       throw new Error(`unexpected extra main-loop call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-main-output" });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    deepSeekStructuredOutputMode: "inline",
+    model: "mock-main-output",
+  });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({
@@ -1040,7 +1045,12 @@ test("recovers structured output after a terminal tool and retains all usage", a
       throw new Error(`unexpected mock call ${calls}`);
     },
   });
-  const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: "mock-structured-recovery" });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    deepSeekStructuredOutputMode: "inline",
+    model: "mock-structured-recovery",
+  });
   Object.defineProperty(driver, "model", { value: model });
 
   const record = await runCell({

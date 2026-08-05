@@ -14,6 +14,7 @@ import {
 import type { CellDriver } from "../../driver";
 import { runCell } from "../../run-cell";
 import { ValidationRouteSchema, type ProviderRouteTarget } from "../../provider-profile";
+import { DeepSeekInferencePolicySchema } from "../../providers/deepseek";
 import {
   type BlindModelRunEvidence,
   type ModelEvaluationJudge,
@@ -34,8 +35,22 @@ export const ModelEvaluationProfileSchema = z.object({
   contextPolicy: z.string().min(1),
   toolSurface: z.string().min(1),
   declaredInferencePolicy: z.string().min(1),
+  adapterPolicy: z.object({
+    deepseek: DeepSeekInferencePolicySchema,
+  }).strict().optional(),
   priceRevision: z.string().min(1).optional(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (
+    value.adapterPolicy?.deepseek
+    && value.route.some((target) => target.provider !== "deepseek")
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["adapterPolicy", "deepseek"],
+      message: "DeepSeek inference policy requires an all-DeepSeek route",
+    });
+  }
+});
 
 export type ModelEvaluationProfile = z.infer<typeof ModelEvaluationProfileSchema>;
 
@@ -74,6 +89,7 @@ export type ModelEvaluationCase = z.infer<typeof ModelEvaluationCaseSchema>;
 export const ModelEvaluationSpecSchema = z.object({
   version: z.literal("work-cell.model-evaluation.v2"),
   id: z.string().min(1),
+  evidenceRole: z.enum(["development", "confirmation"]).default("development"),
   fixture: z.object({
     root: z.string().min(1),
     overlays: z.array(z.object({
@@ -109,6 +125,7 @@ export interface ModelEvaluationProfileSummary {
   observedRuns: number;
   statusCounts: Record<string, number>;
   selectedRouteIdentities: string[];
+  backendFingerprints: string[];
   durationMs: { min: number; mean: number; max: number } | null;
   usage: { total: CellUsage; meanPerObservedRun: CellUsage };
   estimatedCostUsd: { knownRuns: number; total: number };
@@ -124,6 +141,7 @@ export interface ModelEvaluationRecord {
   version: "work-cell.model-evaluation.run.v2";
   id: string;
   sourceSha256?: string;
+  evidenceRole: "development" | "confirmation";
   startedAt: string;
   finishedAt: string;
   directory: string;
@@ -134,6 +152,7 @@ export interface ModelEvaluationRecord {
     contextPolicy: string;
     toolSurface: string;
     declaredInferencePolicy: string;
+    adapterPolicy?: { deepseek: z.infer<typeof DeepSeekInferencePolicySchema> };
     priceRevision?: string;
   }>;
   cases: Array<{
@@ -284,6 +303,7 @@ export async function runModelEvaluation(
     version: "work-cell.model-evaluation.run.v2",
     id: spec.id,
     ...(options.sourceSha256 ? { sourceSha256: options.sourceSha256 } : {}),
+    evidenceRole: spec.evidenceRole,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     directory,
@@ -294,6 +314,7 @@ export async function runModelEvaluation(
       contextPolicy: profile.contextPolicy,
       toolSurface: profile.toolSurface,
       declaredInferencePolicy: profile.declaredInferencePolicy,
+      ...(profile.adapterPolicy ? { adapterPolicy: profile.adapterPolicy } : {}),
       ...(profile.priceRevision ? { priceRevision: profile.priceRevision } : {}),
     })),
     cases: spec.cases.map((evaluationCase) => ({
@@ -422,6 +443,7 @@ function summarizeProfile(profileId: string, trials: ModelEvaluationTrial[]): Mo
     observedRuns: records.length,
     statusCounts,
     selectedRouteIdentities: [...new Set(records.flatMap(observedSelectedRouteIdentities))],
+    backendFingerprints: [...new Set(records.flatMap(observedBackendFingerprints))],
     durationMs: durations.length === 0 ? null : {
       min: Math.min(...durations),
       mean: mean(durations),
@@ -466,6 +488,29 @@ function observedSelectedRouteIdentities(record: CellRunRecord): string[] {
     const model = "model" in route ? route.model : undefined;
     if (typeof servedBy === "string" && typeof model === "string") {
       observed.push(`${record.driver.adapter}/${servedBy}/${model}`);
+    }
+  }
+  return observed;
+}
+
+function observedBackendFingerprints(record: CellRunRecord): string[] {
+  const observed: string[] = [];
+  for (const event of record.trace) {
+    const data = event.data;
+    if (!data || typeof data !== "object") continue;
+    const providerMetadata = "providerMetadata" in data
+      ? data.providerMetadata
+      : undefined;
+    if (!providerMetadata || typeof providerMetadata !== "object") continue;
+    const deepseek = "deepseek" in providerMetadata
+      ? providerMetadata.deepseek
+      : undefined;
+    if (!deepseek || typeof deepseek !== "object") continue;
+    const fingerprint = "systemFingerprint" in deepseek
+      ? deepseek.systemFingerprint
+      : undefined;
+    if (typeof fingerprint === "string" && fingerprint.trim()) {
+      observed.push(fingerprint);
     }
   }
   return observed;

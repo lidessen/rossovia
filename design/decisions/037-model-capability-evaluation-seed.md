@@ -69,7 +69,11 @@ reconstructed from evidence:
 - instructions, context, capabilities, tools, permissions, completion
   contracts, and execution budget captured by the ordinary `CellInput`; and
 - required profile-local context and tool-surface policies plus a declared
-  inference policy whose factual basis remains reviewable evidence.
+  inference policy whose factual basis remains reviewable evidence; and
+- typed adapter policy when a provider exposes a request-level control, plus
+  opaque provider-returned backend fingerprints when available. Neither the
+  declaration nor the fingerprint proves a hidden inference setting or named
+  backend revision without a provider-published mapping.
 
 The runtime resolves credentials only through the existing explicit route
 contract. It never stores secret values. A fallback route is allowed but its
@@ -87,6 +91,8 @@ One `work-cell.model-evaluation.v2` manifest contains:
   inference policy;
 - one or more real task cases using the generic `CellInput` minus generated ID
   and workspace root;
+- an evidence role of `development` or `confirmation`, defaulting to
+  development so a tuned case cannot silently present itself as held-out;
 - two to five repetitions;
 - generic process or artifact conditions visible to the worker, evaluator-only
   reference criteria, a comparison rubric, and named material failure classes;

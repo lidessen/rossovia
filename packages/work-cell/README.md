@@ -454,8 +454,35 @@ The model-evaluation v2 adapter compares whole execution profiles, not bare
 model names. Its manifest explicitly records context and tool-surface policies
 plus a declared inference policy; separates procedural worker acceptance from
 evaluator-only reference criteria; and reports selected route identities
-without claiming to verify a provider's hidden backend build or inference
-settings.
+and provider-returned backend fingerprints. A fingerprint is retained only as
+opaque backend-configuration evidence: it can expose serving change, but does
+not verify a named model revision without a provider-published mapping. The
+adapter likewise does not claim to verify hidden inference settings.
+
+An evaluation manifest labels its `evidenceRole` as `development` or
+`confirmation`; omission defaults to development. A profile may carry the
+typed DeepSeek-only `adapterPolicy.deepseek` with thinking disabled or enabled
+at `low`, `high`, `xhigh`, or `max`. The adapter sends the requested value
+without pretending it is the provider's effective effort; for example, the
+current public mapping lowers Flash `xhigh` to `high`. It rejects that policy on
+a mixed or non-DeepSeek route and retains it beside the declared prose policy
+so request configuration remains inspectable rather than inferred from a
+profile name.
+
+Direct DeepSeek validation defaults structured output to the verified private
+tool-settlement path. In thinking mode, the provider supports tools but rejects
+forced tool choice, so its adapter lowers `required` or named private-schema
+selection to `auto`; Work Cell still requires and independently validates the
+declared logical output. Callers may select inline mode only as an explicit
+compatibility experiment. These are provider-adapter decisions and do not
+change generic Cell completion or acceptance authority.
+
+The model-evaluation judge uses the same capability selection: routes with
+native structured output keep inline settlement, while other routes receive one
+private `submit_judgement` tool and at most one recovery after a natural finish.
+A successful synthetic control proves only that the selected route can settle
+that control; every real comparison still fails closed when its own settlement
+is absent or its criterion coverage drifts.
 
 Creative-field, naming, latent-routing, and idea-development code lives under
 `src/research/`. Package scripts may execute those probes, but neither the main

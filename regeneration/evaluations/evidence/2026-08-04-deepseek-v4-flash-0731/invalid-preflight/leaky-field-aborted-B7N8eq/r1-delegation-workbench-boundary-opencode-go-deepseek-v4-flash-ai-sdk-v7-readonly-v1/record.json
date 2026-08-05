@@ -1,0 +1,217 @@
+{
+  "version": "work-cell.run.v4",
+  "runId": "066b6193-42ea-4125-9f16-dae5f29da3c4",
+  "cellId": "delegation-workbench-boundary-opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1-r1",
+  "driver": {
+    "adapter": "ai-sdk-v7",
+    "provider": "opencode-go",
+    "model": "deepseek-v4-flash"
+  },
+  "startedAt": "2026-08-04T16:38:10.680Z",
+  "finishedAt": "2026-08-04T16:38:10.943Z",
+  "durationMs": 263,
+  "status": "failed",
+  "input": {
+    "id": "delegation-workbench-boundary-opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1-r1",
+    "intent": "A maintainer asks an agent to use sub-agents for two independent read-only investigations and retain their conclusions while the main agent continues the task. Decide whether Rossovia Workbench or Work Cell must be initialized for delegation, how work and any mutable effects should be partitioned, and who owns synthesis and verification.",
+    "workspace": {
+      "root": "/private/tmp/rossovia-deepseek-v4-flash-refresh/regeneration/evaluations/evidence/2026-08-04-deepseek-v4-flash-0731/results/deepseek-v4-flash-0731-capability-refresh-B7N8eq/r1-delegation-workbench-boundary-opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1/workspace",
+      "readPaths": [
+        "delegation/AGENTS.md",
+        "delegation/SKILL.md",
+        "delegation/delegation.md"
+      ],
+      "writePaths": [],
+      "excludePaths": [],
+      "allowedCommands": []
+    },
+    "instructions": [
+      "Inspect all supplied governing sources before deciding.",
+      "Apply their boundaries to the concrete request instead of summarizing the files.",
+      "Cite repository-relative paths and line numbers for each material relation.",
+      "Separate required behavior, optional persistent-state support, and withheld authority."
+    ],
+    "capabilities": [
+      "read",
+      "architecture-judgment",
+      "delegation-shaping"
+    ],
+    "context": [],
+    "capabilitiesRequired": [
+      "read"
+    ],
+    "acceptance": [
+      "All governing sources are inspected",
+      "The concrete operating choice distinguishes mechanism from optional persistence",
+      "Ownership, effects, verification, and withheld authority are explicit"
+    ],
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "claim": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "consequence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "claim",
+              "evidence",
+              "consequence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendedNextStep": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "findings",
+        "uncertainties",
+        "recommendedNextStep"
+      ],
+      "additionalProperties": false
+    },
+    "budget": {
+      "maxSteps": 8,
+      "estimatedTokens": 12000,
+      "estimatedTokensTolerance": 0.75,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 8000
+    },
+    "executionProfile": {
+      "id": "opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1",
+      "version": "execution-profile.v1",
+      "provider": "opencode-go",
+      "model": "deepseek-v4-flash",
+      "contextPolicy": "frozen-public-repository-fixture-v1",
+      "toolSurface": "read-only-files-plus-inline-json-v1",
+      "parallelism": "serial",
+      "priceRevision": "opencode-go-subscription-observed-2026-08-04"
+    }
+  },
+  "finalText": "",
+  "artifacts": [],
+  "verification": {
+    "passed": false,
+    "terminal": {
+      "passed": false,
+      "required": [],
+      "called": []
+    }
+  },
+  "workspaceDiff": {
+    "added": [],
+    "changed": [],
+    "removed": []
+  },
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0,
+    "cachedInputTokens": 0
+  },
+  "usageByPhase": {
+    "preparation": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    },
+    "execution": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    }
+  },
+  "executionObservation": {
+    "executionProfileId": "opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1",
+    "priceRevision": "opencode-go-subscription-observed-2026-08-04"
+  },
+  "trace": [
+    {
+      "at": "2026-08-04T16:38:10.680Z",
+      "type": "cell.started",
+      "data": {
+        "runId": "066b6193-42ea-4125-9f16-dae5f29da3c4",
+        "cellId": "delegation-workbench-boundary-opencode-go-deepseek-v4-flash-ai-sdk-v7-readonly-v1-r1",
+        "driver": {
+          "adapter": "ai-sdk-v7",
+          "provider": "opencode-go",
+          "model": "deepseek-v4-flash"
+        }
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:10.680Z",
+      "type": "task.tools.projected",
+      "data": {
+        "taskToolSet": "manage",
+        "tools": [
+          "task_list",
+          "task_get",
+          "task_create",
+          "task_update"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:10.683Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-wNDUp1cAMeU3mxTNa4uAcF0J",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 0
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:10.943Z",
+      "type": "cell.error",
+      "data": {
+        "status": "failed",
+        "error": "The latest version of this model is only available hosted in China and requires explicit opt in: https://opencode.ai/workspace/wrk_REDACTED/go"
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:10.943Z",
+      "type": "cell.finished",
+      "data": {
+        "status": "failed",
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "cachedInputTokens": 0
+        }
+      }
+    }
+  ],
+  "rawSteps": [],
+  "error": "The latest version of this model is only available hosted in China and requires explicit opt in: https://opencode.ai/workspace/wrk_REDACTED/go"
+}

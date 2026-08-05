@@ -1,4 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
+import type { LanguageModelV4GenerateResult } from "@ai-sdk/provider";
+import { MockLanguageModelV4 } from "ai/test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,8 +16,12 @@ import type {
   ModelEvaluationJudge,
   ModelEvaluationJudgeRequest,
   ModelEvaluationJudgeResult,
+  ModelEvaluationJudgement,
 } from "../src/adapters/model-evaluation/judge";
-import { assertAcceptanceCoverage } from "../src/adapters/model-evaluation/judge";
+import {
+  AiSdkModelEvaluationJudge,
+  assertAcceptanceCoverage,
+} from "../src/adapters/model-evaluation/judge";
 
 const roots: string[] = [];
 
@@ -71,6 +77,7 @@ test("model evaluation keeps repeated profile evidence blind under a balanced is
       observedRuns: 2,
       statusCounts: { passed: 2 },
       selectedRouteIdentities: ["scripted/served-alpha/actual-alpha"],
+      backendFingerprints: ["fp-alpha-secret"],
     }),
     expect.objectContaining({
       profileId: "profile-beta-secret",
@@ -78,14 +85,17 @@ test("model evaluation keeps repeated profile evidence blind under a balanced is
       observedRuns: 2,
       statusCounts: { passed: 2 },
       selectedRouteIdentities: ["scripted/served-beta/actual-beta"],
+      backendFingerprints: ["fp-beta-secret"],
     }),
   ]);
   expect(JSON.parse(await readFile(record.recordPath, "utf8"))).toMatchObject({
     version: "work-cell.model-evaluation.run.v2",
+    evidenceRole: "development",
     authority: "candidate evidence; human or designated host acceptance required",
     profiles: [
       expect.objectContaining({
-        declaredInferencePolicy: "thinking=disabled; temperature=0; transport=generateText",
+        declaredInferencePolicy: "thinking=enabled; effort=low; transport=generateText",
+        adapterPolicy: { deepseek: { thinking: "enabled", reasoningEffort: "low" } },
       }),
       expect.objectContaining({
         declaredInferencePolicy: "thinking=enabled; temperature=1; transport=generateText",
@@ -115,7 +125,7 @@ test("model evaluation rejects reference criteria leaked into worker-visible acc
 });
 
 test("model evaluation judge tolerates formatting variation but rejects semantic criterion drift", () => {
-  const judgement = {
+  const judgement: ModelEvaluationJudgement = {
     preferred: "tie" as const,
     acceptance: [{
       condition: "  THE conclusion   is grounded in EVIDENCE.txt  ",
@@ -135,6 +145,157 @@ test("model evaluation judge tolerates formatting variation but rejects semantic
     judgement,
     ["The conclusion contradicts evidence.txt"],
   )).toThrow("acceptance mismatch");
+});
+
+test("model evaluation judge settles through a private tool when inline structured output is unsupported", async () => {
+  let calls = 0;
+  const judgement: ModelEvaluationJudgement = {
+    preferred: "tie",
+    acceptance: [{
+      condition: "The conclusion is grounded in evidence.txt",
+      a: "pass",
+      b: "pass",
+      evidence: ["Both retained records cite the same source."],
+    }],
+    findings: ["No material repeated difference."],
+    evidence: ["One matched record per candidate."],
+  };
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      return modelResponse([{
+        type: "tool-call",
+        toolCallId: "settle-judgement",
+        toolName: "submit_judgement",
+        input: JSON.stringify(judgement),
+      }], "tool-calls");
+    },
+  });
+  const judge = new AiSdkModelEvaluationJudge({
+    route: [{
+      provider: "deepseek",
+      credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+      model: "deepseek-v4-flash",
+    }],
+    deepSeekApiKey: "not-used",
+  });
+  Object.defineProperty(judge, "model", { value: model });
+
+  const result = await judge.judge({
+    intent: "Compare two grounded conclusions.",
+    referenceCriteria: ["The conclusion is grounded in evidence.txt"],
+    rubric: "Prefer only a material repeated difference.",
+    failureClasses: [],
+    a: { label: "A", records: [] },
+    b: { label: "B", records: [] },
+  });
+
+  expect(calls).toBe(1);
+  expect(result.judgement).toEqual(judgement);
+  expect(result.usage.totalTokens).toBe(2);
+  expect(result.raw).toMatchObject({
+    attempts: [{
+      attempt: 1,
+      toolCalls: [{ toolName: "submit_judgement" }],
+    }],
+  });
+});
+
+test("model evaluation judge retries one natural finish before failing settlement", async () => {
+  let calls = 0;
+  const judgement: ModelEvaluationJudgement = {
+    preferred: "inconclusive",
+    acceptance: [{
+      condition: "The conclusion is grounded in evidence.txt",
+      a: "unknown",
+      b: "unknown",
+      evidence: [],
+    }],
+    findings: ["The retained evidence is insufficient."],
+    evidence: [],
+  };
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return modelResponse([{ type: "text", text: "I should settle this comparison." }], "stop");
+      }
+      return modelResponse([{
+        type: "tool-call",
+        toolCallId: "recovered-judgement",
+        toolName: "submit_judgement",
+        input: JSON.stringify(judgement),
+      }], "tool-calls");
+    },
+  });
+  const judge = new AiSdkModelEvaluationJudge({
+    route: [{
+      provider: "kimi-coding",
+      credential: { source: "env", name: "KIMI_API_KEY" },
+      model: "kimi-for-coding",
+    }],
+    kimiApiKey: "not-used",
+  });
+  Object.defineProperty(judge, "model", { value: model });
+
+  const result = await judge.judge({
+    intent: "Compare two candidates.",
+    referenceCriteria: ["The conclusion is grounded in evidence.txt"],
+    rubric: "Do not infer missing evidence.",
+    failureClasses: [],
+    a: { label: "A", records: [] },
+    b: { label: "B", records: [] },
+  });
+
+  expect(calls).toBe(2);
+  expect(result.judgement).toEqual(judgement);
+  expect(result.usage.totalTokens).toBe(4);
+  expect(result.raw).toMatchObject({ attempts: [{ attempt: 1 }, { attempt: 2 }] });
+});
+
+test("model evaluation judge retains failed settlement attempts and usage", async () => {
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      return modelResponse([{
+        type: "text",
+        text: `Unsettled comparison attempt ${calls}.`,
+      }], "stop");
+    },
+  });
+  const judge = new AiSdkModelEvaluationJudge({
+    route: [{
+      provider: "kimi-coding",
+      credential: { source: "env", name: "KIMI_API_KEY" },
+      model: "kimi-for-coding",
+    }],
+    kimiApiKey: "not-used",
+  });
+  Object.defineProperty(judge, "model", { value: model });
+
+  const result = await judge.judge({
+    intent: "Compare two candidates.",
+    referenceCriteria: ["The conclusion is grounded in evidence.txt"],
+    rubric: "Do not infer missing evidence.",
+    failureClasses: [],
+    a: { label: "A", records: [] },
+    b: { label: "B", records: [] },
+  });
+
+  expect(calls).toBe(2);
+  expect(result.judgement).toMatchObject({
+    preferred: "inconclusive",
+    acceptance: [{ a: "unknown", b: "unknown" }],
+  });
+  expect(result.usage.totalTokens).toBe(4);
+  expect(result.raw).toMatchObject({
+    judgeError: "model-evaluation judge did not call submit_judgement after one recovery",
+    attempts: [
+      { attempt: 1, text: "Unsettled comparison attempt 1." },
+      { attempt: 2, text: "Unsettled comparison attempt 2." },
+    ],
+  });
 });
 
 test("model evaluation does not project a driver declaration as selected route evidence", async () => {
@@ -249,6 +410,7 @@ class ProfileDriver implements CellDriver {
     this.observedRoots.push(context.workspace.root);
     const evidence = await context.workspace.readText("evidence.txt");
     const stronger = this.profile.id.includes("alpha");
+    const suffix = stronger ? "alpha-secret" : "beta-secret";
     if (this.emitRouteEvidence) {
       context.emit("agent.step.finished", {
         providerMetadata: {
@@ -256,6 +418,7 @@ class ProfileDriver implements CellDriver {
             servedBy: stronger ? "served-alpha" : "served-beta",
             model: stronger ? "actual-alpha" : "actual-beta",
           },
+          deepseek: { systemFingerprint: `fp-${suffix}` },
         },
       });
     }
@@ -265,7 +428,7 @@ class ProfileDriver implements CellDriver {
         ? `The retained source supports the bounded conclusion: ${evidence.trim()}`
         : "A plausible conclusion without source support.",
       usage: stronger ? usage(12, 4) : usage(10, 3),
-      rawSteps: [],
+      rawSteps: [{ toolOutput: { system_fingerprint: "untrusted-tool-value" } }],
     };
   }
 }
@@ -309,13 +472,14 @@ function evaluationSpec(): ModelEvaluationSpec {
       {
         id: "profile-alpha-secret",
         route: [{
-          provider: "opencode-go",
+          provider: "deepseek",
           credential: { source: "env", name: "ALPHA_KEY" },
           model: "alpha",
         }],
         contextPolicy: "fixture-only-v1",
         toolSurface: "read-only-v1",
-        declaredInferencePolicy: "thinking=disabled; temperature=0; transport=generateText",
+        declaredInferencePolicy: "thinking=enabled; effort=low; transport=generateText",
+        adapterPolicy: { deepseek: { thinking: "enabled", reasoningEffort: "low" } },
       },
       {
         id: "profile-beta-secret",
@@ -381,4 +545,19 @@ async function fixture(): Promise<string> {
   await mkdir(join(root, "fixture"), { recursive: true });
   await writeFile(join(root, "fixture", "evidence.txt"), "The accepted boundary is source-linked evidence.\n");
   return root;
+}
+
+function modelResponse(
+  content: LanguageModelV4GenerateResult["content"],
+  finish: "stop" | "tool-calls",
+): LanguageModelV4GenerateResult {
+  return {
+    content,
+    finishReason: { unified: finish, raw: finish },
+    usage: {
+      inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 1, text: 1, reasoning: 0 },
+    },
+    warnings: [],
+  };
 }
