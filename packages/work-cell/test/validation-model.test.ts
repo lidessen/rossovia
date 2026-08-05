@@ -20,7 +20,12 @@ import {
   classifyKimiCodingFailure,
   createKimiCodingModel,
 } from "../src/providers/kimi-coding";
-import { classifyDeepSeekFailure } from "../src/providers/deepseek";
+import {
+  adaptDeepSeekToolChoice,
+  classifyDeepSeekFailure,
+  deepSeekRequestMiddleware,
+  deepSeekProviderOptions,
+} from "../src/providers/deepseek";
 import {
   createValidationModel,
   validationModelName,
@@ -77,7 +82,7 @@ test("the validation policy requires an explicit route backed by its referenced 
     route: [routeTarget("deepseek")],
     deepSeekApiKey: "deepseek-key",
   });
-  expect(deepSeekOnly.structuredOutputMode).toBe("inline");
+  expect(deepSeekOnly.structuredOutputMode).toBe("tool-settlement");
   expect(deepSeekOnly.pricing).toEqual(expect.objectContaining({
     inputPerMillionUsd: 0.14,
     outputPerMillionUsd: 0.28,
@@ -111,6 +116,73 @@ test("the validation policy requires an explicit route backed by its referenced 
     "opencode-go/deepseek-v4-flash->kimi-coding/kimi-for-coding->deepseek/deepseek-v4-flash",
   );
   expect(fullRoute.pricing).toBeUndefined();
+});
+
+test("DeepSeek inference policy projects only supported Flash effort levels", () => {
+  expect(deepSeekProviderOptions()).toEqual({
+    deepseek: { thinking: { type: "disabled" } },
+  });
+  expect(deepSeekProviderOptions({ thinking: "enabled", reasoningEffort: "low" })).toEqual({
+    deepseek: { thinking: { type: "enabled" }, reasoningEffort: "low" },
+  });
+  expect(deepSeekProviderOptions({ thinking: "enabled", reasoningEffort: "xhigh" })).toEqual({
+    deepseek: { thinking: { type: "enabled" }, reasoningEffort: "xhigh" },
+  });
+  expect(deepSeekProviderOptions({ thinking: "enabled", reasoningEffort: "max" })).toEqual({
+    deepseek: { thinking: { type: "enabled" }, reasoningEffort: "max" },
+  });
+});
+
+test("DeepSeek thinking mode lowers unsupported forced tool choice without weakening verification", () => {
+  const forced = {
+    prompt: [],
+    toolChoice: { type: "tool" as const, toolName: "emit_structured_output" },
+  } as LanguageModelV4CallOptions;
+  expect(adaptDeepSeekToolChoice(
+    forced,
+    { thinking: "enabled", reasoningEffort: "high" },
+  ).toolChoice).toEqual({ type: "auto" });
+  expect(adaptDeepSeekToolChoice(
+    forced,
+    { thinking: "disabled" },
+  ).toolChoice).toEqual(forced.toolChoice);
+});
+
+test("DeepSeek response evidence retains provider fingerprints for generate and stream", async () => {
+  const middleware = deepSeekRequestMiddleware({ thinking: "disabled" });
+  const streamParams = await middleware.transformParams!({
+    type: "stream",
+    params: { prompt: [] },
+  } as never);
+  expect(streamParams.includeRawChunks).toBe(true);
+  const generated = await middleware.wrapGenerate!({
+    doGenerate: async () => ({
+      ...response("generated"),
+      response: { body: { system_fingerprint: "fp-generate" } },
+    }),
+  } as never);
+  expect(generated.providerMetadata?.deepseek).toEqual({ systemFingerprint: "fp-generate" });
+
+  const chunks: LanguageModelV4StreamPart[] = [
+    { type: "raw", rawValue: { system_fingerprint: "fp-stream" } },
+    {
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+    },
+  ];
+  const streamed = await middleware.wrapStream!({
+    doStream: async () => ({ stream: simulateReadableStream({ chunks, chunkDelayInMs: null }) }),
+  } as never);
+  const retained: LanguageModelV4StreamPart[] = [];
+  for await (const part of streamed.stream) retained.push(part);
+  expect(retained).toEqual([expect.objectContaining({
+    type: "finish",
+    providerMetadata: { deepseek: { systemFingerprint: "fp-stream" } },
+  })]);
 });
 
 test("an unpriced model cannot inherit the default model's dollar estimate", () => {

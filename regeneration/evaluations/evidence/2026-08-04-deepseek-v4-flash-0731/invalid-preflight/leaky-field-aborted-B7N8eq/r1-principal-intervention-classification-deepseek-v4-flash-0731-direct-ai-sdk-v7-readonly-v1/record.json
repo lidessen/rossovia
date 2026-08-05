@@ -1,0 +1,1139 @@
+{
+  "version": "work-cell.run.v4",
+  "runId": "f7911344-d5ae-43f4-9a78-efe9a65acf0c",
+  "cellId": "principal-intervention-classification-deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1-r1",
+  "driver": {
+    "adapter": "ai-sdk-v7",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "pricing": {
+      "inputPerMillionUsd": 0.14,
+      "cachedInputPerMillionUsd": 0.0028,
+      "outputPerMillionUsd": 0.28,
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "revision": "2026-07-31"
+    }
+  },
+  "startedAt": "2026-08-04T16:38:30.149Z",
+  "finishedAt": "2026-08-04T16:38:43.849Z",
+  "durationMs": 13700,
+  "status": "passed",
+  "input": {
+    "id": "principal-intervention-classification-deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1-r1",
+    "intent": "Classify three Principal messages against the retained practice-cycle and Workbench intervention sources, then state the required handling for each. Scenario A: while a blog UI task is still active, the Principal says the authoring backend is out of scope and the prior implementation assumption is invalid. Scenario B: after that task is completed and handed off, the Principal starts a DeepSeek model reevaluation. Scenario C: during an unchanged active reevaluation, the Principal says continue. Decide which scenario is a correction, a task switch, or ordinary continuation and what evidence should be retained.",
+    "workspace": {
+      "root": "/private/tmp/rossovia-deepseek-v4-flash-refresh/regeneration/evaluations/evidence/2026-08-04-deepseek-v4-flash-0731/results/deepseek-v4-flash-0731-capability-refresh-B7N8eq/r1-principal-intervention-classification-deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1/workspace",
+      "readPaths": [
+        "practice-cycle/SKILL.md",
+        "practice-cycle/workbench-hooks.ts",
+        "practice-cycle/CHANGELOG.md"
+      ],
+      "writePaths": [],
+      "excludePaths": [],
+      "allowedCommands": []
+    },
+    "instructions": [
+      "Inspect the supplied method and runtime projection before classifying.",
+      "Apply the source boundary separately to each scenario.",
+      "Cite repository-relative paths and line numbers for every classification.",
+      "Do not turn advisory evidence into an authorization gate."
+    ],
+    "capabilities": [
+      "read",
+      "task-continuity-judgment",
+      "source-grounded-reasoning"
+    ],
+    "context": [],
+    "capabilitiesRequired": [
+      "read"
+    ],
+    "acceptance": [
+      "All three scenarios receive distinct source-grounded classifications",
+      "The response separates method judgment from optional runtime receipt evidence",
+      "The response states only decision-changing inheritance"
+    ],
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "claim": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "consequence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "claim",
+              "evidence",
+              "consequence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendedNextStep": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "findings",
+        "uncertainties",
+        "recommendedNextStep"
+      ],
+      "additionalProperties": false
+    },
+    "budget": {
+      "maxSteps": 8,
+      "estimatedTokens": 12000,
+      "estimatedTokensTolerance": 0.75,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 8000
+    },
+    "executionProfile": {
+      "id": "deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1",
+      "version": "execution-profile.v1",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "contextPolicy": "frozen-public-repository-fixture-v1",
+      "toolSurface": "read-only-files-plus-inline-json-v1",
+      "parallelism": "serial",
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    }
+  },
+  "finalText": "                                                                                                                                                                                                                                           {\n  \"decision\": \"Scenario A is a correction; Scenario B is a task switch; Scenario C is ordinary continuation.\",\n  \"findings\": [\n    {\n      \"claim\": \"Scenario A is a correction because the Principal revises a hard boundary (scope) and invalidates a prior implementation assumption of a still-active task.\",\n      \"evidence\": [\n        \"practice-cycle/SKILL.md lines 44-50: 'When a Principal message changes the active target, hard boundary, concept relation, authority, or acceptance condition, treat the former reading as invalid before another mutation. State the rejected assumption, new invariant, affected surfaces, and smallest disconfirming next probe.'\",\n        \"practice-cycle/workbench-hooks.ts lines 88-96: 'Only if it revises an assumption or constraint of a still-active task—including its target, hard boundary, concept relation, authority, or acceptance condition—run practice-cycle continue and record one correction.'\"\n      ],\n      \"consequence\": \"The blog UI task is still active, and the Principal's message changes the scope boundary and invalidates the prior implementation assumption. The former reading must be treated as invalid, and a correction receipt should be recorded with --rejected-assumption, --new-invariant, --affected-surface, and --next-probe.\"\n    },\n    {\n      \"claim\": \"Scenario B is a task switch, not a correction, because the prior task was completed and handed off before the new reevaluation began.\",\n      \"evidence\": [\n        \"practice-cycle/workbench-hooks.ts lines 96-98: 'Starting a new task after the prior task was completed, paused, or handed off is not a correction. Otherwise proceed without ceremony.'\",\n        \"practice-cycle/CHANGELOG.md lines 31-34: '[workbench.intervention] Distinguish task switches from corrections — the intervention reminder records a correction only when a Principal message revises an assumption or constraint of a still-active task.'\"\n      ],\n      \"consequence\": \"The DeepSeek model reevaluation is a new task started after the blog UI task was completed and handed off. No correction receipt is recorded; the new task proceeds as a fresh task switch.\"\n    },\n    {\n      \"claim\": \"Scenario C is ordinary continuation because the Principal's 'continue' message leaves the active reevaluation decision unchanged.\",\n      \"evidence\": [\n        \"practice-cycle/SKILL.md lines 50-52: 'Do not create a receipt for an ordinary execute, continue, or formatting request that leaves the active decision unchanged.'\",\n        \"practice-cycle/workbench-hooks.ts lines 88-90: 'Only if it revises an assumption or constraint of a still-active task... run practice-cycle continue and record one correction.'\"\n      ],\n      \"consequence\": \"The reevaluation remains active and unchanged; 'continue' is an ordinary execute/continue request. No correction receipt is created, and no decision-changing inheritance is recorded.\"\n    }\n  ],\n  \"uncertainties\": [\n    \"Whether the blog UI task in Scenario A had any runtime receipt binding installed at the time of the Principal message; if so, the correction fields should also be recorded there, but the binding is optional evidence and never changes the skill's judgment or human authority (SKILL.md lines 48-50).\",\n    \"Whether the DeepSeek reevaluation in Scenario B later revises an assumption of its own still-active task; that would be a separate correction event, not part of the initial task switch.\"\n  ],\n  \"recommendedNextStep\": \"For Scenario A, record the correction with the rejected assumption (authoring backend in scope), new invariant (authoring backend out of scope), affected surfaces (blog UI implementation), and smallest disconfirming next probe. For Scenario B, proceed with the DeepSeek reevaluation as a new task without a correction receipt. For Scenario C, continue the reevaluation without ceremony and without creating a receipt.\"\n}",
+  "output": {
+    "decision": "Scenario A is a correction; Scenario B is a task switch; Scenario C is ordinary continuation.",
+    "findings": [
+      {
+        "claim": "Scenario A is a correction because the Principal revises a hard boundary (scope) and invalidates a prior implementation assumption of a still-active task.",
+        "evidence": [
+          "practice-cycle/SKILL.md lines 44-50: 'When a Principal message changes the active target, hard boundary, concept relation, authority, or acceptance condition, treat the former reading as invalid before another mutation. State the rejected assumption, new invariant, affected surfaces, and smallest disconfirming next probe.'",
+          "practice-cycle/workbench-hooks.ts lines 88-96: 'Only if it revises an assumption or constraint of a still-active task—including its target, hard boundary, concept relation, authority, or acceptance condition—run practice-cycle continue and record one correction.'"
+        ],
+        "consequence": "The blog UI task is still active, and the Principal's message changes the scope boundary and invalidates the prior implementation assumption. The former reading must be treated as invalid, and a correction receipt should be recorded with --rejected-assumption, --new-invariant, --affected-surface, and --next-probe."
+      },
+      {
+        "claim": "Scenario B is a task switch, not a correction, because the prior task was completed and handed off before the new reevaluation began.",
+        "evidence": [
+          "practice-cycle/workbench-hooks.ts lines 96-98: 'Starting a new task after the prior task was completed, paused, or handed off is not a correction. Otherwise proceed without ceremony.'",
+          "practice-cycle/CHANGELOG.md lines 31-34: '[workbench.intervention] Distinguish task switches from corrections — the intervention reminder records a correction only when a Principal message revises an assumption or constraint of a still-active task.'"
+        ],
+        "consequence": "The DeepSeek model reevaluation is a new task started after the blog UI task was completed and handed off. No correction receipt is recorded; the new task proceeds as a fresh task switch."
+      },
+      {
+        "claim": "Scenario C is ordinary continuation because the Principal's 'continue' message leaves the active reevaluation decision unchanged.",
+        "evidence": [
+          "practice-cycle/SKILL.md lines 50-52: 'Do not create a receipt for an ordinary execute, continue, or formatting request that leaves the active decision unchanged.'",
+          "practice-cycle/workbench-hooks.ts lines 88-90: 'Only if it revises an assumption or constraint of a still-active task... run practice-cycle continue and record one correction.'"
+        ],
+        "consequence": "The reevaluation remains active and unchanged; 'continue' is an ordinary execute/continue request. No correction receipt is created, and no decision-changing inheritance is recorded."
+      }
+    ],
+    "uncertainties": [
+      "Whether the blog UI task in Scenario A had any runtime receipt binding installed at the time of the Principal message; if so, the correction fields should also be recorded there, but the binding is optional evidence and never changes the skill's judgment or human authority (SKILL.md lines 48-50).",
+      "Whether the DeepSeek reevaluation in Scenario B later revises an assumption of its own still-active task; that would be a separate correction event, not part of the initial task switch."
+    ],
+    "recommendedNextStep": "For Scenario A, record the correction with the rejected assumption (authoring backend in scope), new invariant (authoring backend out of scope), affected surfaces (blog UI implementation), and smallest disconfirming next probe. For Scenario B, proceed with the DeepSeek reevaluation as a new task without a correction receipt. For Scenario C, continue the reevaluation without ceremony and without creating a receipt."
+  },
+  "artifacts": [],
+  "verification": {
+    "passed": true,
+    "terminal": {
+      "passed": true,
+      "required": [],
+      "called": []
+    },
+    "output": {
+      "passed": true,
+      "errors": []
+    },
+    "artifacts": {
+      "passed": true,
+      "errors": []
+    }
+  },
+  "workspaceDiff": {
+    "added": [],
+    "changed": [],
+    "removed": []
+  },
+  "usage": {
+    "inputTokens": 15186,
+    "outputTokens": 1615,
+    "totalTokens": 16801,
+    "cachedInputTokens": 8576
+  },
+  "usageByPhase": {
+    "preparation": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    },
+    "execution": {
+      "inputTokens": 15186,
+      "outputTokens": 1615,
+      "totalTokens": 16801,
+      "cachedInputTokens": 8576
+    }
+  },
+  "executionObservation": {
+    "executionProfileId": "deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1",
+    "priceRevision": "deepseek-public-api-2026-07-31"
+  },
+  "estimatedCostUsd": 0.00140161,
+  "estimateBasis": "estimated from token usage using https://api-docs.deepseek.com/quick_start/pricing",
+  "trace": [
+    {
+      "at": "2026-08-04T16:38:30.149Z",
+      "type": "cell.started",
+      "data": {
+        "runId": "f7911344-d5ae-43f4-9a78-efe9a65acf0c",
+        "cellId": "principal-intervention-classification-deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1-r1",
+        "driver": {
+          "adapter": "ai-sdk-v7",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "pricing": {
+            "inputPerMillionUsd": 0.14,
+            "cachedInputPerMillionUsd": 0.0028,
+            "outputPerMillionUsd": 0.28,
+            "source": "https://api-docs.deepseek.com/quick_start/pricing",
+            "revision": "2026-07-31"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:30.149Z",
+      "type": "task.tools.projected",
+      "data": {
+        "taskToolSet": "manage",
+        "tools": [
+          "task_list",
+          "task_get",
+          "task_create",
+          "task_update"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:30.152Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 0
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.158Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "practice-cycle/SKILL.md"
+        }
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.158Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "practice-cycle/workbench-hooks.ts"
+        }
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.158Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_02_kVAgPEhRRSCEMXp93wul7927",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "practice-cycle/CHANGELOG.md"
+        }
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "practice-cycle/SKILL.md",
+        "startLine": 1,
+        "characters": 5482
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+        "name": "read_file",
+        "durationMs": 1.6958750000048894,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "practice-cycle/CHANGELOG.md",
+        "startLine": 1,
+        "characters": 1729
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_02_kVAgPEhRRSCEMXp93wul7927",
+        "name": "read_file",
+        "durationMs": 1.5204999999987194,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "practice-cycle/workbench-hooks.ts",
+        "startLine": 1,
+        "characters": 10981
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+        "name": "read_file",
+        "durationMs": 1.6507500000006985,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.160Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 120.49031092350448,
+          "effectiveTotalTokensPerSecond": 1736.653737608197,
+          "stepTimeMs": 1007.3081660000025,
+          "responseTimeMs": 1004.2301250000019,
+          "toolExecutionMs": {
+            "call_00_7HJbVXl4PZeJVjfdaHft7332": 1.6958750000048894,
+            "call_01_pVPKNUlxtRrobXW3sdbC5922": 1.6507500000006985,
+            "call_02_kVAgPEhRRSCEMXp93wul7927": 1.5204999999987194
+          }
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 384,
+            "promptCacheMissTokens": 1239
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 1623,
+          "inputTokenDetails": {
+            "noCacheTokens": 1239,
+            "cacheReadTokens": 384
+          },
+          "outputTokens": 121,
+          "outputTokenDetails": {
+            "textTokens": 121,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 1744,
+          "raw": {
+            "prompt_tokens": 1623,
+            "completion_tokens": 121,
+            "prompt_cache_hit_tokens": 384,
+            "prompt_cache_miss_tokens": 1239,
+            "total_tokens": 1744
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 1623,
+          "outputTokens": 121,
+          "totalTokens": 1744,
+          "cachedInputTokens": 384
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+            "toolName": "read_file",
+            "input": {
+              "path": "practice-cycle/SKILL.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+            "toolName": "read_file",
+            "input": {
+              "path": "practice-cycle/workbench-hooks.ts",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_02_kVAgPEhRRSCEMXp93wul7927",
+            "toolName": "read_file",
+            "input": {
+              "path": "practice-cycle/CHANGELOG.md",
+              "startLine": 1
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+            "toolName": "read_file",
+            "input": {
+              "path": "practice-cycle/SKILL.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "practice-cycle/SKILL.md",
+              "content": "---\nname: practice-cycle\ndescription: >-\n  Move a non-trivial task through practice, observation, reflection, and the\n  next smallest test without forcing a generic plan or feedback artifact. Use\n  when a phase ends, an implementation or investigation must inform its next\n  move, a prior attempt failed or produced ambiguous evidence, work is being\n  resumed, or the user asks to turn results into the next bounded action. Do not\n  use as a mandatory preflight for routine one-step work or when a more specific\n  methodology already owns the live judgment.\nargument-hint: \"[orient | continue | close]\"\n---\n\n# Practice Cycle\n\n## Principle expression\n\n**Primary:** P03\n**Supporting:** P02, P08, P15\n\n## Scope\n\nOwn one judgment: **given the actual result of a practice, what is the next\nsmallest practice that can revise or settle the current understanding?**\n\nThis is the task-level replacement for a generic convergence loop. It inherits\nthe everyday evidence, restraint, and verification discipline expressed by\n`disciplined-development`, but adds a conditional learning handoff between one\npractice and the next. It is not a mandatory preflight, project planner, form\nselector, task board, or acceptance authority.\n\n## Principle source\n\nUse a host Sequence and its matching interpretations when the host declares\nthem. Otherwise use this skill's read-only fallback in `references/sequence.md`.\nRead only P03, P02, P08, and P15 for this\nskill's stable lineage. A live task may select a different current lead, but it\ndoes not create co-primary doctrine.\n\n## Start\n\nBegin from the live practice rather than a named workflow:\n\n```text\nActual site and observed result:\nCurrent contradiction and hard constraints:\nWhat remains inference or uncertainty:\nSmallest next practice:\nObservation that would revise the current judgment:\nWhat, if anything, a later actor must recover:\n```\n\nIf the work is genuinely one-step and no result needs to revise a later\njudgment, do the work under normal disciplined development. Do not create a\ncycle, plan, or feedback artifact.\n\n### Principal intervention\n\nWhen a Principal message changes the active target, hard boundary, concept\nrelation, authority, or acceptance condition, treat the former reading as\ninvalid before another mutation. State the rejected assumption, new invariant,\naffected surfaces, and smallest disconfirming next probe. When an installed\nruntime binding offers a reconciliation receipt, record those same fields there;\nthe binding is optional evidence and never changes this skill's judgment or\nhuman authority. Do not create a receipt for an ordinary execute, continue, or\nformatting request that leaves the active decision unchanged.\n\n## Core method\n\n1. **Orient in the actual object.** Read the current state, prior result, and\n   governing constraints. Separate observation from interpretation. A past plan\n   is evidence of intent, not proof of present reality.\n2. **Name the live contradiction.** State what prevents the next valid action.\n   If a domain methodology owns that contradiction, route there; do not wrap it\n   in a generic cycle.\n3. **Choose one smallest practice.** Select the least irreversible intervention,\n   probe, implementation slice, or review that can change the current\n   understanding while retaining hard constraints. Do not write a full plan\n   merely because future work exists.\n4. **Act and observe.** Let the selected owner execute: a local change,\n   specialized skill, Work Cell, human review, or external operation. The cycle\n   does not seize execution or acceptance authority.\n5. **Reflect against a disconfirming observation.** Record what happened, what\n   it changes, and what remains uncertain. A successful-looking action that\n   cannot change a later decision is not sufficient learning.\n6. **Choose disposition.**\n   - **settle:** the acceptance condition is met; state evidence and residual risk;\n   - **continue:** name the next smallest practice from the revised state;\n   - **route:** a form contradiction goes to `form-guidance`; a reusable\n     principle question goes to `principle-cultivation`; a domain contradiction\n     goes to its owning methodology.\n7. **Externalize only decision-changing learning.** Leave a durable record only\n   when handoff, approval, or a later decision would otherwise repeat or\n   contradict the learning. The record is evidence, not a permanent workflow.\n\n## Boundaries\n\n- `disciplined-development` remains the lighter behavioral baseline. Use this\n  Skill only when an observed result must alter a later practice.\n- Do not invent a design, strategic plan, or task hierarchy. If such a domain\n  method is needed, identify the unresolved domain question and route it.\n- Do not decide whether a new Skill, runtime, artifact, or projection should\n  exist; that is the low-frequency `form-guidance` judgment.\n- Do not let the actor that performed a durable change accept it without the\n  designated verifier or human authority.\n- Do not treat repeated motion as learning. P08 requires an observation capable\n  of revising the current judgment.\n\n## Completion standard\n\nThe cycle is complete when the actual result, revised judgment, next disposition,\nand any decision-changing inheritance are explicit. It is supported only when\nan action probe shows a result changing the next step, a boundary probe rejects\none-step work or a domain-owned task, and a context probe shows the method did\nnot force irrelevant planning material into the task.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+            "toolName": "read_file",
+            "input": {
+              "path": "practice-cycle/workbench-hooks.ts",
+              "startLine": 1
+            },
+            "output": {
+              "path": "practice-cycle/workbench-hooks.ts",
+              "content": "import { createHash } from \"node:crypto\";\nimport {\n  appendFileSync,\n  existsSync,\n  mkdirSync,\n  readFileSync,\n  rmSync,\n} from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { dirname, isAbsolute, relative, resolve, sep } from \"node:path\";\nimport { fileURLToPath } from \"node:url\";\nimport { runInterventionCommand } from \"./interventions\";\n\ntype Platform = \"codex\" | \"claude\" | \"cursor\";\ntype ArtifactEvent = \"post-tool-use\" | \"after-file-edit\" | \"stop\";\n\ninterface HookPayload {\n  hook_event_name?: unknown;\n  session_id?: unknown;\n  conversation_id?: unknown;\n  turn_id?: unknown;\n  cwd?: unknown;\n  prompt?: unknown;\n  stop_hook_active?: unknown;\n  loop_count?: unknown;\n  tool_name?: unknown;\n  tool_input?: unknown;\n  file_path?: unknown;\n}\n\nconst repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), \"../../..\");\n\nexport function runHookCommand(raw: string[], stdin: string, homeArgument?: string): unknown {\n  const kind = raw[0];\n  const platform = platformValue(raw[1]);\n  try {\n    const payload = JSON.parse(stdin || readFileSync(0, \"utf8\")) as HookPayload;\n    if (kind === \"intervention\") {\n      if (raw.length !== 2 || platform === \"cursor\") {\n        throw new Error(\"intervention hooks are supported for codex and claude\");\n      }\n      return interventionOutput(platform, payload, homeArgument);\n    }\n    if (kind === \"artifact\") {\n      const event = artifactEvent(raw[2]);\n      if (raw.length !== 3) throw new Error(\"artifact hook requires one event\");\n      return artifactOutput(platform, event, payload);\n    }\n    throw new Error(\"hook requires intervention or artifact\");\n  } catch (error: unknown) {\n    const message = `Rossovia ${kind ?? \"hook\"} unavailable: ${\n      error instanceof Error ? error.message : String(error)\n    }`;\n    if (platform === \"cursor\") {\n      process.stderr.write(`${message}\\n`);\n      return {};\n    }\n    return { systemMessage: message };\n  }\n}\n\nfunction platformValue(value: string | undefined): Platform {\n  if (value === \"codex\" || value === \"claude\" || value === \"cursor\") return value;\n  throw new Error(\"hook platform must be codex, claude, or cursor\");\n}\n\nfunction artifactEvent(value: string | undefined): ArtifactEvent {\n  if (value === \"post-tool-use\" || value === \"after-file-edit\" || value === \"stop\") return value;\n  throw new Error(\"artifact hook event must be post-tool-use, after-file-edit, or stop\");\n}\n\nfunction requiredString(value: unknown, label: string): string {\n  if (typeof value !== \"string\" || value.length === 0) throw new Error(`${label} is required`);\n  return value;\n}\n\nfunction sessionId(platform: Platform, payload: HookPayload): string {\n  const value = platform === \"cursor\" ? payload.conversation_id : payload.session_id;\n  return requiredString(value, platform === \"cursor\" ? \"conversation_id\" : \"session_id\");\n}\n\nfunction interventionOutput(\n  platform: Exclude<Platform, \"cursor\">,\n  payload: HookPayload,\n  homeArgument?: string,\n): unknown {\n  const normalized = {\n    session_id: `${platform}:${sessionId(platform, payload)}`,\n    turn_id: typeof payload.turn_id === \"string\" || typeof payload.turn_id === \"number\"\n      ? payload.turn_id\n      : \"unknown\",\n    cwd: requiredString(payload.cwd, \"cwd\"),\n    prompt: typeof payload.prompt === \"string\" ? payload.prompt : \"\",\n  };\n  const observed = runInterventionCommand(\n    [\"observe\"],\n    JSON.stringify(normalized),\n    homeArgument,\n  ) as { statePath: string };\n  const receiptEndpoint = [\n    ...currentInvocation(),\n    \"correct\",\n    \"--state-file\",\n    observed.statePath,\n  ].map(shellQuote).join(\" \");\n  return {\n    hookSpecificOutput: {\n      hookEventName: \"UserPromptSubmit\",\n      additionalContext: (\n        \"A Principal message has arrived. Before acting on it, compare it with the active task. \" +\n        \"Only if it revises an assumption or constraint of a still-active task—including its target, \" +\n        \"hard boundary, concept relation, authority, or acceptance condition—\" +\n        \"run practice-cycle continue and record one correction with the session-local `correct` command prefix \" +\n        \"`\" + receiptEndpoint + \"`. Starting a new task after the prior task was completed, paused, or handed off \" +\n        \"is not a correction. Otherwise proceed without ceremony. `correct` requires \" +\n        \"--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. \" +\n        \"This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable \" +\n        \"or denied, do not request broader filesystem permission and do not block already-authorized work; \" +\n        \"retain the correction in the active task and report the receipt as unresolved.\"\n      ),\n    },\n  };\n}\n\nfunction currentInvocation(): string[] {\n  const entry = process.argv[1];\n  if (!entry) return [process.execPath];\n  return [process.execPath, resolve(entry)];\n}\n\nfunction shellQuote(value: string): string {\n  return `'${value.replaceAll(\"'\", `'\\\\''`)}'`;\n}\n\nfunction digest(value: string): string {\n  return createHash(\"sha256\").update(value).digest(\"hex\");\n}\n\nfunction sessionStatePath(platform: Platform, id: string): string {\n  const identity = digest(`${repositoryRoot}\\0${platform}\\0${id}`).slice(0, 40);\n  return resolve(tmpdir(), \"rossovia-hooks\", \"artifact-consistency\", `${identity}.jsonl`);\n}\n\nfunction readPaths(path: string): string[] {\n  if (!existsSync(path)) return [];\n  const paths = new Set<string>();\n  for (const line of readFileSync(path, \"utf8\").split(/\\r?\\n/).filter(Boolean)) {\n    const value = JSON.parse(line) as unknown;\n    if (!Array.isArray(value) || value.some((entry) => typeof entry !== \"string\")) {\n      throw new Error(`invalid artifact-consistency evidence: ${path}`);\n    }\n    for (const entry of value) paths.add(entry);\n  }\n  return [...paths].sort();\n}\n\nfunction appendPaths(path: string, paths: string[]): void {\n  mkdirSync(dirname(path), { recursive: true });\n  appendFileSync(path, `${JSON.stringify(paths)}\\n`, \"utf8\");\n}\n\nfunction patchPaths(command: string): string[] {\n  const result: string[] = [];\n  for (const line of command.split(/\\r?\\n/)) {\n    const match = line.match(/^\\*\\*\\* (?:Add|Update|Delete) File: (.+)$/)\n      ?? line.match(/^\\*\\*\\* Move to: (.+)$/);\n    if (match?.[1]) result.push(match[1]);\n  }\n  return result;\n}\n\nfunction rawChangedPaths(platform: Platform, event: ArtifactEvent, payload: HookPayload): string[] {\n  if (platform === \"cursor\" && event === \"after-file-edit\") {\n    return typeof payload.file_path === \"string\" ? [payload.file_path] : [];\n  }\n  if (event !== \"post-tool-use\") return [];\n  if (typeof payload.tool_input !== \"object\" || payload.tool_input === null) return [];\n  const input = payload.tool_input as { command?: unknown; file_path?: unknown };\n  if (platform === \"codex\" && payload.tool_name === \"apply_patch\") {\n    return typeof input.command === \"string\" ? patchPaths(input.command) : [];\n  }\n  if (\n    platform === \"claude\"\n    && (payload.tool_name === \"Write\" || payload.tool_name === \"Edit\" || payload.tool_name === \"NotebookEdit\")\n  ) {\n    return typeof input.file_path === \"string\" ? [input.file_path] : [];\n  }\n  return [];\n}\n\nfunction repositoryPath(rawPath: string, cwd: string): string | undefined {\n  const absolute = isAbsolute(rawPath) ? resolve(rawPath) : resolve(cwd, rawPath);\n  const local = relative(repositoryRoot, absolute);\n  if (!local || local === \"..\" || local.startsWith(`..${sep}`) || isAbsolute(local)) return undefined;\n  return local.split(sep).join(\"/\");\n}\n\nfunction isRelevant(path: string): boolean {\n  const name = path.slice(path.lastIndexOf(\"/\") + 1);\n  return /^skills\\/[^/]+\\/SKILL\\.md$/.test(path)\n    || /^skills\\/[^/]+\\/(?:commands|references)\\/.+\\.md$/.test(path)\n    || name === \"AGENTS.md\"\n    || name === \"CLAUDE.md\"\n    || name === \"README.md\";\n}\n\ntype ArtifactKind = \"skill-entry\" | \"skill-support\" | \"agent-guidance\" | \"readme\";\n\nfunction artifactKind(path: string): ArtifactKind {\n  const name = path.slice(path.lastIndexOf(\"/\") + 1);\n  if (/^skills\\/[^/]+\\/SKILL\\.md$/.test(path)) return \"skill-entry\";\n  if (/^skills\\/[^/]+\\/(?:commands|references)\\/.+\\.md$/.test(path)) return \"skill-support\";\n  if (name === \"AGENTS.md\" || name === \"CLAUDE.md\") return \"agent-guidance\";\n  return \"readme\";\n}\n\nfunction consistencyChecks(paths: string[]): string {\n  const kinds = new Set(paths.map(artifactKind));\n  const checks: string[] = [];\n  if (kinds.has(\"skill-entry\")) {\n    checks.push(\"Skill entries: verify trigger frontmatter, Principle expression, dispatch, and progressive disclosure\");\n  }\n  if (kinds.has(\"skill-support\")) {\n    checks.push(\"Skill support: verify entry references, self-contained command/reference boundaries, and no duplicated doctrine\");\n  }\n  if (kinds.has(\"agent-guidance\")) {\n    checks.push(\"Agent guidance: verify scope, commands, source ownership, and referenced paths\");\n  }\n  if (kinds.has(\"readme\")) {\n    checks.push(\"README: verify audience, scope, commands, and links\");\n  }\n  return checks.join(\"; \");\n}\n\nfunction summarizePaths(paths: string[], limit: number): string {\n  const visible = paths.slice(0, limit);\n  const remaining = paths.length - visible.length;\n  return `${visible.join(\", \")}${remaining > 0 ? ` (+${remaining} more)` : \"\"}`;\n}\n\nfunction artifactOutput(\n  platform: Platform,\n  event: ArtifactEvent,\n  payload: HookPayload,\n): unknown {\n  const id = sessionId(platform, payload);\n  const path = sessionStatePath(platform, id);\n  if (event === \"stop\") return stopOutput(platform, payload, path);\n\n  const cwd = typeof payload.cwd === \"string\" ? payload.cwd : repositoryRoot;\n  const paths = rawChangedPaths(platform, event, payload)\n    .map((entry) => repositoryPath(entry, cwd))\n    .filter((entry): entry is string => entry !== undefined && isRelevant(entry));\n  if (paths.length === 0) return undefined;\n\n  const observed = readPaths(path);\n  const additions = paths.filter((entry) => !observed.includes(entry));\n  if (additions.length === 0) return undefined;\n  appendPaths(path, additions);\n  return undefined;\n}\n\nfunction stopOutput(\n  platform: Platform,\n  payload: HookPayload,\n  path: string,\n): unknown {\n  const continuing = platform === \"cursor\"\n    ? typeof payload.loop_count === \"number\" && payload.loop_count > 0\n    : payload.stop_hook_active === true;\n  if (continuing) {\n    rmSync(path, { force: true });\n    return undefined;\n  }\n  const paths = readPaths(path);\n  if (paths.length === 0) return undefined;\n  const reminder = (\n    `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` +\n    `${summarizePaths(paths, 20)}. ` +\n    `${consistencyChecks(paths)}. Check only the applicable groups; do not expand into unrelated consistency work. ` +\n    \"Record only information that must survive this session in its owning source.\"\n  );\n  return platform === \"cursor\"\n    ? { followup_message: reminder }\n    : { decision: \"block\", reason: reminder };\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_02_kVAgPEhRRSCEMXp93wul7927",
+            "toolName": "read_file",
+            "input": {
+              "path": "practice-cycle/CHANGELOG.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "practice-cycle/CHANGELOG.md",
+              "content": "# Changelog\n\nEntries use stable functional-module prefixes so agents can inspect only changes\nthat affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or\n`breaking`. Entries are append-only after publication; corrections add a later\nentry instead of rewriting the applied Git interval.\n\n## 2026-08-04\n\n### [workbench.statusline] Project the current work locus through host-native surfaces\n\n- Action: `none`\n- Change: Claude Code invokes the read-only Rossovia locus and task-queue\n  projection, while Codex uses its native project, directory, branch, and plan\n  progress fields because its footer does not accept external commands.\n- Verify: open this repository in each trusted host; confirm Claude shows the\n  current Git path, branch, dirty state, and explicitly scoped task queues, and\n  Codex shows only its supported native fields.\n\n## 2026-07-23\n\n### [workbench.setup.multi-agent-delegation] Add tool-neutral delegation setup\n\n- Action: `reapply`\n- Change: `rossovia init --setup multi-agent-delegation` selects tool-neutral\n  delegation judgment; the initial Codex adapter renders it as a managed user\n  instruction without prescribing one harness's agent or tool mechanics.\n- Verify: give the agent two bounded independent tasks and confirm that it uses\n  the active environment's supported delegation while retaining synthesis and\n  verification.\n\n### [workbench.intervention] Distinguish task switches from corrections\n\n- Action: `none`\n- Change: the intervention reminder records a correction only when a Principal\n  message revises an assumption or constraint of a still-active task.\n- Verify: start a new task after completing the prior task and confirm that no\n  correction receipt is recorded.\n"
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:31.162Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 1
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:35.106Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+        "name": "task_list"
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:35.106Z",
+      "type": "task.listed",
+      "data": {
+        "count": 0
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:35.106Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "id": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+        "name": "task_list",
+        "durationMs": 0.07999999999447027,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:35.106Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 112.86817336589488,
+          "effectiveTotalTokensPerSecond": 1826.9425904596424,
+          "stepTimeMs": 3943.50475,
+          "responseTimeMs": 3942.652624999995,
+          "toolExecutionMs": {
+            "call_00_VWbaUqGq0vVQ7V77dbPz3434": 0.07999999999447027
+          }
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 1536,
+            "promptCacheMissTokens": 5222
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 6758,
+          "inputTokenDetails": {
+            "noCacheTokens": 5222,
+            "cacheReadTokens": 1536
+          },
+          "outputTokens": 445,
+          "outputTokenDetails": {
+            "textTokens": 445,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 7203,
+          "raw": {
+            "prompt_tokens": 6758,
+            "completion_tokens": 445,
+            "prompt_cache_hit_tokens": 1536,
+            "prompt_cache_miss_tokens": 5222,
+            "total_tokens": 7203
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 8381,
+          "outputTokens": 566,
+          "totalTokens": 8947,
+          "cachedInputTokens": 1920
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+            "toolName": "task_list",
+            "input": {}
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+            "toolName": "task_list",
+            "input": {},
+            "output": {
+              "tasks": []
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:35.108Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 2
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:43.846Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "stop",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 120.06765967142354,
+          "effectiveTotalTokensPerSecond": 898.9622488649766,
+          "stepTimeMs": 8736.924250000004,
+          "responseTimeMs": 8736.740624999999,
+          "toolExecutionMs": {}
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 6656,
+            "promptCacheMissTokens": 149
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 6805,
+          "inputTokenDetails": {
+            "noCacheTokens": 149,
+            "cacheReadTokens": 6656
+          },
+          "outputTokens": 1049,
+          "outputTokenDetails": {
+            "textTokens": 1049,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 7854,
+          "raw": {
+            "prompt_tokens": 6805,
+            "completion_tokens": 1049,
+            "prompt_cache_hit_tokens": 6656,
+            "prompt_cache_miss_tokens": 149,
+            "total_tokens": 7854
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 15186,
+          "outputTokens": 1615,
+          "totalTokens": 16801,
+          "cachedInputTokens": 8576
+        },
+        "toolCalls": [],
+        "toolResults": []
+      }
+    },
+    {
+      "at": "2026-08-04T16:38:43.849Z",
+      "type": "cell.finished",
+      "data": {
+        "status": "passed",
+        "usage": {
+          "inputTokens": 15186,
+          "outputTokens": 1615,
+          "totalTokens": 16801,
+          "cachedInputTokens": 8576
+        }
+      }
+    }
+  ],
+  "rawSteps": [
+    {
+      "phase": "execution",
+      "steps": [
+        {
+          "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+          "stepNumber": 0,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+              "toolName": "read_file",
+              "input": {
+                "path": "practice-cycle/SKILL.md",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+              "toolName": "read_file",
+              "input": {
+                "path": "practice-cycle/workbench-hooks.ts",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_02_kVAgPEhRRSCEMXp93wul7927",
+              "toolName": "read_file",
+              "input": {
+                "path": "practice-cycle/CHANGELOG.md",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+              "toolName": "read_file",
+              "input": {
+                "path": "practice-cycle/SKILL.md",
+                "startLine": 1
+              },
+              "output": {
+                "path": "practice-cycle/SKILL.md",
+                "content": "---\nname: practice-cycle\ndescription: >-\n  Move a non-trivial task through practice, observation, reflection, and the\n  next smallest test without forcing a generic plan or feedback artifact. Use\n  when a phase ends, an implementation or investigation must inform its next\n  move, a prior attempt failed or produced ambiguous evidence, work is being\n  resumed, or the user asks to turn results into the next bounded action. Do not\n  use as a mandatory preflight for routine one-step work or when a more specific\n  methodology already owns the live judgment.\nargument-hint: \"[orient | continue | close]\"\n---\n\n# Practice Cycle\n\n## Principle expression\n\n**Primary:** P03\n**Supporting:** P02, P08, P15\n\n## Scope\n\nOwn one judgment: **given the actual result of a practice, what is the next\nsmallest practice that can revise or settle the current understanding?**\n\nThis is the task-level replacement for a generic convergence loop. It inherits\nthe everyday evidence, restraint, and verification discipline expressed by\n`disciplined-development`, but adds a conditional learning handoff between one\npractice and the next. It is not a mandatory preflight, project planner, form\nselector, task board, or acceptance authority.\n\n## Principle source\n\nUse a host Sequence and its matching interpretations when the host declares\nthem. Otherwise use this skill's read-only fallback in `references/sequence.md`.\nRead only P03, P02, P08, and P15 for this\nskill's stable lineage. A live task may select a different current lead, but it\ndoes not create co-primary doctrine.\n\n## Start\n\nBegin from the live practice rather than a named workflow:\n\n```text\nActual site and observed result:\nCurrent contradiction and hard constraints:\nWhat remains inference or uncertainty:\nSmallest next practice:\nObservation that would revise the current judgment:\nWhat, if anything, a later actor must recover:\n```\n\nIf the work is genuinely one-step and no result needs to revise a later\njudgment, do the work under normal disciplined development. Do not create a\ncycle, plan, or feedback artifact.\n\n### Principal intervention\n\nWhen a Principal message changes the active target, hard boundary, concept\nrelation, authority, or acceptance condition, treat the former reading as\ninvalid before another mutation. State the rejected assumption, new invariant,\naffected surfaces, and smallest disconfirming next probe. When an installed\nruntime binding offers a reconciliation receipt, record those same fields there;\nthe binding is optional evidence and never changes this skill's judgment or\nhuman authority. Do not create a receipt for an ordinary execute, continue, or\nformatting request that leaves the active decision unchanged.\n\n## Core method\n\n1. **Orient in the actual object.** Read the current state, prior result, and\n   governing constraints. Separate observation from interpretation. A past plan\n   is evidence of intent, not proof of present reality.\n2. **Name the live contradiction.** State what prevents the next valid action.\n   If a domain methodology owns that contradiction, route there; do not wrap it\n   in a generic cycle.\n3. **Choose one smallest practice.** Select the least irreversible intervention,\n   probe, implementation slice, or review that can change the current\n   understanding while retaining hard constraints. Do not write a full plan\n   merely because future work exists.\n4. **Act and observe.** Let the selected owner execute: a local change,\n   specialized skill, Work Cell, human review, or external operation. The cycle\n   does not seize execution or acceptance authority.\n5. **Reflect against a disconfirming observation.** Record what happened, what\n   it changes, and what remains uncertain. A successful-looking action that\n   cannot change a later decision is not sufficient learning.\n6. **Choose disposition.**\n   - **settle:** the acceptance condition is met; state evidence and residual risk;\n   - **continue:** name the next smallest practice from the revised state;\n   - **route:** a form contradiction goes to `form-guidance`; a reusable\n     principle question goes to `principle-cultivation`; a domain contradiction\n     goes to its owning methodology.\n7. **Externalize only decision-changing learning.** Leave a durable record only\n   when handoff, approval, or a later decision would otherwise repeat or\n   contradict the learning. The record is evidence, not a permanent workflow.\n\n## Boundaries\n\n- `disciplined-development` remains the lighter behavioral baseline. Use this\n  Skill only when an observed result must alter a later practice.\n- Do not invent a design, strategic plan, or task hierarchy. If such a domain\n  method is needed, identify the unresolved domain question and route it.\n- Do not decide whether a new Skill, runtime, artifact, or projection should\n  exist; that is the low-frequency `form-guidance` judgment.\n- Do not let the actor that performed a durable change accept it without the\n  designated verifier or human authority.\n- Do not treat repeated motion as learning. P08 requires an observation capable\n  of revising the current judgment.\n\n## Completion standard\n\nThe cycle is complete when the actual result, revised judgment, next disposition,\nand any decision-changing inheritance are explicit. It is supported only when\nan action probe shows a result changing the next step, a boundary probe rejects\none-step work or a domain-owned task, and a context probe shows the method did\nnot force irrelevant planning material into the task.\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+              "toolName": "read_file",
+              "input": {
+                "path": "practice-cycle/workbench-hooks.ts",
+                "startLine": 1
+              },
+              "output": {
+                "path": "practice-cycle/workbench-hooks.ts",
+                "content": "import { createHash } from \"node:crypto\";\nimport {\n  appendFileSync,\n  existsSync,\n  mkdirSync,\n  readFileSync,\n  rmSync,\n} from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { dirname, isAbsolute, relative, resolve, sep } from \"node:path\";\nimport { fileURLToPath } from \"node:url\";\nimport { runInterventionCommand } from \"./interventions\";\n\ntype Platform = \"codex\" | \"claude\" | \"cursor\";\ntype ArtifactEvent = \"post-tool-use\" | \"after-file-edit\" | \"stop\";\n\ninterface HookPayload {\n  hook_event_name?: unknown;\n  session_id?: unknown;\n  conversation_id?: unknown;\n  turn_id?: unknown;\n  cwd?: unknown;\n  prompt?: unknown;\n  stop_hook_active?: unknown;\n  loop_count?: unknown;\n  tool_name?: unknown;\n  tool_input?: unknown;\n  file_path?: unknown;\n}\n\nconst repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), \"../../..\");\n\nexport function runHookCommand(raw: string[], stdin: string, homeArgument?: string): unknown {\n  const kind = raw[0];\n  const platform = platformValue(raw[1]);\n  try {\n    const payload = JSON.parse(stdin || readFileSync(0, \"utf8\")) as HookPayload;\n    if (kind === \"intervention\") {\n      if (raw.length !== 2 || platform === \"cursor\") {\n        throw new Error(\"intervention hooks are supported for codex and claude\");\n      }\n      return interventionOutput(platform, payload, homeArgument);\n    }\n    if (kind === \"artifact\") {\n      const event = artifactEvent(raw[2]);\n      if (raw.length !== 3) throw new Error(\"artifact hook requires one event\");\n      return artifactOutput(platform, event, payload);\n    }\n    throw new Error(\"hook requires intervention or artifact\");\n  } catch (error: unknown) {\n    const message = `Rossovia ${kind ?? \"hook\"} unavailable: ${\n      error instanceof Error ? error.message : String(error)\n    }`;\n    if (platform === \"cursor\") {\n      process.stderr.write(`${message}\\n`);\n      return {};\n    }\n    return { systemMessage: message };\n  }\n}\n\nfunction platformValue(value: string | undefined): Platform {\n  if (value === \"codex\" || value === \"claude\" || value === \"cursor\") return value;\n  throw new Error(\"hook platform must be codex, claude, or cursor\");\n}\n\nfunction artifactEvent(value: string | undefined): ArtifactEvent {\n  if (value === \"post-tool-use\" || value === \"after-file-edit\" || value === \"stop\") return value;\n  throw new Error(\"artifact hook event must be post-tool-use, after-file-edit, or stop\");\n}\n\nfunction requiredString(value: unknown, label: string): string {\n  if (typeof value !== \"string\" || value.length === 0) throw new Error(`${label} is required`);\n  return value;\n}\n\nfunction sessionId(platform: Platform, payload: HookPayload): string {\n  const value = platform === \"cursor\" ? payload.conversation_id : payload.session_id;\n  return requiredString(value, platform === \"cursor\" ? \"conversation_id\" : \"session_id\");\n}\n\nfunction interventionOutput(\n  platform: Exclude<Platform, \"cursor\">,\n  payload: HookPayload,\n  homeArgument?: string,\n): unknown {\n  const normalized = {\n    session_id: `${platform}:${sessionId(platform, payload)}`,\n    turn_id: typeof payload.turn_id === \"string\" || typeof payload.turn_id === \"number\"\n      ? payload.turn_id\n      : \"unknown\",\n    cwd: requiredString(payload.cwd, \"cwd\"),\n    prompt: typeof payload.prompt === \"string\" ? payload.prompt : \"\",\n  };\n  const observed = runInterventionCommand(\n    [\"observe\"],\n    JSON.stringify(normalized),\n    homeArgument,\n  ) as { statePath: string };\n  const receiptEndpoint = [\n    ...currentInvocation(),\n    \"correct\",\n    \"--state-file\",\n    observed.statePath,\n  ].map(shellQuote).join(\" \");\n  return {\n    hookSpecificOutput: {\n      hookEventName: \"UserPromptSubmit\",\n      additionalContext: (\n        \"A Principal message has arrived. Before acting on it, compare it with the active task. \" +\n        \"Only if it revises an assumption or constraint of a still-active task—including its target, \" +\n        \"hard boundary, concept relation, authority, or acceptance condition—\" +\n        \"run practice-cycle continue and record one correction with the session-local `correct` command prefix \" +\n        \"`\" + receiptEndpoint + \"`. Starting a new task after the prior task was completed, paused, or handed off \" +\n        \"is not a correction. Otherwise proceed without ceremony. `correct` requires \" +\n        \"--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. \" +\n        \"This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable \" +\n        \"or denied, do not request broader filesystem permission and do not block already-authorized work; \" +\n        \"retain the correction in the active task and report the receipt as unresolved.\"\n      ),\n    },\n  };\n}\n\nfunction currentInvocation(): string[] {\n  const entry = process.argv[1];\n  if (!entry) return [process.execPath];\n  return [process.execPath, resolve(entry)];\n}\n\nfunction shellQuote(value: string): string {\n  return `'${value.replaceAll(\"'\", `'\\\\''`)}'`;\n}\n\nfunction digest(value: string): string {\n  return createHash(\"sha256\").update(value).digest(\"hex\");\n}\n\nfunction sessionStatePath(platform: Platform, id: string): string {\n  const identity = digest(`${repositoryRoot}\\0${platform}\\0${id}`).slice(0, 40);\n  return resolve(tmpdir(), \"rossovia-hooks\", \"artifact-consistency\", `${identity}.jsonl`);\n}\n\nfunction readPaths(path: string): string[] {\n  if (!existsSync(path)) return [];\n  const paths = new Set<string>();\n  for (const line of readFileSync(path, \"utf8\").split(/\\r?\\n/).filter(Boolean)) {\n    const value = JSON.parse(line) as unknown;\n    if (!Array.isArray(value) || value.some((entry) => typeof entry !== \"string\")) {\n      throw new Error(`invalid artifact-consistency evidence: ${path}`);\n    }\n    for (const entry of value) paths.add(entry);\n  }\n  return [...paths].sort();\n}\n\nfunction appendPaths(path: string, paths: string[]): void {\n  mkdirSync(dirname(path), { recursive: true });\n  appendFileSync(path, `${JSON.stringify(paths)}\\n`, \"utf8\");\n}\n\nfunction patchPaths(command: string): string[] {\n  const result: string[] = [];\n  for (const line of command.split(/\\r?\\n/)) {\n    const match = line.match(/^\\*\\*\\* (?:Add|Update|Delete) File: (.+)$/)\n      ?? line.match(/^\\*\\*\\* Move to: (.+)$/);\n    if (match?.[1]) result.push(match[1]);\n  }\n  return result;\n}\n\nfunction rawChangedPaths(platform: Platform, event: ArtifactEvent, payload: HookPayload): string[] {\n  if (platform === \"cursor\" && event === \"after-file-edit\") {\n    return typeof payload.file_path === \"string\" ? [payload.file_path] : [];\n  }\n  if (event !== \"post-tool-use\") return [];\n  if (typeof payload.tool_input !== \"object\" || payload.tool_input === null) return [];\n  const input = payload.tool_input as { command?: unknown; file_path?: unknown };\n  if (platform === \"codex\" && payload.tool_name === \"apply_patch\") {\n    return typeof input.command === \"string\" ? patchPaths(input.command) : [];\n  }\n  if (\n    platform === \"claude\"\n    && (payload.tool_name === \"Write\" || payload.tool_name === \"Edit\" || payload.tool_name === \"NotebookEdit\")\n  ) {\n    return typeof input.file_path === \"string\" ? [input.file_path] : [];\n  }\n  return [];\n}\n\nfunction repositoryPath(rawPath: string, cwd: string): string | undefined {\n  const absolute = isAbsolute(rawPath) ? resolve(rawPath) : resolve(cwd, rawPath);\n  const local = relative(repositoryRoot, absolute);\n  if (!local || local === \"..\" || local.startsWith(`..${sep}`) || isAbsolute(local)) return undefined;\n  return local.split(sep).join(\"/\");\n}\n\nfunction isRelevant(path: string): boolean {\n  const name = path.slice(path.lastIndexOf(\"/\") + 1);\n  return /^skills\\/[^/]+\\/SKILL\\.md$/.test(path)\n    || /^skills\\/[^/]+\\/(?:commands|references)\\/.+\\.md$/.test(path)\n    || name === \"AGENTS.md\"\n    || name === \"CLAUDE.md\"\n    || name === \"README.md\";\n}\n\ntype ArtifactKind = \"skill-entry\" | \"skill-support\" | \"agent-guidance\" | \"readme\";\n\nfunction artifactKind(path: string): ArtifactKind {\n  const name = path.slice(path.lastIndexOf(\"/\") + 1);\n  if (/^skills\\/[^/]+\\/SKILL\\.md$/.test(path)) return \"skill-entry\";\n  if (/^skills\\/[^/]+\\/(?:commands|references)\\/.+\\.md$/.test(path)) return \"skill-support\";\n  if (name === \"AGENTS.md\" || name === \"CLAUDE.md\") return \"agent-guidance\";\n  return \"readme\";\n}\n\nfunction consistencyChecks(paths: string[]): string {\n  const kinds = new Set(paths.map(artifactKind));\n  const checks: string[] = [];\n  if (kinds.has(\"skill-entry\")) {\n    checks.push(\"Skill entries: verify trigger frontmatter, Principle expression, dispatch, and progressive disclosure\");\n  }\n  if (kinds.has(\"skill-support\")) {\n    checks.push(\"Skill support: verify entry references, self-contained command/reference boundaries, and no duplicated doctrine\");\n  }\n  if (kinds.has(\"agent-guidance\")) {\n    checks.push(\"Agent guidance: verify scope, commands, source ownership, and referenced paths\");\n  }\n  if (kinds.has(\"readme\")) {\n    checks.push(\"README: verify audience, scope, commands, and links\");\n  }\n  return checks.join(\"; \");\n}\n\nfunction summarizePaths(paths: string[], limit: number): string {\n  const visible = paths.slice(0, limit);\n  const remaining = paths.length - visible.length;\n  return `${visible.join(\", \")}${remaining > 0 ? ` (+${remaining} more)` : \"\"}`;\n}\n\nfunction artifactOutput(\n  platform: Platform,\n  event: ArtifactEvent,\n  payload: HookPayload,\n): unknown {\n  const id = sessionId(platform, payload);\n  const path = sessionStatePath(platform, id);\n  if (event === \"stop\") return stopOutput(platform, payload, path);\n\n  const cwd = typeof payload.cwd === \"string\" ? payload.cwd : repositoryRoot;\n  const paths = rawChangedPaths(platform, event, payload)\n    .map((entry) => repositoryPath(entry, cwd))\n    .filter((entry): entry is string => entry !== undefined && isRelevant(entry));\n  if (paths.length === 0) return undefined;\n\n  const observed = readPaths(path);\n  const additions = paths.filter((entry) => !observed.includes(entry));\n  if (additions.length === 0) return undefined;\n  appendPaths(path, additions);\n  return undefined;\n}\n\nfunction stopOutput(\n  platform: Platform,\n  payload: HookPayload,\n  path: string,\n): unknown {\n  const continuing = platform === \"cursor\"\n    ? typeof payload.loop_count === \"number\" && payload.loop_count > 0\n    : payload.stop_hook_active === true;\n  if (continuing) {\n    rmSync(path, { force: true });\n    return undefined;\n  }\n  const paths = readPaths(path);\n  if (paths.length === 0) return undefined;\n  const reminder = (\n    `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` +\n    `${summarizePaths(paths, 20)}. ` +\n    `${consistencyChecks(paths)}. Check only the applicable groups; do not expand into unrelated consistency work. ` +\n    \"Record only information that must survive this session in its owning source.\"\n  );\n  return platform === \"cursor\"\n    ? { followup_message: reminder }\n    : { decision: \"block\", reason: reminder };\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_02_kVAgPEhRRSCEMXp93wul7927",
+              "toolName": "read_file",
+              "input": {
+                "path": "practice-cycle/CHANGELOG.md",
+                "startLine": 1
+              },
+              "output": {
+                "path": "practice-cycle/CHANGELOG.md",
+                "content": "# Changelog\n\nEntries use stable functional-module prefixes so agents can inspect only changes\nthat affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or\n`breaking`. Entries are append-only after publication; corrections add a later\nentry instead of rewriting the applied Git interval.\n\n## 2026-08-04\n\n### [workbench.statusline] Project the current work locus through host-native surfaces\n\n- Action: `none`\n- Change: Claude Code invokes the read-only Rossovia locus and task-queue\n  projection, while Codex uses its native project, directory, branch, and plan\n  progress fields because its footer does not accept external commands.\n- Verify: open this repository in each trusted host; confirm Claude shows the\n  current Git path, branch, dirty state, and explicitly scoped task queues, and\n  Codex shows only its supported native fields.\n\n## 2026-07-23\n\n### [workbench.setup.multi-agent-delegation] Add tool-neutral delegation setup\n\n- Action: `reapply`\n- Change: `rossovia init --setup multi-agent-delegation` selects tool-neutral\n  delegation judgment; the initial Codex adapter renders it as a managed user\n  instruction without prescribing one harness's agent or tool mechanics.\n- Verify: give the agent two bounded independent tasks and confirm that it uses\n  the active environment's supported delegation while retaining synthesis and\n  verification.\n\n### [workbench.intervention] Distinguish task switches from corrections\n\n- Action: `none`\n- Change: the intervention reminder records a correction only when a Principal\n  message revises an assumption or constraint of a still-active task.\n- Verify: start a new task after completing the prior task and confirm that no\n  correction receipt is recorded.\n"
+              },
+              "dynamic": false
+            }
+          ],
+          "finishReason": "tool-calls",
+          "rawFinishReason": "tool_calls",
+          "usage": {
+            "inputTokens": 1623,
+            "inputTokenDetails": {
+              "noCacheTokens": 1239,
+              "cacheReadTokens": 384
+            },
+            "outputTokens": 121,
+            "outputTokenDetails": {
+              "textTokens": 121,
+              "reasoningTokens": 0
+            },
+            "totalTokens": 1744,
+            "raw": {
+              "prompt_tokens": 1623,
+              "completion_tokens": 121,
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 1239,
+              "total_tokens": 1744
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 120.49031092350448,
+            "effectiveTotalTokensPerSecond": 1736.653737608197,
+            "stepTimeMs": 1007.3081660000025,
+            "responseTimeMs": 1004.2301250000019,
+            "toolExecutionMs": {
+              "call_00_7HJbVXl4PZeJVjfdaHft7332": 1.6958750000048894,
+              "call_01_pVPKNUlxtRrobXW3sdbC5922": 1.6507500000006985,
+              "call_02_kVAgPEhRRSCEMXp93wul7927": 1.5204999999987194
+            }
+          },
+          "warnings": [
+            {
+              "type": "compatibility",
+              "feature": "responseFormat JSON schema",
+              "details": "JSON response schema is injected into the system message."
+            }
+          ],
+          "request": {},
+          "response": {
+            "id": "febde3af-614c-4bfd-891d-aeb1716f7020",
+            "timestamp": "2026-08-04T16:38:30.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Tue, 04 Aug 2026 16:38:30 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "13734681762853275098",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "4a505b1d9a175aecdc6408e1b90aca0c"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "practice-cycle/SKILL.md",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "practice-cycle/workbench-hooks.ts",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_02_kVAgPEhRRSCEMXp93wul7927",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "practice-cycle/CHANGELOG.md",
+                      "startLine": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_00_7HJbVXl4PZeJVjfdaHft7332",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "practice-cycle/SKILL.md",
+                        "content": "---\nname: practice-cycle\ndescription: >-\n  Move a non-trivial task through practice, observation, reflection, and the\n  next smallest test without forcing a generic plan or feedback artifact. Use\n  when a phase ends, an implementation or investigation must inform its next\n  move, a prior attempt failed or produced ambiguous evidence, work is being\n  resumed, or the user asks to turn results into the next bounded action. Do not\n  use as a mandatory preflight for routine one-step work or when a more specific\n  methodology already owns the live judgment.\nargument-hint: \"[orient | continue | close]\"\n---\n\n# Practice Cycle\n\n## Principle expression\n\n**Primary:** P03\n**Supporting:** P02, P08, P15\n\n## Scope\n\nOwn one judgment: **given the actual result of a practice, what is the next\nsmallest practice that can revise or settle the current understanding?**\n\nThis is the task-level replacement for a generic convergence loop. It inherits\nthe everyday evidence, restraint, and verification discipline expressed by\n`disciplined-development`, but adds a conditional learning handoff between one\npractice and the next. It is not a mandatory preflight, project planner, form\nselector, task board, or acceptance authority.\n\n## Principle source\n\nUse a host Sequence and its matching interpretations when the host declares\nthem. Otherwise use this skill's read-only fallback in `references/sequence.md`.\nRead only P03, P02, P08, and P15 for this\nskill's stable lineage. A live task may select a different current lead, but it\ndoes not create co-primary doctrine.\n\n## Start\n\nBegin from the live practice rather than a named workflow:\n\n```text\nActual site and observed result:\nCurrent contradiction and hard constraints:\nWhat remains inference or uncertainty:\nSmallest next practice:\nObservation that would revise the current judgment:\nWhat, if anything, a later actor must recover:\n```\n\nIf the work is genuinely one-step and no result needs to revise a later\njudgment, do the work under normal disciplined development. Do not create a\ncycle, plan, or feedback artifact.\n\n### Principal intervention\n\nWhen a Principal message changes the active target, hard boundary, concept\nrelation, authority, or acceptance condition, treat the former reading as\ninvalid before another mutation. State the rejected assumption, new invariant,\naffected surfaces, and smallest disconfirming next probe. When an installed\nruntime binding offers a reconciliation receipt, record those same fields there;\nthe binding is optional evidence and never changes this skill's judgment or\nhuman authority. Do not create a receipt for an ordinary execute, continue, or\nformatting request that leaves the active decision unchanged.\n\n## Core method\n\n1. **Orient in the actual object.** Read the current state, prior result, and\n   governing constraints. Separate observation from interpretation. A past plan\n   is evidence of intent, not proof of present reality.\n2. **Name the live contradiction.** State what prevents the next valid action.\n   If a domain methodology owns that contradiction, route there; do not wrap it\n   in a generic cycle.\n3. **Choose one smallest practice.** Select the least irreversible intervention,\n   probe, implementation slice, or review that can change the current\n   understanding while retaining hard constraints. Do not write a full plan\n   merely because future work exists.\n4. **Act and observe.** Let the selected owner execute: a local change,\n   specialized skill, Work Cell, human review, or external operation. The cycle\n   does not seize execution or acceptance authority.\n5. **Reflect against a disconfirming observation.** Record what happened, what\n   it changes, and what remains uncertain. A successful-looking action that\n   cannot change a later decision is not sufficient learning.\n6. **Choose disposition.**\n   - **settle:** the acceptance condition is met; state evidence and residual risk;\n   - **continue:** name the next smallest practice from the revised state;\n   - **route:** a form contradiction goes to `form-guidance`; a reusable\n     principle question goes to `principle-cultivation`; a domain contradiction\n     goes to its owning methodology.\n7. **Externalize only decision-changing learning.** Leave a durable record only\n   when handoff, approval, or a later decision would otherwise repeat or\n   contradict the learning. The record is evidence, not a permanent workflow.\n\n## Boundaries\n\n- `disciplined-development` remains the lighter behavioral baseline. Use this\n  Skill only when an observed result must alter a later practice.\n- Do not invent a design, strategic plan, or task hierarchy. If such a domain\n  method is needed, identify the unresolved domain question and route it.\n- Do not decide whether a new Skill, runtime, artifact, or projection should\n  exist; that is the low-frequency `form-guidance` judgment.\n- Do not let the actor that performed a durable change accept it without the\n  designated verifier or human authority.\n- Do not treat repeated motion as learning. P08 requires an observation capable\n  of revising the current judgment.\n\n## Completion standard\n\nThe cycle is complete when the actual result, revised judgment, next disposition,\nand any decision-changing inheritance are explicit. It is supported only when\nan action probe shows a result changing the next step, a boundary probe rejects\none-step work or a domain-owned task, and a context probe shows the method did\nnot force irrelevant planning material into the task.\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_01_pVPKNUlxtRrobXW3sdbC5922",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "practice-cycle/workbench-hooks.ts",
+                        "content": "import { createHash } from \"node:crypto\";\nimport {\n  appendFileSync,\n  existsSync,\n  mkdirSync,\n  readFileSync,\n  rmSync,\n} from \"node:fs\";\nimport { tmpdir } from \"node:os\";\nimport { dirname, isAbsolute, relative, resolve, sep } from \"node:path\";\nimport { fileURLToPath } from \"node:url\";\nimport { runInterventionCommand } from \"./interventions\";\n\ntype Platform = \"codex\" | \"claude\" | \"cursor\";\ntype ArtifactEvent = \"post-tool-use\" | \"after-file-edit\" | \"stop\";\n\ninterface HookPayload {\n  hook_event_name?: unknown;\n  session_id?: unknown;\n  conversation_id?: unknown;\n  turn_id?: unknown;\n  cwd?: unknown;\n  prompt?: unknown;\n  stop_hook_active?: unknown;\n  loop_count?: unknown;\n  tool_name?: unknown;\n  tool_input?: unknown;\n  file_path?: unknown;\n}\n\nconst repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), \"../../..\");\n\nexport function runHookCommand(raw: string[], stdin: string, homeArgument?: string): unknown {\n  const kind = raw[0];\n  const platform = platformValue(raw[1]);\n  try {\n    const payload = JSON.parse(stdin || readFileSync(0, \"utf8\")) as HookPayload;\n    if (kind === \"intervention\") {\n      if (raw.length !== 2 || platform === \"cursor\") {\n        throw new Error(\"intervention hooks are supported for codex and claude\");\n      }\n      return interventionOutput(platform, payload, homeArgument);\n    }\n    if (kind === \"artifact\") {\n      const event = artifactEvent(raw[2]);\n      if (raw.length !== 3) throw new Error(\"artifact hook requires one event\");\n      return artifactOutput(platform, event, payload);\n    }\n    throw new Error(\"hook requires intervention or artifact\");\n  } catch (error: unknown) {\n    const message = `Rossovia ${kind ?? \"hook\"} unavailable: ${\n      error instanceof Error ? error.message : String(error)\n    }`;\n    if (platform === \"cursor\") {\n      process.stderr.write(`${message}\\n`);\n      return {};\n    }\n    return { systemMessage: message };\n  }\n}\n\nfunction platformValue(value: string | undefined): Platform {\n  if (value === \"codex\" || value === \"claude\" || value === \"cursor\") return value;\n  throw new Error(\"hook platform must be codex, claude, or cursor\");\n}\n\nfunction artifactEvent(value: string | undefined): ArtifactEvent {\n  if (value === \"post-tool-use\" || value === \"after-file-edit\" || value === \"stop\") return value;\n  throw new Error(\"artifact hook event must be post-tool-use, after-file-edit, or stop\");\n}\n\nfunction requiredString(value: unknown, label: string): string {\n  if (typeof value !== \"string\" || value.length === 0) throw new Error(`${label} is required`);\n  return value;\n}\n\nfunction sessionId(platform: Platform, payload: HookPayload): string {\n  const value = platform === \"cursor\" ? payload.conversation_id : payload.session_id;\n  return requiredString(value, platform === \"cursor\" ? \"conversation_id\" : \"session_id\");\n}\n\nfunction interventionOutput(\n  platform: Exclude<Platform, \"cursor\">,\n  payload: HookPayload,\n  homeArgument?: string,\n): unknown {\n  const normalized = {\n    session_id: `${platform}:${sessionId(platform, payload)}`,\n    turn_id: typeof payload.turn_id === \"string\" || typeof payload.turn_id === \"number\"\n      ? payload.turn_id\n      : \"unknown\",\n    cwd: requiredString(payload.cwd, \"cwd\"),\n    prompt: typeof payload.prompt === \"string\" ? payload.prompt : \"\",\n  };\n  const observed = runInterventionCommand(\n    [\"observe\"],\n    JSON.stringify(normalized),\n    homeArgument,\n  ) as { statePath: string };\n  const receiptEndpoint = [\n    ...currentInvocation(),\n    \"correct\",\n    \"--state-file\",\n    observed.statePath,\n  ].map(shellQuote).join(\" \");\n  return {\n    hookSpecificOutput: {\n      hookEventName: \"UserPromptSubmit\",\n      additionalContext: (\n        \"A Principal message has arrived. Before acting on it, compare it with the active task. \" +\n        \"Only if it revises an assumption or constraint of a still-active task—including its target, \" +\n        \"hard boundary, concept relation, authority, or acceptance condition—\" +\n        \"run practice-cycle continue and record one correction with the session-local `correct` command prefix \" +\n        \"`\" + receiptEndpoint + \"`. Starting a new task after the prior task was completed, paused, or handed off \" +\n        \"is not a correction. Otherwise proceed without ceremony. `correct` requires \" +\n        \"--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. \" +\n        \"This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable \" +\n        \"or denied, do not request broader filesystem permission and do not block already-authorized work; \" +\n        \"retain the correction in the active task and report the receipt as unresolved.\"\n      ),\n    },\n  };\n}\n\nfunction currentInvocation(): string[] {\n  const entry = process.argv[1];\n  if (!entry) return [process.execPath];\n  return [process.execPath, resolve(entry)];\n}\n\nfunction shellQuote(value: string): string {\n  return `'${value.replaceAll(\"'\", `'\\\\''`)}'`;\n}\n\nfunction digest(value: string): string {\n  return createHash(\"sha256\").update(value).digest(\"hex\");\n}\n\nfunction sessionStatePath(platform: Platform, id: string): string {\n  const identity = digest(`${repositoryRoot}\\0${platform}\\0${id}`).slice(0, 40);\n  return resolve(tmpdir(), \"rossovia-hooks\", \"artifact-consistency\", `${identity}.jsonl`);\n}\n\nfunction readPaths(path: string): string[] {\n  if (!existsSync(path)) return [];\n  const paths = new Set<string>();\n  for (const line of readFileSync(path, \"utf8\").split(/\\r?\\n/).filter(Boolean)) {\n    const value = JSON.parse(line) as unknown;\n    if (!Array.isArray(value) || value.some((entry) => typeof entry !== \"string\")) {\n      throw new Error(`invalid artifact-consistency evidence: ${path}`);\n    }\n    for (const entry of value) paths.add(entry);\n  }\n  return [...paths].sort();\n}\n\nfunction appendPaths(path: string, paths: string[]): void {\n  mkdirSync(dirname(path), { recursive: true });\n  appendFileSync(path, `${JSON.stringify(paths)}\\n`, \"utf8\");\n}\n\nfunction patchPaths(command: string): string[] {\n  const result: string[] = [];\n  for (const line of command.split(/\\r?\\n/)) {\n    const match = line.match(/^\\*\\*\\* (?:Add|Update|Delete) File: (.+)$/)\n      ?? line.match(/^\\*\\*\\* Move to: (.+)$/);\n    if (match?.[1]) result.push(match[1]);\n  }\n  return result;\n}\n\nfunction rawChangedPaths(platform: Platform, event: ArtifactEvent, payload: HookPayload): string[] {\n  if (platform === \"cursor\" && event === \"after-file-edit\") {\n    return typeof payload.file_path === \"string\" ? [payload.file_path] : [];\n  }\n  if (event !== \"post-tool-use\") return [];\n  if (typeof payload.tool_input !== \"object\" || payload.tool_input === null) return [];\n  const input = payload.tool_input as { command?: unknown; file_path?: unknown };\n  if (platform === \"codex\" && payload.tool_name === \"apply_patch\") {\n    return typeof input.command === \"string\" ? patchPaths(input.command) : [];\n  }\n  if (\n    platform === \"claude\"\n    && (payload.tool_name === \"Write\" || payload.tool_name === \"Edit\" || payload.tool_name === \"NotebookEdit\")\n  ) {\n    return typeof input.file_path === \"string\" ? [input.file_path] : [];\n  }\n  return [];\n}\n\nfunction repositoryPath(rawPath: string, cwd: string): string | undefined {\n  const absolute = isAbsolute(rawPath) ? resolve(rawPath) : resolve(cwd, rawPath);\n  const local = relative(repositoryRoot, absolute);\n  if (!local || local === \"..\" || local.startsWith(`..${sep}`) || isAbsolute(local)) return undefined;\n  return local.split(sep).join(\"/\");\n}\n\nfunction isRelevant(path: string): boolean {\n  const name = path.slice(path.lastIndexOf(\"/\") + 1);\n  return /^skills\\/[^/]+\\/SKILL\\.md$/.test(path)\n    || /^skills\\/[^/]+\\/(?:commands|references)\\/.+\\.md$/.test(path)\n    || name === \"AGENTS.md\"\n    || name === \"CLAUDE.md\"\n    || name === \"README.md\";\n}\n\ntype ArtifactKind = \"skill-entry\" | \"skill-support\" | \"agent-guidance\" | \"readme\";\n\nfunction artifactKind(path: string): ArtifactKind {\n  const name = path.slice(path.lastIndexOf(\"/\") + 1);\n  if (/^skills\\/[^/]+\\/SKILL\\.md$/.test(path)) return \"skill-entry\";\n  if (/^skills\\/[^/]+\\/(?:commands|references)\\/.+\\.md$/.test(path)) return \"skill-support\";\n  if (name === \"AGENTS.md\" || name === \"CLAUDE.md\") return \"agent-guidance\";\n  return \"readme\";\n}\n\nfunction consistencyChecks(paths: string[]): string {\n  const kinds = new Set(paths.map(artifactKind));\n  const checks: string[] = [];\n  if (kinds.has(\"skill-entry\")) {\n    checks.push(\"Skill entries: verify trigger frontmatter, Principle expression, dispatch, and progressive disclosure\");\n  }\n  if (kinds.has(\"skill-support\")) {\n    checks.push(\"Skill support: verify entry references, self-contained command/reference boundaries, and no duplicated doctrine\");\n  }\n  if (kinds.has(\"agent-guidance\")) {\n    checks.push(\"Agent guidance: verify scope, commands, source ownership, and referenced paths\");\n  }\n  if (kinds.has(\"readme\")) {\n    checks.push(\"README: verify audience, scope, commands, and links\");\n  }\n  return checks.join(\"; \");\n}\n\nfunction summarizePaths(paths: string[], limit: number): string {\n  const visible = paths.slice(0, limit);\n  const remaining = paths.length - visible.length;\n  return `${visible.join(\", \")}${remaining > 0 ? ` (+${remaining} more)` : \"\"}`;\n}\n\nfunction artifactOutput(\n  platform: Platform,\n  event: ArtifactEvent,\n  payload: HookPayload,\n): unknown {\n  const id = sessionId(platform, payload);\n  const path = sessionStatePath(platform, id);\n  if (event === \"stop\") return stopOutput(platform, payload, path);\n\n  const cwd = typeof payload.cwd === \"string\" ? payload.cwd : repositoryRoot;\n  const paths = rawChangedPaths(platform, event, payload)\n    .map((entry) => repositoryPath(entry, cwd))\n    .filter((entry): entry is string => entry !== undefined && isRelevant(entry));\n  if (paths.length === 0) return undefined;\n\n  const observed = readPaths(path);\n  const additions = paths.filter((entry) => !observed.includes(entry));\n  if (additions.length === 0) return undefined;\n  appendPaths(path, additions);\n  return undefined;\n}\n\nfunction stopOutput(\n  platform: Platform,\n  payload: HookPayload,\n  path: string,\n): unknown {\n  const continuing = platform === \"cursor\"\n    ? typeof payload.loop_count === \"number\" && payload.loop_count > 0\n    : payload.stop_hook_active === true;\n  if (continuing) {\n    rmSync(path, { force: true });\n    return undefined;\n  }\n  const paths = readPaths(path);\n  if (paths.length === 0) return undefined;\n  const reminder = (\n    `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` +\n    `${summarizePaths(paths, 20)}. ` +\n    `${consistencyChecks(paths)}. Check only the applicable groups; do not expand into unrelated consistency work. ` +\n    \"Record only information that must survive this session in its owning source.\"\n  );\n  return platform === \"cursor\"\n    ? { followup_message: reminder }\n    : { decision: \"block\", reason: reminder };\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_02_kVAgPEhRRSCEMXp93wul7927",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "practice-cycle/CHANGELOG.md",
+                        "content": "# Changelog\n\nEntries use stable functional-module prefixes so agents can inspect only changes\nthat affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or\n`breaking`. Entries are append-only after publication; corrections add a later\nentry instead of rewriting the applied Git interval.\n\n## 2026-08-04\n\n### [workbench.statusline] Project the current work locus through host-native surfaces\n\n- Action: `none`\n- Change: Claude Code invokes the read-only Rossovia locus and task-queue\n  projection, while Codex uses its native project, directory, branch, and plan\n  progress fields because its footer does not accept external commands.\n- Verify: open this repository in each trusted host; confirm Claude shows the\n  current Git path, branch, dirty state, and explicitly scoped task queues, and\n  Codex shows only its supported native fields.\n\n## 2026-07-23\n\n### [workbench.setup.multi-agent-delegation] Add tool-neutral delegation setup\n\n- Action: `reapply`\n- Change: `rossovia init --setup multi-agent-delegation` selects tool-neutral\n  delegation judgment; the initial Codex adapter renders it as a managed user\n  instruction without prescribing one harness's agent or tool mechanics.\n- Verify: give the agent two bounded independent tasks and confirm that it uses\n  the active environment's supported delegation while retaining synthesis and\n  verification.\n\n### [workbench.intervention] Distinguish task switches from corrections\n\n- Action: `none`\n- Change: the intervention reminder records a correction only when a Principal\n  message revises an assumption or constraint of a still-active task.\n- Verify: start a new task after completing the prior task and confirm that no\n  correction receipt is recorded.\n"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 384,
+              "promptCacheMissTokens": 1239
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        },
+        {
+          "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+          "stepNumber": 1,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+              "toolName": "task_list",
+              "input": {}
+            },
+            {
+              "type": "text",
+              "text": "                                                                                                                                                                                                                                                                                                                                                                                                                                   "
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+              "toolName": "task_list",
+              "input": {},
+              "output": {
+                "tasks": []
+              },
+              "dynamic": false
+            }
+          ],
+          "finishReason": "tool-calls",
+          "rawFinishReason": "tool_calls",
+          "usage": {
+            "inputTokens": 6758,
+            "inputTokenDetails": {
+              "noCacheTokens": 5222,
+              "cacheReadTokens": 1536
+            },
+            "outputTokens": 445,
+            "outputTokenDetails": {
+              "textTokens": 445,
+              "reasoningTokens": 0
+            },
+            "totalTokens": 7203,
+            "raw": {
+              "prompt_tokens": 6758,
+              "completion_tokens": 445,
+              "prompt_cache_hit_tokens": 1536,
+              "prompt_cache_miss_tokens": 5222,
+              "total_tokens": 7203
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 112.86817336589488,
+            "effectiveTotalTokensPerSecond": 1826.9425904596424,
+            "stepTimeMs": 3943.50475,
+            "responseTimeMs": 3942.652624999995,
+            "toolExecutionMs": {
+              "call_00_VWbaUqGq0vVQ7V77dbPz3434": 0.07999999999447027
+            }
+          },
+          "warnings": [
+            {
+              "type": "compatibility",
+              "feature": "responseFormat JSON schema",
+              "details": "JSON response schema is injected into the system message."
+            }
+          ],
+          "request": {},
+          "response": {
+            "id": "9e586e89-0da6-493c-b57d-9a8d7b21fa46",
+            "timestamp": "2026-08-04T16:38:31.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Tue, 04 Aug 2026 16:38:31 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "15176702312462110724",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "206bf2b58bd05a1dd9b032eb4604a810"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+                    "toolName": "task_list",
+                    "input": {}
+                  },
+                  {
+                    "type": "text",
+                    "text": "                                                                                                                                                                                                                                                                                                                                                                                                                                   "
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_00_VWbaUqGq0vVQ7V77dbPz3434",
+                    "toolName": "task_list",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "tasks": []
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 1536,
+              "promptCacheMissTokens": 5222
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        },
+        {
+          "callId": "call-B6lkLRU5CKIC0VDwnP5IVlbp",
+          "stepNumber": 2,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "text",
+              "text": "                                                                                                                                                                                                                                           {\n  \"decision\": \"Scenario A is a correction; Scenario B is a task switch; Scenario C is ordinary continuation.\",\n  \"findings\": [\n    {\n      \"claim\": \"Scenario A is a correction because the Principal revises a hard boundary (scope) and invalidates a prior implementation assumption of a still-active task.\",\n      \"evidence\": [\n        \"practice-cycle/SKILL.md lines 44-50: 'When a Principal message changes the active target, hard boundary, concept relation, authority, or acceptance condition, treat the former reading as invalid before another mutation. State the rejected assumption, new invariant, affected surfaces, and smallest disconfirming next probe.'\",\n        \"practice-cycle/workbench-hooks.ts lines 88-96: 'Only if it revises an assumption or constraint of a still-active task—including its target, hard boundary, concept relation, authority, or acceptance condition—run practice-cycle continue and record one correction.'\"\n      ],\n      \"consequence\": \"The blog UI task is still active, and the Principal's message changes the scope boundary and invalidates the prior implementation assumption. The former reading must be treated as invalid, and a correction receipt should be recorded with --rejected-assumption, --new-invariant, --affected-surface, and --next-probe.\"\n    },\n    {\n      \"claim\": \"Scenario B is a task switch, not a correction, because the prior task was completed and handed off before the new reevaluation began.\",\n      \"evidence\": [\n        \"practice-cycle/workbench-hooks.ts lines 96-98: 'Starting a new task after the prior task was completed, paused, or handed off is not a correction. Otherwise proceed without ceremony.'\",\n        \"practice-cycle/CHANGELOG.md lines 31-34: '[workbench.intervention] Distinguish task switches from corrections — the intervention reminder records a correction only when a Principal message revises an assumption or constraint of a still-active task.'\"\n      ],\n      \"consequence\": \"The DeepSeek model reevaluation is a new task started after the blog UI task was completed and handed off. No correction receipt is recorded; the new task proceeds as a fresh task switch.\"\n    },\n    {\n      \"claim\": \"Scenario C is ordinary continuation because the Principal's 'continue' message leaves the active reevaluation decision unchanged.\",\n      \"evidence\": [\n        \"practice-cycle/SKILL.md lines 50-52: 'Do not create a receipt for an ordinary execute, continue, or formatting request that leaves the active decision unchanged.'\",\n        \"practice-cycle/workbench-hooks.ts lines 88-90: 'Only if it revises an assumption or constraint of a still-active task... run practice-cycle continue and record one correction.'\"\n      ],\n      \"consequence\": \"The reevaluation remains active and unchanged; 'continue' is an ordinary execute/continue request. No correction receipt is created, and no decision-changing inheritance is recorded.\"\n    }\n  ],\n  \"uncertainties\": [\n    \"Whether the blog UI task in Scenario A had any runtime receipt binding installed at the time of the Principal message; if so, the correction fields should also be recorded there, but the binding is optional evidence and never changes the skill's judgment or human authority (SKILL.md lines 48-50).\",\n    \"Whether the DeepSeek reevaluation in Scenario B later revises an assumption of its own still-active task; that would be a separate correction event, not part of the initial task switch.\"\n  ],\n  \"recommendedNextStep\": \"For Scenario A, record the correction with the rejected assumption (authoring backend in scope), new invariant (authoring backend out of scope), affected surfaces (blog UI implementation), and smallest disconfirming next probe. For Scenario B, proceed with the DeepSeek reevaluation as a new task without a correction receipt. For Scenario C, continue the reevaluation without ceremony and without creating a receipt.\"\n}"
+            }
+          ],
+          "finishReason": "stop",
+          "rawFinishReason": "stop",
+          "usage": {
+            "inputTokens": 6805,
+            "inputTokenDetails": {
+              "noCacheTokens": 149,
+              "cacheReadTokens": 6656
+            },
+            "outputTokens": 1049,
+            "outputTokenDetails": {
+              "textTokens": 1049,
+              "reasoningTokens": 0
+            },
+            "totalTokens": 7854,
+            "raw": {
+              "prompt_tokens": 6805,
+              "completion_tokens": 1049,
+              "prompt_cache_hit_tokens": 6656,
+              "prompt_cache_miss_tokens": 149,
+              "total_tokens": 7854
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 120.06765967142354,
+            "effectiveTotalTokensPerSecond": 898.9622488649766,
+            "stepTimeMs": 8736.924250000004,
+            "responseTimeMs": 8736.740624999999,
+            "toolExecutionMs": {}
+          },
+          "warnings": [
+            {
+              "type": "compatibility",
+              "feature": "responseFormat JSON schema",
+              "details": "JSON response schema is injected into the system message."
+            }
+          ],
+          "request": {},
+          "response": {
+            "id": "246fb012-7dd0-40a4-a300-bc0409d27c8c",
+            "timestamp": "2026-08-04T16:38:35.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Tue, 04 Aug 2026 16:38:35 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "3576050948302260685",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "6be6a3bd41bd726201ccb80b6090d812"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "                                                                                                                                                                                                                                           {\n  \"decision\": \"Scenario A is a correction; Scenario B is a task switch; Scenario C is ordinary continuation.\",\n  \"findings\": [\n    {\n      \"claim\": \"Scenario A is a correction because the Principal revises a hard boundary (scope) and invalidates a prior implementation assumption of a still-active task.\",\n      \"evidence\": [\n        \"practice-cycle/SKILL.md lines 44-50: 'When a Principal message changes the active target, hard boundary, concept relation, authority, or acceptance condition, treat the former reading as invalid before another mutation. State the rejected assumption, new invariant, affected surfaces, and smallest disconfirming next probe.'\",\n        \"practice-cycle/workbench-hooks.ts lines 88-96: 'Only if it revises an assumption or constraint of a still-active task—including its target, hard boundary, concept relation, authority, or acceptance condition—run practice-cycle continue and record one correction.'\"\n      ],\n      \"consequence\": \"The blog UI task is still active, and the Principal's message changes the scope boundary and invalidates the prior implementation assumption. The former reading must be treated as invalid, and a correction receipt should be recorded with --rejected-assumption, --new-invariant, --affected-surface, and --next-probe.\"\n    },\n    {\n      \"claim\": \"Scenario B is a task switch, not a correction, because the prior task was completed and handed off before the new reevaluation began.\",\n      \"evidence\": [\n        \"practice-cycle/workbench-hooks.ts lines 96-98: 'Starting a new task after the prior task was completed, paused, or handed off is not a correction. Otherwise proceed without ceremony.'\",\n        \"practice-cycle/CHANGELOG.md lines 31-34: '[workbench.intervention] Distinguish task switches from corrections — the intervention reminder records a correction only when a Principal message revises an assumption or constraint of a still-active task.'\"\n      ],\n      \"consequence\": \"The DeepSeek model reevaluation is a new task started after the blog UI task was completed and handed off. No correction receipt is recorded; the new task proceeds as a fresh task switch.\"\n    },\n    {\n      \"claim\": \"Scenario C is ordinary continuation because the Principal's 'continue' message leaves the active reevaluation decision unchanged.\",\n      \"evidence\": [\n        \"practice-cycle/SKILL.md lines 50-52: 'Do not create a receipt for an ordinary execute, continue, or formatting request that leaves the active decision unchanged.'\",\n        \"practice-cycle/workbench-hooks.ts lines 88-90: 'Only if it revises an assumption or constraint of a still-active task... run practice-cycle continue and record one correction.'\"\n      ],\n      \"consequence\": \"The reevaluation remains active and unchanged; 'continue' is an ordinary execute/continue request. No correction receipt is created, and no decision-changing inheritance is recorded.\"\n    }\n  ],\n  \"uncertainties\": [\n    \"Whether the blog UI task in Scenario A had any runtime receipt binding installed at the time of the Principal message; if so, the correction fields should also be recorded there, but the binding is optional evidence and never changes the skill's judgment or human authority (SKILL.md lines 48-50).\",\n    \"Whether the DeepSeek reevaluation in Scenario B later revises an assumption of its own still-active task; that would be a separate correction event, not part of the initial task switch.\"\n  ],\n  \"recommendedNextStep\": \"For Scenario A, record the correction with the rejected assumption (authoring backend in scope), new invariant (authoring backend out of scope), affected surfaces (blog UI implementation), and smallest disconfirming next probe. For Scenario B, proceed with the DeepSeek reevaluation as a new task without a correction receipt. For Scenario C, continue the reevaluation without ceremony and without creating a receipt.\"\n}"
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 6656,
+              "promptCacheMissTokens": 149
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

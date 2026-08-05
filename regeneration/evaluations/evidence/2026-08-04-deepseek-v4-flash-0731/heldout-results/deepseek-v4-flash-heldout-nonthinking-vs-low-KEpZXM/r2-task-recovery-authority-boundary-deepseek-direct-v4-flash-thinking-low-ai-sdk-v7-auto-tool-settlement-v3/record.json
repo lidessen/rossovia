@@ -1,0 +1,234 @@
+{
+  "version": "work-cell.run.v4",
+  "runId": "aac7a64a-8009-4cd9-95aa-b667a2b74767",
+  "cellId": "task-recovery-authority-boundary-deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v3-r2",
+  "driver": {
+    "adapter": "ai-sdk-v7",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "pricing": {
+      "inputPerMillionUsd": 0.14,
+      "cachedInputPerMillionUsd": 0.0028,
+      "outputPerMillionUsd": 0.28,
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "revision": "2026-07-31"
+    }
+  },
+  "startedAt": "2026-08-04T23:42:48.484Z",
+  "finishedAt": "2026-08-04T23:42:54.496Z",
+  "durationMs": 6012,
+  "status": "failed",
+  "input": {
+    "id": "task-recovery-authority-boundary-deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v3-r2",
+    "intent": "A locally Principal-attributed task has exact project, Mission, and Worktree context plus a latest execution link. Its one-use launch receipt has a matching canonical consumption claim. The linked current turn is interrupted, the same runner is live, and the runtime declares resume support. The UI proposes three actions together: recover that execution, immediately mark the local task accepted, and reuse the consumed receipt to launch a replacement runner if recovery stalls. Decide which actions are supportable, the final revalidation each supported action needs, what state each may change, and what each action does not prove.",
+    "workspace": {
+      "root": "/private/tmp/rossovia-deepseek-v4-flash-refresh/regeneration/evaluations/evidence/2026-08-04-deepseek-v4-flash-0731/heldout-results/deepseek-v4-flash-heldout-nonthinking-vs-low-KEpZXM/r2-task-recovery-authority-boundary-deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v3/workspace",
+      "readPaths": [
+        "task-runtime/AGENTS.md",
+        "task-runtime/decision-050.md",
+        "task-runtime/decision-053.md"
+      ],
+      "writePaths": [],
+      "excludePaths": [],
+      "allowedCommands": []
+    },
+    "instructions": [
+      "Inspect every supplied source and apply its ownership and authority boundaries to each proposed action.",
+      "Separate retained evidence, launch authority, runtime recovery, local task lifecycle, and broader product or integration acceptance.",
+      "Cite repository-relative paths and line numbers for every material permission, refusal, state transition, and non-proof.",
+      "Return the smallest supported action sequence; do not invent missing authentication or runtime evidence."
+    ],
+    "capabilities": [
+      "read",
+      "architecture-judgment",
+      "authority-boundary-reconstruction"
+    ],
+    "context": [],
+    "capabilitiesRequired": [
+      "read"
+    ],
+    "acceptance": [
+      "All three proposed actions receive a separate source-grounded judgment",
+      "The exact recovery selector and final revalidation are explicit",
+      "State ownership and non-proofs are separated across Workbench and runtime",
+      "The recommendation withholds unsupported launch and acceptance authority"
+    ],
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "claim": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "consequence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "claim",
+              "evidence",
+              "consequence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendedNextStep": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "findings",
+        "uncertainties",
+        "recommendedNextStep"
+      ],
+      "additionalProperties": false
+    },
+    "budget": {
+      "maxSteps": 10,
+      "estimatedTokens": 14000,
+      "estimatedTokensTolerance": 0.75,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 10000
+    },
+    "executionProfile": {
+      "id": "deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v3",
+      "version": "execution-profile.v1",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "contextPolicy": "frozen-heldout-repository-fixture-v1",
+      "toolSurface": "read-only-files-plus-verified-schema-tool-v3",
+      "parallelism": "serial",
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    }
+  },
+  "finalText": "",
+  "artifacts": [],
+  "verification": {
+    "passed": false,
+    "terminal": {
+      "passed": false,
+      "required": [],
+      "called": []
+    }
+  },
+  "workspaceDiff": {
+    "added": [],
+    "changed": [],
+    "removed": []
+  },
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0,
+    "cachedInputTokens": 0
+  },
+  "usageByPhase": {
+    "preparation": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    },
+    "execution": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    }
+  },
+  "executionObservation": {
+    "executionProfileId": "deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v3",
+    "priceRevision": "deepseek-public-api-2026-07-31"
+  },
+  "estimatedCostUsd": 0,
+  "estimateBasis": "estimated from token usage using https://api-docs.deepseek.com/quick_start/pricing",
+  "trace": [
+    {
+      "at": "2026-08-04T23:42:48.484Z",
+      "type": "cell.started",
+      "data": {
+        "runId": "aac7a64a-8009-4cd9-95aa-b667a2b74767",
+        "cellId": "task-recovery-authority-boundary-deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v3-r2",
+        "driver": {
+          "adapter": "ai-sdk-v7",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "pricing": {
+            "inputPerMillionUsd": 0.14,
+            "cachedInputPerMillionUsd": 0.0028,
+            "outputPerMillionUsd": 0.28,
+            "source": "https://api-docs.deepseek.com/quick_start/pricing",
+            "revision": "2026-07-31"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-08-04T23:42:48.484Z",
+      "type": "task.tools.projected",
+      "data": {
+        "taskToolSet": "manage",
+        "tools": [
+          "task_list",
+          "task_get",
+          "task_create",
+          "task_update"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-04T23:42:48.486Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-mkDh7WGFMDwvrkp3zHmXUCIR",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 0
+      }
+    },
+    {
+      "at": "2026-08-04T23:42:54.496Z",
+      "type": "cell.error",
+      "data": {
+        "status": "failed",
+        "error": "Failed after 3 attempts. Last error: AI_APICallError: Cannot connect to API: Unable to connect. Is the computer able to access the url?"
+      }
+    },
+    {
+      "at": "2026-08-04T23:42:54.497Z",
+      "type": "cell.finished",
+      "data": {
+        "status": "failed",
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "cachedInputTokens": 0
+        }
+      }
+    }
+  ],
+  "rawSteps": [],
+  "error": "Failed after 3 attempts. Last error: AI_APICallError: Cannot connect to API: Unable to connect. Is the computer able to access the url?"
+}

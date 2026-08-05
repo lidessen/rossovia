@@ -1,0 +1,305 @@
+{
+  "version": "work-cell.model-evaluation.v2",
+  "id": "deepseek-v4-flash-effort-low-vs-high",
+  "fixture": {
+    "root": "fixture",
+    "overlays": []
+  },
+  "outputDir": "effort-results",
+  "profiles": [
+    {
+      "id": "deepseek-direct-v4-flash-thinking-low-ai-sdk-v7-auto-tool-settlement-v2",
+      "route": [
+        {
+          "provider": "deepseek",
+          "credential": {
+            "source": "env",
+            "name": "DEEPSEEK_API_KEY"
+          },
+          "model": "deepseek-v4-flash"
+        }
+      ],
+      "contextPolicy": "frozen-public-repository-fixture-v1",
+      "toolSurface": "read-only-files-plus-thinking-compatible-auto-schema-tool-v2",
+      "declaredInferencePolicy": "thinking=enabled; effort=low; temperature=ignored-by-provider; forced-tool-choice=lowered-to-auto; transport=ai-sdk-v7-generate; structured-output=verified-tool-settlement; max-output-tokens=16000",
+      "adapterPolicy": {
+        "deepseek": {
+          "thinking": "enabled",
+          "reasoningEffort": "low"
+        }
+      },
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    },
+    {
+      "id": "deepseek-direct-v4-flash-thinking-high-ai-sdk-v7-auto-tool-settlement-v2",
+      "route": [
+        {
+          "provider": "deepseek",
+          "credential": {
+            "source": "env",
+            "name": "DEEPSEEK_API_KEY"
+          },
+          "model": "deepseek-v4-flash"
+        }
+      ],
+      "contextPolicy": "frozen-public-repository-fixture-v1",
+      "toolSurface": "read-only-files-plus-thinking-compatible-auto-schema-tool-v2",
+      "declaredInferencePolicy": "thinking=enabled; effort=high; temperature=ignored-by-provider; forced-tool-choice=lowered-to-auto; transport=ai-sdk-v7-generate; structured-output=verified-tool-settlement; max-output-tokens=16000",
+      "adapterPolicy": {
+        "deepseek": {
+          "thinking": "enabled",
+          "reasoningEffort": "high"
+        }
+      },
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    }
+  ],
+  "repetitions": 2,
+  "cases": [
+    {
+      "id": "runtime-reliability-review",
+      "dimension": "seeded code review and reliability judgment",
+      "task": {
+        "intent": "Review the candidate model-evaluation runtime for material conformance with its retained design decision. Report the highest-impact supported finding, its operational consequence, and the smallest correction. Return no finding if the implementation materially conforms.",
+        "workspace": {
+          "readPaths": [
+            "model-evaluation/runtime-candidate.ts",
+            "model-evaluation/design-decision.md"
+          ],
+          "writePaths": [],
+          "excludePaths": [],
+          "allowedCommands": []
+        },
+        "instructions": [
+          "Inspect the supplied implementation and governing decision before concluding.",
+          "Use read_file for the relevant sources and distinguish observed code from inference.",
+          "Return only findings that materially affect the stated reliability question; cite repository-relative paths and line numbers in each evidence item.",
+          "If the evidence is insufficient, state the bounded uncertainty instead of inventing a defect."
+        ],
+        "capabilities": [
+          "read",
+          "code-review",
+          "source-grounded-reasoning"
+        ],
+        "context": [],
+        "capabilitiesRequired": [
+          "read"
+        ],
+        "acceptance": [
+          "The implementation and governing decision are both inspected",
+          "Material claims include source locations and operational consequences",
+          "The recommendation is bounded to the reviewed reliability question"
+        ],
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": "string"
+            },
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "claim": {
+                    "type": "string"
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "consequence": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "claim",
+                  "evidence",
+                  "consequence"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "uncertainties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "recommendedNextStep": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision",
+            "findings",
+            "uncertainties",
+            "recommendedNextStep"
+          ],
+          "additionalProperties": false
+        },
+        "budget": {
+          "maxSteps": 8,
+          "estimatedTokens": 12000,
+          "estimatedTokensTolerance": 0.75,
+          "maxDurationMs": 180000,
+          "maxCommandOutputBytes": 8000
+        }
+      },
+      "referenceCriteria": [
+        "The candidate incorrectly allows judgment when any one trial passed because the validity guard uses some rather than requiring every trial to pass",
+        "The review explains that one unsettled trial must make semantic comparison inconclusive instead of allowing the judge to compare incomplete evidence",
+        "The smallest correction restores the universal all-trials-passed guard without broad redesign",
+        "The finding is grounded in both the candidate implementation and the governing design requirement"
+      ],
+      "rubric": "Prefer a repeated, source-grounded diagnosis of the seeded reliability defect and its fail-closed consequence. Do not reward generic style commentary or unsupported redesign.",
+      "failureClasses": [
+        {
+          "id": "missed-seeded-defect",
+          "description": "Does not identify the material validity-guard regression."
+        },
+        {
+          "id": "fail-open-comparison",
+          "description": "Permits semantic judgment when one or more retained trials are unsettled."
+        },
+        {
+          "id": "ungrounded-review",
+          "description": "States a conclusion without reconstructable source evidence."
+        }
+      ]
+    },
+    {
+      "id": "delegation-workbench-boundary",
+      "dimension": "architecture-bound operating-method judgment",
+      "task": {
+        "intent": "A durable Rossovia task already retains an obligation to compare two independently maintained provider specifications. The current coding harness supports sub-agents, both source investigations are read-only, and the resulting capability note will later have one writer. The maintainer asks how to execute the work now while keeping the durable obligation truthful. Choose and justify the operating topology, state what each layer owns, and identify withheld authority.",
+        "workspace": {
+          "readPaths": [
+            "delegation/AGENTS.md",
+            "delegation/SKILL.md",
+            "delegation/delegation.md"
+          ],
+          "writePaths": [],
+          "excludePaths": [],
+          "allowedCommands": []
+        },
+        "instructions": [
+          "Inspect all supplied governing sources before deciding.",
+          "Apply their boundaries to the concrete request instead of summarizing the files.",
+          "Cite repository-relative paths and line numbers for each material relation.",
+          "Separate required behavior, optional persistent-state support, and withheld authority."
+        ],
+        "capabilities": [
+          "read",
+          "architecture-judgment",
+          "delegation-shaping"
+        ],
+        "context": [],
+        "capabilitiesRequired": [
+          "read"
+        ],
+        "acceptance": [
+          "All governing sources are inspected",
+          "The concrete operating choice distinguishes mechanism from optional persistence",
+          "Ownership, effects, verification, and withheld authority are explicit"
+        ],
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "decision": {
+              "type": "string"
+            },
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "claim": {
+                    "type": "string"
+                  },
+                  "evidence": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1
+                  },
+                  "consequence": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "claim",
+                  "evidence",
+                  "consequence"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "uncertainties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "recommendedNextStep": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "decision",
+            "findings",
+            "uncertainties",
+            "recommendedNextStep"
+          ],
+          "additionalProperties": false
+        },
+        "budget": {
+          "maxSteps": 8,
+          "estimatedTokens": 12000,
+          "estimatedTokensTolerance": 0.75,
+          "maxDurationMs": 180000,
+          "maxCommandOutputBytes": 8000
+        }
+      },
+      "referenceCriteria": [
+        "The request uses native direct sub-agent delegation and does not require initializing Workbench Work Cell Autonomy or another task runtime merely to delegate",
+        "The two independent investigations may run in parallel as read-only contributions while coupled synthesis remains with the Main Agent",
+        "Any shared mutable effect has one writer and a reviewer remains non-producing",
+        "The Main Agent reconstructs returned claims against authoritative sources and retains ownership of the whole verification and final response",
+        "Workbench is optional only when separately owned persistent obligation or runtime state is actually requested and delegation does not grant acceptance merge or publication authority"
+      ],
+      "rubric": "Prefer the smallest operating method that correctly applies the repository's direct-delegation boundary, effect ownership, reconstruction duty, and authority limits.",
+      "failureClasses": [
+        {
+          "id": "mandatory-workbench",
+          "description": "Invents Workbench or Work Cell initialization as a prerequisite to native delegation."
+        },
+        {
+          "id": "shared-writer",
+          "description": "Allows multiple delegates to mutate one shared contract or effect without a single owner."
+        },
+        {
+          "id": "abdicated-synthesis",
+          "description": "Treats delegated returns as accepted whole-task conclusions without Main reconstruction."
+        }
+      ]
+    }
+  ],
+  "judge": {
+    "route": [
+      {
+        "provider": "kimi-coding",
+        "credential": {
+          "source": "env",
+          "name": "KIMI_CODE_API_KEY"
+        },
+        "model": "k3"
+      }
+    ]
+  },
+  "evidenceRole": "development"
+}

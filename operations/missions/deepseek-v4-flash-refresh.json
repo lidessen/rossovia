@@ -1,0 +1,28 @@
+{
+  "version": "mission-record.v1",
+  "id": "deepseek-v4-flash-refresh",
+  "title": "DeepSeek V4 Flash official-route capability refresh",
+  "sources": [
+    "principal-message:2026-08-04-deepseek-v4-flash-refresh",
+    "regeneration/evaluations/2026-08-04-deepseek-v4-flash-refresh.md",
+    "regeneration/evaluations/evidence/2026-08-04-deepseek-v4-flash-0731/README.md"
+  ],
+  "createdAt": "2026-08-04T16:27:03Z",
+  "updatedAt": "2026-08-05T01:28:12Z",
+  "mainline": {
+    "contradiction": "The repaired held-out field falsified durable admission under the 180-second read-only envelope: low repeatedly failed to settle the complex migration review, while non-thinking settled every trial but did not produce acceptance-grade migration verdicts. Both handled the narrower recovery boundary, and the exact Kimi K3 judge route passed a synthetic control but failed to settle the representative long comparison. The Principal accepted explicit no-admission for both profiles on 2026-08-05; no provider preference changed.",
+    "acceptance": [
+      "The named independent review is retained beside the frozen held-out criteria and completed run record, including the skipped migration comparison and failed long-input judge settlement.",
+      "The Principal explicitly accepted no admission for both profiles; no provider preference changed.",
+      "Any later reopening uses new accepted tasks, a predeclared duration envelope, and both synthetic and representative evidence-volume judge controls rather than tuning or rerunning this held-out field."
+    ],
+    "status": "settled",
+    "closureSources": [
+      "principal-message:2026-08-05-accept-no-admission",
+      "regeneration/evaluations/2026-08-04-deepseek-v4-flash-refresh.md",
+      "regeneration/evaluations/evidence/2026-08-04-deepseek-v4-flash-0731/heldout-independent-review.md"
+    ]
+  },
+  "branches": [],
+  "currentFocus": "mainline"
+}
