@@ -15,8 +15,8 @@ import { resolveProject } from "./resolve";
 import { addRoots, scanRoots } from "./roots";
 import { applySetup, selectSetupModules, setupStatus } from "./setup";
 import {
-  cwdFromStatusInput,
   renderStatusLine,
+  statusLineHostContext,
   statusLineInput,
   statusLineProjection,
 } from "./statusline";
@@ -112,8 +112,8 @@ try {
   } else if (args[0] === "statusline") {
     const options = parseStatusLineOptions(args.slice(1));
     const input = statusLineInput(process.stdin.isTTY);
-    const cwd = cwdFromStatusInput(input, options.cwd);
-    console.log(renderStatusLine(statusLineProjection(home, cwd)));
+    const host = statusLineHostContext(input, options.cwd);
+    console.log(renderStatusLine(statusLineProjection(home, host.cwd, host.projectName)));
   } else {
     throw new Error("invalid command; run rossovia --help");
   }

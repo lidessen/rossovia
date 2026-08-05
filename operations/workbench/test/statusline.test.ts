@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -38,108 +38,49 @@ function workbench(home: string, ...args: string[]) {
   return command([process.execPath, cli, "--home", home, ...args]);
 }
 
-function createTask(
-  home: string,
-  sourceRevision: number,
-  title: string,
-  actor: "principal" | "agent" | "external",
-  context: string[] = [],
-) {
-  return workbench(
-    home,
-    "task",
-    "create",
-    "--title",
-    title,
-    "--objective",
-    title,
-    "--accept",
-    `${title} is visible in the correct queue`,
-    "--next-actor",
-    actor,
-    "--source-ref",
-    "principal:test",
-    "--expected-source-revision",
-    String(sourceRevision),
-    ...context,
-  );
+function createRepository(root: string, name: string): string {
+  const repository = join(root, name);
+  mkdirSync(repository, { recursive: true });
+  git(repository, "init");
+  git(repository, "config", "user.name", "Rossovia Test");
+  git(repository, "config", "user.email", "rossovia@example.test");
+  git(repository, "remote", "add", "origin", `https://example.test/team/${name}.git`);
+  writeFileSync(join(repository, "README.md"), `# ${name}\n`, "utf8");
+  git(repository, "add", "README.md");
+  git(repository, "commit", "-m", "initial");
+  return repository;
 }
 
 describe("Rossovia status-line projection", () => {
-  test("shows the verified Git locus and only current-worktree task queues without mutating their source", () => {
-    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-"));
+  test("uses the host session name so equal workbench cwd values can show different handled projects", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-session-"));
     temporaryRoots.push(temporary);
     const home = join(temporary, "home");
-    const repository = join(temporary, "alpha");
-    const nested = join(repository, "nested");
-    mkdirSync(nested, { recursive: true });
-    git(repository, "init");
-    git(repository, "config", "user.name", "Rossovia Test");
-    git(repository, "config", "user.email", "rossovia@example.test");
-    git(repository, "remote", "add", "origin", "https://example.test/team/alpha.git");
-    writeFileSync(join(repository, "README.md"), "# Alpha\n", "utf8");
-    git(repository, "add", "README.md");
-    git(repository, "commit", "-m", "initial");
+    const workbenchRoot = createRepository(temporary, "rossovia");
+    expect(workbench(home, "init").exitCode).toBe(0);
 
+    const first = command(
+      [process.execPath, cli, "--home", home, "statusline", "claude"],
+      { stdin: JSON.stringify({ session_name: "meowask", workspace: { current_dir: workbenchRoot } }) },
+    );
+    const second = command(
+      [process.execPath, cli, "--home", home, "statusline", "claude"],
+      { stdin: JSON.stringify({ session_name: "agent-era-blog", workspace: { current_dir: workbenchRoot } }) },
+    );
+
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(first.stdout.trim()).toBe("meowask");
+    expect(second.stdout.trim()).toBe("agent-era-blog");
+  });
+
+  test("falls back to a verified registered project when the host has no session name", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-project-"));
+    temporaryRoots.push(temporary);
+    const home = join(temporary, "home");
+    const repository = createRepository(temporary, "alpha");
     expect(workbench(home, "init").exitCode).toBe(0);
     expect(workbench(home, "register", repository, "--id", "repo:alpha", "--alias", "alpha").exitCode).toBe(0);
-    const context = ["--project", "repo:alpha", "--worktree", repository];
-    expect(createTask(home, 0, "Principal decision", "principal", context).exitCode).toBe(0);
-    expect(createTask(home, 1, "Agent implementation", "agent", context).exitCode).toBe(0);
-    expect(createTask(home, 2, "Unbound external task", "external").exitCode).toBe(0);
-    writeFileSync(join(repository, "change.txt"), "dirty\n", "utf8");
-
-    const taskSource = join(home, "state", "tasks.json");
-    const before = readFileSync(taskSource, "utf8");
-    const result = command(
-      [process.execPath, cli, "--home", home, "statusline", "claude"],
-      { stdin: JSON.stringify({ cwd: "/wrong", workspace: { current_dir: nested } }) },
-    );
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe(
-      `Rossovia · repo:alpha · ${realpathSync(repository)} · ${git(repository, "branch", "--show-current")} * · 待我 1 · 待 Agent 1`,
-    );
-    expect(readFileSync(taskSource, "utf8")).toBe(before);
-  });
-
-  test("degrades visibly when task state or host input is unavailable", () => {
-    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-degraded-"));
-    temporaryRoots.push(temporary);
-    const repository = join(temporary, "repo");
-    mkdirSync(repository, { recursive: true });
-    git(repository, "init");
-
-    const missingHome = command([
-      process.execPath,
-      cli,
-      "--home",
-      join(temporary, "missing-home"),
-      "statusline",
-      "--cwd",
-      repository,
-    ]);
-    expect(missingHome.exitCode).toBe(0);
-    expect(missingHome.stdout).toContain("任务源不可用");
-
-    const malformed = command(
-      [process.execPath, cli, "--home", join(temporary, "missing-home"), "statusline", "claude"],
-      { cwd: repository, stdin: "not-json" },
-    );
-    expect(malformed.exitCode).toBe(0);
-    expect(malformed.stdout).toContain(`${repository} ·`);
-  });
-
-  test("labels aggregate queues as global when the current Git locus is not registered", () => {
-    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-global-"));
-    temporaryRoots.push(temporary);
-    const home = join(temporary, "home");
-    const repository = join(temporary, "unregistered");
-    mkdirSync(repository, { recursive: true });
-    git(repository, "init");
-    expect(workbench(home, "init").exitCode).toBe(0);
-    expect(createTask(home, 0, "Global principal task", "principal").exitCode).toBe(0);
-    expect(createTask(home, 1, "Global agent task", "agent").exitCode).toBe(0);
 
     const result = command([
       process.execPath,
@@ -151,21 +92,76 @@ describe("Rossovia status-line projection", () => {
       repository,
     ]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("· 全局 · 待我 1 · 待 Agent 1");
+    expect(result.stdout.trim()).toBe("repo:alpha");
   });
 
-  test("uses the supported host-specific configuration surfaces", () => {
+  test("degrades to one short directory label when host input and registration are unavailable", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-fallback-"));
+    temporaryRoots.push(temporary);
+    const repository = createRepository(temporary, "fallback");
+    const result = command(
+      [process.execPath, cli, "--home", join(temporary, "missing-home"), "statusline", "claude"],
+      { cwd: repository, stdin: "not-json" },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("fallback");
+    expect(result.stdout).not.toContain(repository);
+  });
+
+  test("never emits an absolute path from a host name or root-directory fallback", () => {
+    const named = command(
+      [process.execPath, cli, "--home", "/missing", "statusline", "claude"],
+      { stdin: JSON.stringify({ session_name: "/Users/alice/secret-project", cwd: "/" }) },
+    );
+    const root = command([
+      process.execPath,
+      cli,
+      "--home",
+      "/missing",
+      "statusline",
+      "--cwd",
+      "/",
+    ]);
+    expect(named.exitCode).toBe(0);
+    expect(named.stdout.trim()).toBe("secret-project");
+    expect(root.exitCode).toBe(0);
+    expect(root.stdout.trim()).toBe("root");
+  });
+
+  test("sanitizes a path-shaped registered project identity before rendering", () => {
+    const temporary = mkdtempSync(join(tmpdir(), "rossovia-statusline-safe-project-"));
+    temporaryRoots.push(temporary);
+    const home = join(temporary, "home");
+    const repository = createRepository(temporary, "registered");
+    expect(workbench(home, "init").exitCode).toBe(0);
+    expect(workbench(home, "register", repository, "--id", "/Users/alice/registered").exitCode).toBe(0);
+    const result = command([
+      process.execPath,
+      cli,
+      "--home",
+      home,
+      "statusline",
+      "--cwd",
+      repository,
+    ]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("registered");
+  });
+
+  test("uses only project identity on the supported host-specific surfaces", () => {
     const claude = JSON.parse(readFileSync(join(repositoryRoot, ".claude", "settings.json"), "utf8"));
     expect(claude.statusLine).toEqual({
       type: "command",
       command: "\"$(git rev-parse --show-toplevel)/operations/workbench/rossovia\" statusline claude",
     });
+    expect(claude.subagentStatusLine).toBeUndefined();
 
     const codex = Bun.TOML.parse(
       readFileSync(join(repositoryRoot, ".codex", "config.toml"), "utf8"),
-    ) as { tui: { status_line: string[] } };
+    ) as { tui: { status_line: string[]; terminal_title: string[] } };
     expect(codex.tui).toEqual({
-      status_line: ["project-name", "current-dir", "git-branch", "task-progress"],
+      status_line: ["thread-title"],
+      terminal_title: ["thread"],
     });
   });
 });

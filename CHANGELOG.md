@@ -7,6 +7,16 @@ entry instead of rewriting the applied Git interval.
 
 ## 2026-08-04
 
+### [workbench.statusline] Make the handled project the only persistent identity
+
+- Action: `none`
+- Change: Claude displays its session name with a registered-project/basename
+  fallback; Codex displays only the native thread name in the footer and
+  terminal tab. Task, runtime, and multi-Agent detail remain on their owning
+  surfaces.
+- Verify: name two Claude/Codex sessions for different projects while both use
+  the Rossovia root; confirm each footer and Codex tab shows only its own name.
+
 ### [workbench.statusline] Project the current work locus through host-native surfaces
 
 - Action: `none`
