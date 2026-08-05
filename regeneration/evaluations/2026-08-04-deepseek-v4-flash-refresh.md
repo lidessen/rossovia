@@ -118,7 +118,11 @@ That proves the repaired private-tool protocol can settle, not that it is robust
 to long real evidence. In the confirmation run, the migration comparison was
 correctly skipped because low had unsettled trials; K3 then failed to call the
 settlement tool after one recovery on the otherwise complete recovery-boundary
-comparison. No blind preference is manufactured. The worker records and a
+comparison. That historical record reports zero judge usage because the
+pre-fix failure path discarded the two unsettled attempts; it is not evidence
+that the provider calls consumed no tokens. The repaired path now retains both
+attempts and their usage while still returning an inconclusive judgment. No
+blind preference is manufactured. The worker records and a
 named independent review therefore carry the semantic assessment, while the
 automated judge remains absent for this field. The
 [named independent read-only review](evidence/2026-08-04-deepseek-v4-flash-0731/heldout-independent-review.md)

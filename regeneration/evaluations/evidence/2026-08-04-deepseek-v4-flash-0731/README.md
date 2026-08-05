@@ -52,8 +52,10 @@ The remaining trials reached the 180-second boundary. The synthesized decision
 and reopening conditions are in the
 [capability refresh](../../2026-08-04-deepseek-v4-flash-refresh.md).
 
-The evaluation records predate functional fingerprint projection and therefore
-retain empty fingerprint summaries. The later
+The baseline and inference-development records predate functional fingerprint
+projection and therefore retain empty fingerprint summaries. The held-out
+confirmation records use the repaired path and retain one opaque fingerprint
+across the observed runs. The earlier
 [capture probe](fingerprint-capture-probe.md) verifies the repaired provider
 metadata path without retroactively rewriting those records or treating the
 opaque value as named-revision proof.

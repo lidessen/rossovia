@@ -253,6 +253,51 @@ test("model evaluation judge retries one natural finish before failing settlemen
   expect(result.raw).toMatchObject({ attempts: [{ attempt: 1 }, { attempt: 2 }] });
 });
 
+test("model evaluation judge retains failed settlement attempts and usage", async () => {
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      return modelResponse([{
+        type: "text",
+        text: `Unsettled comparison attempt ${calls}.`,
+      }], "stop");
+    },
+  });
+  const judge = new AiSdkModelEvaluationJudge({
+    route: [{
+      provider: "kimi-coding",
+      credential: { source: "env", name: "KIMI_API_KEY" },
+      model: "kimi-for-coding",
+    }],
+    kimiApiKey: "not-used",
+  });
+  Object.defineProperty(judge, "model", { value: model });
+
+  const result = await judge.judge({
+    intent: "Compare two candidates.",
+    referenceCriteria: ["The conclusion is grounded in evidence.txt"],
+    rubric: "Do not infer missing evidence.",
+    failureClasses: [],
+    a: { label: "A", records: [] },
+    b: { label: "B", records: [] },
+  });
+
+  expect(calls).toBe(2);
+  expect(result.judgement).toMatchObject({
+    preferred: "inconclusive",
+    acceptance: [{ a: "unknown", b: "unknown" }],
+  });
+  expect(result.usage.totalTokens).toBe(4);
+  expect(result.raw).toMatchObject({
+    judgeError: "model-evaluation judge did not call submit_judgement after one recovery",
+    attempts: [
+      { attempt: 1, text: "Unsettled comparison attempt 1." },
+      { attempt: 2, text: "Unsettled comparison attempt 2." },
+    ],
+  });
+});
+
 test("model evaluation does not project a driver declaration as selected route evidence", async () => {
   const root = await fixture();
   const record = await runModelEvaluation(

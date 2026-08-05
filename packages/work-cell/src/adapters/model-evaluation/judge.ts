@@ -163,7 +163,23 @@ export class AiSdkModelEvaluationJudge implements ModelEvaluationJudge {
     }
 
     if (!judgement) {
-      throw new Error("model-evaluation judge did not call submit_judgement after one recovery");
+      const judgeError = "model-evaluation judge did not call submit_judgement after one recovery";
+      return {
+        descriptor: this.descriptor,
+        judgement: {
+          preferred: "inconclusive",
+          acceptance: request.referenceCriteria.map((condition) => ({
+            condition,
+            a: "unknown",
+            b: "unknown",
+            evidence: [],
+          })),
+          findings: [`comparison judge failed: ${judgeError}`],
+          evidence: [],
+        },
+        usage,
+        raw: { judgeError, attempts },
+      };
     }
     assertAcceptanceCoverage(judgement, request.referenceCriteria);
     return {
