@@ -1,7 +1,7 @@
 # 联想激活图：关系可读性与两阶段 recall 实验报告
 
 状态：`probe`  
-执行日期：第一轮 2026-08-05，第二轮 2026-08-06（America/Los_Angeles）
+执行日期：第一轮 2026-08-05，第二、三轮 2026-08-06（America/Los_Angeles）
 
 执行画像：OpenCode 1.18.13，`opencode-go/qwen3.7-plus`，每次新 session，默认模型
 variant，`--pure --format json`，只附加一种表示，不请求文件系统或工具。
@@ -105,8 +105,13 @@ provenance boundary 与 copy primitive；这也说明相关来源 gold 与 claim
 均选对结构化 proposition。** 它不支持稳定的 graph-over-search 优势，也没有验证完成版引用
 grounding、模型级视觉能力或一般性的成本优势。
 
-v2 候选现已在 `fixtures/recall-v2/` 另行冻结，但尚未调用外部模型。它没有重算 v1 输出，
-也不改变本报告上面的原始分数。新引用合同是：
+## 第三轮：v2 引用合同与新题确认
+
+v2 在 revision `9d73feddccc615ddb76cdad9f8fe6bc07eb70847` 冻结，并在该 clean
+revision 上执行一次旧题 development treatment；确认轮在已提交 development evidence 的
+revision `5a81f519958b7d824feb4e1c679d46237170d79f` 上执行。fixture、runner、contract、
+graph/search 与 worker profile identity 在两轮保持相同。v2 没有重算 v1 输出，也不改变
+本报告上面的原始分数。新引用合同是：
 
 1. 每个可引用段落提供独立、不带 path 或展示文本的 opaque `anchorId`；
 2. evaluator 把“检索相关来源集合”“每个 claim 的必要 evidence group”和“允许的支持来源”
@@ -117,12 +122,58 @@ v2 候选现已在 `fixtures/recall-v2/` 另行冻结，但尚未调用外部模
    question-held-out confirmation，各条件重复两次、反转题序与 condition-first 位置后再讨论
    重复性。
 
-新题仍复用同一批 12 个 passage、概念图和执行画像，所以它们不是 held-out corpus/graph，
-更不是跨模型确认。按 v1 的实际配对费用外推，development 预计约 `$0.33`，confirmation
-预计 `$0.43–$0.45`；在获得新的外部调用与费用授权之前，这只是预算估算。
+### Development gate
 
-第二轮没有证伪联想图候选，因为 image 在两个配对 case 上 recall@5 更高，而且平均读取 bytes
-没有更差；但它也远未达到可采用结论。
+旧 Q1–Q6 各条件一次，共 12 条 route→answer 链路。12/12 route 与 answer 均可解析，没有
+exit、event parse、tool protocol 或 unknown-anchor failure；两个条件合计 24/24 proposition
+key 正确。image/search 的 grounded success 都为 4/6。image 的 citation
+precision/coverage 为 0.905/1.000，search 为 0.882/0.867；未 grounded 的 4 条分别来自
+真正的 route miss 或额外 unsupported citation，而不是 v1 的 anchor 合同歧义。因此预注册的
+“合同可用才进入确认” gate 通过。development 成本为 `$0.30989986`。
+
+### Question-held-out confirmation
+
+4 个未参与合同修正的新题，各条件串行重复两次；第二次反转题序并翻转 condition-first
+位置。共 16 条 route→answer 链路，全部正常完成；没有 route/answer exit failure、event
+parse failure、tool protocol failure 或 unknown anchor。结果如下：
+
+| 条件 | recall@1 / @3 / @5 | all relevant @3 / @5 | MRR | answer | citation precision / coverage | grounded | 成本 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| image graph | 0.438 / 0.688 / 0.938 | 0.500 / 0.875 | 0.671 | 16/16 | 0.810 / 0.944 | 5/8 | $0.21907430 |
+| BM25 search | 0.688 / 0.875 / 1.000 | 0.750 / 1.000 | 0.917 | 16/16 | 1.000 / 0.889 | 6/8 | $0.21017340 |
+
+image 全链路 stage duration 合计 298.2 秒，search 为 245.5 秒；这不是受控的纯模型
+latency 基准，但在当前执行画像里 image 仍更慢且略贵。两边所有 proposition key 都正确，
+说明主要区分发生在路由和引用，而非结构化答案选择。
+
+逐题重复揭示了不同失败层：
+
+- `V2-Q1`：两个条件两次都 grounded；search 路由稳定，image 路由有变化但 top-5 足够；
+- `V2-Q2`：search 两次都 grounded；image 两次都失败。第一次漏掉 contradicts 证据且引用
+  unsupported passage，第二次取全相关来源却额外引用错误 passage；
+- `V2-Q3`：search 两次都 grounded；image 第一次 grounded，第二次在正确 passage 外又引了
+  同来源错误 anchor，precision 降低；
+- `V2-Q4`：image 两次都 grounded；search 两次都正确路由、正确回答且 precision=1。它已在
+  C1 引用 error-return 前 entry 已写入的 passage，却没有把该 passage 同时绑定到需要证明完整
+  operation order 的 C2；C2 只引用 event 未记录 passage，因此 coverage 为 2/3。
+
+因此两次重复没有证明一般意义的稳定性，却足以显示 Q2 image failure 与 Q4 search coverage
+failure 不是单次偶然。Q4 也直接证明：perfect top-5 retrieval 不保证多证据答案完整 grounding。
+
+### 第三轮结论
+
+本轮支持的最强表述是：**在同一 Shilu curated corpus、同一合成概念图、同一
+`opencode-go/qwen3.7-plus` 执行画像的 4 个新问题、每个条件两次重复中，BM25 search 的
+recall@5、MRR 与 grounded success 均高于 image graph；两边的 32/32 proposition key 均
+正确。** 因而当前证据不支持图优于搜索，也不支持用图替代搜索。
+
+图仍可能作为 associative alternate 或 hybrid 的有损候选生成层，因为其 top-5 recall 为
+0.938，且 5/8 链路完整 grounded；但这是后续假设，不是本轮已证实的产品决策。确认题只在
+question/proposition 层 held out，仍复用同一 passage、graph、layout 与模型别名；两次重复
+也不足以形成跨运行稳定性、跨语料泛化或 adoption claim。
+
+v2 两轮实际观测成本合计 `$0.73914756`：development `$0.30989986`，confirmation
+`$0.42924770`。它低于授权前估算的 `$0.76–$0.78`，且没有重试、第二模型或新增语料调用。
 
 ## 系统对象
 
@@ -251,8 +302,10 @@ commit 再调用模型的流程修正。
 7. 用未参与调图的 held-out 记忆图和至少第二个多模态模型验证结果。
 
 是否“可用”仍应由端到端 source hit 和最终引用相对文本基线的表现决定，而不是要求图像边
-恢复达到 100%。第二轮已得到 source-hit signal，但引用合同出现 development defect，且尚无
-重复与 held-out 验证，因此结论继续保持 `probe`；第一轮也不再被解释为对联想图方案的否决。
+恢复达到 100%。第三轮已经修复引用合同并完成 question-held-out 的两次重复确认；结果是
+search 基线在当前 fixture 上更稳，图像仍只适合保留为 alternate/hybrid 研究候选。由于没有
+held-out corpus/graph 或第二模型，结论继续保持 `probe`；第一轮也不再被解释为对联想图方案
+的否决。
 
 ## 可复核证据
 
@@ -267,3 +320,7 @@ commit 再调用模型的流程修正。
 - 第二轮明确标注的 post-hoc 诊断：[`evidence/2026-08-06-qwen37-associative-recall-v1/posthoc-analysis.json`](./evidence/2026-08-06-qwen37-associative-recall-v1/posthoc-analysis.json)；
 - 第二轮每个 `trial-*.json` 保留 route、selected-source packet、answer、raw events、机械评分、
   时延与 usage；`inputs/` 保留实际 PNG/search locator 和每次只读的 selected sources。
+- 第三轮 development treatment：[`evidence/2026-08-06-qwen37-associative-recall-v2-development/summary.json`](./evidence/2026-08-06-qwen37-associative-recall-v2-development/summary.json)；
+- 第三轮 question-held-out confirmation：[`evidence/2026-08-06-qwen37-associative-recall-v2-confirmation/summary.json`](./evidence/2026-08-06-qwen37-associative-recall-v2-confirmation/summary.json)；
+- 两个 v2 evidence 目录都保留 `environment.json`、实际输入、逐 trial 原始事件、答案、机械
+  分数、usage、时延与成本；confirmation 的 16 个 trial 覆盖 4 题 × 2 条件 × 2 次重复。

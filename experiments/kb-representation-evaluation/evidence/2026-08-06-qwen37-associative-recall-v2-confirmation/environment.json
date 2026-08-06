@@ -1,0 +1,232 @@
+{
+  "evidenceId": "2026-08-06-qwen37-associative-recall-v2-confirmation",
+  "fixtureId": "shilu-associative-recall-v2",
+  "caseSet": "confirmation",
+  "repetitions": 2,
+  "upstream": {
+    "repository": "https://github.com/lidessen/shilu",
+    "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+    "commitTime": "2026-06-03T22:46:37+08:00",
+    "statusAtCommit": "DESIGN.md is Draft"
+  },
+  "localGit": {
+    "revision": "5a81f519958b7d824feb4e1c679d46237170d79f",
+    "statusBefore": "clean"
+  },
+  "identities": {
+    "fixtureManifest": "sha256:ae0b990e87cba75c85a26def85788082041c6fff3d09e06fa5746a9a7e81ee90",
+    "renderManifest": "sha256:a07604471a7a55f43baaf20a2150cc4484e94f5fd59f489690675cbe8b6d10b1",
+    "runner": "sha256:26e5be02b269db03bc0eaf7899ac52845ec8734ee1e686c3f1c499d4c5928dbc",
+    "contractAndCorpus": "sha256:bac8e658f1b29a6ab34e9903c3eccd20139d94c3ae3ced40bd22cc1225c4cee4",
+    "inheritedGraphAndSearch": "sha256:753893780534564dddb1c7ba5c5858b4ccac3502964e5cac1c379e3cb650c081",
+    "workerProfile": "sha256:60040202dd0a84f495a6125d01c11213dfd71dce2615b01fa16b21536ce59fbe"
+  },
+  "model": "opencode-go/qwen3.7-plus",
+  "executor": "opencode run --pure --format json",
+  "status": "question-held-out-confirmation-probe",
+  "representationScope": "query-conditioned corpus-derived associative PNG versus deterministic BM25 top-5 locator-only text results",
+  "sourceBudget": {
+    "maxCandidates": 5,
+    "maxUtf8Bytes": 12000
+  },
+  "protocol": "route from activation input; deterministically open only routed source excerpts; answer with opaque sourceId+anchorId citations",
+  "permissionProfile": "fresh cwd containing only the stage attachment and opencode.json permission=deny; --pure; --auto absent; any emitted tool event invalidates the stage",
+  "resolvedWorkerPermission": {
+    "*": "deny"
+  },
+  "scoring": "independent retrieval relevance; exact mutually-exclusive proposition keys; allowed source+opaque-anchor precision; necessary evidence-group coverage; micro aggregate citation metrics",
+  "order": [
+    {
+      "repetition": 1,
+      "questionId": "V2-Q1",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q1",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q2",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q2",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q3",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q3",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q4",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "V2-Q4",
+      "condition": "image"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q4",
+      "condition": "image"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q4",
+      "condition": "search"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q3",
+      "condition": "search"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q3",
+      "condition": "image"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q2",
+      "condition": "image"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q2",
+      "condition": "search"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q1",
+      "condition": "search"
+    },
+    {
+      "repetition": 2,
+      "questionId": "V2-Q1",
+      "condition": "image"
+    }
+  ],
+  "questions": [
+    {
+      "id": "V2-Q1",
+      "prompt": "A transcript arrives while the optional model is unavailable. Which system boundary still applies, and what two actions begin the durable knowledge workflow before interpretation?",
+      "claims": [
+        {
+          "id": "V2-Q1-C1",
+          "prompt": "What remains true when the model is unavailable?",
+          "options": [
+            "ai-optional-not-core-dependency",
+            "capture-must-stop",
+            "provider-becomes-authority",
+            "unknown"
+          ]
+        },
+        {
+          "id": "V2-Q1-C2",
+          "prompt": "Which two actions begin the durable workflow?",
+          "options": [
+            "register-source-then-enqueue-digest",
+            "generate-index-then-delete-source",
+            "commit-entry-then-capture",
+            "unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V2-Q2",
+      "prompt": "Two stored entries are incompatible, but neither is established as the newer rule. Which relationship projection can represent that fact, and which decision branch remains available before commit?",
+      "claims": [
+        {
+          "id": "V2-Q2-C1",
+          "prompt": "Which relationship represents unresolved incompatibility?",
+          "options": [
+            "contradicts-relation",
+            "supersedes-relation",
+            "same-as-relation",
+            "delete-old-entry"
+          ]
+        },
+        {
+          "id": "V2-Q2-C2",
+          "prompt": "Which branch remains available before commit?",
+          "options": [
+            "review-before-commit-option",
+            "forced-supersession",
+            "index-only-resolution",
+            "silent-overwrite"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V2-Q3",
+      "prompt": "For a multi-word search containing operator-looking text, the early prose says tokens are implicitly ANDed, while the return expression is built later. What behavior does the implementation actually produce, and how are special-looking tokens protected?",
+      "claims": [
+        {
+          "id": "V2-Q3-C1",
+          "prompt": "How are multiple tokens combined by the implementation?",
+          "options": [
+            "or-join-allows-partial-recall",
+            "implicit-and-requires-all",
+            "raw-query-forwarded",
+            "unknown"
+          ]
+        },
+        {
+          "id": "V2-Q3-C2",
+          "prompt": "How are operator-looking tokens protected?",
+          "options": [
+            "quote-tokens-as-literals",
+            "strip-all-punctuation",
+            "execute-as-fts-operators",
+            "unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V2-Q4",
+      "prompt": "During entry creation, catalog indexing returns an error. According to the implementation's operation order, what has happened to the entry, and has its creation event been recorded before the error returns?",
+      "claims": [
+        {
+          "id": "V2-Q4-C1",
+          "prompt": "What has happened to the entry?",
+          "options": [
+            "entry-already-persisted",
+            "entry-write-rolled-back",
+            "entry-not-validated",
+            "unknown"
+          ]
+        },
+        {
+          "id": "V2-Q4-C2",
+          "prompt": "Has the creation event been recorded before the indexing error returns?",
+          "options": [
+            "creation-event-not-recorded",
+            "creation-event-recorded-first",
+            "event-status-unknown",
+            "no-event-design"
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Synthetic query-conditioned activation projection, not Shilu runtime graph behavior.",
+    "Curated source passages from the same corpus and graph used for v1.",
+    "Held out only at question and proposition level; not held-out corpus, graph, or model validation."
+  ],
+  "opencodeVersion": "1.18.13"
+}
