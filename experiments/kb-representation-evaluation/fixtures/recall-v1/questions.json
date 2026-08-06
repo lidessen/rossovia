@@ -1,0 +1,158 @@
+[
+  {
+    "id": "Q1",
+    "prompt": "A semantic match looks convincing. Before citing the claim as knowledge, what must be consulted, and which retrieved artifact may be regenerated without changing authority?",
+    "claims": [
+      {
+        "id": "Q1-C1",
+        "prompt": "What retains authority?",
+        "options": [
+          "entries-and-raw-sources",
+          "retrieval-index",
+          "activation-graph",
+          "unknown"
+        ]
+      },
+      {
+        "id": "Q1-C2",
+        "prompt": "What may be regenerated?",
+        "options": [
+          "indexes",
+          "entries",
+          "raw-sources",
+          "nothing"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Q2",
+    "prompt": "Two otherwise identical entry proposals lack provenance: one comes from an automated processor, the other from a human at the terminal. Should they pass the same gate, and where is that distinction enforced?",
+    "claims": [
+      {
+        "id": "Q2-C1",
+        "prompt": "How is the automated proposal treated?",
+        "options": [
+          "reject-missing-provenance",
+          "accept-without-source",
+          "human-exemption",
+          "unknown"
+        ]
+      },
+      {
+        "id": "Q2-C2",
+        "prompt": "How is the human proposal treated in implementation?",
+        "options": [
+          "human-source-exempt",
+          "same-source-gate",
+          "agent-only-exempt",
+          "unknown"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Q3",
+    "prompt": "A transcript was registered, then its original file was moved before digestion. Which boundary was broken, and what committed primitive is meant to keep the record self-contained?",
+    "claims": [
+      {
+        "id": "Q3-C1",
+        "prompt": "Which boundary was broken?",
+        "options": [
+          "evidence-provenance",
+          "index-ranking",
+          "collection-routing",
+          "none"
+        ]
+      },
+      {
+        "id": "Q3-C2",
+        "prompt": "Which primitive keeps it self-contained?",
+        "options": [
+          "store-raw-copy",
+          "external-path-reference",
+          "fts-rebuild",
+          "event-replay"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Q4",
+    "prompt": "A newer rule invalidates an older rule, but future readers must still discover the lineage and audit what happened. How is the change represented instead of deleting history?",
+    "claims": [
+      {
+        "id": "Q4-C1",
+        "prompt": "How is the lineage represented?",
+        "options": [
+          "bidirectional-supersession-fields",
+          "delete-old-entry",
+          "index-only-edge",
+          "overwrite-body"
+        ]
+      },
+      {
+        "id": "Q4-C2",
+        "prompt": "How is the change audited?",
+        "options": [
+          "append-only-entry-event",
+          "search-score",
+          "source-status-only",
+          "no-audit"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Q5",
+    "prompt": "Before an optional model proposes a digest, what context can it receive, and which part of the system still owns the decision to mutate durable knowledge?",
+    "claims": [
+      {
+        "id": "Q5-C1",
+        "prompt": "What context may the model receive?",
+        "options": [
+          "source-rawcontent-collection-relatedentries",
+          "activation-map-only",
+          "event-log-only",
+          "entry-ids-only"
+        ]
+      },
+      {
+        "id": "Q5-C2",
+        "prompt": "Who owns durable mutation authority?",
+        "options": [
+          "core-validates-and-commits",
+          "provider-directly-writes",
+          "retrieval-index",
+          "capture-hook"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "Q6",
+    "prompt": "The SQLite search database is lost. Which durable material is sufficient to restore recall in the design, and what does the implemented rebuild actually consume?",
+    "claims": [
+      {
+        "id": "Q6-C1",
+        "prompt": "What does the design say is sufficient?",
+        "options": [
+          "sources-entries-events",
+          "sqlite-file-only",
+          "graph-image-only",
+          "provider-cache"
+        ]
+      },
+      {
+        "id": "Q6-C2",
+        "prompt": "What does the implementation consume?",
+        "options": [
+          "provided-entry-list",
+          "raw-source-files",
+          "event-log",
+          "vector-table"
+        ]
+      }
+    ]
+  }
+]

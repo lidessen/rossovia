@@ -7,6 +7,7 @@
     "render": "bun run scripts/render-image-diagnostic.js",
     "probe:image": "bun run scripts/run-image-gate.js",
     "probe:text": "bun run scripts/run-image-gate.js --mode text",
+    "probe:recall": "bun run scripts/run-recall-probe.js",
     "summarize": "bun run scripts/summarize-evidence.js",
     "test": "bun test",
     "check": "bun run scripts/check.js"

@@ -22,6 +22,22 @@
 完备枚举；局部边、关系标签和四跳路径保持正确。这组信号足以继续测试联想召回，但尚未
 证明它能达到可用的 source hit 或最终引用成功率。
 
+第二轮 development probe 已冻结在 `fixtures/recall-v1/`，尚未执行模型调用。它取自
+Shilu commit `1cac9bbf3e2e10bfdb3178838fefc406236b652e` 的 12 个来源片段，用 6 个不暴露
+source ID／路径的真实问题比较两个完整画像：
+
+- image：先以不读取 evaluator gold 的固定 BM25 policy 从语料派生概念—来源关系，再为
+  每个 query 激活 3 个概念并生成有损子图，Agent 从中选择最多 5 个来源；
+- search：确定性 BM25 先返回只含 ID 和中性标题的 top-5，Agent 再选择最多 5 个来源。
+
+两者随后都启动全新 session，只附加被选中的来源片段，再回答并给出 source ID 和精确
+anchor。路由 artifact 不会进入回答 session，执行 cwd 也是独立空目录。预冻结指标包括
+source recall@1/@3/@5、MRR、全部必要来源命中、逐 claim 的互斥 proposition key、引用
+precision／coverage、grounded success、打开来源数、来源字节、时延与观测成本。严格 schema
+不允许再附加可能自相矛盾的自由文本；它提高机械可判定性，但仍不等于开放式语义评审。
+本轮两个画像都由 query 驱动，但图还多了一层概念扩展和视觉布局，
+因此结果只能归因于两个整体画像，不能归因于裸“图片 vs 文本”。
+
 仓库还保留了一个未执行的综合轮候选 fixture：固定 15 个节点、22 条边和 7 个机械评分
 问题，覆盖直接查找、多跳路径和全局拓扑。`fixtures/round1/graph.txt` 与 `graph.svg`
 来自同一个
@@ -69,6 +85,17 @@ bun run render
 bun run probe:image
 bun run probe:text
 ```
+
+执行第二轮两阶段 recall development probe：
+
+```sh
+bun run probe:recall
+```
+
+该命令交错执行 6 个问题的 image/search 条件，每个条件一次，共最多 12 个 route call 和
+12 个 answer call。正式调用前必须先提交冻结的 fixture、scorer、runner 和实际 PNG；默认
+evidence ID 已存在时命令会拒绝覆盖。第一次运行只提供 development signal，不形成稳定性
+或跨模型能力结论。
 
 两个 probe 会在不向 worker 暴露答案的情况下自动评分并保留结果。下列独立 evaluator
 只适用于尚未执行的 `round1` 候选 fixture：
