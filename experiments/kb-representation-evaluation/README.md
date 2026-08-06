@@ -31,7 +31,8 @@ source ID／路径的真实问题比较两个完整画像：
 - search：确定性 BM25 先返回只含 ID 和中性标题的 top-5，Agent 再选择最多 5 个来源。
 
 两者随后都启动全新 session，只附加被选中的来源片段，再回答并给出 source ID 和精确
-anchor。路由 artifact 不会进入回答 session，执行 cwd 也是独立空目录。预冻结指标包括
+anchor。路由 artifact 不会进入回答 session；每个阶段使用独立 cwd，其中只复制本阶段
+附件和 `permission: deny` 的 worker 配置。预冻结指标包括
 source recall@1/@3/@5、MRR、全部必要来源命中、逐 claim 的互斥 proposition key、引用
 precision／coverage、grounded success、打开来源数、来源字节、时延与观测成本。严格 schema
 不允许再附加可能自相矛盾的自由文本；它提高机械可判定性，但仍不等于开放式语义评审。
