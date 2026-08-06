@@ -1,0 +1,321 @@
+{
+  "trial": 4,
+  "repetition": 1,
+  "caseSet": "development",
+  "question": {
+    "id": "Q2",
+    "prompt": "Two otherwise identical entry proposals lack provenance: one comes from an automated processor, the other from a human at the terminal. Should they pass the same gate, and where is that distinction enforced?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S05",
+      "SHILU-S04",
+      "SHILU-S09",
+      "SHILU-S01"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q2-C1",
+        "valueKey": "reject-missing-provenance",
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchorId": "an_773d"
+          },
+          {
+            "sourceId": "SHILU-S09",
+            "anchorId": "an_98b0"
+          }
+        ]
+      },
+      {
+        "claimId": "Q2-C2",
+        "valueKey": "human-source-exempt",
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchorId": "an_773d"
+          },
+          {
+            "sourceId": "SHILU-S09",
+            "anchorId": "an_98b0"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "retrievalRelevantSourceIds": [
+      "SHILU-S05",
+      "SHILU-S09"
+    ],
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S05",
+      "SHILU-S04",
+      "SHILU-S09",
+      "SHILU-S01"
+    ],
+    "hitAt1": false,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 0.5,
+    "recallAt5": 1,
+    "allRelevantHitAt3": false,
+    "allRelevantHitAt5": true,
+    "reciprocalRank": 0.5,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "claimCount": 2,
+    "correctAnswerCount": 2,
+    "citationPrecision": 0.75,
+    "citationCoverage": 1,
+    "submittedCitationCount": 4,
+    "correctCitationCount": 3,
+    "requiredEvidenceGroupCount": 2,
+    "coveredEvidenceGroupCount": 2,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q2-C1",
+        "expectedKey": "reject-missing-provenance",
+        "actualKey": "reject-missing-provenance",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchorId": "an_773d",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          },
+          {
+            "sourceId": "SHILU-S09",
+            "anchorId": "an_98b0",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "Q2-C1-G1",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      },
+      {
+        "claimId": "Q2-C2",
+        "expectedKey": "human-source-exempt",
+        "actualKey": "human-source-exempt",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchorId": "an_773d",
+            "locatable": true,
+            "opened": true,
+            "allowed": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S09",
+            "anchorId": "an_98b0",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "Q2-C2-G1",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/activation-Q2.png",
+    "sha256": "sha256:3ea5196f43e2edcc0c2cce9a25e89672d05bf063883cce8cc582464432f48c91",
+    "bytes": 165541
+  },
+  "sourcePacket": {
+    "path": "inputs/04-r1-Q2-image-sources.md",
+    "sha256": "sha256:5c22f2ac2c67589fe1b0f0c36faad542f206335693da9b969de6d249a96ed2c3",
+    "bytes": 3233
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T11:37:26.900Z",
+    "finishedAt": "2026-08-06T11:37:55.051Z",
+    "durationMs": 28151,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "```json\n{\"candidates\":[\"SHILU-S02\",\"SHILU-S05\",\"SHILU-S04\",\"SHILU-S09\",\"SHILU-S01\"]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 25780,
+        "input": 6,
+        "output": 993,
+        "reasoning": 0,
+        "cache": {
+          "write": 24781,
+          "read": 0
+        }
+      },
+      "cost": 0.0139817,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016258055,
+        "sessionID": "ses_02922d1abffePo6tVX8SWw5e6S",
+        "part": {
+          "id": "prt_fd6dd57fe001sVVfrwdw2ER8vl",
+          "messageID": "msg_fd6dd2f040011YmZ14IyHmIdvS",
+          "sessionID": "ses_02922d1abffePo6tVX8SWw5e6S",
+          "snapshot": "6a819bf11e62a23c8e0ec98d9937fe5a1c629330",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016274929,
+        "sessionID": "ses_02922d1abffePo6tVX8SWw5e6S",
+        "part": {
+          "id": "prt_fd6dd971100124Zt595f1IDQ0I",
+          "messageID": "msg_fd6dd2f040011YmZ14IyHmIdvS",
+          "sessionID": "ses_02922d1abffePo6tVX8SWw5e6S",
+          "type": "text",
+          "text": "```json\n{\"candidates\":[\"SHILU-S02\",\"SHILU-S05\",\"SHILU-S04\",\"SHILU-S09\",\"SHILU-S01\"]}\n```",
+          "time": {
+            "start": 1786016274193,
+            "end": 1786016274925
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016275011,
+        "sessionID": "ses_02922d1abffePo6tVX8SWw5e6S",
+        "part": {
+          "id": "prt_fd6dd9a41001JhNv1AWaqYSzLx",
+          "reason": "stop",
+          "snapshot": "6a819bf11e62a23c8e0ec98d9937fe5a1c629330",
+          "messageID": "msg_fd6dd2f040011YmZ14IyHmIdvS",
+          "sessionID": "ses_02922d1abffePo6tVX8SWw5e6S",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25780,
+            "input": 6,
+            "output": 993,
+            "reasoning": 0,
+            "cache": {
+              "write": 24781,
+              "read": 0
+            }
+          },
+          "cost": 0.0139817
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T11:37:55.052Z",
+    "finishedAt": "2026-08-06T11:38:11.611Z",
+    "durationMs": 16559,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q2-C1\",\"valueKey\":\"reject-missing-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchorId\":\"an_773d\"},{\"sourceId\":\"SHILU-S09\",\"anchorId\":\"an_98b0\"}]},{\"claimId\":\"Q2-C2\",\"valueKey\":\"human-source-exempt\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchorId\":\"an_773d\"},{\"sourceId\":\"SHILU-S09\",\"anchorId\":\"an_98b0\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 25385,
+        "input": 6,
+        "output": 701,
+        "reasoning": 0,
+        "cache": {
+          "write": 24678,
+          "read": 0
+        }
+      },
+      "cost": 0.013463,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016279534,
+        "sessionID": "ses_0292263b0ffek9mg9al0EqBDy5",
+        "part": {
+          "id": "prt_fd6ddabe70016Q3q3eZH9z50Tl",
+          "messageID": "msg_fd6dd9cf3001ecfANhRTHyNLJm",
+          "sessionID": "ses_0292263b0ffek9mg9al0EqBDy5",
+          "snapshot": "2725b09adad692e718a52f229d4a737b04ae96f3",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016291484,
+        "sessionID": "ses_0292263b0ffek9mg9al0EqBDy5",
+        "part": {
+          "id": "prt_fd6ddd227001VppnwFtj96Pwhc",
+          "messageID": "msg_fd6dd9cf3001ecfANhRTHyNLJm",
+          "sessionID": "ses_0292263b0ffek9mg9al0EqBDy5",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q2-C1\",\"valueKey\":\"reject-missing-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchorId\":\"an_773d\"},{\"sourceId\":\"SHILU-S09\",\"anchorId\":\"an_98b0\"}]},{\"claimId\":\"Q2-C2\",\"valueKey\":\"human-source-exempt\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchorId\":\"an_773d\"},{\"sourceId\":\"SHILU-S09\",\"anchorId\":\"an_98b0\"}]}]}",
+          "time": {
+            "start": 1786016289319,
+            "end": 1786016291477
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016291566,
+        "sessionID": "ses_0292263b0ffek9mg9al0EqBDy5",
+        "part": {
+          "id": "prt_fd6dddaec001rFBRHb55biwDFs",
+          "reason": "stop",
+          "snapshot": "2725b09adad692e718a52f229d4a737b04ae96f3",
+          "messageID": "msg_fd6dd9cf3001ecfANhRTHyNLJm",
+          "sessionID": "ses_0292263b0ffek9mg9al0EqBDy5",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25385,
+            "input": 6,
+            "output": 701,
+            "reasoning": 0,
+            "cache": {
+              "write": 24678,
+              "read": 0
+            }
+          },
+          "cost": 0.013463
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}
