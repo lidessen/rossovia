@@ -1,4 +1,5 @@
 import { validateProjectBundle } from "./lib/project-evidence-bundle.js";
+import { projectEvidenceView } from "./lib/project-view-state.js";
 
 const state = {
   bundle: null,
@@ -37,17 +38,13 @@ function appendDefinition(label, value) {
 
 function renderEvidence() {
   const step = state.bundle.projection.steps.find((candidate) => candidate.id === state.selectedId);
-  if (!step) return;
-  const evidence = step.evidence;
-  elements.evidenceTitle.textContent = step.title;
-  elements.evidenceKind.textContent = layerLabel(step.layer);
+  const view = projectEvidenceView(step, { sourceOnly: state.sourceOnly });
+  elements.evidenceTitle.textContent = view.title;
+  elements.evidenceKind.textContent = view.kind;
   elements.evidenceDetails.replaceChildren();
-  appendDefinition("权威边界", evidence.authority);
-  appendDefinition("Standing", evidence.standing);
-  appendDefinition("修订", evidence.revision);
-  appendDefinition("可推翻它的证据", evidence.disconfirmingEvidence);
+  for (const [label, value] of view.details) appendDefinition(label, value);
   elements.sourceActions.replaceChildren();
-  for (const sourceRef of evidence.sourceRefs ?? []) {
+  for (const sourceRef of view.sourceRefs) {
     const row = document.createElement("div");
     const code = document.createElement("code");
     code.textContent = sourceRef;
@@ -62,7 +59,7 @@ function renderEvidence() {
     row.append(code, button);
     elements.sourceActions.append(row);
   }
-  elements.sourceExcerpt.textContent = evidence.excerpt || "没有可显示的来源摘录。";
+  elements.sourceExcerpt.textContent = view.excerpt;
 }
 
 function renderPath() {

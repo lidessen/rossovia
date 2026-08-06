@@ -55,7 +55,7 @@ assert(
   "The consumed-only case must not be promoted to current execution.",
 );
 
-for (const path of ["index.html", "skill.html", "project.html", "styles.css", "app.js", "skill-app.js", "project-app.js", "server.js"]) {
+for (const path of ["index.html", "skill.html", "project.html", "styles.css", "app.js", "skill-app.js", "project-app.js", "lib/project-view-state.js", "server.js"]) {
   const file = Bun.file(new URL(`../${path}`, import.meta.url));
   assert(await file.exists(), `${path} must exist.`);
   assert(file.size > 0, `${path} must not be empty.`);
