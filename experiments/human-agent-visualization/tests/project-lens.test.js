@@ -16,6 +16,7 @@ beforeAll(async () => {
   await mkdir(join(fixtureRoot, "tests"));
   await Bun.write(join(fixtureRoot, "README.md"), "# 枝叶\n\n枝叶是一个把本地笔记转成可检索网页的微型工具，面向个人离线使用。\n");
   await Bun.write(join(fixtureRoot, "AGENTS.md"), "# Guidance\n\nChanges start in src/app.js and must pass bun test.\n");
+  await Bun.write(join(fixtureRoot, "DESIGN.md"), "# Design\n\nThe browser is a projection over one canonical local state.\n");
   await Bun.write(join(fixtureRoot, "package.json"), JSON.stringify({ name: "branches", scripts: { test: "bun test", check: "bun build src/app.js --outfile=/dev/null" } }));
   await Bun.write(join(fixtureRoot, "src/app.js"), "export const name = 'branches';\n");
   await Bun.write(join(fixtureRoot, "tests/app.test.js"), "// representative test\n");
@@ -44,7 +45,7 @@ describe("Project Lens real repository bundle", () => {
     expect(bundle.sources.map((source) => source.sourceRef)).toContain("README.md");
     expect(bundle.projection.steps.map((step) => step.layer)).toEqual(expect.arrayContaining(["source", "projection", "explanation"]));
     expect(bundle.projection.verificationCommands.map((entry) => entry.command)).toContain("bun run test");
-    expect(bundle.projection.steps.find((step) => step.id === "arrival-path").evidence.sourceRefs).toEqual(["AGENTS.md", "src/app.js", "tests/app.test.js"]);
+    expect(bundle.projection.steps.find((step) => step.id === "arrival-path").evidence.sourceRefs).toEqual(["AGENTS.md", "src/app.js", "tests/app.test.js", "package.json"]);
   });
 
   test("rejects a bundle whose retained source excerpt was changed", async () => {
@@ -122,6 +123,44 @@ describe("Project Lens real repository bundle", () => {
       expect(bundle.sources.find((source) => source.sourceRef === "package.json").excerpt.length).toBe(2600);
       expect(bundle.projection.verificationCommands.map((entry) => entry.command))
         .toEqual(expect.arrayContaining(["bun run test", "bun run check"]));
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a repository without a purpose declaration keeps purpose unavailable", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-no-purpose-"));
+    try {
+      await mkdir(join(repo, "src"));
+      await Bun.write(join(repo, "src/app.js"), "export const implementation = true;\n");
+
+      const bundle = await buildProjectLensBundle({ repo });
+      const purpose = bundle.projection.steps.find((step) => step.id === "purpose");
+      expect(bundle.sources[0].kind).toBe("observed-file");
+      expect(purpose.layer).toBe("projection");
+      expect(purpose.title).toBe("项目用途声明不可用");
+      expect(purpose.evidence.standing).toBe("purpose-unavailable");
+      expect(purpose.summary).not.toContain("implementation");
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("generated governance and verification claims retain every contributing source", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-source-links-"));
+    try {
+      await Bun.write(join(repo, "README.md"), "# Linked evidence\n\nA fixture with commands declared in both its manifest and documentation.\n\n```sh\npython3 verify-docs.py\n```\n");
+      await Bun.write(join(repo, "AGENTS.md"), "# Guidance\n\nUse the declared checks before proposing a change.\n");
+      await Bun.write(join(repo, "DESIGN.md"), "# Design\n\nOne deterministic projection is rebuilt from retained sources.\n");
+      await Bun.write(join(repo, "package.json"), JSON.stringify({ name: "source-links", scripts: { test: "bun test" } }));
+      const bundle = await buildProjectLensBundle({ repo });
+      const governing = bundle.projection.steps.find((step) => step.id === "governing-source");
+      const verification = bundle.projection.steps.find((step) => step.id === "verification");
+
+      expect(governing.layer).toBe("projection");
+      expect(governing.evidence.sourceRefs).toEqual(["AGENTS.md", "DESIGN.md"]);
+      expect(verification.summary).toContain("python3 verify-docs.py");
+      expect(verification.evidence.sourceRefs).toEqual(expect.arrayContaining(["package.json", "README.md"]));
     } finally {
       await rm(repo, { recursive: true, force: true });
     }

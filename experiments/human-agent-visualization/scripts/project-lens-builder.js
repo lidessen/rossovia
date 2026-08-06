@@ -58,13 +58,13 @@ async function sourceTreeRevision(root, files) {
   return digestValue(identities);
 }
 
-function verificationCommands(manifest) {
+function verificationCommands(manifest, sourceRef = "package.json") {
   if (!manifest) return [];
   try {
     const parsed = JSON.parse(manifest);
     return Object.entries(parsed.scripts ?? {})
       .filter(([name]) => /^(test|check|typecheck|lint|build|verify)/.test(name))
-      .map(([name, command]) => ({ name, command: `bun run ${name}`, declaredCommand: String(command) }));
+      .map(([name, command]) => ({ name, command: `bun run ${name}`, declaredCommand: String(command), sourceRef }));
   } catch { return []; }
 }
 
@@ -77,7 +77,7 @@ function documentedCommands(sources) {
       const line = rawLine.trim();
       if (line.startsWith("```")) { fenced = !fenced; continue; }
       if (!fenced || !prefixes.test(line)) continue;
-      commands.push({ name: `documented:${source.sourceRef}`, command: line, declaredCommand: line });
+      commands.push({ name: `documented:${source.sourceRef}`, command: line, declaredCommand: line, sourceRef: source.sourceRef });
     }
   }
   return commands;
@@ -187,25 +187,32 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
   }
 
   const prefersChinese = /[\u3400-\u9fff]/.test(`${audience}${question ?? ""}`);
-  const readme = (prefersChinese
+  const declaredPurpose = (prefersChinese
     ? retained.find((source) => ["README.zh-CN.md", "README.zh.md"].includes(source.sourceRef))
-    : null) ?? retained.find((source) => source.sourceRef === "README.md") ?? retained[0];
+    : null) ?? retained.find((source) => source.sourceRef === "README.md");
+  const readme = declaredPurpose ?? retained[0];
   const governing = retained.filter((source) => /^(AGENTS|DESIGN|ARCHITECTURE|CONTRIBUTING|principles\/SEQUENCE)/.test(source.sourceRef));
   const manifest = retained.find((source) => source.sourceRef === "package.json");
   const commands = [...verificationCommands(fullContents.get("package.json")), ...documentedCommands(retained)]
     .filter((command, index, all) => all.findIndex((candidate) => candidate.command === command.command) === index);
+  const commandSources = [...new Set(commands.map((command) => command.sourceRef))]
+    .map((sourceRef) => retained.find((source) => source.sourceRef === sourceRef))
+    .filter(Boolean);
   const entries = likelyEntrypoints(files);
   const topLevel = [...new Set(files.map((file) => file.split("/")[0]))].slice(0, 16);
+  const purposeStep = declaredPurpose
+    ? sourceStep("purpose", 1, "项目声明的用途", firstProse(declaredPurpose.excerpt), declaredPurpose)
+    : derivedStep("purpose", 1, "项目用途声明不可用", "没有观察到 README 用途声明；不能从代码或 manifest 片段补成项目用途。", retained, "purpose-unavailable", `unavailable: README purpose declaration; observed ${retained.map((source) => source.sourceRef).join(", ")}`);
   const steps = [
-    sourceStep("purpose", 1, "项目声明的用途", firstProse(readme.excerpt), readme),
+    purposeStep,
     derivedStep("revision", 2, "这次介绍绑定的修订", `${basename(root)} · ${revision.slice(0, 18)}${dirty ? " · 含工作树修改" : ""}`, retained, "observed-revision", `${files.length} 个可检查文件；顶层：${topLevel.join("、")}`),
   ];
-  if (governing[0]) steps.push(sourceStep("governing-source", steps.length + 1, "优先阅读的治理／设计来源", governing.map((source) => source.sourceRef).join(" → "), governing[0]));
+  if (governing[0]) steps.push(derivedStep("governing-source", steps.length + 1, "观察到的治理／设计来源", governing.map((source) => source.sourceRef).join(" → "), governing, "declared-governing-sources", governing.map((source) => source.sourceRef).join("\n")));
   steps.push(derivedStep("observed-entry", steps.length + 1, "可观察的代码入口", entries.length ? entries.join(" → ") : "仓库没有暴露常见代码入口；不要从目录名补成架构。", manifest ? [manifest] : [readme], entries.length ? "observed-entrypoints" : "entrypoint-unavailable", entries.join("\n") || "unavailable"));
   const focused = normalizedFocusSources.map((path) => retained.find((source) => source.sourceRef === path)).filter(Boolean);
-  const arrivalSources = focused.length ? focused : [readme, ...governing.slice(0, 2)];
+  const arrivalSources = [...new Set([...(focused.length ? focused : [readme, ...governing.slice(0, 2)]), ...commandSources.slice(0, 1)])];
   steps.push(explanationStep("arrival-path", steps.length + 1, `${intent} 的建议到达路径`, `面向“${audience}”，先读声明来源，再沿一个可观察入口到验证面；这条顺序是 Agent 选择，不是仓库事实。`, arrivalSources, `${arrivalSources.map((source) => source.sourceRef).join(" → ")} → ${commands[0]?.command ?? "verification unavailable"}`));
-  steps.push(derivedStep("verification", steps.length + 1, "仓库声明的验证面", commands.length ? commands.map((command) => command.command).join(" · ") : "没有从 package scripts 观察到验证命令。", manifest ? [manifest] : [readme], commands.length ? "declared-verification" : "verification-unavailable", commands.map((command) => `${command.command} ← ${command.declaredCommand}`).join("\n") || "unavailable"));
+  steps.push(derivedStep("verification", steps.length + 1, "仓库声明的验证面", commands.length ? commands.map((command) => command.command).join(" · ") : "没有从 manifest 或保留文档观察到验证命令。", commands.length ? commandSources : (manifest ? [manifest] : [readme]), commands.length ? "declared-verification" : "verification-unavailable", commands.map((command) => `${command.command} ← ${command.declaredCommand} (${command.sourceRef})`).join("\n") || "unavailable"));
   if (proposedVerifications.length) {
     steps.push(explanationStep("proposed-verification", steps.length + 1, "Agent 建议实际运行的验证", proposedVerifications.join(" · "), arrivalSources, proposedVerifications.join("\n")));
   }
