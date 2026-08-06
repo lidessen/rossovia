@@ -1,4 +1,5 @@
 .DS_Store
+/outputs/
 .reasonix/
 .work-cell/
 .vercel/
