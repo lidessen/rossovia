@@ -1,0 +1,2 @@
+[ ] Repair src/adapters/northstar-job-event.ts: finished-event normalization conforms to the bundled v2 protocol; complete when bundled tests pass without contract, protocol, or test changes.
+[ ] Reconcile conformance/northstar-job-events-v2/case-07.json: valid v2 input/expected pair consistent with repaired adapter; complete when independent semantic review accepts protocol truth and cross-artifact consistency.

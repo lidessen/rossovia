@@ -5,6 +5,32 @@ that affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or
 `breaking`. Entries are append-only after publication; corrections add a later
 entry instead of rewriting the applied Git interval.
 
+## 2026-08-06
+
+### [work-cell.model-evaluation] Add matched instruction-carrier comparisons
+
+- Action: `manual`
+- Change: model-evaluation v3 can compare two explicit instruction carriers
+  over one shared execution member, retaining carrier, semantic-audit, fixture,
+  schedule, and observed-identity evidence without exposing harness-owned arm
+  metadata to the blind judge. Carrier comparisons pin the source fixture by a
+  caller-declared aggregate digest before any driver or model call. Legacy v2
+  manifests retain execution-profile semantics only.
+- Verify: run the Work Cell typecheck and tests; confirm carrier comparisons
+  reject unequal execution members, unpinned fixtures, and empty carriers, and
+  skip judging after an observed serving identity mismatch.
+
+### [skill.attention-management] Add governing-relation attention control
+
+- Action: `none`
+- Change: add an installable Skill for deciding whether a live Agent should
+  continue, retain a load-bearing branch, return, switch, cue, or reset. Preserve
+  integrated-character, role-entry, catchphrase, and habit-action conjectures
+  in a source-linked research ledger without treating them as admitted behavior.
+- Verify: check the generated Sequence snapshot and disposable installation
+  package. Run matched action-level comparisons before adopting any experimental
+  carrier or runtime adapter.
+
 ## 2026-08-05
 
 ### [experiment.personal-task-app] Add a local-first personal task slice

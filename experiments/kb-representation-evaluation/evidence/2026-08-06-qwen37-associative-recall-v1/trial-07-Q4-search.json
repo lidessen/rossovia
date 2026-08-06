@@ -1,0 +1,287 @@
+{
+  "trial": 7,
+  "question": {
+    "id": "Q4",
+    "prompt": "A newer rule invalidates an older rule, but future readers must still discover the lineage and audit what happened. How is the change represented instead of deleting history?"
+  },
+  "condition": "search",
+  "route": {
+    "candidates": [
+      "SHILU-S05",
+      "SHILU-S02",
+      "SHILU-S08",
+      "SHILU-S07",
+      "SHILU-S10"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q4-C1",
+        "valueKey": "bidirectional-supersession-fields",
+        "citations": [
+          {
+            "sourceId": "SHILU-S02",
+            "anchor": "DESIGN.md#Source / Entry / Entry Event"
+          },
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules"
+          }
+        ]
+      },
+      {
+        "claimId": "Q4-C2",
+        "valueKey": "append-only-entry-event",
+        "citations": [
+          {
+            "sourceId": "SHILU-S02",
+            "anchor": "DESIGN.md#Source / Entry / Entry Event"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S02",
+      "SHILU-S12"
+    ],
+    "candidates": [
+      "SHILU-S05",
+      "SHILU-S02",
+      "SHILU-S08",
+      "SHILU-S07",
+      "SHILU-S10"
+    ],
+    "hitAt1": false,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 0.5,
+    "recallAt5": 0.5,
+    "allRequiredHitAt3": false,
+    "allRequiredHitAt5": false,
+    "reciprocalRank": 0.5,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0,
+    "citationCoverage": 0,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q4-C1",
+        "expectedKey": "bidirectional-supersession-fields",
+        "actualKey": "bidirectional-supersession-fields",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S02",
+            "anchor": "DESIGN.md#Source / Entry / Entry Event",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q4-C2",
+        "expectedKey": "append-only-entry-event",
+        "actualKey": "append-only-entry-event",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S02",
+            "anchor": "DESIGN.md#Source / Entry / Entry Event",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/search-Q4.txt",
+    "sha256": "sha256:161c1f945c581c8cf9bdc6150223ebbf02b57d9bc9300d4a1b74c65701122013",
+    "bytes": 477
+  },
+  "sourcePacket": {
+    "path": "inputs/07-Q4-search-sources.md",
+    "sha256": "sha256:cea2a882e1a93e9fb8aa46bab7bfc56a0149a49d4ae863d3094d7dd48cad1b24",
+    "bytes": 7014
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:50:44.628Z",
+    "finishedAt": "2026-08-06T09:51:01.367Z",
+    "durationMs": 16739,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S05\",\"SHILU-S02\",\"SHILU-S08\",\"SHILU-S07\",\"SHILU-S10\"]}",
+    "usage": {
+      "tokens": {
+        "total": 24101,
+        "input": 6,
+        "output": 589,
+        "reasoning": 0,
+        "cache": {
+          "write": 23506,
+          "read": 0
+        }
+      },
+      "cost": 0.0126978,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009849862,
+        "sessionID": "ses_029848274ffeIPR6Vc7S1Du6UL",
+        "part": {
+          "id": "prt_fd67b9000001QtHEonBd4S89mH",
+          "messageID": "msg_fd67b7e33001ytbRCAnX66OjRj",
+          "sessionID": "ses_029848274ffeIPR6Vc7S1Du6UL",
+          "snapshot": "c8e83e0995dff3a51aa557e052e0a3a2fff0d8a2",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009859864,
+        "sessionID": "ses_029848274ffeIPR6Vc7S1Du6UL",
+        "part": {
+          "id": "prt_fd67bb4b2001U7PG4p1SzZlXqH",
+          "messageID": "msg_fd67b7e33001ytbRCAnX66OjRj",
+          "sessionID": "ses_029848274ffeIPR6Vc7S1Du6UL",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S05\",\"SHILU-S02\",\"SHILU-S08\",\"SHILU-S07\",\"SHILU-S10\"]}",
+          "time": {
+            "start": 1786009859250,
+            "end": 1786009859861
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009861328,
+        "sessionID": "ses_029848274ffeIPR6Vc7S1Du6UL",
+        "part": {
+          "id": "prt_fd67bbccd001hD73H8DOok9SRB",
+          "reason": "stop",
+          "snapshot": "c8e83e0995dff3a51aa557e052e0a3a2fff0d8a2",
+          "messageID": "msg_fd67b7e33001ytbRCAnX66OjRj",
+          "sessionID": "ses_029848274ffeIPR6Vc7S1Du6UL",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24101,
+            "input": 6,
+            "output": 589,
+            "reasoning": 0,
+            "cache": {
+              "write": 23506,
+              "read": 0
+            }
+          },
+          "cost": 0.0126978
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:51:01.368Z",
+    "finishedAt": "2026-08-06T09:51:21.417Z",
+    "durationMs": 20048,
+    "exitCode": 0,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q4-C1\",\"valueKey\":\"bidirectional-supersession-fields\",\"citations\":[{\"sourceId\":\"SHILU-S02\",\"anchor\":\"DESIGN.md#Source / Entry / Entry Event\"},{\"sourceId\":\"SHILU-S05\",\"anchor\":\"DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules\"}]},{\"claimId\":\"Q4-C2\",\"valueKey\":\"append-only-entry-event\",\"citations\":[{\"sourceId\":\"SHILU-S02\",\"anchor\":\"DESIGN.md#Source / Entry / Entry Event\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 27065,
+        "input": 6,
+        "output": 822,
+        "reasoning": 0,
+        "cache": {
+          "write": 26237,
+          "read": 0
+        }
+      },
+      "cost": 0.0144361,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009867331,
+        "sessionID": "ses_029844101ffe3wpzaJqGxvBVTK",
+        "part": {
+          "id": "prt_fd67bd43e001Jm3Df5me0VIQL9",
+          "messageID": "msg_fd67bbfa5001bMtMpxRiof2Mdk",
+          "sessionID": "ses_029844101ffe3wpzaJqGxvBVTK",
+          "snapshot": "cb4515979a42fe16ed818b408d6897878c53108b",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009881300,
+        "sessionID": "ses_029844101ffe3wpzaJqGxvBVTK",
+        "part": {
+          "id": "prt_fd67c02d9001esfgtRA6HF1PRW",
+          "messageID": "msg_fd67bbfa5001bMtMpxRiof2Mdk",
+          "sessionID": "ses_029844101ffe3wpzaJqGxvBVTK",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q4-C1\",\"valueKey\":\"bidirectional-supersession-fields\",\"citations\":[{\"sourceId\":\"SHILU-S02\",\"anchor\":\"DESIGN.md#Source / Entry / Entry Event\"},{\"sourceId\":\"SHILU-S05\",\"anchor\":\"DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules\"}]},{\"claimId\":\"Q4-C2\",\"valueKey\":\"append-only-entry-event\",\"citations\":[{\"sourceId\":\"SHILU-S02\",\"anchor\":\"DESIGN.md#Source / Entry / Entry Event\"}]}]}",
+          "time": {
+            "start": 1786009879257,
+            "end": 1786009881296
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009881372,
+        "sessionID": "ses_029844101ffe3wpzaJqGxvBVTK",
+        "part": {
+          "id": "prt_fd67c0b1a001wgcnUPAAczYnbC",
+          "reason": "stop",
+          "snapshot": "cb4515979a42fe16ed818b408d6897878c53108b",
+          "messageID": "msg_fd67bbfa5001bMtMpxRiof2Mdk",
+          "sessionID": "ses_029844101ffe3wpzaJqGxvBVTK",
+          "type": "step-finish",
+          "tokens": {
+            "total": 27065,
+            "input": 6,
+            "output": 822,
+            "reasoning": 0,
+            "cache": {
+              "write": 26237,
+              "read": 0
+            }
+          },
+          "cost": 0.0144361
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

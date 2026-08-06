@@ -151,14 +151,16 @@ inferred memory never becomes active preference without human confirmation.
 “Active” means installable and discoverable through the current repository
 entry; it does not by itself mean behavior-proven for every context. The
 [2026-08-03 system review](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
-is the current evidence projection for all entries below. Its pointers and
-standings summarize retained evaluations rather than replacing them.
+is the evidence projection for entries present at that review; newer entries
+link their current research standing directly. These pointers summarize
+retained evaluations rather than replacing them.
 
 | Skill | Command | Description |
 |-------|---------|-------------|
 | [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | Decide and operate bounded native sub-agent contributions while the Main Agent retains the whole, synthesis, and responsibility for ensuring verification; it does not require Workbench or another orchestration runtime. |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | Decide how authoritative project information reaches an agent at the moment it changes action, using the actual runtime rather than a fixed layer or filename convention. |
+| [attention-management](skills/attention-management/SKILL.md) | `/attention-management` | Restore the governing relation for the next Agent action after drift, correction, branch settlement, or task switch; working-character, role-entry, catchphrase, and habit carriers remain [recorded experimental hypotheses](principles/research/agent-attention-disposition-and-habit.md). |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | Diagnose a real agent-work failure in an existing project, change the smallest owning surface, and verify the improvement through the ordinary agent entry path. |
 | [agent-tooling](skills/agent-tooling/SKILL.md) | `/agent-tooling` | Operate and tune Codex, Claude Code, Cursor, and similar coding-agent tool surfaces, including headless execution, capability evidence, and removal of net-negative tooling. |
 | [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | Design, rewrite, review, and test skills that improve repeated agent action. Forms a selected Sequence expression team for each target skill, carries a standalone Sequence snapshot, and requires behavior evidence rather than prompt polish. |
@@ -224,6 +226,7 @@ operating mode remains human-initiated.
 |---|---|
 | Researching whether recurring evidence merits a reusable core principle | `/principle-cultivation research` |
 | Designing, auditing, or verifying how project context reaches an agent | `/context-engineering` |
+| Restoring an Agent's mainline after drift, deciding whether a new branch should be retained, or evaluating a reminder or habit treatment | `/attention-management` |
 | Installing one entry into an existing project to improve its agent skills, instructions, tools, verification, or handoffs from observed behavior | `/improve-agent-workflow` |
 | Running a coding-agent CLI headlessly, inspecting its effective skills/hooks/MCP/plugins, shaping tools and permissions, or reducing harmful tooling | `/agent-tooling` |
 | Creating, rewriting, or behavior-testing an agent skill | `/skill-engineering` |

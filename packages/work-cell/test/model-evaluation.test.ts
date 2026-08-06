@@ -8,6 +8,7 @@ import type { CellInput, CellUsage, DriverDescriptor } from "../src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
 import {
   ModelEvaluationSpecSchema,
+  modelEvaluationFixtureSha256,
   runModelEvaluation,
   type ModelEvaluationProfile,
   type ModelEvaluationSpec,
@@ -89,7 +90,7 @@ test("model evaluation keeps repeated profile evidence blind under a balanced is
     }),
   ]);
   expect(JSON.parse(await readFile(record.recordPath, "utf8"))).toMatchObject({
-    version: "work-cell.model-evaluation.run.v2",
+    version: "work-cell.model-evaluation.run.v3",
     evidenceRole: "development",
     authority: "candidate evidence; human or designated host acceptance required",
     profiles: [
@@ -122,6 +123,253 @@ test("model evaluation rejects reference criteria leaked into worker-visible acc
       },
     }],
   })).toThrow("reference criteria must remain evaluator-only");
+});
+
+test("model evaluation isolates instruction carriers behind one shared execution profile", async () => {
+  const root = await fixture();
+  const base = evaluationSpec();
+  const shared = base.profiles[0]!;
+  const fixtureSha256 = await modelEvaluationFixtureSha256(join(root, "fixture"));
+  const spec = ModelEvaluationSpecSchema.parse({
+    ...base,
+    fixture: { ...base.fixture, expectedSha256: fixtureSha256 },
+    comparison: {
+      axis: "instruction-carrier",
+      executionProfileId: "matched-attention-carrier-v1",
+      semanticAtomSetId: "attention-management-h2-v1",
+      semanticAuditSha256: "a".repeat(64),
+    },
+    profiles: [
+      {
+        ...shared,
+        id: "principle-list-secret",
+        instructionCarrier: {
+          id: "principle-list",
+          instructions: ["Keep the governing relations as a list."],
+        },
+      },
+      {
+        ...shared,
+        id: "integrated-character-secret",
+        instructionCarrier: {
+          id: "integrated-character",
+          instructions: ["Connect the governing relations as one disposition."],
+        },
+      },
+    ],
+  });
+  const observedInputs: CellInput[] = [];
+  const driverProfiles: ModelEvaluationProfile[] = [];
+  const judge = new CapturingJudge();
+
+  const record = await runModelEvaluation(
+    spec,
+    root,
+    (profile) => {
+      driverProfiles.push(profile);
+      return new InputCapturingDriver(observedInputs);
+    },
+    judge,
+    { startingProfileIndex: 0 },
+  );
+
+  expect(observedInputs).toHaveLength(4);
+  expect(new Set(observedInputs.map((input) => input.id))).toEqual(new Set([
+    "source-boundary-r1",
+    "source-boundary-r2",
+  ]));
+  expect(new Set(observedInputs.map((input) => input.executionProfile?.id))).toEqual(
+    new Set(["matched-attention-carrier-v1"]),
+  );
+  expect(new Set(observedInputs.map((input) => input.executionProfile?.provider))).toEqual(
+    new Set(["provider-shared"]),
+  );
+  expect(observedInputs.map((input) => input.instructions[0])).toEqual([
+    "Keep the governing relations as a list.",
+    "Connect the governing relations as one disposition.",
+    "Connect the governing relations as one disposition.",
+    "Keep the governing relations as a list.",
+  ]);
+  expect(observedInputs.every((input) => (
+    input.instructions[1] === "Read the supplied evidence and return the smallest supported conclusion."
+  ))).toBe(true);
+  const [leftInput, rightInput] = observedInputs;
+  expect(nonCarrierInput(leftInput!)).toEqual(nonCarrierInput(rightInput!));
+  expect(new Set(driverProfiles.map((profile) => profile.id))).toEqual(
+    new Set(["matched-attention-carrier-v1"]),
+  );
+  expect(driverProfiles.every((profile) => profile.instructionCarrier === undefined)).toBe(true);
+  expect(record.comparison).toEqual({
+    axis: "instruction-carrier",
+    executionProfileId: "matched-attention-carrier-v1",
+    semanticAtomSetId: "attention-management-h2-v1",
+    semanticAuditSha256: "a".repeat(64),
+  });
+  expect(record.fixtureSha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(record.trials.every((trial) => trial.fixtureSha256 === record.fixtureSha256)).toBe(true);
+  expect(record.profiles.every((profile) => (
+    profile.instructionCarrier?.instructionCount === 1
+    && profile.instructionCarrier.instructionsSha256.length === 64
+  ))).toBe(true);
+  expect(JSON.stringify(record.profiles)).not.toContain("governing relations");
+  expect(judge.serializedRequest).not.toContain("principle-list-secret");
+  expect(judge.serializedRequest).not.toContain("integrated-character-secret");
+  expect(judge.serializedRequest).not.toContain("governing relations");
+});
+
+test("model evaluation migrates legacy v2 only to execution-profile semantics", () => {
+  const current = evaluationSpec();
+  const { comparison: _comparison, ...withoutComparison } = current;
+  const migrated = ModelEvaluationSpecSchema.parse({
+    ...withoutComparison,
+    version: "work-cell.model-evaluation.v2",
+  });
+
+  expect(migrated.version).toBe("work-cell.model-evaluation.v3");
+  expect(migrated.comparison).toEqual({ axis: "execution-profile" });
+  expect(() => ModelEvaluationSpecSchema.parse({
+    ...withoutComparison,
+    version: "work-cell.model-evaluation.v2",
+    comparison: { axis: "execution-profile" },
+  })).toThrow();
+});
+
+test("instruction-carrier comparison skips semantic judging on observed identity mismatch", async () => {
+  const root = await fixture();
+  const base = evaluationSpec();
+  const shared = base.profiles[0]!;
+  const fixtureSha256 = await modelEvaluationFixtureSha256(join(root, "fixture"));
+  const spec = ModelEvaluationSpecSchema.parse({
+    ...base,
+    fixture: { ...base.fixture, expectedSha256: fixtureSha256 },
+    comparison: {
+      axis: "instruction-carrier",
+      executionProfileId: "matched-attention-carrier-v1",
+      semanticAtomSetId: "attention-management-h2-v1",
+      semanticAuditSha256: "b".repeat(64),
+    },
+    profiles: [
+      {
+        ...shared,
+        id: "left-arm",
+        instructionCarrier: { id: "left", instructions: ["Left carrier."] },
+      },
+      {
+        ...shared,
+        id: "right-arm",
+        instructionCarrier: { id: "right", instructions: ["Right carrier."] },
+      },
+    ],
+  });
+  const judge = new CapturingJudge();
+  let invocation = 0;
+
+  const record = await runModelEvaluation(
+    spec,
+    root,
+    () => new ObservedIdentityDriver(invocation++ % 2 === 0 ? "served-a" : "served-b"),
+    judge,
+    { startingProfileIndex: 0 },
+  );
+
+  expect(judge.calls).toBe(0);
+  expect(record.comparisons[0]?.executionIdentity.status).toBe("mismatch");
+  expect(record.comparisons[0]?.result).toMatchObject({
+    judgement: { preferred: "inconclusive" },
+  });
+  expect(record.comparisons[0]?.result.judgement.findings[0]).toContain("selected route mismatch");
+});
+
+test("model evaluation rejects confounded or identical instruction carriers", () => {
+  const base = evaluationSpec();
+  const shared = base.profiles[0]!;
+  const carrierComparison = {
+    axis: "instruction-carrier" as const,
+    executionProfileId: "matched-attention-carrier-v1",
+    semanticAtomSetId: "attention-management-h2-v1",
+    semanticAuditSha256: "a".repeat(64),
+  };
+  const carrier = { id: "same", instructions: ["Use one carrier."] };
+
+  expect(() => ModelEvaluationSpecSchema.parse({
+    ...base,
+    fixture: { ...base.fixture, expectedSha256: "c".repeat(64) },
+    comparison: carrierComparison,
+    profiles: [
+      { ...shared, id: "left", instructionCarrier: carrier },
+      { ...shared, id: "right", instructionCarrier: carrier },
+    ],
+  })).toThrow("instruction-carrier comparison requires distinct carrier ids");
+
+  expect(() => ModelEvaluationSpecSchema.parse({
+    ...base,
+    fixture: { ...base.fixture, expectedSha256: "c".repeat(64) },
+    comparison: carrierComparison,
+    profiles: [
+      { ...shared, id: "left", instructionCarrier: { id: "left", instructions: ["Left carrier."] } },
+      {
+        ...shared,
+        id: "right",
+        toolSurface: "different-tool-surface",
+        instructionCarrier: { id: "right", instructions: ["Right carrier."] },
+      },
+    ],
+  })).toThrow("instruction-carrier comparison requires identical execution members");
+});
+
+test("model evaluation rejects unpinned or empty instruction carriers", () => {
+  const base = evaluationSpec();
+  const shared = base.profiles[0]!;
+  const comparison = {
+    axis: "instruction-carrier" as const,
+    executionProfileId: "matched-attention-carrier-v1",
+    semanticAtomSetId: "attention-management-h2-v1",
+    semanticAuditSha256: "d".repeat(64),
+  };
+
+  expect(() => ModelEvaluationSpecSchema.parse({
+    ...base,
+    comparison,
+    profiles: [
+      { ...shared, id: "left", instructionCarrier: { id: "left", instructions: ["Left."] } },
+      { ...shared, id: "right", instructionCarrier: { id: "right", instructions: ["Right."] } },
+    ],
+  })).toThrow("instruction-carrier comparison requires a pinned fixture digest");
+
+  expect(() => ModelEvaluationSpecSchema.parse({
+    ...base,
+    fixture: { ...base.fixture, expectedSha256: "d".repeat(64) },
+    comparison,
+    profiles: [
+      { ...shared, id: "left", instructionCarrier: { id: "left", instructions: [] } },
+      { ...shared, id: "right", instructionCarrier: { id: "right", instructions: ["Right."] } },
+    ],
+  })).toThrow();
+});
+
+test("model evaluation rejects a changed source fixture before creating a driver", async () => {
+  const root = await fixture();
+  const spec = ModelEvaluationSpecSchema.parse({
+    ...evaluationSpec(),
+    fixture: {
+      root: "fixture",
+      overlays: [],
+      expectedSha256: "0".repeat(64),
+    },
+  });
+  let driverCalls = 0;
+
+  await expect(runModelEvaluation(
+    spec,
+    root,
+    (profile) => {
+      driverCalls += 1;
+      return new ProfileDriver(profile, []);
+    },
+    new CapturingJudge(),
+    { startingProfileIndex: 0 },
+  )).rejects.toThrow("fixture digest mismatch");
+  expect(driverCalls).toBe(0);
 });
 
 test("model evaluation judge tolerates formatting variation but rejects semantic criterion drift", () => {
@@ -433,6 +681,51 @@ class ProfileDriver implements CellDriver {
   }
 }
 
+class InputCapturingDriver implements CellDriver {
+  readonly descriptor = {
+    adapter: "scripted",
+    provider: "provider-shared",
+    model: "model-shared",
+  };
+
+  constructor(private readonly observedInputs: CellInput[]) {}
+
+  async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
+    this.observedInputs.push(input);
+    const evidence = await context.workspace.readText("evidence.txt");
+    return {
+      terminalToolsCalled: [],
+      finalText: `The retained source supports the bounded conclusion: ${evidence.trim()}`,
+      usage: usage(10, 3),
+      rawSteps: [],
+    };
+  }
+}
+
+class ObservedIdentityDriver implements CellDriver {
+  readonly descriptor = {
+    adapter: "scripted",
+    provider: "provider-shared",
+    model: "model-shared",
+  };
+
+  constructor(private readonly servedBy: string) {}
+
+  async run(_input: CellInput, context: DriverContext): Promise<DriverResult> {
+    context.emit("agent.step.finished", {
+      providerMetadata: {
+        workCellRoute: { servedBy: this.servedBy, model: "model-shared" },
+      },
+    });
+    return {
+      terminalToolsCalled: [],
+      finalText: "Bounded conclusion.",
+      usage: usage(10, 3),
+      rawSteps: [],
+    };
+  }
+}
+
 class CapturingJudge implements ModelEvaluationJudge {
   readonly descriptor = { adapter: "scripted-judge", provider: "judge", model: "deterministic" };
   calls = 0;
@@ -464,7 +757,7 @@ class CapturingJudge implements ModelEvaluationJudge {
 
 function evaluationSpec(): ModelEvaluationSpec {
   return ModelEvaluationSpecSchema.parse({
-    version: "work-cell.model-evaluation.v2",
+    version: "work-cell.model-evaluation.v3",
     id: "capability-seed",
     fixture: { root: "fixture", overlays: [] },
     outputDir: "results",
@@ -536,6 +829,14 @@ function usage(inputTokens: number, outputTokens: number): CellUsage {
     outputTokens,
     totalTokens: inputTokens + outputTokens,
     cachedInputTokens: 0,
+  };
+}
+
+function nonCarrierInput(input: CellInput): unknown {
+  return {
+    ...input,
+    instructions: undefined,
+    workspace: { ...input.workspace, root: "<isolated-workspace>" },
   };
 }
 

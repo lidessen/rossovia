@@ -1,7 +1,7 @@
 # 037 — Model Capability Evaluation Seed
 
-**Status:** accepted for first-slice implementation
-**Date:** 2026-07-18
+**Status:** accepted; v3 instruction-carrier extension incorporated
+**Date:** 2026-07-18; extended 2026-08-06
 **Authorized by:** principal
 
 ## Concrete pressure
@@ -83,12 +83,29 @@ not verify the provider's hidden backend build.
 
 ## Revised contract
 
-One `work-cell.model-evaluation.v2` manifest contains:
+One `work-cell.model-evaluation.v3` manifest declares exactly one comparison
+axis:
+
+- `execution-profile` compares two explicit execution profiles for a bounded
+  capability question; or
+- `instruction-carrier` compares two explicit, non-identical instruction
+  carriers over one shared execution profile for a prompting question that
+  needs the adapter's repeated schedule, fixture isolation, observed-identity
+  check, and blind grouped judgment.
+
+The instruction-carrier axis is an extension of the retained evidence
+mechanism, not a capability-profile claim. It keeps carrier identity and hashes
+outside worker and blind-judge evidence, requires a caller-pinned semantic
+audit, and becomes inconclusive when the supposedly shared execution member
+does not match in observed run evidence. Legacy v2 manifests migrate only to
+`execution-profile`; they never acquire carrier semantics implicitly.
+
+The manifest otherwise contains:
 
 - one frozen fixture plus optional overlays;
-- exactly two explicit candidate profiles, each with its own validation route
-  and named context and tool-surface policies plus a declared effective
-  inference policy;
+- exactly two declared comparison members: execution-profile members each own
+  their route and named policies, while instruction-carrier members each own a
+  frozen carrier and must resolve to the same declared execution profile;
 - one or more real task cases using the generic `CellInput` minus generated ID
   and workspace root;
 - an evidence role of `development` or `confirmation`, defaulting to
@@ -139,12 +156,17 @@ behavior. Those observations are prompting hypotheses about the whole execution
 profile, not proof of an intrinsic model trait.
 
 When prompting is the question, hold model, provider, harness, tools, fixture,
-and execution policy fixed and compare one separately labelled treatment using
-the existing experiment mechanism. A case that shaped the treatment becomes a
-development case. The revised profile must then return to capability evaluation
+and execution policy fixed. Use the v3 `instruction-carrier` axis only when the
+treated object is the bounded instruction carrier itself and the question needs
+matched repetitions plus blind grouped artifact judgment. Use the general
+experiment mechanism for treatments that change runtime behavior, tools,
+context delivery, or another intervention not representable as one frozen
+carrier. A case that shaped either treatment becomes a development case. The
+revised profile must then return to `execution-profile` capability evaluation
 on separate retained cases before it can support an allocation claim. This
 keeps prompting research and model cognition in one evidence cycle without
-double-counting tuned cases as independent confirmation.
+turning a carrier comparison into model capability or double-counting tuned
+cases as independent confirmation.
 
 ## Method and mechanism boundary
 
@@ -178,6 +200,8 @@ other.
 - no parallel execution, because provider load and concurrency would add an
   uncontrolled first-slice variable; and
 - no compatibility fields in the treatment experiment or core Cell contract.
+- no general prompt optimizer, automatic carrier adoption, or claim that an
+  instruction-carrier result transfers to another task or execution profile.
 
 ## Verification and disconfirmation
 

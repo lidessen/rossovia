@@ -1,0 +1,299 @@
+{
+  "trial": 2,
+  "question": {
+    "id": "Q1",
+    "prompt": "A semantic match looks convincing. Before citing the claim as knowledge, what must be consulted, and which retrieved artifact may be regenerated without changing authority?"
+  },
+  "condition": "search",
+  "route": {
+    "candidates": [
+      "SHILU-S05",
+      "SHILU-S10",
+      "SHILU-S03",
+      "SHILU-S04",
+      "SHILU-S01"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q1-C1",
+        "valueKey": "entries-and-raw-sources",
+        "citations": [
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "DESIGN.md#Principles"
+          },
+          {
+            "sourceId": "SHILU-S03",
+            "anchor": "DESIGN.md#Indexes"
+          }
+        ]
+      },
+      {
+        "claimId": "Q1-C2",
+        "valueKey": "indexes",
+        "citations": [
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "DESIGN.md#Principles"
+          },
+          {
+            "sourceId": "SHILU-S03",
+            "anchor": "DESIGN.md#Indexes"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S01",
+      "SHILU-S03"
+    ],
+    "candidates": [
+      "SHILU-S05",
+      "SHILU-S10",
+      "SHILU-S03",
+      "SHILU-S04",
+      "SHILU-S01"
+    ],
+    "hitAt1": false,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 0.5,
+    "recallAt5": 1,
+    "allRequiredHitAt3": false,
+    "allRequiredHitAt5": true,
+    "reciprocalRank": 0.3333333333333333,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0,
+    "citationCoverage": 0,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q1-C1",
+        "expectedKey": "entries-and-raw-sources",
+        "actualKey": "entries-and-raw-sources",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "DESIGN.md#Principles",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S03",
+            "anchor": "DESIGN.md#Indexes",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q1-C2",
+        "expectedKey": "indexes",
+        "actualKey": "indexes",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S01",
+            "anchor": "DESIGN.md#Principles",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S03",
+            "anchor": "DESIGN.md#Indexes",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/search-Q1.txt",
+    "sha256": "sha256:cfef10d1585161600ce5b48aecb958c58a8bb3b7e4951a38f9384b6fbd564cbf",
+    "bytes": 442
+  },
+  "sourcePacket": {
+    "path": "inputs/02-Q1-search-sources.md",
+    "sha256": "sha256:7aaacffa5d6a0d3cb5e5cfc6656d42d4675a0bb47c80795fd4c85392d2e71b74",
+    "bytes": 5841
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:46:47.188Z",
+    "finishedAt": "2026-08-06T09:47:13.859Z",
+    "durationMs": 26671,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S05\",\"SHILU-S10\",\"SHILU-S03\",\"SHILU-S04\",\"SHILU-S01\"]}",
+    "usage": {
+      "tokens": {
+        "total": 24407,
+        "input": 6,
+        "output": 903,
+        "reasoning": 0,
+        "cache": {
+          "write": 23498,
+          "read": 0
+        }
+      },
+      "cost": 0.0131962,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009614737,
+        "sessionID": "ses_0298821deffejpi7usOFwXC8sc",
+        "part": {
+          "id": "prt_fd677f98c0015SS7e7icVbw2P4",
+          "messageID": "msg_fd677dec7001P9jsekUEWXyNBP",
+          "sessionID": "ses_0298821deffejpi7usOFwXC8sc",
+          "snapshot": "4e11b3fe10bca80e6f9cc65f95cc1932032945b5",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009630081,
+        "sessionID": "ses_0298821deffejpi7usOFwXC8sc",
+        "part": {
+          "id": "prt_fd678330e001gtpvDuhdrjK71W",
+          "messageID": "msg_fd677dec7001P9jsekUEWXyNBP",
+          "sessionID": "ses_0298821deffejpi7usOFwXC8sc",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S05\",\"SHILU-S10\",\"SHILU-S03\",\"SHILU-S04\",\"SHILU-S01\"]}",
+          "time": {
+            "start": 1786009629454,
+            "end": 1786009630079
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009633821,
+        "sessionID": "ses_0298821deffejpi7usOFwXC8sc",
+        "part": {
+          "id": "prt_fd678441b0015gJKHFrwPsKJMQ",
+          "reason": "stop",
+          "snapshot": "4e11b3fe10bca80e6f9cc65f95cc1932032945b5",
+          "messageID": "msg_fd677dec7001P9jsekUEWXyNBP",
+          "sessionID": "ses_0298821deffejpi7usOFwXC8sc",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24407,
+            "input": 6,
+            "output": 903,
+            "reasoning": 0,
+            "cache": {
+              "write": 23498,
+              "read": 0
+            }
+          },
+          "cost": 0.0131962
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:47:13.860Z",
+    "finishedAt": "2026-08-06T09:47:35.684Z",
+    "durationMs": 21824,
+    "exitCode": 0,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q1-C1\",\"valueKey\":\"entries-and-raw-sources\",\"citations\":[{\"sourceId\":\"SHILU-S01\",\"anchor\":\"DESIGN.md#Principles\"},{\"sourceId\":\"SHILU-S03\",\"anchor\":\"DESIGN.md#Indexes\"}]},{\"claimId\":\"Q1-C2\",\"valueKey\":\"indexes\",\"citations\":[{\"sourceId\":\"SHILU-S01\",\"anchor\":\"DESIGN.md#Principles\"},{\"sourceId\":\"SHILU-S03\",\"anchor\":\"DESIGN.md#Indexes\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 26366,
+        "input": 6,
+        "output": 613,
+        "reasoning": 0,
+        "cache": {
+          "write": 25747,
+          "read": 0
+        }
+      },
+      "cost": 0.0138567,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009641325,
+        "sessionID": "ses_02987b9bbffemgc5y112xSRu6H",
+        "part": {
+          "id": "prt_fd67861690016W656Ewa38V0Ue",
+          "messageID": "msg_fd67846ed001DBYkHMxBKnnqhR",
+          "sessionID": "ses_02987b9bbffemgc5y112xSRu6H",
+          "snapshot": "775adad835fa9330a5912bc023183e2541d345ab",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009651738,
+        "sessionID": "ses_02987b9bbffemgc5y112xSRu6H",
+        "part": {
+          "id": "prt_fd6788240001JrKpB1TCMfUHTX",
+          "messageID": "msg_fd67846ed001DBYkHMxBKnnqhR",
+          "sessionID": "ses_02987b9bbffemgc5y112xSRu6H",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q1-C1\",\"valueKey\":\"entries-and-raw-sources\",\"citations\":[{\"sourceId\":\"SHILU-S01\",\"anchor\":\"DESIGN.md#Principles\"},{\"sourceId\":\"SHILU-S03\",\"anchor\":\"DESIGN.md#Indexes\"}]},{\"claimId\":\"Q1-C2\",\"valueKey\":\"indexes\",\"citations\":[{\"sourceId\":\"SHILU-S01\",\"anchor\":\"DESIGN.md#Principles\"},{\"sourceId\":\"SHILU-S03\",\"anchor\":\"DESIGN.md#Indexes\"}]}]}",
+          "time": {
+            "start": 1786009649728,
+            "end": 1786009651735
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009655642,
+        "sessionID": "ses_02987b9bbffemgc5y112xSRu6H",
+        "part": {
+          "id": "prt_fd6789957001STpi0Dw60d7drz",
+          "reason": "stop",
+          "snapshot": "775adad835fa9330a5912bc023183e2541d345ab",
+          "messageID": "msg_fd67846ed001DBYkHMxBKnnqhR",
+          "sessionID": "ses_02987b9bbffemgc5y112xSRu6H",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26366,
+            "input": 6,
+            "output": 613,
+            "reasoning": 0,
+            "cache": {
+              "write": 25747,
+              "read": 0
+            }
+          },
+          "cost": 0.0138567
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

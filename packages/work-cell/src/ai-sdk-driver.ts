@@ -489,6 +489,18 @@ export class AiSdkValidationDriver implements CellDriver {
     };
   }
 
+  /**
+   * Narrow adapter seam for experiments that present state after a confirmed
+   * write. The production driver preserves the ordinary tool result exactly;
+   * subclasses own any additional policy and evidence.
+   */
+  protected decorateSuccessfulWriteResult(
+    result: { path: string; characters: number },
+    _context: DriverContext,
+  ): unknown {
+    return result;
+  }
+
   private createExecutionTools(
     input: CellInput,
     context: DriverContext,
@@ -549,7 +561,10 @@ export class AiSdkValidationDriver implements CellDriver {
                 if (terminalOnly()) return terminalActionRequired();
                 await context.workspace.writeText(path, content);
                 context.emit("tool.write_file", { path, characters: content.length });
-                return { path, characters: content.length };
+                return this.decorateSuccessfulWriteResult(
+                  { path, characters: content.length },
+                  context,
+                );
               },
             }),
           }

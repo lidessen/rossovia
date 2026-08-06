@@ -1,0 +1,72 @@
+{
+  "evidenceId": "2026-08-06-qwen37-associative-recall-v2-development",
+  "status": "development-treatment-probe",
+  "fixtureId": "shilu-associative-recall-v2",
+  "caseSet": "development",
+  "repetitions": 1,
+  "aggregate": {
+    "image": {
+      "trials": 6,
+      "settledRoutes": 6,
+      "settledAnswers": 6,
+      "hitAt1": 0.6666666666666666,
+      "hitAt3": 0.8333333333333334,
+      "hitAt5": 1,
+      "recallAt1": 0.3333333333333333,
+      "recallAt3": 0.75,
+      "recallAt5": 1,
+      "allRelevantHitAt3": 0.6666666666666666,
+      "allRelevantHitAt5": 1,
+      "meanReciprocalRank": 0.7916666666666666,
+      "answerAccuracy": 1,
+      "citationPrecision": 0.9047619047619048,
+      "citationCoverage": 1,
+      "groundedSuccessRate": 0.6666666666666666,
+      "meanOpenedSources": 4.833333333333333,
+      "counts": {
+        "correctAnswerCount": 12,
+        "totalClaimCount": 12,
+        "correctCitationCount": 19,
+        "submittedCitationCount": 21,
+        "coveredEvidenceGroupCount": 15,
+        "totalEvidenceGroupCount": 15
+      },
+      "totalDurationMs": 224628,
+      "totalObservedCost": 0.16300840000000003,
+      "routeFailures": 0,
+      "answerFailures": 0
+    },
+    "search": {
+      "trials": 6,
+      "settledRoutes": 6,
+      "settledAnswers": 6,
+      "hitAt1": 0.5,
+      "hitAt3": 1,
+      "hitAt5": 1,
+      "recallAt1": 0.25,
+      "recallAt3": 0.75,
+      "recallAt5": 0.8333333333333334,
+      "allRelevantHitAt3": 0.5,
+      "allRelevantHitAt5": 0.6666666666666666,
+      "meanReciprocalRank": 0.7222222222222222,
+      "answerAccuracy": 1,
+      "citationPrecision": 0.8823529411764706,
+      "citationCoverage": 0.8666666666666667,
+      "groundedSuccessRate": 0.6666666666666666,
+      "meanOpenedSources": 4.666666666666667,
+      "counts": {
+        "correctAnswerCount": 12,
+        "totalClaimCount": 12,
+        "correctCitationCount": 15,
+        "submittedCitationCount": 17,
+        "coveredEvidenceGroupCount": 13,
+        "totalEvidenceGroupCount": 15
+      },
+      "totalDurationMs": 175629,
+      "totalObservedCost": 0.14689146,
+      "routeFailures": 0,
+      "answerFailures": 0
+    }
+  },
+  "interpretationGuard": "Retrieval relevance is independent from answer support. Final answers are evaluated only after opening frozen passages; routing artifacts are never citations."
+}

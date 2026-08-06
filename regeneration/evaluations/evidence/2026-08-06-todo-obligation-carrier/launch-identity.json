@@ -1,0 +1,13 @@
+{
+  "version": "todo-probe.launch-identity.v1",
+  "repositoryHead": "83f210891e8e08777dc789213ef746e81c0ed327",
+  "runtimeDiffSha256": "a2f6ad23063067fd068832e8b87dab08cdff642a42647ba713a704769c228d20",
+  "fixtureSha256": "8309ad4b5f3543a163eed7e8c50865eede02fc30d92f35c6959dba9649ade0c4",
+  "files": {
+    "README.md": "7e58a49523c4bc13860649b470fe239d8a527f2014e60a36413bd18daebc6973",
+    "semantic-audit.md": "ffaa2ecd0aacf00292bb5acb1015bf9dc17f30c4164fc3d45a6019766bba171e",
+    "model-evaluation.json": "ea6d4bfa165dbcb2453243bddf892174d8ddd0984cbda63cf22d549bf1414f3b",
+    "fixture-files.sha256": "e5f316cbceaaf6d580f2a8a18066fda265ffc97532ef0ae322c28e12f43c4a6d",
+    "run-development-probe.ts": "bfeef049b0d5855147bd302dbc4d1cfea60c44a749de55c9d8740d929e590dc4"
+  }
+}
