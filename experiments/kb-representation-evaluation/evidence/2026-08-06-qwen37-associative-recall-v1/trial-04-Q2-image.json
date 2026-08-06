@@ -1,0 +1,234 @@
+{
+  "trial": 4,
+  "question": {
+    "id": "Q2",
+    "prompt": "Two otherwise identical entry proposals lack provenance: one comes from an automated processor, the other from a human at the terminal. Should they pass the same gate, and where is that distinction enforced?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S05",
+      "SHILU-S09",
+      "SHILU-S01",
+      "SHILU-S12"
+    ]
+  },
+  "answer": null,
+  "score": {
+    "gold": [
+      "SHILU-S05",
+      "SHILU-S09"
+    ],
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S05",
+      "SHILU-S09",
+      "SHILU-S01",
+      "SHILU-S12"
+    ],
+    "hitAt1": false,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRequiredHitAt3": true,
+    "allRequiredHitAt5": true,
+    "reciprocalRank": 0.5,
+    "openedSources": 5,
+    "answerAccuracy": 0,
+    "citationPrecision": 0,
+    "citationCoverage": 0,
+    "protocolValid": false,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q2-C1",
+        "expectedKey": "reject-missing-provenance",
+        "actualKey": null,
+        "answerCorrect": false,
+        "citations": [],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q2-C2",
+        "expectedKey": "human-source-exempt",
+        "actualKey": null,
+        "answerCorrect": false,
+        "citations": [],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": "JSON Parse error: Expected '}'",
+  "activation": {
+    "path": "inputs/activation-Q2.png",
+    "sha256": "sha256:4aacf4e79c07210645419b9f1323b7f9f5e65298a1d4802179969d2bd50331c3",
+    "bytes": 165436
+  },
+  "sourcePacket": {
+    "path": "inputs/04-Q2-image-sources.md",
+    "sha256": "sha256:b245d96a63a9152c23e40479a791b0b281ab47f5e4a4bdd70b5270f38f2abb83",
+    "bytes": 5132
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:48:15.115Z",
+    "finishedAt": "2026-08-06T09:48:39.862Z",
+    "durationMs": 24747,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S02\",\"SHILU-S05\",\"SHILU-S09\",\"SHILU-S01\",\"SHILU-S12\"]}",
+    "usage": {
+      "tokens": {
+        "total": 25551,
+        "input": 6,
+        "output": 755,
+        "reasoning": 0,
+        "cache": {
+          "write": 24790,
+          "read": 0
+        }
+      },
+      "cost": 0.0136054,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009703417,
+        "sessionID": "ses_02986ca69ffeiNQPEuCGbwsKNM",
+        "part": {
+          "id": "prt_fd67953f3001TinofuEza4sjYO",
+          "messageID": "msg_fd679365a001Ocq451aXiOrWe1",
+          "sessionID": "ses_02986ca69ffeiNQPEuCGbwsKNM",
+          "snapshot": "b37fec08c165e513e19ac1b0a103d2e8350e1a8e",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009716246,
+        "sessionID": "ses_02986ca69ffeiNQPEuCGbwsKNM",
+        "part": {
+          "id": "prt_fd67983b2001D9WHT2FbCAEcuq",
+          "messageID": "msg_fd679365a001Ocq451aXiOrWe1",
+          "sessionID": "ses_02986ca69ffeiNQPEuCGbwsKNM",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S02\",\"SHILU-S05\",\"SHILU-S09\",\"SHILU-S01\",\"SHILU-S12\"]}",
+          "time": {
+            "start": 1786009715634,
+            "end": 1786009716243
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009719818,
+        "sessionID": "ses_02986ca69ffeiNQPEuCGbwsKNM",
+        "part": {
+          "id": "prt_fd6799408001R9wmgYhKbDB1o7",
+          "reason": "stop",
+          "snapshot": "b37fec08c165e513e19ac1b0a103d2e8350e1a8e",
+          "messageID": "msg_fd679365a001Ocq451aXiOrWe1",
+          "sessionID": "ses_02986ca69ffeiNQPEuCGbwsKNM",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25551,
+            "input": 6,
+            "output": 755,
+            "reasoning": 0,
+            "cache": {
+              "write": 24790,
+              "read": 0
+            }
+          },
+          "cost": 0.0136054
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:48:39.862Z",
+    "finishedAt": "2026-08-06T09:49:04.690Z",
+    "durationMs": 24827,
+    "exitCode": 0,
+    "answerText": "```json\n{\"claims\":[{\"claimId\":\"Q2-C1\",\"valueKey\":\"reject-missing-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules\"},{\"sourceId\":\"SHILU-S09\",\"anchor\":\"pkg/types/validation.go#ValidateEntry\"}]},{\"claimId\":\"Q2-C2\",\"valueKey\":\"human-source-exempt\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules\"},{\"sourceId\":\"SHILU-S09\",\"anchor\":\"pkg/types/validation.go#ValidateEntry\"},{\"sourceId\":\"SHILU-S12\",\"anchor\":\"pkg/core/entries.go#CreateEntry / SupersedeEntry\"}]]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 26334,
+        "input": 6,
+        "output": 867,
+        "reasoning": 0,
+        "cache": {
+          "write": 25461,
+          "read": 0
+        }
+      },
+      "cost": 0.0141201,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009726483,
+        "sessionID": "ses_0298669bfffeAucJ0mR2oNX1pl",
+        "part": {
+          "id": "prt_fd679ae0e001iWMqTlu1gGZpto",
+          "messageID": "msg_fd67996e700188OzLy4sbZ9uSR",
+          "sessionID": "ses_0298669bfffeAucJ0mR2oNX1pl",
+          "snapshot": "24df8aa75b94168ed6d2c9a7937a6aefd3981e83",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009741220,
+        "sessionID": "ses_0298669bfffeAucJ0mR2oNX1pl",
+        "part": {
+          "id": "prt_fd679dc03001yoj0Xe4WCSOUeg",
+          "messageID": "msg_fd67996e700188OzLy4sbZ9uSR",
+          "sessionID": "ses_0298669bfffeAucJ0mR2oNX1pl",
+          "type": "text",
+          "text": "```json\n{\"claims\":[{\"claimId\":\"Q2-C1\",\"valueKey\":\"reject-missing-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules\"},{\"sourceId\":\"SHILU-S09\",\"anchor\":\"pkg/types/validation.go#ValidateEntry\"}]},{\"claimId\":\"Q2-C2\",\"valueKey\":\"human-source-exempt\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"DESIGN.md#MCP Writes: Job-Scoped Claims Required / Validation Rules\"},{\"sourceId\":\"SHILU-S09\",\"anchor\":\"pkg/types/validation.go#ValidateEntry\"},{\"sourceId\":\"SHILU-S12\",\"anchor\":\"pkg/core/entries.go#CreateEntry / SupersedeEntry\"}]]}\n```",
+          "time": {
+            "start": 1786009738243,
+            "end": 1786009741217
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009744648,
+        "sessionID": "ses_0298669bfffeAucJ0mR2oNX1pl",
+        "part": {
+          "id": "prt_fd679f504001fYeBx7VgKKQ3xY",
+          "reason": "stop",
+          "snapshot": "24df8aa75b94168ed6d2c9a7937a6aefd3981e83",
+          "messageID": "msg_fd67996e700188OzLy4sbZ9uSR",
+          "sessionID": "ses_0298669bfffeAucJ0mR2oNX1pl",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26334,
+            "input": 6,
+            "output": 867,
+            "reasoning": 0,
+            "cache": {
+              "write": 25461,
+              "read": 0
+            }
+          },
+          "cost": 0.0141201
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

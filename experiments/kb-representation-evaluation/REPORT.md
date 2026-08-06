@@ -1,7 +1,8 @@
-# 联想激活图的关系可读性：第一轮实验报告
+# 联想激活图：关系可读性与两阶段 recall 实验报告
 
 状态：`probe`  
-执行日期：2026-08-05（America/Los_Angeles）  
+执行日期：第一轮 2026-08-05，第二轮 2026-08-06（America/Los_Angeles）
+
 执行画像：OpenCode 1.18.13，`opencode-go/qwen3.7-plus`，每次新 session，默认模型
 variant，`--pure --format json`，只附加一种表示，不请求文件系统或工具。
 
@@ -22,6 +23,99 @@ variant，`--pure --format json`，只附加一种表示，不请求文件系统
 更没有执行“选中来源 → 打开原文 → 形成引用”。因此当前证据既不能证明也不能否定联想图
 在 recall 场景中的实际价值；它只说明模型获得了可继续利用的局部关系信号，同时会漏掉
 高密度区域的部分 incident edge。
+
+## 第二轮：两阶段 recall development probe
+
+第二轮已经在冻结 revision `c91e3e93e55483a8c53ff40b53cedbef6cdab6cf` 上执行。语料来自
+Shilu commit `1cac9bbf3e2e10bfdb3178838fefc406236b652e` 的 12 个 curated source
+passage；执行画像仍为 OpenCode 1.18.13 与 `opencode-go/qwen3.7-plus`。每个 stage 使用
+全新 session，cwd 中只有该 stage 的附件和 `permission: deny` 配置；12 个 route 均解析
+成功，没有 tool event。每题每个条件只执行一次，所以以下仍是 development signal。
+
+两个条件都先路由、再以全新 session 打开最多 5 个来源：
+
+- image：固定 policy 先从语料独立派生概念—来源关系，再按 query 激活 3 个概念并渲染 PNG；
+- search：确定性 BM25 返回只含 source ID 与中性标题的 top-5 locator，Agent 再排序选择。
+
+二者不是裸模态对照。image 多了概念扩展、子图选择、布局和视觉读取；search 包含 BM25
+tokenization、ranking 和文本结果格式。只能比较整个执行画像。
+
+### 路由结果
+
+| 条件 | recall@1 | recall@3 | recall@5 | all-required@5 | MRR | 平均打开来源 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| image graph | 0.333 | 0.833 | 0.917 | 5/6 | 0.783 | 5.00 |
+| BM25 search | 0.167 | 0.750 | 0.833 | 4/6 | 0.639 | 4.83 |
+
+两边的 hit@5 都是 1，但这只表示“至少一个相关来源”出现；多来源问题仍可能不完整。按
+recall@5 配对看，image 在 Q2、Q4 更高，search 在 Q3 更高，Q1、Q5、Q6 持平。具体漏召为：
+
+- image Q3 漏掉 `SHILU-S06`，recall@5 为 0.5；
+- search Q2 漏掉 `SHILU-S09`，recall@5 为 0.5；
+- search Q4 漏掉 `SHILU-S12`，recall@5 为 0.5。
+
+这是一条正向但很弱的候选信号：联想图在本 fixture 中没有被 search 完全支配，而且在两个
+问题上补到了 search 漏掉的来源；但只有 6 题、1 次运行，不能称为稳定优势。
+
+### 回源答案与引用
+
+search 的 12/12 proposition key 正确；image 的 10/12 正确，唯一损失来自 Q2 answer JSON
+格式错误、整个两-claim answer 无法解析。也就是说，11 个可解析 answer 的 22 个 proposition
+key 全部正确。
+
+预注册 summary 中两边 `groundedSuccessRate` 都是 0，但这不能解释为 12 次均未从来源得到
+正确答案。这个指标同时要求 answer 全对、citation precision=1、coverage=1，而首版引用
+协议暴露了两个 development defect：
+
+1. source packet 展示 `path#anchor (blob ...)`，prompt 却要求“exact Location anchor”；模型
+   分别返回了裸 anchor、`path#anchor`、带 blob 的完整 Location 和组合 anchor 的子项，scorer
+   只接受一个裸字符串；
+2. claim 的 support allowlist 被当成穷尽集合。多个来源实际支持同一 claim，例如 Q5 的
+   `SHILU-S01` 也明确说明 core validates/commits，但因为不在该 claim 的窄 allowlist 中，
+   合理的补充引用反而降低 precision。
+
+原始预注册分数保持不改。作为明确标注的 post-hoc source-only 诊断，忽略 anchor 格式但仍
+要求来源已打开且属于预注册的 claim support allowlist 后，image 的 micro citation
+precision/coverage 为 0.600/0.750，search 为 0.579/0.833；两边各有 1/6 trial 达到严格全
+claim grounding。由于 allowlist 本身并非穷尽的语义支持判断，这个诊断仍偏保守，不能替代
+冻结 scorer，只用于定位失败层。
+
+仍有两个较明确的真实来源不足：search Q2 没有实现来源 `SHILU-S09`，无法用实现证据支持
+human exemption；search Q4 没有 `SHILU-S12`，所开来源不能证明双向 supersession fields。
+image Q3 虽漏掉 gold `SHILU-S06`，但打开的 `SHILU-S02` 与 `SHILU-S07` 仍能共同支持
+provenance boundary 与 copy primitive；这也说明相关来源 gold 与 claim support group 需要
+分开表达。
+
+### 时延、成本与读取预算
+
+| 条件 | route 时延 | route 成本 | 全链路时延 | 全链路成本 | 平均 source bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| image graph | 168.3 s | $0.08488 | 307.1 s | $0.17059 | 5,499 |
+| BM25 search | 103.6 s | $0.07640 | 211.1 s | $0.15963 | 6,206 |
+
+整轮实际观测成本为 `$0.3302213`。image 输入 PNG 为 144–165 KB，search locator 文件只有
+438–483 bytes；image route 在本轮更慢且略贵。反过来，image 选出的 source packet 平均更小，
+但这是来源组合不同造成的，不能归因于图像压缩。两边都接近总是打开 5 个来源，当前图没有
+节省 source count。
+
+### 第二轮结论与下一修正
+
+本轮支持的最强表述是：**在这组冻结的合成 fixture 和单次执行中，query-conditioned graph
+让全部必要来源进入 top-5 的题数为 5/6，search 为 4/6，并观察到更高 MRR；可解析 answer
+均选对结构化 proposition。** 它不支持稳定的 graph-over-search 优势，也没有验证完成版引用
+grounding、模型级视觉能力或一般性的成本优势。
+
+下一版不应在同一输出上放宽 scorer，而应先冻结新的引用合同：
+
+1. 每个可引用段落提供独立、不带 path 或展示文本的 opaque `anchorId`；
+2. evaluator 把“检索相关来源集合”“每个 claim 的必要 evidence group”和“允许的支持来源”
+   分开，补充但真实的引用不算错；
+3. 要求每个 claim 只引用最小充分证据，同时保留 precision 与 coverage；
+4. 修正后用新 case，或把旧 case 复跑明确标成 development treatment，至少重复两次再讨论
+   稳定性。
+
+第二轮没有证伪联想图候选，因为 image 在两个配对 case 上 recall@5 更高，而且平均读取 bytes
+没有更差；但它也远未达到可采用结论。
 
 ## 系统对象
 
@@ -125,7 +219,7 @@ variant，`--pure --format json`，只附加一种表示，不请求文件系统
 DeepSeek-OCR 还提示出一个此前缺失的第三实验臂：把同一份线性关系文本渲染成紧凑的“文档
 图片”，而不是把关系画成拓扑连线图。它能把“视觉 token 压缩”与“空间连线识别”拆开测试。
 
-## 证据边界与下一轮
+## 第一轮证据边界与当时的下一轮要求
 
 本轮只覆盖一个模型路线、一组人工图、一个固定布局和每档三次重复，仍是 development case，
 不能升级成跨模型事实。图像在本轮开始前还经过了箭头端点和标签可读性修正，因此下一轮必须
@@ -136,7 +230,7 @@ DeepSeek-OCR 还提示出一个此前缺失的第三实验臂：把同一份线�
 和输入是可审计的，但不存在一个可指向的“执行时源码 commit”；这也是下一轮必须先冻结
 commit 再调用模型的流程修正。
 
-下一轮应直接测试真实 recall 链路，而不是继续把完整边枚举当成主指标：
+第一轮结束时预注册的后续要求如下。第二轮完成了 1–5；6–7 仍未完成：
 
 1. 冻结一组原始记忆，为每份来源分配稳定的 source ID、path 和段落 anchor；
 2. 构造不直接透露来源 ID 的真实 recall 问题，并冻结每题的相关来源集合；
@@ -149,9 +243,9 @@ commit 再调用模型的流程修正。
    混为一种机制；
 7. 用未参与调图的 held-out 记忆图和至少第二个多模态模型验证结果。
 
-是否“可用”应由端到端 source hit 和最终引用相对文本基线的表现决定，而不是要求图像边恢复
-达到 100%。在这组实验完成前，结论保持 `probe`；当前第一轮不再被解释为对联想图方案的
-否决。
+是否“可用”仍应由端到端 source hit 和最终引用相对文本基线的表现决定，而不是要求图像边
+恢复达到 100%。第二轮已得到 source-hit signal，但引用合同出现 development defect，且尚无
+重复与 held-out 验证，因此结论继续保持 `probe`；第一轮也不再被解释为对联想图方案的否决。
 
 ## 可复核证据
 
@@ -161,3 +255,8 @@ commit 再调用模型的流程修正。
   wall-clock、usage、输入 hash 与字节数；
 - 实际输入：相应 evidence 目录下的 `inputs/`；
 - 机械汇总：`bun run summarize evidence/2026-08-05-qwen37-image-gate evidence/2026-08-05-qwen37-text-gate`。
+- 第二轮执行画像与冻结 identity：[`evidence/2026-08-06-qwen37-associative-recall-v1/environment.json`](./evidence/2026-08-06-qwen37-associative-recall-v1/environment.json)；
+- 第二轮预注册原始汇总：[`evidence/2026-08-06-qwen37-associative-recall-v1/summary.json`](./evidence/2026-08-06-qwen37-associative-recall-v1/summary.json)；
+- 第二轮明确标注的 post-hoc 诊断：[`evidence/2026-08-06-qwen37-associative-recall-v1/posthoc-analysis.json`](./evidence/2026-08-06-qwen37-associative-recall-v1/posthoc-analysis.json)；
+- 第二轮每个 `trial-*.json` 保留 route、selected-source packet、answer、raw events、机械评分、
+  时延与 usage；`inputs/` 保留实际 PNG/search locator 和每次只读的 selected sources。

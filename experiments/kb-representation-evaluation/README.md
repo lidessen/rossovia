@@ -8,9 +8,9 @@
 因此验收重点不是完整恢复每一条边，而是相关来源能否进入有限候选集，以及 Agent 回源后
 能否正确引用。图中的误报主要消耗阅读预算，漏掉关键来源则直接造成 recall 失败。
 
-本轮没有执行这条端到端 recall 链路，也没有给文本条件配搜索工具；文本只是完整附件控制组。
-现有结果只能描述图的关系可读性，不能直接量化真实 `activation graph → source → citation`
-或 `search → top-k` 的命中率和成本。
+第一轮没有执行端到端 recall 链路，也没有给文本条件配搜索工具；当时的文本只是完整附件
+控制组。第二轮现已执行 `activation graph/search → selected source → proposition + citation`，
+但仍是单次 development probe，不能形成稳定性或跨模型能力结论。
 
 当前状态是 `probe`。第一轮先回答一个较低层的问题：Agent 能否恢复图片里的
 复杂连线？`fixtures/image-diagnostic/` 固定相同的 15 个节点与布局，把边数从 13、22
@@ -22,9 +22,9 @@
 完备枚举；局部边、关系标签和四跳路径保持正确。这组信号足以继续测试联想召回，但尚未
 证明它能达到可用的 source hit 或最终引用成功率。
 
-第二轮 development probe 已冻结在 `fixtures/recall-v1/`，尚未执行模型调用。它取自
+第二轮 development probe 已冻结在 `fixtures/recall-v1/` 并完成一次执行。它取自
 Shilu commit `1cac9bbf3e2e10bfdb3178838fefc406236b652e` 的 12 个来源片段，用 6 个不暴露
-source ID／路径的真实问题比较两个完整画像：
+source ID／路径的场景化合成问题比较两个完整画像：
 
 - image：先以不读取 evaluator gold 的固定 BM25 policy 从语料派生概念—来源关系，再为
   每个 query 激活 3 个概念并生成有损子图，Agent 从中选择最多 5 个来源；
@@ -38,6 +38,21 @@ precision／coverage、grounded success、打开来源数、来源字节、时�
 不允许再附加可能自相矛盾的自由文本；它提高机械可判定性，但仍不等于开放式语义评审。
 本轮两个画像都由 query 驱动，但图还多了一层概念扩展和视觉布局，
 因此结果只能归因于两个整体画像，不能归因于裸“图片 vs 文本”。
+
+第二轮 6 组配对问题的主要路由结果如下：image/search 的 source recall@3 分别为
+0.833/0.750，recall@5 为 0.917/0.833，MRR 为 0.783/0.639；image 在 Q2、Q4 的
+recall@5 更高，search 在 Q3 更高，其余三题持平。image route 总时延 168.3 秒、观测成本
+$0.08488，search route 为 103.6 秒、$0.07640。单次小样本只说明联想图值得继续测试，
+没有证明它优于搜索。
+
+预注册 scorer 的 grounded success 两边都为 0，但不能解释成 12 次回答均未回源：11 个可
+解析 answer 的 22/22 proposition key 均正确；image 的 aggregate accuracy 之所以只有
+0.833，是因为 Q2 的整个两-claim JSON 格式错误、无法解析。主要问题是 worker 把 source packet 中的
+`path#anchor (blob ...)`、单独 anchor 和组合 anchor 混合返回，而 scorer 只接受一个 exact
+anchor 字符串；另有多次把相关但不在该 claim 预注册 allowlist 的来源一并引用。这些
+citation failure 既包含非穷尽 allowlist 造成的 false negative，也包含真正非该 claim 的
+过度引用。原始分数保持不改；下一版应提供独立、不可变的 `anchorId`，把“允许支持来源”和
+“必要 evidence group”分开，并继续分别计算 citation precision 与 coverage。
 
 仓库还保留了一个未执行的综合轮候选 fixture：固定 15 个节点、22 条边和 7 个机械评分
 问题，覆盖直接查找、多跳路径和全局拓扑。`fixtures/round1/graph.txt` 与 `graph.svg`
@@ -95,8 +110,15 @@ bun run probe:recall
 
 该命令交错执行 6 个问题的 image/search 条件，每个条件一次，共最多 12 个 route call 和
 12 个 answer call。正式调用前必须先提交冻结的 fixture、scorer、runner 和实际 PNG；默认
-evidence ID 已存在时命令会拒绝覆盖。第一次运行只提供 development signal，不形成稳定性
-或跨模型能力结论。
+evidence ID 已存在时命令会拒绝覆盖。现有默认 evidence ID 已执行，因此直接复跑会被拒绝；
+如需预注册新 repetition，必须显式设置新的 `KB_PROBE_ID`。第一次运行只提供 development
+signal，不形成稳定性或跨模型能力结论。
+
+重算第二轮明确标注的 post-hoc source-only 与 resource 诊断（不会改写 `summary.json`）：
+
+```sh
+bun run analyze:recall 2026-08-06-qwen37-associative-recall-v1
+```
 
 两个 probe 会在不向 worker 暴露答案的情况下自动评分并保留结果。下列独立 evaluator
 只适用于尚未执行的 `round1` 候选 fixture：
