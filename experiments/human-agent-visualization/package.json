@@ -5,6 +5,7 @@
   "scripts": {
     "build:fixtures": "bun run scripts/build-fixtures.js",
     "dev": "bun run server.js",
+    "introduce": "bun run scripts/introduce-project.js",
     "test": "bun test",
     "check": "bun run scripts/check.js"
   }

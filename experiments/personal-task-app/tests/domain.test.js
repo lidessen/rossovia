@@ -6,9 +6,11 @@ import {
   completeTask,
   createEmptyState,
   createProject,
+  deleteTask,
   inboxTasks,
   projectTasks,
   quickCompleteTask,
+  reopenTask,
   reviewEntries,
   resolvePendingCloseOut,
   savePendingCloseOutDraft,
@@ -17,6 +19,7 @@ import {
   startFocus,
   stopFocus,
   todayTasks,
+  updateTaskTitle,
 } from "../src/domain.js";
 
 const T0 = "2026-08-05T10:00:00.000Z";
@@ -43,6 +46,19 @@ describe("canonical task projections", () => {
     expect(todayTasks(state)).toHaveLength(1);
     expect(projectTasks(state, "project-1")[0]).toBe(todayTasks(state)[0]);
     expect(state.tasks).toHaveLength(1);
+  });
+
+  test("correcting a title preserves task identity and rejects an empty correction", () => {
+    const state = taskState();
+    const corrected = updateTaskTitle(state, "task-1", "  整理签证申请材料  ");
+
+    expect(corrected.tasks[0]).toMatchObject({
+      id: "task-1",
+      title: "整理签证申请材料",
+      createdAt: T0,
+    });
+    expect(corrected.tasks).toHaveLength(1);
+    expect(() => updateTaskTitle(corrected, "task-1", "   ")).toThrow("任务标题不能为空");
   });
 });
 
@@ -144,5 +160,39 @@ describe("ordinary completion", () => {
 
     state = stopFocus(state, { endedAt: T1 }).state;
     expect(() => quickCompleteTask(state, "task-1", T2)).toThrow("完成当前专注的收尾");
+  });
+
+  test("an accidental completion can be reopened into its original projections", () => {
+    let state = taskState();
+    state = assignTaskToProject(state, "task-1", "project-1");
+    state = scheduleTaskForToday(state, "task-1", true);
+    state = quickCompleteTask(state, "task-1", T1);
+
+    state = reopenTask(state, "task-1");
+
+    expect(state.tasks[0].completionState).toBe("open");
+    expect(state.tasks[0]).not.toHaveProperty("completedAt");
+    expect(projectTasks(state, "project-1")[0]?.id).toBe("task-1");
+    expect(todayTasks(state)[0]?.id).toBe("task-1");
+    expect(reviewEntries(state)).toHaveLength(0);
+  });
+});
+
+describe("confirmed deletion boundary", () => {
+  test("deleting a task removes its records and current pointer after close-out", () => {
+    let state = taskState();
+    state = scheduleTaskForToday(state, "task-1", true);
+    state = setCurrentTask(state, "task-1");
+    state = startFocus(state, { id: "focus-1", taskId: "task-1", startedAt: T0 });
+    expect(() => deleteTask(state, "task-1")).toThrow("先停止并收尾");
+
+    state = stopFocus(state, { endedAt: T1 }).state;
+    expect(() => deleteTask(state, "task-1")).toThrow("完成当前专注的收尾");
+    state = resolvePendingCloseOut(state);
+    state = deleteTask(state, "task-1");
+
+    expect(state.tasks).toHaveLength(0);
+    expect(state.focusRecords).toHaveLength(0);
+    expect(state.currentTaskId).toBeNull();
   });
 });

@@ -3,7 +3,11 @@ import { activeFocus, createEmptyState, STATE_VERSION } from "./domain.js";
 export const STORAGE_KEY = "rossovia.personal-task-app.v1";
 
 function isString(value) {
-  return typeof value === "string" && value.length > 0;
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isTimestamp(value) {
+  return isString(value) && Number.isFinite(Date.parse(value));
 }
 
 export function validateState(value) {
@@ -30,7 +34,7 @@ export function validateState(value) {
 
   const projectIds = new Set();
   for (const project of value.projects) {
-    if (!isString(project?.id) || !isString(project?.name) || !isString(project?.createdAt)) {
+    if (!isString(project?.id) || !isString(project?.name) || !isTimestamp(project?.createdAt)) {
       throw new Error("项目记录无效。");
     }
     if (projectIds.has(project.id)) throw new Error("项目 ID 重复。");
@@ -42,7 +46,7 @@ export function validateState(value) {
     if (
       !isString(task?.id)
       || !isString(task?.title)
-      || !isString(task?.createdAt)
+      || !isTimestamp(task?.createdAt)
       || !["open", "completed"].includes(task?.completionState)
       || typeof task?.scheduledForToday !== "boolean"
       || !(task?.projectId === null || isString(task?.projectId))
@@ -53,7 +57,7 @@ export function validateState(value) {
     if (task.projectId !== null && !projectIds.has(task.projectId)) {
       throw new Error("任务引用了不存在的项目。");
     }
-    if (task.completionState === "completed" ? !isString(task.completedAt) : "completedAt" in task) {
+    if (task.completionState === "completed" ? !isTimestamp(task.completedAt) : "completedAt" in task) {
       throw new Error("任务的完成时间与状态不一致。");
     }
     taskIds.add(task.id);
@@ -65,8 +69,8 @@ export function validateState(value) {
     if (
       !isString(record?.id)
       || !isString(record?.taskId)
-      || !isString(record?.startedAt)
-      || !(record?.endedAt === null || isString(record?.endedAt))
+      || !isTimestamp(record?.startedAt)
+      || !(record?.endedAt === null || isTimestamp(record?.endedAt))
       || !taskIds.has(record.taskId)
       || !(record.closeOutNote === undefined || typeof record.closeOutNote === "string")
     ) {
@@ -144,6 +148,12 @@ export function createStorageAdapter(storage, key = STORAGE_KEY) {
         throw new Error("本机原任务数据无法读取；为避免覆盖，本次会话禁止保存。");
       }
       storage.setItem(key, serializeState(state));
+    },
+    restore(serialized) {
+      const restored = deserializeState(serialized);
+      storage.setItem(key, serializeState(restored));
+      writesBlockedByFailedLoad = false;
+      return restored;
     },
   };
 }

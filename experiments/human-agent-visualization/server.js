@@ -1,5 +1,7 @@
 import { resolve, sep } from "node:path";
 import { assertControlledFixturesCurrent } from "./scripts/fixture-consistency.js";
+import { validateProjectBundle } from "./lib/project-evidence-bundle.js";
+import { validateProjectBundleAgainstRepository } from "./scripts/project-lens-builder.js";
 
 const DEFAULT_PORT = 4311;
 const PORT_ENV = "HUMAN_AGENT_VIS_PORT";
@@ -48,6 +50,7 @@ await assertControlledFixturesCurrent();
 const port = parsePort();
 
 const server = Bun.serve({
+  hostname: "127.0.0.1",
   port,
   development: true,
   async fetch(request) {
@@ -57,6 +60,30 @@ const server = Bun.serve({
       pathname = decodeURIComponent(url.pathname);
     } catch {
       return response(400, "Malformed path");
+    }
+    if (pathname === "/api/project-bundle") {
+      const requested = url.searchParams.get("path") ?? "";
+      const expectedBindingDigest = url.searchParams.get("binding") ?? "";
+      if (!requested.startsWith("./generated/") || requested.includes("..")) {
+        return response(400, "Only generated Project Lens bundles are allowed.");
+      }
+      const generatedRoot = resolve(ROOT, "generated");
+      const bundlePath = resolve(ROOT, requested);
+      if (!bundlePath.startsWith(`${generatedRoot}${sep}`)) {
+        return response(403, "Project Lens bundle path is outside generated state.");
+      }
+      const bundleFile = Bun.file(bundlePath);
+      if (!(await bundleFile.exists())) return response(404, "Generate a Project Lens bundle first.");
+      try {
+        const bundle = await bundleFile.json();
+        const internal = await validateProjectBundle(bundle);
+        if (!internal.valid) return response(409, internal.errors.map((entry) => entry.message).join(" "));
+        const repository = await validateProjectBundleAgainstRepository(bundle, { expectedBindingDigest });
+        if (!repository.valid) return response(409, repository.errors.map((entry) => entry.message).join(" "));
+        return response(200, JSON.stringify(bundle), { "content-type": contentTypes[".json"] });
+      } catch (error) {
+        return response(422, `Project Lens bundle could not be verified: ${error.message}`);
+      }
     }
     if (pathname === "/") pathname = "/index.html";
     const filePath = resolve(ROOT, `.${pathname}`);

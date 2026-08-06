@@ -260,6 +260,7 @@ button:disabled {
 
 .capture-form input,
 .project-form input,
+.task-title-form input,
 .closeout-form textarea {
   width: 100%;
   min-width: 0;
@@ -270,7 +271,8 @@ button:disabled {
 }
 
 .capture-form input,
-.project-form input {
+.project-form input,
+.task-title-form input {
   min-height: 46px;
   padding: 10px 13px;
 }
@@ -424,6 +426,31 @@ button:disabled {
   -webkit-line-clamp: unset;
 }
 
+.task-title-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.task-title-form.prominent {
+  position: relative;
+  z-index: 1;
+  max-width: 38rem;
+  margin-bottom: 20px;
+}
+
+.task-title-form-actions,
+.review-actions,
+.data-tools > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-title-form-actions {
+  justify-content: flex-end;
+}
+
 .task-meta {
   color: var(--muted);
   font-size: 0.76rem;
@@ -512,6 +539,54 @@ button:disabled {
   overflow-wrap: break-word;
   word-break: normal;
   line-break: strict;
+}
+
+.review-actions {
+  margin-top: 12px;
+}
+
+.review-actions button,
+.file-button {
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--paper-muted);
+  font-size: 0.8rem;
+}
+
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.data-tools {
+  padding: 20px;
+}
+
+.data-tools p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.visually-hidden:focus + .file-button {
+  outline: 3px solid rgba(36, 96, 71, 0.24);
 }
 
 .review-title {

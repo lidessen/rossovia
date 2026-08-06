@@ -78,6 +78,22 @@ code {
   background: var(--ink);
 }
 
+.live-badge {
+  color: #285c50;
+}
+
+.project-orientation {
+  border-left: 4px solid var(--proof);
+}
+
+.project-stop {
+  border-left-color: var(--explanation-strong);
+}
+
+.project-root {
+  overflow-wrap: anywhere;
+}
+
 .intro {
   max-width: 1180px;
   margin-bottom: 16px;

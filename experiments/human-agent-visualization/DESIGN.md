@@ -3,7 +3,9 @@
 **Status:** revisable design candidate
 
 **Implemented slices:** Execution Boundary Lens over a frozen Workbench snapshot,
-and a frozen Skill Lens over one `skill-engineering rewrite` request
+a frozen Skill Lens over one `skill-engineering rewrite` request, and a local
+Project Lens that converts one Agent-selected repository question and source set
+into a revision-bound disposable evidence bundle.
 
 ## Product boundary
 
@@ -337,6 +339,20 @@ distinguish declared architecture from observed structure and both from Agent
 interpretation. When a project has no accepted component, call, ownership, or
 change-impact relation, the corresponding architecture claim is
 `unavailable`—not completed from the file tree.
+
+The implemented MVP exposes an Agent-callable `introduce` command. It observes
+one local repository revision and selected source paths, retains excerpts and
+full-content revisions, derives only file/manifest/verification relations it can
+rebuild, and renders a guided path plus evidence drawer. Before a bundle reaches
+the browser, the CLI URL binds the generated bundle identity and the local
+server re-reads the repo and reconstructs its subject, sources, and projection;
+internal self-consistency digests alone are insufficient. Focus
+paths must also remain within the repo after realpath resolution. `--focus` is an
+Agent-selected reading path and therefore remains explanation-layer ordering;
+the retained sources do not acquire architectural authority from that order.
+Generated bundles live under ignored `generated/` state and can be rebuilt from
+the repository; they do not become project memory or a second architecture
+source.
 
 ### Later Code and Information lenses
 

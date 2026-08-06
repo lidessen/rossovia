@@ -57,6 +57,43 @@ describe("single-device persistence", () => {
     expect(adapter.load()).toEqual(state);
   });
 
+  test("an exported backup restores the complete canonical state after validation", () => {
+    let exportedState = createEmptyState();
+    exportedState = captureTask(exportedState, {
+      id: "task-exported",
+      title: "导出后还原",
+      createdAt: T0,
+    });
+    const exported = serializeState(exportedState);
+    const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ version: 999 }) });
+    const adapter = createStorageAdapter(storage);
+
+    expect(() => adapter.load()).toThrow("版本不受支持");
+    expect(adapter.restore(exported)).toEqual(exportedState);
+    expect(adapter.load()).toEqual(exportedState);
+
+    const beforeInvalidRestore = storage.getItem(STORAGE_KEY);
+    expect(() => adapter.restore('{"version":2,"tasks":[]}')).toThrow("结构不完整");
+    expect(storage.getItem(STORAGE_KEY)).toBe(beforeInvalidRestore);
+  });
+
+  test("restore rejects whitespace domain text and invalid timestamps before replacing storage", () => {
+    const original = captureTask(createEmptyState(), {
+      id: "task-valid",
+      title: "保留原任务",
+      createdAt: T0,
+    });
+    const storage = memoryStorage();
+    const adapter = createStorageAdapter(storage);
+    adapter.save(original);
+    const invalid = JSON.parse(serializeState(original));
+    invalid.tasks[0].title = "   ";
+    invalid.tasks[0].createdAt = "not-a-date";
+
+    expect(() => adapter.restore(JSON.stringify(invalid))).toThrow();
+    expect(adapter.load()).toEqual(original);
+  });
+
   test("a failed load preserves the original payload when the next captured task tries to save", () => {
     const originalPayload = JSON.stringify({ version: 999, valuable: "unreadable task data" });
     const storage = memoryStorage({ [STORAGE_KEY]: originalPayload });
