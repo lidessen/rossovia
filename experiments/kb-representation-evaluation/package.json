@@ -1,0 +1,14 @@
+{
+  "name": "@rosso/kb-representation-evaluation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun run scripts/build-fixtures.js",
+    "render": "bun run scripts/render-image-diagnostic.js",
+    "probe:image": "bun run scripts/run-image-gate.js",
+    "probe:text": "bun run scripts/run-image-gate.js --mode text",
+    "summarize": "bun run scripts/summarize-evidence.js",
+    "test": "bun test",
+    "check": "bun run scripts/check.js"
+  }
+}

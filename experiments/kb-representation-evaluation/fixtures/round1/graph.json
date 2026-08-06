@@ -1,0 +1,230 @@
+{
+  "id": "kb-representation-round1-v1",
+  "directed": true,
+  "nodes": [
+    {
+      "id": "N01",
+      "label": "项目",
+      "x": 110,
+      "y": 640
+    },
+    {
+      "id": "N02",
+      "label": "任务",
+      "x": 590,
+      "y": 640
+    },
+    {
+      "id": "N03",
+      "label": "Agent",
+      "x": 590,
+      "y": 470
+    },
+    {
+      "id": "N04",
+      "label": "知识库",
+      "x": 110,
+      "y": 290
+    },
+    {
+      "id": "N05",
+      "label": "索引",
+      "x": 350,
+      "y": 290
+    },
+    {
+      "id": "N06",
+      "label": "检索",
+      "x": 590,
+      "y": 290
+    },
+    {
+      "id": "N07",
+      "label": "证据",
+      "x": 830,
+      "y": 290
+    },
+    {
+      "id": "N08",
+      "label": "决策",
+      "x": 1070,
+      "y": 290
+    },
+    {
+      "id": "N09",
+      "label": "提交",
+      "x": 830,
+      "y": 640
+    },
+    {
+      "id": "N10",
+      "label": "审查",
+      "x": 1070,
+      "y": 640
+    },
+    {
+      "id": "N11",
+      "label": "主线",
+      "x": 1310,
+      "y": 640
+    },
+    {
+      "id": "N12",
+      "label": "计划",
+      "x": 350,
+      "y": 840
+    },
+    {
+      "id": "N13",
+      "label": "验证",
+      "x": 830,
+      "y": 840
+    },
+    {
+      "id": "N14",
+      "label": "可视化",
+      "x": 470,
+      "y": 90
+    },
+    {
+      "id": "N15",
+      "label": "工作树",
+      "x": 350,
+      "y": 640
+    }
+  ],
+  "edges": [
+    {
+      "from": "N01",
+      "relation": "contains",
+      "to": "N02",
+      "dy": -12
+    },
+    {
+      "from": "N01",
+      "relation": "has_worktree",
+      "to": "N15",
+      "dy": -12
+    },
+    {
+      "from": "N15",
+      "relation": "hosts",
+      "to": "N02",
+      "dy": 16
+    },
+    {
+      "from": "N12",
+      "relation": "orders",
+      "to": "N02",
+      "dy": 10
+    },
+    {
+      "from": "N02",
+      "relation": "assigned_to",
+      "to": "N03",
+      "dx": 52
+    },
+    {
+      "from": "N03",
+      "relation": "reads",
+      "to": "N04",
+      "dy": -12
+    },
+    {
+      "from": "N04",
+      "relation": "indexed_by",
+      "to": "N05",
+      "dy": -12
+    },
+    {
+      "from": "N05",
+      "relation": "enables",
+      "to": "N06",
+      "dy": -12
+    },
+    {
+      "from": "N06",
+      "relation": "returns",
+      "to": "N07",
+      "dy": -12
+    },
+    {
+      "from": "N13",
+      "relation": "checks",
+      "to": "N09",
+      "dx": 46
+    },
+    {
+      "from": "N13",
+      "relation": "emits",
+      "to": "N07",
+      "dx": -48
+    },
+    {
+      "from": "N07",
+      "relation": "supports",
+      "to": "N08",
+      "dy": -12
+    },
+    {
+      "from": "N14",
+      "relation": "visualizes",
+      "to": "N04",
+      "dx": -42
+    },
+    {
+      "from": "N14",
+      "relation": "visualizes",
+      "to": "N07",
+      "dx": 42
+    },
+    {
+      "from": "N14",
+      "relation": "supports",
+      "to": "N08",
+      "dy": -18
+    },
+    {
+      "from": "N08",
+      "relation": "prioritizes",
+      "to": "N02",
+      "dy": -16
+    },
+    {
+      "from": "N02",
+      "relation": "produces",
+      "to": "N09",
+      "dy": -12
+    },
+    {
+      "from": "N09",
+      "relation": "reviewed_by",
+      "to": "N10",
+      "dy": -12
+    },
+    {
+      "from": "N10",
+      "relation": "gates",
+      "to": "N11",
+      "dy": -12
+    },
+    {
+      "from": "N08",
+      "relation": "approves",
+      "to": "N09",
+      "dx": 52
+    },
+    {
+      "from": "N03",
+      "relation": "updates",
+      "to": "N02",
+      "dx": -52
+    },
+    {
+      "from": "N15",
+      "relation": "isolates",
+      "to": "N09",
+      "dy": 18
+    }
+  ]
+}
