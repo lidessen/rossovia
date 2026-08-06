@@ -1,5 +1,8 @@
 import { digestValue } from "../lib/evidence-bundle.js";
-import { createSkillEvidenceBundle } from "../lib/skill-evidence-bundle.js";
+import {
+  createSkillEvidenceBundle,
+  skillSourceSetRevision,
+} from "../lib/skill-evidence-bundle.js";
 
 const REPOSITORY_ROOT = new URL("../../../", import.meta.url);
 
@@ -15,12 +18,6 @@ async function retainedSource(sourceRef, excerptRanges) {
       .flatMap(([start, end]) => lines.slice(start - 1, end))
       .join("\n"),
   };
-}
-
-function repositoryRevision() {
-  const result = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: new URL(".", REPOSITORY_ROOT).pathname });
-  if (result.exitCode !== 0) return "git:unavailable";
-  return `git:${result.stdout.toString().trim()}`;
 }
 
 export async function buildSkillFixture() {
@@ -60,9 +57,17 @@ export async function buildSkillFixture() {
     content: minimumFormText,
     excerpt: minimumFormText,
   };
+  const directReferences = [expressionTeam, expressionLayers, evaluation];
+  const sourceSetRevision = await skillSourceSetRevision({
+    generalOwnerGateSource: decision,
+    skillSource: skill,
+    rewriteCommand: rewrite,
+    directReferences,
+    sequenceSource: sequence,
+  });
   const skillSource = {
     ...skill,
-    repositoryRevision: repositoryRevision(),
+    sourceSetRevision,
     declaredOperations: ["create", "rewrite", "review", "test", "refresh-sequence", "sync-sequence-snapshot"],
     scopeExcerpt: skill.content.split("\n").slice(20, 32).join("\n"),
     boundaryExcerpt: [
@@ -71,7 +76,6 @@ export async function buildSkillFixture() {
     ].join("\n"),
   };
   const rewriteCommand = rewrite;
-  const directReferences = [expressionTeam, expressionLayers, evaluation];
   const lineageIds = ["P16", "P09", "P08", "P15"];
   const lineageSequenceExcerpt = lineageIds
     .map((principleId) => sequence.content.split("\n").find((line) => line.startsWith(`${principleId}｜`)))

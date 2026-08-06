@@ -176,7 +176,7 @@ function bindControls() {
 function renderOrientation() {
   const { subject, standings } = state.projection;
   elements.subject.textContent = `${subject.id} · ${subject.operation}`;
-  elements.revision.textContent = `${shortRevision(subject.revision)} · ${subject.repositoryRevision}`;
+  elements.revision.textContent = `${shortRevision(subject.revision)} · source set ${shortRevision(subject.sourceSetRevision)}`;
   elements.binding.textContent = shortRevision(state.bundle.bindingDigest);
   elements.question.textContent = state.projection.question;
   elements.triggerStanding.textContent = standings.triggerCompatibility;

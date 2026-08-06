@@ -17,6 +17,7 @@ import {
   validateSkillEvidenceBundle,
 } from "../lib/skill-evidence-bundle.js";
 import { buildSkillFixture } from "../scripts/skill-fixture.js";
+import { assertFixtureMatches } from "../scripts/fixture-consistency.js";
 import { skillStandingCuePresentation } from "../lib/skill-cue-presentation.js";
 import {
   applySourceOnlyMode,
@@ -209,6 +210,7 @@ describe("frozen Skill Lens evidence", () => {
   test("binds the rewrite request to a deterministic guided path without promoting unavailable evidence", async () => {
     const bundle = await buildSkillFixture();
     expect(await validateSkillEvidenceBundle(bundle)).toEqual({ valid: true, errors: [] });
+    expect(bundle.subject.sourceSetRevision).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(bundle.projection.value.standings).toEqual({
       triggerCompatibility: "trigger-compatible",
       methodEligibility: "eligibility-unproven",
@@ -303,5 +305,26 @@ describe("frozen Skill Lens evidence", () => {
     expect(result.valid).toBeFalse();
     expect(result.errors.map((entry) => entry.code))
       .toContain("behavior-evidence-sources-mismatch");
+  });
+
+  test("rejects a source-set identity that no longer matches the retained sources", async () => {
+    const bundle = await buildSkillFixture();
+    const values = Object.fromEntries(
+      Object.entries(bundle.artifacts).map(([name, artifact]) => [name, structuredClone(artifact.value)]),
+    );
+    values.skillSource.sourceSetRevision = "sha256:stale";
+    const rebound = await createSkillEvidenceBundle(values);
+    const result = await validateSkillEvidenceBundle(rebound);
+    expect(result.valid).toBeFalse();
+    expect(result.errors.map((entry) => entry.code))
+      .toContain("source-set-revision-mismatch");
+  });
+
+  test("rejects a controlled fixture that drifted from its in-memory rebuild", async () => {
+    const rebuilt = await buildSkillFixture();
+    const drifted = structuredClone(rebuilt);
+    drifted.subject.sourceSetRevision = "sha256:stale";
+    expect(() => assertFixtureMatches(rebuilt, drifted, "Skill Lens"))
+      .toThrow("Skill Lens fixture drifted");
   });
 });

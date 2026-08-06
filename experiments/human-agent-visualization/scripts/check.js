@@ -1,14 +1,13 @@
 import { comparisonCompatibility, validateEvidenceBundle } from "../lib/evidence-bundle.js";
 import { executionStandingPresentation } from "../lib/lens-model.js";
 import { validateSkillEvidenceBundle } from "../lib/skill-evidence-bundle.js";
-import { writeFixtureIndex, writeSkillFixture } from "./build-fixtures.js";
+import { assertControlledFixturesCurrent } from "./fixture-consistency.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const index = await writeFixtureIndex();
-const skillBundle = await writeSkillFixture();
+const { index, skillBundle } = await assertControlledFixturesCurrent();
 assert(index.cases.length === 2, "The prototype must expose exactly two evidence cases.");
 assert((await validateSkillEvidenceBundle(skillBundle)).valid, "The Skill Lens fixture must validate.");
 assert(

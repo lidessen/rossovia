@@ -1,5 +1,5 @@
 import { resolve, sep } from "node:path";
-import { writeFixtureIndex, writeSkillFixture } from "./scripts/build-fixtures.js";
+import { assertControlledFixturesCurrent } from "./scripts/fixture-consistency.js";
 
 const DEFAULT_PORT = 4311;
 const PORT_ENV = "HUMAN_AGENT_VIS_PORT";
@@ -44,7 +44,7 @@ function response(status, body, headers = {}) {
   });
 }
 
-await Promise.all([writeFixtureIndex(), writeSkillFixture()]);
+await assertControlledFixturesCurrent();
 const port = parsePort();
 
 const server = Bun.serve({

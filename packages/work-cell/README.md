@@ -242,6 +242,9 @@ budget after a completed step, ordinary tools close and the model must choose
 `settle_now` or one bounded `request_budget` action. A request contains only
 `additionalSteps`, `additionalDurationMs`, and `remainingWork`; Work Cell adds
 the Cell identity and observed step/time counters before invoking the callback.
+The callback also receives `{ signal }`; approval adapters should stop their
+own waiting or external review when it aborts so caller cancellation or the
+hard limit does not leave approval work running in the background.
 
 Returning `{ decision: "allow" }` adds exactly the requested step and duration
 allowances to the current run and retained transcript. Returning

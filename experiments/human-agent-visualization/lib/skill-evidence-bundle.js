@@ -1,9 +1,9 @@
 import { canonicalJson, digestValue } from "./evidence-bundle.js";
 
-export const SKILL_BUNDLE_VERSION = "human-agent-visualization.skill-evidence-bundle.v1";
-export const SKILL_PROJECTION_VERSION = "human-agent-visualization.skill-lens-projection.v1";
+export const SKILL_BUNDLE_VERSION = "human-agent-visualization.skill-evidence-bundle.v2";
+export const SKILL_PROJECTION_VERSION = "human-agent-visualization.skill-lens-projection.v2";
 export const SKILL_BUILDER_ID = "skill-lens-fixture-builder";
-export const SKILL_BUILDER_REVISION = "prototype-r2";
+export const SKILL_BUILDER_REVISION = "prototype-r3";
 
 const ARTIFACT_NAMES = [
   "request",
@@ -111,7 +111,7 @@ export function buildSkillLensProjection(inputs) {
       id: "skill-engineering",
       operation: "rewrite",
       revision: skillSource.revision,
-      repositoryRevision: skillSource.repositoryRevision,
+      sourceSetRevision: skillSource.sourceSetRevision,
     },
     question: request.question,
     standings: {
@@ -332,6 +332,10 @@ function collectSourceIdentities(inputs) {
     .map((source) => ({ sourceRef: source.sourceRef, revision: source.revision }));
 }
 
+export async function skillSourceSetRevision(inputs) {
+  return digestValue(collectSourceIdentities(inputs));
+}
+
 export async function createSkillEvidenceBundle(inputs) {
   const artifactValues = { ...inputs };
   const artifacts = Object.fromEntries(await Promise.all(
@@ -479,6 +483,12 @@ export async function validateSkillEvidenceBundle(bundle) {
   if (!excerptLinesAppearInOrder(values.skillSource.content, values.skillSource.scopeExcerpt)
     || !excerptLinesAppearInOrder(values.skillSource.content, values.skillSource.boundaryExcerpt)) {
     errors.push(error("skill-excerpt-mismatch", "Skill scope or boundary excerpt cannot be reconstructed from retained SKILL.md content."));
+  }
+  if (values.skillSource.sourceSetRevision !== await skillSourceSetRevision(values)) {
+    errors.push(error(
+      "source-set-revision-mismatch",
+      "Skill source-set revision cannot be reconstructed from retained source identities.",
+    ));
   }
   const evaluationReference = values.directReferences.find(
     (reference) => reference.sourceRef === "skills/skill-engineering/references/evaluation.md",

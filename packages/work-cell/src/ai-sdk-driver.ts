@@ -41,9 +41,9 @@ const EXECUTION_TOOL_NAMES = new Set([
   "task_update",
   "task_list",
   "task_get",
-  "settle_now",
-  "request_budget",
 ]);
+
+const BUDGET_CONTROL_TOOL_NAMES = new Set(["settle_now", "request_budget"]);
 
 const MAX_AGENT_OUTPUT_TOKENS = 16_000;
 const STREAM_PROGRESS_CHARACTERS = 1_000;
@@ -239,7 +239,10 @@ export class AiSdkValidationDriver implements CellDriver {
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const stepUsage = normalizeUsage(usage, providerMetadata);
           observedUsage = addUsage(observedUsage, stepUsage);
-          context.observeUsage(stepUsage);
+          context.observeUsage(
+            stepUsage,
+            context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
+          );
           context.emit("agent.step.finished", {
             finishReason,
             performance: sanitize(performance),
@@ -267,13 +270,14 @@ export class AiSdkValidationDriver implements CellDriver {
       }
     } catch (error) {
       if (terminalProtocolError) {
-        throw new CellExecutionError(terminalProtocolError, observedUsage);
+        throw new CellExecutionError(terminalProtocolError, observedUsage, observedSettlementUsage);
       } else if (terminalSatisfied() && !inlineOutputSchema) {
         executionResult = terminalOnlyResult(terminalNames, observedUsage, "execution");
       } else {
         throw new CellExecutionError(
           error instanceof Error ? error.message : String(error),
           observedUsage,
+          observedSettlementUsage,
         );
       }
     }
@@ -283,6 +287,7 @@ export class AiSdkValidationDriver implements CellDriver {
           ? context.signal.reason.message
           : String(context.signal.reason ?? "Cell execution cancelled"),
         observedUsage,
+        observedSettlementUsage,
       );
     }
     if (terminalSatisfied() && !inlineOutputSchema && !executionResult.text.trim()) {
@@ -369,7 +374,10 @@ export class AiSdkValidationDriver implements CellDriver {
           onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
             const stepUsage = normalizeUsage(usage, providerMetadata);
             closureUsage = addUsage(closureUsage, stepUsage);
-            context.observeUsage(stepUsage);
+            context.observeUsage(
+              stepUsage,
+              context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
+            );
             context.emit("terminal.recovery.step.finished", {
               finishReason,
               performance: sanitize(performance),
@@ -390,6 +398,7 @@ export class AiSdkValidationDriver implements CellDriver {
           throw new CellExecutionError(
             terminalProtocolError,
             addUsage(observedUsage, closureUsage),
+            observedSettlementUsage,
           );
         } else if (terminalSatisfied() && !inlineOutputSchema) {
           closureResult = terminalOnlyResult(terminalNames, closureUsage, "recovery");
@@ -397,6 +406,7 @@ export class AiSdkValidationDriver implements CellDriver {
           throw new CellExecutionError(
             error instanceof Error ? error.message : String(error),
             addUsage(observedUsage, closureUsage),
+            observedSettlementUsage,
           );
         }
       }
@@ -411,6 +421,7 @@ export class AiSdkValidationDriver implements CellDriver {
       throw new CellExecutionError(
         terminalProtocolError,
         addUsage(observedUsage, closureUsage),
+        observedSettlementUsage,
       );
     }
     const executionUsage = addUsage(
@@ -429,6 +440,7 @@ export class AiSdkValidationDriver implements CellDriver {
         throw new CellExecutionError(
           error instanceof Error ? error.message : String(error),
           addUsage(observedUsage, closureUsage),
+          observedSettlementUsage,
         );
       }
     } else if (outputSchema) {
@@ -447,9 +459,11 @@ export class AiSdkValidationDriver implements CellDriver {
         maxOutputTokens: MAX_AGENT_OUTPUT_TOKENS,
       });
       if (settlement.output === undefined) {
+        const failedSettlementUsage = addUsage(observedSettlementUsage, settlement.usage);
         throw new CellExecutionError(
           settlement.error ?? "structured settlement produced no output",
           addUsage(executionUsage, settlement.usage),
+          failedSettlementUsage,
         );
       }
       output = settlement.output;
@@ -482,9 +496,12 @@ export class AiSdkValidationDriver implements CellDriver {
     terminalOnly: () => boolean,
     tasks: TaskStore,
   ) {
+    const projectedExecutionToolNames = context.budgetControl
+      ? new Set([...EXECUTION_TOOL_NAMES, ...BUDGET_CONTROL_TOOL_NAMES])
+      : EXECUTION_TOOL_NAMES;
     const conflictingTerminalNames = (input.terminalTools ?? [])
       .map((terminal) => terminal.name)
-      .filter((name) => EXECUTION_TOOL_NAMES.has(name));
+      .filter((name) => projectedExecutionToolNames.has(name));
     if (conflictingTerminalNames.length > 0) {
       throw new Error(
         `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,

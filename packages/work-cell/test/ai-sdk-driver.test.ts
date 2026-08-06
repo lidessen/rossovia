@@ -876,6 +876,46 @@ test("rejects terminal tools that collide with AI SDK execution tools before mod
   expect(calls).toBe(0);
 });
 
+test("allows budget-control names as caller terminals when budget control is disabled", async () => {
+  const root = await fixture();
+  for (const name of ["settle_now", "request_budget"] as const) {
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        calls += 1;
+        return response([{
+          type: "tool-call",
+          toolCallId: `caller-${name}`,
+          toolName: name,
+          input: "{}",
+        }], "tool-calls");
+      },
+    });
+    const driver = new AiSdkValidationDriver({ route: explicitDeepSeekRoute(), deepSeekApiKey: "not-used", model: `mock-caller-${name}` });
+    Object.defineProperty(driver, "model", { value: model });
+
+    const record = await runCell({
+      id: `caller-terminal-${name}`,
+      intent: "Preserve caller ownership of a terminal name outside budget control.",
+      workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Invoke the caller-owned terminal."],
+      capabilities: ["read"],
+      capabilitiesRequired: ["read"],
+      acceptance: ["The terminal remains callable."],
+      terminalTools: [{
+        name,
+        description: "Caller-owned terminal action.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      }],
+      budget: { maxSteps: 2, estimatedTokens: 1_000, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+    }, driver);
+
+    expect(record.status).toBe("passed");
+    expect(record.verification.terminal.called).toEqual([name]);
+    expect(calls).toBe(1);
+  }
+});
+
 test("stops the main loop after one structured output step following a terminal call", async () => {
   const root = await fixture();
   let calls = 0;
@@ -1219,6 +1259,50 @@ test("settle-now uses reserved settlement capacity and no later ordinary tool", 
   expect(calls).toBe(4);
 });
 
+test("a failed structured settlement retains execution and settlement usage separately", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{
+        type: "tool-call",
+        toolCallId: "failed-settlement-read",
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 2) return response([{
+        type: "tool-call",
+        toolCallId: "failed-settlement-choice",
+        toolName: "settle_now",
+        input: "{}",
+      }], "tool-calls");
+      if (calls === 3) return response([{
+        type: "tool-call",
+        toolCallId: "failed-settlement-terminal",
+        toolName: "finish_budget_test",
+        input: "{}",
+      }], "tool-calls");
+      if (calls === 4 || calls === 5) {
+        return response([{ type: "text", text: "structured output was not emitted" }], "stop");
+      }
+      throw new Error(`unexpected call ${calls}`);
+    },
+  });
+
+  const record = await runCell(
+    budgetInput(root, "failed-structured-settlement"),
+    budgetAiDriver(model, "mock-failed-structured-settlement"),
+    budgetOptions(),
+  );
+
+  expect(record.status).toBe("failed");
+  expect(record.usage.totalTokens).toBe(10);
+  expect(record.usageByPhase.execution.totalTokens).toBe(2);
+  expect(record.usageByPhase.settlement?.totalTokens).toBe(8);
+  expect(calls).toBe(5);
+});
+
 test("caller cancellation dominates a waiting budget approval", async () => {
   const root = await fixture();
   const waitingCaller = new AbortController();
@@ -1226,6 +1310,7 @@ test("caller cancellation dominates a waiting budget approval", async () => {
   const approvalStarted = new Promise<void>((resolve) => {
     markApprovalStarted = resolve;
   });
+  let approvalReturned = false;
   let waitingCalls = 0;
   const waitingModel = new MockLanguageModelV3({
     doGenerate: async () => {
@@ -1235,12 +1320,13 @@ test("caller cancellation dominates a waiting budget approval", async () => {
     },
   });
   const waitingRun = runCell(budgetInput(root, "caller-budget-wait"), budgetAiDriver(waitingModel, "mock-caller-wait"), {
-    budgetApproval: () => new Promise((resolve) => {
-      waitingCaller.signal.addEventListener(
-        "abort",
-        () => resolve({ decision: "deny", reason: "caller cancelled" }),
-        { once: true },
-      );
+    budgetApproval: (_request, { signal }) => new Promise((resolve) => {
+      const denyAfterCancellation = () => {
+        approvalReturned = true;
+        resolve({ decision: "deny", reason: "caller cancelled" });
+      };
+      if (signal.aborted) denyAfterCancellation();
+      else signal.addEventListener("abort", denyAfterCancellation, { once: true });
       markApprovalStarted();
     }),
     settlementReserveMs: 1_000,
@@ -1252,6 +1338,7 @@ test("caller cancellation dominates a waiting budget approval", async () => {
   const waitingRecord = await waitingRun;
   expect(waitingRecord.status).toBe("cancelled");
   await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(approvalReturned).toBe(true);
   expect(waitingCalls).toBe(2);
 });
 
@@ -1275,6 +1362,8 @@ test("caller cancellation dominates reserved settlement", async () => {
     signal: settlementCaller.signal,
   });
   expect(settlementRecord.status).toBe("cancelled");
+  expect(settlementRecord.usageByPhase.execution.totalTokens).toBe(2);
+  expect(settlementRecord.usageByPhase.settlement?.totalTokens).toBe(2);
 });
 
 test("the hard limit dominates production, approval wait, and reserved settlement", async () => {

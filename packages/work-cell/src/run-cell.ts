@@ -28,7 +28,10 @@ export interface RunCellOptions {
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
   onTrace?: (event: TraceEvent) => void;
   /** Host policy for a model-authored soft work-budget increase request. */
-  budgetApproval?: (request: BudgetRequest) => BudgetApprovalResult | Promise<BudgetApprovalResult>;
+  budgetApproval?: (
+    request: BudgetRequest,
+    context: { signal: AbortSignal },
+  ) => BudgetApprovalResult | Promise<BudgetApprovalResult>;
   /** Duration unavailable to production and created only for settlement. */
   settlementReserveMs?: number;
   /** One non-extendable hard duration limit for the whole run. */
@@ -89,7 +92,7 @@ class SoftBudgetControl {
     let result: BudgetApprovalResult;
     try {
       const approval = await runWithSignal(
-        () => Promise.resolve(this.options.approve(request)),
+        () => Promise.resolve(this.options.approve(request, { signal: this.options.signal })),
         this.options.signal,
       );
       result = BudgetApprovalResultSchema.parse(approval);
@@ -183,7 +186,9 @@ export async function runCell(
   let error: string | undefined;
   let driverResult: Awaited<ReturnType<CellDriver["run"]>> | undefined;
   let failureUsage = emptyUsage();
+  let failureSettlementUsage: CellUsage | undefined;
   let observedExecutionUsage = emptyUsage();
+  let observedSettlementUsage: CellUsage | undefined;
   let verification = { passed: false, terminal: { passed: false, required: [] as string[], called: [] as string[] } };
   let outputVerification: OutputVerification | undefined;
   let artifactVerification: ArtifactVerification | undefined;
@@ -201,8 +206,11 @@ export async function runCell(
         workspace,
         signal,
         liveObservation: observerActive,
-        observeUsage(usage: CellUsage) {
+        observeUsage(usage: CellUsage, phase?: "execution" | "settlement") {
           observedExecutionUsage = addUsage(observedExecutionUsage, usage);
+          if (phase === "settlement") {
+            observedSettlementUsage = addUsage(observedSettlementUsage ?? emptyUsage(), usage);
+          }
         },
         ...(budgetControl ? { budgetControl } : {}),
         settlementSignal,
@@ -269,8 +277,10 @@ export async function runCell(
       error = caught instanceof Error ? caught.message : String(caught);
       if (caught instanceof CellExecutionError) {
         failureUsage = caught.usage;
+        failureSettlementUsage = caught.settlementUsage ?? observedSettlementUsage;
       } else {
         failureUsage = observedExecutionUsage;
+        failureSettlementUsage = observedSettlementUsage;
       }
       if (signal.aborted) status = "cancelled";
       else status = "failed";
@@ -284,10 +294,14 @@ export async function runCell(
     options.preparation?.usage ?? emptyUsage(),
     driverResult?.usage ?? failureUsage,
   );
-  const settlementUsage = driverResult?.settlementUsage;
-  const executionUsage = driverResult
-    ? settlementUsage ? subtractUsage(driverResult.usage, settlementUsage) : driverResult.usage
-    : failureUsage;
+  const reportedSettlementUsage = driverResult?.settlementUsage ?? failureSettlementUsage;
+  const settlementUsage = reportedSettlementUsage && reportedSettlementUsage.totalTokens > 0
+    ? reportedSettlementUsage
+    : undefined;
+  const aggregateDriverUsage = driverResult?.usage ?? failureUsage;
+  const executionUsage = settlementUsage
+    ? subtractUsage(aggregateDriverUsage, settlementUsage)
+    : aggregateDriverUsage;
   const estimate = estimateCost(usage, driver.descriptor.pricing);
   emit("cell.finished", { status, usage });
 

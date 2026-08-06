@@ -18,8 +18,9 @@ Workbench 连接、图数据库、编辑动作或 runtime 控制。
 bun run dev
 ```
 
-打开 <http://127.0.0.1:4311>。服务器会在监听前重建并验证 Execution
-fixture index 与 Skill Lens fixture。
+打开 <http://127.0.0.1:4311>。服务器会在监听前以内存重建结果核对受控的
+Execution fixture index 与 Skill Lens fixture；如有漂移，先显式运行下方
+`build:fixtures` 命令并审查生成 diff。
 可以用下面任一方式覆盖端口：
 
 ```sh
@@ -52,8 +53,9 @@ bun run build:fixtures
   同一 Mission 的载体仍然是 `execution-unproven`。
 - 浏览器会重新验证当前证据包，但 fixture 仍然是本地手写、形似 Workbench 的证据。
   原型不能证明保留的 runner 观察此刻仍然 live。
-- Skill Lens 绑定 `skill-engineering` 的当前源码修订、rewrite command、直接
-  references、声明的 P-ID lineage，以及一个明确标为 fixture-authored 的请求。
+- Skill Lens 绑定 `skill-engineering` 的当前源码与 retained source-set 修订、
+  rewrite command、直接 references、声明的 P-ID lineage，以及一个明确标为
+  fixture-authored 的请求。
   已采纳的设计决定只支持这个 Skill 的通用 owner/gate；因为没有保留这个具体
   请求的 recurring failure 与 minimum-form decision，二者只显示为 hypothesis，
   方法状态保持 `eligibility-unproven`。它同时保留 `activation-unavailable` 和

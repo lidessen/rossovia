@@ -15,7 +15,7 @@ export interface DriverContext {
   /** The caller is consuming execution events while the driver is running. */
   liveObservation: boolean;
   /** Retain completed provider-step usage even if the outer Cell timeout wins the driver race. */
-  observeUsage(usage: CellUsage): void;
+  observeUsage(usage: CellUsage, phase?: "execution" | "settlement"): void;
   /** Present only for drivers that enforce completed-step soft-budget approval. */
   budgetControl?: {
     readonly phase: "production" | "decision" | "settlement";
@@ -53,7 +53,11 @@ export interface CellDriver {
 
 /** A driver failure that still carries observed provider usage for audit. */
 export class CellExecutionError extends Error {
-  constructor(message: string, readonly usage: CellUsage) {
+  constructor(
+    message: string,
+    readonly usage: CellUsage,
+    readonly settlementUsage?: CellUsage,
+  ) {
     super(message);
     this.name = "CellExecutionError";
   }
