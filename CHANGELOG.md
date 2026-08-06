@@ -5,7 +5,48 @@ that affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or
 `breaking`. Entries are append-only after publication; corrections add a later
 entry instead of rewriting the applied Git interval.
 
+## 2026-08-05
+
+### [experiment.personal-task-app] Add a local-first personal task slice
+
+- Action: `none`
+- Change: add a Chinese-primary browser app for capture, projects, Today,
+  one-current-task focus, close-out, and Review over one canonical local store.
+  Failed loads preserve the unreadable payload instead of allowing a later
+  empty-state write to replace it.
+- Verify: run the app tests and build check, then follow the browser walkthrough;
+  confirm a second capture draft survives the first success toast disappearing.
+
+### [experiment.human-agent-visualization] Add two frozen evidence lenses
+
+- Action: `none`
+- Change: add runnable Execution Boundary and Skill lenses that keep retained
+  sources, rebuildable projections, and Agent explanations visibly distinct.
+  Source-only mode suppresses derived comparison cues, and every Skill standing
+  exposes its derivation layer and reconstructable evidence sources.
+- Verify: rebuild the fixtures, run their validation tests and browser build,
+  then inspect both lenses at desktop and mobile widths.
+
+### [skill.document-writing] Let material constrain supported length
+
+- Action: `none`
+- Change: make source density constrain document scope and length, and add a
+  paragraph-delta plus reversible compression probe without introducing fixed
+  thresholds or surface-form bans.
+- Verify: check the Sequence snapshot and disposable installation package;
+  behavior improvement remains unproven until a matched comparison is run.
+
 ## 2026-08-04
+
+### [work-cell.budget-approval] Add same-run soft-budget approval
+
+- Action: `none`
+- Change: AI SDK Work Cells pause ordinary tools at a completed-step soft-budget
+  boundary, then either settle from reserved capacity or ask a host callback for
+  an exact step/time increase and continue in the same run and transcript.
+- Verify: run the Work Cell core and AI SDK driver tests; confirm allow applies
+  exact sequential increments, denial and callback failure settle without later
+  ordinary tools, and caller/hard limits dominate every phase.
 
 ### [workbench.statusline] Make the handled project the only persistent identity
 

@@ -72,7 +72,12 @@ already explicit, even if the finished document is long.
    “why,” a benefit, an assurance, or a conclusion the source cannot establish,
    do not answer it from temporal adjacency or a plausible project intention.
    Use the nearest supported relation, disclose the gap, or ask when it changes
-   the deliverable.
+   the deliverable. Let the density of distinct publishable propositions and
+   relations constrain the supported scope and length. Explanation may unfold a
+   supported relation, but paraphrase, repetition, and plausible extrapolation
+   do not create more material. When the requested length exceeds what the
+   source can sustain, research or ask only when authorized; otherwise narrow
+   the question or deliver a shorter truthful document.
 2. **Recover the writing relation.** Name who is speaking to whom, why now, and
    what should be different after reading. Replace the generic
    assistant-to-any-user relation with the artifact's actual relation. This
@@ -93,8 +98,13 @@ already explicit, even if the finished document is long.
    - **Truth:** compare each material claim and implication with its source.
    - **Whole:** verify that the opening, movement, emphasis, and ending produce
      the intended reader change.
-   - **Paragraph:** remove catalog sections, repeated premises, fake
-     transitions, and freely reorderable blocks.
+   - **Paragraph:** identify the new proposition, relation, distinction,
+     action, or consequence each paragraph contributes. Merge, delete, or
+     reorder paragraphs that only restate earlier material; remove catalog
+     sections, repeated premises, fake transitions, and freely reorderable
+     blocks. When the draft appears inflated, remove a substantial passage and
+     compare the result. Keep the compression when source-supported meaning,
+     necessary qualification, and the reader's next action remain intact.
    - **Sentence:** restore actors, exact verbs, warranted confidence, reference,
      and varied syntax where the relation requires it.
    - **Surface:** only now inspect clusters of model habits such as excessive

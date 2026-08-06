@@ -414,6 +414,29 @@ describe("Work Cell core", () => {
       priceRevision: "fixture-price-v1",
     });
   });
+
+  test("fails closed before execution when budget approval is enabled on an unsupported driver", async () => {
+    const root = await fixture();
+    const base = input(root);
+    base.budget.maxDurationMs = 100;
+    let calls = 0;
+    const driver: CellDriver = {
+      descriptor: { adapter: "unsupported-control", provider: "deterministic", model: "fixture" },
+      async run() {
+        calls += 1;
+        return { terminalToolsCalled: [], finalText: "should not run", usage: usage(1, 1), rawSteps: [] };
+      },
+    };
+
+    await expect(runCell(base, driver, {
+      budgetApproval: () => ({ decision: "deny" }),
+      settlementReserveMs: 20,
+      hardLimitMs: 200,
+    })).rejects.toThrow(
+      "does not support completed-step budget control",
+    );
+    expect(calls).toBe(0);
+  });
 });
 
 describe("Workspace containment", () => {
