@@ -105,14 +105,21 @@ provenance boundary 与 copy primitive；这也说明相关来源 gold 与 claim
 均选对结构化 proposition。** 它不支持稳定的 graph-over-search 优势，也没有验证完成版引用
 grounding、模型级视觉能力或一般性的成本优势。
 
-下一版不应在同一输出上放宽 scorer，而应先冻结新的引用合同：
+v2 候选现已在 `fixtures/recall-v2/` 另行冻结，但尚未调用外部模型。它没有重算 v1 输出，
+也不改变本报告上面的原始分数。新引用合同是：
 
 1. 每个可引用段落提供独立、不带 path 或展示文本的 opaque `anchorId`；
 2. evaluator 把“检索相关来源集合”“每个 claim 的必要 evidence group”和“允许的支持来源”
    分开，补充但真实的引用不算错；
-3. 要求每个 claim 只引用最小充分证据，同时保留 precision 与 coverage；
-4. 修正后用新 case，或把旧 case 复跑明确标成 development treatment，至少重复两次再讨论
-   稳定性。
+3. 真实但冗余的补充引用不降低 precision；coverage 只检查必要 evidence group，不再把
+   “最小引用集”加入 grounded-success 门槛；
+4. 旧 Q1–Q6 只允许作为一次 development treatment；4 个新问题预冻结为
+   question-held-out confirmation，各条件重复两次、反转题序与 condition-first 位置后再讨论
+   重复性。
+
+新题仍复用同一批 12 个 passage、概念图和执行画像，所以它们不是 held-out corpus/graph，
+更不是跨模型确认。按 v1 的实际配对费用外推，development 预计约 `$0.33`，confirmation
+预计 `$0.43–$0.45`；在获得新的外部调用与费用授权之前，这只是预算估算。
 
 第二轮没有证伪联想图候选，因为 image 在两个配对 case 上 recall@5 更高，而且平均读取 bytes
 没有更差；但它也远未达到可采用结论。

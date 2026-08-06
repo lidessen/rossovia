@@ -5,9 +5,11 @@
   "scripts": {
     "build": "bun run scripts/build-fixtures.js",
     "render": "bun run scripts/render-image-diagnostic.js",
+    "render:recall:v2": "bun run scripts/render-recall-v2.js",
     "probe:image": "bun run scripts/run-image-gate.js",
     "probe:text": "bun run scripts/run-image-gate.js --mode text",
     "probe:recall": "bun run scripts/run-recall-probe.js",
+    "probe:recall:v2": "bun run scripts/run-recall-probe-v2.js",
     "analyze:recall": "bun run scripts/analyze-recall-evidence.js",
     "summarize": "bun run scripts/summarize-evidence.js",
     "test": "bun test",

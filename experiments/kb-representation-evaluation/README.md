@@ -54,6 +54,18 @@ citation failure 既包含非穷尽 allowlist 造成的 false negative，也包�
 过度引用。原始分数保持不改；下一版应提供独立、不可变的 `anchorId`，把“允许支持来源”和
 “必要 evidence group”分开，并继续分别计算 citation precision 与 coverage。
 
+第三轮的 v2 候选已经冻结在 `fixtures/recall-v2/`，尚未调用外部模型。它与 v1 并列，
+不会重算或改写既有证据：每个可引用 passage 使用不从 path、heading 或正文派生的 opaque
+`anchorId`；evaluator 分别保存 retrieval relevance、claim 的 allowed support 和 required
+evidence groups；worker 只看到问题的互斥选项，以及打开来源中的 `sourceId + anchorId + passage`。
+真实但冗余的补充引用不降低 precision；coverage 只由必要 evidence group 是否满足决定。
+
+v2 包含两个 case set：旧 Q1–Q6 只用于一次 development treatment，不能作为确认；另有
+4 个未参与合同修正的新问题用于两次串行、顺序反转的 question-held-out confirmation。
+它们仍复用同一批 12 个 passage、概念图和模型路线，因此最多确认问题层面的重复性，不能
+冒充新语料、新图或跨模型泛化。按 v1 实测费用估算，development 约 `$0.33`，confirmation
+约 `$0.43–$0.45`；这些是执行预算，不是已发生费用。
+
 仓库还保留了一个未执行的综合轮候选 fixture：固定 15 个节点、22 条边和 7 个机械评分
 问题，覆盖直接查找、多跳路径和全局拓扑。`fixtures/round1/graph.txt` 与 `graph.svg`
 来自同一个
@@ -67,6 +79,7 @@ citation failure 既包含非穷尽 allowlist 造成的 false negative，也包�
 ```sh
 bun run build
 bun run render
+bun run render:recall:v2
 bun test
 bun run check
 ```
@@ -78,6 +91,7 @@ bun run render
 ```
 
 脚本默认查找 macOS 上的 Chrome/Chromium；其他安装位置通过 `KB_PROBE_CHROME` 指定。
+`render:recall:v2` 只重建 v2 的 PNG，不改写 v1 输入。
 
 `generated/` 与 `runs/` 被忽略；正式研究记录必须保留所用 SVG、PNG hash、执行画像、
 任务顺序、原始回答、机械评分、wall-clock 观察和可获得的 usage。若执行环境不能提供
@@ -113,6 +127,28 @@ bun run probe:recall
 evidence ID 已存在时命令会拒绝覆盖。现有默认 evidence ID 已执行，因此直接复跑会被拒绝；
 如需预注册新 repetition，必须显式设置新的 `KB_PROBE_ID`。第一次运行只提供 development
 signal，不形成稳定性或跨模型能力结论。
+
+执行 v2 时必须显式提供新的 evidence ID。先用旧题验证合同 treatment：
+
+```sh
+KB_PROBE_ID=2026-08-xx-qwen37-recall-v2-development \
+KB_PROBE_CASESET=development \
+KB_PROBE_REPETITIONS=1 \
+bun run probe:recall:v2
+```
+
+只有 development 没有暴露新合同缺陷时，才执行预冻结的新题确认：
+
+```sh
+KB_PROBE_ID=2026-08-xx-qwen37-recall-v2-confirmation \
+KB_PROBE_CASESET=confirmation \
+KB_PROBE_REPETITIONS=2 \
+bun run probe:recall:v2
+```
+
+runner 串行执行每个 route→answer 链路，第二次 repetition 反转题序并翻转 condition-first
+位置；route failure、answer parse failure、usage、时延和原始事件都保留。未得到明确的外部
+调用与费用授权前，只构建、渲染和验证 fixture，不执行上述两个命令。
 
 重算第二轮明确标注的 post-hoc source-only 与 resource 诊断（不会改写 `summary.json`）：
 
