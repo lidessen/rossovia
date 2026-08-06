@@ -1,7 +1,7 @@
 # Personal Task App — design candidate
 
-**Status:** revisable design candidate for human review; its first runnable
-slice exists beside this document, but neither the product direction nor any
+**Status:** revisable design candidate for human review; its runnable local MVP
+exists beside this document, but neither the product direction nor any
 Rossovia integration is accepted merely because the slice runs.
 **Object:** an independent, human-first, Chinese-primary personal
 task/todo/project product. Responsive Web first; an optional Tauri desktop
@@ -90,7 +90,7 @@ presence assumes one of these.
 - A Rossovia client. Rossovia integration is a later, optional, narrow
   adapter (§8); the product is fully useful without it.
 - A Markdown editor or Markdown-canonical store. Notes are plain text in
-  the product's own store; export format is a later implementation choice.
+  the product's own store; the current manual backup format is validated JSON.
 - A Craft-like document system behind daily work: no rich Daily Note editor,
   block model, templates, subpages, meeting notes, or calendar-event model.
 - Choosing a full technology stack. No declared repository source owns one
@@ -198,8 +198,9 @@ Attention allocation rules (P09, P16):
 
 - From Inbox in the first slice: actions per task are 今天, 移到项目, and 完成.
   今天 sets `scheduledForToday = true`; 移到项目 sets `projectId`.
-  Neither creates or moves a second Task record. Arbitrary dates and inline
-  title editing remain later interaction work.
+  Neither creates or moves a second Task record. Arbitrary dates remain later
+  interaction work. 修改标题 updates the same canonical Task and is available
+  as an explicit touch control; an empty corrected title is rejected.
 - 完成 closes an ordinary task directly and creates only a completion entry;
   it does not manufacture a FocusRecord. The focused task, or a task with a
   pending close-out, must finish that truthful close-out path instead.
@@ -324,8 +325,8 @@ Focus, mobile:
   screens the one thing still dominates via scale and placement, not via
   added chrome. The board projection, when enabled, becomes horizontally
   scrollable columns or a single-column grouped list on mobile.
-- **Inline edit on touch (after the first slice):** tap title → edit field
-  with 完成/取消; no double-click or keyboard-only patterns required.
+- **Inline edit on touch:** choose 修改标题 → edit field with 保存标题/取消;
+  no double-click or keyboard-only patterns are required.
 - Breakpoints, exact touch-target sizes, and small-screen board behavior
   are implementation-time decisions to be verified on real devices; this
   document fixes the attention order, not the pixel grid.
@@ -417,11 +418,13 @@ visible controls at its supported Web widths. IME safety, persistence, the
 single-record identity, and the state transitions above are acceptance gates;
 comprehensive responsive, visual, keyboard, and accessibility polish are not.
 
-Explicitly after this slice: the bounded §5.5 dogfood probes, checklist items,
-manual reorder, completion undo/reopen, inline title edit, broad responsive and
-accessibility polish, board projection, search, Tauri shell, Rossovia adapter,
-export, backup, and sync. The §5.5 probes do not authorize the rest of Craft's
-document, calendar, reminder, or date model.
+The daily-use readiness extension adds title correction, completion reopen,
+confirmed permanent deletion, and manual JSON export/restore without changing
+the canonical model. Explicitly after it: the bounded §5.5 dogfood probes,
+checklist items, manual reorder, broad responsive and accessibility polish,
+board projection, search, Tauri shell, Rossovia adapter, automatic backup, and
+sync. The §5.5 probes do not authorize the rest of Craft's document, calendar,
+reminder, or date model.
 
 ## 10. Acceptance scenarios
 
@@ -514,8 +517,9 @@ scenarios.
 - Production hosting and any storage engine beyond the current single-browser
   profile remain unchosen.
 - Exact breakpoints, touch-target metrics, and board mobile composition.
-- Backup, export, account, sync, schema-migration, and any Web↔Tauri data
-  strategy.
+- Manual export/restore is a whole-state, validated JSON file chosen explicitly
+  by the person; automatic backup, account, sync, broader schema-migration, and
+  any Web↔Tauri data strategy remain unresolved.
 - Whether dogfood warrants the `scheduledDate` and `DailyRecord` hypotheses in
   §5.5; neither is part of the current implementation.
 - The concrete shape of the later Rossovia adapter's narrow actions.

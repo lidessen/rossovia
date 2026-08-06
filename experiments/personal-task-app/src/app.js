@@ -5,9 +5,11 @@ import {
   completeTask,
   createEmptyState,
   createProject,
+  deleteTask,
   inboxTasks,
   projectTasks,
   quickCompleteTask,
+  reopenTask,
   reviewEntries,
   resolvePendingCloseOut,
   savePendingCloseOutDraft,
@@ -16,9 +18,10 @@ import {
   startFocus,
   stopFocus,
   todayTasks,
+  updateTaskTitle,
 } from "./domain.js";
 import { shouldSubmitOnEnter } from "./ime.js";
-import { createStorageAdapter } from "./persistence.js";
+import { createStorageAdapter, deserializeState, serializeState } from "./persistence.js";
 import { shouldFocusCapture } from "./shortcuts.js";
 
 const root = document.querySelector("#app");
@@ -37,6 +40,9 @@ let view = activeFocus(state) || state.pendingCloseOut ? "focus" : "today";
 let selectedProjectId = state.projects[0]?.id ?? null;
 let captureCompositionActive = false;
 let captureImeCommitPending = false;
+let editCompositionActive = false;
+let editImeCommitPending = false;
+let editingTaskId = null;
 const expandedTaskIds = new Set();
 let toast = loadError ? { kind: "error", text: loadError } : null;
 let toastTimer = null;
@@ -163,6 +169,18 @@ function projectOptions(selectedProjectIdForTask) {
   ].join("");
 }
 
+function taskTitleEditor(task, prominent = false) {
+  return `
+    <form class="task-title-form${prominent ? " prominent" : ""}" data-form="edit-task" data-task-id="${escapeHtml(task.id)}">
+      <input data-task-title-input name="title" value="${escapeHtml(task.title)}" maxlength="240" autocomplete="off" aria-label="修改任务标题">
+      <div class="task-title-form-actions">
+        <button class="secondary-button" type="button" data-action="cancel-edit" data-task-id="${escapeHtml(task.id)}">取消</button>
+        <button class="primary-button" type="submit">保存标题</button>
+      </div>
+    </form>
+  `;
+}
+
 function taskRow(task, { showCurrentAction = false } = {}) {
   const active = activeFocus(state);
   const pendingRecord = state.pendingCloseOut
@@ -179,6 +197,7 @@ function taskRow(task, { showCurrentAction = false } = {}) {
   const quickCompleteBlocked = activeForTask || pendingForTask;
   const isCurrent = state.currentTaskId === task.id;
   const titleExpanded = expandedTaskIds.has(task.id);
+  const editing = editingTaskId === task.id;
   const currentAction = showCurrentAction && task.scheduledForToday
     ? `<button type="button" data-action="set-current" data-task-id="${escapeHtml(task.id)}" ${lockedByOtherFocus ? "disabled" : ""} title="${lockedByOtherFocus ? "请先收尾当前专注" : ""}">${
       active?.taskId === task.id ? "回到专注" : isCurrent ? "当前一件" : "设为当前一件"
@@ -187,7 +206,9 @@ function taskRow(task, { showCurrentAction = false } = {}) {
   return `
     <li class="task-row">
       <div>
-        <button class="task-title${titleExpanded ? " expanded" : ""}" type="button" data-action="toggle-title" data-task-id="${escapeHtml(task.id)}" aria-expanded="${titleExpanded}" title="${titleExpanded ? "收起完整标题" : "展开完整标题"}">${escapeHtml(task.title)}</button>
+        ${editing
+          ? taskTitleEditor(task)
+          : `<button class="task-title${titleExpanded ? " expanded" : ""}" type="button" data-action="toggle-title" data-task-id="${escapeHtml(task.id)}" aria-expanded="${titleExpanded}" title="${titleExpanded ? "收起完整标题" : "展开完整标题"}">${escapeHtml(task.title)}</button>`}
         <div class="task-meta">${project ? escapeHtml(project.name) : "未归入项目"}${task.scheduledForToday ? " · 今天" : ""}</div>
       </div>
       <div class="task-actions">
@@ -198,7 +219,9 @@ function taskRow(task, { showCurrentAction = false } = {}) {
           ${task.scheduledForToday ? "移出今天" : "安排今天"}
         </button>
         ${currentAction}
+        <button type="button" data-action="edit-task" data-task-id="${escapeHtml(task.id)}">修改</button>
         <button type="button" data-action="quick-complete" data-task-id="${escapeHtml(task.id)}" ${quickCompleteBlocked ? "disabled" : ""} title="${activeForTask ? "请先停止并收尾当前专注" : pendingForTask ? "请先完成当前专注的收尾记录" : "直接完成，不创建专注记录"}">完成</button>
+        <button type="button" data-action="delete-task" data-task-id="${escapeHtml(task.id)}" ${activeForTask || pendingForTask ? "disabled" : ""} title="${activeForTask || pendingForTask ? "请先完成专注收尾" : "删除前会再次确认"}">删除</button>
       </div>
     </li>
   `;
@@ -270,11 +293,13 @@ function todaySurface() {
     ? `
       <section class="current-card">
         <p class="current-label">当前一件</p>
-        <h2 class="current-title">${escapeHtml(current.title)}</h2>
+        ${editingTaskId === current.id ? taskTitleEditor(current, true) : `<h2 class="current-title">${escapeHtml(current.title)}</h2>`}
         <div class="current-actions">
           <button class="primary-button" type="button" data-action="${active?.taskId === current.id ? "return-focus" : currentNeedsCloseOut ? "return-closeout" : "start-focus"}" data-task-id="${escapeHtml(current.id)}">
             ${active?.taskId === current.id ? "回到专注" : currentNeedsCloseOut ? "继续收尾" : "开始专注"}
           </button>
+          <button class="secondary-button" type="button" data-action="edit-task" data-task-id="${escapeHtml(current.id)}">修改标题</button>
+          <button class="quiet-button" type="button" data-action="delete-task" data-task-id="${escapeHtml(current.id)}" ${active?.taskId === current.id || currentNeedsCloseOut ? "disabled" : ""}>删除</button>
         </div>
       </section>
     `
@@ -336,13 +361,12 @@ function projectsSurface() {
 
 function reviewSurface() {
   const entries = reviewEntries(state);
-  if (entries.length === 0) {
-    return `<section class="panel"><div class="empty-state">还没有可回顾的记录。做完一件事后，它会安静地留在这里。</div></section>`;
-  }
   return `
     <section class="panel">
-      <ul class="review-list">
-        ${entries.map((entry) => {
+      ${entries.length === 0
+        ? `<div class="empty-state">还没有可回顾的记录。做完一件事后，它会安静地留在这里。</div>`
+        : `<ul class="review-list">
+          ${entries.map((entry) => {
           const project = projectById(entry.projectId);
           return `
             <li class="review-row">
@@ -351,11 +375,28 @@ function reviewSurface() {
                 <span class="review-kind">${entry.kind === "completion" ? "完成" : "专注记录"}</span>
                 <p class="review-title">${escapeHtml(entry.title)}</p>
                 ${entry.kind === "focus" && entry.closeOutNote ? `<p class="review-note">“${escapeHtml(entry.closeOutNote)}”</p>` : ""}
+                ${entry.kind === "completion" ? `
+                  <div class="review-actions">
+                    <button type="button" data-action="reopen-task" data-task-id="${escapeHtml(entry.taskId)}">重新打开</button>
+                    <button type="button" data-action="delete-task" data-task-id="${escapeHtml(entry.taskId)}">删除</button>
+                  </div>
+                ` : ""}
               </div>
             </li>
           `;
-        }).join("")}
-      </ul>
+          }).join("")}
+        </ul>`}
+    </section>
+    <section class="panel data-panel" aria-labelledby="data-tools-title">
+      <div class="panel-header"><h2 id="data-tools-title">数据备份</h2><span class="task-meta">本机文件</span></div>
+      <div class="data-tools">
+        <p>导出一份 JSON 备份。恢复会先验证文件，并在你确认后替换当前浏览器里的全部数据。</p>
+        <div>
+          <button class="secondary-button" type="button" data-action="export-data">导出备份</button>
+          <input class="visually-hidden" id="restore-file" type="file" accept="application/json,.json">
+          <label class="file-button" for="restore-file">从备份恢复</label>
+        </div>
+      </div>
     </section>
   `;
 }
@@ -453,6 +494,7 @@ function perform(action) {
 
 root.addEventListener("compositionstart", (event) => {
   if (event.target.id === "capture-title") captureCompositionActive = true;
+  if (event.target.matches("[data-task-title-input]")) editCompositionActive = true;
 });
 
 function focusCaptureInput() {
@@ -472,17 +514,38 @@ document.addEventListener("keydown", (event) => {
 });
 
 root.addEventListener("compositionend", (event) => {
-  if (event.target.id !== "capture-title") return;
-  captureCompositionActive = false;
-  captureImeCommitPending = true;
-  queueMicrotask(() => { captureImeCommitPending = false; });
+  if (event.target.id === "capture-title") {
+    captureCompositionActive = false;
+    captureImeCommitPending = true;
+    queueMicrotask(() => { captureImeCommitPending = false; });
+  }
+  if (event.target.matches("[data-task-title-input]")) {
+    editCompositionActive = false;
+    editImeCommitPending = true;
+    queueMicrotask(() => { editImeCommitPending = false; });
+  }
 });
 
 root.addEventListener("keydown", (event) => {
-  if (event.target.id !== "capture-title" || event.key !== "Enter") return;
-  if (!shouldSubmitOnEnter(event, captureCompositionActive || captureImeCommitPending)) return;
-  event.preventDefault();
-  event.target.form.requestSubmit();
+  if (event.target.id === "capture-title" && event.key === "Enter") {
+    if (!shouldSubmitOnEnter(event, captureCompositionActive || captureImeCommitPending)) return;
+    event.preventDefault();
+    event.target.form.requestSubmit();
+  }
+  if (event.target.matches("[data-task-title-input]")) {
+    if (event.key === "Escape" && !event.isComposing) {
+      event.preventDefault();
+      const taskId = event.target.form.dataset.taskId;
+      editingTaskId = null;
+      render();
+      root.querySelector(`[data-action="edit-task"][data-task-id="${CSS.escape(taskId)}"]`)?.focus();
+      return;
+    }
+    if (event.key === "Enter" && shouldSubmitOnEnter(event, editCompositionActive || editImeCommitPending)) {
+      event.preventDefault();
+      event.target.form.requestSubmit();
+    }
+  }
 });
 
 root.addEventListener("submit", (event) => {
@@ -502,6 +565,14 @@ root.addEventListener("submit", (event) => {
       const projectId = id();
       selectedProjectId = projectId;
       commit(createProject(state, { id: projectId, name: input.value, createdAt: now() }), "项目已创建。");
+    });
+  }
+  if (form.dataset.form === "edit-task") {
+    perform(() => {
+      const taskId = form.dataset.taskId;
+      const nextState = updateTaskTitle(state, taskId, form.elements.title.value);
+      editingTaskId = null;
+      commit(nextState, "标题已修改。");
     });
   }
 });
@@ -524,6 +595,28 @@ root.addEventListener("change", (event) => {
   });
 });
 
+root.addEventListener("change", async (event) => {
+  if (event.target.id !== "restore-file") return;
+  const input = event.target;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const serialized = await file.text();
+    deserializeState(serialized);
+    if (!window.confirm("恢复会替换当前浏览器里的全部任务数据。确定继续吗？")) return;
+    state = storage.restore(serialized);
+    editingTaskId = null;
+    expandedTaskIds.clear();
+    selectedProjectId = state.projects[0]?.id ?? null;
+    view = activeFocus(state) || state.pendingCloseOut ? "focus" : "today";
+    showMessage("备份已恢复。");
+  } catch (error) {
+    showMessage(`无法恢复：${error.message}`, "error");
+  } finally {
+    input.value = "";
+  }
+});
+
 root.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
@@ -537,6 +630,22 @@ root.addEventListener("click", (event) => {
 
   if (action === "focus-capture") {
     focusCaptureInput();
+    return;
+  }
+  if (action === "edit-task") {
+    editingTaskId = button.dataset.taskId;
+    expandedTaskIds.delete(editingTaskId);
+    render();
+    const input = root.querySelector(`[data-form="edit-task"][data-task-id="${CSS.escape(editingTaskId)}"] [data-task-title-input]`);
+    input?.focus();
+    input?.select();
+    return;
+  }
+  if (action === "cancel-edit") {
+    const taskId = button.dataset.taskId;
+    editingTaskId = null;
+    render();
+    root.querySelector(`[data-action="edit-task"][data-task-id="${CSS.escape(taskId)}"]`)?.focus();
     return;
   }
   if (action === "toggle-title") {
@@ -564,6 +673,40 @@ root.addEventListener("click", (event) => {
   if (action === "quick-complete") {
     perform(() => {
       commit(quickCompleteTask(state, button.dataset.taskId, now()), "任务已完成。");
+    });
+    return;
+  }
+  if (action === "reopen-task") {
+    perform(() => {
+      commit(reopenTask(state, button.dataset.taskId), "任务已重新打开。");
+    });
+    return;
+  }
+  if (action === "delete-task") {
+    const task = taskById(button.dataset.taskId);
+    if (!task) return;
+    const focusCount = state.focusRecords.filter((record) => record.taskId === task.id).length;
+    const historyCopy = focusCount > 0 ? `，以及 ${focusCount} 条关联专注记录` : "";
+    if (!window.confirm(`永久删除“${task.title}”${historyCopy}？此操作无法撤销。`)) return;
+    perform(() => {
+      editingTaskId = null;
+      expandedTaskIds.delete(task.id);
+      commit(deleteTask(state, task.id), "任务已删除。");
+    });
+    return;
+  }
+  if (action === "export-data") {
+    perform(() => {
+      const contents = serializeState(state);
+      const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `个人任务备份-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showMessageWithoutRender("备份已导出。");
     });
     return;
   }

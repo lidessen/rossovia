@@ -1,7 +1,8 @@
 const DEFAULT_PORT = 4310;
+export const LOCAL_HOST = "127.0.0.1";
 const root = import.meta.dir;
 
-function parsePort(args, env) {
+export function parsePort(args, env) {
   const equalsArgument = args.find((argument) => argument.startsWith("--port="));
   const flagIndex = args.indexOf("--port");
   const candidate = equalsArgument?.slice("--port=".length)
@@ -13,6 +14,10 @@ function parsePort(args, env) {
     throw new Error(`Invalid port: ${candidate}`);
   }
   return port;
+}
+
+export function serverBindOptions(port) {
+  return { hostname: LOCAL_HOST, port };
 }
 
 const mimeTypes = new Map([
@@ -27,31 +32,34 @@ function extension(pathname) {
   return dot < 0 ? "" : pathname.slice(dot);
 }
 
-const port = parsePort(Bun.argv.slice(2), process.env);
+export function startServer({ args = Bun.argv.slice(2), env = process.env, port } = {}) {
+  return Bun.serve({
+    ...serverBindOptions(port ?? parsePort(args, env)),
+    async fetch(request) {
+      const url = new URL(request.url);
+      let pathname;
+      try {
+        pathname = decodeURIComponent(url.pathname);
+      } catch {
+        return new Response("Bad request", { status: 400 });
+      }
+      if (pathname === "/") pathname = "/index.html";
+      if (pathname.includes("\0") || pathname.split("/").includes("..")) {
+        return new Response("Bad request", { status: 400 });
+      }
+      const file = Bun.file(`${root}${pathname}`);
+      if (!(await file.exists())) return new Response("Not found", { status: 404 });
+      return new Response(file, {
+        headers: {
+          "Content-Type": mimeTypes.get(extension(pathname)) ?? "application/octet-stream",
+          "Cache-Control": "no-store",
+        },
+      });
+    },
+  });
+}
 
-const server = Bun.serve({
-  port,
-  async fetch(request) {
-    const url = new URL(request.url);
-    let pathname;
-    try {
-      pathname = decodeURIComponent(url.pathname);
-    } catch {
-      return new Response("Bad request", { status: 400 });
-    }
-    if (pathname === "/") pathname = "/index.html";
-    if (pathname.includes("\0") || pathname.split("/").includes("..")) {
-      return new Response("Bad request", { status: 400 });
-    }
-    const file = Bun.file(`${root}${pathname}`);
-    if (!(await file.exists())) return new Response("Not found", { status: 404 });
-    return new Response(file, {
-      headers: {
-        "Content-Type": mimeTypes.get(extension(pathname)) ?? "application/octet-stream",
-        "Cache-Control": "no-store",
-      },
-    });
-  },
-});
-
-console.log(`Personal Task App: http://127.0.0.1:${server.port}`);
+if (import.meta.main) {
+  const server = startServer();
+  console.log(`Personal Task App: http://${LOCAL_HOST}:${server.port}`);
+}

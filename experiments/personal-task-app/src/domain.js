@@ -78,6 +78,12 @@ export function captureTask(state, { id, title, createdAt }) {
   };
 }
 
+export function updateTaskTitle(state, taskId, title) {
+  taskById(state, taskId);
+  const nextTitle = requiredText(title, "任务标题");
+  return replaceTask(state, taskId, (task) => ({ ...task, title: nextTitle }));
+}
+
 export function assignTaskToProject(state, taskId, projectId) {
   openTaskById(state, taskId);
   if (projectId !== null && !state.projects.some((project) => project.id === projectId)) {
@@ -245,6 +251,36 @@ export function quickCompleteTask(state, taskId, completedAt) {
     throw new DomainError("close-out-pending", "请先完成当前专注的收尾记录。");
   }
   return completeTask(state, taskId, completedAt);
+}
+
+export function reopenTask(state, taskId) {
+  const task = taskById(state, taskId);
+  if (task.completionState !== "completed") {
+    throw new DomainError("task-open", "这个任务已经是未完成状态。");
+  }
+  return replaceTask(state, taskId, (candidate) => {
+    const { completedAt: _discarded, ...reopened } = candidate;
+    return { ...reopened, completionState: "open" };
+  });
+}
+
+export function deleteTask(state, taskId) {
+  taskById(state, taskId);
+  if (activeFocus(state)?.taskId === taskId) {
+    throw new DomainError("focus-active", "请先停止并收尾当前专注，再删除任务。");
+  }
+  const pendingRecord = state.pendingCloseOut
+    ? state.focusRecords.find((record) => record.id === state.pendingCloseOut.focusRecordId)
+    : null;
+  if (pendingRecord?.taskId === taskId) {
+    throw new DomainError("close-out-pending", "请先完成当前专注的收尾记录，再删除任务。");
+  }
+  return {
+    ...state,
+    tasks: state.tasks.filter((task) => task.id !== taskId),
+    focusRecords: state.focusRecords.filter((record) => record.taskId !== taskId),
+    currentTaskId: state.currentTaskId === taskId ? null : state.currentTaskId,
+  };
 }
 
 export function inboxTasks(state) {
