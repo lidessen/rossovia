@@ -64,6 +64,10 @@ bun src/cli.ts model evaluate \
   ../../regeneration/evaluations/evidence/2026-08-06-attention-management-h2/model-evaluation.json
 ```
 
+The final command above records the authorized invocation. Do not run it again
+under the old authorization; any retry requires a newly reviewed packet and a
+new Principal decision covering the external disclosure and model calls.
+
 The per-file fixture check must pass, and the semantic-audit output must equal
 the manifest's `comparison.semanticAuditSha256`, before the model command
 begins. The per-file manifest preserves human-readable provenance. Work Cell

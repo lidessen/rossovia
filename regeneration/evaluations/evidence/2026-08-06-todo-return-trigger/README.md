@@ -1,6 +1,6 @@
 # Todo return-trigger transfer probe
 
-**Status:** development packet freeze candidate; mechanical calibration,
+**Status:** development packet freeze-ready; mechanical calibration,
 delivery action probes, and arm-runner preflight passed; no external run
 authorized
 **Source practice:** [invalid Todo obligation-carrier development
