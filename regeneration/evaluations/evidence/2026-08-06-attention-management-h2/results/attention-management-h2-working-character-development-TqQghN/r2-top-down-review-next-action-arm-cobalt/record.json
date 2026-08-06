@@ -1,0 +1,191 @@
+{
+  "version": "work-cell.run.v4",
+  "runId": "555f556a-3ddb-4926-be4a-59375712886d",
+  "cellId": "top-down-review-next-action-r2",
+  "driver": {
+    "adapter": "ai-sdk-v7",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "pricing": {
+      "inputPerMillionUsd": 0.14,
+      "cachedInputPerMillionUsd": 0.0028,
+      "outputPerMillionUsd": 0.28,
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "revision": "2026-07-31"
+    }
+  },
+  "startedAt": "2026-08-06T13:55:17.921Z",
+  "finishedAt": "2026-08-06T13:55:23.936Z",
+  "durationMs": 6015,
+  "status": "failed",
+  "input": {
+    "id": "top-down-review-next-action-r2",
+    "intent": "Review this frozen repository candidate from the top down and decide the next consequential action before any integration. State what can remain stable, what must change first, and which authority remains withheld. Prefer the smallest ownership-correct intervention supported by the supplied sources.",
+    "workspace": {
+      "root": "/Users/lidessen/workspaces/skills/regeneration/evaluations/evidence/2026-08-06-attention-management-h2/results/attention-management-h2-working-character-development-TqQghN/r2-top-down-review-next-action-arm-cobalt/workspace",
+      "readPaths": [
+        "AGENTS.md",
+        "design/FOUNDING-MANDATE.md",
+        "design/DESIGN.md",
+        "principles/SEQUENCE.md",
+        "principles/interpretations/P13.md",
+        "principles/interpretations/P14.md",
+        "skills/agent-delegation/SKILL.md",
+        "skills/agent-environment/SKILL.md",
+        "skills/strategic-advisory/SKILL.md"
+      ],
+      "writePaths": [],
+      "excludePaths": [],
+      "allowedCommands": []
+    },
+    "instructions": [
+      "Use the following guidance when choosing the next action.",
+      "You serve the human Principal and are responsible for the active task as a whole, within the authority and source boundaries established for that task. Before each consequential action, you form the actual object and governing relation, keeping a local branch secondary unless it affects acceptance. This responsibility means continuing work that directly advances the active task, retaining a branch while it blocks acceptance, invalidates a load-bearing assumption, or changes the governing relation, returning when it is settled or non-blocking, switching when the Principal completes, pauses, hands off, or replaces the task, and asking when authority or meaning is materially ambiguous. When attention is already correct, you add no control; otherwise you use the smallest cue, reset, reframing, or clarification that restores the governing relation, replacing an obsolete anchor when evidence or the Principal rejects its assumption. You rebind the existing candidate action only when it advances acceptance, resolves the retained relation, or obtains evidence that decides the next action, and keep a retained branch active only until its stated return or reopen condition; if no action meets that test, you hand off the unresolved practice choice.",
+      "Inspect every declared source before deciding; do not infer later revisions, review records, or repairs.",
+      "Distinguish the semantic root, licensed interpretations, architecture, Skill expressions, volatile operating guidance, evidence, and integration authority.",
+      "Return a concise decision, source-linked reasons, the smallest next intervention, its closure condition, and all withheld authority.",
+      "Do not create files, invoke commands, delegate, merge, publish, or propose a new governance surface unless the frozen sources make it necessary."
+    ],
+    "capabilities": [
+      "read",
+      "architecture-review",
+      "source-grounded-reasoning"
+    ],
+    "context": [],
+    "capabilitiesRequired": [
+      "read"
+    ],
+    "acceptance": [
+      "Every declared source is inspected before the decision",
+      "Material claims cite repository-relative source paths",
+      "The next intervention and its closure condition are explicit",
+      "Integration, Principle, and publication authority are stated rather than inferred"
+    ],
+    "budget": {
+      "maxSteps": 16,
+      "estimatedTokens": 30000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 180000,
+      "maxCommandOutputBytes": 8000
+    },
+    "executionProfile": {
+      "id": "deepseek-v4-flash-low-readonly-h2-v1",
+      "version": "execution-profile.v1",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "contextPolicy": "frozen-cff6613-selected-source-fixture-v1",
+      "toolSurface": "read-only-files-no-commands-v1",
+      "parallelism": "serial",
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    }
+  },
+  "finalText": "",
+  "artifacts": [],
+  "verification": {
+    "passed": false,
+    "terminal": {
+      "passed": false,
+      "required": [],
+      "called": []
+    }
+  },
+  "workspaceDiff": {
+    "added": [],
+    "changed": [],
+    "removed": []
+  },
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0,
+    "cachedInputTokens": 0
+  },
+  "usageByPhase": {
+    "preparation": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    },
+    "execution": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    }
+  },
+  "executionObservation": {
+    "executionProfileId": "deepseek-v4-flash-low-readonly-h2-v1",
+    "priceRevision": "deepseek-public-api-2026-07-31"
+  },
+  "estimatedCostUsd": 0,
+  "estimateBasis": "estimated from token usage using https://api-docs.deepseek.com/quick_start/pricing",
+  "trace": [
+    {
+      "at": "2026-08-06T13:55:17.921Z",
+      "type": "cell.started",
+      "data": {
+        "runId": "555f556a-3ddb-4926-be4a-59375712886d",
+        "cellId": "top-down-review-next-action-r2",
+        "driver": {
+          "adapter": "ai-sdk-v7",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "pricing": {
+            "inputPerMillionUsd": 0.14,
+            "cachedInputPerMillionUsd": 0.0028,
+            "outputPerMillionUsd": 0.28,
+            "source": "https://api-docs.deepseek.com/quick_start/pricing",
+            "revision": "2026-07-31"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-08-06T13:55:17.922Z",
+      "type": "task.tools.projected",
+      "data": {
+        "taskToolSet": "manage",
+        "tools": [
+          "task_list",
+          "task_get",
+          "task_create",
+          "task_update"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-06T13:55:17.925Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-H0z1EvYSoHX8vd3Dy8smgXtj",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 0
+      }
+    },
+    {
+      "at": "2026-08-06T13:55:23.936Z",
+      "type": "cell.error",
+      "data": {
+        "status": "failed",
+        "error": "Failed after 3 attempts. Last error: AI_APICallError: Cannot connect to API: Unable to connect. Is the computer able to access the url?"
+      }
+    },
+    {
+      "at": "2026-08-06T13:55:23.936Z",
+      "type": "cell.finished",
+      "data": {
+        "status": "failed",
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "cachedInputTokens": 0
+        }
+      }
+    }
+  ],
+  "rawSteps": [],
+  "error": "Failed after 3 attempts. Last error: AI_APICallError: Cannot connect to API: Unable to connect. Is the computer able to access the url?"
+}

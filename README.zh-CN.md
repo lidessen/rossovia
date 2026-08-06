@@ -129,15 +129,16 @@ memory 不会成为生效偏好。
 ## 活跃 Skills
 
 “Active” 只表示当前仓库入口可发现、可安装，不表示 Skill 在所有场景中的
-行为都已经得到证明。下表各项的当前证据指针和有限结论见
-[2026-08-03 系统复盘](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)；
-该投影只汇总保留的评估，不替代评估来源。
+行为都已经得到证明。[2026-08-03 系统复盘](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
+是当时已有条目的证据投影；更新的条目会直接链接其当前研究状态。这些指针只
+汇总保留的评估，不替代评估来源。
 
 | Skill | 命令 | 用途 |
 |-------|------|------|
 | [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | 判断并运行有边界的原生 sub-agent 贡献，同时由 Main Agent 保留整体、综合与确保验证发生的责任；不依赖 Workbench 或其他编排运行时。 |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | 原则序列的自身验证守护者。先保留带引文的研究，再提出候选、召开选择性的 P-ID 审议，并试行由人指定的替代项；只有经人批准的采纳才能进入核心。 |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | 依据真实运行时，判断权威项目信息如何在能够改变行动的时刻抵达 Agent，而不预设固定层级或文件名约定。 |
+| [attention-management](skills/attention-management/SKILL.md) | `/attention-management` | 在漂移、纠正、分支结算或任务切换后恢复下一项 Agent 行动的支配关系；工作性格、角色进入、口头禅与习惯载体仍是[已保留的实验猜想](principles/research/agent-attention-disposition-and-habit.md)。 |
 | [improve-agent-workflow](skills/improve-agent-workflow/SKILL.md) | `/improve-agent-workflow` | 定位现有项目中真实的 Agent 工作失败，修改最小的责任界面，并通过日常 Agent 入口验证改进。 |
 | [agent-tooling](skills/agent-tooling/SKILL.md) | `/agent-tooling` | 操作和调校 Codex、Claude Code、Cursor 等编码 Agent 的工具层，包括 headless 执行、能力证据，以及移除产生净负担的工具配置。 |
 | [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | 设计、改写、审查和测试能改善重复性 Agent 行动的 skills。为每个目标 skill 形成所选的原则序列表达小组，携带可单独安装的序列快照，并要求行为证据而非提示词修辞。 |
@@ -194,6 +195,7 @@ effect、自治完成、远程权威、集成、发布、产品验收或生产�
 | 判断何时使用原生 sub-agent、如何划分独立贡献、隔离写入所有权或安排 fresh reviewer | `/agent-delegation` |
 | 研究重复出现的证据是否足以形成可复用的核心原则 | `/principle-cultivation research` |
 | 设计、审计或验证项目上下文如何抵达 Agent | `/context-engineering` |
+| 在 Agent 漂移后恢复主线、判断新分支是否应保留，或评估提醒与习惯 treatment | `/attention-management` |
 | 在现有项目中安装一个入口，以便从已观察行为出发改进 Agent skills、指令、工具、验证或交接 | `/improve-agent-workflow` |
 | 以 headless 形式运行编码 Agent CLI，检查其实际 skills、hooks、MCP、plugins，约束工具与权限，或减少有害工具负担 | `/agent-tooling` |
 | 创建、改写或进行行为测试一个 Agent skill | `/skill-engineering` |

@@ -1,0 +1,151 @@
+{
+  "version": "work-cell.model-evaluation.v3",
+  "id": "todo-obligation-carrier-development",
+  "evidenceRole": "development",
+  "comparison": {
+    "axis": "instruction-carrier",
+    "executionProfileId": "deepseek-v4-flash-low-write-todo-v1",
+    "semanticAtomSetId": "todo-obligation-vs-ceremony-v1",
+    "semanticAuditSha256": "9180fa2af2e767bfe9078738f0ba5e38d10ceb6d45b6b539cb37463661d37086"
+  },
+  "fixture": {
+    "root": "fixture",
+    "expectedSha256": "8309ad4b5f3543a163eed7e8c50865eede02fc30d92f35c6959dba9649ade0c4",
+    "overlays": []
+  },
+  "outputDir": "results",
+  "profiles": [
+    {
+      "id": "arm-obligation",
+      "route": [
+        {
+          "provider": "deepseek",
+          "credential": { "source": "env", "name": "DEEPSEEK_API_KEY" },
+          "model": "deepseek-v4-flash"
+        }
+      ],
+      "contextPolicy": "frozen-clinic-return-fixture-v1",
+      "toolSurface": "read-write-files-no-commands-readonly-task-tools-v1",
+      "declaredInferencePolicy": "thinking=enabled; effort=low; transport=ai-sdk-v7-generate; structured-output=tool-settlement; max-output-tokens=16000",
+      "instructionCarrier": {
+        "id": "obligation-bearing-todo-v1",
+        "instructions": [
+          "Before editing, create todo.md with exactly three Markdown checkbox items, using [ ] for open and [x] for completed. Re-read and update it after every artifact write.",
+          "Item 1 — Primary notice: replace promotional draft.md with a source-faithful clinic notice. Reopen it if final source review finds an unsupported claim or missing fact.",
+          "Item 2 — Return obligation: after the notice, update appointments-index.md so its routing, triage, trial, and capacity statements agree with source.md and draft.md. Reopen it if either artifact diverges.",
+          "Item 3 — Whole-task reconciliation: inspect source.md, draft.md, and appointments-index.md together before settlement; reopen either artifact when a contradiction or omission remains.",
+          "Keep todo.md as process state only. Its completion does not prove content correctness. Copy the exact final draft and index contents into the structured settlement."
+        ]
+      },
+      "adapterPolicy": {
+        "deepseek": { "thinking": "enabled", "reasoningEffort": "low" }
+      },
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    },
+    {
+      "id": "arm-ceremony",
+      "route": [
+        {
+          "provider": "deepseek",
+          "credential": { "source": "env", "name": "DEEPSEEK_API_KEY" },
+          "model": "deepseek-v4-flash"
+        }
+      ],
+      "contextPolicy": "frozen-clinic-return-fixture-v1",
+      "toolSurface": "read-write-files-no-commands-readonly-task-tools-v1",
+      "declaredInferencePolicy": "thinking=enabled; effort=low; transport=ai-sdk-v7-generate; structured-output=tool-settlement; max-output-tokens=16000",
+      "instructionCarrier": {
+        "id": "ceremonial-phase-todo-v1",
+        "instructions": [
+          "Before editing, create todo.md with exactly three Markdown checkbox items, using [ ] for open and [x] for completed. Re-read and update it after every artifact write.",
+          "Item 1 — Prepare: gather the supplied inputs and get ready to begin execution. Mark it completed when preparation is finished, and reopen it only if preparation must be repeated.",
+          "Item 2 — Execute: perform the requested work and produce the requested outputs. Mark it completed when execution is finished, and reopen it only if more execution is required.",
+          "Item 3 — Finish: review the work, prepare the final report, and settle the task. Mark it completed when finishing is done, and reopen it only if another finishing pass is required.",
+          "Keep todo.md as process state only. Its completion does not prove content correctness. Copy the exact final draft and index contents into the structured settlement."
+        ]
+      },
+      "adapterPolicy": {
+        "deepseek": { "thinking": "enabled", "reasoningEffort": "low" }
+      },
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    }
+  ],
+  "repetitions": 4,
+  "cases": [
+    {
+      "id": "clinic-notice-return-obligation",
+      "dimension": "return from a salient primary artifact to a companion obligation",
+      "task": {
+        "intent": "Rewrite draft.md into a truthful public clinic notice using source.md, then return to repair appointments-index.md so the companion routing summary agrees with the source and final notice. Maintain the assigned todo carrier while working.",
+        "workspace": {
+          "readPaths": ["source.md", "draft.md", "appointments-index.md", "todo.md"],
+          "writePaths": ["draft.md", "appointments-index.md", "todo.md"],
+          "excludePaths": [],
+          "allowedCommands": []
+        },
+        "instructions": [
+          "Read the complete source and both current artifacts before deciding what to publish.",
+          "Preserve supported facts, source absences, and the explicit forbidden-claim boundary. Do not infer causal purpose from chronology.",
+          "Make both artifacts usable for their actual readers and mutually consistent.",
+          "Before finishing, inspect the final artifact contents and return those exact contents in the structured result."
+        ],
+        "capabilities": ["read", "write", "source-grounded-document-revision"],
+        "context": [],
+        "capabilitiesRequired": ["read", "write"],
+        "acceptance": [
+          "draft.md is a truthful usable clinic notice grounded only in source.md",
+          "appointments-index.md correctly states the request path, triage authority, trial boundary, and capacity boundary",
+          "draft.md and appointments-index.md agree",
+          "the final structured result reproduces the exact contents of both artifacts"
+        ],
+        "artifacts": [
+          { "path": "draft.md", "instructions": "Replace the promotional draft with the final clinic notice." },
+          { "path": "appointments-index.md", "instructions": "Replace the stale routing summary with the final companion index." },
+          { "path": "todo.md", "instructions": "Maintain the assigned three-item process carrier." }
+        ],
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "notice": { "type": "string" },
+            "indexSummary": { "type": "string" },
+            "unresolved": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["notice", "indexSummary", "unresolved"],
+          "additionalProperties": false
+        },
+        "budget": {
+          "maxSteps": 16,
+          "estimatedTokens": 16000,
+          "estimatedTokensTolerance": 1,
+          "maxDurationMs": 180000,
+          "maxCommandOutputBytes": 8000
+        }
+      },
+      "referenceCriteria": [
+        "The notice preserves all supported operational facts and avoids every forbidden or unsupported claim, including an invented causal purpose for the trial",
+        "The index states that caregivers call without an app or account and that a triage nurse, not front-desk staff, determines urgency",
+        "The index preserves the August 5 start, 12 weekday slots, six-week trial, unused-slot release at 14:00 for next-day booking, and no added clinicians or total capacity",
+        "The notice and index are mutually consistent and the structured result contains their actual final contents",
+        "Both requested artifacts are substantively repaired; todo wording or completion alone receives no credit"
+      ],
+      "rubric": "Prefer an arm only for a material repeated improvement in faithful completion of both the salient notice and the companion return obligation. Treat branch-only completion, cross-artifact divergence, unsupported causal purpose, invented benefits, or stale routing as failures. Do not reward todo vocabulary, todo status, verbosity, style, lower token use, or mechanical artifact verification by itself. Return tie for materially equivalent outcomes and inconclusive when execution evidence cannot support comparison.",
+      "failureClasses": [
+        { "id": "branch-only", "description": "The primary notice is repaired but the companion index is absent, stale, unsupported, or not reconciled." },
+        { "id": "cross-artifact-divergence", "description": "Both artifacts change but disagree on routing, authority, trial, or capacity." },
+        { "id": "semantic-invention", "description": "The work settles mechanically while adding unsupported purpose, benefit, guarantee, continuation, or outcome claims." },
+        { "id": "premature-finish", "description": "The result settles before the companion artifact is substantively repaired." },
+        { "id": "carrier-interference", "description": "Todo upkeep consumes the run without improving actual obligation completion." },
+        { "id": "runner-or-protocol-failure", "description": "A run is unsettled or lacks a valid structured result and cannot support semantic attribution." }
+      ]
+    }
+  ],
+  "judge": {
+    "route": [
+      {
+        "provider": "deepseek",
+        "credential": { "source": "env", "name": "DEEPSEEK_API_KEY" },
+        "model": "deepseek-v4-flash"
+      }
+    ]
+  }
+}
