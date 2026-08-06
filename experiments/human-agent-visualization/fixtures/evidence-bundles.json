@@ -1,0 +1,959 @@
+{
+  "version": "human-agent-visualization.fixture-index.v1",
+  "generatedAt": "2026-08-05T16:12:00.000Z",
+  "cases": [
+    {
+      "id": "exact-current-effect",
+      "label": "当前执行片段精确关联",
+      "description": "当前证据到达 current-effect-exact；兼容的上一份证据包停在 current-turn-exact。",
+      "current": {
+        "version": "human-agent-visualization.evidence-bundle.v1",
+        "subject": {
+          "lensId": "execution-boundary",
+          "id": "execution-boundary:task-exact-execution",
+          "taskContext": {
+            "taskId": "task-exact-execution",
+            "projectKey": "registered:rossovia",
+            "missionId": "human-agent-visualization"
+          }
+        },
+        "relationContractVersion": "execution-boundary.relations.v1",
+        "builder": {
+          "id": "execution-boundary-fixture-builder",
+          "revision": "prototype-r1",
+          "comparisonPolicy": "exact-builder-revision"
+        },
+        "generatedAt": "2026-08-05T16:08:00.000Z",
+        "sourceIdentities": [
+          {
+            "kind": "execution-authorization-claim",
+            "id": "auth-exact-01",
+            "sourceRef": ".rosso/authorization-claims/auth-exact-01.json",
+            "revision": "2026-08-05T16:08:00.000Z"
+          },
+          {
+            "kind": "execution-authorization-receipt",
+            "id": "auth-exact-01",
+            "sourceRef": ".rosso/authorizations/auth-exact-01.json",
+            "revision": "2026-08-05T16:08:00.000Z"
+          },
+          {
+            "kind": "current-effect-evidence",
+            "id": "effect-visual-01",
+            "sourceRef": ".rosso/missions/human-agent-visualization/effects/effect-visual-01.json",
+            "revision": "2026-08-05T16:08:00.000Z"
+          },
+          {
+            "kind": "mission-semantic-source",
+            "id": "human-agent-visualization",
+            "sourceRef": "operations/missions/human-agent-visualization.json",
+            "revision": "git:7cb8d66"
+          },
+          {
+            "kind": "current-turn-evidence",
+            "id": "runner-visual-01",
+            "sourceRef": ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
+            "revision": "2026-08-05T16:08:00.000Z"
+          },
+          {
+            "kind": "runner-observation",
+            "id": "runner-visual-01",
+            "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+            "revision": "2026-08-05T16:08:00.000Z"
+          },
+          {
+            "kind": "principal-task-source",
+            "id": "task-exact-execution",
+            "sourceRef": ".rosso/state/tasks.json",
+            "revision": "8"
+          }
+        ],
+        "artifacts": {
+          "snapshot": {
+            "value": {
+              "version": "rosso.principal-workbench-snapshot.v1",
+              "generatedAt": "2026-08-05T16:08:00.000Z",
+              "complete": true,
+              "sourceIdentities": [
+                {
+                  "kind": "mission-semantic-source",
+                  "id": "human-agent-visualization",
+                  "sourceRef": "operations/missions/human-agent-visualization.json",
+                  "revision": "git:7cb8d66"
+                },
+                {
+                  "kind": "runner-observation",
+                  "id": "runner-visual-01",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                  "revision": "2026-08-05T16:08:00.000Z"
+                }
+              ],
+              "projects": [
+                {
+                  "projectKey": "registered:rossovia",
+                  "missions": [
+                    {
+                      "id": "human-agent-visualization",
+                      "sourceRef": "operations/missions/human-agent-visualization.json"
+                    }
+                  ]
+                }
+              ],
+              "runners": [
+                {
+                  "runnerId": "runner-visual-01",
+                  "missionId": "human-agent-visualization",
+                  "state": "running",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                  "observedAt": "2026-08-05T16:08:00.000Z"
+                }
+              ]
+            },
+            "digest": "sha256:f6465dc8993e158edc16ba58da5aa65717d8e89f45efd6443057f142d352c169"
+          },
+          "principalTaskObservation": {
+            "value": {
+              "standing": "available",
+              "sourceRef": ".rosso/state/tasks.json",
+              "sourceRevision": 8,
+              "task": {
+                "id": "task-exact-execution",
+                "title": "解释当前执行边界",
+                "nextActor": "agent",
+                "binding": {
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization"
+                },
+                "executionLink": {
+                  "authorizationId": "auth-exact-01",
+                  "sourceRef": ".rosso/state/tasks.json",
+                  "taskContextDigest": "task-context:task-exact-execution:r8",
+                  "standing": "exact-task-context"
+                }
+              }
+            },
+            "digest": "sha256:354ae4248c88fcf532bf230fd3dc7509fd6762f4e80658c9e5811e6c899af416"
+          },
+          "otherBuilderInputs": {
+            "value": {
+              "mission": {
+                "id": "human-agent-visualization",
+                "title": "人—Agent 可视化",
+                "sourceRef": "operations/missions/human-agent-visualization.json",
+                "revision": "git:7cb8d66"
+              },
+              "authorization": {
+                "authorizationId": "auth-exact-01",
+                "sourceRef": ".rosso/authorizations/auth-exact-01.json",
+                "standing": "authorization-consumed",
+                "authority": "bounded-launch-authorization"
+              },
+              "consumptionClaim": {
+                "authorizationId": "auth-exact-01",
+                "sourceRef": ".rosso/authorization-claims/auth-exact-01.json",
+                "standing": "verified",
+                "authority": "launch-authorization-consumption-evidence",
+                "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+              },
+              "currentCarrier": {
+                "runnerId": "runner-visual-01",
+                "state": "running",
+                "live": true,
+                "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                "freshness": {
+                  "kind": "live",
+                  "observedAt": "2026-08-05T16:08:00.000Z"
+                }
+              },
+              "executionEvidence": {
+                "authorizationConsumption": {
+                  "standing": "verified",
+                  "sourceRefs": [
+                    ".rosso/authorizations/auth-exact-01.json",
+                    ".rosso/authorization-claims/auth-exact-01.json"
+                  ],
+                  "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+                },
+                "currentTurn": {
+                  "standing": "exact",
+                  "sourceRefs": [
+                    ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json"
+                  ],
+                  "reason": "current turn 保留了精确的任务上下文和授权引用。"
+                },
+                "currentEffect": {
+                  "standing": "exact",
+                  "sourceRefs": [
+                    ".rosso/missions/human-agent-visualization/effects/effect-visual-01.json"
+                  ],
+                  "effectId": "effect-visual-01",
+                  "reason": "current effect 保留了精确的任务上下文和授权引用。"
+                }
+              },
+              "sourceIdentities": [
+                {
+                  "kind": "execution-authorization-receipt",
+                  "id": "auth-exact-01",
+                  "sourceRef": ".rosso/authorizations/auth-exact-01.json",
+                  "revision": "2026-08-05T16:08:00.000Z"
+                },
+                {
+                  "kind": "execution-authorization-claim",
+                  "id": "auth-exact-01",
+                  "sourceRef": ".rosso/authorization-claims/auth-exact-01.json",
+                  "revision": "2026-08-05T16:08:00.000Z"
+                },
+                {
+                  "kind": "current-turn-evidence",
+                  "id": "runner-visual-01",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
+                  "revision": "2026-08-05T16:08:00.000Z"
+                },
+                {
+                  "kind": "current-effect-evidence",
+                  "id": "effect-visual-01",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/effects/effect-visual-01.json",
+                  "revision": "2026-08-05T16:08:00.000Z"
+                }
+              ]
+            },
+            "digest": "sha256:e1c463a3e91f7e6ac217681e415d204d1f8622e53ee5b6df5885889e2f630f32"
+          },
+          "workItemSetProjection": {
+            "value": {
+              "version": "human-agent-visualization.work-item-set-projection.v1",
+              "generatedAt": "2026-08-05T16:08:00.000Z",
+              "builderRevision": "prototype-r1",
+              "relationContractVersion": "execution-boundary.relations.v1",
+              "subject": {
+                "lensId": "execution-boundary",
+                "id": "execution-boundary:task-exact-execution",
+                "taskContext": {
+                  "taskId": "task-exact-execution",
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization"
+                }
+              },
+              "items": [
+                {
+                  "id": "principal-task:task-exact-execution",
+                  "kind": "principal-task",
+                  "title": "解释当前执行边界",
+                  "nextActor": "agent",
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization",
+                  "evidence": {
+                    "freshness": {
+                      "kind": "observed-at-build",
+                      "observedAt": "2026-08-05T16:08:00.000Z"
+                    },
+                    "sourceRefs": [
+                      ".rosso/authorization-claims/auth-exact-01.json",
+                      ".rosso/authorizations/auth-exact-01.json",
+                      ".rosso/missions/human-agent-visualization/effects/effect-visual-01.json",
+                      ".rosso/missions/human-agent-visualization/runner-status.json",
+                      ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
+                      ".rosso/state/tasks.json",
+                      "operations/missions/human-agent-visualization.json"
+                    ]
+                  },
+                  "taskDetail": {
+                    "sourceRevision": 8,
+                    "sourceRef": ".rosso/state/tasks.json",
+                    "projectAuthority": "context-only",
+                    "missionContext": {
+                      "missionId": "human-agent-visualization",
+                      "authority": "context-only",
+                      "standing": "observed",
+                      "sourceRef": "operations/missions/human-agent-visualization.json",
+                      "currentCarrier": {
+                        "runnerId": "runner-visual-01",
+                        "state": "running",
+                        "live": true,
+                        "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                        "freshness": {
+                          "kind": "live",
+                          "observedAt": "2026-08-05T16:08:00.000Z"
+                        },
+                        "relation": "same-mission-current-carrier",
+                        "executionStanding": "execution-unproven"
+                      }
+                    },
+                    "executionContext": {
+                      "standing": "current-effect-exact",
+                      "latestLink": {
+                        "authorizationId": "auth-exact-01",
+                        "sourceRef": ".rosso/state/tasks.json",
+                        "taskContextDigest": "task-context:task-exact-execution:r8",
+                        "standing": "exact-task-context"
+                      },
+                      "authorizationConsumption": {
+                        "standing": "verified",
+                        "sourceRefs": [
+                          ".rosso/authorizations/auth-exact-01.json",
+                          ".rosso/authorization-claims/auth-exact-01.json"
+                        ],
+                        "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+                      },
+                      "currentTurn": {
+                        "standing": "exact",
+                        "sourceRefs": [
+                          ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json"
+                        ],
+                        "reason": "current turn 保留了精确的任务上下文和授权引用。"
+                      },
+                      "currentEffect": {
+                        "standing": "exact",
+                        "sourceRefs": [
+                          ".rosso/missions/human-agent-visualization/effects/effect-visual-01.json"
+                        ],
+                        "effectId": "effect-visual-01",
+                        "reason": "current effect 保留了精确的任务上下文和授权引用。"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "digest": "sha256:28b77dc4ecb518673f27dc24ba21a5a9f21d6e861abde912e868d6f0b9e8213c"
+          }
+        },
+        "bindingDigest": "sha256:851fac96424291e2d9bf6192d7b62d6fd5d4f88c3404d76cb6081b1142235729"
+      },
+      "prior": {
+        "version": "human-agent-visualization.evidence-bundle.v1",
+        "subject": {
+          "lensId": "execution-boundary",
+          "id": "execution-boundary:task-exact-execution",
+          "taskContext": {
+            "taskId": "task-exact-execution",
+            "projectKey": "registered:rossovia",
+            "missionId": "human-agent-visualization"
+          }
+        },
+        "relationContractVersion": "execution-boundary.relations.v1",
+        "builder": {
+          "id": "execution-boundary-fixture-builder",
+          "revision": "prototype-r1",
+          "comparisonPolicy": "exact-builder-revision"
+        },
+        "generatedAt": "2026-08-05T16:00:00.000Z",
+        "sourceIdentities": [
+          {
+            "kind": "execution-authorization-claim",
+            "id": "auth-exact-01",
+            "sourceRef": ".rosso/authorization-claims/auth-exact-01.json",
+            "revision": "2026-08-05T16:00:00.000Z"
+          },
+          {
+            "kind": "execution-authorization-receipt",
+            "id": "auth-exact-01",
+            "sourceRef": ".rosso/authorizations/auth-exact-01.json",
+            "revision": "2026-08-05T16:00:00.000Z"
+          },
+          {
+            "kind": "current-effect-evidence",
+            "id": "effect-visual-00",
+            "sourceRef": ".rosso/missions/human-agent-visualization/effects/effect-visual-00.json",
+            "revision": "2026-08-05T16:00:00.000Z"
+          },
+          {
+            "kind": "mission-semantic-source",
+            "id": "human-agent-visualization",
+            "sourceRef": "operations/missions/human-agent-visualization.json",
+            "revision": "git:7cb8d66"
+          },
+          {
+            "kind": "current-turn-evidence",
+            "id": "runner-visual-01",
+            "sourceRef": ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
+            "revision": "2026-08-05T16:00:00.000Z"
+          },
+          {
+            "kind": "runner-observation",
+            "id": "runner-visual-01",
+            "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+            "revision": "2026-08-05T16:00:00.000Z"
+          },
+          {
+            "kind": "principal-task-source",
+            "id": "task-exact-execution",
+            "sourceRef": ".rosso/state/tasks.json",
+            "revision": "7"
+          }
+        ],
+        "artifacts": {
+          "snapshot": {
+            "value": {
+              "version": "rosso.principal-workbench-snapshot.v1",
+              "generatedAt": "2026-08-05T16:00:00.000Z",
+              "complete": true,
+              "sourceIdentities": [
+                {
+                  "kind": "mission-semantic-source",
+                  "id": "human-agent-visualization",
+                  "sourceRef": "operations/missions/human-agent-visualization.json",
+                  "revision": "git:7cb8d66"
+                },
+                {
+                  "kind": "runner-observation",
+                  "id": "runner-visual-01",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                  "revision": "2026-08-05T16:00:00.000Z"
+                }
+              ],
+              "projects": [
+                {
+                  "projectKey": "registered:rossovia",
+                  "missions": [
+                    {
+                      "id": "human-agent-visualization",
+                      "sourceRef": "operations/missions/human-agent-visualization.json"
+                    }
+                  ]
+                }
+              ],
+              "runners": [
+                {
+                  "runnerId": "runner-visual-01",
+                  "missionId": "human-agent-visualization",
+                  "state": "running",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                  "observedAt": "2026-08-05T16:00:00.000Z"
+                }
+              ]
+            },
+            "digest": "sha256:0c13eba75ae1dbb6d7652a0091da291bea8d569598e5f0539896781d141760d6"
+          },
+          "principalTaskObservation": {
+            "value": {
+              "standing": "available",
+              "sourceRef": ".rosso/state/tasks.json",
+              "sourceRevision": 7,
+              "task": {
+                "id": "task-exact-execution",
+                "title": "解释当前执行边界",
+                "nextActor": "agent",
+                "binding": {
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization"
+                },
+                "executionLink": {
+                  "authorizationId": "auth-exact-01",
+                  "sourceRef": ".rosso/state/tasks.json",
+                  "taskContextDigest": "task-context:task-exact-execution:r7",
+                  "standing": "exact-task-context"
+                }
+              }
+            },
+            "digest": "sha256:293e377987cd56c0b765c3819579a49bf4225de82dbdd9e82d5bf457ab512916"
+          },
+          "otherBuilderInputs": {
+            "value": {
+              "mission": {
+                "id": "human-agent-visualization",
+                "title": "人—Agent 可视化",
+                "sourceRef": "operations/missions/human-agent-visualization.json",
+                "revision": "git:7cb8d66"
+              },
+              "authorization": {
+                "authorizationId": "auth-exact-01",
+                "sourceRef": ".rosso/authorizations/auth-exact-01.json",
+                "standing": "authorization-consumed",
+                "authority": "bounded-launch-authorization"
+              },
+              "consumptionClaim": {
+                "authorizationId": "auth-exact-01",
+                "sourceRef": ".rosso/authorization-claims/auth-exact-01.json",
+                "standing": "verified",
+                "authority": "launch-authorization-consumption-evidence",
+                "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+              },
+              "currentCarrier": {
+                "runnerId": "runner-visual-01",
+                "state": "running",
+                "live": true,
+                "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                "freshness": {
+                  "kind": "live",
+                  "observedAt": "2026-08-05T16:00:00.000Z"
+                }
+              },
+              "executionEvidence": {
+                "authorizationConsumption": {
+                  "standing": "verified",
+                  "sourceRefs": [
+                    ".rosso/authorizations/auth-exact-01.json",
+                    ".rosso/authorization-claims/auth-exact-01.json"
+                  ],
+                  "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+                },
+                "currentTurn": {
+                  "standing": "exact",
+                  "sourceRefs": [
+                    ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json"
+                  ],
+                  "reason": "current turn 保留了精确的任务上下文和授权引用。"
+                },
+                "currentEffect": {
+                  "standing": "unavailable",
+                  "sourceRefs": [
+                    ".rosso/missions/human-agent-visualization/effects/effect-visual-00.json"
+                  ],
+                  "effectId": "effect-visual-00",
+                  "reason": "这个任务上下文没有保留精确的 current effect 引用。"
+                }
+              },
+              "sourceIdentities": [
+                {
+                  "kind": "execution-authorization-receipt",
+                  "id": "auth-exact-01",
+                  "sourceRef": ".rosso/authorizations/auth-exact-01.json",
+                  "revision": "2026-08-05T16:00:00.000Z"
+                },
+                {
+                  "kind": "execution-authorization-claim",
+                  "id": "auth-exact-01",
+                  "sourceRef": ".rosso/authorization-claims/auth-exact-01.json",
+                  "revision": "2026-08-05T16:00:00.000Z"
+                },
+                {
+                  "kind": "current-turn-evidence",
+                  "id": "runner-visual-01",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
+                  "revision": "2026-08-05T16:00:00.000Z"
+                },
+                {
+                  "kind": "current-effect-evidence",
+                  "id": "effect-visual-00",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/effects/effect-visual-00.json",
+                  "revision": "2026-08-05T16:00:00.000Z"
+                }
+              ]
+            },
+            "digest": "sha256:b0a340113e7f2a81a4e6799cdccbb6b640286866573f7dfd0a9dc22b1710b414"
+          },
+          "workItemSetProjection": {
+            "value": {
+              "version": "human-agent-visualization.work-item-set-projection.v1",
+              "generatedAt": "2026-08-05T16:00:00.000Z",
+              "builderRevision": "prototype-r1",
+              "relationContractVersion": "execution-boundary.relations.v1",
+              "subject": {
+                "lensId": "execution-boundary",
+                "id": "execution-boundary:task-exact-execution",
+                "taskContext": {
+                  "taskId": "task-exact-execution",
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization"
+                }
+              },
+              "items": [
+                {
+                  "id": "principal-task:task-exact-execution",
+                  "kind": "principal-task",
+                  "title": "解释当前执行边界",
+                  "nextActor": "agent",
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization",
+                  "evidence": {
+                    "freshness": {
+                      "kind": "observed-at-build",
+                      "observedAt": "2026-08-05T16:00:00.000Z"
+                    },
+                    "sourceRefs": [
+                      ".rosso/authorization-claims/auth-exact-01.json",
+                      ".rosso/authorizations/auth-exact-01.json",
+                      ".rosso/missions/human-agent-visualization/effects/effect-visual-00.json",
+                      ".rosso/missions/human-agent-visualization/runner-status.json",
+                      ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
+                      ".rosso/state/tasks.json",
+                      "operations/missions/human-agent-visualization.json"
+                    ]
+                  },
+                  "taskDetail": {
+                    "sourceRevision": 7,
+                    "sourceRef": ".rosso/state/tasks.json",
+                    "projectAuthority": "context-only",
+                    "missionContext": {
+                      "missionId": "human-agent-visualization",
+                      "authority": "context-only",
+                      "standing": "observed",
+                      "sourceRef": "operations/missions/human-agent-visualization.json",
+                      "currentCarrier": {
+                        "runnerId": "runner-visual-01",
+                        "state": "running",
+                        "live": true,
+                        "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                        "freshness": {
+                          "kind": "live",
+                          "observedAt": "2026-08-05T16:00:00.000Z"
+                        },
+                        "relation": "same-mission-current-carrier",
+                        "executionStanding": "execution-unproven"
+                      }
+                    },
+                    "executionContext": {
+                      "standing": "current-turn-exact",
+                      "latestLink": {
+                        "authorizationId": "auth-exact-01",
+                        "sourceRef": ".rosso/state/tasks.json",
+                        "taskContextDigest": "task-context:task-exact-execution:r7",
+                        "standing": "exact-task-context"
+                      },
+                      "authorizationConsumption": {
+                        "standing": "verified",
+                        "sourceRefs": [
+                          ".rosso/authorizations/auth-exact-01.json",
+                          ".rosso/authorization-claims/auth-exact-01.json"
+                        ],
+                        "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+                      },
+                      "currentTurn": {
+                        "standing": "exact",
+                        "sourceRefs": [
+                          ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json"
+                        ],
+                        "reason": "current turn 保留了精确的任务上下文和授权引用。"
+                      },
+                      "currentEffect": {
+                        "standing": "unavailable",
+                        "sourceRefs": [
+                          ".rosso/missions/human-agent-visualization/effects/effect-visual-00.json"
+                        ],
+                        "effectId": "effect-visual-00",
+                        "reason": "这个任务上下文没有保留精确的 current effect 引用。"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "digest": "sha256:05781f23040f308f6db63b99f5b77355a8cac9345e393c8638f219010b4fdeeb"
+          }
+        },
+        "bindingDigest": "sha256:7c7f8db8ab64c89c04dad15da284d222b07d6656637c5893810732d60678ace0"
+      }
+    },
+    {
+      "id": "authorization-consumed-only",
+      "label": "只有授权消费证据",
+      "description": "启动授权的消费已经验证，但当前执行仍未被证明。",
+      "current": {
+        "version": "human-agent-visualization.evidence-bundle.v1",
+        "subject": {
+          "lensId": "execution-boundary",
+          "id": "execution-boundary:task-consumed-only",
+          "taskContext": {
+            "taskId": "task-consumed-only",
+            "projectKey": "registered:rossovia",
+            "missionId": "human-agent-visualization"
+          }
+        },
+        "relationContractVersion": "execution-boundary.relations.v1",
+        "builder": {
+          "id": "execution-boundary-fixture-builder",
+          "revision": "prototype-r1",
+          "comparisonPolicy": "exact-builder-revision"
+        },
+        "generatedAt": "2026-08-05T16:12:00.000Z",
+        "sourceIdentities": [
+          {
+            "kind": "execution-authorization-claim",
+            "id": "auth-consumed-02",
+            "sourceRef": ".rosso/authorization-claims/auth-consumed-02.json",
+            "revision": "2026-08-05T16:12:00.000Z"
+          },
+          {
+            "kind": "execution-authorization-receipt",
+            "id": "auth-consumed-02",
+            "sourceRef": ".rosso/authorizations/auth-consumed-02.json",
+            "revision": "2026-08-05T16:12:00.000Z"
+          },
+          {
+            "kind": "current-effect-evidence",
+            "id": "effect-visual-02",
+            "sourceRef": ".rosso/missions/human-agent-visualization/effects/effect-visual-02.json",
+            "revision": "2026-08-05T16:12:00.000Z"
+          },
+          {
+            "kind": "mission-semantic-source",
+            "id": "human-agent-visualization",
+            "sourceRef": "operations/missions/human-agent-visualization.json",
+            "revision": "git:7cb8d66"
+          },
+          {
+            "kind": "current-turn-evidence",
+            "id": "runner-visual-02",
+            "sourceRef": ".rosso/missions/human-agent-visualization/turns/runner-visual-02.json",
+            "revision": "2026-08-05T16:12:00.000Z"
+          },
+          {
+            "kind": "runner-observation",
+            "id": "runner-visual-02",
+            "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+            "revision": "2026-08-05T16:12:00.000Z"
+          },
+          {
+            "kind": "principal-task-source",
+            "id": "task-consumed-only",
+            "sourceRef": ".rosso/state/tasks.json",
+            "revision": "3"
+          }
+        ],
+        "artifacts": {
+          "snapshot": {
+            "value": {
+              "version": "rosso.principal-workbench-snapshot.v1",
+              "generatedAt": "2026-08-05T16:12:00.000Z",
+              "complete": true,
+              "sourceIdentities": [
+                {
+                  "kind": "mission-semantic-source",
+                  "id": "human-agent-visualization",
+                  "sourceRef": "operations/missions/human-agent-visualization.json",
+                  "revision": "git:7cb8d66"
+                },
+                {
+                  "kind": "runner-observation",
+                  "id": "runner-visual-02",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                  "revision": "2026-08-05T16:12:00.000Z"
+                }
+              ],
+              "projects": [
+                {
+                  "projectKey": "registered:rossovia",
+                  "missions": [
+                    {
+                      "id": "human-agent-visualization",
+                      "sourceRef": "operations/missions/human-agent-visualization.json"
+                    }
+                  ]
+                }
+              ],
+              "runners": [
+                {
+                  "runnerId": "runner-visual-02",
+                  "missionId": "human-agent-visualization",
+                  "state": "running",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                  "observedAt": "2026-08-05T16:12:00.000Z"
+                }
+              ]
+            },
+            "digest": "sha256:cb52eceb4db3127cbd309068f57820c15c1af13ed8ddcb223df3fa42c5e1fa72"
+          },
+          "principalTaskObservation": {
+            "value": {
+              "standing": "available",
+              "sourceRef": ".rosso/state/tasks.json",
+              "sourceRevision": 3,
+              "task": {
+                "id": "task-consumed-only",
+                "title": "检查只有授权消费证据的执行主张",
+                "nextActor": "agent",
+                "binding": {
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization"
+                },
+                "executionLink": {
+                  "authorizationId": "auth-consumed-02",
+                  "sourceRef": ".rosso/state/tasks.json",
+                  "taskContextDigest": "task-context:task-consumed-only:r3",
+                  "standing": "exact-task-context"
+                }
+              }
+            },
+            "digest": "sha256:87f606c0a457b869dca9de5c210a073e077114cb16d40d61a6e8b9c81842cd87"
+          },
+          "otherBuilderInputs": {
+            "value": {
+              "mission": {
+                "id": "human-agent-visualization",
+                "title": "人—Agent 可视化",
+                "sourceRef": "operations/missions/human-agent-visualization.json",
+                "revision": "git:7cb8d66"
+              },
+              "authorization": {
+                "authorizationId": "auth-consumed-02",
+                "sourceRef": ".rosso/authorizations/auth-consumed-02.json",
+                "standing": "authorization-consumed",
+                "authority": "bounded-launch-authorization"
+              },
+              "consumptionClaim": {
+                "authorizationId": "auth-consumed-02",
+                "sourceRef": ".rosso/authorization-claims/auth-consumed-02.json",
+                "standing": "verified",
+                "authority": "launch-authorization-consumption-evidence",
+                "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+              },
+              "currentCarrier": {
+                "runnerId": "runner-visual-02",
+                "state": "running",
+                "live": true,
+                "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                "freshness": {
+                  "kind": "live",
+                  "observedAt": "2026-08-05T16:12:00.000Z"
+                }
+              },
+              "executionEvidence": {
+                "authorizationConsumption": {
+                  "standing": "verified",
+                  "sourceRefs": [
+                    ".rosso/authorizations/auth-consumed-02.json",
+                    ".rosso/authorization-claims/auth-consumed-02.json"
+                  ],
+                  "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+                },
+                "currentTurn": {
+                  "standing": "unavailable",
+                  "sourceRefs": [
+                    ".rosso/missions/human-agent-visualization/turns/runner-visual-02.json"
+                  ],
+                  "reason": "这个任务上下文没有保留精确的 current turn 引用。"
+                },
+                "currentEffect": {
+                  "standing": "unavailable",
+                  "sourceRefs": [
+                    ".rosso/missions/human-agent-visualization/effects/effect-visual-02.json"
+                  ],
+                  "effectId": "effect-visual-02",
+                  "reason": "这个任务上下文没有保留精确的 current effect 引用。"
+                }
+              },
+              "sourceIdentities": [
+                {
+                  "kind": "execution-authorization-receipt",
+                  "id": "auth-consumed-02",
+                  "sourceRef": ".rosso/authorizations/auth-consumed-02.json",
+                  "revision": "2026-08-05T16:12:00.000Z"
+                },
+                {
+                  "kind": "execution-authorization-claim",
+                  "id": "auth-consumed-02",
+                  "sourceRef": ".rosso/authorization-claims/auth-consumed-02.json",
+                  "revision": "2026-08-05T16:12:00.000Z"
+                },
+                {
+                  "kind": "current-turn-evidence",
+                  "id": "runner-visual-02",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/turns/runner-visual-02.json",
+                  "revision": "2026-08-05T16:12:00.000Z"
+                },
+                {
+                  "kind": "current-effect-evidence",
+                  "id": "effect-visual-02",
+                  "sourceRef": ".rosso/missions/human-agent-visualization/effects/effect-visual-02.json",
+                  "revision": "2026-08-05T16:12:00.000Z"
+                }
+              ]
+            },
+            "digest": "sha256:42e72137ecbaf9363b1900a32b4def23a3ae2512ca612f8a9ca0dce3436928ca"
+          },
+          "workItemSetProjection": {
+            "value": {
+              "version": "human-agent-visualization.work-item-set-projection.v1",
+              "generatedAt": "2026-08-05T16:12:00.000Z",
+              "builderRevision": "prototype-r1",
+              "relationContractVersion": "execution-boundary.relations.v1",
+              "subject": {
+                "lensId": "execution-boundary",
+                "id": "execution-boundary:task-consumed-only",
+                "taskContext": {
+                  "taskId": "task-consumed-only",
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization"
+                }
+              },
+              "items": [
+                {
+                  "id": "principal-task:task-consumed-only",
+                  "kind": "principal-task",
+                  "title": "检查只有授权消费证据的执行主张",
+                  "nextActor": "agent",
+                  "projectKey": "registered:rossovia",
+                  "missionId": "human-agent-visualization",
+                  "evidence": {
+                    "freshness": {
+                      "kind": "observed-at-build",
+                      "observedAt": "2026-08-05T16:12:00.000Z"
+                    },
+                    "sourceRefs": [
+                      ".rosso/authorization-claims/auth-consumed-02.json",
+                      ".rosso/authorizations/auth-consumed-02.json",
+                      ".rosso/missions/human-agent-visualization/effects/effect-visual-02.json",
+                      ".rosso/missions/human-agent-visualization/runner-status.json",
+                      ".rosso/missions/human-agent-visualization/turns/runner-visual-02.json",
+                      ".rosso/state/tasks.json",
+                      "operations/missions/human-agent-visualization.json"
+                    ]
+                  },
+                  "taskDetail": {
+                    "sourceRevision": 3,
+                    "sourceRef": ".rosso/state/tasks.json",
+                    "projectAuthority": "context-only",
+                    "missionContext": {
+                      "missionId": "human-agent-visualization",
+                      "authority": "context-only",
+                      "standing": "observed",
+                      "sourceRef": "operations/missions/human-agent-visualization.json",
+                      "currentCarrier": {
+                        "runnerId": "runner-visual-02",
+                        "state": "running",
+                        "live": true,
+                        "sourceRef": ".rosso/missions/human-agent-visualization/runner-status.json",
+                        "freshness": {
+                          "kind": "live",
+                          "observedAt": "2026-08-05T16:12:00.000Z"
+                        },
+                        "relation": "same-mission-current-carrier",
+                        "executionStanding": "execution-unproven"
+                      }
+                    },
+                    "executionContext": {
+                      "standing": "authorization-consumption-verified",
+                      "latestLink": {
+                        "authorizationId": "auth-consumed-02",
+                        "sourceRef": ".rosso/state/tasks.json",
+                        "taskContextDigest": "task-context:task-consumed-only:r3",
+                        "standing": "exact-task-context"
+                      },
+                      "authorizationConsumption": {
+                        "standing": "verified",
+                        "sourceRefs": [
+                          ".rosso/authorizations/auth-consumed-02.json",
+                          ".rosso/authorization-claims/auth-consumed-02.json"
+                        ],
+                        "evidenceBoundary": "proves-one-launch-authorization-consumed-only"
+                      },
+                      "currentTurn": {
+                        "standing": "unavailable",
+                        "sourceRefs": [
+                          ".rosso/missions/human-agent-visualization/turns/runner-visual-02.json"
+                        ],
+                        "reason": "这个任务上下文没有保留精确的 current turn 引用。"
+                      },
+                      "currentEffect": {
+                        "standing": "unavailable",
+                        "sourceRefs": [
+                          ".rosso/missions/human-agent-visualization/effects/effect-visual-02.json"
+                        ],
+                        "effectId": "effect-visual-02",
+                        "reason": "这个任务上下文没有保留精确的 current effect 引用。"
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "digest": "sha256:320395d22329c4967f6a2453de844e1b47c0002a9954bdef171db8d88881c56f"
+          }
+        },
+        "bindingDigest": "sha256:9f9d71c4a2545049961f9e5c6a69bfb7462b64caf1602bd0ae258245d0454c80"
+      },
+      "prior": null
+    }
+  ]
+}

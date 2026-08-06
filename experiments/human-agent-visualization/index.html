@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="一个受来源约束的执行边界透镜，用来理解为什么把任务交给 Agent 不等于 Agent 正在执行。"
+    />
+    <title>执行边界透镜</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="lens-nav" aria-label="选择理解透镜">
+        <a href="./index.html" aria-current="page">Execution Boundary Lens</a>
+        <a href="./skill.html">Skill Lens</a>
+      </nav>
+      <header class="intro">
+        <div class="eyebrow">人—Agent 可视化 · 第一版原型</div>
+        <h1>为什么 <code>nextActor=agent</code> 不代表 Agent 正在执行这个任务？</h1>
+        <p class="lede">
+          沿着证据边界理解当前状态：来源保留自己的权威，投影可以重建，Agent 解释始终可以移除。
+        </p>
+      </header>
+
+      <section class="case-bar" aria-label="证据案例">
+        <label class="field-label" for="case-select">冻结证据案例</label>
+        <select id="case-select"></select>
+        <p id="case-description" class="case-description"></p>
+        <div id="bundle-identity" class="bundle-identity"></div>
+      </section>
+
+      <section id="standing-panel" class="standing-panel" aria-live="polite">
+        <div>
+          <span class="field-label">源执行状态</span>
+          <strong id="standing-label"></strong>
+          <code id="standing-code" class="standing-code"></code>
+        </div>
+        <p id="standing-explanation"></p>
+        <div class="carrier-warning">
+          同一 Mission 的载体：<code>execution-unproven</code>
+        </div>
+      </section>
+
+      <section class="lens" aria-label="执行边界可视化">
+        <div class="lens-toolbar">
+          <fieldset class="layer-controls">
+            <legend>显示层</legend>
+            <label><input type="checkbox" data-layer="source" checked /> 来源</label>
+            <label><input type="checkbox" data-layer="projection" checked /> 投影</label>
+            <label><input type="checkbox" data-layer="explanation" checked /> Agent 解释</label>
+          </fieldset>
+          <label class="source-only-control">
+            <input id="source-only" type="checkbox" />
+            仅看来源
+          </label>
+          <label id="comparison-control" class="comparison-control" hidden>
+            <input id="comparison-toggle" type="checkbox" />
+            对比兼容的上一份证据包
+          </label>
+        </div>
+
+        <div id="comparison-note" class="comparison-note" role="status"></div>
+
+        <div class="lens-grid">
+          <div class="graph-column">
+            <div class="graph-heading">
+              <div>
+                <span class="field-label">一跳证据场</span>
+                <p>选择任一对象或关系，查看它的证据边界。</p>
+              </div>
+              <button id="clear-focus" class="quiet-button" type="button">显示完整透镜</button>
+            </div>
+            <div class="graph-scroll">
+              <div id="graph" class="graph" aria-label="执行边界关系图"></div>
+            </div>
+            <div class="legend" aria-label="图层图例">
+              <span><i class="legend-swatch source"></i> 持久／观察来源</span>
+              <span><i class="legend-swatch projection"></i> 可重建投影</span>
+              <span><i class="legend-swatch explanation"></i> 临时 Agent 解释</span>
+              <span><i class="legend-line issue"></i> 首个缺失／不匹配关系</span>
+            </div>
+          </div>
+
+          <aside id="evidence-drawer" class="evidence-drawer" aria-live="polite">
+            <div class="drawer-kicker">证据抽屉</div>
+            <h2 id="evidence-title">请选择对象或关系</h2>
+            <p id="evidence-kind" class="evidence-kind"></p>
+            <dl id="evidence-details"></dl>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <template id="fatal-template">
+      <section class="fatal">
+        <h2>冻结证据无法通过验证。</h2>
+        <p></p>
+      </section>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

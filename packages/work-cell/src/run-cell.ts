@@ -12,6 +12,9 @@ import {
   type TaskVerification,
   type CellPreparation,
   type TraceEvent,
+  BudgetApprovalResultSchema,
+  type BudgetApprovalResult,
+  type BudgetRequest,
 } from "./contracts";
 import type { CellDriver } from "./driver";
 import { CellExecutionError, traceEvent } from "./driver";
@@ -24,6 +27,88 @@ export interface RunCellOptions {
   preparation?: CellPreparation;
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
   onTrace?: (event: TraceEvent) => void;
+  /** Host policy for a model-authored soft work-budget increase request. */
+  budgetApproval?: (request: BudgetRequest) => BudgetApprovalResult | Promise<BudgetApprovalResult>;
+  /** Duration unavailable to production and created only for settlement. */
+  settlementReserveMs?: number;
+  /** One non-extendable hard duration limit for the whole run. */
+  hardLimitMs?: number;
+}
+
+class SoftBudgetControl {
+  private phaseValue: "production" | "decision" | "settlement" = "production";
+  private completedStepsValue = 0;
+  private softStepLimit: number;
+  private softDurationLimitMs: number;
+  private skipCompletedControlStep = false;
+
+  constructor(private readonly options: {
+    cellId: string;
+    startedAtMs: number;
+    initialSteps: number;
+    initialDurationMs: number;
+    approve: NonNullable<RunCellOptions["budgetApproval"]>;
+    signal: AbortSignal;
+  }) {
+    this.softStepLimit = options.initialSteps;
+    this.softDurationLimitMs = options.initialDurationMs;
+  }
+
+  get phase() {
+    return this.phaseValue;
+  }
+
+  completedStep(): boolean {
+    if (this.phaseValue !== "production") return false;
+    if (this.skipCompletedControlStep) {
+      this.skipCompletedControlStep = false;
+      return false;
+    }
+    this.completedStepsValue += 1;
+    const elapsedMs = Math.max(0, Date.now() - this.options.startedAtMs);
+    if (this.completedStepsValue < this.softStepLimit && elapsedMs < this.softDurationLimitMs) return false;
+    this.phaseValue = "decision";
+    return true;
+  }
+
+  settleNow(): void {
+    if (this.phaseValue !== "decision") throw new Error("settle_now requires a soft-budget decision point");
+    this.phaseValue = "settlement";
+  }
+
+  async requestBudget(
+    value: Omit<BudgetRequest, "cellId" | "completedSteps" | "elapsedMs">,
+  ): Promise<{ request: BudgetRequest; result: BudgetApprovalResult }> {
+    if (this.phaseValue !== "decision") throw new Error("request_budget requires a soft-budget decision point");
+    const request: BudgetRequest = {
+      cellId: this.options.cellId,
+      ...value,
+      completedSteps: this.completedStepsValue,
+      elapsedMs: Math.max(0, Date.now() - this.options.startedAtMs),
+    };
+    let result: BudgetApprovalResult;
+    try {
+      const approval = await runWithSignal(
+        () => Promise.resolve(this.options.approve(request)),
+        this.options.signal,
+      );
+      result = BudgetApprovalResultSchema.parse(approval);
+    } catch (error) {
+      result = {
+        decision: "deny",
+        reason: `budget approval failed closed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (result.decision === "allow") {
+      this.softStepLimit += request.additionalSteps;
+      this.softDurationLimitMs += request.additionalDurationMs;
+      this.phaseValue = "production";
+      this.skipCompletedControlStep = true;
+    } else {
+      this.phaseValue = "settlement";
+    }
+    return { request, result };
+  }
 }
 
 export async function runCell(
@@ -32,7 +117,17 @@ export async function runCell(
   options: RunCellOptions = {},
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
-  if (input.terminalTools?.length && input.budget.maxSteps < 2) {
+  const budgetApprovalEnabled = options.budgetApproval !== undefined;
+  if (budgetApprovalEnabled && driver.budgetControl !== "completed-step-v1") {
+    throw new Error(`driver ${driver.descriptor.adapter} does not support completed-step budget control`);
+  }
+  if (budgetApprovalEnabled && (!options.settlementReserveMs || !options.hardLimitMs)) {
+    throw new Error("budgetApproval requires positive settlementReserveMs and hardLimitMs");
+  }
+  if (budgetApprovalEnabled && options.hardLimitMs! < input.budget.maxDurationMs) {
+    throw new Error("hardLimitMs must cover the initial Cell duration and cannot be extended");
+  }
+  if (!budgetApprovalEnabled && input.terminalTools?.length && input.budget.maxSteps < 2) {
     throw new Error("terminal tools require at least two steps: one terminal action and one final output");
   }
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
@@ -56,8 +151,30 @@ export async function runCell(
   emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
   const workspace = await Workspace.create(input.workspace, input.budget);
   const before = await workspace.snapshot();
-  const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
+  const hardTimeoutMs = budgetApprovalEnabled
+    ? options.hardLimitMs!
+    : input.budget.maxDurationMs;
+  const timeoutSignal = AbortSignal.timeout(hardTimeoutMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+  let reserveSignal: AbortSignal | undefined;
+  const settlementSignal = () => {
+    if (!budgetApprovalEnabled) return signal;
+    reserveSignal ??= AbortSignal.any([
+      signal,
+      AbortSignal.timeout(options.settlementReserveMs!),
+    ]);
+    return reserveSignal;
+  };
+  const budgetControl = options.budgetApproval
+    ? new SoftBudgetControl({
+        cellId: input.id,
+        startedAtMs: startedAt.getTime(),
+        initialSteps: input.budget.maxSteps,
+        initialDurationMs: input.budget.maxDurationMs,
+        approve: options.budgetApproval,
+        signal,
+      })
+    : undefined;
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
@@ -87,6 +204,8 @@ export async function runCell(
         observeUsage(usage: CellUsage) {
           observedExecutionUsage = addUsage(observedExecutionUsage, usage);
         },
+        ...(budgetControl ? { budgetControl } : {}),
+        settlementSignal,
         emit(type: string, data: unknown) {
           emit(type, data);
         },
@@ -165,6 +284,10 @@ export async function runCell(
     options.preparation?.usage ?? emptyUsage(),
     driverResult?.usage ?? failureUsage,
   );
+  const settlementUsage = driverResult?.settlementUsage;
+  const executionUsage = driverResult
+    ? settlementUsage ? subtractUsage(driverResult.usage, settlementUsage) : driverResult.usage
+    : failureUsage;
   const estimate = estimateCost(usage, driver.descriptor.pricing);
   emit("cell.finished", { status, usage });
 
@@ -200,7 +323,8 @@ export async function runCell(
     usage,
     usageByPhase: {
       preparation: options.preparation?.usage ?? emptyUsage(),
-      execution: driverResult?.usage ?? failureUsage,
+      execution: executionUsage,
+      ...(settlementUsage ? { settlement: settlementUsage } : {}),
     },
     executionObservation,
     ...(estimate ? { estimatedCostUsd: estimate.value, estimateBasis: estimate.basis } : {}),
@@ -322,6 +446,15 @@ function addUsage(left: CellUsage, right: CellUsage): CellUsage {
     outputTokens: left.outputTokens + right.outputTokens,
     totalTokens: left.totalTokens + right.totalTokens,
     cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
+  };
+}
+
+function subtractUsage(total: CellUsage, part: CellUsage): CellUsage {
+  return {
+    inputTokens: Math.max(0, total.inputTokens - part.inputTokens),
+    outputTokens: Math.max(0, total.outputTokens - part.outputTokens),
+    totalTokens: Math.max(0, total.totalTokens - part.totalTokens),
+    cachedInputTokens: Math.max(0, total.cachedInputTokens - part.cachedInputTokens),
   };
 }
 

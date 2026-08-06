@@ -1,0 +1,11 @@
+{
+  "name": "@rosso/human-agent-visualization-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:fixtures": "bun run scripts/build-fixtures.js",
+    "dev": "bun run server.js",
+    "test": "bun test",
+    "check": "bun run scripts/check.js"
+  }
+}

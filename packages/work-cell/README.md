@@ -234,6 +234,26 @@ observations are the audit fallback when cancellation or failure wins before a
 result returns. A timeout therefore does not turn already-observed model work
 into zero usage.
 
+### Programmatic budget approval
+
+AI SDK callers may pass `budgetApproval`, `settlementReserveMs`, and
+`hardLimitMs` to `runCell`. When the Cell reaches its soft step or duration
+budget after a completed step, ordinary tools close and the model must choose
+`settle_now` or one bounded `request_budget` action. A request contains only
+`additionalSteps`, `additionalDurationMs`, and `remainingWork`; Work Cell adds
+the Cell identity and observed step/time counters before invoking the callback.
+
+Returning `{ decision: "allow" }` adds exactly the requested step and duration
+allowances to the current run and retained transcript. Returning
+`{ decision: "deny" }`, throwing, or returning an invalid result fails closed
+into settlement. Approval changes budget only: it cannot widen tools, workspace,
+provider, or any other authority.
+
+Settlement receives its own lazily started `settlementReserveMs` timeout. The
+caller signal and the single non-extendable `hardLimitMs` still dominate
+production, approval waiting, and settlement. Drivers that do not implement the
+completed-step budget-control contract fail before execution.
+
 ## Project interaction
 
 For a Sequence-bearing project, start with a read-only probe rather than a full

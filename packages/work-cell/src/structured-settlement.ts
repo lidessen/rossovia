@@ -19,7 +19,6 @@ export async function settleStructuredOutput(options: {
   acceptance: string[];
   retainedEvidence: string;
   context: DriverContext;
-  maxDurationMs: number;
   maxOutputTokens: number;
 }): Promise<StructuredSettlementResult> {
   let output: unknown;
@@ -63,8 +62,7 @@ export async function settleStructuredOutput(options: {
     try {
       const result = await agent.generate({
         prompt,
-        abortSignal: options.context.signal,
-        timeout: { totalMs: options.maxDurationMs },
+        abortSignal: options.context.settlementSignal?.() ?? options.context.signal,
         onStepEnd: ({ usage: stepUsage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const observed = normalizeUsage(stepUsage, providerMetadata);
           usage = addUsage(usage, observed);

@@ -1,0 +1,10 @@
+{
+  "name": "personal-task-app-experiment",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server.js",
+    "test": "bun test",
+    "check": "bun build server.js --target=bun --outfile=/dev/null && bun build src/app.js --target=browser --outfile=/dev/null"
+  }
+}

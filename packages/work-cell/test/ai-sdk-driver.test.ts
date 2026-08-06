@@ -1092,6 +1092,237 @@ test("recovers structured output after a terminal tool and retains all usage", a
   expect(calls).toBe(7);
 });
 
+test("allowed budget requests continue in the same run with exact sequential increments", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const requests: unknown[] = [];
+  let resumedPrompt: unknown;
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      calls += 1;
+      if (calls === 3) resumedPrompt = options.prompt;
+      if (calls === 1 || calls === 3 || calls === 4) return response([{
+        type: "tool-call",
+        toolCallId: `read-${calls}`,
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 2 || calls === 5) return response([{
+        type: "tool-call",
+        toolCallId: `budget-${calls}`,
+        toolName: "request_budget",
+        input: JSON.stringify(calls === 2
+          ? { additionalSteps: 2, additionalDurationMs: 1_000, remainingWork: "read twice more before settlement" }
+          : { additionalSteps: 1, additionalDurationMs: 500, remainingWork: "submit the verified result" }),
+      }], "tool-calls");
+      if (calls === 6) return response([{
+        type: "tool-call",
+        toolCallId: "budget-terminal",
+        toolName: "finish_budget_test",
+        input: "{}",
+      }], "tool-calls");
+      if (calls === 7) return response([{
+        type: "tool-call",
+        toolCallId: "budget-output",
+        toolName: "emit_structured_output",
+        input: JSON.stringify({ result: "settled" }),
+      }], "tool-calls");
+      throw new Error(`unexpected call ${calls}`);
+    },
+  });
+  const driver = budgetAiDriver(model, "mock-budget-allow");
+
+  const record = await runCell(budgetInput(root, "budget-allow"), driver, {
+    budgetApproval(request) {
+      requests.push(request);
+      return { decision: "allow" };
+    },
+    settlementReserveMs: 1_000,
+    hardLimitMs: 20_000,
+  });
+
+  expect(record.status).toBe("passed");
+  expect(record.trace.filter((event) => event.type === "cell.started")).toHaveLength(1);
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(3);
+  expect(JSON.stringify(resumedPrompt)).toContain("budget-2");
+  expect(JSON.stringify(resumedPrompt)).toContain("read-1");
+  expect(requests).toEqual([
+    expect.objectContaining({ additionalSteps: 2, additionalDurationMs: 1_000, completedSteps: 1 }),
+    expect.objectContaining({ additionalSteps: 1, additionalDurationMs: 500, completedSteps: 3 }),
+  ]);
+  expect(record.trace.filter((event) => event.type === "budget.approval").map((event) => event.data))
+    .toEqual([{ decision: "allow" }, { decision: "allow" }]);
+});
+
+test("a denied budget request closes ordinary tools and settles", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = budgetSettlementModel(() => { calls += 1; }, "request_budget");
+  const driver = budgetAiDriver(model, "mock-budget-deny");
+
+  const record = await runCell(budgetInput(root, "budget-deny"), driver, {
+    budgetApproval: () => ({ decision: "deny", reason: "the retained evidence is sufficient" }),
+    settlementReserveMs: 1_000,
+    hardLimitMs: 20_000,
+  });
+
+  expect(record.status).toBe("passed");
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(1);
+  expect(record.trace).toContainEqual(expect.objectContaining({ type: "budget.approval", data: expect.objectContaining({ decision: "deny" }) }));
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
+  expect(calls).toBe(4);
+});
+
+test("invalid or throwing budget approval fails closed into settlement", async () => {
+  const root = await fixture();
+  for (const [id, approval] of [
+    ["invalid", () => ({ decision: "invalid" } as never)],
+    ["throwing", () => { throw new Error("approval unavailable"); }],
+  ] as const) {
+    let calls = 0;
+    const driver = budgetAiDriver(budgetSettlementModel(() => { calls += 1; }, "request_budget"), `mock-budget-${id}`);
+    const record = await runCell(budgetInput(root, `budget-${id}`), driver, {
+      budgetApproval: approval,
+      settlementReserveMs: 1_000,
+      hardLimitMs: 20_000,
+    });
+    expect(record.status).toBe("passed");
+    expect(record.trace.find((event) => event.type === "budget.approval")?.data).toMatchObject({
+      decision: "deny",
+      reason: expect.stringContaining("failed closed"),
+    });
+    expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(1);
+    expect(calls).toBe(4);
+  }
+});
+
+test("settle-now uses reserved settlement capacity and no later ordinary tool", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const driver = budgetAiDriver(budgetSettlementModel(() => { calls += 1; }, "settle_now"), "mock-budget-settle");
+  const record = await runCell(budgetInput(root, "budget-settle"), driver, budgetOptions());
+  const events = record.trace.map((event) => event.type);
+  const positions = [
+    "budget.decision_point",
+    "budget.choice.settle_now",
+    "terminal.tool.called",
+    "structured.settlement.started",
+    "structured.settlement.finished",
+    "cell.finished",
+  ].map((type) => events.indexOf(type));
+
+  expect(record.status).toBe("passed");
+  expect(positions.every((position, index) => position >= 0 && (index === 0 || position > positions[index - 1]!))).toBe(true);
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(1);
+  expect(record.usageByPhase.execution.totalTokens).toBe(2);
+  expect(record.usageByPhase.settlement?.totalTokens).toBe(6);
+  expect(calls).toBe(4);
+});
+
+test("caller cancellation dominates a waiting budget approval", async () => {
+  const root = await fixture();
+  const waitingCaller = new AbortController();
+  let markApprovalStarted!: () => void;
+  const approvalStarted = new Promise<void>((resolve) => {
+    markApprovalStarted = resolve;
+  });
+  let waitingCalls = 0;
+  const waitingModel = new MockLanguageModelV3({
+    doGenerate: async () => {
+      waitingCalls += 1;
+      if (waitingCalls === 1) return response([{ type: "tool-call", toolCallId: "read", toolName: "read_file", input: JSON.stringify({ path: "principles/SEQUENCE.md" }) }], "tool-calls");
+      return response([{ type: "tool-call", toolCallId: "request", toolName: "request_budget", input: JSON.stringify({ additionalSteps: 1, additionalDurationMs: 100, remainingWork: "wait for approval" }) }], "tool-calls");
+    },
+  });
+  const waitingRun = runCell(budgetInput(root, "caller-budget-wait"), budgetAiDriver(waitingModel, "mock-caller-wait"), {
+    budgetApproval: () => new Promise((resolve) => {
+      waitingCaller.signal.addEventListener(
+        "abort",
+        () => resolve({ decision: "deny", reason: "caller cancelled" }),
+        { once: true },
+      );
+      markApprovalStarted();
+    }),
+    settlementReserveMs: 1_000,
+    hardLimitMs: 20_000,
+    signal: waitingCaller.signal,
+  });
+  await approvalStarted;
+  waitingCaller.abort(new DOMException("caller stopped approval", "AbortError"));
+  const waitingRecord = await waitingRun;
+  expect(waitingRecord.status).toBe("cancelled");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(waitingCalls).toBe(2);
+});
+
+test("caller cancellation dominates reserved settlement", async () => {
+  const root = await fixture();
+  const settlementCaller = new AbortController();
+  let settlementCalls = 0;
+  const settlementModel = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      settlementCalls += 1;
+      if (settlementCalls === 1) return response([{ type: "tool-call", toolCallId: "read", toolName: "read_file", input: JSON.stringify({ path: "principles/SEQUENCE.md" }) }], "tool-calls");
+      if (settlementCalls === 2) return response([{ type: "tool-call", toolCallId: "settle", toolName: "settle_now", input: "{}" }], "tool-calls");
+      setTimeout(() => settlementCaller.abort(new DOMException("caller stopped settlement", "AbortError")), 5);
+      return new Promise<LanguageModelV3GenerateResult>((_resolve, reject) => {
+        options.abortSignal?.addEventListener("abort", () => reject(options.abortSignal?.reason), { once: true });
+      });
+    },
+  });
+  const settlementRecord = await runCell(budgetInput(root, "caller-settlement"), budgetAiDriver(settlementModel, "mock-caller-settlement"), {
+    ...budgetOptions(),
+    signal: settlementCaller.signal,
+  });
+  expect(settlementRecord.status).toBe("cancelled");
+});
+
+test("the hard limit dominates production, approval wait, and reserved settlement", async () => {
+  const root = await fixture();
+  const phases = ["production", "approval", "settlement"] as const;
+  for (const phase of phases) {
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        calls += 1;
+        if (phase === "production") {
+          return new Promise<LanguageModelV3GenerateResult>((_resolve, reject) => {
+            options.abortSignal?.addEventListener("abort", () => reject(options.abortSignal?.reason), { once: true });
+          });
+        }
+        if (calls === 1) {
+          if (phase === "settlement") await new Promise((resolve) => setTimeout(resolve, 15));
+          return response([{ type: "tool-call", toolCallId: "read", toolName: "read_file", input: JSON.stringify({ path: "principles/SEQUENCE.md" }) }], "tool-calls");
+        }
+        if (calls === 2) return response([{
+          type: "tool-call",
+          toolCallId: phase,
+          toolName: phase === "approval" ? "request_budget" : "settle_now",
+          input: phase === "approval"
+            ? JSON.stringify({ additionalSteps: 1, additionalDurationMs: 100, remainingWork: "wait for host" })
+            : "{}",
+        }], "tool-calls");
+        return new Promise<LanguageModelV3GenerateResult>((_resolve, reject) => {
+          options.abortSignal?.addEventListener("abort", () => reject(options.abortSignal?.reason), { once: true });
+        });
+      },
+    });
+    const input = budgetInput(root, `hard-${phase}`);
+    input.budget.maxDurationMs = 50;
+    const record = await runCell(input, budgetAiDriver(model, `mock-hard-${phase}`), {
+      budgetApproval: () => phase === "approval"
+        ? new Promise((resolve) => {
+            setTimeout(() => resolve({ decision: "deny", reason: "hard limit reached" }), 60);
+          })
+        : { decision: "deny" },
+      settlementReserveMs: phase === "settlement" ? 40 : 10,
+      hardLimitMs: 50,
+    });
+    expect(record.status).toBe("cancelled");
+    expect(record.durationMs).toBeLessThan(150);
+  }
+});
+
 test("activation adapter retries one malformed structured impulse and retains its usage", async () => {
   let calls = 0;
   const model = new MockLanguageModelV3({
@@ -1261,6 +1492,92 @@ function sequenceInput(root: string) {
       maxCommandOutputBytes: 4_000,
     },
   };
+}
+
+function budgetOptions() {
+  return {
+    budgetApproval: () => ({ decision: "deny" as const }),
+    settlementReserveMs: 1_000,
+    hardLimitMs: 20_000,
+  } as const;
+}
+
+function budgetInput(root: string, id: string) {
+  return {
+    id,
+    intent: "Exercise the completed-step budget boundary.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read once, then obey the budget decision boundary."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["No investigation occurs after the budget choice."],
+    terminalTools: [{
+      name: "finish_budget_test",
+      description: "Finish the bounded budget test.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    outputSchema: {
+      type: "object",
+      properties: { result: { type: "string", enum: ["settled"] } },
+      required: ["result"],
+      additionalProperties: false,
+    },
+    budget: { maxSteps: 1, estimatedTokens: 100, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  };
+}
+
+function budgetAiDriver(model: MockLanguageModelV3, modelName: string) {
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: modelName,
+  });
+  Object.defineProperty(driver, "model", { value: model });
+  return driver;
+}
+
+function budgetSettlementModel(
+  onCall: () => void,
+  choice: "request_budget" | "settle_now",
+) {
+  let calls = 0;
+  return new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      onCall();
+      if (calls === 1) return response([{
+        type: "tool-call",
+        toolCallId: "budget-read",
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+      if (calls === 2) return response([{
+        type: "tool-call",
+        toolCallId: "budget-choice",
+        toolName: choice,
+        input: choice === "request_budget"
+          ? JSON.stringify({
+              additionalSteps: 1,
+              additionalDurationMs: 100,
+              remainingWork: "finish settlement from retained evidence",
+            })
+          : "{}",
+      }], "tool-calls");
+      if (calls === 3) return response([{
+        type: "tool-call",
+        toolCallId: "budget-terminal",
+        toolName: "finish_budget_test",
+        input: "{}",
+      }], "tool-calls");
+      if (calls === 4) return response([{
+        type: "tool-call",
+        toolCallId: "budget-output",
+        toolName: "emit_structured_output",
+        input: JSON.stringify({ result: "settled" }),
+      }], "tool-calls");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
 }
 
 async function fixture(): Promise<string> {

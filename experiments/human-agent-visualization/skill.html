@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="一个冻结、来源约束的 Skill Lens，用来理解 skill-engineering 的 rewrite 路径与证据边界。" />
+    <title>Skill Lens · skill-engineering rewrite</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell skill-shell">
+      <nav class="lens-nav" aria-label="选择理解透镜">
+        <a href="./index.html">Execution Boundary Lens</a>
+        <a href="./skill.html" aria-current="page">Skill Lens</a>
+      </nav>
+
+      <header class="intro skill-intro">
+        <div class="eyebrow">人—Agent 可视化 · 冻结 Skill Lens</div>
+        <h1>为什么 <code>skill-engineering</code> 与这个 rewrite 请求相关？</h1>
+        <p class="lede">沿着一条有序路径区分静态声明、确定性投影、临时解释，以及仍然不可用的 runtime 与行为证据。</p>
+      </header>
+
+      <section class="skill-orientation" aria-label="Skill Lens 主体与修订">
+        <div>
+          <span class="field-label">观察方式</span>
+          <strong class="frozen-badge">Frozen · Not live</strong>
+        </div>
+        <div>
+          <span class="field-label">主体</span>
+          <strong id="skill-subject">skill-engineering · rewrite</strong>
+        </div>
+        <div>
+          <span class="field-label">Skill revision</span>
+          <code id="skill-revision"></code>
+        </div>
+        <div>
+          <span class="field-label">证据包</span>
+          <code id="skill-binding"></code>
+        </div>
+        <p id="skill-question" class="skill-question"></p>
+      </section>
+
+      <section class="standing-strip" aria-label="关键 standing">
+        <article data-standing-card="trigger" data-standing-layer="projection">
+          <div class="standing-meta"><span>触发</span><small class="cue-origin"></small></div>
+          <strong id="trigger-standing"></strong>
+          <small class="cue-fallback"></small>
+        </article>
+        <article data-standing-card="eligibility" data-standing-layer="projection">
+          <div class="standing-meta"><span>方法</span><small class="cue-origin"></small></div>
+          <strong id="eligibility-standing"></strong>
+          <small class="cue-fallback"></small>
+        </article>
+        <article data-standing-card="activation" data-standing-layer="source">
+          <div class="standing-meta"><span>Runtime</span><small class="cue-origin"></small></div>
+          <strong id="activation-standing"></strong>
+          <small class="cue-fallback"></small>
+        </article>
+        <article data-standing-card="behavior" data-standing-layer="source">
+          <div class="standing-meta"><span>行为</span><small class="cue-origin"></small></div>
+          <strong id="behavior-standing"></strong>
+          <small class="cue-fallback"></small>
+        </article>
+      </section>
+
+      <section class="skill-lens" aria-label="skill-engineering rewrite 引导路径">
+        <div class="skill-toolbar">
+          <div>
+            <span class="field-label">Guided path</span>
+            <p>按顺序读；选择一步可核对它的来源、standing 与冻结摘录。</p>
+          </div>
+          <fieldset class="layer-controls">
+            <legend>显示层</legend>
+            <label><input type="checkbox" data-skill-layer="source" checked /> 来源</label>
+            <label><input type="checkbox" data-skill-layer="projection" checked /> 投影</label>
+            <label><input type="checkbox" data-skill-layer="explanation" checked /> Agent 解释</label>
+          </fieldset>
+          <label class="source-only-control"><input id="skill-source-only" type="checkbox" /> 仅看来源</label>
+        </div>
+
+        <aside id="authority-stop" class="authority-stop" aria-label="Authority stop">
+          <div>
+            <span class="field-label">Authority stop · 关键边界</span>
+            <h2 id="stop-title"></h2>
+            <p id="stop-summary"></p>
+          </div>
+          <button id="inspect-stop" class="quiet-button" type="button">检查边界证据</button>
+        </aside>
+
+        <div class="skill-lens-grid">
+          <ol id="guided-path" class="guided-path"></ol>
+          <aside id="skill-evidence-drawer" class="evidence-drawer skill-evidence-drawer" aria-live="polite">
+            <div class="drawer-kicker">证据抽屉 · fixture-local</div>
+            <h2 id="skill-evidence-title" tabindex="-1">选择路径中的一步</h2>
+            <p id="skill-evidence-kind" class="evidence-kind"></p>
+            <dl id="skill-evidence-details"></dl>
+            <div id="source-actions" class="source-actions"></div>
+            <pre id="source-excerpt" class="source-excerpt"></pre>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <template id="skill-fatal-template">
+      <section class="fatal"><h2>冻结 Skill 证据无法通过验证。</h2><p></p></section>
+    </template>
+    <script type="module" src="./skill-app.js"></script>
+  </body>
+</html>
