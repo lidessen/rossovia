@@ -152,6 +152,7 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
 
   const selectedCandidates = [...new Set([...SOURCE_CANDIDATES, ...normalizedFocusSources])];
   const retained = [];
+  const fullContents = new Map();
   for (const candidate of selectedCandidates) {
     const absolute = resolve(root, candidate);
     if (absolute !== root && !absolute.startsWith(`${root}${sep}`)) {
@@ -164,6 +165,7 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
       throw new TypeError(`Focus source resolves outside the repo: ${candidate}`);
     }
     const fullContent = await readFile(path, "utf8");
+    fullContents.set(candidate, fullContent);
     const content = excerpt(fullContent);
     const sourceRevision = await digestValue(fullContent);
     retained.push({
@@ -178,6 +180,7 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
   if (retained.length === 0) {
     const fallback = files[0];
     const fullContent = await readFile(join(root, fallback), "utf8");
+    fullContents.set(fallback, fullContent);
     const content = excerpt(fullContent);
     const sourceRevision = await digestValue(fullContent);
     retained.push({ id: `source:${fallback}`, kind: "observed-file", sourceRef: fallback, revision: sourceRevision, excerpt: content, digest: await digestValue({ sourceRef: fallback, revision: sourceRevision, excerpt: content }) });
@@ -189,7 +192,7 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
     : null) ?? retained.find((source) => source.sourceRef === "README.md") ?? retained[0];
   const governing = retained.filter((source) => /^(AGENTS|DESIGN|ARCHITECTURE|CONTRIBUTING|principles\/SEQUENCE)/.test(source.sourceRef));
   const manifest = retained.find((source) => source.sourceRef === "package.json");
-  const commands = [...verificationCommands(manifest?.excerpt), ...documentedCommands(retained)]
+  const commands = [...verificationCommands(fullContents.get("package.json")), ...documentedCommands(retained)]
     .filter((command, index, all) => all.findIndex((candidate) => candidate.command === command.command) === index);
   const entries = likelyEntrypoints(files);
   const topLevel = [...new Set(files.map((file) => file.split("/")[0]))].slice(0, 16);

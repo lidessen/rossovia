@@ -54,6 +54,9 @@ bun run introduce -- \
 `generated/project-evidence-bundle.json`，并打印 Project Lens URL。保持
 `bun run dev` 运行，在浏览器打开该 URL 即可。repo 的可检查内容发生变化后，
 旧 URL 会被服务器拒绝；重新运行同一条 `introduce` 命令并使用新打印的 URL。
+若服务器不使用默认端口，`introduce` 也必须收到同一端口，例如
+`HUMAN_AGENT_VIS_PORT=4312 bun run introduce -- ...` 或在参数中加入
+`--port 4312`，这样打印的 URL 才会指向实际监听地址。
 
 当 Agent 已经调查过仓库，应通过 `--focus` 传入逗号分隔的、仓库内的真实
 证据路径，让引导路径围绕当前问题，而不是围绕目录树：

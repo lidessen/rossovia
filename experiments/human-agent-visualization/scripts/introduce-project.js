@@ -3,6 +3,9 @@ import { dirname, relative, resolve } from "node:path";
 import { buildProjectLensBundle } from "./project-lens-builder.js";
 import { validateProjectBundle } from "../lib/project-evidence-bundle.js";
 
+const DEFAULT_PORT = 4311;
+const PORT_ENV = "HUMAN_AGENT_VIS_PORT";
+
 function parseArguments(arguments_) {
   const values = {};
   for (let index = 0; index < arguments_.length; index += 1) {
@@ -18,7 +21,16 @@ function parseArguments(arguments_) {
   return values;
 }
 
+function parsePort(raw = process.env[PORT_ENV] ?? String(DEFAULT_PORT)) {
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new TypeError(`Invalid port '${raw}'. Use --port <1-65535> or ${PORT_ENV}.`);
+  }
+  return port;
+}
+
 const values = parseArguments(Bun.argv.slice(2));
+const port = parsePort(values.port);
 const experimentRoot = resolve(import.meta.dir, "..");
 const output = resolve(values.output ?? resolve(experimentRoot, "generated/project-evidence-bundle.json"));
 const bundle = await buildProjectLensBundle({
@@ -37,7 +49,7 @@ await Bun.write(output, `${JSON.stringify(bundle, null, 2)}\n`);
 const relativeOutput = relative(experimentRoot, output).replaceAll("\\", "/");
 console.log(`Project Lens bundle: ${output}`);
 if (!relativeOutput.startsWith("..")) {
-  console.log(`Open after 'bun run dev': http://127.0.0.1:4311/project.html?bundle=${encodeURIComponent(`./${relativeOutput}`)}&binding=${encodeURIComponent(bundle.bindingDigest)}`);
+  console.log(`Open after 'bun run dev': http://127.0.0.1:${port}/project.html?bundle=${encodeURIComponent(`./${relativeOutput}`)}&binding=${encodeURIComponent(bundle.bindingDigest)}`);
 } else {
   console.log("The output is outside the served experiment root; pass --output inside this directory to open it in Project Lens.");
 }

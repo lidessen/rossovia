@@ -108,6 +108,25 @@ describe("Project Lens real repository bundle", () => {
     expect(before.subject.revision).not.toBe(first.subject.revision);
   });
 
+  test("verification commands are derived from the full manifest beyond its displayed excerpt", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-large-manifest-"));
+    try {
+      await Bun.write(join(repo, "README.md"), "# Large manifest fixture\n\nA repository whose manifest is larger than the retained display excerpt.\n");
+      await Bun.write(join(repo, "package.json"), JSON.stringify({
+        name: "large-manifest",
+        description: "x".repeat(3000),
+        scripts: { test: "bun test", check: "bun run verify.js" },
+      }));
+
+      const bundle = await buildProjectLensBundle({ repo });
+      expect(bundle.sources.find((source) => source.sourceRef === "package.json").excerpt.length).toBe(2600);
+      expect(bundle.projection.verificationCommands.map((entry) => entry.command))
+        .toEqual(expect.arrayContaining(["bun run test", "bun run check"]));
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
   test("focus sources cannot follow a symlink outside the repository", async () => {
     const link = join(fixtureRoot, "outside.md");
     await symlink(outsideFile, link);
@@ -124,5 +143,23 @@ describe("Project Lens real repository bundle", () => {
     expect(process.exitCode).toBe(0);
     const bundle = await Bun.file(output).json();
     expect((await validateProjectBundle(bundle)).valid).toBe(true);
+  });
+
+  test("public CLI prints a URL on the configured server port", async () => {
+    const output = join(import.meta.dir, "..", "generated", `port-${crypto.randomUUID()}.json`);
+    try {
+      const process = Bun.spawnSync([
+        "bun", "run", new URL("../scripts/introduce-project.js", import.meta.url).pathname,
+        "--repo", fixtureRoot, "--output", output,
+      ], {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...Bun.env, HUMAN_AGENT_VIS_PORT: "4312" },
+      });
+      expect(process.exitCode).toBe(0);
+      expect(process.stdout.toString()).toContain("http://127.0.0.1:4312/project.html?");
+    } finally {
+      await rm(output, { force: true });
+    }
   });
 });
