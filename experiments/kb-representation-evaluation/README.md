@@ -1,9 +1,12 @@
 # KB representation evaluation
 
 这个实验比较同一个带类型有向知识图，在同一 Agent 执行画像中以两种形式提供时的
-实际表现：可搜索的逐行文本索引，或一张完整关系图。它回答的是一个有边界的工程问题：
+实际表现：完整的逐行文本关系附件，或一张完整关系图。它回答的是一个有边界的工程问题：
 **Agent 的 KB 索引层应默认保留文本，还是默认生成图像？** 它不比较模型品牌，也不把
 人类觉得“图更直观”当成 Agent 能更可靠使用图的证据。
+
+本轮没有给文本条件配搜索工具；它是完整文本附件控制组。因此结果能检验“完整关系图能否
+替代文本事实”，不能直接量化真实 `search → top-k` 索引的效果或成本。
 
 当前状态是 `probe`。进入综合比较前，先回答更基础的问题：Agent 能否准确恢复图片里的
 复杂连线？`fixtures/image-diagnostic/` 固定相同的 15 个节点与布局，把边数从 13、22
@@ -15,11 +18,13 @@
 72/72，完整图像从 sparse 的 24/24 降到 dense 的 18/24，错误集中在复杂相邻边的
 完备枚举。因此当前默认仍是文本索引，图像只作为可再生投影。
 
-后续综合轮固定 15 个节点、22 条边和 7 个机械评分问题，覆盖直接查找、多跳路径和
-全局拓扑。`fixtures/round1/graph.txt` 与 `graph.svg` 来自同一个
+仓库还保留了一个未执行的综合轮候选 fixture：固定 15 个节点、22 条边和 7 个机械评分
+问题，覆盖直接查找、多跳路径和全局拓扑。`fixtures/round1/graph.txt` 与 `graph.svg`
+来自同一个
 [`src/fixture.js`](./src/fixture.js)；节点 ID、中文标签和关系完全一致。图像布局是图表示
-的组成部分，因此结论只能归因于完整的“文本索引访问”与“渲染关系图访问”画像，不能
-归因于裸模态。
+的组成部分，因此结论只能归因于完整的“文本关系附件”与“渲染关系图附件”画像，不能
+归因于裸模态。当前 `probe:image` 和 `probe:text` 不运行这个候选 fixture，它也不支持
+本轮报告中的实测结论。
 
 ## 构建与验证
 
@@ -45,12 +50,11 @@ bun run render
 
 ## Worker packet
 
-每次运行只给 Agent 一个表示，并给对应的 `questions.json`。先运行
-`image-diagnostic/{sparse,medium,dense}` 的 image-only gate，再决定是否进入 text/image
-综合轮：
+当前 probe 每次只给 Agent 一个表示，并使用
+`image-diagnostic/{sparse,medium,dense}` 对应的 `questions.json`：
 
-- text condition：只允许读取 `fixtures/round1/graph.txt`；
-- image condition：只允许查看从 `graph.svg` 生成并校验 hash 的 PNG；
+- text condition：只附加 `fixtures/image-diagnostic/<tier>/graph.txt`；
+- image condition：只附加由同档 `graph.svg` 生成并校验 hash 的 PNG；
 - 两者都按 `[{"id":"...","answer":"..."}]` 返回，不展示 answer key；
 - 每个档位在每个 condition 下运行三次，两个 condition 使用相同的预注册档位顺序；
   失败与超时同样保留。
@@ -62,7 +66,8 @@ bun run probe:image
 bun run probe:text
 ```
 
-用 evaluator-only 的答案评分：
+两个 probe 会在不向 worker 暴露答案的情况下自动评分并保留结果。下列独立 evaluator
+只适用于尚未执行的 `round1` 候选 fixture：
 
 ```sh
 bun run scripts/score.js path/to/answers.json

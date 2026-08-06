@@ -38,6 +38,11 @@ bun test
 bun run check
 ```
 
+`check` 还会验证 `generated/project-evidence-bundle.json`（若存在）是否仍与它扫描的仓库
+完全一致。该文件绑定生成时的 revision 与工作树状态，所以仓库后来发生变化时，检查会按
+设计失败：需要用原来的 `introduce` 参数重新生成；如果本次只检查两个冻结 Lens，则先把
+这个被忽略的临时 bundle 移出 `generated/`。
+
 ## 让 Agent 介绍一个 repo
 
 最小调用只需要仓库路径：
