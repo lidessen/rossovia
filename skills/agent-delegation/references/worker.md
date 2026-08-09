@@ -37,6 +37,10 @@ Return only the compressed evidence Main needs:
 ```text
 Conclusion:
 Evidence: source refs, commands, tests, or changed artifact identity
+Source scope and lineage actually read:
+Exact source claims and their declared use: leads only | bounded premises under the envelope's conditions
+Uncertainties:
+Judgment and acceptance retained by:
 Risks and unresolved relations:
 Changed paths or effects:
 Stop hit: no | yes with reason

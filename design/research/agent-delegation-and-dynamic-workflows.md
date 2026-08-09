@@ -228,6 +228,63 @@ verifier must supply evidence and the next source-linked anchor before the
 timeline advances. This separates tool-loop completion, semantic proposal,
 verification, and state commit.
 
+## Local host-constructed topology probe
+
+The
+[2026-08-07 Northstar topology repetition](../../regeneration/evaluations/evidence/2026-08-07-host-constructed-nested-topology/RESULT.md)
+provides one bounded counterexample to treating a compact child result as
+automatically usable parent evidence. A direct Cell read nine related files. A
+host-constructed nested arm gave two protocol/case files to a child and the
+other seven files plus the schema-valid child report to a parent. All Cells
+matched route and backend identity, retained read-only workspaces, and produced
+valid output. In a label-masked independent semantic review, direct was
+accepted while nested was rejected: the parent repaired the adapter but
+downgraded the exact case defect to a plausible child claim because its raw
+sources were absent. Candidate content exposed clues about information
+topology, so the review did not provide full blinding.
+
+Nested used 2.00× the direct tokens, 1.37× the serial duration, and 1.54× the
+estimated API cost in that repetition. This does not establish a general
+single-Agent advantage, but it narrows consequence 5: compactness, schema
+validity, lineage, and a source path do not by themselves make a returned claim
+a load-bearing premise.
+
+The follow-up
+[parent-only evidence-admission treatment](../../regeneration/evaluations/evidence/2026-08-08-parent-evidence-admission/RESULT.md)
+pinned the old parent input and changed only its fourth instruction after
+normalizing non-semantic runtime identifiers. It explicitly described how the
+schema-valid retained child report could serve as bounded evidence without
+becoming semantic verification or acceptance. The treatment parent recovered
+case 07 and passed independent semantic review. This supports evidence
+admission as a real handoff design variable, but one repetition cannot separate
+the instruction effect from provider variance or establish durable guidance.
+
+The reconstructed treatment still used 1.84× the direct tokens, 1.58× the
+serial duration, and 1.45× the estimated API cost. When dense relations are
+cheap to inspect directly, delegation may therefore add reconstruction cost
+without reducing attention enough to compensate even when semantics recover.
+
+The subsequent
+[matched parent pair](../../regeneration/evaluations/evidence/2026-08-08-parent-admission-matched-pair/RESULT.md)
+ran fresh control and treatment parents over the same frozen child output and
+seven-file raw partition. Order was randomized and retained; route, backend
+fingerprint, schema, budget, read-only workspace, and normalized contract were
+matched. A label-masked independent reviewer preferred treatment with high
+confidence. Both parents found the adapter defect, but control kept case 07
+conditional and omitted that retry remains `"none"`; treatment recovered the
+complete relation while retaining parent judgment.
+
+This is paired support for evidence status as a decision-changing handoff
+relation, not proof of a universal prompt string. The fresh control performed
+better than the old control, so provider-run variance remains visible. The
+portable consequence is to state source scope and lineage, which exact claims
+may serve as premises, what remains uncertain, and who retains judgment—not to
+make child conclusions authoritative. The reconstructed treatment used 2.41×
+the direct tokens, 1.92× the serial duration, and 1.76× the cost; use direct
+inspection when a small source set is densely coupled. More replication is
+needed only to estimate stability or test generalization, not to justify more
+handoff machinery now.
+
 ## Open verification
 
 - Can the selected Flash model reliably emit several valid `delegate` calls in
@@ -238,6 +295,8 @@ verification, and state commit.
   histories?
 - Which real task first requires a data-dependent Workflow rather than a later
   ordinary Agent step?
+- When does one nested bounded contribution reduce attention or latency enough
+  to justify its coordination and token cost without broadening effects?
 
 These are pilot questions, not reasons to add team messaging, recursive spawn,
 or model-authored workflow code now.
