@@ -1,6 +1,8 @@
 # Decision 048 — Portable Workbench and capability-honest hook bindings
 
-**Status:** accepted and implemented
+**Status:** capability-honest multi-harness hook design remains accepted and
+implemented; checked-in Node bundle and Node-only target-runtime choice
+superseded by [Decision 054](054-bun-source-workbench-runtime.md)
 **Date:** 2026-07-23
 **Supersedes in part:** [Decision 047](047-bun-workbench-runtime.md)'s
 target-machine Bun requirement and [Decision 024](024-platform-neutral-intervention-reconciliation.md)'s

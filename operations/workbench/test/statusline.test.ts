@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "operations", "workbench", "dist", "rossovia.mjs");
+const cli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

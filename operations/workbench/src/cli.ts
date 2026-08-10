@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { attachWorkspace } from "./attach";
 import { authorizeExecution, inspectExecution } from "./execution-authorization";

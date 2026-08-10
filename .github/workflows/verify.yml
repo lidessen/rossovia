@@ -65,11 +65,6 @@ jobs:
       - name: Typecheck Workbench
         working-directory: operations/workbench
         run: bun run typecheck
-      - name: Build portable Workbench
-        working-directory: operations/workbench
-        run: |
-          npm run build
-          git diff --exit-code -- dist/rossovia.mjs
       - name: Test Workbench
         working-directory: operations/workbench
         run: bun test

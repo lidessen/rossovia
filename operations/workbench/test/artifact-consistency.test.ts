@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "operations", "workbench", "dist", "rossovia.mjs");
+const cli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
@@ -18,7 +18,7 @@ function runHook(
   event: "post-tool-use" | "after-file-edit" | "stop",
   payload: Record<string, unknown>,
 ): { exitCode: number; stdout: string; stderr: string } {
-  const result = spawnSync("node", [cli, "hook", "artifact", platform, event], {
+  const result = spawnSync(process.execPath, [cli, "hook", "artifact", platform, event], {
     cwd: repositoryRoot,
     env: { ...process.env, TMPDIR: temporary },
     input: JSON.stringify(payload),
@@ -38,7 +38,7 @@ async function runHookAsync(
   payload: Record<string, unknown>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return await new Promise((resolvePromise) => {
-    const child = spawn("node", [cli, "hook", "artifact", platform, event], {
+    const child = spawn(process.execPath, [cli, "hook", "artifact", platform, event], {
       cwd: repositoryRoot,
       env: { ...process.env, TMPDIR: temporary },
       stdio: ["pipe", "pipe", "pipe"],

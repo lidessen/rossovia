@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setupAdapter } from "../src/setup-adapters";
 import { multiAgentDelegationModule } from "../src/setup-modules";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const bundledCli = join(repositoryRoot, "operations", "workbench", "dist", "rossovia.mjs");
+const workbenchRoot = join(repositoryRoot, "operations", "workbench");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
@@ -47,10 +47,11 @@ function fixture() {
   git(source, "config", "user.name", "Rossovia Test");
   git(source, "config", "user.email", "rossovia@example.test");
   writeFileSync(join(source, "CHANGELOG.md"), "# Changelog\n", "utf8");
-  const fixtureCli = join(source, "operations", "workbench", "dist", "rossovia.mjs");
-  mkdirSync(resolve(fixtureCli, ".."), { recursive: true });
-  copyFileSync(bundledCli, fixtureCli);
-  git(source, "add", "CHANGELOG.md", "operations/workbench/dist/rossovia.mjs");
+  const fixtureWorkbench = join(source, "operations", "workbench");
+  mkdirSync(fixtureWorkbench, { recursive: true });
+  cpSync(join(workbenchRoot, "src"), join(fixtureWorkbench, "src"), { recursive: true });
+  symlinkSync(join(workbenchRoot, "node_modules"), join(fixtureWorkbench, "node_modules"), "dir");
+  git(source, "add", "CHANGELOG.md", "operations/workbench/src");
   git(source, "commit", "-m", "initial setup source");
   const baseline = git(source, "rev-parse", "HEAD");
   writeFileSync(join(codex, "AGENTS.md"), "# Personal instructions\n\nKeep this content.\n", "utf8");
@@ -58,7 +59,7 @@ function fixture() {
 }
 
 function workbench(source: string, home: string, ...args: string[]) {
-  return command([process.execPath, join(source, "operations", "workbench", "dist", "rossovia.mjs"), "--home", home, ...args]);
+  return command([process.execPath, join(source, "operations", "workbench", "src", "cli.ts"), "--home", home, ...args]);
 }
 
 describe("user-level setup reconciliation", () => {

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 
 describe("project hook bindings", () => {
-  test("keep three host projections thin and Bun-free", () => {
+  test("keep three host projections thin behind the stable launcher", () => {
     const bindings = {
       codex: readJson(".codex/hooks.json"),
       claude: readJson(".claude/settings.json"),
