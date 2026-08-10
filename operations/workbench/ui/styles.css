@@ -3025,6 +3025,7 @@ body[data-projection-state="loading"] .workbench-shell {
 }
 
 .attention-overview,
+.system-overview,
 .project-overview,
 .task-view {
   margin-top: 1.45rem;

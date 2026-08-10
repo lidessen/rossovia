@@ -23,6 +23,7 @@ describe("Workbench responsive layout", () => {
       html.indexOf('id="project-detail"'),
     );
     expect(html).toContain('id="overview-attention-list"');
+    expect(html).toContain('id="overview-system-list"');
     expect(html).toContain('id="project-overview-list"');
     expect(html).toContain('id="work-item-peek"');
     expect(styles).toMatch(
@@ -57,6 +58,17 @@ describe("Workbench responsive layout", () => {
       /\.mobile-tab-bar\s*\{[^}]*bottom:\s*0;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,\s*1fr\);[^}]*position:\s*fixed;/s,
     );
     expect(mobile).toMatch(/\.principal-rail\s*\{[^}]*display:\s*none;/s);
+  });
+
+  test("keeps Principal attention and system recovery distinct across desktop and narrow overview", () => {
+    expect(html).toContain('<h2 id="principal-attention-heading">待我处理</h2>');
+    expect(html).toContain('id="system-overview"');
+    expect(app).toContain("classifyWorkbenchAttention(workItems()).principal");
+    expect(app).toContain("attention.principal.slice(0, 5)");
+    expect(app).toContain("attention.system.slice(0, 5)");
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+    expect(mobile).toMatch(/\.principal-rail\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).not.toMatch(/\.system-overview\s*\{[^}]*display:\s*none;/s);
   });
 
   test("makes consequential mobile details full-screen with sticky authorization actions", () => {
