@@ -5,7 +5,7 @@
 .vercel/
 packages/*/node_modules/
 operations/*/node_modules/
-/operations/workbench/dist/rossovia.mjs
+/operations/workbench/dist/
 packages/work-cell/.work-cell/
 site/node_modules/
 site/dist/
