@@ -473,14 +473,43 @@ Cell and remains an explicit adapter entry point. It does not enter the main
 core barrel or grant Work Cell scheme selection, memory state, semantic truth,
 or admission authority.
 
-The model-evaluation v2 adapter compares whole execution profiles, not bare
-model names. Its manifest explicitly records context and tool-surface policies
-plus a declared inference policy; separates procedural worker acceptance from
-evaluator-only reference criteria; and reports selected route identities
-and provider-returned backend fingerprints. A fingerprint is retained only as
-opaque backend-configuration evidence: it can expose serving change, but does
-not verify a named model revision without a provider-published mapping. The
-adapter likewise does not claim to verify hidden inference settings.
+The model-evaluation v3 adapter compares one declared axis. The default
+`execution-profile` axis compares whole execution profiles, not bare model
+names. The `instruction-carrier` axis instead requires both profiles to have
+identical routes, context policy, tool surface, inference policy, adapter
+policy, and price revision. It prepends each profile's explicit
+`instructionCarrier.instructions` to the same task instructions while giving
+both Cells one shared `executionProfileId` and condition-neutral Cell ID. The
+driver factory receives that shared execution member without arm or carrier
+metadata. Distinct carrier hashes, a caller-owned semantic-atom audit digest,
+the observed fixture-snapshot digest, and balanced run order are retained. The
+harness adds no carrier or condition metadata to the blind judge packet,
+although a worker may still quote its own instructions in its output. This
+supports carrier and prompt-form tests without hiding the independent variable
+in driver behavior.
+
+The v3 runtime checks that every trial copy matches the snapshot created at the
+start of that invocation. An `instruction-carrier` comparison must also declare
+`fixture.expectedSha256`; Work Cell compares it with the source snapshot before
+constructing a driver or making a model call. A committed per-file checksum
+manifest remains useful human-readable provenance, while the aggregate expected
+digest makes pre-run source identity a runtime gate. The recorded snapshot
+digest then proves that same identity was preserved across every trial copy.
+
+Before semantic judging, instruction-carrier pairs fail closed when their
+driver descriptors differ or when provider-returned route identities or
+backend fingerprints disagree. When those provider observations are absent,
+the record says identity evidence is unavailable rather than treating silence
+as a verified match. Legacy v2 manifests migrate only to the original
+`execution-profile` axis; instruction carriers require an explicit v3 manifest.
+
+Both axes separate procedural worker acceptance from evaluator-only reference
+criteria and report selected route identities and provider-returned backend
+fingerprints. A fingerprint is retained only as opaque backend-configuration
+evidence: it can expose serving change, but does not verify a named model
+revision without a provider-published mapping. The adapter likewise does not
+claim to verify hidden inference settings or semantic equivalence between two
+instruction carriers; the experiment contract and reviewer own that claim.
 
 An evaluation manifest labels its `evidenceRole` as `development` or
 `confirmation`; omission defaults to development. A profile may carry the
@@ -533,7 +562,7 @@ bun src/cli.ts swarm path/to/swarm.json
 # Matched baseline/treatment experiment
 bun src/cli.ts experiment experiments/p23-bounded-autonomy.json
 
-# Repeated real-task evidence for two explicit execution profiles.
+# Repeated real-task evidence for two execution profiles or two matched instruction carriers.
 bun src/cli.ts model evaluate path/to/model-evaluation.json
 
 # Bounded independent deliberation; the result is evidence, never a vote that commits work.
@@ -592,9 +621,11 @@ output as accepted project fact.
   docket. Each member must state a structured position; the CLI preserves raw
   member records and emits a non-authoritative vote-and-dissent projection. It
   cannot create consensus, accept a proposal, allocate budget, or merge work.
-- `model evaluate` runs one frozen task field through two explicit profiles,
-  retains repeated and blind-judge evidence, and emits descriptive observations.
-  It cannot admit a capability profile, rank models globally, or alter provider
+- `model evaluate` snapshots one caller-supplied task field and runs it through
+  either two explicit execution profiles or two instruction carriers over one
+  matched execution profile. It retains repeated and blind-judge evidence and
+  emits descriptive observations. It cannot establish treatment equivalence,
+  admit a capability profile, rank models globally, or alter provider
   preference.
 - No Sequence mutation or automatic candidate adoption.
 - Workspace containment is for local evaluation, not a hardened hostile-code

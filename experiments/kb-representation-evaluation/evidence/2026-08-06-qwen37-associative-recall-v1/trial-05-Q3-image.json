@@ -1,0 +1,275 @@
+{
+  "trial": 5,
+  "question": {
+    "id": "Q3",
+    "prompt": "A transcript was registered, then its original file was moved before digestion. Which boundary was broken, and what committed primitive is meant to keep the record self-contained?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S03",
+      "SHILU-S01",
+      "SHILU-S04",
+      "SHILU-S07"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q3-C1",
+        "valueKey": "evidence-provenance",
+        "citations": [
+          {
+            "sourceId": "SHILU-S02",
+            "anchor": "DESIGN.md#Source / Entry / Entry Event"
+          }
+        ]
+      },
+      {
+        "claimId": "Q3-C2",
+        "valueKey": "store-raw-copy",
+        "citations": [
+          {
+            "sourceId": "SHILU-S07",
+            "anchor": "pkg/source/source.go#Normalize / StoreRaw"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S06",
+      "SHILU-S07"
+    ],
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S03",
+      "SHILU-S01",
+      "SHILU-S04",
+      "SHILU-S07"
+    ],
+    "hitAt1": false,
+    "hitAt3": false,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 0,
+    "recallAt5": 0.5,
+    "allRequiredHitAt3": false,
+    "allRequiredHitAt5": false,
+    "reciprocalRank": 0.2,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "citationPrecision": 0,
+    "citationCoverage": 0,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q3-C1",
+        "expectedKey": "evidence-provenance",
+        "actualKey": "evidence-provenance",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S02",
+            "anchor": "DESIGN.md#Source / Entry / Entry Event",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q3-C2",
+        "expectedKey": "store-raw-copy",
+        "actualKey": "store-raw-copy",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S07",
+            "anchor": "pkg/source/source.go#Normalize / StoreRaw",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/activation-Q3.png",
+    "sha256": "sha256:3b69fbdd6666bf186c82366eb098e081c1e1d910f3add3b70460673abe85c544",
+    "bytes": 147478
+  },
+  "sourcePacket": {
+    "path": "inputs/05-Q3-image-sources.md",
+    "sha256": "sha256:b1d4571ec35cf0e59e74adfebf02f81c566b6670788aaefd308005cc2b811f3b",
+    "bytes": 5664
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:49:04.691Z",
+    "finishedAt": "2026-08-06T09:49:48.598Z",
+    "durationMs": 43906,
+    "exitCode": 0,
+    "answerText": "```json\n{\"candidates\":[\"SHILU-S02\",\"SHILU-S03\",\"SHILU-S01\",\"SHILU-S04\",\"SHILU-S07\"]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 26747,
+        "input": 6,
+        "output": 1970,
+        "reasoning": 0,
+        "cache": {
+          "write": 24771,
+          "read": 0
+        }
+      },
+      "cost": 0.0155399,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009753090,
+        "sessionID": "ses_0298608ccffe9cmi1mABtekKju",
+        "part": {
+          "id": "prt_fd67a15fc001wcIF9qN8cfNoep",
+          "messageID": "msg_fd679f7f8001YYxGM0twrlDAyC",
+          "sessionID": "ses_0298608ccffe9cmi1mABtekKju",
+          "snapshot": "25493f7da0a61d8a0dfa60e301cc68691c6585f1",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009786582,
+        "sessionID": "ses_0298608ccffe9cmi1mABtekKju",
+        "part": {
+          "id": "prt_fd67a95e6001hDRRzQYvkcpny9",
+          "messageID": "msg_fd679f7f8001YYxGM0twrlDAyC",
+          "sessionID": "ses_0298608ccffe9cmi1mABtekKju",
+          "type": "text",
+          "text": "```json\n{\"candidates\":[\"SHILU-S02\",\"SHILU-S03\",\"SHILU-S01\",\"SHILU-S04\",\"SHILU-S07\"]}\n```",
+          "time": {
+            "start": 1786009785830,
+            "end": 1786009786578
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009788556,
+        "sessionID": "ses_0298608ccffe9cmi1mABtekKju",
+        "part": {
+          "id": "prt_fd67aa0890016soVjpM8rObfrj",
+          "reason": "stop",
+          "snapshot": "25493f7da0a61d8a0dfa60e301cc68691c6585f1",
+          "messageID": "msg_fd679f7f8001YYxGM0twrlDAyC",
+          "sessionID": "ses_0298608ccffe9cmi1mABtekKju",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26747,
+            "input": 6,
+            "output": 1970,
+            "reasoning": 0,
+            "cache": {
+              "write": 24771,
+              "read": 0
+            }
+          },
+          "cost": 0.0155399
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:49:48.598Z",
+    "finishedAt": "2026-08-06T09:50:08.600Z",
+    "durationMs": 20002,
+    "exitCode": 0,
+    "answerText": "```json\n{\"claims\":[{\"claimId\":\"Q3-C1\",\"valueKey\":\"evidence-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S02\",\"anchor\":\"DESIGN.md#Source / Entry / Entry Event\"}]},{\"claimId\":\"Q3-C2\",\"valueKey\":\"store-raw-copy\",\"citations\":[{\"sourceId\":\"SHILU-S07\",\"anchor\":\"pkg/source/source.go#Normalize / StoreRaw\"}]}]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 26398,
+        "input": 6,
+        "output": 680,
+        "reasoning": 0,
+        "cache": {
+          "write": 25712,
+          "read": 0
+        }
+      },
+      "cost": 0.0139464,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009795079,
+        "sessionID": "ses_029855d4bffeGQgpHKgL1bcj2w",
+        "part": {
+          "id": "prt_fd67aba000013epjKn17Fac8cF",
+          "messageID": "msg_fd67aa35f001AdVv0uJl8j6zOu",
+          "sessionID": "ses_029855d4bffeGQgpHKgL1bcj2w",
+          "snapshot": "2f5333a1dbb693224a1593d1c415689fe533663a",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009806630,
+        "sessionID": "ses_029855d4bffeGQgpHKgL1bcj2w",
+        "part": {
+          "id": "prt_fd67ae0dc001KOGE5H3ZS0GeGv",
+          "messageID": "msg_fd67aa35f001AdVv0uJl8j6zOu",
+          "sessionID": "ses_029855d4bffeGQgpHKgL1bcj2w",
+          "type": "text",
+          "text": "```json\n{\"claims\":[{\"claimId\":\"Q3-C1\",\"valueKey\":\"evidence-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S02\",\"anchor\":\"DESIGN.md#Source / Entry / Entry Event\"}]},{\"claimId\":\"Q3-C2\",\"valueKey\":\"store-raw-copy\",\"citations\":[{\"sourceId\":\"SHILU-S07\",\"anchor\":\"pkg/source/source.go#Normalize / StoreRaw\"}]}]}\n```",
+          "time": {
+            "start": 1786009805020,
+            "end": 1786009806628
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009808558,
+        "sessionID": "ses_029855d4bffeGQgpHKgL1bcj2w",
+        "part": {
+          "id": "prt_fd67aeeab001UlcAaGdqSw8bRa",
+          "reason": "stop",
+          "snapshot": "2f5333a1dbb693224a1593d1c415689fe533663a",
+          "messageID": "msg_fd67aa35f001AdVv0uJl8j6zOu",
+          "sessionID": "ses_029855d4bffeGQgpHKgL1bcj2w",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26398,
+            "input": 6,
+            "output": 680,
+            "reasoning": 0,
+            "cache": {
+              "write": 25712,
+              "read": 0
+            }
+          },
+          "cost": 0.0139464
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

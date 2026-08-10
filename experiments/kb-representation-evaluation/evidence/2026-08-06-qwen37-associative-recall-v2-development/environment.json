@@ -1,0 +1,264 @@
+{
+  "evidenceId": "2026-08-06-qwen37-associative-recall-v2-development",
+  "fixtureId": "shilu-associative-recall-v2",
+  "caseSet": "development",
+  "repetitions": 1,
+  "upstream": {
+    "repository": "https://github.com/lidessen/shilu",
+    "commit": "1cac9bbf3e2e10bfdb3178838fefc406236b652e",
+    "commitTime": "2026-06-03T22:46:37+08:00",
+    "statusAtCommit": "DESIGN.md is Draft"
+  },
+  "localGit": {
+    "revision": "9d73feddccc615ddb76cdad9f8fe6bc07eb70847",
+    "statusBefore": "clean"
+  },
+  "identities": {
+    "fixtureManifest": "sha256:ae0b990e87cba75c85a26def85788082041c6fff3d09e06fa5746a9a7e81ee90",
+    "renderManifest": "sha256:a07604471a7a55f43baaf20a2150cc4484e94f5fd59f489690675cbe8b6d10b1",
+    "runner": "sha256:26e5be02b269db03bc0eaf7899ac52845ec8734ee1e686c3f1c499d4c5928dbc",
+    "contractAndCorpus": "sha256:bac8e658f1b29a6ab34e9903c3eccd20139d94c3ae3ced40bd22cc1225c4cee4",
+    "inheritedGraphAndSearch": "sha256:753893780534564dddb1c7ba5c5858b4ccac3502964e5cac1c379e3cb650c081",
+    "workerProfile": "sha256:60040202dd0a84f495a6125d01c11213dfd71dce2615b01fa16b21536ce59fbe"
+  },
+  "model": "opencode-go/qwen3.7-plus",
+  "executor": "opencode run --pure --format json",
+  "status": "development-treatment-probe",
+  "representationScope": "query-conditioned corpus-derived associative PNG versus deterministic BM25 top-5 locator-only text results",
+  "sourceBudget": {
+    "maxCandidates": 5,
+    "maxUtf8Bytes": 12000
+  },
+  "protocol": "route from activation input; deterministically open only routed source excerpts; answer with opaque sourceId+anchorId citations",
+  "permissionProfile": "fresh cwd containing only the stage attachment and opencode.json permission=deny; --pure; --auto absent; any emitted tool event invalidates the stage",
+  "resolvedWorkerPermission": {
+    "*": "deny"
+  },
+  "scoring": "independent retrieval relevance; exact mutually-exclusive proposition keys; allowed source+opaque-anchor precision; necessary evidence-group coverage; micro aggregate citation metrics",
+  "order": [
+    {
+      "repetition": 1,
+      "questionId": "Q1",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q1",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q2",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q2",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q3",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q3",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q4",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q4",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q5",
+      "condition": "image"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q5",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q6",
+      "condition": "search"
+    },
+    {
+      "repetition": 1,
+      "questionId": "Q6",
+      "condition": "image"
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q1",
+      "prompt": "A semantic match looks convincing. Before citing the claim as knowledge, what must be consulted, and which retrieved artifact may be regenerated without changing authority?",
+      "claims": [
+        {
+          "id": "Q1-C1",
+          "prompt": "What retains authority?",
+          "options": [
+            "entries-and-raw-sources",
+            "retrieval-index",
+            "activation-graph",
+            "unknown"
+          ]
+        },
+        {
+          "id": "Q1-C2",
+          "prompt": "What may be regenerated?",
+          "options": [
+            "indexes",
+            "entries",
+            "raw-sources",
+            "nothing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q2",
+      "prompt": "Two otherwise identical entry proposals lack provenance: one comes from an automated processor, the other from a human at the terminal. Should they pass the same gate, and where is that distinction enforced?",
+      "claims": [
+        {
+          "id": "Q2-C1",
+          "prompt": "How is the automated proposal treated?",
+          "options": [
+            "reject-missing-provenance",
+            "accept-without-source",
+            "human-exemption",
+            "unknown"
+          ]
+        },
+        {
+          "id": "Q2-C2",
+          "prompt": "How is the human proposal treated in implementation?",
+          "options": [
+            "human-source-exempt",
+            "same-source-gate",
+            "agent-only-exempt",
+            "unknown"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q3",
+      "prompt": "A transcript was registered, then its original file was moved before digestion. Which boundary was broken, and what committed primitive is meant to keep the record self-contained?",
+      "claims": [
+        {
+          "id": "Q3-C1",
+          "prompt": "Which boundary was broken?",
+          "options": [
+            "evidence-provenance",
+            "index-ranking",
+            "collection-routing",
+            "none"
+          ]
+        },
+        {
+          "id": "Q3-C2",
+          "prompt": "Which primitive keeps it self-contained?",
+          "options": [
+            "store-raw-copy",
+            "external-path-reference",
+            "fts-rebuild",
+            "event-replay"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q4",
+      "prompt": "A newer rule invalidates an older rule, but future readers must still discover the lineage and audit what happened. How is the change represented instead of deleting history?",
+      "claims": [
+        {
+          "id": "Q4-C1",
+          "prompt": "How is the lineage represented?",
+          "options": [
+            "bidirectional-supersession-fields",
+            "delete-old-entry",
+            "index-only-edge",
+            "overwrite-body"
+          ]
+        },
+        {
+          "id": "Q4-C2",
+          "prompt": "How is the change audited?",
+          "options": [
+            "append-only-entry-event",
+            "search-score",
+            "source-status-only",
+            "no-audit"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q5",
+      "prompt": "Before an optional model proposes a digest, what context can it receive, and which part of the system still owns the decision to mutate durable knowledge?",
+      "claims": [
+        {
+          "id": "Q5-C1",
+          "prompt": "What context may the model receive?",
+          "options": [
+            "source-rawcontent-collection-relatedentries",
+            "activation-map-only",
+            "event-log-only",
+            "entry-ids-only"
+          ]
+        },
+        {
+          "id": "Q5-C2",
+          "prompt": "Who owns durable mutation authority?",
+          "options": [
+            "core-validates-and-commits",
+            "provider-directly-writes",
+            "retrieval-index",
+            "capture-hook"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "Q6",
+      "prompt": "The SQLite search database is lost. Which durable material is sufficient to restore recall in the design, and what does the implemented rebuild actually consume?",
+      "claims": [
+        {
+          "id": "Q6-C1",
+          "prompt": "What does the design say is sufficient?",
+          "options": [
+            "sources-entries-events",
+            "sqlite-file-only",
+            "graph-image-only",
+            "provider-cache"
+          ]
+        },
+        {
+          "id": "Q6-C2",
+          "prompt": "What does the implementation consume?",
+          "options": [
+            "provided-entry-list",
+            "raw-source-files",
+            "event-log",
+            "vector-table"
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Synthetic query-conditioned activation projection, not Shilu runtime graph behavior.",
+    "Curated source passages from the same corpus and graph used for v1.",
+    "Cases were used to diagnose the v1 citation contract and cannot confirm the treatment."
+  ],
+  "opencodeVersion": "1.18.13"
+}

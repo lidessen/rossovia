@@ -154,28 +154,30 @@ task input, isolation, repeated outcomes, and raw evidence; the method does not
 depend on Work Cell.
 
 When this repository's Work Cell is available, a prepared
-`work-cell.model-evaluation.v2` manifest can be executed with:
+`work-cell.model-evaluation.v3` manifest can be executed with:
 
 ```bash
 bun packages/work-cell/src/cli.ts model evaluate path/to/model-evaluation.json
 ```
 
-The adapter compares exactly two explicit profiles, runs two to five serial
-repetitions over a frozen fixture, uses task-local failure classes and an
-independent judge route, and emits candidate evidence. Each profile must name
-its context, tool-surface, and inference policies. Each case separates generic
-worker-visible acceptance from evaluator-only reference criteria; exact leakage
-between the two is rejected. Inspect the retained record; the compact CLI
-summary intentionally does not name a winner.
+The adapter compares exactly two explicit profiles over one declared axis, runs
+two to five serial repetitions over a frozen fixture, uses task-local failure
+classes and an independent judge route, and emits candidate evidence. Each
+profile must name its context, tool-surface, and inference policies. Each case
+separates generic worker-visible acceptance from evaluator-only reference
+criteria; exact leakage between the two is rejected. Inspect the retained
+record; the compact CLI summary intentionally does not name a winner.
 
 When the next question is specifically whether one prompt or skill treatment
-improves the same execution profile, use a matched baseline/treatment experiment
-that changes only that member. Feed the accepted treatment back as a new profile
-revision, then return here for task-population confirmation. Model evaluation
-discovers prompting hypotheses; it does not erase the attribution boundary.
-Prompting variables include wording, instruction priority and placement, phase
-separation, tool descriptions, and completion protocol. Test them separately;
-do not respond to a protocol failure by indefinitely adding stronger prose.
+improves the same execution member, use the v3 `instruction-carrier` axis. Hold
+the execution fields equal, declare non-empty baseline and treatment carriers,
+pin `fixture.expectedSha256`, and retain a caller-owned semantic-atom audit.
+Feed an accepted treatment back as a new profile revision, then return here for
+task-population confirmation. Model evaluation discovers prompting hypotheses;
+it does not erase the attribution boundary. Prompting variables include wording,
+instruction priority and placement, phase separation, tool descriptions, and
+completion protocol. Test them separately; do not respond to a protocol failure
+by indefinitely adding stronger prose.
 
 ## Degradation boundary
 

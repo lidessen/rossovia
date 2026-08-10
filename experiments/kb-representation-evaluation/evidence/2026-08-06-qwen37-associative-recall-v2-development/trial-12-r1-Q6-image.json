@@ -1,0 +1,317 @@
+{
+  "trial": 12,
+  "repetition": 1,
+  "caseSet": "development",
+  "question": {
+    "id": "Q6",
+    "prompt": "The SQLite search database is lost. Which durable material is sufficient to restore recall in the design, and what does the implemented rebuild actually consume?"
+  },
+  "condition": "image",
+  "route": {
+    "candidates": [
+      "SHILU-S03",
+      "SHILU-S10",
+      "SHILU-S06",
+      "SHILU-S02",
+      "SHILU-S01"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q6-C1",
+        "valueKey": "sources-entries-events",
+        "citations": [
+          {
+            "sourceId": "SHILU-S03",
+            "anchorId": "an_0c40"
+          },
+          {
+            "sourceId": "SHILU-S01",
+            "anchorId": "an_51c0"
+          }
+        ]
+      },
+      {
+        "claimId": "Q6-C2",
+        "valueKey": "provided-entry-list",
+        "citations": [
+          {
+            "sourceId": "SHILU-S10",
+            "anchorId": "an_aa10"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "retrievalRelevantSourceIds": [
+      "SHILU-S03",
+      "SHILU-S10"
+    ],
+    "candidates": [
+      "SHILU-S03",
+      "SHILU-S10",
+      "SHILU-S06",
+      "SHILU-S02",
+      "SHILU-S01"
+    ],
+    "hitAt1": true,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0.5,
+    "recallAt3": 1,
+    "recallAt5": 1,
+    "allRelevantHitAt3": true,
+    "allRelevantHitAt5": true,
+    "reciprocalRank": 1,
+    "openedSources": 5,
+    "answerAccuracy": 1,
+    "claimCount": 2,
+    "correctAnswerCount": 2,
+    "citationPrecision": 1,
+    "citationCoverage": 1,
+    "submittedCitationCount": 3,
+    "correctCitationCount": 3,
+    "requiredEvidenceGroupCount": 4,
+    "coveredEvidenceGroupCount": 4,
+    "protocolValid": true,
+    "groundedSuccess": true,
+    "claimResults": [
+      {
+        "claimId": "Q6-C1",
+        "expectedKey": "sources-entries-events",
+        "actualKey": "sources-entries-events",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S03",
+            "anchorId": "an_0c40",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          },
+          {
+            "sourceId": "SHILU-S01",
+            "anchorId": "an_51c0",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "Q6-C1-G1",
+            "covered": true
+          },
+          {
+            "groupId": "Q6-C1-G2",
+            "covered": true
+          },
+          {
+            "groupId": "Q6-C1-G3",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      },
+      {
+        "claimId": "Q6-C2",
+        "expectedKey": "provided-entry-list",
+        "actualKey": "provided-entry-list",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S10",
+            "anchorId": "an_aa10",
+            "locatable": true,
+            "opened": true,
+            "allowed": true,
+            "correct": true
+          }
+        ],
+        "evidenceGroups": [
+          {
+            "groupId": "Q6-C2-G1",
+            "covered": true
+          }
+        ],
+        "fullyGrounded": true
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/activation-Q6.png",
+    "sha256": "sha256:daa8c7f4bf02aa0b631fcf7100315cdbca009a6b6f869296dde4f40c7feb5ffb",
+    "bytes": 164906
+  },
+  "sourcePacket": {
+    "path": "inputs/12-r1-Q6-image-sources.md",
+    "sha256": "sha256:3d16dc761475552030e32579e9427df81ec56c00f8c0f4408db294bdadec56d4",
+    "bytes": 4145
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T11:41:51.878Z",
+    "finishedAt": "2026-08-06T11:42:09.101Z",
+    "durationMs": 17222,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "```json\n{\"candidates\":[\"SHILU-S03\",\"SHILU-S10\",\"SHILU-S06\",\"SHILU-S02\",\"SHILU-S01\"]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 25363,
+        "input": 6,
+        "output": 585,
+        "reasoning": 0,
+        "cache": {
+          "write": 24772,
+          "read": 0
+        }
+      },
+      "cost": 0.0133244,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016518980,
+        "sessionID": "ses_0291ec690ffe7w3L82hR7f00u7",
+        "part": {
+          "id": "prt_fd6e1533a001opyY1IvZS4lwdi",
+          "messageID": "msg_fd6e13a24001W4AYxvdzMGumxW",
+          "sessionID": "ses_0291ec690ffe7w3L82hR7f00u7",
+          "snapshot": "3146700564939c3a0406ed3b1a98d90be8ce026f",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016528974,
+        "sessionID": "ses_0291ec690ffe7w3L82hR7f00u7",
+        "part": {
+          "id": "prt_fd6e1784f0012fmcQ3C23wJpRL",
+          "messageID": "msg_fd6e13a24001W4AYxvdzMGumxW",
+          "sessionID": "ses_0291ec690ffe7w3L82hR7f00u7",
+          "type": "text",
+          "text": "```json\n{\"candidates\":[\"SHILU-S03\",\"SHILU-S10\",\"SHILU-S06\",\"SHILU-S02\",\"SHILU-S01\"]}\n```",
+          "time": {
+            "start": 1786016528463,
+            "end": 1786016528969
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016529059,
+        "sessionID": "ses_0291ec690ffe7w3L82hR7f00u7",
+        "part": {
+          "id": "prt_fd6e17aa10014cQVCBKlD43L0X",
+          "reason": "stop",
+          "snapshot": "3146700564939c3a0406ed3b1a98d90be8ce026f",
+          "messageID": "msg_fd6e13a24001W4AYxvdzMGumxW",
+          "sessionID": "ses_0291ec690ffe7w3L82hR7f00u7",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25363,
+            "input": 6,
+            "output": 585,
+            "reasoning": 0,
+            "cache": {
+              "write": 24772,
+              "read": 0
+            }
+          },
+          "cost": 0.0133244
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T11:42:09.101Z",
+    "finishedAt": "2026-08-06T11:42:22.947Z",
+    "durationMs": 13846,
+    "exitCode": 0,
+    "executionError": null,
+    "answerText": "{\"claims\":[{\"claimId\":\"Q6-C1\",\"valueKey\":\"sources-entries-events\",\"citations\":[{\"sourceId\":\"SHILU-S03\",\"anchorId\":\"an_0c40\"},{\"sourceId\":\"SHILU-S01\",\"anchorId\":\"an_51c0\"}]},{\"claimId\":\"Q6-C2\",\"valueKey\":\"provided-entry-list\",\"citations\":[{\"sourceId\":\"SHILU-S10\",\"anchorId\":\"an_aa10\"}]}]}",
+    "usage": {
+      "tokens": {
+        "total": 25635,
+        "input": 6,
+        "output": 539,
+        "reasoning": 0,
+        "cache": {
+          "write": 25090,
+          "read": 0
+        }
+      },
+      "cost": 0.0134098,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786016533649,
+        "sessionID": "ses_0291e834fffei80UOrfLwRfthO",
+        "part": {
+          "id": "prt_fd6e18c8d001W6hUxx4Bb33WIW",
+          "messageID": "msg_fd6e17d4f001ZciuiN4czWJcGM",
+          "sessionID": "ses_0291e834fffei80UOrfLwRfthO",
+          "snapshot": "6a59bc503b018cbeb3919e2504398e58098eb9cb",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786016542811,
+        "sessionID": "ses_0291e834fffei80UOrfLwRfthO",
+        "part": {
+          "id": "prt_fd6e1a9e4001WvVSZm1NdHLI1B",
+          "messageID": "msg_fd6e17d4f001ZciuiN4czWJcGM",
+          "sessionID": "ses_0291e834fffei80UOrfLwRfthO",
+          "type": "text",
+          "text": "{\"claims\":[{\"claimId\":\"Q6-C1\",\"valueKey\":\"sources-entries-events\",\"citations\":[{\"sourceId\":\"SHILU-S03\",\"anchorId\":\"an_0c40\"},{\"sourceId\":\"SHILU-S01\",\"anchorId\":\"an_51c0\"}]},{\"claimId\":\"Q6-C2\",\"valueKey\":\"provided-entry-list\",\"citations\":[{\"sourceId\":\"SHILU-S10\",\"anchorId\":\"an_aa10\"}]}]}",
+          "time": {
+            "start": 1786016541156,
+            "end": 1786016542806
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786016542905,
+        "sessionID": "ses_0291e834fffei80UOrfLwRfthO",
+        "part": {
+          "id": "prt_fd6e1b0b7001VGVDB94u8TMltB",
+          "reason": "stop",
+          "snapshot": "6a59bc503b018cbeb3919e2504398e58098eb9cb",
+          "messageID": "msg_fd6e17d4f001ZciuiN4czWJcGM",
+          "sessionID": "ses_0291e834fffei80UOrfLwRfthO",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25635,
+            "input": 6,
+            "output": 539,
+            "reasoning": 0,
+            "cache": {
+              "write": 25090,
+              "read": 0
+            }
+          },
+          "cost": 0.0134098
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "version": "todo-obligation-probe.run.v1",
+  "workCellRecord": "/Users/lidessen/workspaces/skills/regeneration/evaluations/evidence/2026-08-06-todo-obligation-carrier/results/todo-obligation-carrier-development-HDMuik/evaluation.json",
+  "baseWorkCellRecord": "/Users/lidessen/workspaces/skills/regeneration/evaluations/evidence/2026-08-06-todo-obligation-carrier/results/todo-obligation-carrier-development-HDMuik/evaluation.base.json",
+  "launchIdentity": "/Users/lidessen/workspaces/skills/regeneration/evaluations/evidence/2026-08-06-todo-obligation-carrier/results/launch-W8H2k3/launch-identity.json",
+  "runtimePatch": "/Users/lidessen/workspaces/skills/regeneration/evaluations/evidence/2026-08-06-todo-obligation-carrier/results/launch-W8H2k3/runtime.patch",
+  "packetHashes": {
+    "README.md": "7e58a49523c4bc13860649b470fe239d8a527f2014e60a36413bd18daebc6973",
+    "semantic-audit.md": "ffaa2ecd0aacf00292bb5acb1015bf9dc17f30c4164fc3d45a6019766bba171e",
+    "model-evaluation.json": "ea6d4bfa165dbcb2453243bddf892174d8ddd0984cbda63cf22d549bf1414f3b",
+    "fixture-files.sha256": "e5f316cbceaaf6d580f2a8a18066fda265ffc97532ef0ae322c28e12f43c4a6d",
+    "run-development-probe.ts": "bfeef049b0d5855147bd302dbc4d1cfea60c44a749de55c9d8740d929e590dc4"
+  },
+  "fixtureSha256": "8309ad4b5f3543a163eed7e8c50865eede02fc30d92f35c6959dba9649ade0c4",
+  "taskToolSet": "read-only",
+  "comparisons": [
+    {
+      "caseId": "clinic-notice-return-obligation",
+      "blindMap": {
+        "A": "arm-obligation",
+        "B": "arm-ceremony"
+      },
+      "executionIdentity": {
+        "status": "matched",
+        "observations": [
+          "all exposed execution identities matched within each repetition"
+        ]
+      },
+      "result": {
+        "descriptor": {
+          "adapter": "ai-sdk-v7",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "pricing": {
+            "inputPerMillionUsd": 0.14,
+            "cachedInputPerMillionUsd": 0.0028,
+            "outputPerMillionUsd": 0.28,
+            "source": "https://api-docs.deepseek.com/quick_start/pricing",
+            "revision": "2026-07-31"
+          }
+        },
+        "judgement": {
+          "preferred": "inconclusive",
+          "acceptance": [
+            {
+              "condition": "The notice preserves all supported operational facts and avoids every forbidden or unsupported claim, including an invented causal purpose for the trial",
+              "a": "unknown",
+              "b": "unknown",
+              "evidence": []
+            },
+            {
+              "condition": "The index states that caregivers call without an app or account and that a triage nurse, not front-desk staff, determines urgency",
+              "a": "unknown",
+              "b": "unknown",
+              "evidence": []
+            },
+            {
+              "condition": "The index preserves the August 5 start, 12 weekday slots, six-week trial, unused-slot release at 14:00 for next-day booking, and no added clinicians or total capacity",
+              "a": "unknown",
+              "b": "unknown",
+              "evidence": []
+            },
+            {
+              "condition": "The notice and index are mutually consistent and the structured result contains their actual final contents",
+              "a": "unknown",
+              "b": "unknown",
+              "evidence": []
+            },
+            {
+              "condition": "Both requested artifacts are substantively repaired; todo wording or completion alone receives no credit",
+              "a": "unknown",
+              "b": "unknown",
+              "evidence": []
+            }
+          ],
+          "findings": [
+            "repetition 1: todo.md was not written before the first artifact",
+            "repetition 1: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 1: todo.md was not read and updated after every artifact write",
+            "repetition 1: structured settlement does not equal final artifact bytes",
+            "repetition 2: todo.md was not written before the first artifact",
+            "repetition 2: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 2: todo.md was not read and updated after every artifact write",
+            "repetition 2: structured settlement does not equal final artifact bytes",
+            "repetition 3: todo.md was not written before the first artifact",
+            "repetition 3: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 3: todo.md was not read and updated after every artifact write",
+            "repetition 3: structured settlement does not equal final artifact bytes",
+            "repetition 4: todo.md was not written before the first artifact",
+            "repetition 4: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 4: todo.md was not read and updated after every artifact write",
+            "repetition 4: structured settlement does not equal final artifact bytes",
+            "repetition 1: todo.md was not written before the first artifact",
+            "repetition 1: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 1: todo.md was not read and updated after every artifact write",
+            "repetition 1: structured settlement does not equal final artifact bytes",
+            "repetition 2: todo.md was not written before the first artifact",
+            "repetition 2: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 2: todo.md was not read and updated after every artifact write",
+            "repetition 2: structured settlement does not equal final artifact bytes",
+            "repetition 3: todo.md was not written before the first artifact",
+            "repetition 3: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 3: todo.md was not read and updated after every artifact write",
+            "repetition 3: structured settlement does not equal final artifact bytes",
+            "repetition 4: todo.md was not written before the first artifact",
+            "repetition 4: initial todo.md contains 0 checkbox items instead of exactly 3",
+            "repetition 4: todo.md was not read and updated after every artifact write",
+            "repetition 4: structured settlement does not equal final artifact bytes"
+          ],
+          "evidence": []
+        },
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "totalTokens": 0,
+          "cachedInputTokens": 0
+        },
+        "raw": {
+          "skipped": true
+        }
+      }
+    }
+  ],
+  "authority": "development evidence; independent source review and human acceptance required"
+}

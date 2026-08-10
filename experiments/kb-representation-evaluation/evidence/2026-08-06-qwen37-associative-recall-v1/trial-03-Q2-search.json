@@ -1,0 +1,285 @@
+{
+  "trial": 3,
+  "question": {
+    "id": "Q2",
+    "prompt": "Two otherwise identical entry proposals lack provenance: one comes from an automated processor, the other from a human at the terminal. Should they pass the same gate, and where is that distinction enforced?"
+  },
+  "condition": "search",
+  "route": {
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S05",
+      "SHILU-S06",
+      "SHILU-S11"
+    ]
+  },
+  "answer": {
+    "claims": [
+      {
+        "claimId": "Q2-C1",
+        "valueKey": "reject-missing-provenance",
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "Validation Rules"
+          }
+        ]
+      },
+      {
+        "claimId": "Q2-C2",
+        "valueKey": "human-source-exempt",
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "MCP Writes: Job-Scoped Claims Required"
+          },
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "Validation Rules"
+          }
+        ]
+      }
+    ]
+  },
+  "score": {
+    "gold": [
+      "SHILU-S05",
+      "SHILU-S09"
+    ],
+    "candidates": [
+      "SHILU-S02",
+      "SHILU-S05",
+      "SHILU-S06",
+      "SHILU-S11"
+    ],
+    "hitAt1": false,
+    "hitAt3": true,
+    "hitAt5": true,
+    "recallAt1": 0,
+    "recallAt3": 0.5,
+    "recallAt5": 0.5,
+    "allRequiredHitAt3": false,
+    "allRequiredHitAt5": false,
+    "reciprocalRank": 0.5,
+    "openedSources": 4,
+    "answerAccuracy": 1,
+    "citationPrecision": 0,
+    "citationCoverage": 0,
+    "protocolValid": true,
+    "groundedSuccess": false,
+    "claimResults": [
+      {
+        "claimId": "Q2-C1",
+        "expectedKey": "reject-missing-provenance",
+        "actualKey": "reject-missing-provenance",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "Validation Rules",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": true,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      },
+      {
+        "claimId": "Q2-C2",
+        "expectedKey": "human-source-exempt",
+        "actualKey": "human-source-exempt",
+        "answerCorrect": true,
+        "citations": [
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "MCP Writes: Job-Scoped Claims Required",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          },
+          {
+            "sourceId": "SHILU-S05",
+            "anchor": "Validation Rules",
+            "locatable": false,
+            "opened": true,
+            "supportsClaim": false,
+            "correct": false
+          }
+        ],
+        "hasCorrectCitation": false
+      }
+    ]
+  },
+  "routeParseError": null,
+  "answerParseError": null,
+  "activation": {
+    "path": "inputs/search-Q2.txt",
+    "sha256": "sha256:d1c20df34fbc63ec7637b180ab33b68931f30f6270b4056e124ad2c34aa56137",
+    "bytes": 480
+  },
+  "sourcePacket": {
+    "path": "inputs/03-Q2-search-sources.md",
+    "sha256": "sha256:79368caecd917c0fd757583c2a3061044b594e814a2383c753152efdbc0c7291",
+    "bytes": 5298
+  },
+  "routeRun": {
+    "startedAt": "2026-08-06T09:47:35.685Z",
+    "finishedAt": "2026-08-06T09:47:51.836Z",
+    "durationMs": 16150,
+    "exitCode": 0,
+    "answerText": "{\"candidates\":[\"SHILU-S02\",\"SHILU-S05\",\"SHILU-S06\",\"SHILU-S11\"]}",
+    "usage": {
+      "tokens": {
+        "total": 24066,
+        "input": 6,
+        "output": 549,
+        "reasoning": 0,
+        "cache": {
+          "write": 23511,
+          "read": 0
+        }
+      },
+      "cost": 0.0126363,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009660070,
+        "sessionID": "ses_029876475ffeHf8uQBbQxSc9a0",
+        "part": {
+          "id": "prt_fd678aaa1001PYWeKQFh0mVMYD",
+          "messageID": "msg_fd6789c2f001TXiwi5Vvdc4nzv",
+          "sessionID": "ses_029876475ffeHf8uQBbQxSc9a0",
+          "snapshot": "280593384b0ce9a86e3db23a14ec7bb13c10ba01",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009669376,
+        "sessionID": "ses_029876475ffeHf8uQBbQxSc9a0",
+        "part": {
+          "id": "prt_fd678cd33001hqdxKcbwI1NxCe",
+          "messageID": "msg_fd6789c2f001TXiwi5Vvdc4nzv",
+          "sessionID": "ses_029876475ffeHf8uQBbQxSc9a0",
+          "type": "text",
+          "text": "{\"candidates\":[\"SHILU-S02\",\"SHILU-S05\",\"SHILU-S06\",\"SHILU-S11\"]}",
+          "time": {
+            "start": 1786009668915,
+            "end": 1786009669373
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009671791,
+        "sessionID": "ses_029876475ffeHf8uQBbQxSc9a0",
+        "part": {
+          "id": "prt_fd678d86c001YU25cAHhdtBilN",
+          "reason": "stop",
+          "snapshot": "280593384b0ce9a86e3db23a14ec7bb13c10ba01",
+          "messageID": "msg_fd6789c2f001TXiwi5Vvdc4nzv",
+          "sessionID": "ses_029876475ffeHf8uQBbQxSc9a0",
+          "type": "step-finish",
+          "tokens": {
+            "total": 24066,
+            "input": 6,
+            "output": 549,
+            "reasoning": 0,
+            "cache": {
+              "write": 23511,
+              "read": 0
+            }
+          },
+          "cost": 0.0126363
+        }
+      }
+    ],
+    "rawStdout": null
+  },
+  "answerRun": {
+    "startedAt": "2026-08-06T09:47:51.836Z",
+    "finishedAt": "2026-08-06T09:48:15.114Z",
+    "durationMs": 23277,
+    "exitCode": 0,
+    "answerText": "```json\n{\"claims\":[{\"claimId\":\"Q2-C1\",\"valueKey\":\"reject-missing-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"Validation Rules\"}]},{\"claimId\":\"Q2-C2\",\"valueKey\":\"human-source-exempt\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"MCP Writes: Job-Scoped Claims Required\"},{\"sourceId\":\"SHILU-S05\",\"anchor\":\"Validation Rules\"}]}]}\n```",
+    "usage": {
+      "tokens": {
+        "total": 26010,
+        "input": 6,
+        "output": 755,
+        "reasoning": 0,
+        "cache": {
+          "write": 25249,
+          "read": 0
+        }
+      },
+      "cost": 0.0138349,
+      "reason": "stop"
+    },
+    "stderr": null,
+    "eventParseError": null,
+    "toolProtocolError": null,
+    "rawEvents": [
+      {
+        "type": "step_start",
+        "timestamp": 1786009678616,
+        "sessionID": "ses_029872560ffe7cBx6gFKQzhBNR",
+        "part": {
+          "id": "prt_fd678f3150011Ls2I328ppp50t",
+          "messageID": "msg_fd678db4c001otWw2kaXQQ1eiH",
+          "sessionID": "ses_029872560ffe7cBx6gFKQzhBNR",
+          "snapshot": "54191f9e1655bbd8f88b4ae81259689b461eb1ba",
+          "type": "step-start"
+        }
+      },
+      {
+        "type": "text",
+        "timestamp": 1786009691437,
+        "sessionID": "ses_029872560ffe7cBx6gFKQzhBNR",
+        "part": {
+          "id": "prt_fd6791e6c0011HbXNFO2IJQz9N",
+          "messageID": "msg_fd678db4c001otWw2kaXQQ1eiH",
+          "sessionID": "ses_029872560ffe7cBx6gFKQzhBNR",
+          "type": "text",
+          "text": "```json\n{\"claims\":[{\"claimId\":\"Q2-C1\",\"valueKey\":\"reject-missing-provenance\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"Validation Rules\"}]},{\"claimId\":\"Q2-C2\",\"valueKey\":\"human-source-exempt\",\"citations\":[{\"sourceId\":\"SHILU-S05\",\"anchor\":\"MCP Writes: Job-Scoped Claims Required\"},{\"sourceId\":\"SHILU-S05\",\"anchor\":\"Validation Rules\"}]}]}\n```",
+          "time": {
+            "start": 1786009689708,
+            "end": 1786009691436
+          }
+        }
+      },
+      {
+        "type": "step_finish",
+        "timestamp": 1786009695064,
+        "sessionID": "ses_029872560ffe7cBx6gFKQzhBNR",
+        "part": {
+          "id": "prt_fd6793355001TrNa54E9LWWg4Z",
+          "reason": "stop",
+          "snapshot": "54191f9e1655bbd8f88b4ae81259689b461eb1ba",
+          "messageID": "msg_fd678db4c001otWw2kaXQQ1eiH",
+          "sessionID": "ses_029872560ffe7cBx6gFKQzhBNR",
+          "type": "step-finish",
+          "tokens": {
+            "total": 26010,
+            "input": 6,
+            "output": 755,
+            "reasoning": 0,
+            "cache": {
+              "write": 25249,
+              "read": 0
+            }
+          },
+          "cost": 0.0138349
+        }
+      }
+    ],
+    "rawStdout": null
+  }
+}

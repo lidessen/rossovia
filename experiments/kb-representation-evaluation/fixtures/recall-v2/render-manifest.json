@@ -1,0 +1,66 @@
+{
+  "renderer": "headless Chrome/Chromium",
+  "windowSize": "1600x1000",
+  "files": [
+    {
+      "caseSet": "development",
+      "questionId": "Q1",
+      "svgSha256": "sha256:f640a60f55a40c7254e424448760365eed428148e07d1ba69f6a3af37f475829",
+      "pngSha256": "sha256:57570ebc600a48034272fabb107789b2cbe8fbf9d6af7ebe948aa3e39d6361e4"
+    },
+    {
+      "caseSet": "development",
+      "questionId": "Q2",
+      "svgSha256": "sha256:b121928cec14cefce87c0ad35d5d2966467b360bef5940831d7d7f9d42bb40b5",
+      "pngSha256": "sha256:3ea5196f43e2edcc0c2cce9a25e89672d05bf063883cce8cc582464432f48c91"
+    },
+    {
+      "caseSet": "development",
+      "questionId": "Q3",
+      "svgSha256": "sha256:6e52540654c2183fb581d4f5befcfb229bbe125f201312e70c7089c0f4051ab8",
+      "pngSha256": "sha256:3b46e11f35466dde02ad01d191429cd94e6da11735207962efcc436584dba0e9"
+    },
+    {
+      "caseSet": "development",
+      "questionId": "Q4",
+      "svgSha256": "sha256:9e21e5c8e2288f41846068dd867da042ea4764786a4abcdcc4940f30b51e1f4f",
+      "pngSha256": "sha256:86f784291b854cc43a45dd7dde500f6251c2e9cfd6d76d1de6384f0b854719b0"
+    },
+    {
+      "caseSet": "development",
+      "questionId": "Q5",
+      "svgSha256": "sha256:9bcf1110171a8ddadf529c797a117f0ea6de878c9367e25886d95adae424d82a",
+      "pngSha256": "sha256:32217e8af5f490752a86acdd9b23c0161f07da539c0c16fe752abea7c7014f36"
+    },
+    {
+      "caseSet": "development",
+      "questionId": "Q6",
+      "svgSha256": "sha256:e52e9349a723d68c00629c753d41a357f577dc2205bd6a960df82072f8a2cdd2",
+      "pngSha256": "sha256:daa8c7f4bf02aa0b631fcf7100315cdbca009a6b6f869296dde4f40c7feb5ffb"
+    },
+    {
+      "caseSet": "confirmation",
+      "questionId": "V2-Q1",
+      "svgSha256": "sha256:85f97e6b5ce6ac8a03b305c6ed4933424accb693e2e30ff2df05e41727149c7a",
+      "pngSha256": "sha256:60a41439c654e5702c48afad5de98a832d41938a0b982094b014144a38bb9d1e"
+    },
+    {
+      "caseSet": "confirmation",
+      "questionId": "V2-Q2",
+      "svgSha256": "sha256:c17521607a939b12fedb3872f45a59e90d61fc4f7e2dd2b4cc0816b72389ad99",
+      "pngSha256": "sha256:83845b92752413523142d8c43c5cdb9d231d968fbc14fc280b9574f990f59479"
+    },
+    {
+      "caseSet": "confirmation",
+      "questionId": "V2-Q3",
+      "svgSha256": "sha256:713885db5543481eeb2b2c93454318cc5e984badad48f63387f50ae971a97dc7",
+      "pngSha256": "sha256:f9f909b05bd1ddb53855e9844a67fe4562eadff6b7dd646028ab6f7e9bac02b3"
+    },
+    {
+      "caseSet": "confirmation",
+      "questionId": "V2-Q4",
+      "svgSha256": "sha256:6b0672b85f509c62a7d45e34d4d1e15fece245235148736babe84901c03a83e7",
+      "pngSha256": "sha256:333b86b2d720aad3600ebdaabfba0ecf3dc5ceb04738982ab517e8bc6e293219"
+    }
+  ]
+}

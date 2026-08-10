@@ -196,7 +196,7 @@ function judgeInstructions(
   recovering = false,
 ): string {
   return [
-    "You are an independent blind evaluator of two execution profiles across repeated runs of the same real task.",
+    "You are an independent blind evaluator of two candidates across repeated runs of the same real task.",
     "Candidate identity, provider, model, and schedule are hidden. Judge only the retained task evidence against the evaluator-only reference criteria and failure classes.",
     "Prefer a candidate only for a material and repeated difference. Treat within-candidate inconsistency as evidence against a confident preference.",
     "Do not reward verbosity, style, principle vocabulary, or low usage by itself. Return tie when the material result is the same and inconclusive when the evidence cannot support a comparison.",

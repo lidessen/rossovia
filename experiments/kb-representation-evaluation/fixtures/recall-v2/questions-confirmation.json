@@ -1,0 +1,106 @@
+[
+  {
+    "id": "V2-Q1",
+    "prompt": "A transcript arrives while the optional model is unavailable. Which system boundary still applies, and what two actions begin the durable knowledge workflow before interpretation?",
+    "claims": [
+      {
+        "id": "V2-Q1-C1",
+        "prompt": "What remains true when the model is unavailable?",
+        "options": [
+          "ai-optional-not-core-dependency",
+          "capture-must-stop",
+          "provider-becomes-authority",
+          "unknown"
+        ]
+      },
+      {
+        "id": "V2-Q1-C2",
+        "prompt": "Which two actions begin the durable workflow?",
+        "options": [
+          "register-source-then-enqueue-digest",
+          "generate-index-then-delete-source",
+          "commit-entry-then-capture",
+          "unknown"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "V2-Q2",
+    "prompt": "Two stored entries are incompatible, but neither is established as the newer rule. Which relationship projection can represent that fact, and which decision branch remains available before commit?",
+    "claims": [
+      {
+        "id": "V2-Q2-C1",
+        "prompt": "Which relationship represents unresolved incompatibility?",
+        "options": [
+          "contradicts-relation",
+          "supersedes-relation",
+          "same-as-relation",
+          "delete-old-entry"
+        ]
+      },
+      {
+        "id": "V2-Q2-C2",
+        "prompt": "Which branch remains available before commit?",
+        "options": [
+          "review-before-commit-option",
+          "forced-supersession",
+          "index-only-resolution",
+          "silent-overwrite"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "V2-Q3",
+    "prompt": "For a multi-word search containing operator-looking text, the early prose says tokens are implicitly ANDed, while the return expression is built later. What behavior does the implementation actually produce, and how are special-looking tokens protected?",
+    "claims": [
+      {
+        "id": "V2-Q3-C1",
+        "prompt": "How are multiple tokens combined by the implementation?",
+        "options": [
+          "or-join-allows-partial-recall",
+          "implicit-and-requires-all",
+          "raw-query-forwarded",
+          "unknown"
+        ]
+      },
+      {
+        "id": "V2-Q3-C2",
+        "prompt": "How are operator-looking tokens protected?",
+        "options": [
+          "quote-tokens-as-literals",
+          "strip-all-punctuation",
+          "execute-as-fts-operators",
+          "unknown"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "V2-Q4",
+    "prompt": "During entry creation, catalog indexing returns an error. According to the implementation's operation order, what has happened to the entry, and has its creation event been recorded before the error returns?",
+    "claims": [
+      {
+        "id": "V2-Q4-C1",
+        "prompt": "What has happened to the entry?",
+        "options": [
+          "entry-already-persisted",
+          "entry-write-rolled-back",
+          "entry-not-validated",
+          "unknown"
+        ]
+      },
+      {
+        "id": "V2-Q4-C2",
+        "prompt": "Has the creation event been recorded before the indexing error returns?",
+        "options": [
+          "creation-event-not-recorded",
+          "creation-event-recorded-first",
+          "event-status-unknown",
+          "no-event-design"
+        ]
+      }
+    ]
+  }
+]
