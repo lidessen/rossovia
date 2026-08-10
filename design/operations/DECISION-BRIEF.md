@@ -63,13 +63,19 @@ policy and its reopening condition instead of asking a performative question.
 | Strategic direction or mission | `strategic-advisory` | Strategy Case | its `Principal Decision Brief` section and the session response |
 | Material work or resource continuation | `work-estimation` + designated approver | Work Estimate / Budget Card | the approval request and session response |
 | Name or shared definition | `naming-and-articulation` | owning design or definition record | the naming record and session response |
-| Integration disposition | verifier / integration steward | PR and review record | PR template and session response |
+| Integration disposition | verifier / integration steward | PR and review record | active session or human interaction UI; the PR records only the resulting status and source |
 | Organization or form change | owning campaign / `form-guidance` | design decision or campaign | the review request and session response |
 
 The producing role must preserve the difference between a fact, a claim, and
 an option. The Principal's choice authorizes only the immediate result stated
 for that key; later work, budget release, merge, or a semantic change still
 requires its named gate.
+
+For integration, keep the option comparison and reply key in the live handoff.
+The PR remains a stable change and review record: before a decision it says
+that authority is withheld and points to the current handoff; after a decision
+it records the selected disposition and source. It does not preserve stale
+interactive choices as though they were part of the code change.
 
 ## Action and boundary test
 

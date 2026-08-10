@@ -35,6 +35,20 @@ compact reply key. It must not send a bare approval request that requires the
 Principal to reconstruct the available choices. The brief is presentation; the
 named source and human authority remain unchanged.
 
+Deliver transient choices and reply keys in the active conversation or human
+interaction surface. A pull request is a durable record, not an interactive
+choice panel: it records the current integration state, whether merge authority
+is withheld or granted, and the source of any decision already made. Do not
+leave an A/B/C table in the PR body to become stale after the handoff changes.
+
+A pull request is also a change explanation for maintainers, not only an
+authority and evidence packet. Lead its description with the concrete problem,
+the components and behavior changed, the observable result, and intentional
+non-goals. A reader should be able to understand the implementation delta
+without reconstructing it from Mission fields, checks, or the raw diff. Follow
+that account with verification and integration context. Governance evidence
+supports the change narrative; it does not replace it.
+
 For a small, reversible local edit, the principal may declare that it remains
 outside shared integration. The moment work must survive a session, affect an
 accepted source, involve another reviewer, or be shared remotely, use the

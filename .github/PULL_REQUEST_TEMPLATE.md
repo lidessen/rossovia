@@ -1,38 +1,40 @@
-## Mission
+## Change
+
+<!--
+Write this section for a code reader deciding whether to inspect the diff.
+Name concrete components and before-and-after behavior. Do not substitute the
+Mission, review process, or check list for an explanation of the change.
+-->
+
+**Problem:**
+
+**What changed:**
+
+-
+
+**Observable result:**
+
+**Intentionally unchanged / out of scope:**
+
+## Verification
+
+- Acceptance observations:
+- Checks run and results:
+- Evidence or reproduction path:
+- Known limitations and reopening signal:
+
+## Integration context
 
 - Human mandate / issue / decision link:
-- Desired state and bounded non-scope:
-- Branch and worktree:
-
-## Authority and planning
-
 - Accepted source(s) affected:
+- Branch, worktree, and exact head:
 - Strategy Case or Work Estimate / envelope, if material:
-- Named verifier:
-- Human decision requested: merge / return to work / reject
-
-## Principal Decision Brief
-
-**Recommendation:**
-
-| Key | Immediate authorized result | Main tradeoff / reopening signal |
-|---|---|---|
-| A — merge | | |
-| B — return to work | | |
-| C — reject / hold | | |
-
-**Your reply:** `A`, `B`, `C`, or `explain <key>`.
-
-## Evidence
-
-- Changes and acceptance observations:
-- Checks run locally and their results:
-- Work Cell record or other execution evidence, if used:
-- Reviewed head:
-- Independent review evidence and verdict:
-- Findings disposition:
+- Named independent verifier and exact-head verdict:
+- Review findings and disposition:
 - Late asynchronous review reconciliation:
-- Unresolved work, risks, and reopening observation:
+- Current integration state: draft / ready / returned / held / merged / rejected / abandoned
+- Merge authority: withheld / authorized by <source>
+- Decision record or current handoff source:
 
 ## Disposition
 
@@ -40,5 +42,5 @@
 - [ ] This PR does not self-approve a strategy, budget, semantic fact, or merge.
 - [ ] The named independent review explicitly covers the current head; absence
       of comments or a pending asynchronous reviewer was not treated as completion.
-- [ ] The Principal's merge / return / hold decision is recorded above.
+- [ ] Any Principal decision already made is recorded above with its source.
 - [ ] The worktree will be removed after merge, rejection, or explicit abandonment.
