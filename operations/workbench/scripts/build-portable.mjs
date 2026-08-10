@@ -48,10 +48,7 @@ try {
 
 function normalizeBundle(path) {
   const source = readFileSync(path, "utf8");
-  const normalized = source
-    .replace(/^\/\/ .*\/node_modules\//gm, "// node_modules/")
-    .replace(/[ \t]+(?=\r?\n)/g, "");
-  writeFileSync(path, normalized, "utf8");
+  writeFileSync(path, source.replace(/[ \t]+(?=\r?\n)/g, ""), "utf8");
 }
 
 function succeeds(command, arguments_) {
