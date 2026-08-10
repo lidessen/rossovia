@@ -69,10 +69,16 @@ delegation work.
 When the human asks to create or operate a branch, worktree, PR, review, or
 merge, load `design/operations/OPERATING-PROTOCOL.md` and preserve
 `.github/PULL_REQUEST_TEMPLATE.md` as the repository-specific handoff; a
-generic publishing tool must not replace it with a simpler body. Before
-recommending or performing a merge, require a named independent review record
-for the current head and present its compact packet through the Principal
-Decision Brief. Do not treat an empty or pending review surface as completed.
+generic publishing tool must not replace it with a simpler body. Lead the PR
+description with the concrete problem, components and behavior changed,
+observable result, and intentional non-goals. Mission, authority, review, and
+checks support that account rather than replace it. Before recommending or
+performing a merge, require a named independent
+review record for the current head and present its compact packet through the
+Principal Decision Brief. Do not treat an empty or pending review surface as
+completed. Keep transient reply choices in the current conversation or human
+interaction surface; the PR records only its current integration state,
+withheld or granted authority, and the source of any decision already made.
 Before settling or pruning the integration Mission, re-read the source PR and
 give every late review observation a traced disposition. A local reversible
 task that does not enter shared integration remains outside this entry.
@@ -141,7 +147,7 @@ Each skill is a self-contained directory under `skills/`. The `SKILL.md` file is
 
 ## Skill Format Specification
 
-Skills follow the [Agent Skills Specification](https://agentskills.io/specification). Also see [Codex skills docs](https://code.Codex.com/docs/en/skills).
+Skills follow the [Agent Skills Specification](https://agentskills.io/specification). Also see [Codex skills docs](https://developers.openai.com/codex/skills).
 
 A `SKILL.md` has two parts:
 
