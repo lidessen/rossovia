@@ -21,6 +21,7 @@ const principalLocusViews = new Set([
   "tasks",
   "principal",
   "agent",
+  "agent-pending",
   "projects",
   "project",
   "independent",
@@ -113,6 +114,24 @@ export function classifyWorkbenchAttention(items) {
     system: workItems.filter(
       (item) => item?.nextActor === "system" && item?.attention === "exception",
     ),
+  };
+}
+
+export function isExactLiveAgentWork(item) {
+  return item?.kind === "agent-work"
+    && item?.lifecycle === "in-progress"
+    && item?.evidence?.freshness?.kind === "live";
+}
+
+export function isPendingAgentWork(item) {
+  return item?.nextActor === "agent" && !isExactLiveAgentWork(item);
+}
+
+export function classifyAgentResponsibility(items) {
+  const workItems = Array.isArray(items) ? items : [];
+  return {
+    live: workItems.filter(isExactLiveAgentWork),
+    pending: workItems.filter(isPendingAgentWork),
   };
 }
 
@@ -1228,22 +1247,17 @@ export function restoredPrincipalLocusState(resolved) {
     none: "无需行动",
   };
 
-  function isExactLiveAgentWork(item) {
-    return item.kind === "agent-work"
-      && item.lifecycle === "in-progress"
-      && first(first(item.evidence, ["freshness"], {}), ["kind"]) === "live";
-  }
-
   function workItemMatchesView(item, view = state.activeView) {
     if (view === "principal") return item.nextActor === "principal";
     if (view === "agent") return isExactLiveAgentWork(item);
+    if (view === "agent-pending") return isPendingAgentWork(item);
     if (view === "independent") return isIndependentWorkbenchTask(item);
     if (view === "completed") return item.lifecycle === "settled";
     if (view === "tasks") {
       if (state.taskFilter === "principal") return item.nextActor === "principal";
       if (state.taskFilter === "agent") return isExactLiveAgentWork(item);
       if (state.taskFilter === "agent-pending") {
-        return item.nextActor === "agent" && !isExactLiveAgentWork(item);
+        return isPendingAgentWork(item);
       }
       if (state.taskFilter === "independent") {
         return isIndependentWorkbenchTask(item);
@@ -1317,16 +1331,21 @@ export function restoredPrincipalLocusState(resolved) {
 
   function renderViewNavigation() {
     const items = workItems();
+    const agentResponsibility = classifyAgentResponsibility(items);
     const counts = {
       all: items.length,
       principal: items.filter((item) => item.nextActor === "principal").length,
-      agent: items.filter(isExactLiveAgentWork).length,
+      agent: agentResponsibility.live.length,
+      agentPending: agentResponsibility.pending.length,
       independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
     $("#all-task-count").textContent = String(counts.all);
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
+    $("#agent-pending-task-count").textContent = String(counts.agentPending);
+    $("#task-filter-agent-count").textContent = String(counts.agent);
+    $("#task-filter-agent-pending-count").textContent = String(counts.agentPending);
     const independentCapability = taskSourceCapability();
     $("#independent-task-count").textContent =
       first(independentCapability, ["standing"]) !== "available"
@@ -1346,7 +1365,7 @@ export function restoredPrincipalLocusState(resolved) {
       const active = mobileView === "overview"
         ? state.activeView === "overview"
         : mobileView === "tasks"
-          ? ["tasks", "principal", "agent", "independent", "completed"].includes(state.activeView)
+          ? ["tasks", "principal", "agent", "agent-pending", "independent", "completed"].includes(state.activeView)
           : state.activeView === "projects" || state.activeView === "project";
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-current", active ? "page" : "false");
@@ -1564,7 +1583,8 @@ export function restoredPrincipalLocusState(resolved) {
       overview: ["Workbench overview", "总览", "跨项目查看需要你处理、Agent 正在进行和状态未知的工作。"],
       projects: ["Projects", "项目", "按项目与 Worktree 查看当前工作，不把观察关系伪装成任务绑定。"],
       principal: ["Needs you", "待我处理", "只显示下一责任方明确是你的事项；进入详情后再完成决策。"],
-      agent: ["Agent work", "Agent 工作", "只显示有实时载体证据的当前 Agent 工作。"],
+      agent: ["Agent live", "Agent 运行中", "只显示有实时载体证据的当前 Agent 运行。"],
+      "agent-pending": ["Agent queue", "待 Agent 接手", "只显示下一责任方为 Agent、但尚无精确实时执行证据的事项。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
       tasks: ["Tasks", "任务", "用统一形式查看不同责任方和生命周期的工作。"],

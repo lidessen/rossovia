@@ -101,8 +101,12 @@
             <strong id="principal-task-count">—</strong>
           </button>
           <button class="view-button" type="button" data-view="agent">
-            <span>Agent 工作</span>
+            <span>Agent 运行中</span>
             <strong id="agent-task-count">—</strong>
+          </button>
+          <button class="view-button" type="button" data-view="agent-pending">
+            <span>待 Agent 接手</span>
+            <strong id="agent-pending-task-count">—</strong>
           </button>
         </nav>
 
@@ -195,8 +199,14 @@
           <div class="task-filter-bar" id="task-filter-bar" hidden>
             <button class="task-filter is-active" type="button" data-task-filter="all">全部</button>
             <button class="task-filter" type="button" data-task-filter="principal">待我</button>
-            <button class="task-filter" type="button" data-task-filter="agent">Agent 工作</button>
-            <button class="task-filter" type="button" data-task-filter="agent-pending">待 Agent</button>
+            <button class="task-filter" type="button" data-task-filter="agent">
+              <span>Agent 运行中</span>
+              <strong id="task-filter-agent-count">—</strong>
+            </button>
+            <button class="task-filter" type="button" data-task-filter="agent-pending">
+              <span>待 Agent 接手</span>
+              <strong id="task-filter-agent-pending-count">—</strong>
+            </button>
             <button class="task-filter" type="button" data-task-filter="independent">独立</button>
             <button class="task-filter" type="button" data-task-filter="verification">待验证</button>
             <button class="task-filter" type="button" data-task-filter="completed">已完成</button>
@@ -409,7 +419,7 @@
 
             <p class="task-boundary-note">
               Project、Worktree 与 Mission 都只提供上下文。分配给 Agent
-              不表示 Agent 已经运行；只有精确实时执行证据才会进入 Agent 工作视图。
+              不表示 Agent 已经运行；只有精确实时执行证据才会进入 Agent 运行中视图。
             </p>
             <div class="task-primary-actions">
               <button class="primary-action" id="task-create-submit" type="submit">

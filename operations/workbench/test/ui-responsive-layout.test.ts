@@ -173,14 +173,22 @@ describe("Workbench responsive layout", () => {
     );
   });
 
-  test("separates pending Agent responsibility from exact live Agent work", () => {
-    expect(html).toContain('data-task-filter="agent">Agent 工作</button>');
-    expect(html).toContain('data-task-filter="agent-pending">待 Agent</button>');
+  test("separates pending Agent responsibility from exact live Agent work across desktop and narrow task views", () => {
+    expect(html).toContain('data-view="agent"');
+    expect(html).toContain('<span>Agent 运行中</span>');
+    expect(html).toContain('id="agent-task-count"');
+    expect(html).toContain('data-view="agent-pending"');
+    expect(html).toContain('<span>待 Agent 接手</span>');
+    expect(html).toContain('id="agent-pending-task-count"');
+    expect(html).toContain('data-task-filter="agent"');
+    expect(html).toContain('id="task-filter-agent-count"');
+    expect(html).toContain('data-task-filter="agent-pending"');
+    expect(html).toContain('id="task-filter-agent-pending-count"');
     expect(app).toContain('state.taskFilter === "agent-pending"');
-    expect(app).toContain(
-      'item.nextActor === "agent" && !isExactLiveAgentWork(item)',
-    );
-    expect(app).toContain('item.kind === "agent-work"');
+    expect(app).toContain('if (view === "agent-pending") return isPendingAgentWork(item)');
+    expect(app).toContain('classifyAgentResponsibility(items)');
+    const mobileButtons = html.match(/data-mobile-view="[^"]+"/g) ?? [];
+    expect(mobileButtons).toHaveLength(3);
   });
 
   test("keeps full worktree identities inside the mobile viewport", () => {
