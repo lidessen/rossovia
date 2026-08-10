@@ -1,0 +1,7 @@
+{
+  "version": "parent-admission-matched-pair.order.v1",
+  "order": [
+    "treatment",
+    "control"
+  ]
+}

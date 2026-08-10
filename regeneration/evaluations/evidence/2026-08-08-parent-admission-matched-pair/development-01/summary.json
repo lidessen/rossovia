@@ -1,0 +1,243 @@
+{
+  "version": "parent-admission-matched-pair.result.v1",
+  "status": "mechanically-comparable",
+  "packetSha256": "d79607a12fcc334117c62f6115eeef98609235f894c372980b98468538d1cffa",
+  "childOutputSha256": "9e89f064adb44d9a31f07942ec0d9f0ec51b1083a8ae946d9dc165703cf01972",
+  "executionOrder": [
+    "treatment",
+    "control"
+  ],
+  "directBaseline": {
+    "runId": "74a95ccd-2272-4bdb-a123-5f0d99b0eab3",
+    "cellId": "northstar-topology-direct",
+    "status": "passed",
+    "durationMs": 42770,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 9147,
+      "outputTokens": 5701,
+      "totalTokens": 14848,
+      "cachedInputTokens": 1920
+    },
+    "estimatedCostUsd": 0.00261344,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    }
+  },
+  "frozenChild": {
+    "runId": "aa45aa1b-8e69-4949-9785-dc919ad1bbd1",
+    "cellId": "northstar-topology-nested-child",
+    "status": "passed",
+    "durationMs": 13978,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 5135,
+      "outputTokens": 1754,
+      "totalTokens": 6889,
+      "cachedInputTokens": 2176
+    },
+    "estimatedCostUsd": 0.00091147,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    }
+  },
+  "controlParent": {
+    "runId": "b49cf64b-0611-4960-9a65-a6c2dad796f7",
+    "cellId": "northstar-admission-pair-control",
+    "status": "passed",
+    "durationMs": 50712,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 17227,
+      "outputTokens": 6828,
+      "totalTokens": 24055,
+      "cachedInputTokens": 10112
+    },
+    "estimatedCostUsd": 0.00293625,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    },
+    "workspaceTree": {
+      "beforeSha256": "981200cdf5e902fd4a53caff043f95c2480a7b0c6e21eb8a0485174696155237",
+      "afterSha256": "981200cdf5e902fd4a53caff043f95c2480a7b0c6e21eb8a0485174696155237",
+      "unchanged": true
+    }
+  },
+  "treatmentParent": {
+    "runId": "0b948293-06bb-4a2f-8a0e-bfd33885cacf",
+    "cellId": "northstar-admission-pair-treatment",
+    "status": "passed",
+    "durationMs": 68173,
+    "configuredDriver": {
+      "adapter": "ai-sdk-v7",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "pricing": {
+        "inputPerMillionUsd": 0.14,
+        "cachedInputPerMillionUsd": 0.0028,
+        "outputPerMillionUsd": 0.28,
+        "source": "https://api-docs.deepseek.com/quick_start/pricing",
+        "revision": "2026-07-31"
+      }
+    },
+    "servingObservation": {
+      "selectedRoutes": [
+        "ai-sdk-v7/deepseek/deepseek-v4-flash"
+      ],
+      "backendFingerprints": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    },
+    "usage": {
+      "inputTokens": 20641,
+      "outputTokens": 8201,
+      "totalTokens": 28842,
+      "cachedInputTokens": 10880
+    },
+    "estimatedCostUsd": 0.00369328,
+    "outputAvailable": true,
+    "outputVerification": {
+      "passed": true,
+      "errors": []
+    },
+    "workspaceDiff": {
+      "added": [],
+      "changed": [],
+      "removed": []
+    },
+    "workspaceTree": {
+      "beforeSha256": "981200cdf5e902fd4a53caff043f95c2480a7b0c6e21eb8a0485174696155237",
+      "afterSha256": "981200cdf5e902fd4a53caff043f95c2480a7b0c6e21eb8a0485174696155237",
+      "unchanged": true
+    }
+  },
+  "reconstructedNested": {
+    "control": {
+      "totalUsage": {
+        "inputTokens": 22362,
+        "outputTokens": 8582,
+        "totalTokens": 30944,
+        "cachedInputTokens": 12288
+      },
+      "totalDurationMs": 64690,
+      "estimatedCostUsd": 0.0038477200000000002
+    },
+    "treatment": {
+      "totalUsage": {
+        "inputTokens": 25776,
+        "outputTokens": 9955,
+        "totalTokens": 35731,
+        "cachedInputTokens": 13056
+      },
+      "totalDurationMs": 82151,
+      "estimatedCostUsd": 0.00460475
+    }
+  },
+  "mechanicalComparison": {
+    "valid": true,
+    "errors": [],
+    "contractComparison": {
+      "passed": true,
+      "errors": [],
+      "controlNormalizedSha256": "67d915b60eab086165d2a2985f8763a850182b1208bdb455e6fe55e0aa465613",
+      "treatmentNormalizedSha256": "67d915b60eab086165d2a2985f8763a850182b1208bdb455e6fe55e0aa465613",
+      "allowedDifferences": [
+        "id",
+        "workspace.root",
+        "instructions[3]",
+        "executionProfile.id",
+        "executionProfile.contextPolicy"
+      ],
+      "controlInstruction": "Treat the supplied child report as a bounded source report, reconstruct its claims against the parent-visible implementation evidence, and retain final judgment yourself.",
+      "treatmentInstruction": "The supplied child report is a schema-valid retained source report from a bounded Cell that read exactly the named frozen protocol and case files. Treat its exact source claims as admissible bounded evidence for integration, while retaining uncertainty and final judgment yourself. You may rely on exact claims present in the report without pretending the raw child files are parent-visible. Do not treat the child conclusion as semantic verification, durable acceptance, or authority."
+    },
+    "backendFingerprints": {
+      "control": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ],
+      "treatment": [
+        "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+      ]
+    }
+  },
+  "externalSemanticJudgeRun": false,
+  "semanticDisposition": "withheld pending independent label-masked review"
+}

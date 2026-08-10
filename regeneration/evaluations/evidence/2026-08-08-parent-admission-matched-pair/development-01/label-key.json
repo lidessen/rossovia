@@ -1,0 +1,5 @@
+{
+  "version": "parent-admission-matched-pair.label-key.v1",
+  "A": "control",
+  "B": "treatment"
+}

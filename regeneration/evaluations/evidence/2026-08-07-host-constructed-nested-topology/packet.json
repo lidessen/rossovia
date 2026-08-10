@@ -1,0 +1,71 @@
+{
+  "version": "delegation-topology-probe.packet.v1",
+  "status": "prepared-not-executed",
+  "sourceFixture": "../2026-08-06-todo-return-trigger/fixture",
+  "runtime": {
+    "workCellSourceTreeSha256": "0925d6883d4d5207b4b5548dc45511089e008eaf9a787d95ec811c3e4b4605bb"
+  },
+  "files": {
+    "run-topology.ts": "05f9832ffabaa2581b285d7caf92d8f7057b5c3a5389a235b8bfec96dc3099e6",
+    "fixture.sha256": "b20fa4ab2bb03d1439a4db75ba26b868a83aa14ae8f0f6025eaadf7e82b726bb",
+    "evaluator-only/review.md": "ec09f74145648e8f61f1d0d7cce646c3489b7fad2fde5ff92a7019e81eda6a7e"
+  },
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-v4-flash",
+    "credentialEnv": "DEEPSEEK_API_KEY",
+    "inferencePolicy": {
+      "thinking": "enabled",
+      "reasoningEffort": "low"
+    }
+  },
+  "topology": {
+    "directFiles": [
+      "TASK.md",
+      "conformance/northstar-job-events-v2/case-07.json",
+      "docs/northstar-job-events-v2.md",
+      "package.json",
+      "src/adapters/northstar-job-event.ts",
+      "src/domain/job-transition.ts",
+      "test/northstar-job-event.test.ts",
+      "todo.md",
+      "tsconfig.json"
+    ],
+    "childFiles": [
+      "conformance/northstar-job-events-v2/case-07.json",
+      "docs/northstar-job-events-v2.md"
+    ],
+    "parentFiles": [
+      "TASK.md",
+      "package.json",
+      "src/adapters/northstar-job-event.ts",
+      "src/domain/job-transition.ts",
+      "test/northstar-job-event.test.ts",
+      "todo.md",
+      "tsconfig.json"
+    ]
+  },
+  "budget": {
+    "direct": {
+      "maxSteps": 8,
+      "estimatedTokens": 5000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 120000,
+      "maxCommandOutputBytes": 8000
+    },
+    "child": {
+      "maxSteps": 6,
+      "estimatedTokens": 3000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 90000,
+      "maxCommandOutputBytes": 8000
+    },
+    "parent": {
+      "maxSteps": 8,
+      "estimatedTokens": 4000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 120000,
+      "maxCommandOutputBytes": 8000
+    }
+  }
+}

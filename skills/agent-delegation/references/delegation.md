@@ -46,6 +46,8 @@ Required evidence and local acceptance:
 Compressed return shape:
 Stop or disconfirming signal:
 Authority withheld:
+Returned evidence use: leads only | exact source claims may be admitted as bounded premises after Main checks the declared conditions
+Claim-admission conditions: exact source scope and lineage, named admissible claims, uncertainty, and retained judgment owner
 Recursive delegation: forbidden | exact bounded allowance
 Worker rules: inline the complete contents of references/worker.md here
 ```
@@ -97,6 +99,10 @@ Require this minimum return:
 ```text
 Conclusion:
 Evidence: source refs, commands, tests, or changed artifact identity
+Source scope and lineage actually read:
+Exact source claims and their declared use: leads only | bounded premises under the envelope's conditions
+Uncertainties:
+Judgment and acceptance retained by:
 Risks and unresolved relations:
 Changed paths or effects:
 Stop hit: no | yes with reason
@@ -104,9 +110,13 @@ Suggested follow-up: only when a named gap remains
 ```
 
 Main reconstructs results with an obligation map, checks common source
-revision and effect ownership, inspects the shared diff or artifacts, and runs
-the integration or behavior checks appropriate to the whole. Pull full traces
-only when the compressed evidence cannot settle a material claim.
+revision, source scope and lineage, declared claim use, uncertainty, judgment
+ownership, and effect ownership, then inspects the shared diff or artifacts and
+runs the integration or behavior checks appropriate to the whole. A worker
+report cannot admit its own claims. When the envelope and retained evidence do
+not establish bounded premise use, Main treats child-only claims as leads or
+reads the authoritative sources. Pull full traces only when the compressed
+evidence cannot settle a material claim.
 
 ## Reshape signals
 

@@ -1,0 +1,56 @@
+{
+  "version": "parent-admission-matched-pair.packet.v1",
+  "status": "prepared-not-executed",
+  "sourceFixture": "../2026-08-06-todo-return-trigger/fixture",
+  "sourceTopologyEvidence": "../2026-08-07-host-constructed-nested-topology",
+  "sourceTreatmentEvidence": "../2026-08-08-parent-evidence-admission",
+  "runtime": {
+    "workCellSourceTreeSha256": "0925d6883d4d5207b4b5548dc45511089e008eaf9a787d95ec811c3e4b4605bb"
+  },
+  "files": {
+    "run-parent-pair.ts": "221114602a528d959c9f406a288d72f1f1db9643adde26c9cf834201241e4463",
+    "fixture.sha256": "b20fa4ab2bb03d1439a4db75ba26b868a83aa14ae8f0f6025eaadf7e82b726bb",
+    "evaluator-only/review.md": "b855b16e807b418c736fd20493233fc79181199a537248acc67df11e63f18554"
+  },
+  "topologySourceFiles": {
+    "packet.json": "9148029ebc2a4bd792b804505482a98c272f9e8b47f169c66ce8d348d50dd919",
+    "development-02/direct-record.json": "89e967759b6f4611c5b39479cf181626eb4621fd5d2e262b0867693e63280ecf",
+    "development-02/nested-child-record.json": "f15e6bbae76259f553db6edfec99f71487939879916f628eb0914bb48641b460",
+    "development-02/nested-parent-record.json": "a6b79a1eb770348efebf1377e14cd57e3f22220e281faeb9af662ee181920480"
+  },
+  "treatmentSourceFiles": {
+    "packet.json": "9ba88eafa2bf9c16e7dcf5208fed6e210e5c233970788c285c3f7e2e6fa5ebf8",
+    "RESULT.md": "0b75774e2a691524303380a383161dda73fcb449f336cb765286eddb10353301",
+    "SEMANTIC-REVIEW.md": "83a52f5bc650a31abab999fe548dcc08291fc5364e1d969b93239d55f2f50b69",
+    "development-01/parent-record.json": "ac3fa29c897bb0c2718842743d7f5e71498d275f46d25a0e64ad368ac557a976",
+    "development-01/summary.json": "439bcf556f394f58c41d5d1aece70972342c0ae7e6ab3351f0fcbdb9ac38bad9"
+  },
+  "childOutputSha256": "9e89f064adb44d9a31f07942ec0d9f0ec51b1083a8ae946d9dc165703cf01972",
+  "model": {
+    "provider": "deepseek",
+    "id": "deepseek-v4-flash",
+    "credentialEnv": "DEEPSEEK_API_KEY",
+    "inferencePolicy": {
+      "thinking": "enabled",
+      "reasoningEffort": "low"
+    }
+  },
+  "parentFiles": [
+    "TASK.md",
+    "package.json",
+    "src/adapters/northstar-job-event.ts",
+    "src/domain/job-transition.ts",
+    "test/northstar-job-event.test.ts",
+    "todo.md",
+    "tsconfig.json"
+  ],
+  "controlInstruction": "Treat the supplied child report as a bounded source report, reconstruct its claims against the parent-visible implementation evidence, and retain final judgment yourself.",
+  "treatmentInstruction": "The supplied child report is a schema-valid retained source report from a bounded Cell that read exactly the named frozen protocol and case files. Treat its exact source claims as admissible bounded evidence for integration, while retaining uncertainty and final judgment yourself. You may rely on exact claims present in the report without pretending the raw child files are parent-visible. Do not treat the child conclusion as semantic verification, durable acceptance, or authority.",
+  "budget": {
+    "maxSteps": 8,
+    "estimatedTokens": 4000,
+    "estimatedTokensTolerance": 1,
+    "maxDurationMs": 120000,
+    "maxCommandOutputBytes": 8000
+  }
+}

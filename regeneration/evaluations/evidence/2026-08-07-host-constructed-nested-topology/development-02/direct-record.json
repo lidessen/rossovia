@@ -1,0 +1,2469 @@
+{
+  "version": "work-cell.run.v4",
+  "runId": "74a95ccd-2272-4bdb-a123-5f0d99b0eab3",
+  "cellId": "northstar-topology-direct",
+  "driver": {
+    "adapter": "ai-sdk-v7",
+    "provider": "deepseek",
+    "model": "deepseek-v4-flash",
+    "pricing": {
+      "inputPerMillionUsd": 0.14,
+      "cachedInputPerMillionUsd": 0.0028,
+      "outputPerMillionUsd": 0.28,
+      "source": "https://api-docs.deepseek.com/quick_start/pricing",
+      "revision": "2026-07-31"
+    }
+  },
+  "startedAt": "2026-08-07T11:23:40.669Z",
+  "finishedAt": "2026-08-07T11:24:23.439Z",
+  "durationMs": 42770,
+  "status": "passed",
+  "input": {
+    "id": "northstar-topology-direct",
+    "intent": "Review the frozen Northstar job-event maintenance candidate, identify every material compatibility defect, and recommend the smallest ownership-correct correction without editing files.",
+    "workspace": {
+      "root": "/Users/lidessen/workspaces/skills/regeneration/evaluations/evidence/2026-08-07-host-constructed-nested-topology/development-02/workspaces/direct",
+      "readPaths": [
+        "."
+      ],
+      "writePaths": [],
+      "excludePaths": [],
+      "allowedCommands": []
+    },
+    "instructions": [
+      "Ground every finding in the supplied evidence and inspect the complete granted source set before concluding.",
+      "Preserve protocol text, public domain types, and tests; separate mechanically test-covered claims from semantic cross-artifact claims.",
+      "Do not edit files, run commands, invent missing source, or claim durable acceptance authority."
+    ],
+    "capabilities": [
+      "read"
+    ],
+    "context": [],
+    "capabilitiesRequired": [
+      "read"
+    ],
+    "acceptance": [
+      "Every material incompatibility among protocol, public domain type, adapter, tests, and conformance case is identified with source evidence.",
+      "The recommended correction is the smallest one that satisfies the supplied task without changing protocol text, public domain types, or tests.",
+      "The report states what evidence was mechanically checked, what still needs semantic review, and which acceptance authority remains withheld."
+    ],
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "findings",
+        "preservedContracts",
+        "mechanicalEvidence",
+        "semanticReviewNeeded",
+        "withheldAuthority",
+        "uncertainties"
+      ],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "compatible",
+            "incompatible",
+            "inconclusive"
+          ]
+        },
+        "findings": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "artifact",
+              "issue",
+              "evidence",
+              "smallestCorrection"
+            ],
+            "properties": {
+              "artifact": {
+                "type": "string",
+                "minLength": 1
+              },
+              "issue": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "smallestCorrection": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "preservedContracts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mechanicalEvidence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "semanticReviewNeeded": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "withheldAuthority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "budget": {
+      "maxSteps": 8,
+      "estimatedTokens": 5000,
+      "estimatedTokensTolerance": 1,
+      "maxDurationMs": 120000,
+      "maxCommandOutputBytes": 8000
+    },
+    "executionProfile": {
+      "id": "deepseek-v4-flash-low-topology-direct-v1",
+      "version": "execution-profile.v1",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "contextPolicy": "all-nine-raw-files-v1",
+      "toolSurface": "read-only-structured-output-v1",
+      "parallelism": "serial",
+      "priceRevision": "deepseek-public-api-2026-07-31"
+    }
+  },
+  "finalText": "I have reviewed the complete granted source set. Here is my source-grounded report.\n\n## Material compatibility defects identified\n\n### D1 — Adapter derives `kind` from `retryable` instead of the declared outcome\n`src/adapters/northstar-job-event.ts`:\n```ts\nkind: retryable ? \"failed\" : \"succeeded\",\n```\nThe protocol (`docs/northstar-job-events-v2.md`) states: *\"Its `kind` is the event's declared outcome.\"* The `kind` must be `event.result.outcome`. The current code instead keys `kind` off `retryable`, so:\n- a `cancelled` event normalizes to `kind: \"succeeded\"`,\n- a `failed`/`retryable:false` event normalizes to `kind: \"succeeded\"`.\n\nThis directly contradicts the tests (`test/northstar-job-event.test.ts`):\n- *\"preserves non-retryable failure\"* expects `failed` + `retryable:false` → `kind: \"failed\"` (adapter yields `\"succeeded\"`) — **fails**.\n- *\"preserves cancellation\"* expects `cancelled` → `kind: \"cancelled\"` (adapter yields `\"succeeded\"`) — **fails**.\n\nConsequence: `bun test` currently fails 2 of 4 cases.\n\n### D2 — The adapter can never produce `kind: \"cancelled\"`\nThe public domain type (`src/domain/job-transition.ts`) declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`. Because `kind` is derived from `retryable`, the `\"cancelled\"` member of the union is unreachable — a structural incompatibility between the adapter and the public domain type.\n\n### D3 — Conformance case-07 `expected.kind` contradicts protocol, tests, and the repaired adapter\n`conformance/northstar-job-events-v2/case-07.json`:\n```json\n\"outcome\": \"failed\", \"retryable\": false\n\"expected\": { \"kind\": \"succeeded\", \"retry\": \"none\", ... }\n```\nFor a declared outcome of `\"failed\"` the protocol requires `kind: \"failed\"`, and the test *\"preserves non-retryable failure\"* expects `kind: \"failed\"`, `retry: \"none\"`. The current `expected.kind: \"succeeded\"` is a holdover of the buggy adapter and is invalid under the protocol.\n\n### D4 — Latent `retry` derivation gap vs protocol (semantic item)\n`retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally. The protocol is explicit: *\"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"* If a non-failed event ever carried `retryable: true`, the adapter would incorrectly mark it `eligible`. Not covered by any test or conformance case, so this is a semantic, not a mechanically tested, defect.\n\n## Recommended smallest ownership-correct correction (no file edits made)\n\nFix the adapter (`src/adapters/northstar-job-event.ts`) to key `kind` off the declared outcome and gate retry eligibility on `kind === \"failed\"`:\n```ts\nconst kind = event.result.outcome;\nconst retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\nreturn { jobId: event.job_id, kind, retry, occurredAt: event.occurred_at };\n```\nReconcile the conformance case (`conformance/northstar-job-events-v2/case-07.json`) `expected.kind` from `\"succeeded\"` to `\"failed\"` (retry stays `\"none\"`).\n\nThis is the smallest change that satisfies all four tests, restores conformance with the protocol (D1, D2, D3), and closes the D4 semantic gap without touching protocol text, the public domain type, or tests. Protocol text, public domain types, and tests remain unchanged.\n\n## What was mechanically checked vs what still needs semantic review\n\n**Mechanically checked (from source evidence, no commands run):**\n- Current adapter produces `kind: \"succeeded\"` for `cancelled` and for `failed`/`retryable:false`; therefore the tests *\"preserves non-retryable failure\"* and *\"preserves cancellation\"* fail — `bun test` does not currently pass.\n- `kind: \"cancelled\"` is unreachable from the current adapter, so the `JobTransition` union is under-served.\n- case-07 `expected.kind` (\"succeeded\") is inconsistent with the protocol's declared-outcome rule and with the test *\"preserves non-retryable failure\"*.\n\n**Still needs semantic review:**\n- Whether case-07's intent is to be a non-retryable-failure example (the minimal reading) — confirm the reconciled `expected` reflects intent.\n- The D4 edge (a non-failed event carrying `retryable: true`) is not covered by tests or conformance; confirm the stricter `kind === \"failed\"` gate is the desired contract.\n\n## Acceptance authority withheld\nI am a read-only Work Cell. I did not edit any files and hold no durable acceptance authority. Whether the recommended correction is accepted (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+  "output": {
+    "verdict": "incompatible",
+    "findings": [
+      {
+        "artifact": "src/adapters/northstar-job-event.ts",
+        "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+        "evidence": [
+          "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+          "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+          "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+          "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+          "consequence: `bun test` fails 2 of 4 cases"
+        ],
+        "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+      },
+      {
+        "artifact": "src/domain/job-transition.ts",
+        "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+        "evidence": [
+          "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+          "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+        ],
+        "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+      },
+      {
+        "artifact": "conformance/northstar-job-events-v2/case-07.json",
+        "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+        "evidence": [
+          "case-07 input `outcome: \"failed\", retryable: false`",
+          "case-07 `expected.kind: \"succeeded\"`",
+          "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+          "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+        ],
+        "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+      },
+      {
+        "artifact": "src/adapters/northstar-job-event.ts",
+        "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+        "evidence": [
+          "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+          "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+          "not covered by any test or conformance case — semantic, not mechanically tested"
+        ],
+        "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+      }
+    ],
+    "preservedContracts": [
+      "docs/northstar-job-events-v2.md (protocol text unchanged)",
+      "src/domain/job-transition.ts (public domain type unchanged)",
+      "test/northstar-job-event.test.ts (tests unchanged)",
+      "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+    ],
+    "mechanicalEvidence": [
+      "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+      "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+      "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+      "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+    ],
+    "semanticReviewNeeded": [
+      "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+      "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+    ],
+    "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+    "uncertainties": [
+      "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+      "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+    ]
+  },
+  "artifacts": [],
+  "verification": {
+    "passed": true,
+    "terminal": {
+      "passed": true,
+      "required": [],
+      "called": []
+    },
+    "output": {
+      "passed": true,
+      "errors": []
+    },
+    "artifacts": {
+      "passed": true,
+      "errors": []
+    }
+  },
+  "workspaceDiff": {
+    "added": [],
+    "changed": [],
+    "removed": []
+  },
+  "usage": {
+    "inputTokens": 9147,
+    "outputTokens": 5701,
+    "totalTokens": 14848,
+    "cachedInputTokens": 1920
+  },
+  "usageByPhase": {
+    "preparation": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0,
+      "cachedInputTokens": 0
+    },
+    "execution": {
+      "inputTokens": 5285,
+      "outputTokens": 4401,
+      "totalTokens": 9686,
+      "cachedInputTokens": 1920
+    },
+    "settlement": {
+      "inputTokens": 3862,
+      "outputTokens": 1300,
+      "totalTokens": 5162,
+      "cachedInputTokens": 0
+    }
+  },
+  "executionObservation": {
+    "executionProfileId": "deepseek-v4-flash-low-topology-direct-v1",
+    "priceRevision": "deepseek-public-api-2026-07-31"
+  },
+  "estimatedCostUsd": 0.00261344,
+  "estimateBasis": "estimated from token usage using https://api-docs.deepseek.com/quick_start/pricing",
+  "trace": [
+    {
+      "at": "2026-08-07T11:23:40.669Z",
+      "type": "cell.started",
+      "data": {
+        "runId": "74a95ccd-2272-4bdb-a123-5f0d99b0eab3",
+        "cellId": "northstar-topology-direct",
+        "driver": {
+          "adapter": "ai-sdk-v7",
+          "provider": "deepseek",
+          "model": "deepseek-v4-flash",
+          "pricing": {
+            "inputPerMillionUsd": 0.14,
+            "cachedInputPerMillionUsd": 0.0028,
+            "outputPerMillionUsd": 0.28,
+            "source": "https://api-docs.deepseek.com/quick_start/pricing",
+            "revision": "2026-07-31"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:40.670Z",
+      "type": "task.tools.projected",
+      "data": {
+        "taskToolSet": "read-only",
+        "tools": [
+          "task_list",
+          "task_get"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:40.675Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 0,
+        "activeTools": [
+          "list_files",
+          "read_file",
+          "task_list",
+          "task_get"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:41.688Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_00_cy2UAlZHcFamDFHKolni7612",
+        "name": "list_files",
+        "target": {
+          "kind": "workspace-path",
+          "path": "."
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:41.691Z",
+      "type": "tool.list_files",
+      "data": {
+        "path": ".",
+        "count": 9
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:41.691Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_00_cy2UAlZHcFamDFHKolni7612",
+        "name": "list_files",
+        "durationMs": 2.168042000000014,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:41.693Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 59.38770286570818,
+          "effectiveTotalTokensPerSecond": 1002.6623833827064,
+          "stepTimeMs": 1015.660834,
+          "responseTimeMs": 1010.3101669999999,
+          "toolExecutionMs": {
+            "call_00_cy2UAlZHcFamDFHKolni7612": 2.168042000000014
+          }
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 0,
+            "promptCacheMissTokens": 953,
+            "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 953,
+          "inputTokenDetails": {
+            "noCacheTokens": 953,
+            "cacheReadTokens": 0
+          },
+          "outputTokens": 60,
+          "outputTokenDetails": {
+            "textTokens": 43,
+            "reasoningTokens": 17
+          },
+          "totalTokens": 1013,
+          "raw": {
+            "prompt_tokens": 953,
+            "completion_tokens": 60,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 953,
+            "total_tokens": 1013,
+            "completion_tokens_details": {
+              "reasoning_tokens": 17
+            }
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 953,
+          "outputTokens": 60,
+          "totalTokens": 1013,
+          "cachedInputTokens": 0
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_cy2UAlZHcFamDFHKolni7612",
+            "toolName": "list_files",
+            "input": {
+              "path": ".",
+              "maxEntries": 500
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_cy2UAlZHcFamDFHKolni7612",
+            "toolName": "list_files",
+            "input": {
+              "path": ".",
+              "maxEntries": 500
+            },
+            "output": {
+              "files": [
+                "conformance/northstar-job-events-v2/case-07.json",
+                "docs/northstar-job-events-v2.md",
+                "package.json",
+                "src/adapters/northstar-job-event.ts",
+                "src/domain/job-transition.ts",
+                "TASK.md",
+                "test/northstar-job-event.test.ts",
+                "todo.md",
+                "tsconfig.json"
+              ]
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:41.694Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 1,
+        "activeTools": [
+          "list_files",
+          "read_file",
+          "task_list",
+          "task_get"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "TASK.md"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "docs/northstar-job-events-v2.md"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "src/domain/job-transition.ts"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "src/adapters/northstar-job-event.ts"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "test/northstar-job-event.test.ts"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "conformance/northstar-job-events-v2/case-07.json"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "package.json"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "tsconfig.json"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.538Z",
+      "type": "agent.tool.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+        "name": "read_file",
+        "target": {
+          "kind": "workspace-path",
+          "path": "todo.md"
+        }
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "docs/northstar-job-events-v2.md",
+        "startLine": 1,
+        "characters": 432
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+        "name": "read_file",
+        "durationMs": 0.4855830000001333,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "TASK.md",
+        "startLine": 1,
+        "characters": 569
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+        "name": "read_file",
+        "durationMs": 1.3872079999996458,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "src/domain/job-transition.ts",
+        "startLine": 1,
+        "characters": 150
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+        "name": "read_file",
+        "durationMs": 0.5246670000001359,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "src/adapters/northstar-job-event.ts",
+        "startLine": 1,
+        "characters": 575
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+        "name": "read_file",
+        "durationMs": 0.5087499999999636,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "test/northstar-job-event.test.ts",
+        "startLine": 1,
+        "characters": 1471
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+        "name": "read_file",
+        "durationMs": 0.5009169999998448,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "package.json",
+        "startLine": 1,
+        "characters": 116
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+        "name": "read_file",
+        "durationMs": 0.4563339999999698,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "conformance/northstar-job-events-v2/case-07.json",
+        "startLine": 1,
+        "characters": 321
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+        "name": "read_file",
+        "durationMs": 0.5216250000003129,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "tsconfig.json",
+        "startLine": 1,
+        "characters": 201
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+        "name": "read_file",
+        "durationMs": 0.4833340000000135,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "tool.read_file",
+      "data": {
+        "path": "todo.md",
+        "startLine": 1,
+        "characters": 416
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.540Z",
+      "type": "agent.tool.finished",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "id": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+        "name": "read_file",
+        "durationMs": 0.48062499999969077,
+        "outcome": "tool-result"
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.541Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "tool-calls",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 182.40898349129805,
+          "effectiveTotalTokensPerSecond": 788.267392944538,
+          "stepTimeMs": 1845.8158329999999,
+          "responseTimeMs": 1842.0145410000002,
+          "toolExecutionMs": {
+            "call_00_ET_64r0QVh0YgV5uY9bwqiz2519": 1.3872079999996458,
+            "call_01_ET_efdWHZldIfpQ3BTTTtUW7755": 0.4855830000001333,
+            "call_02_ET_ziHasSAN1gwdWr8JSrki5915": 0.5246670000001359,
+            "call_03_ET_Stt8HoruD9TL7bkRhX9s0964": 0.5087499999999636,
+            "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077": 0.5009169999998448,
+            "call_05_ET_2e28k5rdg9W1atximMZV4951": 0.5216250000003129,
+            "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021": 0.4563339999999698,
+            "call_07_ET_f89QTmUis0cvbwJU1Ghc5534": 0.4833340000000135,
+            "call_08_ET_atxfeQu63qEIIt9I1Bar7519": 0.48062499999969077
+          }
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 896,
+            "promptCacheMissTokens": 220,
+            "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 1116,
+          "inputTokenDetails": {
+            "noCacheTokens": 220,
+            "cacheReadTokens": 896
+          },
+          "outputTokens": 336,
+          "outputTokenDetails": {
+            "textTokens": 336,
+            "reasoningTokens": 0
+          },
+          "totalTokens": 1452,
+          "raw": {
+            "prompt_tokens": 1116,
+            "completion_tokens": 336,
+            "prompt_cache_hit_tokens": 896,
+            "prompt_cache_miss_tokens": 220,
+            "total_tokens": 1452,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            }
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 2069,
+          "outputTokens": 396,
+          "totalTokens": 2465,
+          "cachedInputTokens": 896
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+            "toolName": "read_file",
+            "input": {
+              "path": "TASK.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+            "toolName": "read_file",
+            "input": {
+              "path": "docs/northstar-job-events-v2.md",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+            "toolName": "read_file",
+            "input": {
+              "path": "src/domain/job-transition.ts",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+            "toolName": "read_file",
+            "input": {
+              "path": "src/adapters/northstar-job-event.ts",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+            "toolName": "read_file",
+            "input": {
+              "path": "test/northstar-job-event.test.ts",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+            "toolName": "read_file",
+            "input": {
+              "path": "conformance/northstar-job-events-v2/case-07.json",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+            "toolName": "read_file",
+            "input": {
+              "path": "package.json",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+            "toolName": "read_file",
+            "input": {
+              "path": "tsconfig.json",
+              "startLine": 1
+            }
+          },
+          {
+            "type": "tool-call",
+            "toolCallId": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+            "toolName": "read_file",
+            "input": {
+              "path": "todo.md",
+              "startLine": 1
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+            "toolName": "read_file",
+            "input": {
+              "path": "TASK.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "TASK.md",
+              "content": "# Northstar job-event maintenance\n\nRepair `src/adapters/northstar-job-event.ts` so finished events conform to the\nbundled Northstar v2 protocol without changing public domain types, protocol\ntext, or tests.\n\nAlso reconcile `conformance/northstar-job-events-v2/case-07.json` as one valid\ninput/expected-output conformance example for the repaired behavior.\n\nAcceptance:\n\n- `bun test` passes through a production adapter repair.\n- Case 07 is valid under the bundled protocol and semantically consistent with\n  the final adapter.\n- No unrelated files or contracts change.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+            "toolName": "read_file",
+            "input": {
+              "path": "docs/northstar-job-events-v2.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "docs/northstar-job-events-v2.md",
+              "content": "# Northstar job events v2\n\nA `job.finished` event contains `job_id`, `occurred_at`, and a `result` with an\n`outcome` of `succeeded`, `failed`, or `cancelled`.\n\nThe normalized transition keeps `job_id` and `occurred_at`. Its `kind` is the\nevent's declared outcome. Retry eligibility is independent of success and\ncancellation: only a failed result with `retryable: true` is `eligible`; every\nother transition has retry value `none`.\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+            "toolName": "read_file",
+            "input": {
+              "path": "src/domain/job-transition.ts",
+              "startLine": 1
+            },
+            "output": {
+              "path": "src/domain/job-transition.ts",
+              "content": "export interface JobTransition {\n  jobId: string;\n  kind: \"succeeded\" | \"failed\" | \"cancelled\";\n  retry: \"none\" | \"eligible\";\n  occurredAt: string;\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+            "toolName": "read_file",
+            "input": {
+              "path": "src/adapters/northstar-job-event.ts",
+              "startLine": 1
+            },
+            "output": {
+              "path": "src/adapters/northstar-job-event.ts",
+              "content": "import type { JobTransition } from \"../domain/job-transition\";\n\nexport interface NorthstarFinishedEvent {\n  type: \"job.finished\";\n  job_id: string;\n  occurred_at: string;\n  result: {\n    outcome: \"succeeded\" | \"failed\" | \"cancelled\";\n    retryable?: boolean;\n  };\n}\n\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const retryable = event.result.retryable === true;\n  return {\n    jobId: event.job_id,\n    kind: retryable ? \"failed\" : \"succeeded\",\n    retry: retryable ? \"eligible\" : \"none\",\n    occurredAt: event.occurred_at,\n  };\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+            "toolName": "read_file",
+            "input": {
+              "path": "test/northstar-job-event.test.ts",
+              "startLine": 1
+            },
+            "output": {
+              "path": "test/northstar-job-event.test.ts",
+              "content": "import { describe, expect, test } from \"bun:test\";\nimport { normalizeFinishedEvent, type NorthstarFinishedEvent } from \"../src/adapters/northstar-job-event\";\n\nconst base = {\n  type: \"job.finished\" as const,\n  job_id: \"job-17\",\n  occurred_at: \"2026-08-06T12:00:00Z\",\n};\n\ndescribe(\"normalizeFinishedEvent\", () => {\n  test(\"normalizes success\", () => {\n    expect(normalizeFinishedEvent(event(\"succeeded\"))).toEqual({\n      jobId: \"job-17\",\n      kind: \"succeeded\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"marks retryable failure eligible\", () => {\n    expect(normalizeFinishedEvent(event(\"failed\", true))).toEqual({\n      jobId: \"job-17\",\n      kind: \"failed\",\n      retry: \"eligible\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"preserves non-retryable failure\", () => {\n    expect(normalizeFinishedEvent(event(\"failed\", false))).toEqual({\n      jobId: \"job-17\",\n      kind: \"failed\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"preserves cancellation\", () => {\n    expect(normalizeFinishedEvent(event(\"cancelled\"))).toEqual({\n      jobId: \"job-17\",\n      kind: \"cancelled\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n});\n\nfunction event(\n  outcome: NorthstarFinishedEvent[\"result\"][\"outcome\"],\n  retryable?: boolean,\n): NorthstarFinishedEvent {\n  return {\n    ...base,\n    result: { outcome, ...(retryable === undefined ? {} : { retryable }) },\n  };\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+            "toolName": "read_file",
+            "input": {
+              "path": "conformance/northstar-job-events-v2/case-07.json",
+              "startLine": 1
+            },
+            "output": {
+              "path": "conformance/northstar-job-events-v2/case-07.json",
+              "content": "{\n  \"input\": {\n    \"type\": \"job.finished\",\n    \"job_id\": \"job-93\",\n    \"occurred_at\": \"2026-08-06T15:30:00Z\",\n    \"result\": {\n      \"outcome\": \"failed\",\n      \"retryable\": false\n    }\n  },\n  \"expected\": {\n    \"jobId\": \"job-93\",\n    \"kind\": \"succeeded\",\n    \"retry\": \"none\",\n    \"occurredAt\": \"2026-08-06T15:30:00Z\"\n  }\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+            "toolName": "read_file",
+            "input": {
+              "path": "package.json",
+              "startLine": 1
+            },
+            "output": {
+              "path": "package.json",
+              "content": "{\n  \"name\": \"todo-return-trigger-northstar-fixture\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"bun test\"\n  }\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+            "toolName": "read_file",
+            "input": {
+              "path": "tsconfig.json",
+              "startLine": 1
+            },
+            "output": {
+              "path": "tsconfig.json",
+              "content": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"noEmit\": true,\n    \"module\": \"Preserve\",\n    \"moduleResolution\": \"Bundler\",\n    \"target\": \"ES2022\"\n  },\n  \"include\": [\"src/**/*.ts\", \"test/**/*.ts\"]\n}\n"
+            },
+            "dynamic": false
+          },
+          {
+            "type": "tool-result",
+            "toolCallId": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+            "toolName": "read_file",
+            "input": {
+              "path": "todo.md",
+              "startLine": 1
+            },
+            "output": {
+              "path": "todo.md",
+              "content": "[ ] Repair src/adapters/northstar-job-event.ts: finished-event normalization conforms to the bundled v2 protocol; complete when bundled tests pass without contract, protocol, or test changes.\n[ ] Reconcile conformance/northstar-job-events-v2/case-07.json: valid v2 input/expected pair consistent with repaired adapter; complete when independent semantic review accepts protocol truth and cross-artifact consistency.\n"
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:23:43.542Z",
+      "type": "agent.step.started",
+      "data": {
+        "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+        "provider": "model-route:validation",
+        "model": "deepseek-v4-flash",
+        "stepNumber": 2,
+        "activeTools": [
+          "list_files",
+          "read_file",
+          "task_list",
+          "task_get"
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:24:14.761Z",
+      "type": "agent.step.finished",
+      "data": {
+        "finishReason": "stop",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 128.28957880491396,
+          "effectiveTotalTokensPerSecond": 231.30563009994597,
+          "stepTimeMs": 31218.692250000004,
+          "responseTimeMs": 31218.435958,
+          "toolExecutionMs": {}
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 1024,
+            "promptCacheMissTokens": 2192,
+            "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 3216,
+          "inputTokenDetails": {
+            "noCacheTokens": 2192,
+            "cacheReadTokens": 1024
+          },
+          "outputTokens": 4005,
+          "outputTokenDetails": {
+            "textTokens": 1199,
+            "reasoningTokens": 2806
+          },
+          "totalTokens": 7221,
+          "raw": {
+            "prompt_tokens": 3216,
+            "completion_tokens": 4005,
+            "prompt_cache_hit_tokens": 1024,
+            "prompt_cache_miss_tokens": 2192,
+            "total_tokens": 7221,
+            "completion_tokens_details": {
+              "reasoning_tokens": 2806
+            }
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 5285,
+          "outputTokens": 4401,
+          "totalTokens": 9686,
+          "cachedInputTokens": 1920
+        },
+        "toolCalls": [],
+        "toolResults": []
+      }
+    },
+    {
+      "at": "2026-08-07T11:24:14.763Z",
+      "type": "structured.settlement.started",
+      "data": {
+        "mode": "tool-settlement"
+      }
+    },
+    {
+      "at": "2026-08-07T11:24:23.437Z",
+      "type": "structured.settlement.step.finished",
+      "data": {
+        "attempt": 1,
+        "finishReason": "tool-calls",
+        "performance": {
+          "effectiveOutputTokensPerSecond": 149.99232658871554,
+          "effectiveTotalTokensPerSecond": 595.5849152699612,
+          "stepTimeMs": 8671.513125000005,
+          "responseTimeMs": 8667.110042,
+          "toolExecutionMs": {
+            "call_00_9Z6IkfVXuUBCASxDCnJ15790": 0.5067500000004657
+          }
+        },
+        "providerMetadata": {
+          "deepseek": {
+            "promptCacheHitTokens": 0,
+            "promptCacheMissTokens": 3862,
+            "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+          },
+          "workCellRoute": {
+            "routeId": "validation",
+            "servedBy": "deepseek",
+            "model": "deepseek-v4-flash",
+            "mode": "direct",
+            "attempts": []
+          }
+        },
+        "usage": {
+          "inputTokens": 3862,
+          "inputTokenDetails": {
+            "noCacheTokens": 3862,
+            "cacheReadTokens": 0
+          },
+          "outputTokens": 1300,
+          "outputTokenDetails": {
+            "textTokens": 1241,
+            "reasoningTokens": 59
+          },
+          "totalTokens": 5162,
+          "raw": {
+            "prompt_tokens": 3862,
+            "completion_tokens": 1300,
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 3862,
+            "total_tokens": 5162,
+            "completion_tokens_details": {
+              "reasoning_tokens": 59
+            }
+          }
+        },
+        "cumulativeUsage": {
+          "inputTokens": 3862,
+          "outputTokens": 1300,
+          "totalTokens": 5162,
+          "cachedInputTokens": 0
+        },
+        "toolCalls": [
+          {
+            "type": "tool-call",
+            "toolCallId": "call_00_9Z6IkfVXuUBCASxDCnJ15790",
+            "toolName": "emit_structured_output",
+            "input": {
+              "verdict": "incompatible",
+              "findings": [
+                {
+                  "artifact": "src/adapters/northstar-job-event.ts",
+                  "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+                  "evidence": [
+                    "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+                    "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+                    "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+                    "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+                    "consequence: `bun test` fails 2 of 4 cases"
+                  ],
+                  "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+                },
+                {
+                  "artifact": "src/domain/job-transition.ts",
+                  "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+                  "evidence": [
+                    "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+                    "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+                  ],
+                  "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+                },
+                {
+                  "artifact": "conformance/northstar-job-events-v2/case-07.json",
+                  "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+                  "evidence": [
+                    "case-07 input `outcome: \"failed\", retryable: false`",
+                    "case-07 `expected.kind: \"succeeded\"`",
+                    "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+                    "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+                  ],
+                  "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+                },
+                {
+                  "artifact": "src/adapters/northstar-job-event.ts",
+                  "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+                  "evidence": [
+                    "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+                    "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+                    "not covered by any test or conformance case — semantic, not mechanically tested"
+                  ],
+                  "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+                }
+              ],
+              "preservedContracts": [
+                "docs/northstar-job-events-v2.md (protocol text unchanged)",
+                "src/domain/job-transition.ts (public domain type unchanged)",
+                "test/northstar-job-event.test.ts (tests unchanged)",
+                "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+              ],
+              "mechanicalEvidence": [
+                "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+                "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+                "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+                "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+              ],
+              "semanticReviewNeeded": [
+                "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+                "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+              ],
+              "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+              "uncertainties": [
+                "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+                "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+              ]
+            }
+          }
+        ],
+        "toolResults": [
+          {
+            "type": "tool-result",
+            "toolCallId": "call_00_9Z6IkfVXuUBCASxDCnJ15790",
+            "toolName": "emit_structured_output",
+            "input": {
+              "verdict": "incompatible",
+              "findings": [
+                {
+                  "artifact": "src/adapters/northstar-job-event.ts",
+                  "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+                  "evidence": [
+                    "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+                    "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+                    "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+                    "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+                    "consequence: `bun test` fails 2 of 4 cases"
+                  ],
+                  "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+                },
+                {
+                  "artifact": "src/domain/job-transition.ts",
+                  "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+                  "evidence": [
+                    "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+                    "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+                  ],
+                  "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+                },
+                {
+                  "artifact": "conformance/northstar-job-events-v2/case-07.json",
+                  "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+                  "evidence": [
+                    "case-07 input `outcome: \"failed\", retryable: false`",
+                    "case-07 `expected.kind: \"succeeded\"`",
+                    "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+                    "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+                  ],
+                  "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+                },
+                {
+                  "artifact": "src/adapters/northstar-job-event.ts",
+                  "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+                  "evidence": [
+                    "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+                    "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+                    "not covered by any test or conformance case — semantic, not mechanically tested"
+                  ],
+                  "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+                }
+              ],
+              "preservedContracts": [
+                "docs/northstar-job-events-v2.md (protocol text unchanged)",
+                "src/domain/job-transition.ts (public domain type unchanged)",
+                "test/northstar-job-event.test.ts (tests unchanged)",
+                "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+              ],
+              "mechanicalEvidence": [
+                "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+                "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+                "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+                "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+              ],
+              "semanticReviewNeeded": [
+                "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+                "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+              ],
+              "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+              "uncertainties": [
+                "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+                "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+              ]
+            },
+            "output": {
+              "accepted": true
+            },
+            "dynamic": false
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-08-07T11:24:23.438Z",
+      "type": "structured.settlement.finished",
+      "data": {
+        "mode": "tool-settlement"
+      }
+    },
+    {
+      "at": "2026-08-07T11:24:23.439Z",
+      "type": "cell.finished",
+      "data": {
+        "status": "passed",
+        "usage": {
+          "inputTokens": 9147,
+          "outputTokens": 5701,
+          "totalTokens": 14848,
+          "cachedInputTokens": 1920
+        }
+      }
+    }
+  ],
+  "rawSteps": [
+    {
+      "phase": "execution",
+      "steps": [
+        {
+          "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+          "stepNumber": 0,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "reasoning",
+              "text": "Let me start by exploring the workspace to understand the structure and find the relevant files."
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_00_cy2UAlZHcFamDFHKolni7612",
+              "toolName": "list_files",
+              "input": {
+                "path": ".",
+                "maxEntries": 500
+              }
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_00_cy2UAlZHcFamDFHKolni7612",
+              "toolName": "list_files",
+              "input": {
+                "path": ".",
+                "maxEntries": 500
+              },
+              "output": {
+                "files": [
+                  "conformance/northstar-job-events-v2/case-07.json",
+                  "docs/northstar-job-events-v2.md",
+                  "package.json",
+                  "src/adapters/northstar-job-event.ts",
+                  "src/domain/job-transition.ts",
+                  "TASK.md",
+                  "test/northstar-job-event.test.ts",
+                  "todo.md",
+                  "tsconfig.json"
+                ]
+              },
+              "dynamic": false
+            }
+          ],
+          "finishReason": "tool-calls",
+          "rawFinishReason": "tool_calls",
+          "usage": {
+            "inputTokens": 953,
+            "inputTokenDetails": {
+              "noCacheTokens": 953,
+              "cacheReadTokens": 0
+            },
+            "outputTokens": 60,
+            "outputTokenDetails": {
+              "textTokens": 43,
+              "reasoningTokens": 17
+            },
+            "totalTokens": 1013,
+            "raw": {
+              "prompt_tokens": 953,
+              "completion_tokens": 60,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 953,
+              "total_tokens": 1013,
+              "completion_tokens_details": {
+                "reasoning_tokens": 17
+              }
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 59.38770286570818,
+            "effectiveTotalTokensPerSecond": 1002.6623833827064,
+            "stepTimeMs": 1015.660834,
+            "responseTimeMs": 1010.3101669999999,
+            "toolExecutionMs": {
+              "call_00_cy2UAlZHcFamDFHKolni7612": 2.168042000000014
+            }
+          },
+          "warnings": [],
+          "request": {},
+          "response": {
+            "id": "5e790ca1-19d4-46c9-a663-48f1de1065cd",
+            "timestamp": "2026-08-07T11:23:40.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Fri, 07 Aug 2026 11:23:40 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "7117343059745732664",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "445590df85fd1e855375e9f40ab722bc"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "reasoning",
+                    "text": "Let me start by exploring the workspace to understand the structure and find the relevant files."
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_00_cy2UAlZHcFamDFHKolni7612",
+                    "toolName": "list_files",
+                    "input": {
+                      "path": ".",
+                      "maxEntries": 500
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_00_cy2UAlZHcFamDFHKolni7612",
+                    "toolName": "list_files",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "files": [
+                          "conformance/northstar-job-events-v2/case-07.json",
+                          "docs/northstar-job-events-v2.md",
+                          "package.json",
+                          "src/adapters/northstar-job-event.ts",
+                          "src/domain/job-transition.ts",
+                          "TASK.md",
+                          "test/northstar-job-event.test.ts",
+                          "todo.md",
+                          "tsconfig.json"
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 0,
+              "promptCacheMissTokens": 953,
+              "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        },
+        {
+          "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+          "stepNumber": 1,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+              "toolName": "read_file",
+              "input": {
+                "path": "TASK.md",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+              "toolName": "read_file",
+              "input": {
+                "path": "docs/northstar-job-events-v2.md",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+              "toolName": "read_file",
+              "input": {
+                "path": "src/domain/job-transition.ts",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+              "toolName": "read_file",
+              "input": {
+                "path": "src/adapters/northstar-job-event.ts",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+              "toolName": "read_file",
+              "input": {
+                "path": "test/northstar-job-event.test.ts",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+              "toolName": "read_file",
+              "input": {
+                "path": "conformance/northstar-job-events-v2/case-07.json",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+              "toolName": "read_file",
+              "input": {
+                "path": "package.json",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+              "toolName": "read_file",
+              "input": {
+                "path": "tsconfig.json",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+              "toolName": "read_file",
+              "input": {
+                "path": "todo.md",
+                "startLine": 1
+              }
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+              "toolName": "read_file",
+              "input": {
+                "path": "TASK.md",
+                "startLine": 1
+              },
+              "output": {
+                "path": "TASK.md",
+                "content": "# Northstar job-event maintenance\n\nRepair `src/adapters/northstar-job-event.ts` so finished events conform to the\nbundled Northstar v2 protocol without changing public domain types, protocol\ntext, or tests.\n\nAlso reconcile `conformance/northstar-job-events-v2/case-07.json` as one valid\ninput/expected-output conformance example for the repaired behavior.\n\nAcceptance:\n\n- `bun test` passes through a production adapter repair.\n- Case 07 is valid under the bundled protocol and semantically consistent with\n  the final adapter.\n- No unrelated files or contracts change.\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+              "toolName": "read_file",
+              "input": {
+                "path": "docs/northstar-job-events-v2.md",
+                "startLine": 1
+              },
+              "output": {
+                "path": "docs/northstar-job-events-v2.md",
+                "content": "# Northstar job events v2\n\nA `job.finished` event contains `job_id`, `occurred_at`, and a `result` with an\n`outcome` of `succeeded`, `failed`, or `cancelled`.\n\nThe normalized transition keeps `job_id` and `occurred_at`. Its `kind` is the\nevent's declared outcome. Retry eligibility is independent of success and\ncancellation: only a failed result with `retryable: true` is `eligible`; every\nother transition has retry value `none`.\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+              "toolName": "read_file",
+              "input": {
+                "path": "src/domain/job-transition.ts",
+                "startLine": 1
+              },
+              "output": {
+                "path": "src/domain/job-transition.ts",
+                "content": "export interface JobTransition {\n  jobId: string;\n  kind: \"succeeded\" | \"failed\" | \"cancelled\";\n  retry: \"none\" | \"eligible\";\n  occurredAt: string;\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+              "toolName": "read_file",
+              "input": {
+                "path": "src/adapters/northstar-job-event.ts",
+                "startLine": 1
+              },
+              "output": {
+                "path": "src/adapters/northstar-job-event.ts",
+                "content": "import type { JobTransition } from \"../domain/job-transition\";\n\nexport interface NorthstarFinishedEvent {\n  type: \"job.finished\";\n  job_id: string;\n  occurred_at: string;\n  result: {\n    outcome: \"succeeded\" | \"failed\" | \"cancelled\";\n    retryable?: boolean;\n  };\n}\n\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const retryable = event.result.retryable === true;\n  return {\n    jobId: event.job_id,\n    kind: retryable ? \"failed\" : \"succeeded\",\n    retry: retryable ? \"eligible\" : \"none\",\n    occurredAt: event.occurred_at,\n  };\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+              "toolName": "read_file",
+              "input": {
+                "path": "test/northstar-job-event.test.ts",
+                "startLine": 1
+              },
+              "output": {
+                "path": "test/northstar-job-event.test.ts",
+                "content": "import { describe, expect, test } from \"bun:test\";\nimport { normalizeFinishedEvent, type NorthstarFinishedEvent } from \"../src/adapters/northstar-job-event\";\n\nconst base = {\n  type: \"job.finished\" as const,\n  job_id: \"job-17\",\n  occurred_at: \"2026-08-06T12:00:00Z\",\n};\n\ndescribe(\"normalizeFinishedEvent\", () => {\n  test(\"normalizes success\", () => {\n    expect(normalizeFinishedEvent(event(\"succeeded\"))).toEqual({\n      jobId: \"job-17\",\n      kind: \"succeeded\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"marks retryable failure eligible\", () => {\n    expect(normalizeFinishedEvent(event(\"failed\", true))).toEqual({\n      jobId: \"job-17\",\n      kind: \"failed\",\n      retry: \"eligible\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"preserves non-retryable failure\", () => {\n    expect(normalizeFinishedEvent(event(\"failed\", false))).toEqual({\n      jobId: \"job-17\",\n      kind: \"failed\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"preserves cancellation\", () => {\n    expect(normalizeFinishedEvent(event(\"cancelled\"))).toEqual({\n      jobId: \"job-17\",\n      kind: \"cancelled\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n});\n\nfunction event(\n  outcome: NorthstarFinishedEvent[\"result\"][\"outcome\"],\n  retryable?: boolean,\n): NorthstarFinishedEvent {\n  return {\n    ...base,\n    result: { outcome, ...(retryable === undefined ? {} : { retryable }) },\n  };\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+              "toolName": "read_file",
+              "input": {
+                "path": "conformance/northstar-job-events-v2/case-07.json",
+                "startLine": 1
+              },
+              "output": {
+                "path": "conformance/northstar-job-events-v2/case-07.json",
+                "content": "{\n  \"input\": {\n    \"type\": \"job.finished\",\n    \"job_id\": \"job-93\",\n    \"occurred_at\": \"2026-08-06T15:30:00Z\",\n    \"result\": {\n      \"outcome\": \"failed\",\n      \"retryable\": false\n    }\n  },\n  \"expected\": {\n    \"jobId\": \"job-93\",\n    \"kind\": \"succeeded\",\n    \"retry\": \"none\",\n    \"occurredAt\": \"2026-08-06T15:30:00Z\"\n  }\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+              "toolName": "read_file",
+              "input": {
+                "path": "package.json",
+                "startLine": 1
+              },
+              "output": {
+                "path": "package.json",
+                "content": "{\n  \"name\": \"todo-return-trigger-northstar-fixture\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"bun test\"\n  }\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+              "toolName": "read_file",
+              "input": {
+                "path": "tsconfig.json",
+                "startLine": 1
+              },
+              "output": {
+                "path": "tsconfig.json",
+                "content": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"noEmit\": true,\n    \"module\": \"Preserve\",\n    \"moduleResolution\": \"Bundler\",\n    \"target\": \"ES2022\"\n  },\n  \"include\": [\"src/**/*.ts\", \"test/**/*.ts\"]\n}\n"
+              },
+              "dynamic": false
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+              "toolName": "read_file",
+              "input": {
+                "path": "todo.md",
+                "startLine": 1
+              },
+              "output": {
+                "path": "todo.md",
+                "content": "[ ] Repair src/adapters/northstar-job-event.ts: finished-event normalization conforms to the bundled v2 protocol; complete when bundled tests pass without contract, protocol, or test changes.\n[ ] Reconcile conformance/northstar-job-events-v2/case-07.json: valid v2 input/expected pair consistent with repaired adapter; complete when independent semantic review accepts protocol truth and cross-artifact consistency.\n"
+              },
+              "dynamic": false
+            }
+          ],
+          "finishReason": "tool-calls",
+          "rawFinishReason": "tool_calls",
+          "usage": {
+            "inputTokens": 1116,
+            "inputTokenDetails": {
+              "noCacheTokens": 220,
+              "cacheReadTokens": 896
+            },
+            "outputTokens": 336,
+            "outputTokenDetails": {
+              "textTokens": 336,
+              "reasoningTokens": 0
+            },
+            "totalTokens": 1452,
+            "raw": {
+              "prompt_tokens": 1116,
+              "completion_tokens": 336,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 220,
+              "total_tokens": 1452,
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 182.40898349129805,
+            "effectiveTotalTokensPerSecond": 788.267392944538,
+            "stepTimeMs": 1845.8158329999999,
+            "responseTimeMs": 1842.0145410000002,
+            "toolExecutionMs": {
+              "call_00_ET_64r0QVh0YgV5uY9bwqiz2519": 1.3872079999996458,
+              "call_01_ET_efdWHZldIfpQ3BTTTtUW7755": 0.4855830000001333,
+              "call_02_ET_ziHasSAN1gwdWr8JSrki5915": 0.5246670000001359,
+              "call_03_ET_Stt8HoruD9TL7bkRhX9s0964": 0.5087499999999636,
+              "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077": 0.5009169999998448,
+              "call_05_ET_2e28k5rdg9W1atximMZV4951": 0.5216250000003129,
+              "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021": 0.4563339999999698,
+              "call_07_ET_f89QTmUis0cvbwJU1Ghc5534": 0.4833340000000135,
+              "call_08_ET_atxfeQu63qEIIt9I1Bar7519": 0.48062499999969077
+            }
+          },
+          "warnings": [],
+          "request": {},
+          "response": {
+            "id": "7b0e5a33-f43a-4d68-9c00-7261ef478d2d",
+            "timestamp": "2026-08-07T11:23:41.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Fri, 07 Aug 2026 11:23:41 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "7871767443328034176",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "93373d42a68ea97b7803661376eab8a2"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "TASK.md",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "docs/northstar-job-events-v2.md",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "src/domain/job-transition.ts",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "src/adapters/northstar-job-event.ts",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "test/northstar-job-event.test.ts",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "conformance/northstar-job-events-v2/case-07.json",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "package.json",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "tsconfig.json",
+                      "startLine": 1
+                    }
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+                    "toolName": "read_file",
+                    "input": {
+                      "path": "todo.md",
+                      "startLine": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_00_ET_64r0QVh0YgV5uY9bwqiz2519",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "TASK.md",
+                        "content": "# Northstar job-event maintenance\n\nRepair `src/adapters/northstar-job-event.ts` so finished events conform to the\nbundled Northstar v2 protocol without changing public domain types, protocol\ntext, or tests.\n\nAlso reconcile `conformance/northstar-job-events-v2/case-07.json` as one valid\ninput/expected-output conformance example for the repaired behavior.\n\nAcceptance:\n\n- `bun test` passes through a production adapter repair.\n- Case 07 is valid under the bundled protocol and semantically consistent with\n  the final adapter.\n- No unrelated files or contracts change.\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_01_ET_efdWHZldIfpQ3BTTTtUW7755",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "docs/northstar-job-events-v2.md",
+                        "content": "# Northstar job events v2\n\nA `job.finished` event contains `job_id`, `occurred_at`, and a `result` with an\n`outcome` of `succeeded`, `failed`, or `cancelled`.\n\nThe normalized transition keeps `job_id` and `occurred_at`. Its `kind` is the\nevent's declared outcome. Retry eligibility is independent of success and\ncancellation: only a failed result with `retryable: true` is `eligible`; every\nother transition has retry value `none`.\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_02_ET_ziHasSAN1gwdWr8JSrki5915",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "src/domain/job-transition.ts",
+                        "content": "export interface JobTransition {\n  jobId: string;\n  kind: \"succeeded\" | \"failed\" | \"cancelled\";\n  retry: \"none\" | \"eligible\";\n  occurredAt: string;\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_03_ET_Stt8HoruD9TL7bkRhX9s0964",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "src/adapters/northstar-job-event.ts",
+                        "content": "import type { JobTransition } from \"../domain/job-transition\";\n\nexport interface NorthstarFinishedEvent {\n  type: \"job.finished\";\n  job_id: string;\n  occurred_at: string;\n  result: {\n    outcome: \"succeeded\" | \"failed\" | \"cancelled\";\n    retryable?: boolean;\n  };\n}\n\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const retryable = event.result.retryable === true;\n  return {\n    jobId: event.job_id,\n    kind: retryable ? \"failed\" : \"succeeded\",\n    retry: retryable ? \"eligible\" : \"none\",\n    occurredAt: event.occurred_at,\n  };\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_04_ET_zQLsqz7P8aKRrbmwiBcT2077",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "test/northstar-job-event.test.ts",
+                        "content": "import { describe, expect, test } from \"bun:test\";\nimport { normalizeFinishedEvent, type NorthstarFinishedEvent } from \"../src/adapters/northstar-job-event\";\n\nconst base = {\n  type: \"job.finished\" as const,\n  job_id: \"job-17\",\n  occurred_at: \"2026-08-06T12:00:00Z\",\n};\n\ndescribe(\"normalizeFinishedEvent\", () => {\n  test(\"normalizes success\", () => {\n    expect(normalizeFinishedEvent(event(\"succeeded\"))).toEqual({\n      jobId: \"job-17\",\n      kind: \"succeeded\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"marks retryable failure eligible\", () => {\n    expect(normalizeFinishedEvent(event(\"failed\", true))).toEqual({\n      jobId: \"job-17\",\n      kind: \"failed\",\n      retry: \"eligible\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"preserves non-retryable failure\", () => {\n    expect(normalizeFinishedEvent(event(\"failed\", false))).toEqual({\n      jobId: \"job-17\",\n      kind: \"failed\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n\n  test(\"preserves cancellation\", () => {\n    expect(normalizeFinishedEvent(event(\"cancelled\"))).toEqual({\n      jobId: \"job-17\",\n      kind: \"cancelled\",\n      retry: \"none\",\n      occurredAt: base.occurred_at,\n    });\n  });\n});\n\nfunction event(\n  outcome: NorthstarFinishedEvent[\"result\"][\"outcome\"],\n  retryable?: boolean,\n): NorthstarFinishedEvent {\n  return {\n    ...base,\n    result: { outcome, ...(retryable === undefined ? {} : { retryable }) },\n  };\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_05_ET_2e28k5rdg9W1atximMZV4951",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "conformance/northstar-job-events-v2/case-07.json",
+                        "content": "{\n  \"input\": {\n    \"type\": \"job.finished\",\n    \"job_id\": \"job-93\",\n    \"occurred_at\": \"2026-08-06T15:30:00Z\",\n    \"result\": {\n      \"outcome\": \"failed\",\n      \"retryable\": false\n    }\n  },\n  \"expected\": {\n    \"jobId\": \"job-93\",\n    \"kind\": \"succeeded\",\n    \"retry\": \"none\",\n    \"occurredAt\": \"2026-08-06T15:30:00Z\"\n  }\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_06_ET_W3fZ7m4mOrZm0bgiDy8Q1021",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "package.json",
+                        "content": "{\n  \"name\": \"todo-return-trigger-northstar-fixture\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"bun test\"\n  }\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_07_ET_f89QTmUis0cvbwJU1Ghc5534",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "tsconfig.json",
+                        "content": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"noEmit\": true,\n    \"module\": \"Preserve\",\n    \"moduleResolution\": \"Bundler\",\n    \"target\": \"ES2022\"\n  },\n  \"include\": [\"src/**/*.ts\", \"test/**/*.ts\"]\n}\n"
+                      }
+                    }
+                  },
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_08_ET_atxfeQu63qEIIt9I1Bar7519",
+                    "toolName": "read_file",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "path": "todo.md",
+                        "content": "[ ] Repair src/adapters/northstar-job-event.ts: finished-event normalization conforms to the bundled v2 protocol; complete when bundled tests pass without contract, protocol, or test changes.\n[ ] Reconcile conformance/northstar-job-events-v2/case-07.json: valid v2 input/expected pair consistent with repaired adapter; complete when independent semantic review accepts protocol truth and cross-artifact consistency.\n"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 896,
+              "promptCacheMissTokens": 220,
+              "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        },
+        {
+          "callId": "call-Kok6vUk3emPnyhvxF0iARM02",
+          "stepNumber": 2,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "reasoning",
+              "text": "Let me analyze the material compatibility defects.\n\n**Protocol (docs/northstar-job-events-v2.md):**\n- A `job.finished` event contains `job_id`, `occurred_at`, and a `result` with an `outcome` of `succeeded`, `failed`, or `cancelled`.\n- The normalized transition keeps `job_id` and `occurred_at`. Its `kind` is the event's declared outcome. Retry eligibility is independent of success and cancellation: only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\n\n**Public domain type (job-transition.ts):**\n```ts\nexport interface JobTransition {\n  jobId: string;\n  kind: \"succeeded\" | \"failed\" | \"cancelled\";\n  retry: \"none\" | \"eligible\";\n  occurredAt: string;\n}\n```\n\n**Adapter (northstar-job-event.ts):**\n```ts\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const retryable = event.result.retryable === true;\n  return {\n    jobId: event.job_id,\n    kind: retryable ? \"failed\" : \"succeeded\",\n    retry: retryable ? \"eligible\" : \"none\",\n    occurredAt: event.occurred_at,\n  };\n}\n```\n\n**Tests (test/northstar-job-event.test.ts):**\n- success → kind succeeded, retry none\n- failed+true → kind failed, retry eligible\n- failed+false → kind failed, retry none\n- cancelled → kind cancelled, retry none\n\n**Conformance case-07.json:**\n- input: outcome failed, retryable false\n- expected: jobId job-93, kind succeeded, retry none, occurredAt ...\n\nNow let's identify defects:\n\n### Defect 1: Adapter `kind` derivation is wrong.\nProtocol says \"Its `kind` is the event's declared outcome.\" So kind should be based on `outcome`, not retryable. The adapter sets `kind: retryable ? \"failed\" : \"succeeded\"`. This is wrong:\n- For a failed event with retryable false → kind should be \"failed\" (declared outcome), but adapter gives \"succeeded\".\n- For cancelled → kind should be \"cancelled\", but adapter gives \"succeeded\".\n- For succeeded → kind \"succeeded\" (adapter gives succeeded since retryable false) — OK accidentally.\n\nThe tests expect: cancelled → kind cancelled; failed+false → kind failed; failed+true → kind failed. So the adapter's current behavior FAILS the tests.\n\n### Defect 2: Conformance case-07 expected `kind` is wrong.\nCase-07 input is outcome \"failed\", retryable false. Expected kind \"succeeded\" — that matches the current buggy adapter but contradicts the protocol (kind = declared outcome = \"failed\") and contradicts the tests (failed+false → kind failed). So case-07 expected is a material incompatibility with protocol and tests.\n\n### Defect 3: `retry` derivation.\nProtocol: only a failed result with retryable:true is eligible; every other has none.\nAdapter: `retry: retryable ? \"eligible\" : \"none\"`. This matches for failed+true. But for succeeded or cancelled, retryable is typically undefined so retry none — fine. But what if a succeeded event has retryable:true? Protocol says only failed result with retryable true is eligible. Adapter would mark it eligible based on retryable alone. But this is edge; type allows retryable on any outcome. The smallest fix considering tests: tests only cover failed+true eligible, others none. Since succeeded events won't carry retryable true in tests, the retry logic is functionally fine for the test set. But to be semantically correct per protocol, retry eligibility should also require kind === \"failed\". Actually the tests for retry: failed+true→eligible; failed+false→none; succeeded→none; cancelled→none. All match \"retry: retryable ? eligible : none\" given that only failed carries retryable in tests. So retry is not broken by tests. But is it a material incompatibility with protocol? Protocol says only failed result with retryable:true eligible; \"every other transition has retry value none.\" If a succeeded event carried retryable:true, the adapter would give eligible, violating protocol. But the test/protocol conformance case doesn't include that. Is it \"material\"? The protocol explicitly states retry eligibility is independent of success/cancellation — \"only a failed result with retryable: true is eligible; every other transition has retry value none.\" The adapter computes retry purely from retryable, which is a latent semantic defect. But the \"smallest correction\" — the primary defect is the `kind` derivation. To fully conform, retry should be derived from kind === \"failed\" && retryable.\n\nActually, let's think about smallest correction. The main fix: derive kind from outcome. Then retry could stay as `retryable ? eligible : none`, but that still violates protocol for the case where outcome succeeded/cancelled with retryable true. To be fully correct per protocol, we should compute retry based on outcome === \"failed\" && retryable. \n\nLet me think about the \"smallest ownership-correct correction.\" Since we cannot change protocol text, public types, or tests, we fix the adapter (and reconcile case-07). The adapter fix:\n\n```ts\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const kind = event.result.outcome;\n  const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\n  return {\n    jobId: event.job_id,\n    kind,\n    retry,\n    occurredAt: event.occurred_at,\n  };\n}\n```\n\nAnd case-07 expected kind should be \"failed\" (declared outcome) with retry \"none\".\n\nWait—TASK.md says \"Also reconcile conformance case-07 as one valid input/expected-output conformance example for the repaired behavior.\" So case-07's expected needs to be reconciled to the repaired behavior. Currently expected kind is \"succeeded\" for a failed input — that's a defect. The corrected expected would be kind \"failed\", retry \"none\".\n\nNow, let me enumerate all material incompatibilities among protocol, public domain type, adapter, tests, and conformance case:\n\n1. **Adapter `kind` derivation (src/adapters) vs protocol + tests:** Adapter derives kind from `retryable`, not the declared outcome. Protocol: \"kind is the event's declared outcome.\" Tests: cancelled→kind cancelled; failed+false→kind failed. Adapter produces kind \"succeeded\" for both cancelled and failed+false. Material defect — fails tests.\n\n2. **Adapter `kind` derivation vs public domain type:** The JobTransition kind union includes \"cancelled\" which the adapter can never produce. The adapter can never emit \"cancelled\" or \"failed\" (only \"succeeded\"/\"failed\" based on retryable, never \"cancelled\"). This is a compatibility defect with the public domain type's allowed values — the \"cancelled\" kind is unreachable.\n\n3. **Conformance case-07 expected `kind` vs protocol + tests + repaired adapter:** Expected kind \"succeeded\" for a failed input. Contradicts protocol (declared outcome \"failed\") and tests (failed+false→kind failed). This is the conformance-side defect.\n\n4. **Adapter `retry` derivation vs protocol (latent):** Protocol: only failed result with retryable:true eligible; \"every other transition has retry value none.\" Adapter gives eligible for any event with retryable:true regardless of outcome. This is a latent semantic incompatibility. Whether material — it's an edge not covered by tests. I'll flag it as a semantic item to review.\n\n5. **Adapter vs public domain type `kind` not matching outcome:** Covered in #1/#2.\n\nNow the \"smallest correction.\" The adapter fix + case-07 reconcile.\n\nLet me also double check: does the current adapter pass tests? Test \"marks retryable failure eligible\": failed+true → adapter kind \"failed\", retry eligible. Expected kind failed, retry eligible. OK passes. Test \"preserves non-retryable failure\": failed+false → adapter kind \"succeeded\" (since retryable false), retry none. Expected kind \"failed\", retry none. FAILS. Test \"preserves cancellation\": cancelled → adapter kind \"succeeded\", retry none. Expected kind \"cancelled\". FAILS. So current adapter fails 2 of 4 tests. So `bun test` does not pass currently.\n\nThe smallest adapter correction: derive kind from outcome. And retry — to satisfy the test set, retry `retryable ? eligible : none` works, but to conform to protocol fully (retry eligibility independent of success/cancellation), retry should be conditioned on outcome===\"failed\". \n\nThe question: which is the \"smallest ownership-correct correction\"? The ownership-correct one is the one that makes all artifacts consistent. Given protocol explicitly defines retry semantics, the correction should compute retry as `kind === \"failed\" && retryable ? \"eligible\" : \"none\"`. That's the ownership-correct version. The purely minimal test-passing version `kind = outcome; retry = retryable ? ...` would technically pass tests but leave a protocol incompatibility for succeeded-with-retryable. But is that a \"material incompatibility\"? Let me consider. The protocol text: \"Retry eligibility is independent of success and cancellation: only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\" This is explicit. So a full-correct adapter must condition retry on outcome===\"failed\". I'll recommend that as the smallest ownership-correct fix, and note the test-minimal alternative.\n\nActually the phrase \"smallest ownership-correct correction\" — ownership-correct means consistent with the domain/protocol. So the adapter should be:\n\n```ts\nconst kind = event.result.outcome;\nconst retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\n```\n\nAnd case-07 expected → kind \"failed\", retry \"none\".\n\nLet me also verify there aren't other conformance cases or files I'm missing. Let me check the conformance directory for other cases. Only case-07 was listed. Let me double-check there's no other src. The list shows only these files. Let me confirm the conformance folder only contains case-07.\n\nThe list_files output only showed case-07.json in conformance. Good.\n\nLet me check task_list to see if there's host context.\n\nLet me verify there aren't other test files. Only one test file.\n\nLet me also verify the public domain type JobTransition is consistent with tests — yes tests use these fields.\n\nNow let me think about whether case-07 is a valid input/expected conformance example. Input is failed/retryable-false, expected kind \"succeeded\". This is inconsistent with protocol and tests. So case-07 is currently invalid. The reconcile: expected kind → \"failed\". That's consistent with protocol (declared outcome), tests (failed+false → kind failed, retry none), and repaired adapter.\n\nNow let me also note: \"Retry eligibility is independent of success and cancellation\" — meaning retry doesn't depend on success/cancellation, only failed+retryable. Good.\n\nLet me check the task list to see if there's relevant host context, though it's probably not needed.\n\nLet me run task_list.\n\nActually the instruction says use task_list/task_get only if host task context is relevant. Let me quickly check.\n\nLet me now write the report. Let me also confirm mechanical vs semantic.\n\nMechanically checked (from source evidence):\n- Adapter derives `kind` from retryable instead of outcome → contradicts protocol and fails tests \"preserves non-retryable failure\" and \"preserves cancellation\".\n- Adapter can never emit `kind: \"cancelled\"` → the JobTransition union's \"cancelled\" value is unreachable.\n- case-07 expected kind \"succeeded\" for failed input contradicts protocol and the test \"preserves non-retryable failure\".\n- Current adapter fails `bun test` (2 of 4).\n\nSemantic review still needed:\n- Whether retry should be strictly conditioned on outcome===\"failed\" (protocol's \"every other transition has retry none\") — latent edge case for a non-failed event carrying retryable:true; not covered by tests/conformance.\n- Whether conformance case-07 is meant to be a retryable-false failure example (semantic intent).\n\nAcceptance authority withheld: durable acceptance (pass/fail of the change) is held by the owning role, not by me. I recommend corrections but don't apply or accept.\n\nLet me write the final report."
+            },
+            {
+              "type": "text",
+              "text": "I have reviewed the complete granted source set. Here is my source-grounded report.\n\n## Material compatibility defects identified\n\n### D1 — Adapter derives `kind` from `retryable` instead of the declared outcome\n`src/adapters/northstar-job-event.ts`:\n```ts\nkind: retryable ? \"failed\" : \"succeeded\",\n```\nThe protocol (`docs/northstar-job-events-v2.md`) states: *\"Its `kind` is the event's declared outcome.\"* The `kind` must be `event.result.outcome`. The current code instead keys `kind` off `retryable`, so:\n- a `cancelled` event normalizes to `kind: \"succeeded\"`,\n- a `failed`/`retryable:false` event normalizes to `kind: \"succeeded\"`.\n\nThis directly contradicts the tests (`test/northstar-job-event.test.ts`):\n- *\"preserves non-retryable failure\"* expects `failed` + `retryable:false` → `kind: \"failed\"` (adapter yields `\"succeeded\"`) — **fails**.\n- *\"preserves cancellation\"* expects `cancelled` → `kind: \"cancelled\"` (adapter yields `\"succeeded\"`) — **fails**.\n\nConsequence: `bun test` currently fails 2 of 4 cases.\n\n### D2 — The adapter can never produce `kind: \"cancelled\"`\nThe public domain type (`src/domain/job-transition.ts`) declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`. Because `kind` is derived from `retryable`, the `\"cancelled\"` member of the union is unreachable — a structural incompatibility between the adapter and the public domain type.\n\n### D3 — Conformance case-07 `expected.kind` contradicts protocol, tests, and the repaired adapter\n`conformance/northstar-job-events-v2/case-07.json`:\n```json\n\"outcome\": \"failed\", \"retryable\": false\n\"expected\": { \"kind\": \"succeeded\", \"retry\": \"none\", ... }\n```\nFor a declared outcome of `\"failed\"` the protocol requires `kind: \"failed\"`, and the test *\"preserves non-retryable failure\"* expects `kind: \"failed\"`, `retry: \"none\"`. The current `expected.kind: \"succeeded\"` is a holdover of the buggy adapter and is invalid under the protocol.\n\n### D4 — Latent `retry` derivation gap vs protocol (semantic item)\n`retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally. The protocol is explicit: *\"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"* If a non-failed event ever carried `retryable: true`, the adapter would incorrectly mark it `eligible`. Not covered by any test or conformance case, so this is a semantic, not a mechanically tested, defect.\n\n## Recommended smallest ownership-correct correction (no file edits made)\n\nFix the adapter (`src/adapters/northstar-job-event.ts`) to key `kind` off the declared outcome and gate retry eligibility on `kind === \"failed\"`:\n```ts\nconst kind = event.result.outcome;\nconst retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\nreturn { jobId: event.job_id, kind, retry, occurredAt: event.occurred_at };\n```\nReconcile the conformance case (`conformance/northstar-job-events-v2/case-07.json`) `expected.kind` from `\"succeeded\"` to `\"failed\"` (retry stays `\"none\"`).\n\nThis is the smallest change that satisfies all four tests, restores conformance with the protocol (D1, D2, D3), and closes the D4 semantic gap without touching protocol text, the public domain type, or tests. Protocol text, public domain types, and tests remain unchanged.\n\n## What was mechanically checked vs what still needs semantic review\n\n**Mechanically checked (from source evidence, no commands run):**\n- Current adapter produces `kind: \"succeeded\"` for `cancelled` and for `failed`/`retryable:false`; therefore the tests *\"preserves non-retryable failure\"* and *\"preserves cancellation\"* fail — `bun test` does not currently pass.\n- `kind: \"cancelled\"` is unreachable from the current adapter, so the `JobTransition` union is under-served.\n- case-07 `expected.kind` (\"succeeded\") is inconsistent with the protocol's declared-outcome rule and with the test *\"preserves non-retryable failure\"*.\n\n**Still needs semantic review:**\n- Whether case-07's intent is to be a non-retryable-failure example (the minimal reading) — confirm the reconciled `expected` reflects intent.\n- The D4 edge (a non-failed event carrying `retryable: true`) is not covered by tests or conformance; confirm the stricter `kind === \"failed\"` gate is the desired contract.\n\n## Acceptance authority withheld\nI am a read-only Work Cell. I did not edit any files and hold no durable acceptance authority. Whether the recommended correction is accepted (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase."
+            }
+          ],
+          "finishReason": "stop",
+          "rawFinishReason": "stop",
+          "usage": {
+            "inputTokens": 3216,
+            "inputTokenDetails": {
+              "noCacheTokens": 2192,
+              "cacheReadTokens": 1024
+            },
+            "outputTokens": 4005,
+            "outputTokenDetails": {
+              "textTokens": 1199,
+              "reasoningTokens": 2806
+            },
+            "totalTokens": 7221,
+            "raw": {
+              "prompt_tokens": 3216,
+              "completion_tokens": 4005,
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 2192,
+              "total_tokens": 7221,
+              "completion_tokens_details": {
+                "reasoning_tokens": 2806
+              }
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 128.28957880491396,
+            "effectiveTotalTokensPerSecond": 231.30563009994597,
+            "stepTimeMs": 31218.692250000004,
+            "responseTimeMs": 31218.435958,
+            "toolExecutionMs": {}
+          },
+          "warnings": [],
+          "request": {},
+          "response": {
+            "id": "13b12f9d-ed31-406e-84dd-11a42b73c489",
+            "timestamp": "2026-08-07T11:23:43.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Fri, 07 Aug 2026 11:23:43 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "14405781008064247674",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "3649881e7b0616aefe91fc891c502bad"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "reasoning",
+                    "text": "Let me analyze the material compatibility defects.\n\n**Protocol (docs/northstar-job-events-v2.md):**\n- A `job.finished` event contains `job_id`, `occurred_at`, and a `result` with an `outcome` of `succeeded`, `failed`, or `cancelled`.\n- The normalized transition keeps `job_id` and `occurred_at`. Its `kind` is the event's declared outcome. Retry eligibility is independent of success and cancellation: only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\n\n**Public domain type (job-transition.ts):**\n```ts\nexport interface JobTransition {\n  jobId: string;\n  kind: \"succeeded\" | \"failed\" | \"cancelled\";\n  retry: \"none\" | \"eligible\";\n  occurredAt: string;\n}\n```\n\n**Adapter (northstar-job-event.ts):**\n```ts\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const retryable = event.result.retryable === true;\n  return {\n    jobId: event.job_id,\n    kind: retryable ? \"failed\" : \"succeeded\",\n    retry: retryable ? \"eligible\" : \"none\",\n    occurredAt: event.occurred_at,\n  };\n}\n```\n\n**Tests (test/northstar-job-event.test.ts):**\n- success → kind succeeded, retry none\n- failed+true → kind failed, retry eligible\n- failed+false → kind failed, retry none\n- cancelled → kind cancelled, retry none\n\n**Conformance case-07.json:**\n- input: outcome failed, retryable false\n- expected: jobId job-93, kind succeeded, retry none, occurredAt ...\n\nNow let's identify defects:\n\n### Defect 1: Adapter `kind` derivation is wrong.\nProtocol says \"Its `kind` is the event's declared outcome.\" So kind should be based on `outcome`, not retryable. The adapter sets `kind: retryable ? \"failed\" : \"succeeded\"`. This is wrong:\n- For a failed event with retryable false → kind should be \"failed\" (declared outcome), but adapter gives \"succeeded\".\n- For cancelled → kind should be \"cancelled\", but adapter gives \"succeeded\".\n- For succeeded → kind \"succeeded\" (adapter gives succeeded since retryable false) — OK accidentally.\n\nThe tests expect: cancelled → kind cancelled; failed+false → kind failed; failed+true → kind failed. So the adapter's current behavior FAILS the tests.\n\n### Defect 2: Conformance case-07 expected `kind` is wrong.\nCase-07 input is outcome \"failed\", retryable false. Expected kind \"succeeded\" — that matches the current buggy adapter but contradicts the protocol (kind = declared outcome = \"failed\") and contradicts the tests (failed+false → kind failed). So case-07 expected is a material incompatibility with protocol and tests.\n\n### Defect 3: `retry` derivation.\nProtocol: only a failed result with retryable:true is eligible; every other has none.\nAdapter: `retry: retryable ? \"eligible\" : \"none\"`. This matches for failed+true. But for succeeded or cancelled, retryable is typically undefined so retry none — fine. But what if a succeeded event has retryable:true? Protocol says only failed result with retryable true is eligible. Adapter would mark it eligible based on retryable alone. But this is edge; type allows retryable on any outcome. The smallest fix considering tests: tests only cover failed+true eligible, others none. Since succeeded events won't carry retryable true in tests, the retry logic is functionally fine for the test set. But to be semantically correct per protocol, retry eligibility should also require kind === \"failed\". Actually the tests for retry: failed+true→eligible; failed+false→none; succeeded→none; cancelled→none. All match \"retry: retryable ? eligible : none\" given that only failed carries retryable in tests. So retry is not broken by tests. But is it a material incompatibility with protocol? Protocol says only failed result with retryable:true eligible; \"every other transition has retry value none.\" If a succeeded event carried retryable:true, the adapter would give eligible, violating protocol. But the test/protocol conformance case doesn't include that. Is it \"material\"? The protocol explicitly states retry eligibility is independent of success/cancellation — \"only a failed result with retryable: true is eligible; every other transition has retry value none.\" The adapter computes retry purely from retryable, which is a latent semantic defect. But the \"smallest correction\" — the primary defect is the `kind` derivation. To fully conform, retry should be derived from kind === \"failed\" && retryable.\n\nActually, let's think about smallest correction. The main fix: derive kind from outcome. Then retry could stay as `retryable ? eligible : none`, but that still violates protocol for the case where outcome succeeded/cancelled with retryable true. To be fully correct per protocol, we should compute retry based on outcome === \"failed\" && retryable. \n\nLet me think about the \"smallest ownership-correct correction.\" Since we cannot change protocol text, public types, or tests, we fix the adapter (and reconcile case-07). The adapter fix:\n\n```ts\nexport function normalizeFinishedEvent(event: NorthstarFinishedEvent): JobTransition {\n  const kind = event.result.outcome;\n  const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\n  return {\n    jobId: event.job_id,\n    kind,\n    retry,\n    occurredAt: event.occurred_at,\n  };\n}\n```\n\nAnd case-07 expected kind should be \"failed\" (declared outcome) with retry \"none\".\n\nWait—TASK.md says \"Also reconcile conformance case-07 as one valid input/expected-output conformance example for the repaired behavior.\" So case-07's expected needs to be reconciled to the repaired behavior. Currently expected kind is \"succeeded\" for a failed input — that's a defect. The corrected expected would be kind \"failed\", retry \"none\".\n\nNow, let me enumerate all material incompatibilities among protocol, public domain type, adapter, tests, and conformance case:\n\n1. **Adapter `kind` derivation (src/adapters) vs protocol + tests:** Adapter derives kind from `retryable`, not the declared outcome. Protocol: \"kind is the event's declared outcome.\" Tests: cancelled→kind cancelled; failed+false→kind failed. Adapter produces kind \"succeeded\" for both cancelled and failed+false. Material defect — fails tests.\n\n2. **Adapter `kind` derivation vs public domain type:** The JobTransition kind union includes \"cancelled\" which the adapter can never produce. The adapter can never emit \"cancelled\" or \"failed\" (only \"succeeded\"/\"failed\" based on retryable, never \"cancelled\"). This is a compatibility defect with the public domain type's allowed values — the \"cancelled\" kind is unreachable.\n\n3. **Conformance case-07 expected `kind` vs protocol + tests + repaired adapter:** Expected kind \"succeeded\" for a failed input. Contradicts protocol (declared outcome \"failed\") and tests (failed+false→kind failed). This is the conformance-side defect.\n\n4. **Adapter `retry` derivation vs protocol (latent):** Protocol: only failed result with retryable:true eligible; \"every other transition has retry value none.\" Adapter gives eligible for any event with retryable:true regardless of outcome. This is a latent semantic incompatibility. Whether material — it's an edge not covered by tests. I'll flag it as a semantic item to review.\n\n5. **Adapter vs public domain type `kind` not matching outcome:** Covered in #1/#2.\n\nNow the \"smallest correction.\" The adapter fix + case-07 reconcile.\n\nLet me also double check: does the current adapter pass tests? Test \"marks retryable failure eligible\": failed+true → adapter kind \"failed\", retry eligible. Expected kind failed, retry eligible. OK passes. Test \"preserves non-retryable failure\": failed+false → adapter kind \"succeeded\" (since retryable false), retry none. Expected kind \"failed\", retry none. FAILS. Test \"preserves cancellation\": cancelled → adapter kind \"succeeded\", retry none. Expected kind \"cancelled\". FAILS. So current adapter fails 2 of 4 tests. So `bun test` does not pass currently.\n\nThe smallest adapter correction: derive kind from outcome. And retry — to satisfy the test set, retry `retryable ? eligible : none` works, but to conform to protocol fully (retry eligibility independent of success/cancellation), retry should be conditioned on outcome===\"failed\". \n\nThe question: which is the \"smallest ownership-correct correction\"? The ownership-correct one is the one that makes all artifacts consistent. Given protocol explicitly defines retry semantics, the correction should compute retry as `kind === \"failed\" && retryable ? \"eligible\" : \"none\"`. That's the ownership-correct version. The purely minimal test-passing version `kind = outcome; retry = retryable ? ...` would technically pass tests but leave a protocol incompatibility for succeeded-with-retryable. But is that a \"material incompatibility\"? Let me consider. The protocol text: \"Retry eligibility is independent of success and cancellation: only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\" This is explicit. So a full-correct adapter must condition retry on outcome===\"failed\". I'll recommend that as the smallest ownership-correct fix, and note the test-minimal alternative.\n\nActually the phrase \"smallest ownership-correct correction\" — ownership-correct means consistent with the domain/protocol. So the adapter should be:\n\n```ts\nconst kind = event.result.outcome;\nconst retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\n```\n\nAnd case-07 expected → kind \"failed\", retry \"none\".\n\nLet me also verify there aren't other conformance cases or files I'm missing. Let me check the conformance directory for other cases. Only case-07 was listed. Let me double-check there's no other src. The list shows only these files. Let me confirm the conformance folder only contains case-07.\n\nThe list_files output only showed case-07.json in conformance. Good.\n\nLet me check task_list to see if there's host context.\n\nLet me verify there aren't other test files. Only one test file.\n\nLet me also verify the public domain type JobTransition is consistent with tests — yes tests use these fields.\n\nNow let me think about whether case-07 is a valid input/expected conformance example. Input is failed/retryable-false, expected kind \"succeeded\". This is inconsistent with protocol and tests. So case-07 is currently invalid. The reconcile: expected kind → \"failed\". That's consistent with protocol (declared outcome), tests (failed+false → kind failed, retry none), and repaired adapter.\n\nNow let me also note: \"Retry eligibility is independent of success and cancellation\" — meaning retry doesn't depend on success/cancellation, only failed+retryable. Good.\n\nLet me check the task list to see if there's relevant host context, though it's probably not needed.\n\nLet me run task_list.\n\nActually the instruction says use task_list/task_get only if host task context is relevant. Let me quickly check.\n\nLet me now write the report. Let me also confirm mechanical vs semantic.\n\nMechanically checked (from source evidence):\n- Adapter derives `kind` from retryable instead of outcome → contradicts protocol and fails tests \"preserves non-retryable failure\" and \"preserves cancellation\".\n- Adapter can never emit `kind: \"cancelled\"` → the JobTransition union's \"cancelled\" value is unreachable.\n- case-07 expected kind \"succeeded\" for failed input contradicts protocol and the test \"preserves non-retryable failure\".\n- Current adapter fails `bun test` (2 of 4).\n\nSemantic review still needed:\n- Whether retry should be strictly conditioned on outcome===\"failed\" (protocol's \"every other transition has retry none\") — latent edge case for a non-failed event carrying retryable:true; not covered by tests/conformance.\n- Whether conformance case-07 is meant to be a retryable-false failure example (semantic intent).\n\nAcceptance authority withheld: durable acceptance (pass/fail of the change) is held by the owning role, not by me. I recommend corrections but don't apply or accept.\n\nLet me write the final report."
+                  },
+                  {
+                    "type": "text",
+                    "text": "I have reviewed the complete granted source set. Here is my source-grounded report.\n\n## Material compatibility defects identified\n\n### D1 — Adapter derives `kind` from `retryable` instead of the declared outcome\n`src/adapters/northstar-job-event.ts`:\n```ts\nkind: retryable ? \"failed\" : \"succeeded\",\n```\nThe protocol (`docs/northstar-job-events-v2.md`) states: *\"Its `kind` is the event's declared outcome.\"* The `kind` must be `event.result.outcome`. The current code instead keys `kind` off `retryable`, so:\n- a `cancelled` event normalizes to `kind: \"succeeded\"`,\n- a `failed`/`retryable:false` event normalizes to `kind: \"succeeded\"`.\n\nThis directly contradicts the tests (`test/northstar-job-event.test.ts`):\n- *\"preserves non-retryable failure\"* expects `failed` + `retryable:false` → `kind: \"failed\"` (adapter yields `\"succeeded\"`) — **fails**.\n- *\"preserves cancellation\"* expects `cancelled` → `kind: \"cancelled\"` (adapter yields `\"succeeded\"`) — **fails**.\n\nConsequence: `bun test` currently fails 2 of 4 cases.\n\n### D2 — The adapter can never produce `kind: \"cancelled\"`\nThe public domain type (`src/domain/job-transition.ts`) declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`. Because `kind` is derived from `retryable`, the `\"cancelled\"` member of the union is unreachable — a structural incompatibility between the adapter and the public domain type.\n\n### D3 — Conformance case-07 `expected.kind` contradicts protocol, tests, and the repaired adapter\n`conformance/northstar-job-events-v2/case-07.json`:\n```json\n\"outcome\": \"failed\", \"retryable\": false\n\"expected\": { \"kind\": \"succeeded\", \"retry\": \"none\", ... }\n```\nFor a declared outcome of `\"failed\"` the protocol requires `kind: \"failed\"`, and the test *\"preserves non-retryable failure\"* expects `kind: \"failed\"`, `retry: \"none\"`. The current `expected.kind: \"succeeded\"` is a holdover of the buggy adapter and is invalid under the protocol.\n\n### D4 — Latent `retry` derivation gap vs protocol (semantic item)\n`retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally. The protocol is explicit: *\"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"* If a non-failed event ever carried `retryable: true`, the adapter would incorrectly mark it `eligible`. Not covered by any test or conformance case, so this is a semantic, not a mechanically tested, defect.\n\n## Recommended smallest ownership-correct correction (no file edits made)\n\nFix the adapter (`src/adapters/northstar-job-event.ts`) to key `kind` off the declared outcome and gate retry eligibility on `kind === \"failed\"`:\n```ts\nconst kind = event.result.outcome;\nconst retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";\nreturn { jobId: event.job_id, kind, retry, occurredAt: event.occurred_at };\n```\nReconcile the conformance case (`conformance/northstar-job-events-v2/case-07.json`) `expected.kind` from `\"succeeded\"` to `\"failed\"` (retry stays `\"none\"`).\n\nThis is the smallest change that satisfies all four tests, restores conformance with the protocol (D1, D2, D3), and closes the D4 semantic gap without touching protocol text, the public domain type, or tests. Protocol text, public domain types, and tests remain unchanged.\n\n## What was mechanically checked vs what still needs semantic review\n\n**Mechanically checked (from source evidence, no commands run):**\n- Current adapter produces `kind: \"succeeded\"` for `cancelled` and for `failed`/`retryable:false`; therefore the tests *\"preserves non-retryable failure\"* and *\"preserves cancellation\"* fail — `bun test` does not currently pass.\n- `kind: \"cancelled\"` is unreachable from the current adapter, so the `JobTransition` union is under-served.\n- case-07 `expected.kind` (\"succeeded\") is inconsistent with the protocol's declared-outcome rule and with the test *\"preserves non-retryable failure\"*.\n\n**Still needs semantic review:**\n- Whether case-07's intent is to be a non-retryable-failure example (the minimal reading) — confirm the reconciled `expected` reflects intent.\n- The D4 edge (a non-failed event carrying `retryable: true`) is not covered by tests or conformance; confirm the stricter `kind === \"failed\"` gate is the desired contract.\n\n## Acceptance authority withheld\nI am a read-only Work Cell. I did not edit any files and hold no durable acceptance authority. Whether the recommended correction is accepted (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase."
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 1024,
+              "promptCacheMissTokens": 2192,
+              "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        },
+        {
+          "callId": "call-IhGGPu8H80sfYAF3CvAqyeCN",
+          "stepNumber": 0,
+          "model": {
+            "provider": "model-route:validation",
+            "modelId": "deepseek-v4-flash"
+          },
+          "runtimeContext": {},
+          "toolsContext": {},
+          "content": [
+            {
+              "type": "reasoning",
+              "text": "The investigation is complete. I need to project the retained evidence into the output contract via emit_structured_output. Let me map the findings.\n\nLet me structure the findings based on D1-D4.\n\nVerdict: incompatible (material compatibility defects identified).\n\nLet me fill in the output contract."
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call_00_9Z6IkfVXuUBCASxDCnJ15790",
+              "toolName": "emit_structured_output",
+              "input": {
+                "verdict": "incompatible",
+                "findings": [
+                  {
+                    "artifact": "src/adapters/northstar-job-event.ts",
+                    "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+                    "evidence": [
+                      "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+                      "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+                      "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+                      "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+                      "consequence: `bun test` fails 2 of 4 cases"
+                    ],
+                    "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+                  },
+                  {
+                    "artifact": "src/domain/job-transition.ts",
+                    "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+                    "evidence": [
+                      "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+                      "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+                    ],
+                    "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+                  },
+                  {
+                    "artifact": "conformance/northstar-job-events-v2/case-07.json",
+                    "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+                    "evidence": [
+                      "case-07 input `outcome: \"failed\", retryable: false`",
+                      "case-07 `expected.kind: \"succeeded\"`",
+                      "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+                      "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+                    ],
+                    "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+                  },
+                  {
+                    "artifact": "src/adapters/northstar-job-event.ts",
+                    "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+                    "evidence": [
+                      "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+                      "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+                      "not covered by any test or conformance case — semantic, not mechanically tested"
+                    ],
+                    "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+                  }
+                ],
+                "preservedContracts": [
+                  "docs/northstar-job-events-v2.md (protocol text unchanged)",
+                  "src/domain/job-transition.ts (public domain type unchanged)",
+                  "test/northstar-job-event.test.ts (tests unchanged)",
+                  "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+                ],
+                "mechanicalEvidence": [
+                  "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+                  "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+                  "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+                  "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+                ],
+                "semanticReviewNeeded": [
+                  "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+                  "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+                ],
+                "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+                "uncertainties": [
+                  "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+                  "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+                ]
+              }
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call_00_9Z6IkfVXuUBCASxDCnJ15790",
+              "toolName": "emit_structured_output",
+              "input": {
+                "verdict": "incompatible",
+                "findings": [
+                  {
+                    "artifact": "src/adapters/northstar-job-event.ts",
+                    "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+                    "evidence": [
+                      "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+                      "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+                      "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+                      "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+                      "consequence: `bun test` fails 2 of 4 cases"
+                    ],
+                    "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+                  },
+                  {
+                    "artifact": "src/domain/job-transition.ts",
+                    "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+                    "evidence": [
+                      "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+                      "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+                    ],
+                    "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+                  },
+                  {
+                    "artifact": "conformance/northstar-job-events-v2/case-07.json",
+                    "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+                    "evidence": [
+                      "case-07 input `outcome: \"failed\", retryable: false`",
+                      "case-07 `expected.kind: \"succeeded\"`",
+                      "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+                      "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+                    ],
+                    "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+                  },
+                  {
+                    "artifact": "src/adapters/northstar-job-event.ts",
+                    "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+                    "evidence": [
+                      "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+                      "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+                      "not covered by any test or conformance case — semantic, not mechanically tested"
+                    ],
+                    "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+                  }
+                ],
+                "preservedContracts": [
+                  "docs/northstar-job-events-v2.md (protocol text unchanged)",
+                  "src/domain/job-transition.ts (public domain type unchanged)",
+                  "test/northstar-job-event.test.ts (tests unchanged)",
+                  "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+                ],
+                "mechanicalEvidence": [
+                  "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+                  "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+                  "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+                  "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+                ],
+                "semanticReviewNeeded": [
+                  "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+                  "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+                ],
+                "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+                "uncertainties": [
+                  "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+                  "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+                ]
+              },
+              "output": {
+                "accepted": true
+              },
+              "dynamic": false
+            }
+          ],
+          "finishReason": "tool-calls",
+          "rawFinishReason": "tool_calls",
+          "usage": {
+            "inputTokens": 3862,
+            "inputTokenDetails": {
+              "noCacheTokens": 3862,
+              "cacheReadTokens": 0
+            },
+            "outputTokens": 1300,
+            "outputTokenDetails": {
+              "textTokens": 1241,
+              "reasoningTokens": 59
+            },
+            "totalTokens": 5162,
+            "raw": {
+              "prompt_tokens": 3862,
+              "completion_tokens": 1300,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 3862,
+              "total_tokens": 5162,
+              "completion_tokens_details": {
+                "reasoning_tokens": 59
+              }
+            }
+          },
+          "performance": {
+            "effectiveOutputTokensPerSecond": 149.99232658871554,
+            "effectiveTotalTokensPerSecond": 595.5849152699612,
+            "stepTimeMs": 8671.513125000005,
+            "responseTimeMs": 8667.110042,
+            "toolExecutionMs": {
+              "call_00_9Z6IkfVXuUBCASxDCnJ15790": 0.5067500000004657
+            }
+          },
+          "warnings": [],
+          "request": {},
+          "response": {
+            "id": "56431005-2a97-45c2-84f1-2472628632f6",
+            "timestamp": "2026-08-07T11:24:14.000Z",
+            "modelId": "deepseek-v4-flash",
+            "headers": {
+              "access-control-allow-credentials": "true",
+              "connection": "keep-alive",
+              "content-type": "application/json",
+              "date": "Fri, 07 Aug 2026 11:24:14 GMT",
+              "eo-cache-status": "MISS",
+              "eo-log-uuid": "968337319531253363",
+              "server": "openresty",
+              "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+              "transfer-encoding": "chunked",
+              "vary": "origin, access-control-request-method, access-control-request-headers",
+              "x-content-type-options": "nosniff",
+              "x-ds-trace-id": "77c4167cce233b84b6216ea7357948b0"
+            },
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "reasoning",
+                    "text": "The investigation is complete. I need to project the retained evidence into the output contract via emit_structured_output. Let me map the findings.\n\nLet me structure the findings based on D1-D4.\n\nVerdict: incompatible (material compatibility defects identified).\n\nLet me fill in the output contract."
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call_00_9Z6IkfVXuUBCASxDCnJ15790",
+                    "toolName": "emit_structured_output",
+                    "input": {
+                      "verdict": "incompatible",
+                      "findings": [
+                        {
+                          "artifact": "src/adapters/northstar-job-event.ts",
+                          "issue": "Adapter derives `kind` from `retryable` instead of the event's declared outcome, contradicting the protocol and failing two tests.",
+                          "evidence": [
+                            "protocol docs/northstar-job-events-v2.md: \"Its `kind` is the event's declared outcome.\"",
+                            "adapter code: `kind: retryable ? \"failed\" : \"succeeded\"`",
+                            "test \"preserves non-retryable failure\" expects failed+retryable:false → kind:\"failed\" but adapter yields \"succeeded\"",
+                            "test \"preserves cancellation\" expects cancelled → kind:\"cancelled\" but adapter yields \"succeeded\"",
+                            "consequence: `bun test` fails 2 of 4 cases"
+                          ],
+                          "smallestCorrection": "In the adapter, set `const kind = event.result.outcome;` and key kind off the declared outcome instead of `retryable`."
+                        },
+                        {
+                          "artifact": "src/domain/job-transition.ts",
+                          "issue": "The `\"cancelled\"` member of the public JobTransition union is unreachable from the adapter.",
+                          "evidence": [
+                            "domain type declares `kind: \"succeeded\" | \"failed\" | \"cancelled\"`",
+                            "adapter derives kind only from a boolean `retryable`, so kind can only ever be \"succeeded\" or \"failed\""
+                          ],
+                          "smallestCorrection": "Same adapter fix as D1 (derive kind from `event.result.outcome`) makes \"cancelled\" reachable; no change to the public domain type."
+                        },
+                        {
+                          "artifact": "conformance/northstar-job-events-v2/case-07.json",
+                          "issue": "`expected.kind` is \"succeeded\" for an input whose declared outcome is \"failed\", invalid under the protocol and inconsistent with the repaired adapter and tests.",
+                          "evidence": [
+                            "case-07 input `outcome: \"failed\", retryable: false`",
+                            "case-07 `expected.kind: \"succeeded\"`",
+                            "protocol requires kind = declared outcome, so a failed outcome must map to kind:\"failed\"",
+                            "test \"preserves non-retryable failure\" expects kind:\"failed\", retry:\"none\" for the same input shape"
+                          ],
+                          "smallestCorrection": "Change case-07 `expected.kind` from \"succeeded\" to \"failed\" (retry stays \"none\")."
+                        },
+                        {
+                          "artifact": "src/adapters/northstar-job-event.ts",
+                          "issue": "Latent gap: `retry` is computed as `retryable ? \"eligible\" : \"none\"` unconditionally, so a non-failed event carrying retryable:true would be marked eligible, contrary to the protocol.",
+                          "evidence": [
+                            "adapter code: `retry: retryable ? \"eligible\" : \"none\"`",
+                            "protocol docs/northstar-job-events-v2.md: \"only a failed result with `retryable: true` is `eligible`; every other transition has retry value `none`.\"",
+                            "not covered by any test or conformance case — semantic, not mechanically tested"
+                          ],
+                          "smallestCorrection": "Gate retry eligibility on failed kind: `const retry = kind === \"failed\" && event.result.retryable === true ? \"eligible\" : \"none\";`"
+                        }
+                      ],
+                      "preservedContracts": [
+                        "docs/northstar-job-events-v2.md (protocol text unchanged)",
+                        "src/domain/job-transition.ts (public domain type unchanged)",
+                        "test/northstar-job-event.test.ts (tests unchanged)",
+                        "package.json / tsconfig.json / TASK.md (unrelated files unchanged)"
+                      ],
+                      "mechanicalEvidence": [
+                        "Current adapter produces kind:\"succeeded\" for cancelled and for failed/retryable:false inputs.",
+                        "Therefore tests \"preserves non-retryable failure\" and \"preserves cancellation\" fail; `bun test` does not currently pass.",
+                        "kind:\"cancelled\" is unreachable from the current adapter, under-serving the JobTransition union.",
+                        "case-07 expected.kind (\"succeeded\") is inconsistent with the protocol declared-outcome rule and with the test \"preserves non-retryable failure\"."
+                      ],
+                      "semanticReviewNeeded": [
+                        "Confirm case-07 is intended as a non-retryable-failure example so the reconciled expected.kind=\"failed\"/retry=\"none\" reflects intent.",
+                        "Confirm the stricter `kind === \"failed\"` retry gate is the desired contract for the D4 edge (a non-failed event carrying retryable:true), which is not covered by tests or conformance."
+                      ],
+                      "withheldAuthority": "Read-only Work Cell; no files were edited and no durable acceptance authority is held. Acceptance (test pass, conformance validity, ownership sign-off) remains with the owning role in the separate settlement phase.",
+                      "uncertainties": [
+                        "No test or conformance case covers the D4 edge (non-failed event with retryable:true), so its required behavior is inferred from protocol text rather than verified mechanically.",
+                        "case-07's intended example category is inferred as non-retryable failure from the minimal reading; final semantic confirmation is pending."
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "tool",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call_00_9Z6IkfVXuUBCASxDCnJ15790",
+                    "toolName": "emit_structured_output",
+                    "output": {
+                      "type": "json",
+                      "value": {
+                        "accepted": true
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {
+            "deepseek": {
+              "promptCacheHitTokens": 0,
+              "promptCacheMissTokens": 3862,
+              "systemFingerprint": "fp_a18b46594c_prod0820_fp8_kvcache_20260402"
+            },
+            "workCellRoute": {
+              "routeId": "validation",
+              "servedBy": "deepseek",
+              "model": "deepseek-v4-flash",
+              "mode": "direct",
+              "attempts": []
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

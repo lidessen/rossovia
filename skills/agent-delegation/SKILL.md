@@ -100,7 +100,11 @@ refactoring boundaries, research questions, or project policy.
    ```
 
    Resolve disagreement against named sources and the frozen whole, never by
-   vote or concatenation. Preserve dissent and `unverifiable` results.
+   vote or concatenation. Before using an exact claim from child-only sources
+   as a premise, record its source scope and lineage, the exact admitted claim,
+   remaining uncertainty, and who retains judgment. Without that relation,
+   treat the return as a lead to verify rather than silently discarding it or
+   promoting it to fact. Preserve dissent and `unverifiable` results.
 7. **Keep claims and verification distinct.** A worker's successful return is
    a claim with evidence, not accepted fact. The Main Agent ensures appropriate
    verification occurs and retains the final response, but does not relabel a
