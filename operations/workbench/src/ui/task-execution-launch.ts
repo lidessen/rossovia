@@ -18,19 +18,15 @@ import {
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
   workbenchTaskExecutionContextFor,
 } from "./task-execution-context";
+import {
+  trustedTaskExecutionRuntimeAdapterFor,
+  type TaskExecutionRuntimeAdapterId,
+} from "./task-execution-runtime-adapter";
 
 export { WORKBENCH_TASK_EXECUTION_CONTEXT_ENV } from "./task-execution-context";
-
-const repositoryRoot = resolve(import.meta.dir, "../../../..");
-const blogPublicationRuntimeRef =
-  "source-project:operations/autonomy/experiments/agent-era-blog-publication-runtime.ts";
-const blogPublicationRuntimePath = resolve(
-  repositoryRoot,
-  "operations/autonomy/experiments/agent-era-blog-publication-runtime.ts",
-);
-
-export const AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID =
-  "agent-era-blog-publication-v1";
+export {
+  AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID,
+} from "./task-execution-runtime-adapter";
 
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
 const absolutePath = z.string().min(1).refine(isAbsolute, "must be an absolute path");
@@ -46,10 +42,10 @@ export const TaskExecutionLaunchRequestSchema = z.object({
 const TaskExecutionLaunchCandidateSchema = z.object({
   authorizationId: z.string().uuid(),
   proposalDigest: digest,
-  runtimeAdapterId: z.literal(AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID),
+  runtimeAdapterId: z.string().min(1),
   worktreePath: absolutePath,
   receiptPath: absolutePath,
-  runtimeRef: z.literal(blogPublicationRuntimeRef),
+  runtimeRef: z.string().min(1),
   runtimeDigest: digest,
   evidenceRefs: z.array(z.string().min(1)).min(1),
 }).strict();
@@ -73,7 +69,7 @@ export type TaskExecutionLaunchPlan =
     readonly taskId: string;
     readonly authorizationId: string;
     readonly proposalDigest: string;
-    readonly adapterId: typeof AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID;
+    readonly adapterId: TaskExecutionRuntimeAdapterId;
     readonly start: TrustedRunnerStart;
     readonly evidenceRefs: readonly string[];
   }
@@ -94,7 +90,7 @@ export type TaskExecutionLaunchResult =
     readonly standing: "launch-started-awaiting-consumption";
     readonly authorizationId: string;
     readonly proposalDigest: string;
-    readonly adapterId: typeof AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID;
+    readonly adapterId: TaskExecutionRuntimeAdapterId;
     readonly runner: unknown;
     readonly evidenceRefs: readonly string[];
   }
@@ -235,9 +231,22 @@ export function prepareTaskExecutionLaunch(
     );
   }
   assertReceiptOwnedByHome(home, launchCandidate.data.receiptPath);
+  const runtimeAdapter = trustedTaskExecutionRuntimeAdapterFor(
+    launchCandidate.data.runtimeRef,
+  );
+  if (
+    runtimeAdapter === null
+    || runtimeAdapter.id !== launchCandidate.data.runtimeAdapterId
+  ) {
+    throw new TaskExecutionLaunchError(
+      409,
+      "unsupported-runtime",
+      "the launch candidate does not select one exact trusted runtime adapter",
+    );
+  }
   assertRuntimeDigest(
     launchCandidate.data.runtimeDigest,
-    blogPublicationRuntimePath,
+    runtimeAdapter.runtimeModule,
   );
 
   return {
@@ -245,14 +254,16 @@ export function prepareTaskExecutionLaunch(
     taskId: task.id,
     authorizationId: launchCandidate.data.authorizationId,
     proposalDigest: launchCandidate.data.proposalDigest,
-    adapterId: AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID,
+    adapterId: runtimeAdapter.id,
     start: {
-      adapterId: AGENT_ERA_BLOG_PUBLICATION_ADAPTER_ID,
+      adapterId: runtimeAdapter.id,
       missionId: task.binding.missionId,
-      runtimeModule: blogPublicationRuntimePath,
+      runtimeModule: runtimeAdapter.runtimeModule,
       environment: {
-        ROSSO_BLOG_EFFECT_ROOT: launchCandidate.data.worktreePath,
-        ROSSO_BLOG_AUTHORIZATION_RECEIPT: launchCandidate.data.receiptPath,
+        ...runtimeAdapter.environment({
+          worktreePath: launchCandidate.data.worktreePath,
+          receiptPath: launchCandidate.data.receiptPath,
+        }),
         [WORKBENCH_TASK_EXECUTION_CONTEXT_ENV]: JSON.stringify(
           workbenchTaskExecutionContextFor(task, {
             authorizationId: launchCandidate.data.authorizationId,

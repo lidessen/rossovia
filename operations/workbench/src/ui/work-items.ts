@@ -19,6 +19,10 @@ import {
   workbenchTaskExecutionContextFor,
   workbenchTaskExecutionContextRef,
 } from "./task-execution-context";
+import {
+  trustedTaskExecutionRuntimeAdapterFor,
+  type TaskExecutionRuntimeAdapterId,
+} from "./task-execution-runtime-adapter";
 
 type PrincipalTaskExecutionLink = PrincipalTask["executionLinks"][number];
 
@@ -216,7 +220,7 @@ export interface WorkItemProjection {
       readonly launchCandidate: {
         readonly authorizationId: string;
         readonly proposalDigest: string;
-        readonly runtimeAdapterId: "agent-era-blog-publication-v1";
+        readonly runtimeAdapterId: TaskExecutionRuntimeAdapterId;
         readonly worktreePath: string;
         readonly receiptPath: string;
         readonly runtimeRef: string;
@@ -368,9 +372,6 @@ const observationCodes = new Set<AttentionItem["code"]>([
   "runner-legacy-unanchored",
   "source-error",
 ]);
-
-const blogPublicationRuntimeRef =
-  "source-project:operations/autonomy/experiments/agent-era-blog-publication-runtime.ts";
 
 function projectName(project: ProjectProjection): string {
   return "id" in project.identity && project.identity.id !== null
@@ -1203,6 +1204,9 @@ function principalTaskWorkItems(
           (worktree) => worktree.path === expectedWorktreePath,
         );
     const executionProposal = mission?.executionProposal;
+    const runtimeAdapter = executionProposal === undefined
+      ? null
+      : trustedTaskExecutionRuntimeAdapterFor(executionProposal.runtimeRef);
     const launchCandidate =
       task.binding.kind === "project-context"
       && declaredMissionId !== undefined
@@ -1212,7 +1216,7 @@ function principalTaskWorkItems(
       && task.nextActor === "agent"
       && launchAuthorization !== undefined
       && executionProposal !== undefined
-      && executionProposal.runtimeRef === blogPublicationRuntimeRef
+      && runtimeAdapter !== null
       && executionProposal.proposalDigest === launchAuthorization.proposalDigest
       && observedTaskWorktree?.dirty === false
       && observedTaskWorktree.gitBranch === null
@@ -1222,7 +1226,7 @@ function principalTaskWorkItems(
         ? {
           authorizationId: launchAuthorization.authorizationId,
           proposalDigest: launchAuthorization.proposalDigest,
-          runtimeAdapterId: "agent-era-blog-publication-v1" as const,
+          runtimeAdapterId: runtimeAdapter.id,
           worktreePath: expectedWorktreePath,
           receiptPath: launchAuthorization.sourcePath,
           runtimeRef: executionProposal.runtimeRef,
@@ -1539,7 +1543,9 @@ function taskLaunchReadinessBlockers(input: {
   }
   if (
     input.executionProposal !== undefined
-    && input.executionProposal.runtimeRef !== blogPublicationRuntimeRef
+    && trustedTaskExecutionRuntimeAdapterFor(
+      input.executionProposal.runtimeRef,
+    ) === null
   ) {
     blockers.push({
       code: "runtime-adapter-unavailable",

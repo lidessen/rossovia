@@ -411,6 +411,20 @@ describe("task execution launch", () => {
     });
   });
 
+  test("rejects a non-Blog runtime that is not in the closed adapter source", () => {
+    const { home, worktreePath, receiptPath } = fixture();
+    const projection = workItems(worktreePath, receiptPath) as any;
+    projection.items[0].taskDetail.executionContext.launchCandidate.runtimeRef =
+      "source-project:operations/autonomy/experiments/other-runtime.ts";
+
+    expect(() =>
+      prepareTaskExecutionLaunch(home, projection, taskId, request())
+    ).toThrow(TaskExecutionLaunchError);
+    expect(() =>
+      prepareTaskExecutionLaunch(home, projection, taskId, request())
+    ).toThrow("one exact trusted runtime adapter");
+  });
+
   test("rejects runtime source drift before starting", () => {
     const { home, worktreePath, receiptPath } = fixture();
     const projection = workItems(worktreePath, receiptPath) as any;
