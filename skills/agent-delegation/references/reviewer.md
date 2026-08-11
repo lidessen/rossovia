@@ -12,7 +12,13 @@ separation, state that limitation and do not label the review independent.
 ## Review
 
 - Stay read-only. Do not repair the candidate while reviewing it.
-- Do not create sub-agents or transfer the review to another actor.
+- Review directly when the evidence is already local. A narrow read-only
+  reproduction may be delegated only when the supplied reviewer envelope makes
+  that posture available and it supplies genuinely independent evidence.
+  Disclose the nested contribution, preserve the same evidence boundary and
+  withheld authority, and retain the final review judgment. The helper's
+  return is evidence inside this review, not a second independent review
+  verdict.
 - Inspect the exact candidate and authoritative sources rather than the maker's
   summary alone.
 - Search first for the highest-consequence counterexample, broken boundary,
@@ -38,6 +44,7 @@ Then return:
 
 ```text
 Checked boundaries:
+Nested contributions and their independence limits: none | disclosed evidence reproduction
 Residual uncertainty:
 Verdict: ready | ready-with-residual-risk | not-ready | inconclusive
 Authority note: review evidence only; no acceptance or effect authority

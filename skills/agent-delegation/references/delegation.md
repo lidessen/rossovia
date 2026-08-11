@@ -48,7 +48,8 @@ Stop or disconfirming signal:
 Authority withheld:
 Returned evidence use: leads only | exact source claims may be admitted as bounded premises after Main checks the declared conditions
 Claim-admission conditions: exact source scope and lineage, named admissible claims, uncertainty, and retained judgment owner
-Recursive delegation: forbidden | exact bounded allowance
+Nested delegation posture: direct only | available when a newly discovered bounded contribution earns its coordination cost
+Inherited limits for descendants: same or narrower read, effect, evidence, and authority boundary
 Worker rules: inline the complete contents of references/worker.md here
 ```
 
@@ -68,7 +69,8 @@ Read-only evidence boundary:
 Highest-risk failure classes:
 Required finding and no-finding evidence:
 Authority withheld: no implementation, acceptance, merge, or publication
-Recursive delegation: forbidden
+Nested delegation posture: direct review preferred; a narrow evidence reproduction may be delegated only when independence and final reviewer ownership remain explicit
+Inherited limits for descendants: read-only evidence boundary and no implementation or acceptance authority
 Reviewer rules: inline the complete contents of references/reviewer.md here
 ```
 
@@ -89,6 +91,12 @@ Map these relations to the active environment's supported capabilities:
 - stop a delegate when its premise, authority, or effect boundary is invalid;
 - wait only when Main's next useful action depends on the result.
 
+A worker whose envelope makes nested delegation available and that forms a
+smaller delegation owns its local child contract and returns the reconstructed
+child claim, not the full child history, to its parent. It cannot widen the
+outer whole, effect surface, or granted authority. Topology depth is an
+observable choice to evaluate, not success or failure by itself.
+
 Do not encode one harness's tool names, concurrency limits, or context-forking
 syntax into this portable method.
 
@@ -105,6 +113,7 @@ Uncertainties:
 Judgment and acceptance retained by:
 Risks and unresolved relations:
 Changed paths or effects:
+Nested contributions: none | local benefit, inherited boundary, child evidence, and realized cost
 Stop hit: no | yes with reason
 Suggested follow-up: only when a named gap remains
 ```
@@ -127,4 +136,6 @@ Stop or change topology when:
 - workers repeat the same search or return untraceable conclusions;
 - follow-up requests broaden rather than close one named gap;
 - the reducer must redo all delegated work;
+- a nested contribution expands effects or authority, loses its inherited
+  whole, hides evidence, or adds cost without a decision-changing benefit;
 - coordination cost exceeds direct work without producing independent evidence.
