@@ -205,6 +205,29 @@ judgment scoped to the project that produced it. The combined answer is a
 read-only projection: it neither copies task facts into Rossovia nor authorizes
 work in a target project.
 
+## Workbench browser observation entry
+
+When a request requires inspecting the Workbench UI in a real browser,
+including the browser portion of an acceptance walkthrough, use the
+repository-pinned browser entry documented in
+[the Workbench README](README.md#browser-observation). Give every Agent or
+worktree a distinct session name, repeat it across commands, and close the
+session when the observation is complete:
+
+```sh
+bun run --cwd operations/workbench browser -- -s=<session> open <url>
+```
+
+Use screenshots together with the CLI's snapshot, console, and geometry
+surfaces; a screenshot alone does not prove interaction or semantic
+correctness. Keep generated `.playwright-cli/` state and disposable captures
+out of Git. If the pinned browser binary is absent, provision it through the
+same entry with
+`bun run --cwd operations/workbench browser -- install-browser`. Keep this
+pinned entry as the ordinary browser-observation path; when a fallback carrier
+is necessary, record its identity and the reason the ordinary path was
+unavailable.
+
 ## Mission continuity entry
 
 When the human asks which work is in progress in this project, run

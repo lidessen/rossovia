@@ -60,6 +60,36 @@ Open `http://127.0.0.1:4317`. Add another explicitly selected local repository
 with `bun run --cwd operations/workbench ui -- --root <git-root>` or select
 another port with `--port <port>`.
 
+### Browser observation
+
+The project-pinned Playwright CLI is the ordinary Agent entry for inspecting
+the running UI in a real browser. Start Workbench separately, then give each
+Agent or worktree its own session name and repeat that name for every command:
+
+```sh
+bun run --cwd operations/workbench browser -- -s=workbench-visual open http://127.0.0.1:4317
+bun run --cwd operations/workbench browser -- -s=workbench-visual resize 1440 900
+bun run --cwd operations/workbench browser -- -s=workbench-visual screenshot --filename=/tmp/workbench-desktop.png
+bun run --cwd operations/workbench browser -- -s=workbench-visual snapshot --filename=/tmp/workbench-desktop.md
+bun run --cwd operations/workbench browser -- -s=workbench-visual console
+bun run --cwd operations/workbench browser -- -s=workbench-visual eval "() => ({ pageWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth })"
+bun run --cwd operations/workbench browser -- -s=workbench-visual resize 390 844
+bun run --cwd operations/workbench browser -- -s=workbench-visual screenshot --filename=/tmp/workbench-mobile.png
+bun run --cwd operations/workbench browser -- -s=workbench-visual close
+```
+
+The CLI keeps transient session artifacts under `.playwright-cli/`; they are
+ignored rather than treated as repository evidence. If `open` reports that its
+browser is missing, install the pinned CLI's browser once with:
+
+```sh
+bun run --cwd operations/workbench browser -- install-browser
+```
+
+Screenshots, snapshots, console output, and evaluated geometry are observations
+of the named session and current Git state. They do not accept product behavior
+or replace the independent Agent walkthrough required below.
+
 The default surface is a multi-project workbench rather than an operational
 dashboard. Its left rail keeps the stable destinations—Overview, Tasks, Needs
 you, Agent work, the project list, Independent tasks, and Completed—while the
