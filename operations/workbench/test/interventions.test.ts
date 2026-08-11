@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "operations", "workbench", "dist", "rossovia.mjs");
-const sourceCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
+const cli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
@@ -32,7 +31,7 @@ function command(
 }
 
 function workbench(...args: string[]) {
-  return command(["node", cli, ...args]);
+  return command([process.execPath, cli, ...args]);
 }
 
 function commandAsync(argv: string[], stdin = ""): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -63,7 +62,7 @@ describe("intervention reconciliation", () => {
     const stateRoot = join(temporary, "state");
     const prompt = "Do not retain this secret correction text";
     const observation = command(
-      ["node", cli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "session-1", turn_id: "turn-1", cwd: repositoryRoot, prompt }) },
     );
     expect(observation.exitCode).toBe(0);
@@ -95,7 +94,7 @@ describe("intervention reconciliation", () => {
     }));
 
     const laterObservation = command(
-      ["node", cli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "session-1", turn_id: "turn-2", cwd: repositoryRoot, prompt: "later" }) },
     );
     expect(laterObservation.exitCode).toBe(0);
@@ -106,7 +105,7 @@ describe("intervention reconciliation", () => {
     }));
 
     const otherSession = command(
-      ["node", cli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "session-2", cwd: repositoryRoot, prompt: "parallel" }) },
     );
     expect(otherSession.exitCode).toBe(0);
@@ -139,7 +138,7 @@ describe("intervention reconciliation", () => {
     expect(unselected.stderr).toContain("requires --state-file or --session-id");
 
     const duplicateIdentity = command(
-      ["node", cli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "session-1", cwd: join(temporary, "other-workspace"), prompt: "parallel" }) },
     );
     expect(duplicateIdentity.exitCode).toBe(0);
@@ -160,7 +159,7 @@ describe("intervention reconciliation", () => {
     temporaryRoots.push(temporary);
     const stateRoot = join(temporary, "state");
     const observation = command(
-      [process.execPath, sourceCli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "concurrent", cwd: repositoryRoot, prompt: "parallel" }) },
     );
     expect(observation.exitCode).toBe(0);
@@ -170,7 +169,7 @@ describe("intervention reconciliation", () => {
 
     const corrections = Array.from({ length: receiptCount }, (_, index) => commandAsync([
       process.execPath,
-      sourceCli,
+      cli,
       "correct",
       "--state-file",
       statePath,
@@ -185,7 +184,7 @@ describe("intervention reconciliation", () => {
     ]));
     const observations = Array.from({ length: observationCount }, (_, index) => commandAsync([
       process.execPath,
-      sourceCli,
+      cli,
       "intervention",
       "observe",
       "--state-root",
@@ -197,7 +196,7 @@ describe("intervention reconciliation", () => {
     expect(concurrent.every((result) => result.exitCode === 0)).toBe(true);
     const status = command([
       process.execPath,
-      sourceCli,
+      cli,
       "intervention",
       "status",
       "--state-file",
@@ -225,7 +224,7 @@ describe("intervention reconciliation", () => {
     temporaryRoots.push(temporary);
     const stateRoot = join(temporary, "state");
     const observation = command(
-      [process.execPath, sourceCli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "recovery", cwd: repositoryRoot, prompt: "recover" }) },
     );
     expect(observation.exitCode).toBe(0);
@@ -233,7 +232,7 @@ describe("intervention reconciliation", () => {
     const missingState = join(temporary, "not-created", "nested", "missing.json");
     const missing = command([
       process.execPath,
-      sourceCli,
+      cli,
       "correct",
       "--state-file",
       missingState,
@@ -252,7 +251,7 @@ describe("intervention reconciliation", () => {
     writeFileSync(statePath, "not-json");
     const malformed = command([
       process.execPath,
-      sourceCli,
+      cli,
       "correct",
       "--state-file",
       statePath,
@@ -282,7 +281,7 @@ describe("intervention reconciliation", () => {
       prompt: "The previous boundary was wrong",
     };
     const statePaths = ["codex", "claude"].map((platform) => {
-      const result = command(["node", cli, "hook", "intervention", platform], {
+      const result = command([process.execPath, cli, "hook", "intervention", platform], {
         stdin: JSON.stringify(payload),
         env: environment,
       });
@@ -293,13 +292,25 @@ describe("intervention reconciliation", () => {
       expect(context).toContain("Starting a new task after the prior task was completed, paused, or handed off is not a correction");
       expect(context).toContain("advisory, not a mutation or authorization gate");
       expect(context).toContain("do not request broader filesystem permission");
-      expect(context).toContain("dist/rossovia.mjs");
+      expect(context).toContain(`'${process.execPath}' '${cli}' 'correct'`);
+      expect(context).not.toContain("dist/rossovia.mjs");
 
       const marker = "session-local `correct` command prefix `";
       const endpoint = context.split(marker, 2)[1]?.split("`", 1)[0];
       expect(endpoint).toBeDefined();
       const statePath = endpoint!.match(/'--state-file' '([^']+)'$/)?.[1];
       expect(statePath).toBeDefined();
+      const endpointResult = command([
+        "/bin/sh",
+        "-c",
+        endpoint!
+          + " '--rejected-assumption' 'the generated carrier is opaque'"
+          + " '--new-invariant' 'the correction endpoint names the Bun source carrier'"
+          + " '--affected-surface' 'runtime endpoint'"
+          + " '--next-probe' 'execute the injected endpoint'",
+      ], { env: environment });
+      expect(endpointResult.exitCode).toBe(0);
+      expect(JSON.parse(endpointResult.stdout).statePath).toBe(statePath!);
       return statePath!;
     });
     expect(new Set(statePaths).size).toBe(2);
@@ -309,7 +320,7 @@ describe("intervention reconciliation", () => {
       const paths: string[] = [];
       for (const target of targets) {
         const correction = command([
-          "node",
+          process.execPath,
           cli,
           "correct",
           "--state-file",
@@ -329,7 +340,7 @@ describe("intervention reconciliation", () => {
       expect(new Set(paths).size).toBe(1);
       expect(statePath).toStartWith(join(realpathSync(home), "rossovia-home", "state", "interventions"));
       const status = command([
-        "node",
+        process.execPath,
         cli,
         "intervention",
         "status",
@@ -340,7 +351,7 @@ describe("intervention reconciliation", () => {
       expect(JSON.parse(status.stdout).receipts.map(
         (receipt: { affectedSurfaces: string[] }) => receipt.affectedSurfaces,
       )).toEqual(
-        targets.map((target) => [target]),
+        [["runtime endpoint"], ...targets.map((target) => [target])],
       );
     }
     expect(existsSync(join(home, ".codex", "intervention-reconciliation"))).toBe(false);
@@ -352,7 +363,7 @@ describe("intervention reconciliation", () => {
     temporaryRoots.push(temporary);
     const stateRoot = join(temporary, "state");
     const observation = command(
-      ["node", cli, "intervention", "observe", "--state-root", stateRoot],
+      [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
       { stdin: JSON.stringify({ session_id: "read-only", cwd: repositoryRoot, prompt: "Change the invariant" }) },
     );
     expect(observation.exitCode).toBe(0);

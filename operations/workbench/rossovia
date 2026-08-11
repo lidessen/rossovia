@@ -1,21 +1,15 @@
 #!/bin/sh
 set -eu
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-bundle="$root/dist/rossovia.mjs"
+launcher_dir=${0%/*}
+if [ "$launcher_dir" = "$0" ]; then
+  launcher_dir=.
+fi
+root=$(CDPATH= cd -- "$launcher_dir" && pwd)
 
-if [ -f "$bundle" ] && command -v node >/dev/null 2>&1; then
-  exec node "$bundle" "$@"
+if ! command -v bun >/dev/null 2>&1; then
+  echo "rossovia: Bun is required to run the Workbench from this source checkout" >&2
+  exit 127
 fi
 
-if command -v bun >/dev/null 2>&1; then
-  exec bun "$root/src/cli.ts" "$@"
-fi
-
-if command -v node >/dev/null 2>&1; then
-  echo "rossovia: portable bundle missing; run npm --prefix \"$root\" run build" >&2
-  exit 1
-fi
-
-echo "rossovia: Node.js is required to run the portable Workbench" >&2
-exit 127
+exec bun "$root/src/cli.ts" "$@"

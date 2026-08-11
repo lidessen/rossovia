@@ -7,17 +7,17 @@ hook control plane. Its checked-in entrypoint is:
 ./operations/workbench/rossovia --help
 ```
 
-The launcher uses the self-contained `dist/rossovia.mjs` bundle with Node
-22.12–26. Bun is a development and test tool, not a target-machine requirement.
-From the repository root, rebuild the bundle with:
+During the current personal/development stage, the stable launcher runs the
+tracked TypeScript source at `src/cli.ts` with Bun. Install the locked Workbench
+dependencies before first use:
 
 ```sh
-npm --prefix operations/workbench run build
+bun install --cwd operations/workbench --frozen-lockfile
 ```
 
-The build uses a local Bun installation when present. With Node and Docker but
-no Bun, use `npm --prefix operations/workbench run build:docker`; Docker
-supplies Bun only inside the build container and exports the same Node bundle.
+The launcher fails clearly when Bun is unavailable; it does not fall back to a
+stale generated carrier. A future distribution may build release artifacts
+outside Git, but this repository does not yet define that distribution system.
 
 ## Principal Workbench MVP
 

@@ -58,7 +58,7 @@ tasks.
 ```
 
 The repository instructions translate those intents into bounded Workbench
-operations through the portable Node launcher. When registration needs a stable identity that
+operations through the Bun source launcher. When registration needs a stable identity that
 cannot be verified from the repository provider, the agent asks for that one
 missing value. It does not scan an unspecified home directory, auto-register
 discovered repositories, or make the user remember command flags.

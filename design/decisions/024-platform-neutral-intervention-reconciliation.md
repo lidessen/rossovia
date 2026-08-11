@@ -31,8 +31,8 @@ The implemented bindings are project-local and intentionally limited to
 `prompt_observation` and `context_injection`. Their portable state commands live
 in [`operations/workbench`](../../operations/workbench/src/interventions.ts);
 the Codex and Claude projections retain the current platform-specific lifecycle
-shape while sharing the portable Node runtime selected by
-[Decision 048](048-portable-workbench-and-hook-bindings.md). The binding
+shape while sharing the Bun source runtime selected by
+[Decision 054](054-bun-source-workbench-runtime.md). The binding
 stores a prompt SHA-256 and byte count, not prompt text, under session-local
 state outside the repository. Its direct tests cover state, receipt shape, and
 adapter context injection; they do not claim that Codex has yet trusted or run

@@ -1,8 +1,9 @@
 # Decision 047 — Bun Workbench Runtime
 
-**Status:** superseded in target-runtime scope by
-[Decision 048](048-portable-workbench-and-hook-bindings.md); retained as the
-TypeScript/Bun development-carrier decision
+**Status:** active again for the source-checkout runtime under
+[Decision 054](054-bun-source-workbench-runtime.md); its earlier target-runtime
+supersession by [Decision 048](048-portable-workbench-and-hook-bindings.md) is
+retained as history
 **Date:** 2026-07-22
 **Approved by:** principal continuation mandate
 **Supersedes in part:** the Python carrier in
