@@ -1,6 +1,7 @@
 # 人—Agent 可视化 MVP
 
-这是[人—Agent 可视化设计](./DESIGN.md)的三个可运行透镜：
+[产品需求](./PRD.md)定义产品目标和交付顺序；[人—Agent 可视化设计](./DESIGN.md)
+记录当前设计边界。现有实现包含三个可运行透镜：
 
 - [Execution Boundary Lens](./index.html)：为什么 `nextActor=agent` 不代表
   Agent 正在执行这个任务？
@@ -79,6 +80,25 @@ bun run introduce -- \
 `--verify` 是 Agent 针对当前问题提出的待执行命令，页面把它保留在解释层；
 只有 manifest 或文档中实际声明的命令才显示为确定性验证投影。多个建议命令可在
 一个已引用的参数内用 `;;` 分隔。
+
+Project Lens 默认打开“当前项目现状”。需要解释变更影响时，在同一 Lens 中切换到紧邻模式，
+并显式给出 base revision。每个 `--responsibility` 都是 Agent 选定的调查范围，不是新架构来源；
+它必须回到精确设计 heading，并列出要观察的实现范围与验证来源：
+
+```sh
+bun run introduce -- \
+  --repo /Users/lidessen/workspaces/skills \
+  --intent change \
+  --question "Project Lens 的责任相对基线发生了什么？" \
+  --base 40cfaf5 \
+  --focus "experiments/human-agent-visualization/DESIGN.md,experiments/human-agent-visualization/tests/project-lens.test.js" \
+  --responsibility '{"id":"project-lens","title":"Project Lens","design":{"sourceRef":"experiments/human-agent-visualization/DESIGN.md","heading":"Project Lens"},"implementationScopes":["experiments/human-agent-visualization"],"verificationRefs":["experiments/human-agent-visualization/tests/project-lens.test.js"]}'
+```
+
+可重复传入 `--responsibility`。builder 只在显式范围内观察 Git 变化；若 design heading 不存在，
+责任保持 `unavailable`，不会由目录名补全。变更模式首屏显示 current/base/dirty/generated/
+compatibility，再显示 changed/disputed responsibility 与 unresolved；展开责任卡可检查精确来源
+行号和 revision。
 
 可以直接这样要求 Agent：
 

@@ -7,12 +7,14 @@ const DEFAULT_PORT = 4311;
 const PORT_ENV = "HUMAN_AGENT_VIS_PORT";
 
 function parseArguments(arguments_) {
-  const values = {};
+  const values = { responsibility: [] };
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (!argument.startsWith("--")) continue;
     const [rawKey, inline] = argument.slice(2).split("=", 2);
-    values[rawKey] = inline ?? arguments_[++index];
+    const value = inline ?? arguments_[++index];
+    if (rawKey === "responsibility") values.responsibility.push(value);
+    else values[rawKey] = value;
   }
   if (!values.repo) throw new TypeError("Missing --repo <path>.");
   if (values.intent && !["use", "understand", "change"].includes(values.intent)) {
@@ -40,6 +42,11 @@ const bundle = await buildProjectLensBundle({
   question: values.question,
   focusSources: values.focus ? values.focus.split(",").map((value) => value.trim()).filter(Boolean) : [],
   proposedVerifications: values.verify ? values.verify.split(";;").map((value) => value.trim()).filter(Boolean) : [],
+  baseRevision: values.base,
+  responsibilities: values.responsibility.map((value, index) => {
+    try { return JSON.parse(value); }
+    catch (error) { throw new TypeError(`--responsibility ${index + 1} is not valid JSON: ${error.message}`); }
+  }),
 });
 const validation = await validateProjectBundle(bundle);
 if (!validation.valid) throw new Error(validation.errors.map((error) => error.message).join(" "));

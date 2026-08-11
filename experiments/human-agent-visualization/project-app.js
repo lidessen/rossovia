@@ -1,11 +1,12 @@
 import { validateProjectBundle } from "./lib/project-evidence-bundle.js";
-import { projectEvidenceView } from "./lib/project-view-state.js";
+import { DEFAULT_PROJECT_MODE, projectChangeImpactView, projectEvidenceView } from "./lib/project-view-state.js";
 
 const state = {
   bundle: null,
   selectedId: null,
   sourceOnly: false,
   layers: { source: true, projection: true, explanation: true },
+  mode: DEFAULT_PROJECT_MODE,
 };
 
 const elements = {
@@ -22,6 +23,12 @@ const elements = {
   evidenceDetails: document.querySelector("#project-evidence-details"),
   sourceActions: document.querySelector("#project-source-actions"),
   sourceExcerpt: document.querySelector("#project-source-excerpt"),
+  overview: document.querySelector("#project-overview"),
+  changeImpact: document.querySelector("#project-change-impact"),
+  changeIdentity: document.querySelector("#project-change-identity"),
+  compatibilityReasons: document.querySelector("#project-compatibility-reasons"),
+  changeList: document.querySelector("#project-change-list"),
+  unresolved: document.querySelector("#project-unresolved"),
 };
 
 function short(value, size = 32) { return value.length > size ? `${value.slice(0, size - 1)}…` : value; }
@@ -86,7 +93,87 @@ function renderPath() {
   renderEvidence();
 }
 
+function appendImpactBlock(container, label, value, className) {
+  const block = document.createElement("div");
+  block.className = `impact-block ${className}`;
+  const heading = document.createElement("span");
+  heading.className = "field-label";
+  heading.textContent = label;
+  const content = document.createElement("p");
+  content.textContent = value;
+  block.append(heading, content);
+  container.append(block);
+}
+
+function renderChangeImpact() {
+  const view = projectChangeImpactView(state.bundle);
+  elements.changeIdentity.replaceChildren();
+  for (const [label, value] of view.identity) {
+    const row = document.createElement("div");
+    const term = document.createElement("dt"); term.textContent = label;
+    const definition = document.createElement("dd"); definition.textContent = value;
+    if (label === "Dirty overlay" && view.dirtyPaths.length) {
+      definition.title = view.dirtyPaths.join("\n");
+      definition.setAttribute("aria-label", `${value}: ${view.dirtyPaths.join(", ")}`);
+    }
+    row.append(term, definition); elements.changeIdentity.append(row);
+  }
+  elements.compatibilityReasons.textContent = view.compatibilityReasons.join(" ");
+  elements.changeList.replaceChildren();
+  if (!view.highlightedResponsibilities.length) {
+    const empty = document.createElement("p");
+    empty.className = "change-empty";
+    empty.textContent = "当前比较没有可突出显示的 changed / disputed responsibility；检查下方 unresolved。";
+    elements.changeList.append(empty);
+  }
+  for (const responsibility of view.highlightedResponsibilities) {
+    const details = document.createElement("details");
+    details.className = `responsibility-card ${responsibility.standing}`;
+    const summary = document.createElement("summary");
+    const title = document.createElement("strong"); title.textContent = responsibility.title;
+    const standing = document.createElement("code"); standing.textContent = responsibility.standing;
+    const hint = document.createElement("span"); hint.textContent = "展开检查精确来源与 revision";
+    summary.append(title, standing, hint);
+    const body = document.createElement("div"); body.className = "responsibility-body";
+    appendImpactBlock(body, "Design says", responsibility.designSays.summary, "design-says");
+    const paths = responsibility.codeObservation.changedPaths.map((change) => `${change.path} [${change.overlays.join("+")}]`);
+    appendImpactBlock(body, "Code observation", paths.join("\n") || "显式实现范围内没有观察到文件变化。", "code-observation");
+    appendImpactBlock(body, "Reconciliation standing", responsibility.reconciliation.summary, "reconciliation");
+    if (responsibility.designSays.current) {
+      const source = document.createElement("p"); source.className = "exact-source";
+      const location = responsibility.designSays.current;
+      source.textContent = `${location.sourceRef}:L${location.lineStart}-L${location.lineEnd} @ ${location.revision}`;
+      body.append(source);
+    }
+    details.append(summary, body); elements.changeList.append(details);
+  }
+  elements.unresolved.replaceChildren();
+  if (!view.unresolved.length) {
+    const item = document.createElement("li"); item.textContent = "当前显式责任范围没有 unresolved relation。";
+    elements.unresolved.append(item);
+  }
+  for (const unresolved of view.unresolved) {
+    const item = document.createElement("li");
+    const standing = document.createElement("code"); standing.textContent = unresolved.standing;
+    const summary = document.createElement("span"); summary.textContent = unresolved.summary;
+    item.append(standing, summary); elements.unresolved.append(item);
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  const overview = mode === "overview";
+  elements.overview.hidden = !overview;
+  elements.changeImpact.hidden = overview;
+  document.querySelectorAll("[data-project-mode]").forEach((button) => {
+    button.setAttribute("aria-selected", String(button.dataset.projectMode === mode));
+  });
+}
+
 function bindControls() {
+  document.querySelectorAll("[data-project-mode]").forEach((button) => {
+    button.addEventListener("click", () => setMode(button.dataset.projectMode));
+  });
   document.querySelectorAll("[data-project-layer]").forEach((input) => {
     input.addEventListener("change", () => { state.layers[input.dataset.projectLayer] = input.checked; renderPath(); });
   });
@@ -125,7 +212,7 @@ async function main() {
   elements.revision.textContent = short(bundle.subject.revision);
   elements.binding.textContent = short(bundle.bindingDigest);
   elements.root.textContent = bundle.subject.root;
-  bindControls(); renderPath();
+  bindControls(); renderPath(); renderChangeImpact(); setMode(DEFAULT_PROJECT_MODE);
 }
 
 main().catch(showFatal);

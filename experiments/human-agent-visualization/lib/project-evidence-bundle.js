@@ -1,8 +1,9 @@
 import { digestValue } from "./evidence-bundle.js";
 
-export const PROJECT_BUNDLE_VERSION = "human-agent-visualization.project-evidence-bundle.v1";
+export const PROJECT_BUNDLE_VERSION = "human-agent-visualization.project-evidence-bundle.v2";
 export const PROJECT_BUILDER_ID = "local-project-lens-builder";
-export const PROJECT_BUILDER_REVISION = "mvp-r3";
+export const PROJECT_BUILDER_REVISION = "mvp-r5";
+export const PROJECT_COMPARISON_CONTRACT = "project-responsibility-comparison.v2";
 
 function validationError(code, message) {
   return { code, message };
@@ -66,6 +67,37 @@ export async function validateProjectBundle(bundle) {
 
   if (!Array.isArray(bundle?.projection?.steps) || bundle.projection.steps.length < 4) {
     errors.push(validationError("path-missing", "Project Lens guided path is incomplete."));
+  }
+
+  const comparison = bundle?.projection?.comparison;
+  if (!comparison || comparison.contract !== PROJECT_COMPARISON_CONTRACT) {
+    errors.push(validationError("comparison-invalid", "Project comparison contract is missing or invalid."));
+  } else {
+    if (!comparison.currentRevision || !comparison.compatibility?.standing) {
+      errors.push(validationError("comparison-identity-missing", "Project comparison identity is incomplete."));
+    }
+    if (!Array.isArray(comparison.dirtyOverlay?.paths)
+      || !Array.isArray(comparison.responsibilities)
+      || !Array.isArray(comparison.unresolved)) {
+      errors.push(validationError("comparison-shape-invalid", "Project comparison collections are incomplete."));
+    }
+    for (const responsibility of comparison.responsibilities ?? []) {
+      if (!responsibility?.id || !responsibility?.title || !responsibility?.standing
+        || !responsibility?.designSays || !responsibility?.codeObservation
+        || !responsibility?.reconciliation) {
+        errors.push(validationError("responsibility-invalid", "A responsibility comparison is incomplete."));
+      }
+      const location = responsibility?.designSays?.current;
+      if (location && (!location.sourceRef || !Number.isInteger(location.lineStart)
+        || !Number.isInteger(location.lineEnd) || !location.revision || !location.sectionDigest)) {
+        errors.push(validationError("responsibility-source-invalid", `Responsibility '${responsibility?.id}' has an invalid source location.`));
+      }
+      if (responsibility?.standing === "changed"
+        && !comparison.unresolved.some((entry) => entry?.responsibilityId === responsibility.id
+          && entry?.standing === "requires-review")) {
+        errors.push(validationError("responsibility-review-missing", `Changed responsibility '${responsibility.id}' must retain a requires-review obligation.`));
+      }
+    }
   }
   const layers = new Set(["source", "projection", "explanation"]);
   for (const step of bundle?.projection?.steps ?? []) {

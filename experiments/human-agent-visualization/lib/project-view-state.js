@@ -4,6 +4,27 @@ const LAYER_LABELS = {
   explanation: "Agent 解释",
 };
 
+export const DEFAULT_PROJECT_MODE = "overview";
+
+export function projectChangeImpactView(bundle) {
+  const comparison = bundle.projection.comparison;
+  const dirtyPaths = comparison.dirtyOverlay.paths;
+  return {
+    identity: [
+      ["Current revision", comparison.currentRevision],
+      ["Base revision", comparison.baseRevision ?? comparison.requestedBaseRevision ?? "未选择"],
+      ["Dirty overlay", comparison.dirtyOverlay.present ? `${dirtyPaths.length} paths` : "clean"],
+      ["Generated", bundle.generatedAt],
+      ["Compatibility", comparison.compatibility.standing],
+    ],
+    dirtyPaths,
+    compatibilityReasons: comparison.compatibility.reasons,
+    highlightedResponsibilities: comparison.responsibilities
+      .filter((responsibility) => ["changed", "disputed"].includes(responsibility.standing)),
+    unresolved: comparison.unresolved,
+  };
+}
+
 export function projectEvidenceView(step, { sourceOnly = false } = {}) {
   if (!step) {
     return {

@@ -21,45 +21,77 @@
         <p id="project-question" class="lede"></p>
       </header>
 
-      <section class="skill-orientation project-orientation" aria-label="项目主体与修订">
-        <div><span class="field-label">观察方式</span><strong class="live-badge">Local · Generated</strong></div>
-        <div><span class="field-label">到达意图</span><strong id="project-intent"></strong></div>
-        <div><span class="field-label">修订</span><code id="project-revision"></code></div>
-        <div><span class="field-label">证据包</span><code id="project-binding"></code></div>
-        <p id="project-root" class="skill-question"></p>
-      </section>
+      <div class="project-mode-switch" role="tablist" aria-label="Project Lens 模式">
+        <button id="project-overview-tab" type="button" role="tab" data-project-mode="overview" aria-selected="true" aria-controls="project-overview">当前项目现状</button>
+        <button id="project-change-tab" type="button" role="tab" data-project-mode="change" aria-selected="false" aria-controls="project-change-impact">变更影响</button>
+      </div>
 
-      <section class="skill-lens" aria-label="Project Lens 引导路径">
-        <div class="skill-toolbar">
-          <div><span class="field-label">Guided path</span><p>沿一条有证据的阅读路径理解项目；选择任一步检查来源与可推翻条件。</p></div>
-          <fieldset class="layer-controls">
-            <legend>显示层</legend>
-            <label><input type="checkbox" data-project-layer="source" checked /> 来源</label>
-            <label><input type="checkbox" data-project-layer="projection" checked /> 投影</label>
-            <label><input type="checkbox" data-project-layer="explanation" checked /> Agent 解释</label>
-          </fieldset>
-          <label class="source-only-control"><input id="project-source-only" type="checkbox" /> 仅看来源</label>
-        </div>
+      <div id="project-overview" role="tabpanel" aria-labelledby="project-overview-tab">
+        <section class="skill-orientation project-orientation" aria-label="项目主体与修订">
+          <div><span class="field-label">观察方式</span><strong class="live-badge">Local · Generated</strong></div>
+          <div><span class="field-label">到达意图</span><strong id="project-intent"></strong></div>
+          <div><span class="field-label">修订</span><code id="project-revision"></code></div>
+          <div><span class="field-label">证据包</span><code id="project-binding"></code></div>
+          <p id="project-root" class="skill-question"></p>
+        </section>
 
-        <aside class="authority-stop project-stop" aria-label="Project Lens 权威边界">
-          <div>
-            <span class="field-label">Authority stop · 不从目录补成架构</span>
-            <h2>扫描能证明文件与声明存在，不能自动证明组件所有权和真实调用关系。</h2>
-            <p>缺少项目声明或更窄的代码证据时，相应关系保持 unavailable。</p>
+        <section class="skill-lens" aria-label="Project Lens 引导路径">
+          <div class="skill-toolbar">
+            <div><span class="field-label">Guided path</span><p>沿一条有证据的阅读路径理解项目；选择任一步检查来源与可推翻条件。</p></div>
+            <fieldset class="layer-controls">
+              <legend>显示层</legend>
+              <label><input type="checkbox" data-project-layer="source" checked /> 来源</label>
+              <label><input type="checkbox" data-project-layer="projection" checked /> 投影</label>
+              <label><input type="checkbox" data-project-layer="explanation" checked /> Agent 解释</label>
+            </fieldset>
+            <label class="source-only-control"><input id="project-source-only" type="checkbox" /> 仅看来源</label>
           </div>
-        </aside>
 
-        <div class="skill-lens-grid">
-          <ol id="project-guided-path" class="guided-path"></ol>
-          <aside id="project-evidence-drawer" class="evidence-drawer skill-evidence-drawer" aria-live="polite">
-            <div class="drawer-kicker">证据抽屉 · source-linked</div>
-            <h2 id="project-evidence-title" tabindex="-1">选择路径中的一步</h2>
-            <p id="project-evidence-kind" class="evidence-kind"></p>
-            <dl id="project-evidence-details"></dl>
-            <div id="project-source-actions" class="source-actions"></div>
-            <pre id="project-source-excerpt" class="source-excerpt"></pre>
+          <aside class="authority-stop project-stop" aria-label="Project Lens 权威边界">
+            <div>
+              <span class="field-label">Authority stop · 不从目录补成架构</span>
+              <h2>扫描能证明文件与声明存在，不能自动证明组件所有权和真实调用关系。</h2>
+              <p>缺少项目声明或更窄的代码证据时，相应关系保持 unavailable。</p>
+            </div>
           </aside>
-        </div>
+
+          <div class="skill-lens-grid">
+            <ol id="project-guided-path" class="guided-path"></ol>
+            <aside id="project-evidence-drawer" class="evidence-drawer skill-evidence-drawer" aria-live="polite">
+              <div class="drawer-kicker">证据抽屉 · source-linked</div>
+              <h2 id="project-evidence-title" tabindex="-1">选择路径中的一步</h2>
+              <p id="project-evidence-kind" class="evidence-kind"></p>
+              <dl id="project-evidence-details"></dl>
+              <div id="project-source-actions" class="source-actions"></div>
+              <pre id="project-source-excerpt" class="source-excerpt"></pre>
+            </aside>
+          </div>
+        </section>
+      </div>
+
+      <section id="project-change-impact" class="project-change-impact" role="tabpanel" aria-labelledby="project-change-tab" hidden>
+        <header class="change-brief-header">
+          <div><span class="field-label">Change impact · 同一 Project Lens</span><h2>先确认比较主体，再判断责任变化</h2></div>
+          <p>这里只突出 changed / disputed；目录变化不会自行成为架构变化。</p>
+        </header>
+        <dl id="project-change-identity" class="change-identity" aria-label="比较身份"></dl>
+        <p id="project-compatibility-reasons" class="compatibility-reasons"></p>
+
+        <section class="change-section" aria-labelledby="changed-responsibilities-title">
+          <div class="change-section-heading">
+            <span class="field-label">Priority one · Agent-selected scope</span>
+            <h2 id="changed-responsibilities-title">Changed / disputed responsibility</h2>
+          </div>
+          <div id="project-change-list" class="responsibility-list"></div>
+        </section>
+
+        <section class="change-section unresolved-section" aria-labelledby="project-unresolved-title">
+          <div class="change-section-heading">
+            <span class="field-label">Needs reconciliation</span>
+            <h2 id="project-unresolved-title">Unresolved</h2>
+          </div>
+          <ul id="project-unresolved" class="unresolved-list"></ul>
+        </section>
       </section>
     </main>
 

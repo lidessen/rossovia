@@ -10,6 +10,12 @@ import { digestValue } from "../lib/evidence-bundle.js";
 let fixtureRoot;
 let outsideFile;
 
+function runGit(repo, ...args) {
+  const result = Bun.spawnSync(["git", "-C", repo, ...args], { stdout: "pipe", stderr: "pipe" });
+  if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+  return result.stdout.toString().trim();
+}
+
 beforeAll(async () => {
   fixtureRoot = await mkdtemp(join(tmpdir(), "project-lens-fixture-"));
   await mkdir(join(fixtureRoot, "src"));
@@ -161,6 +167,134 @@ describe("Project Lens real repository bundle", () => {
       expect(governing.evidence.sourceRefs).toEqual(["AGENTS.md", "DESIGN.md"]);
       expect(verification.summary).toContain("python3 verify-docs.py");
       expect(verification.evidence.sourceRefs).toEqual(expect.arrayContaining(["package.json", "README.md"]));
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("compares an explicit base and reconciles a source-backed responsibility with dirty overlay", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-comparison-"));
+    try {
+      await mkdir(join(repo, "src"));
+      await mkdir(join(repo, "tests"));
+      await Bun.write(join(repo, "README.md"), "# Comparison fixture\n\nA repository with one declared responsibility boundary for exact comparison.\n");
+      await Bun.write(join(repo, "DESIGN.md"), "# Design\n\n## Project Lens\n\nOwns source-linked explanation. It does not own repository facts.\n\n## Other\n\nUnrelated.\n");
+      await Bun.write(join(repo, "src/app.js"), "export const version = 1;\n");
+      await Bun.write(join(repo, "tests/app.test.js"), "// check version one\n");
+      runGit(repo, "init", "-q");
+      runGit(repo, "config", "user.email", "project-lens@example.invalid");
+      runGit(repo, "config", "user.name", "Project Lens Test");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "base");
+      const base = runGit(repo, "rev-parse", "HEAD");
+      await Bun.write(join(repo, "DESIGN.md"), "# Design\n\n## Project Lens\n\nOwns source-linked current and change explanation. It does not own repository facts.\n\n## Other\n\nUnrelated.\n");
+      await Bun.write(join(repo, "src/app.js"), "export const version = 2;\n");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "change design and code");
+      await Bun.write(join(repo, "tests/app.test.js"), "// dirty verification overlay\n");
+
+      const bundle = await buildProjectLensBundle({
+        repo,
+        baseRevision: base,
+        responsibilities: [{
+          id: "project-lens",
+          title: "Project Lens responsibility",
+          design: { sourceRef: "DESIGN.md", heading: "Project Lens" },
+          implementationScopes: ["src"],
+          verificationRefs: ["tests/app.test.js"],
+        }],
+      });
+      const comparison = bundle.projection.comparison;
+      const responsibility = comparison.responsibilities[0];
+
+      expect(comparison.compatibility).toEqual({ standing: "compatible", reasons: [] });
+      expect(comparison.baseRevision).toBe(base);
+      expect(comparison.currentRevision).toBe(runGit(repo, "rev-parse", "HEAD"));
+      expect(comparison.dirtyOverlay).toEqual({ present: true, paths: ["tests/app.test.js"] });
+      expect(responsibility.standing).toBe("changed");
+      expect(responsibility.designSays.current).toMatchObject({ sourceRef: "DESIGN.md", lineStart: 3, lineEnd: 6 });
+      expect(responsibility.designSays.changed).toBe(true);
+      expect(responsibility.designSays.current.sectionDigest).not.toBe(responsibility.designSays.base.sectionDigest);
+      expect(responsibility.designSays.summary).toContain("does not own repository facts");
+      expect(responsibility.codeObservation.changedPaths.map((entry) => entry.path)).toEqual(["src/app.js"]);
+      expect(comparison.unresolved).toContainEqual(expect.objectContaining({
+        id: "project-lens:requires-review",
+        responsibilityId: "project-lens",
+        standing: "requires-review",
+        sourceRefs: ["DESIGN.md", "src/app.js", "tests/app.test.js"],
+      }));
+      expect((await validateProjectBundle(bundle)).valid).toBe(true);
+
+      bundle.projection.comparison.unresolved = [];
+      const withoutReviewObligation = await finalizeProjectBundle(bundle);
+      const invalid = await validateProjectBundle(withoutReviewObligation);
+      expect(invalid.errors.map((error) => error.code)).toContain("responsibility-review-missing");
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("does not change a responsibility when only another heading in the same design file changes", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-heading-boundary-"));
+    try {
+      await mkdir(join(repo, "docs"));
+      await Bun.write(join(repo, "README.md"), "# Heading boundary\n\nA repository that changes an unrelated design section.\n");
+      await Bun.write(join(repo, "docs/DESIGN.md"), "# Design\n\n## Project Lens\n\nOwns source-linked explanation.\n\n## Other\n\nOriginal unrelated text.\n");
+      runGit(repo, "init", "-q");
+      runGit(repo, "config", "user.email", "project-lens@example.invalid");
+      runGit(repo, "config", "user.name", "Project Lens Test");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "base");
+      const base = runGit(repo, "rev-parse", "HEAD");
+      await Bun.write(join(repo, "docs/DESIGN.md"), "# Design\n\n## Project Lens\n\nOwns source-linked explanation.\n\n## Other\n\nChanged unrelated text only.\n");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "change unrelated heading");
+
+      const bundle = await buildProjectLensBundle({
+        repo,
+        baseRevision: base,
+        responsibilities: [{
+          id: "project-lens",
+          design: { sourceRef: "docs/DESIGN.md", heading: "Project Lens" },
+          implementationScopes: ["docs"],
+        }],
+      });
+      const responsibility = bundle.projection.comparison.responsibilities[0];
+
+      expect(responsibility.designSays.changed).toBe(false);
+      expect(responsibility.designSays.current.sectionDigest).toBe(responsibility.designSays.base.sectionDigest);
+      expect(responsibility.codeObservation.changedPaths).toEqual([]);
+      expect(responsibility.standing).toBe("unchanged");
+      expect(bundle.projection.comparison.unresolved).toEqual([]);
+      expect((await validateProjectBundle(bundle)).valid).toBe(true);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps a responsibility unavailable when its declared architecture heading is absent", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-no-architecture-"));
+    try {
+      await Bun.write(join(repo, "README.md"), "# No architecture\n\nA repository without an accepted responsibility section.\n");
+      runGit(repo, "init", "-q");
+      runGit(repo, "config", "user.email", "project-lens@example.invalid");
+      runGit(repo, "config", "user.name", "Project Lens Test");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "base");
+      const base = runGit(repo, "rev-parse", "HEAD");
+      const bundle = await buildProjectLensBundle({
+        repo,
+        baseRevision: base,
+        responsibilities: [{
+          id: "missing-boundary",
+          design: { sourceRef: "README.md", heading: "Architecture" },
+          implementationScopes: ["src"],
+        }],
+      });
+      const responsibility = bundle.projection.comparison.responsibilities[0];
+      expect(responsibility.standing).toBe("unavailable");
+      expect(responsibility.designSays.current).toBeNull();
+      expect(responsibility.reconciliation.summary).toContain("不能用目录结构补成责任边界");
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
