@@ -21,6 +21,7 @@ const principalLocusViews = new Set([
   "tasks",
   "principal",
   "agent",
+  "agent-pending",
   "projects",
   "project",
   "independent",
@@ -104,6 +105,34 @@ export function hasPrincipalLocusRequest(request) {
       request?.projectId,
       request?.workItemId,
     ].some((value) => value !== null && value !== undefined);
+}
+
+export function classifyWorkbenchAttention(items) {
+  const workItems = Array.isArray(items) ? items : [];
+  return {
+    principal: workItems.filter((item) => item?.nextActor === "principal"),
+    system: workItems.filter(
+      (item) => item?.nextActor === "system" && item?.attention === "exception",
+    ),
+  };
+}
+
+export function isExactLiveAgentWork(item) {
+  return item?.kind === "agent-work"
+    && item?.lifecycle === "in-progress"
+    && item?.evidence?.freshness?.kind === "live";
+}
+
+export function isPendingAgentWork(item) {
+  return item?.nextActor === "agent" && !isExactLiveAgentWork(item);
+}
+
+export function classifyAgentResponsibility(items) {
+  const workItems = Array.isArray(items) ? items : [];
+  return {
+    live: workItems.filter(isExactLiveAgentWork),
+    pending: workItems.filter(isPendingAgentWork),
+  };
 }
 
 export function principalLocusHref(currentHref, locus) {
@@ -1218,22 +1247,17 @@ export function restoredPrincipalLocusState(resolved) {
     none: "无需行动",
   };
 
-  function isExactLiveAgentWork(item) {
-    return item.kind === "agent-work"
-      && item.lifecycle === "in-progress"
-      && first(first(item.evidence, ["freshness"], {}), ["kind"]) === "live";
-  }
-
   function workItemMatchesView(item, view = state.activeView) {
     if (view === "principal") return item.nextActor === "principal";
     if (view === "agent") return isExactLiveAgentWork(item);
+    if (view === "agent-pending") return isPendingAgentWork(item);
     if (view === "independent") return isIndependentWorkbenchTask(item);
     if (view === "completed") return item.lifecycle === "settled";
     if (view === "tasks") {
       if (state.taskFilter === "principal") return item.nextActor === "principal";
       if (state.taskFilter === "agent") return isExactLiveAgentWork(item);
       if (state.taskFilter === "agent-pending") {
-        return item.nextActor === "agent" && !isExactLiveAgentWork(item);
+        return isPendingAgentWork(item);
       }
       if (state.taskFilter === "independent") {
         return isIndependentWorkbenchTask(item);
@@ -1307,16 +1331,21 @@ export function restoredPrincipalLocusState(resolved) {
 
   function renderViewNavigation() {
     const items = workItems();
+    const agentResponsibility = classifyAgentResponsibility(items);
     const counts = {
       all: items.length,
       principal: items.filter((item) => item.nextActor === "principal").length,
-      agent: items.filter(isExactLiveAgentWork).length,
+      agent: agentResponsibility.live.length,
+      agentPending: agentResponsibility.pending.length,
       independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
     $("#all-task-count").textContent = String(counts.all);
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
+    $("#agent-pending-task-count").textContent = String(counts.agentPending);
+    $("#task-filter-agent-count").textContent = String(counts.agent);
+    $("#task-filter-agent-pending-count").textContent = String(counts.agentPending);
     const independentCapability = taskSourceCapability();
     $("#independent-task-count").textContent =
       first(independentCapability, ["standing"]) !== "available"
@@ -1336,7 +1365,7 @@ export function restoredPrincipalLocusState(resolved) {
       const active = mobileView === "overview"
         ? state.activeView === "overview"
         : mobileView === "tasks"
-          ? ["tasks", "principal", "agent", "independent", "completed"].includes(state.activeView)
+          ? ["tasks", "principal", "agent", "agent-pending", "independent", "completed"].includes(state.activeView)
           : state.activeView === "projects" || state.activeView === "project";
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-current", active ? "page" : "false");
@@ -1457,6 +1486,7 @@ export function restoredPrincipalLocusState(resolved) {
     taskView,
     taskFilters,
     attentionOverview,
+    systemOverview,
     projectOverview,
   }) {
     const pending = state.locusRestorePending;
@@ -1466,6 +1496,7 @@ export function restoredPrincipalLocusState(resolved) {
     taskView.hidden = false;
     taskFilters.hidden = true;
     attentionOverview.hidden = true;
+    systemOverview.hidden = true;
     projectOverview.hidden = true;
     $("#view-eyebrow").textContent = pending
       ? "Restoring location"
@@ -1521,6 +1552,7 @@ export function restoredPrincipalLocusState(resolved) {
     const taskView = $("#task-view");
     const taskFilters = $("#task-filter-bar");
     const attentionOverview = $("#attention-overview");
+    const systemOverview = $("#system-overview");
     const projectOverview = $("#project-overview");
     const isProjectView = state.activeView === "project";
     const isProjectsView = state.activeView === "projects";
@@ -1533,6 +1565,7 @@ export function restoredPrincipalLocusState(resolved) {
         taskView,
         taskFilters,
         attentionOverview,
+        systemOverview,
         projectOverview,
       });
       return;
@@ -1543,13 +1576,15 @@ export function restoredPrincipalLocusState(resolved) {
     taskView.hidden = isOverview || isProjectView || isProjectsView;
     taskFilters.hidden = state.activeView !== "tasks";
     attentionOverview.hidden = !isOverview;
+    systemOverview.hidden = !isOverview;
     projectOverview.hidden = !(isOverview || isProjectsView);
 
     const viewMeta = {
       overview: ["Workbench overview", "总览", "跨项目查看需要你处理、Agent 正在进行和状态未知的工作。"],
       projects: ["Projects", "项目", "按项目与 Worktree 查看当前工作，不把观察关系伪装成任务绑定。"],
       principal: ["Needs you", "待我处理", "只显示下一责任方明确是你的事项；进入详情后再完成决策。"],
-      agent: ["Agent work", "Agent 工作", "只显示有实时载体证据的当前 Agent 工作。"],
+      agent: ["Agent live", "Agent 运行中", "只显示有实时载体证据的当前 Agent 运行。"],
+      "agent-pending": ["Agent queue", "待 Agent 接手", "只显示下一责任方为 Agent、但尚无精确实时执行证据的事项。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
       tasks: ["Tasks", "任务", "用统一形式查看不同责任方和生命周期的工作。"],
@@ -1582,15 +1617,17 @@ export function restoredPrincipalLocusState(resolved) {
             : "正在读取";
 
     if (isOverview) {
-      const attention = items.filter(
-        (item) => item.attention === "decision-required"
-          || item.attention === "exception",
-      );
-      $("#overview-attention-count").textContent = String(attention.length);
-      $("#overview-attention-list").innerHTML = attention.length
-        ? attention.slice(0, 5).map(workItemRow).join("")
-        : '<p class="empty-note">当前投影没有阻塞推进的事项。</p>';
+      const attention = classifyWorkbenchAttention(items);
+      $("#overview-attention-count").textContent = String(attention.principal.length);
+      $("#overview-attention-list").innerHTML = attention.principal.length
+        ? attention.principal.slice(0, 5).map(workItemRow).join("")
+        : '<p class="empty-note">当前没有下一责任方是你的事项。</p>';
       bindWorkItemRows($("#overview-attention-list"));
+      $("#overview-system-count").textContent = String(attention.system.length);
+      $("#overview-system-list").innerHTML = attention.system.length
+        ? attention.system.slice(0, 5).map(workItemRow).join("")
+        : '<p class="empty-note">当前没有需要恢复或检查的系统异常。</p>';
+      bindWorkItemRows($("#overview-system-list"));
     }
 
     if (isOverview || isProjectsView) renderOverviewProjects();
@@ -2190,88 +2227,41 @@ export function restoredPrincipalLocusState(resolved) {
   }
 
   function renderAttention() {
-    const items = attentionItems();
+    const items = classifyWorkbenchAttention(workItems()).principal;
     const primaryAttention = items[0];
-    const primaryAttentionCode = text(first(primaryAttention, ["code"]), "");
+    const primaryAttentionCode = text(first(primaryAttention, ["attentionCode"]), "");
     $("#attention-count").textContent = String(items.length);
     $("#summary-attention").textContent = items.length
-      ? `${items.length} 项需要关注`
+      ? `${items.length} 项待你处理`
       : "当前没有待关注事项";
     $("#summary-attention-detail").textContent = items.length
       ? primaryAttentionCode === "runner-anchor-migration-decision"
         ? "Intent Anchor 迁移等待 AUTHORIZE MIGRATION / HOLD"
-        : text(
-            first(primaryAttention, ["title", "summary", "message"]),
-            "打开 Principal attention 查看。",
-          )
-      : "实时投影未请求 Principal 介入";
+        : text(first(primaryAttention, ["title", "summary"]), "打开待我处理查看。")
+      : "当前没有下一责任方是你的事项";
     const container = $("#attention-list");
 
     if (!items.length) {
-      container.innerHTML = '<li class="empty-note">当前投影没有请求 Principal 注意的事项。</li>';
+      container.innerHTML = '<li class="empty-note">当前没有下一责任方是你的事项。</li>';
       return;
     }
 
     container.innerHTML = items
-      .map((item, index) => {
-        const severity = normalizeMode(first(item, ["priority", "severity", "level", "status"], "info"));
-        const normalizedSeverity =
-          ["critical", "failed", "interrupted", "principal-decision"].includes(severity)
-            ? "critical"
-            : ["warning", "input-pending", "needs-attention", "paused"].includes(severity)
-              ? "warning"
-              : "info";
-        const projectId = text(first(item, ["projectKey", "projectId", "project"]), "");
-        const missionId = text(first(item, ["missionId", "mission"]), "");
-        return `
+      .map((item) => `
           <li>
             <button
               class="attention-item"
               type="button"
-              data-attention-index="${index}"
-              data-attention-code="${escapeHtml(text(first(item, ["code"]), ""))}"
-              data-severity="${normalizedSeverity}"
-              data-project-id="${escapeHtml(projectId)}"
-              data-mission-id="${escapeHtml(missionId)}"
+              data-work-item-id="${escapeHtml(item.id)}"
+              data-severity="${item.consequence === "high" ? "critical" : "warning"}"
             >
-              <strong>${escapeHtml(first(item, ["title", "summary", "message"], "需要 Principal 注意"))}</strong>
-              <span>${escapeHtml(first(item, ["detail", "description", "reason", "source"], "打开对应现场查看。"))}</span>
+              <strong>${escapeHtml(item.title)}</strong>
+              <span>${escapeHtml(item.summary)}</span>
             </button>
           </li>
-        `;
-      })
+        `)
       .join("");
-
-    $$(".attention-item").forEach((button) => {
-      button.addEventListener("click", () => {
-        clearActionReceipt();
-        state.unavailableLocus = null;
-        if (button.dataset.projectId) state.selectedProjectId = button.dataset.projectId;
-        if (button.dataset.missionId) state.selectedMissionId = button.dataset.missionId;
-        state.selectedWorktreeId = null;
-        ensureSelections();
-        const item = workItems().find(
-          (candidate) =>
-            candidate.attentionCode === button.dataset.attentionCode
-            && (!button.dataset.projectId || candidate.projectKey === button.dataset.projectId)
-            && (!button.dataset.missionId || candidate.missionId === button.dataset.missionId),
-        );
-        state.selectedWorkItemId = item?.id ?? null;
-        state.peekOpen = item !== undefined;
-        render();
-        writePrincipalLocus();
-        if (
-          button.dataset.attentionCode === "runner-legacy-unanchored"
-          || button.dataset.attentionCode === "runner-anchor-migration-decision"
-          || button.dataset.attentionCode === "runner-lineage-unavailable"
-        ) {
-          $("#intent-lineage-gate").scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }
-      });
-    });
+    bindWorkItemRows(container);
   }
 
   function renderProjects() {
