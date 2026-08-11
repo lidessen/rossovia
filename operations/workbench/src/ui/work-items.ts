@@ -1,4 +1,8 @@
 import { realpathSync } from "node:fs";
+import {
+  MissionAnchorSeedSchema,
+  type MissionAnchorSeed,
+} from "../../../autonomy/src/mission-anchor";
 import type {
   AttentionItem,
   MissionProjection,
@@ -221,6 +225,7 @@ export interface WorkItemProjection {
         readonly authorizationId: string;
         readonly proposalDigest: string;
         readonly runtimeAdapterId: TaskExecutionRuntimeAdapterId;
+        readonly anchorSeed: MissionAnchorSeed;
         readonly worktreePath: string;
         readonly receiptPath: string;
         readonly runtimeRef: string;
@@ -1227,6 +1232,12 @@ function principalTaskWorkItems(
           authorizationId: launchAuthorization.authorizationId,
           proposalDigest: launchAuthorization.proposalDigest,
           runtimeAdapterId: runtimeAdapter.id,
+          anchorSeed: taskExecutionAnchorSeed(
+            task,
+            mission,
+            launchAuthorization,
+            observation.sourceRef,
+          ),
           worktreePath: expectedWorktreePath,
           receiptPath: launchAuthorization.sourcePath,
           runtimeRef: executionProposal.runtimeRef,
@@ -1438,6 +1449,56 @@ function principalTaskWorkItems(
         task,
       },
     };
+  });
+}
+
+function taskExecutionAnchorSeed(
+  task: PrincipalTask,
+  mission: MissionProjection,
+  authorization: Extract<
+    NonNullable<MissionProjection["authorization"]>,
+    { readonly standing: "authorized-awaiting-execution" }
+  >,
+  taskSourceRef: string,
+): MissionAnchorSeed {
+  const missionHead = mission.observedGitContext.head;
+  if (missionHead === null) {
+    throw new Error(`Mission ${mission.id} has no observed Git HEAD for an initial anchor`);
+  }
+  const sourceRefs = [...new Set([
+    mission.sourcePath,
+    taskSourceRef,
+    task.origin.sourceRef,
+    ...task.corrections.map((correction) => correction.sourceRef),
+    authorization.sourcePath,
+  ])];
+  const corrections = task.corrections.length === 0
+    ? []
+    : [
+      "Workbench task corrections:",
+      ...task.corrections.map((correction) => `- ${correction.statement}`),
+    ];
+  return MissionAnchorSeedSchema.parse({
+    version: "rosso.mission-anchor-seed.v1",
+    id: `workbench-task-anchor-seed:${task.id}:${authorization.authorizationId}`,
+    missionId: mission.id,
+    authorityRef: authorization.actorRef,
+    sourceRef: authorization.sourceRef,
+    anchor: {
+      id: `workbench-task-anchor:${task.id}`,
+      revision: `mission-head:${missionHead}:task-revision:${task.revision}`,
+      statement: [
+        `Mission mainline: ${mission.mainline.contradiction}`,
+        "Mission acceptance:",
+        ...mission.mainline.acceptance.map((criterion) => `- ${criterion}`),
+        `Workbench task objective: ${task.objective}`,
+        "Workbench task acceptance:",
+        ...task.acceptance.map((criterion) => `- ${criterion}`),
+        ...corrections,
+      ].join("\n"),
+      sourceRefs,
+      reconciledWatermark: 0,
+    },
   });
 }
 

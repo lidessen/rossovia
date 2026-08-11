@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import {
+  MissionAnchorSeedSchema,
+  type MissionAnchorSeed,
+} from "../../../autonomy/src/mission-anchor";
+import {
+  ExecutionAuthorizationReceiptSchema,
+  inspectExecution,
+  type ExecutionAuthorizationReceipt,
+} from "../execution-authorization";
+import {
   linkPrincipalTaskExecution,
+  showPrincipalTask,
   type TaskMutationResult,
 } from "../tasks";
+import { observeWorkspace } from "../workspace";
 import type {
   AutonomyClient,
   TrustedRunnerStart,
@@ -14,8 +25,11 @@ import type {
   WorkItemProjection,
   WorkItemSetProjection,
 } from "./work-items";
+import { WorkbenchRunnerActivityProjectionSchema } from "./projection";
 import {
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
+  WorkbenchTaskExecutionContextSchema,
+  workbenchTaskExecutionContextDigest,
   workbenchTaskExecutionContextFor,
 } from "./task-execution-context";
 import {
@@ -43,6 +57,7 @@ const TaskExecutionLaunchCandidateSchema = z.object({
   authorizationId: z.string().uuid(),
   proposalDigest: digest,
   runtimeAdapterId: z.string().min(1),
+  anchorSeed: MissionAnchorSeedSchema,
   worktreePath: absolutePath,
   receiptPath: absolutePath,
   runtimeRef: z.string().min(1),
@@ -67,9 +82,17 @@ export type TaskExecutionLaunchPlan =
   | {
     readonly kind: "start";
     readonly taskId: string;
+    readonly projectId: string;
+    readonly expectedSourceRevision: number;
+    readonly expectedTaskRevision: number;
     readonly authorizationId: string;
     readonly proposalDigest: string;
     readonly adapterId: TaskExecutionRuntimeAdapterId;
+    readonly anchorSeed: MissionAnchorSeed;
+    readonly worktreePath: string;
+    readonly receiptPath: string;
+    readonly runtimeRef: string;
+    readonly runtimeDigest: string;
     readonly start: TrustedRunnerStart;
     readonly evidenceRefs: readonly string[];
   }
@@ -105,6 +128,10 @@ export type TaskExecutionLaunchResult =
 
 export interface TaskExecutionLaunchDependencies {
   readonly linkExecution: typeof linkPrincipalTaskExecution;
+  readonly showTask: typeof showPrincipalTask;
+  readonly inspectExecution: typeof inspectExecution;
+  readonly readReceipt: (receiptPath: string) => ExecutionAuthorizationReceipt;
+  readonly observeWorktree: (worktreePath: string) => ReturnType<typeof observeWorkspace>;
 }
 
 export class TaskExecutionLaunchError extends Error {
@@ -230,6 +257,13 @@ export function prepareTaskExecutionLaunch(
       "the launch candidate Worktree no longer matches the task Worktree context",
     );
   }
+  if (launchCandidate.data.anchorSeed.missionId !== task.binding.missionId) {
+    throw new TaskExecutionLaunchError(
+      409,
+      "task-drift",
+      "the launch anchor no longer matches the task Mission context",
+    );
+  }
   assertReceiptOwnedByHome(home, launchCandidate.data.receiptPath);
   const runtimeAdapter = trustedTaskExecutionRuntimeAdapterFor(
     launchCandidate.data.runtimeRef,
@@ -252,9 +286,17 @@ export function prepareTaskExecutionLaunch(
   return {
     kind: "start",
     taskId: task.id,
+    projectId: task.binding.projectId,
+    expectedSourceRevision: detail.sourceRevision,
+    expectedTaskRevision: task.revision,
     authorizationId: launchCandidate.data.authorizationId,
     proposalDigest: launchCandidate.data.proposalDigest,
     adapterId: runtimeAdapter.id,
+    anchorSeed: launchCandidate.data.anchorSeed,
+    worktreePath: launchCandidate.data.worktreePath,
+    receiptPath: launchCandidate.data.receiptPath,
+    runtimeRef: launchCandidate.data.runtimeRef,
+    runtimeDigest: launchCandidate.data.runtimeDigest,
     start: {
       adapterId: runtimeAdapter.id,
       missionId: task.binding.missionId,
@@ -286,10 +328,19 @@ export async function executeTaskExecutionLaunch(
   taskId: string,
   unparsedRequest: unknown,
   client: AutonomyClient,
-  dependencies: TaskExecutionLaunchDependencies = {
-    linkExecution: linkPrincipalTaskExecution,
-  },
+  dependencies: Partial<TaskExecutionLaunchDependencies> = {},
 ): Promise<TaskExecutionLaunchResult> {
+  const activeDependencies: TaskExecutionLaunchDependencies = {
+    linkExecution: linkPrincipalTaskExecution,
+    showTask: showPrincipalTask,
+    inspectExecution,
+    readReceipt: readExecutionAuthorizationReceipt,
+    observeWorktree: (worktreePath) => observeWorkspace(
+      { id: null, repository: null },
+      { path: worktreePath },
+    ),
+    ...dependencies,
+  };
   const plan = prepareTaskExecutionLaunch(
     home,
     workItems,
@@ -307,7 +358,7 @@ export async function executeTaskExecutionLaunch(
     try {
       return {
         standing: "execution-linked",
-        result: dependencies.linkExecution(home, {
+        result: activeDependencies.linkExecution(home, {
           id: plan.taskId,
           authorizationId: plan.authorizationId,
           sourceRef: "workbench-ui:launch-authorized-execution",
@@ -327,7 +378,9 @@ export async function executeTaskExecutionLaunch(
         "the selected Autonomy client cannot start a trusted runner",
       );
     }
-    const runner = await client.start(plan.start);
+    const start = await trustedStartForCurrentAnchor(plan, client);
+    assertCurrentLaunchSources(home, plan, activeDependencies);
+    const runner = await client.start(start);
     return {
       standing: "launch-started-awaiting-consumption",
       authorizationId: plan.authorizationId,
@@ -344,6 +397,166 @@ export async function executeTaskExecutionLaunch(
       error instanceof Error ? error.message : String(error),
     );
   }
+}
+
+function assertCurrentLaunchSources(
+  home: string,
+  plan: Extract<TaskExecutionLaunchPlan, { readonly kind: "start" }>,
+  dependencies: TaskExecutionLaunchDependencies,
+): void {
+  let observedTask: ReturnType<typeof showPrincipalTask>;
+  let observedExecution: ReturnType<typeof inspectExecution>;
+  let observedReceipt: ExecutionAuthorizationReceipt;
+  let observedWorktree: ReturnType<typeof observeWorkspace>;
+  try {
+    observedTask = dependencies.showTask(home, plan.taskId);
+    observedExecution = dependencies.inspectExecution(
+      home,
+      plan.projectId,
+      plan.start.missionId,
+    );
+    observedReceipt = dependencies.readReceipt(plan.receiptPath);
+    observedWorktree = dependencies.observeWorktree(plan.worktreePath);
+  } catch (error: unknown) {
+    throw new TaskExecutionLaunchError(
+      409,
+      "task-drift",
+      `task ${plan.taskId} launch sources could not be revalidated before trusted start: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const currentTaskContext = workbenchTaskExecutionContextFor(
+    observedTask.task,
+    {
+      authorizationId: plan.authorizationId,
+      proposalDigest: plan.proposalDigest,
+    },
+  );
+  const plannedTaskContext = WorkbenchTaskExecutionContextSchema.parse(
+    JSON.parse(plan.start.environment[WORKBENCH_TASK_EXECUTION_CONTEXT_ENV]!),
+  );
+  const expectedAnchorRevision =
+    `mission-head:${observedExecution.missionSource.gitHead}:task-revision:${observedTask.task.revision}`;
+  const taskBinding = observedTask.task.binding;
+  const mismatches: string[] = [];
+  if (observedTask.sourceRevision !== plan.expectedSourceRevision) {
+    mismatches.push("task source revision");
+  }
+  if (observedTask.task.revision !== plan.expectedTaskRevision) {
+    mismatches.push("task revision");
+  }
+  if (observedTask.task.lifecycle !== "open" || observedTask.task.nextActor !== "agent") {
+    mismatches.push("task responsibility");
+  }
+  if (
+    taskBinding.kind !== "project-context"
+    || taskBinding.projectId !== plan.projectId
+    || taskBinding.missionId !== plan.start.missionId
+    || taskBinding.worktreePath !== plan.worktreePath
+  ) {
+    mismatches.push("task context");
+  }
+  if (
+    workbenchTaskExecutionContextDigest(currentTaskContext)
+    !== workbenchTaskExecutionContextDigest(plannedTaskContext)
+  ) {
+    mismatches.push("task semantics");
+  }
+  if (
+    observedExecution.projectId !== plan.projectId
+    || observedExecution.missionId !== plan.start.missionId
+  ) {
+    mismatches.push("Mission context");
+  }
+  if (observedExecution.status !== "authorized-awaiting-execution") {
+    mismatches.push("authorization standing");
+  }
+  if (
+    observedExecution.authorizationId !== plan.authorizationId
+    || observedExecution.proposalDigest !== plan.proposalDigest
+  ) {
+    mismatches.push("authorization selector");
+  }
+  if (
+    observedExecution.runtimeRef !== plan.runtimeRef
+    || observedExecution.runtimeDigest !== plan.runtimeDigest
+  ) {
+    mismatches.push("runtime source");
+  }
+  if (!sameObservedPath(observedExecution.receiptPath, plan.receiptPath)) {
+    mismatches.push("authorization receipt");
+  }
+  if (
+    observedReceipt.authorizationId !== plan.authorizationId
+    || observedReceipt.projectId !== plan.projectId
+    || observedReceipt.missionId !== plan.start.missionId
+    || observedReceipt.proposalDigest !== plan.proposalDigest
+    || observedReceipt.actorRef !== plan.anchorSeed.authorityRef
+    || observedReceipt.sourceRef !== plan.anchorSeed.sourceRef
+  ) {
+    mismatches.push("anchor authority");
+  }
+  if (plan.anchorSeed.anchor.revision !== expectedAnchorRevision) {
+    mismatches.push("anchor revision");
+  }
+  if (
+    observedWorktree.dirty
+    || observedWorktree.branch !== null
+    || observedWorktree.head !== observedExecution.missionSource.gitHead
+  ) {
+    mismatches.push("clean detached Worktree HEAD");
+  }
+  if (mismatches.length > 0) {
+    throw new TaskExecutionLaunchError(
+      409,
+      "task-drift",
+      `task ${plan.taskId} launch sources changed before trusted start: ${mismatches.join(", ")}`,
+    );
+  }
+  assertRuntimeDigest(plan.runtimeDigest, plan.start.runtimeModule);
+}
+
+async function trustedStartForCurrentAnchor(
+  plan: Extract<TaskExecutionLaunchPlan, { readonly kind: "start" }>,
+  client: AutonomyClient,
+): Promise<TrustedRunnerStart> {
+  let activity: z.infer<typeof WorkbenchRunnerActivityProjectionSchema>;
+  try {
+    activity = WorkbenchRunnerActivityProjectionSchema.parse(
+      await client.activity(plan.start.missionId),
+    );
+  } catch (error: unknown) {
+    throw new TaskExecutionLaunchError(
+      503,
+      "launch-failed",
+      `cannot inspect current Mission anchor before trusted start: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (activity.intentLineage.standing === "legacy-unanchored") {
+    throw new TaskExecutionLaunchError(
+      409,
+      "launch-unavailable",
+      `Mission ${plan.start.missionId} has prior unanchored history; initial anchor seeding is no longer valid`,
+    );
+  }
+  if (activity.intentLineage.standing === "unavailable") {
+    throw new TaskExecutionLaunchError(
+      503,
+      "launch-failed",
+      `current Mission anchor is unavailable: ${activity.intentLineage.reason}`,
+    );
+  }
+  if (activity.intentLineage.standing !== "uninitialized") {
+    return plan.start;
+  }
+  return {
+    ...plan.start,
+    initialAnchor: plan.anchorSeed,
+  };
 }
 
 function taskWorkItem(
@@ -406,6 +619,23 @@ function assertReceiptOwnedByHome(home: string, receiptPath: string): void {
       "launch-unavailable",
       "the launch receipt is outside the current Workbench home",
     );
+  }
+}
+
+function readExecutionAuthorizationReceipt(
+  receiptPath: string,
+): ExecutionAuthorizationReceipt {
+  return ExecutionAuthorizationReceiptSchema.parse(
+    JSON.parse(readFileSync(receiptPath, "utf8")),
+  );
+}
+
+function sameObservedPath(left: string, right: string): boolean {
+  if (left === right) return true;
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return false;
   }
 }
 

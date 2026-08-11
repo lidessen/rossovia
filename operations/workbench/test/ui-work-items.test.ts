@@ -38,7 +38,11 @@ const snapshot = {
       id: "ui-redesign",
       title: "重做工作台 UI",
       currentFocus: "统一任务与项目视图",
-      mainline: { status: "active" },
+      mainline: {
+        contradiction: "Unify the Workbench interface",
+        acceptance: ["The interface preserves operational truth"],
+        status: "active",
+      },
       sourcePath: "/workspace/skills/MISSION.json",
       observedGitContext: {
         worktreePath: "/workspace/skills-ui",
@@ -48,7 +52,11 @@ const snapshot = {
       id: "agent-run",
       title: "运行验证",
       currentFocus: "执行真实探针",
-      mainline: { status: "active" },
+      mainline: {
+        contradiction: "Execute one supervised Agent run",
+        acceptance: ["The run remains bounded to the Mission"],
+        status: "active",
+      },
       sourcePath: "/workspace/skills/RUN.json",
       observedGitContext: {
         worktreePath: "/workspace/skills",
@@ -1426,6 +1434,8 @@ describe("Workbench work-item shell projection", () => {
                 standing: "authorized-awaiting-execution",
                 authorizationId,
                 proposalDigest,
+                actorRef: "principal:test",
+                sourceRef: "conversation:launch-blog-authorization",
                 sourcePath: receiptPath,
               },
             }
@@ -1474,6 +1484,33 @@ describe("Workbench work-item shell projection", () => {
       authorizationId,
       proposalDigest,
       runtimeAdapterId: "agent-era-blog-publication-v1",
+      anchorSeed: {
+        version: "rosso.mission-anchor-seed.v1",
+        id:
+          `workbench-task-anchor-seed:task-launch-blog:${authorizationId}`,
+        missionId: "agent-run",
+        authorityRef: "principal:test",
+        sourceRef: "conversation:launch-blog-authorization",
+        anchor: {
+          id: "workbench-task-anchor:task-launch-blog",
+          revision: `mission-head:${"d".repeat(40)}:task-revision:1`,
+          statement: [
+            "Mission mainline: Execute one supervised Agent run",
+            "Mission acceptance:",
+            "- The run remains bounded to the Mission",
+            "Workbench task objective: Start one exact authorized Blog publication turn",
+            "Workbench task acceptance:",
+            "- The launch remains bounded to the observed clean Worktree",
+          ].join("\n"),
+          sourceRefs: [
+            "/workspace/skills/RUN.json",
+            "/home/state/tasks.json",
+            "conversation:launch-blog",
+            receiptPath,
+          ],
+          reconciledWatermark: 0,
+        },
+      },
       worktreePath: "/workspace/skills-ui",
       receiptPath,
       runtimeRef: publicationRuntimeRef,
@@ -1555,6 +1592,8 @@ describe("Workbench work-item shell projection", () => {
                 standing: "authorized-awaiting-execution",
                 authorizationId,
                 proposalDigest,
+                actorRef: "principal:test",
+                sourceRef: "conversation:launch-counterexample-authorization",
                 sourcePath: "/home/receipts/blog.json",
               },
             }
