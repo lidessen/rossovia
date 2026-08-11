@@ -2,6 +2,7 @@
 /outputs/
 .reasonix/
 .work-cell/
+.playwright-cli/
 .vercel/
 packages/*/node_modules/
 operations/*/node_modules/
