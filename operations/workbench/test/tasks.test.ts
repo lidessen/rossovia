@@ -550,6 +550,66 @@ describe("Principal-created local task source", () => {
     })).toThrow("reopen it first");
   });
 
+  test("rebinds a project-context task without requiring optional Mission context", () => {
+    const taskHome = home();
+    const root = join(taskHome, "..");
+    const primary = repository(root);
+    const oldWorktree = join(root, "old-worktree");
+    const newWorktree = join(root, "new-worktree");
+    git(primary, "worktree", "add", "-b", "task/old", oldWorktree);
+    git(primary, "worktree", "add", "-b", "task/new", newWorktree);
+    registerProject(taskHome, {
+      path: primary,
+      id: "repository:task-fixture",
+      aliases: ["fixture"],
+    });
+
+    const created = createPrincipalTask(taskHome, {
+      title: "Move a daily task to its actual carrier",
+      objective: "Keep Workbench context aligned with the isolated Worktree",
+      acceptance: ["Mission-free context remains observation-only"],
+      nextActor: "agent",
+      sourceRef: "conversation:daily-task-worktree",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree: oldWorktree,
+    });
+    const rebound = taskCli(
+      taskHome,
+      "rebind-worktree",
+      created.task.id,
+      "--expected-worktree",
+      realpathSync(oldWorktree),
+      "--worktree",
+      newWorktree,
+      "--source-ref",
+      "test:mission-free-worktree-rebind",
+      "--expected-source-revision",
+      "1",
+      "--expected-revision",
+      "1",
+    );
+
+    expect(rebound.exitCode, rebound.stderr).toBe(0);
+    expect(JSON.parse(rebound.stdout)).toMatchObject({
+      sourceRevision: 2,
+      task: {
+        revision: 2,
+        binding: {
+          kind: "project-context",
+          projectId: "repository:task-fixture",
+          worktreePath: realpathSync(newWorktree),
+        },
+        worktreeRebindings: [{
+          fromWorktreePath: realpathSync(oldWorktree),
+          toWorktreePath: realpathSync(newWorktree),
+          sourceRef: "test:mission-free-worktree-rebind",
+        }],
+      },
+    });
+    expect(JSON.parse(rebound.stdout).task.binding).not.toHaveProperty("missionId");
+  });
+
   test("rejects malformed persisted task semantics instead of reporting a factual empty source", () => {
     const taskHome = home();
     const path = join(taskHome, "state", "tasks.json");

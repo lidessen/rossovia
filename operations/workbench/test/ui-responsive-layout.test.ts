@@ -144,6 +144,7 @@ describe("Workbench responsive layout", () => {
     expect(app).toContain("当前载体无法唯一确认");
     expect(app).toContain('`/api/tasks/${encodeURIComponent(task.id)}/actions`');
     expect(app).toContain('sendTaskMutation("rebind-worktree"');
+    expect(app).not.toContain("|| !task.binding.missionId");
     expect(html).toContain('id="task-rebind-worktree-form"');
     expect(html).toContain('id="task-rebind-worktree-submit"');
     expect(html).toContain('id="task-rebind-worktree-submit" type="submit" disabled');

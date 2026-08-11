@@ -202,12 +202,13 @@ registered project's current primary workspace and stores only its stable ID as
 task context. The task source does not copy Mission, runner, authorization
 state, effect, correction application, verification, reconciliation, or
 recovery state. `task rebind-worktree` applies only to an unsettled task that
-already has exact project, Mission, and Worktree context. It verifies the new
-path against that same registered project's observed Worktrees, requires that
-replacement to be Git-clean, compares `--expected-worktree` with the currently
-retained path, preserves project and Mission identity, and appends the old and
-new paths to task history. This is a context change only; it neither launches
-work nor transfers old execution evidence to the new candidate. The task may
+already has exact project and Worktree context; optional Mission context is not
+required. It verifies the new path against that same registered project's
+observed Worktrees, requires that replacement to be Git-clean, compares
+`--expected-worktree` with the currently retained path, preserves project and
+any existing Mission identity, and appends the old and new paths to task
+history. This is a context change only; it neither launches work nor transfers
+old execution evidence to the new candidate. The task may
 append one stable authorization selector and canonical claim reference after
 `task link-execution` revalidates the consumed claim and its receipt against the
 task's exact project and Mission. A new link also requires the claim's
