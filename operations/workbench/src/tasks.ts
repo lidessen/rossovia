@@ -418,11 +418,10 @@ export function rebindPrincipalTaskWorktree(
     assertUnsettled(task, "rebind Worktree for");
     if (
       task.binding.kind !== "project-context"
-      || task.binding.missionId === undefined
       || task.binding.worktreePath === undefined
     ) {
       throw new Error(
-        `task ${task.id} requires exact registered project, Mission, and current Worktree context before Worktree rebinding`,
+        `task ${task.id} requires exact registered project and current Worktree context before Worktree rebinding`,
       );
     }
     const expectedWorktreePath = nonempty(

@@ -2097,7 +2097,6 @@ export function restoredPrincipalLocusState(resolved) {
     rebindForm.hidden =
       settled
       || !currentWorktreePath
-      || !task.binding.missionId
       || rebindCandidates.length === 0;
     $("#task-rebind-worktree").innerHTML = [
       '<option value="" selected disabled>选择新的 Worktree…</option>',

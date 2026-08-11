@@ -130,12 +130,12 @@ Workbench home has a task source.
   for the same project and Mission remains execution-unproven unless
   runtime-owned evidence exposes the exact launch-authorization lineage.
 - Rebind Worktree context only through `task rebind-worktree` for an unsettled
-  task that already has exact project, Mission, and Worktree context. Pass the
-  currently retained Worktree path as `--expected-worktree`; the command
-  verifies a Git-clean replacement against the same registered project's
-  observed Worktrees, preserves project and Mission identity, and appends the
-  transition to task history. Rebinding does not launch work or authorize the
-  new carrier.
+  task that already has exact project and Worktree context; optional Mission
+  context is not required. Pass the currently retained Worktree path as
+  `--expected-worktree`; the command verifies a Git-clean replacement against
+  the same registered project's observed Worktrees, preserves project and any
+  existing Mission identity, and appends the transition to task history.
+  Rebinding does not launch work or authorize the new carrier.
 - Link an execution only through `task link-execution` after the task has exact
   registered-project and Mission context. The command must revalidate the
   authorization claim and receipt before appending their stable selector and
