@@ -19,6 +19,13 @@ separation, state that limitation and do not label the review independent.
   withheld authority, and retain the final review judgment. The helper's
   return is evidence inside this review, not a second independent review
   verdict.
+- When you form that evidence helper, act as its immediate parent: construct a
+  complete self-contained child envelope, embed the complete Worker Contract,
+  and declare the child's next-layer delegation posture. Use `direct only` by
+  default. Open another delegation layer only when your received reviewer
+  envelope explicitly permits you to do so and the child envelope explicitly
+  carries that narrower allowance; never make the helper discover its role
+  contract or infer permission from tool availability.
 - Inspect the exact candidate and authoritative sources rather than the maker's
   summary alone.
 - Search first for the highest-consequence counterexample, broken boundary,

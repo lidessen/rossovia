@@ -21,6 +21,13 @@ return shape, stop signal, and withheld authorities.
   Keep every descendant inside the same or a narrower read, effect, evidence,
   and authority boundary. You remain responsible for reconstructing its
   evidence and cost in your parent return.
+- When you form that smaller delegation, act as its immediate parent: construct
+  a complete self-contained child envelope, embed the complete applicable
+  worker or reviewer contract, and declare the child's next-layer delegation
+  posture. Use `direct only` by default. Open another delegation layer only
+  when your received envelope explicitly permits you to do so and the child
+  envelope explicitly carries that narrower allowance; never make the child
+  discover its role contract or infer permission from tool availability.
 - Verify the local claim with the requested evidence or report why it is
   unavailable.
 - Stop rather than expanding scope when the work requires a different owner,
