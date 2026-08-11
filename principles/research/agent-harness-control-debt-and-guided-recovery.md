@@ -4,13 +4,16 @@
 **Scope:** Determine how an Agent harness should distinguish necessary hard
 boundaries from controls whose local safety, conformance, or predictability
 benefit reduces whole-task reliability; preserve the received hypotheses about
-task lists, sub-agents, structured settlement, and error-tolerant guidance; and
-decide whether a distinct control-removal Skill is justified.
+task lists, sub-agents, structured settlement, error-tolerant guidance, and
+delegation topology; and decide whether a distinct control-removal Skill is
+justified.
 **Source limitations:** The initiating observations were supplied by the human
 Principal on 2026-08-06 and have no external transcript anchor in this
 repository. Project records below establish particular mechanisms and failures,
 not universal superiority over unrestricted harnesses. No matched open-versus-
-controlled campaign has yet tested the central net-benefit claim.
+controlled campaign has yet tested the central net-benefit claim. The 2026-08-07
+Rossovia + Herdr record preserves one corrected nested-delegation observation;
+it is not a matched causal comparison.
 
 > This record is cited, revisable research. It owns no P-ID, cannot redefine an
 > interpretation, and does not propose a Sequence change by itself. Unverified
@@ -50,6 +53,10 @@ observations and conjectures, not admitted general facts:
 - Agents will make mistakes. A good harness may be one that gives strong
   guidance, keeps mistakes observable and recoverable, and permits trial and
   correction instead of trying to prevent every wrong intermediate action.
+- A process deviation such as an unnecessary nested delegation may be poor
+  judgment without being a system failure. The force of the response should
+  follow its actual consequence: effect escape, authority expansion, lost
+  evidence, mainline drift, or disproportionate coordination cost.
 
 Preserving a conjecture here does not require defending it. A later negative
 result changes its standing and boundary rather than deleting it.
@@ -77,6 +84,10 @@ result changes its standing and boundary rather than deleting it.
 - **Retry versus recovery.** Repeating the same failing interaction is not
   recovery. Recovery changes the state, information, carrier, or authority
   relation that made another attempt useful.
+- **Hard boundary versus organizational guidance.** Law-like prevention is
+  reserved for consequences that later feedback cannot safely undo. Operating
+  guidance expresses preferred judgment inside that boundary; departing from
+  it is evidence to evaluate, not automatically a violation to reject.
 
 ## Provisional theory — an error-tolerant action and evidence system
 
@@ -222,6 +233,26 @@ This ordering is provisional. Credential access, external disclosure, and
 irreversible production effects can justify prevention before trial because a
 later review cannot undo their escape.
 
+### Constraint force should follow consequence
+
+A harness should not flatten every desired behavior into `allowed` or
+`forbidden`. Use the least coercive form that can keep the whole reliable:
+
+| Consequence class | Appropriate form |
+|---|---|
+| Unauthorized irreversible effect, credential or secret escape, destructive shared-state change | hard effect boundary, containment, or explicit authorization |
+| Shared ownership, identity, evidence, and acceptance relations whose ambiguity would corrupt reconstruction | explicit operating contract with observable verification and recovery |
+| Preferred investigation order, tool choice, delegation topology, or communication habit | guidance, examples, and role disposition with room for local adaptation |
+| Reversible poor judgment whose result remains observable and contained | feedback, correction, and later practice rather than a new universal prohibition |
+
+Compliance with a preferred process is not the unit of reliability. Ask what
+the choice changed: Did it broaden authority, create conflicting effects, hide
+evidence, lose the active mainline, prevent recovery, or impose coordination
+cost disproportionate to the result? If not, the variation may be adaptive or
+merely harmless. If it did, correct the governing relation and retain the
+observation; do not automatically convert one mistake into another permanent
+gate.
+
 ### Guidance is load-bearing infrastructure
 
 Permission and validation machinery often grows because guidance is treated as
@@ -351,6 +382,10 @@ relations, and acceptance. Compressed evidence reconnects the layers.
 - return claims and evidence rather than full transcripts; and
 - require Main to reconstruct the whole and use a fresh non-producing reviewer
   where producer-correlated error matters.
+- when a worker discovers a genuinely independent local contribution, let it
+  form a smaller delegation while inheriting the outer whole, effect boundary,
+  and withheld authority; the worker remains responsible for reconnecting that
+  child evidence to its own parent return.
 
 **Bad practice:**
 
@@ -359,6 +394,9 @@ relations, and acceptance. Compressed evidence reconnects the layers.
   contract, or merge results by vote;
 - let workers write the same surface; or
 - force Main to reread every trace, eliminating the context benefit.
+- treat topology depth itself as success or failure, reflexively forbid nested
+  delegation, or fan out a trivial task without an attention, latency,
+  isolation, or independent-evidence benefit.
 
 The [scale-control probe](../../regeneration/evaluations/2026-07-15-project-cognition-scale-control.md)
 supports semantic partition, local recovery, and compressed synthesis while
@@ -798,6 +836,31 @@ agents, majority, or concurrency as quality signals.
 **Standing:** verified project-scale mechanism; native sub-agent causal
 advantage remains only directionally observed.
 
+The [Rossovia + Herdr minimum-path
+probe](../../regeneration/evaluations/2026-08-07-rossovia-herdr-delegation-minimum-path.md#corrected-interpretation)
+adds a smaller counterexample to depth-based control. A worker formed a nested
+investigation despite an explicit one-level contract, yet its read-only result
+survived Main source verification and no repository effect escaped. The
+realized organization was expensive for the task. This supports judging
+delegation by effect containment, evidence, attention benefit, and cost rather
+than treating topology depth as a validity gate; it does not prove the nested
+child caused either the correct result or the high cost.
+
+The follow-up [paired local
+probe](../../regeneration/evaluations/evidence/2026-08-07-direct-vs-nested-delegation/README.md#observed-result)
+declared the same source-local classification task and rubric for both arms.
+Both returns produced five of five source-supported decisions and reported no
+effect, while the nested parent reported 102 seconds versus 31 seconds and no
+unique decision evidence. The actual serving identities, sandbox capabilities,
+effect telemetry, and per-agent token use were not retained. This directionally
+supports direct execution for an already local contribution and rejects forced
+fan-out as a demonstrated quality signal in this case; it neither proves a
+general nesting penalty nor tests a real context-displacing multi-file subtree.
+
+**Standing:** direct preference directionally supported by one paired
+source-local return; runtime equivalence, effect containment, and nesting's
+causal cost and value on a real context-displacing contribution remain open.
+
 ### Structured settlement
 
 The [held-out reconciliation
@@ -884,7 +947,9 @@ cross-task advantage unverified.
 decision-relevant whole-task context with the Main Agent while investigation or
 implementation detail is isolated behind evidence-bearing returns. More agents
 without a context boundary add coordination and correlated activity rather
-than scale.
+than scale. A nested delegation is justified by the same relation: it is neither
+an authority violation nor useful by default, and must preserve inherited
+effect and acceptance boundaries while earning its reconstruction cost.
 **Falsifier:** Direct single-Agent work matches accepted outcomes and context
 cost on large tasks, or delegated work requires the Main Agent to reconstruct
 nearly every worker trace.
@@ -908,7 +973,9 @@ semantic acceptance across profiles.
 **Conjecture:** For reversible work, a harness that preserves strong task
 orientation, records intermediate effects, and supports bounded correction will
 complete more valid work than one that attempts to prevent every possible
-mistake through pre-action gates.
+mistake through pre-action gates. A reversible departure from preferred process
+should be judged by whole-task consequence before it is turned into a hard
+failure or a new prohibition.
 **Falsifier:** Error-permitting runs accumulate unrecoverable state, correction
 cost dominates, or well-targeted prevention achieves equal capability with
 lower escape and recovery cost.
@@ -947,6 +1014,8 @@ task may need only one sentence of reasoning.
 
 ## Existing-sequence coverage
 
+- **P01** recovers the reason behind a past prohibition instead of extending its
+  familiar form after the consequence model changes.
 - **P02** requires evidence from the actual harness and task rather than a
   security or autonomy slogan.
 - **P03** requires control design to return through operation, observed failure,
@@ -956,7 +1025,8 @@ task may need only one sentence of reasoning.
 - **P09** supports todo and delegation only when they place decision-relevant
   information at the right attention layer.
 - **P11** separates acting, reviewing, effect-commit, and final acceptance
-  authority instead of giving one verifier the entire loop.
+  authority proportionally instead of turning every execution preference into
+  a ceremonial separation or hard ban.
 - **P13** prevents schema success, worker reports, and validator labels from
   becoming accepted fact without traceable settlement.
 - **P14** keeps summaries, indexes, task projections, and generated artifacts

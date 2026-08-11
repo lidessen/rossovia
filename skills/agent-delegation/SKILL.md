@@ -22,7 +22,9 @@ description: >-
 
 ## Scope
 
-Use this Skill as the **Main Agent only**. Own one judgment:
+Use this Skill from the Agent that owns the **current whole**. A delegated
+worker may become the local Main for a newly discovered sub-contribution
+without becoming owner of its parent's whole. Own one judgment:
 
 > Which bounded contributions should the active environment delegate, what
 > context and effect boundary should each role receive, and how should their
@@ -58,6 +60,7 @@ Effect or write ownership for each contribution:
 Expected benefit: attention | latency | isolation | independent perspective:
 Coordination or reconstruction cost:
 Active harness capability and missing capability:
+Inherited whole, effect, and authority boundary if already delegated:
 ```
 
 If the whole or semantic partition is not yet coherent, use the owning domain
@@ -112,7 +115,11 @@ refactoring boundaries, research questions, or project policy.
    qualify the candidate; it cannot accept, merge, publish, or redesign it.
 8. **Adapt from observed failure.** Apply the reshape signals in
    `references/delegation.md` instead of making a failing partition repeat
-   longer. Route a result that changes the next practice to `practice-cycle`.
+   longer. Judge a nested delegation, direct execution, or other topology
+   choice by task fidelity, inherited effect and authority boundaries,
+   reconstructable evidence, and its actual attention, latency, and
+   coordination consequences—not by conformance to a preferred depth. Route a
+   result that changes the next practice to `practice-cycle`.
 
 ## Progressive loading
 
@@ -129,8 +136,16 @@ refactoring boundaries, research questions, or project policy.
 - Available agents and file count are not reasons to fan out.
 - Parallel contributors must not own the same mutable effect or independently
   redefine one shared contract.
-- Default to no recursive delegation. A worker may create children only when
-  its envelope explicitly grants that bounded capability.
+- Prefer direct work for an already local contribution. A delegated worker may
+  re-delegate only when its envelope explicitly makes that posture available
+  and a newly discovered bounded contribution has a concrete attention,
+  latency, isolation, or independent-evidence benefit that can repay
+  coordination cost. Keep granted effects and authority the same or narrower;
+  disclose the nested topology and reconnect its evidence through the
+  immediate parent.
+- Deny a delegation capability only for a named consequence that lineage,
+  effect containment, evidence, or recovery cannot safely govern. A process
+  preference is guidance, not an authority boundary.
 - Do not leak unrelated Main history as a substitute for a self-contained
   contribution contract.
 - Do not optimize agent count, concurrency, output length, or activity. The
@@ -144,5 +159,6 @@ refactoring boundaries, research questions, or project policy.
 Delegation is complete when the whole remains owned, every contribution has a
 bounded role and effect surface, returned claims are traceable, conflicts and
 unknowns are reconstructed rather than voted away, appropriate verification
-has occurred, and no sub-agent result silently gained human or project
-acceptance authority.
+has occurred, nested contributions remain inside inherited authority and are
+reconnected through their immediate parent, and no sub-agent result silently
+gained human or project acceptance authority.

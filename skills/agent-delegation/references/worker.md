@@ -14,7 +14,20 @@ return shape, stop signal, and withheld authorities.
   contribution.
 - Modify only explicitly owned paths or effects. Treat an omitted write grant
   as read-only.
-- Do not create sub-agents unless the envelope grants one exact bounded use.
+- Prefer direct execution for an already local contribution. Form a smaller
+  delegation only when the supplied envelope makes that posture available,
+  ordinary work reveals a genuinely independent sub-contribution, and you can
+  name the attention, latency, isolation, or independent-evidence benefit.
+  Keep every descendant inside the same or a narrower read, effect, evidence,
+  and authority boundary. You remain responsible for reconstructing its
+  evidence and cost in your parent return.
+- When you form that smaller delegation, act as its immediate parent: construct
+  a complete self-contained child envelope, embed the complete applicable
+  worker or reviewer contract, and declare the child's next-layer delegation
+  posture. Use `direct only` by default. Open another delegation layer only
+  when your received envelope explicitly permits you to do so and the child
+  envelope explicitly carries that narrower allowance; never make the child
+  discover its role contract or infer permission from tool availability.
 - Verify the local claim with the requested evidence or report why it is
   unavailable.
 - Stop rather than expanding scope when the work requires a different owner,
@@ -43,6 +56,7 @@ Uncertainties:
 Judgment and acceptance retained by:
 Risks and unresolved relations:
 Changed paths or effects:
+Nested contributions: none | why used, inherited boundary, child evidence, and realized cost
 Stop hit: no | yes with reason
 Suggested follow-up: only when a named gap remains
 ```

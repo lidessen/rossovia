@@ -12,8 +12,10 @@ division of work in the supervised autonomy MVP?
 The recurring basic form is **Agent as tool**: a parent sends one bounded task
 to a fresh Agent context, receives a compact result, and retains responsibility
 for reconstruction. Independent calls produced in one model step may run in
-parallel. Handoff, shared teams, and model-authored workflows solve different
-problems and should not be collapsed into that primitive.
+parallel. A child may form another bounded contribution without receiving the
+parent's outer authority; topology depth is an adaptive organization choice,
+not a new authority layer. Handoff, shared teams, and model-authored workflows
+solve different problems and should not be collapsed into that primitive.
 
 ## Compared forms
 
@@ -193,9 +195,12 @@ and
    start no child. Each child owns its execution timeline; the parent may append
    a ready barrier and resume only after every linked child timeline contains a
    compatible settlement, ordered by the original calls.
-8. Deny recursive delegation in the MVP. A later dynamic workflow may receive a
-   bounded Agent-only sandbox after a real data-dependent case defeats direct
-   calls.
+8. Do not make recursive delegation a universal forbidden operation. A concrete
+   MVP adapter may omit it while child lineage, effect containment, recovery,
+   and cost visibility are not representable; record that as a capability
+   limit, not organizational doctrine. When nesting is available, the child
+   inherits the outer effect and authority boundary, names the local benefit,
+   and reconnects compact evidence through its immediate parent.
 9. Keep parallel writers isolated; retain the MVP rule of read-only fan-out and
    one separately verified writer.
 
@@ -298,5 +303,6 @@ handoff machinery now.
 - When does one nested bounded contribution reduce attention or latency enough
   to justify its coordination and token cost without broadening effects?
 
-These are pilot questions, not reasons to add team messaging, recursive spawn,
-or model-authored workflow code now.
+These are pilot questions, not reasons to add team messaging or model-authored
+workflow code now. They also do not justify a blanket ban on nested delegation
+in a carrier that can already preserve lineage, effects, evidence, and recovery.
