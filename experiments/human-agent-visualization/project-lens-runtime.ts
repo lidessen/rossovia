@@ -557,11 +557,11 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
         taskShape: {
           referenceProfile: { id: PROFILE_ID, revision: PROFILE_REVISION },
           evidence: {
-            status: "provisional-observed" as const,
+            status: "admitted" as const,
             revision: PROFILE_REVISION,
             refs: ["evidence:project-lens-current-builder-and-direct-tests"],
           },
-          disposition: "guarded" as const,
+          disposition: "reliable-primitive" as const,
           principalInstability:
             "source-order selection is bounded, but the generated explanation remains an unaccepted projection",
           guardRefs: [],

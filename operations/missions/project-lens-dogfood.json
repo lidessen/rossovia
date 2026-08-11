@@ -29,7 +29,7 @@
     "mode": "supervised",
     "status": "awaiting-principal-authorization",
     "runtimeRef": "source-project:experiments/human-agent-visualization/project-lens-runtime.ts",
-    "runtimeDigest": "166b0b60339c9095238064c0a7c45c27d21a61d544c3eb15b763f853191b0a21",
+    "runtimeDigest": "64cd8bb31cc43784a6d2d91963c8d4d5a068cadee3a0c399a358416e5d840a17",
     "externalProvider": {
       "name": "DeepSeek",
       "boundary": "external"
