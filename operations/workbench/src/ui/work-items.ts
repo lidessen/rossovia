@@ -1,4 +1,8 @@
 import { realpathSync } from "node:fs";
+import {
+  MissionAnchorSeedSchema,
+  type MissionAnchorSeed,
+} from "../../../autonomy/src/mission-anchor";
 import type {
   AttentionItem,
   MissionProjection,
@@ -19,6 +23,10 @@ import {
   workbenchTaskExecutionContextFor,
   workbenchTaskExecutionContextRef,
 } from "./task-execution-context";
+import {
+  trustedTaskExecutionRuntimeAdapterFor,
+  type TaskExecutionRuntimeAdapterId,
+} from "./task-execution-runtime-adapter";
 
 type PrincipalTaskExecutionLink = PrincipalTask["executionLinks"][number];
 
@@ -216,7 +224,8 @@ export interface WorkItemProjection {
       readonly launchCandidate: {
         readonly authorizationId: string;
         readonly proposalDigest: string;
-        readonly runtimeAdapterId: "agent-era-blog-publication-v1";
+        readonly runtimeAdapterId: TaskExecutionRuntimeAdapterId;
+        readonly anchorSeed: MissionAnchorSeed;
         readonly worktreePath: string;
         readonly receiptPath: string;
         readonly runtimeRef: string;
@@ -368,9 +377,6 @@ const observationCodes = new Set<AttentionItem["code"]>([
   "runner-legacy-unanchored",
   "source-error",
 ]);
-
-const blogPublicationRuntimeRef =
-  "source-project:operations/autonomy/experiments/agent-era-blog-publication-runtime.ts";
 
 function projectName(project: ProjectProjection): string {
   return "id" in project.identity && project.identity.id !== null
@@ -1203,6 +1209,9 @@ function principalTaskWorkItems(
           (worktree) => worktree.path === expectedWorktreePath,
         );
     const executionProposal = mission?.executionProposal;
+    const runtimeAdapter = executionProposal === undefined
+      ? null
+      : trustedTaskExecutionRuntimeAdapterFor(executionProposal.runtimeRef);
     const launchCandidate =
       task.binding.kind === "project-context"
       && declaredMissionId !== undefined
@@ -1212,7 +1221,7 @@ function principalTaskWorkItems(
       && task.nextActor === "agent"
       && launchAuthorization !== undefined
       && executionProposal !== undefined
-      && executionProposal.runtimeRef === blogPublicationRuntimeRef
+      && runtimeAdapter !== null
       && executionProposal.proposalDigest === launchAuthorization.proposalDigest
       && observedTaskWorktree?.dirty === false
       && observedTaskWorktree.gitBranch === null
@@ -1222,7 +1231,13 @@ function principalTaskWorkItems(
         ? {
           authorizationId: launchAuthorization.authorizationId,
           proposalDigest: launchAuthorization.proposalDigest,
-          runtimeAdapterId: "agent-era-blog-publication-v1" as const,
+          runtimeAdapterId: runtimeAdapter.id,
+          anchorSeed: taskExecutionAnchorSeed(
+            task,
+            mission,
+            launchAuthorization,
+            observation.sourceRef,
+          ),
           worktreePath: expectedWorktreePath,
           receiptPath: launchAuthorization.sourcePath,
           runtimeRef: executionProposal.runtimeRef,
@@ -1437,6 +1452,56 @@ function principalTaskWorkItems(
   });
 }
 
+function taskExecutionAnchorSeed(
+  task: PrincipalTask,
+  mission: MissionProjection,
+  authorization: Extract<
+    NonNullable<MissionProjection["authorization"]>,
+    { readonly standing: "authorized-awaiting-execution" }
+  >,
+  taskSourceRef: string,
+): MissionAnchorSeed {
+  const missionHead = mission.observedGitContext.head;
+  if (missionHead === null) {
+    throw new Error(`Mission ${mission.id} has no observed Git HEAD for an initial anchor`);
+  }
+  const sourceRefs = [...new Set([
+    mission.sourcePath,
+    taskSourceRef,
+    task.origin.sourceRef,
+    ...task.corrections.map((correction) => correction.sourceRef),
+    authorization.sourcePath,
+  ])];
+  const corrections = task.corrections.length === 0
+    ? []
+    : [
+      "Workbench task corrections:",
+      ...task.corrections.map((correction) => `- ${correction.statement}`),
+    ];
+  return MissionAnchorSeedSchema.parse({
+    version: "rosso.mission-anchor-seed.v1",
+    id: `workbench-task-anchor-seed:${task.id}:${authorization.authorizationId}`,
+    missionId: mission.id,
+    authorityRef: authorization.actorRef,
+    sourceRef: authorization.sourceRef,
+    anchor: {
+      id: `workbench-task-anchor:${task.id}`,
+      revision: `mission-head:${missionHead}:task-revision:${task.revision}`,
+      statement: [
+        `Mission mainline: ${mission.mainline.contradiction}`,
+        "Mission acceptance:",
+        ...mission.mainline.acceptance.map((criterion) => `- ${criterion}`),
+        `Workbench task objective: ${task.objective}`,
+        "Workbench task acceptance:",
+        ...task.acceptance.map((criterion) => `- ${criterion}`),
+        ...corrections,
+      ].join("\n"),
+      sourceRefs,
+      reconciledWatermark: 0,
+    },
+  });
+}
+
 function taskLaunchReadinessBlockers(input: {
   readonly task: PrincipalTask;
   readonly project: ProjectProjection | undefined;
@@ -1539,7 +1604,9 @@ function taskLaunchReadinessBlockers(input: {
   }
   if (
     input.executionProposal !== undefined
-    && input.executionProposal.runtimeRef !== blogPublicationRuntimeRef
+    && trustedTaskExecutionRuntimeAdapterFor(
+      input.executionProposal.runtimeRef,
+    ) === null
   ) {
     blockers.push({
       code: "runtime-adapter-unavailable",

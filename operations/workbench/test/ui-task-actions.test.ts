@@ -1015,6 +1015,14 @@ describe("Workbench task UI actions", () => {
 
     const starts: TrustedRunnerStart[] = [];
     const client = {
+      async activity() {
+        return {
+          intentLineage: {
+            standing: "uninitialized",
+            activeAnchor: null,
+          },
+        };
+      },
       async start(start: TrustedRunnerStart) {
         starts.push(start);
         const canonicalHome = realpathSync(home);
@@ -1100,7 +1108,23 @@ describe("Workbench task UI actions", () => {
         ROSSO_BLOG_EFFECT_ROOT: realpathSync(candidate),
         ROSSO_BLOG_AUTHORIZATION_RECEIPT: authorized.receiptPath,
       },
+      initialAnchor: {
+        version: "rosso.mission-anchor-seed.v1",
+        missionId: "daily-task-loop",
+        authorityRef: "principal:test",
+        sourceRef: "conversation:test/task-launch",
+        anchor: {
+          statement: expect.stringContaining(
+            "Workbench task objective: Use this task as the exact Workbench launch entry",
+          ),
+          reconciledWatermark: 0,
+        },
+      },
     });
+    const anchorSourceRefs = starts[0]?.initialAnchor?.anchor.sourceRefs ?? [];
+    expect(anchorSourceRefs).toContain(realpathSync(missionPath));
+    expect(anchorSourceRefs).toContain(realpathSync(principalTasksPath(home)));
+    expect(anchorSourceRefs).toContain(realpathSync(authorized.receiptPath));
     expect(launchedBody).toMatchObject({
       result: {
         standing: "execution-linked",
@@ -1164,6 +1188,14 @@ describe("Workbench task UI actions", () => {
       releaseStart = resolve;
     });
     const client = {
+      async activity() {
+        return {
+          intentLineage: {
+            standing: "uninitialized",
+            activeAnchor: null,
+          },
+        };
+      },
       async start(start: TrustedRunnerStart) {
         starts.push(start);
         announceStart();

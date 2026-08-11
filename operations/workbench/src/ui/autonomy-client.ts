@@ -1,4 +1,10 @@
-import { resolve } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import {
+  MissionAnchorSeedSchema,
+  type MissionAnchorSeed,
+} from "../../../autonomy/src/mission-anchor";
 import type {
   ContributionAttribution,
   MissionRunnerActionClient,
@@ -22,6 +28,7 @@ export interface TrustedRunnerStart {
   readonly missionId: string;
   readonly runtimeModule: string;
   readonly environment: Readonly<Record<string, string>>;
+  readonly initialAnchor?: MissionAnchorSeed;
 }
 
 export class AutonomyCliClient implements AutonomyClient {
@@ -40,16 +47,39 @@ export class AutonomyCliClient implements AutonomyClient {
   }
 
   async start(request: TrustedRunnerStart): Promise<RunnerStatusProof> {
-    return await this.run(
-      [
-        "runner",
-        "start",
-        request.missionId,
-        "--runtime",
-        request.runtimeModule,
-      ],
-      request.environment,
+    const arguments_ = [
+      "runner",
+      "start",
+      request.missionId,
+      "--runtime",
+      request.runtimeModule,
+    ];
+    if (request.initialAnchor === undefined) {
+      return await this.run(arguments_, request.environment);
+    }
+    const seed = MissionAnchorSeedSchema.parse(request.initialAnchor);
+    if (seed.missionId !== request.missionId) {
+      throw new Error(
+        `trusted initial anchor belongs to Mission ${seed.missionId}, not ${request.missionId}`,
+      );
+    }
+    const anchorDirectory = await mkdtemp(
+      join(tmpdir(), "rosso-workbench-anchor-"),
     );
+    const anchorPath = join(anchorDirectory, "mission-anchor-seed.json");
+    try {
+      await writeFile(anchorPath, `${JSON.stringify(seed)}\n`, {
+        encoding: "utf8",
+        flag: "wx",
+        mode: 0o600,
+      });
+      return await this.run(
+        [...arguments_, "--anchor", anchorPath],
+        request.environment,
+      );
+    } finally {
+      await rm(anchorDirectory, { recursive: true, force: true });
+    }
   }
 
   async contribute(
