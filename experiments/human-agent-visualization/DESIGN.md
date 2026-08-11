@@ -354,6 +354,19 @@ Generated bundles live under ignored `generated/` state and can be rebuilt from
 the repository; they do not become project memory or a second architecture
 source.
 
+The current Project Lens keeps this current-state introduction as its default
+mode. An adjacent change-impact mode accepts an explicit base revision plus one
+or more Agent-selected responsibility scopes. Each scope must name an exact
+design heading, explicit implementation paths, and optional verification files.
+The builder locates the current and base design sections, observes Git changes
+only inside those explicit scopes, and projects `changed`, `disputed`,
+`unchanged`, or `unavailable`. The selection is an Agent inspection scope rather
+than accepted architecture; missing headings stay unavailable, and reconciliation
+never accepts a design or behavior claim. The browser highlights only changed or
+disputed responsibilities by default and exposes path, line range, and revision
+on expansion. At 390px, both modes use one reading column and the change-impact
+mode orders comparison identity before responsibility and unresolved state.
+
 ### Later Code and Information lenses
 
 Code and Information lenses remain possible only after representative human

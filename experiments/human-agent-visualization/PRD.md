@@ -287,12 +287,18 @@ P0 也不通过。
 
 在阶段一通过前，不开始实时索引、通用 Code Lens、全量调用图、运行时监控或可视化编辑。
 
-## 当前最小实现切片
+## 当前实现 checkpoint 与 todo 主线
 
-下一次实现只完成以下闭环：
+Project Lens 仍以“当前项目现状”为默认模式。当前功能 checkpoint 在同一 Lens 内增加紧邻的
+“变更影响”模式，用显式 base revision 检查一条 Agent 选定、可回到设计段落的责任范围；
+变更模式按 current/base/dirty/generated/compatibility、changed/disputed responsibility、
+unresolved 的顺序呈现，且不能把目录变化自动解释为架构变化。这一 checkpoint 用于验证
+revision comparison 和移动端阅读契约，不把 P1 提升为产品默认入口。
+
+后续 todo 主线仍是阶段一的当前现状闭环：
 
 > 从 Rossovia 当前 revision 重建项目目的和七个认知区域；首屏展示整体，点击“执行与认知机制”
 > 后能够看到 Work Cell、Cognition 与 Autonomy 的职责边界、实现入口、验证证据和未知关系；
 > Principal 能从任何结论返回来源。
 
-这个切片不实现 revision diff。它的结果决定项目现状模型是否足以成为后续变更影响分析的基线。
+在该现状基线完成人类理解测试前，不扩建全量责任映射、关系图、实时索引或通用代码影响分析。

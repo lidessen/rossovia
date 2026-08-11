@@ -6,6 +6,7 @@ import {
   PROJECT_BUILDER_ID,
   PROJECT_BUILDER_REVISION,
   PROJECT_BUNDLE_VERSION,
+  PROJECT_COMPARISON_CONTRACT,
 } from "../lib/project-evidence-bundle.js";
 
 const OMIT = new Set([".git", ".work-cell", ".reasonix", "node_modules", "dist", "build", "target", "coverage", "generated", "outputs", ".next"]);
@@ -21,6 +22,259 @@ async function exists(path) {
 async function git(root, args) {
   const result = Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });
   return result.exitCode === 0 ? result.stdout.toString().trim() : "";
+}
+
+function gitResult(root, args) {
+  return Bun.spawnSync(["git", "-C", root, ...args], { stdout: "pipe", stderr: "pipe" });
+}
+
+function normalizeRepoPath(root, candidate, label) {
+  const absolute = resolve(root, candidate);
+  if (absolute !== root && !absolute.startsWith(`${root}${sep}`)) {
+    throw new TypeError(`${label} is outside the repo: ${candidate}`);
+  }
+  return relative(root, absolute).replaceAll("\\", "/");
+}
+
+function normalizeResponsibilities(root, responsibilities) {
+  return responsibilities.map((responsibility, index) => {
+    if (!responsibility || typeof responsibility !== "object") {
+      throw new TypeError(`Responsibility ${index + 1} must be a JSON object.`);
+    }
+    const sourceRef = responsibility.design?.sourceRef;
+    const heading = responsibility.design?.heading;
+    if (!sourceRef || !heading) {
+      throw new TypeError(`Responsibility ${index + 1} requires design.sourceRef and design.heading.`);
+    }
+    const implementationScopes = responsibility.implementationScopes ?? [];
+    const verificationRefs = responsibility.verificationRefs ?? [];
+    if (!Array.isArray(implementationScopes) || !Array.isArray(verificationRefs)) {
+      throw new TypeError(`Responsibility ${index + 1} scopes and verification refs must be arrays.`);
+    }
+    return {
+      id: responsibility.id || `responsibility-${index + 1}`,
+      title: responsibility.title || heading,
+      design: { sourceRef: normalizeRepoPath(root, sourceRef, "Design source"), heading },
+      implementationScopes: implementationScopes.map((value) => normalizeRepoPath(root, value, "Implementation scope")),
+      verificationRefs: verificationRefs.map((value) => normalizeRepoPath(root, value, "Verification source")),
+    };
+  });
+}
+
+function parseDirtyStatus(output) {
+  if (!output) return [];
+  return output.split("\n").filter(Boolean).map((line) => {
+    const rawPath = line.slice(3).trim();
+    const path = rawPath.includes(" -> ") ? rawPath.split(" -> ").at(-1) : rawPath;
+    return { status: line.slice(0, 2), path, overlay: "dirty" };
+  });
+}
+
+function parseCommittedChanges(output) {
+  if (!output) return [];
+  return output.split("\n").filter(Boolean).map((line) => {
+    const [status, ...paths] = line.split("\t");
+    return { status, path: paths.at(-1), overlay: "committed" };
+  });
+}
+
+function combineChanges(committed, dirty) {
+  const combined = new Map();
+  for (const change of [...committed, ...dirty]) {
+    if (!change.path) continue;
+    const current = combined.get(change.path) ?? { path: change.path, statuses: [], overlays: [] };
+    if (!current.statuses.includes(change.status)) current.statuses.push(change.status);
+    if (!current.overlays.includes(change.overlay)) current.overlays.push(change.overlay);
+    combined.set(change.path, current);
+  }
+  return [...combined.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function pathInScope(path, scope) {
+  return path === scope || path.startsWith(scope.endsWith("/") ? scope : `${scope}/`);
+}
+
+function markdownSection(content, heading) {
+  if (!content) return null;
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  let start = -1;
+  let level = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (match && match[2] === heading) {
+      start = index;
+      level = match[1].length;
+      break;
+    }
+  }
+  if (start === -1) return null;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const match = lines[index].match(/^(#{1,6})\s+/);
+    if (match && match[1].length <= level) {
+      end = index;
+      break;
+    }
+  }
+  const sectionContent = lines.slice(start, end).join("\n");
+  return {
+    lineStart: start + 1,
+    lineEnd: end,
+    content: sectionContent,
+    excerpt: excerpt(sectionContent, 1800),
+  };
+}
+
+async function contentAtRevision(root, revision, sourceRef) {
+  if (!revision) return "";
+  const result = gitResult(root, ["show", `${revision}:${sourceRef}`]);
+  return result.exitCode === 0 ? result.stdout.toString() : "";
+}
+
+async function buildComparison({ root, head, currentRevision, dirtyChanges, baseRevision, responsibilities, retained, fullContents }) {
+  const resolvedBase = baseRevision && head
+    ? await git(root, ["rev-parse", "--verify", `${baseRevision}^{commit}`])
+    : "";
+  const ancestor = resolvedBase && head
+    ? gitResult(root, ["merge-base", "--is-ancestor", resolvedBase, head]).exitCode === 0
+    : false;
+  const reasons = [];
+  let standing = "compatible";
+  if (!head) {
+    standing = "unavailable";
+    reasons.push("当前主体不是可比较的 Git revision。");
+  } else if (!baseRevision) {
+    standing = "unavailable";
+    reasons.push("没有显式选择 base revision。");
+  } else if (!resolvedBase) {
+    standing = "incompatible";
+    reasons.push(`base revision '${baseRevision}' 无法解析为 commit。`);
+  } else if (!ancestor) {
+    standing = "incompatible";
+    reasons.push("base revision 不是 current HEAD 的 ancestor。");
+  }
+
+  const committed = standing === "compatible"
+    ? parseCommittedChanges((await git(root, ["diff", "--name-status", `${resolvedBase}..${head}`])))
+    : [];
+  const changes = combineChanges(committed, dirtyChanges);
+  const sourceByRef = new Map(retained.map((source) => [source.sourceRef, source]));
+  const unresolved = [];
+  const projectedResponsibilities = [];
+
+  for (const responsibility of responsibilities) {
+    const currentContent = fullContents.get(responsibility.design.sourceRef) ?? "";
+    const currentSection = markdownSection(currentContent, responsibility.design.heading);
+    const currentSource = sourceByRef.get(responsibility.design.sourceRef);
+    const baseContent = standing === "compatible"
+      ? await contentAtRevision(root, resolvedBase, responsibility.design.sourceRef)
+      : "";
+    const baseSection = markdownSection(baseContent, responsibility.design.heading);
+    const verificationChanges = changes.filter((change) => responsibility.verificationRefs.includes(change.path));
+    const scopedChanges = changes.filter((change) => change.path !== responsibility.design.sourceRef
+      && !responsibility.verificationRefs.includes(change.path)
+      && responsibility.implementationScopes.some((scope) => pathInScope(change.path, scope)));
+    const currentSectionDigest = currentSection ? await digestValue(currentSection.content) : null;
+    const baseSectionDigest = baseSection ? await digestValue(baseSection.content) : null;
+    const designSectionChanged = standing === "compatible"
+      && (Boolean(currentSection) !== Boolean(baseSection) || currentSectionDigest !== baseSectionDigest);
+
+    let relationStanding = "unchanged";
+    let reconciliation = "设计段落和显式实现范围均未观察到变化。";
+    if (!currentSection || !currentSource) {
+      relationStanding = "unavailable";
+      reconciliation = "找不到指定的权威设计段落；不能用目录结构补成责任边界。";
+      unresolved.push({ id: `${responsibility.id}:design-unavailable`, responsibilityId: responsibility.id, standing: "unavailable", summary: reconciliation });
+    } else if (standing !== "compatible") {
+      relationStanding = "unavailable";
+      reconciliation = "比较不兼容；当前设计声明仍可检查，但不能产生 revision impact。";
+      unresolved.push({ id: `${responsibility.id}:comparison-unavailable`, responsibilityId: responsibility.id, standing, summary: reconciliation });
+    } else if (scopedChanges.length && !designSectionChanged) {
+      relationStanding = "disputed";
+      reconciliation = "显式实现范围发生变化，而对应设计段落未变化；责任影响需要人工协调。";
+      unresolved.push({ id: `${responsibility.id}:implementation-design-gap`, responsibilityId: responsibility.id, standing: "disputed", summary: reconciliation });
+    } else if (designSectionChanged || scopedChanges.length) {
+      relationStanding = "changed";
+      reconciliation = "精确设计段落或显式实现范围发生变化；这里仅确认需复核的责任影响，不自动接受新架构。";
+      unresolved.push({
+        id: `${responsibility.id}:requires-review`,
+        responsibilityId: responsibility.id,
+        standing: "requires-review",
+        summary: "该 changed responsibility 尚无来源支持的协调或验证结果；完成并保留该结果前不得显示为无未决项。",
+        sourceRefs: [...new Set([
+          responsibility.design.sourceRef,
+          ...scopedChanges.map((change) => change.path),
+          ...verificationChanges.map((change) => change.path),
+        ])],
+        baseRevision: resolvedBase,
+        currentRevision,
+        clearsWhen: "保留一个可追溯到此 base/current pair 的协调或验证结果。",
+      });
+    } else if (verificationChanges.length) {
+      relationStanding = "disputed";
+      reconciliation = "验证来源发生变化，但设计与实现范围未变化；证据 standing 需要复核。";
+      unresolved.push({ id: `${responsibility.id}:verification-gap`, responsibilityId: responsibility.id, standing: "disputed", summary: reconciliation });
+    }
+
+    projectedResponsibilities.push({
+      id: responsibility.id,
+      title: responsibility.title,
+      standing: relationStanding,
+      selectionAuthority: "Agent 明示的调查范围；不因此获得架构事实权",
+      designSays: {
+        heading: responsibility.design.heading,
+        summary: currentSection?.excerpt ?? "unavailable",
+        changed: designSectionChanged,
+        current: currentSection && currentSource ? {
+          sourceRef: currentSource.sourceRef,
+          lineStart: currentSection.lineStart,
+          lineEnd: currentSection.lineEnd,
+          revision: currentSource.revision,
+          sectionDigest: currentSectionDigest,
+        } : null,
+        base: baseSection ? {
+          sourceRef: responsibility.design.sourceRef,
+          lineStart: baseSection.lineStart,
+          lineEnd: baseSection.lineEnd,
+          revision: await digestValue(baseContent),
+          sectionDigest: baseSectionDigest,
+        } : null,
+      },
+      codeObservation: {
+        scopes: responsibility.implementationScopes,
+        changedPaths: scopedChanges,
+        verificationRefs: responsibility.verificationRefs,
+        verificationChanges,
+        standing: scopedChanges.length ? "observed-change" : "no-observed-change",
+      },
+      reconciliation: {
+        standing: relationStanding,
+        summary: reconciliation,
+        authority: "可重建 comparison projection；不接受设计或行为事实",
+      },
+    });
+  }
+
+  if (!responsibilities.length) {
+    unresolved.push({
+      id: "architecture-unavailable",
+      responsibilityId: null,
+      standing: "unavailable",
+      summary: "没有提供可回到权威设计段落的责任范围；Project Lens 不从目录结构猜测架构。",
+    });
+  }
+
+  return {
+    contract: PROJECT_COMPARISON_CONTRACT,
+    currentRevision,
+    baseRevision: resolvedBase || null,
+    requestedBaseRevision: baseRevision || null,
+    dirtyOverlay: { present: dirtyChanges.length > 0, paths: dirtyChanges.map((change) => change.path) },
+    compatibility: { standing, reasons },
+    changes,
+    responsibilities: projectedResponsibilities,
+    unresolved,
+  };
 }
 
 function excerpt(content, max = 2600) {
@@ -130,7 +384,7 @@ function explanationStep(id, order, title, summary, sources, excerptValue) {
   };
 }
 
-export async function buildProjectLensBundle({ repo, intent = "understand", audience = "项目负责人", question, focusSources = [], proposedVerifications = [] }) {
+export async function buildProjectLensBundle({ repo, intent = "understand", audience = "项目负责人", question, focusSources = [], proposedVerifications = [], baseRevision, responsibilities = [] }) {
   const root = resolve(repo);
   const rootReal = await realpath(root);
   const rootStat = await stat(root);
@@ -138,19 +392,23 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
   const files = await walk(root);
   if (files.length === 0) throw new TypeError(`Repo contains no inspectable files: ${root}`);
   const head = await git(root, ["rev-parse", "HEAD"]);
-  const dirty = Boolean(await git(root, ["status", "--porcelain"]));
+  const dirtyStatusResult = gitResult(root, ["status", "--porcelain"]);
+  const dirtyStatus = dirtyStatusResult.exitCode === 0
+    ? dirtyStatusResult.stdout.toString().replace(/\n$/, "")
+    : "";
+  const dirtyChanges = parseDirtyStatus(dirtyStatus);
+  const dirty = dirtyChanges.length > 0;
   const treeRevision = await sourceTreeRevision(root, files);
   const revision = head ? `${head}+tree:${treeRevision.slice("sha256:".length)}` : `tree:${treeRevision.slice("sha256:".length)}`;
 
-  const normalizedFocusSources = focusSources.map((candidate) => {
-    const absolute = resolve(root, candidate);
-    if (absolute !== root && !absolute.startsWith(`${root}${sep}`)) {
-      throw new TypeError(`Focus source is outside the repo: ${candidate}`);
-    }
-    return relative(root, absolute);
-  });
+  const normalizedFocusSources = focusSources.map((candidate) => normalizeRepoPath(root, candidate, "Focus source"));
+  const normalizedResponsibilities = normalizeResponsibilities(root, responsibilities);
+  const responsibilitySources = normalizedResponsibilities.flatMap((responsibility) => [
+    responsibility.design.sourceRef,
+    ...responsibility.verificationRefs,
+  ]);
 
-  const selectedCandidates = [...new Set([...SOURCE_CANDIDATES, ...normalizedFocusSources])];
+  const selectedCandidates = [...new Set([...SOURCE_CANDIDATES, ...normalizedFocusSources, ...responsibilitySources])];
   const retained = [];
   const fullContents = new Map();
   for (const candidate of selectedCandidates) {
@@ -218,6 +476,17 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
   }
   steps.push(explanationStep("uncertainty", steps.length + 1, "仍然不能从扫描结果断言的关系", "组件所有权、真实调用路径和变更影响没有被文件存在性证明；需要项目声明或更窄的代码证据。", retained.slice(0, 3), "unavailable: accepted component map, ownership graph, verified call path, change impact"));
 
+  const comparison = await buildComparison({
+    root,
+    head,
+    currentRevision: head || revision,
+    dirtyChanges,
+    baseRevision,
+    responsibilities: normalizedResponsibilities,
+    retained,
+    fullContents,
+  });
+
   return finalizeProjectBundle({
     version: PROJECT_BUNDLE_VERSION,
     builder: { id: PROJECT_BUILDER_ID, revision: PROJECT_BUILDER_REVISION },
@@ -227,9 +496,11 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
       question: question || `这个项目是做什么的，面向 ${intent} 应从哪里开始，哪些说法可以信？`,
       focusSources: normalizedFocusSources,
       proposedVerifications,
+      baseRevision: baseRevision || null,
+      responsibilities: normalizedResponsibilities,
     },
     sources: retained,
-    projection: { steps, verificationCommands: commands, proposedVerifications, observedFiles: files.length },
+    projection: { steps, verificationCommands: commands, proposedVerifications, observedFiles: files.length, comparison },
   });
 }
 
@@ -242,6 +513,8 @@ export async function validateProjectBundleAgainstRepository(bundle, { expectedB
       question: bundle.subject.question,
       focusSources: bundle.subject.focusSources ?? [],
       proposedVerifications: bundle.subject.proposedVerifications ?? [],
+      baseRevision: bundle.subject.baseRevision ?? undefined,
+      responsibilities: bundle.subject.responsibilities ?? [],
     });
     const errors = [];
     if (!expectedBindingDigest || expectedBindingDigest !== bundle.bindingDigest) {

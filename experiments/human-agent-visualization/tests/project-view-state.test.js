@@ -1,7 +1,40 @@
 import { describe, expect, test } from "bun:test";
-import { projectEvidenceView } from "../lib/project-view-state.js";
+import { DEFAULT_PROJECT_MODE, projectChangeImpactView, projectEvidenceView } from "../lib/project-view-state.js";
 
 describe("Project Lens evidence drawer state", () => {
+  test("keeps current overview as the default mode after change impact is added", () => {
+    expect(DEFAULT_PROJECT_MODE).toBe("overview");
+  });
+
+  test("change impact highlights only changed and disputed responsibilities in comparison-first order", () => {
+    const view = projectChangeImpactView({
+      generatedAt: "2026-08-11T14:00:00.000Z",
+      projection: {
+        comparison: {
+          currentRevision: "current-sha",
+          baseRevision: "base-sha",
+          requestedBaseRevision: "main",
+          dirtyOverlay: { present: true, paths: ["app.js"] },
+          compatibility: { standing: "compatible", reasons: [] },
+          responsibilities: [
+            { id: "changed", standing: "changed" },
+            { id: "unchanged", standing: "unchanged" },
+            { id: "disputed", standing: "disputed" },
+          ],
+          unresolved: [{ id: "gap", standing: "disputed" }],
+        },
+      },
+    });
+
+    expect(view.identity.map(([label]) => label)).toEqual([
+      "Current revision", "Base revision", "Dirty overlay", "Generated", "Compatibility",
+    ]);
+    expect(view.identity[2][1]).toBe("1 paths");
+    expect(view.dirtyPaths).toEqual(["app.js"]);
+    expect(view.highlightedResponsibilities.map((entry) => entry.id)).toEqual(["changed", "disputed"]);
+    expect(view.unresolved).toHaveLength(1);
+  });
+
   test("source-only mode clears a previously selected projection when no source step exists", () => {
     const view = projectEvidenceView(undefined, { sourceOnly: true });
 
