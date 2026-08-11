@@ -1,6 +1,7 @@
 # 人—Agent 可视化 MVP
 
-这是[人—Agent 可视化设计](./DESIGN.md)的三个可运行透镜：
+[产品需求](./PRD.md)定义产品目标和交付顺序；[人—Agent 可视化设计](./DESIGN.md)
+记录当前设计边界。现有实现包含三个可运行透镜：
 
 - [Execution Boundary Lens](./index.html)：为什么 `nextActor=agent` 不代表
   Agent 正在执行这个任务？
