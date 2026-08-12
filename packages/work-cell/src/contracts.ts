@@ -242,6 +242,8 @@ export interface CellRunRecord {
     settlement?: CellUsage;
   };
   executionObservation: {
+    /** Actual harness-observed session id when the driver executes through a resumable session. */
+    sessionId?: string;
     workEstimateId?: string;
     executionProfileId?: string;
     priceRevision?: string;
@@ -356,6 +358,7 @@ export const CellRunRecordSchema = z.object({
     settlement: UsageSchema.optional(),
   }).strict(),
   executionObservation: z.object({
+    sessionId: z.string().min(1).optional(),
     workEstimateId: z.string().min(1).optional(),
     executionProfileId: z.string().min(1).optional(),
     priceRevision: z.string().min(1).optional(),

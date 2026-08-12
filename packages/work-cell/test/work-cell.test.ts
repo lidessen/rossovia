@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CellInputSchema, type CellInput, type CellUsage } from "../src/contracts";
+import { CellInputSchema, CellRunRecordSchema, type CellInput, type CellUsage } from "../src/contracts";
 import type {
   CellDriver,
   DriverContext,
@@ -413,6 +413,28 @@ describe("Work Cell core", () => {
       executionProfileId: "profile-1",
       priceRevision: "fixture-price-v1",
     });
+  });
+
+  test("retains the harness-observed session id from driver provider metadata", async () => {
+    const root = await fixture();
+    const base = input(root);
+    const driver: CellDriver = {
+      descriptor: { adapter: "sessioned", provider: "deterministic", model: "fixture" },
+      async run() {
+        return {
+          terminalToolsCalled: [],
+          finalText: "continued",
+          usage: usage(1, 1),
+          rawSteps: [],
+          providerMetadata: { adapter: "opencode-cli.v1", sessionId: "resume-123", exitCode: 0 },
+        };
+      },
+    };
+
+    const record = await runCell(base, driver);
+
+    expect(record.executionObservation.sessionId).toBe("resume-123");
+    expect(CellRunRecordSchema.parse(record).executionObservation.sessionId).toBe("resume-123");
   });
 
   test("fails closed before execution when budget approval is enabled on an unsupported driver", async () => {
