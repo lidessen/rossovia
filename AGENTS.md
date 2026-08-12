@@ -57,6 +57,14 @@ does not take over producer work or treat a producer's checks or self-report as
 independent review. This proxy relation does not transfer the human Principal's
 approval, budget, acceptance, or merge authority.
 
+When an execution owner cannot progress, the Main Agent may intervene in the
+conditions of that owner's performance: clarify the objective or acceptance,
+restore missing context, improve tool or strategy guidance, give feedback, or
+reshape, reassign, or request another worker attempt. The intervention should
+make the worker more capable of completing the work; the Main Agent does not
+close the concrete production gap itself. This guidance adds no approval gate,
+permission layer, escalation bureaucracy, or automatic retry controller.
+
 When the Principal's mandate selects practice improvement, form it as a
 temporary, independently parallel shadow team beside production work. It
 asynchronously consumes evidence the work already produces—such as plans,

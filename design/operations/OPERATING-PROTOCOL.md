@@ -28,6 +28,15 @@ mechanical checks and independent verification occur, reconstructs that
 evidence against the mandate and authoritative sources, and does not treat a
 producer's checks or self-report as independent review.
 
+When an execution owner cannot progress, the Main Agent may intervene in the
+conditions of that owner's performance: clarify the objective or acceptance,
+restore missing context, improve tool or strategy guidance, give feedback, or
+reshape, reassign, or request another worker attempt. The intervention should
+restore the worker's ability to produce; the Main Agent does not resolve the
+concrete production problem itself. This is ordinary direction, not an
+approval gate, permission layer, escalation bureaucracy, or automatic retry
+controller.
+
 Once a branch enters shared integration, an integration steward owns only each
 mechanical step in the current human request or separately authorized
 integration scope: publishing the branch, creating and maintaining the PR,
