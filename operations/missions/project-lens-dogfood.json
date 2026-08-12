@@ -5,11 +5,13 @@
   "sources": [
     "workbench-task:1ce3278e-e2b6-4529-95f9-01095e66d3cb@11",
     "workbench-correction:a9250fc6-31d6-4545-801e-5c1eee56b173",
+    "workbench-task:6bce989a-4d25-44b2-ba00-f0a266769590@3",
+    "workbench-correction:3d51fdb7-8fbb-4a14-8073-b66a114478f6",
     "reviewed-local-commit:1d0d1fcb9bb4c0d6cc01dc0f8ead22c87c51d809",
     "experiments/human-agent-visualization/DESIGN.md#project-lens"
   ],
   "createdAt": "2026-08-11T18:00:00Z",
-  "updatedAt": "2026-08-12T06:27:40Z",
+  "updatedAt": "2026-08-12T07:30:03Z",
   "mainline": {
     "contradiction": "Project Lens has a real deterministic local builder, while Rossovia needs one project-owned supervised runtime that truthfully separates the builder's complete local traversal from narrower external focus selection and consumes one fresh task-bound authorization.",
     "acceptance": [
@@ -40,11 +42,11 @@
   "currentFocus": "mainline",
   "executionProposal": {
     "version": "mission-execution-proposal.v2",
-    "proposalId": "project-lens-dogfood-v3",
+    "proposalId": "project-lens-dogfood-v4",
     "mode": "supervised",
     "status": "awaiting-principal-authorization",
     "runtimeRef": "source-project:experiments/human-agent-visualization/project-lens-runtime.ts",
-    "runtimeDigest": "c5ecfa452b9fde6c976e0c019dad98d91d8259257f3282c4678fdead271fe39b",
+    "runtimeDigest": "2b8a8bc77ce3276de68c47f1c865bce1a4fc4677b3661360f3bea36ec80d0d87",
     "externalProvider": {
       "name": "DeepSeek",
       "boundary": "external"
