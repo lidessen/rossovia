@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -298,9 +299,26 @@ describe("task run public boundary", () => {
     }, new FakeRunner())).not.toThrow();
   });
 
-  test("rejects a concurrent run on the same Worktree and permits a later run after release", () => {
+  test("rejects cross-home overlap on the same Worktree and permits a later run after release", () => {
     const current = fixture();
     const created = agentTask(current);
+    const otherHome = join(current.root, "other-home");
+    initializeHome(otherHome);
+    registerProject(otherHome, {
+      path: current.primary,
+      id: "repository:task-run",
+      aliases: ["task-run"],
+    });
+    const otherTask = createPrincipalTask(otherHome, {
+      title: "Same Worktree through another home",
+      objective: "Do not overlap the first writer",
+      acceptance: ["The inner runner is never reached"],
+      nextActor: "agent",
+      sourceRef: "test:cross-home",
+      expectedSourceRevision: 0,
+      project: "task-run",
+      worktree: current.worktree,
+    });
     const arguments_ = {
       id: created.task.id,
       driver: "opencode-cli" as const,
@@ -308,17 +326,86 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 1,
       expectedRevision: 1,
     };
+    const inner = new FakeRunner();
     const overlapping = new FakeRunner((record) => {
       expect(() => runPrincipalTask(
-        current.home,
-        arguments_,
-        new FakeRunner(),
+        otherHome,
+        { ...arguments_, id: otherTask.task.id },
+        inner,
       )).toThrow("active task-run lease");
       return record;
     });
 
     expect(() => runPrincipalTask(current.home, arguments_, overlapping)).not.toThrow();
+    expect(inner.requests).toHaveLength(0);
+    expect(existsSync(join(otherHome, "state", "task-attempts"))).toBeFalse();
     expect(() => runPrincipalTask(current.home, arguments_, new FakeRunner())).not.toThrow();
+  });
+
+  test("rechecks cleanliness after lease acquisition before creating attempt evidence", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner, {
+      beforeLeaseAcquire() {
+        writeFileSync(join(current.worktree, "became-dirty.txt"), "dirty while waiting\n");
+      },
+    })).toThrow("task Worktree is not clean");
+    expect(runner.requests).toHaveLength(0);
+    expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+
+    rmSync(join(current.worktree, "became-dirty.txt"));
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner())).not.toThrow();
+  });
+
+  test("keeps tracked generated-name paths observable in Work Cell evidence", () => {
+    const current = fixture();
+    mkdirSync(join(current.worktree, "experiments", "example", "build"), { recursive: true });
+    mkdirSync(join(current.worktree, "experiments", "example", "scoring", "outputs"), { recursive: true });
+    const buildPath = "experiments/example/build/tracked.ts";
+    const outputPath = "experiments/example/scoring/outputs/tracked.out";
+    writeFileSync(join(current.worktree, buildPath), "export const value = 1;\n");
+    writeFileSync(join(current.worktree, outputPath), "one\n");
+    git(current.worktree, "add", buildPath, outputPath);
+    git(current.worktree, "commit", "-m", "track generated-name paths");
+    const created = agentTask(current);
+    const runner = new FakeRunner((record, request) => {
+      writeFileSync(join(current.worktree, buildPath), "export const value = 2;\n");
+      writeFileSync(join(current.worktree, outputPath), "two\n");
+      return {
+        ...record,
+        workspaceDiff: {
+          ...record.workspaceDiff,
+          changed: [buildPath, outputPath],
+        },
+        input: CellInputSchema.parse(JSON.parse(readFileSync(request.inputPath, "utf8"))),
+      };
+    });
+
+    const result = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    const record = JSON.parse(readFileSync(join(current.home, result.finalRecordRef), "utf8"));
+    expect(input.workspace.excludePaths).not.toContain("build");
+    expect(input.workspace.excludePaths).not.toContain("outputs");
+    expect(record.workspaceDiff.changed).toEqual([buildPath, outputPath]);
   });
 
   test("requires explicit OpenCode driver and model at the CLI boundary", () => {

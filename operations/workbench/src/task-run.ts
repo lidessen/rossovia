@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -66,6 +66,11 @@ export interface TaskRunRunner {
   run(request: TaskRunRequest): TaskRunRunnerResult;
 }
 
+interface TaskRunDependencies {
+  /** Test seam for reproducing drift after initial binding resolution. */
+  beforeLeaseAcquire?(): void;
+}
+
 export interface TaskRunResult {
   version: "rosso.task-run-result.v1";
   taskId: string;
@@ -116,6 +121,7 @@ export function runPrincipalTask(
   homeArgument: string | undefined,
   arguments_: TaskRunArguments,
   runner: TaskRunRunner = new WorkCellCliRunner(),
+  dependencies: TaskRunDependencies = {},
 ): TaskRunResult {
   validatePolicy(arguments_);
   const home = resolveHome(homeArgument);
@@ -141,22 +147,140 @@ export function runPrincipalTask(
     throw new Error(`task ${task.id} must be bound to an existing project Worktree before it can run`);
   }
 
-  const worktree = verifyCurrentCleanWorktree(
+  const worktree = resolveBoundWorktree(
     home,
     task.binding.projectId,
     task.binding.worktreePath,
   );
   const attemptId = randomUUID();
-  const attemptDirectory = join(home, "state", "task-attempts", attemptId);
-  const inputPath = join(attemptDirectory, "cell-input.json");
-  const finalRecordPath = join(attemptDirectory, "cell-input.run.json");
-  const attemptPath = join(attemptDirectory, "attempt.json");
-  const settlementPath = join(attemptDirectory, "settlement.json");
-  const inputRef = evidenceRef(home, inputPath);
-  const finalRecordRef = evidenceRef(home, finalRecordPath);
-  const attemptRef = evidenceRef(home, attemptPath);
-  const settlementRef = evidenceRef(home, settlementPath);
-  const startedAt = new Date().toISOString();
+
+  dependencies.beforeLeaseAcquire?.();
+  const lease = acquireWorktreeLease(worktree, task.id, attemptId);
+  try {
+    verifyCurrentCleanWorktree(home, task.binding.projectId, worktree);
+    const attempt = createAttempt(
+      home,
+      task,
+      observed.sourceRevision,
+      attemptId,
+      worktree,
+      arguments_,
+    );
+    const runnerResult = runner.run({
+      inputPath: attempt.inputPath,
+      finalRecordPath: attempt.finalRecordPath,
+      driver: arguments_.driver,
+      model: arguments_.model,
+      ...(arguments_.variant ? { variant: arguments_.variant } : {}),
+    });
+    const finalRecord = validateFinalRecord(
+      attempt.finalRecordPath,
+      attempt.expectedCellInput,
+      runnerResult,
+      arguments_.model,
+    );
+    writeImmutableJson(attempt.settlementPath, {
+      version: "rosso.task-run-settlement.v1",
+      taskId: task.id,
+      taskRevision: task.revision,
+      attemptId,
+      inputRef: attempt.inputRef,
+      finalRecordRef: attempt.finalRecordRef,
+      status: "recorded",
+      workCellRunId: finalRecord.runId,
+      cellStatus: finalRecord.status,
+      semanticAcceptance: "not-evaluated",
+      settledAt: new Date().toISOString(),
+    });
+    return {
+      version: "rosso.task-run-result.v1",
+      taskId: task.id,
+      taskRevision: task.revision,
+      sourceRevision: observed.sourceRevision,
+      attemptId,
+      inputRef: attempt.inputRef,
+      finalRecordRef: attempt.finalRecordRef,
+      attemptRef: attempt.attemptRef,
+      settlementRef: attempt.settlementRef,
+      workCellRunId: finalRecord.runId,
+      cellStatus: finalRecord.status,
+      semanticAcceptance: "not-evaluated",
+    };
+  } catch (error: unknown) {
+    const attempt = attemptEvidence(home, attemptId);
+    if (existsSync(attempt.attemptPath) && !existsSync(attempt.settlementPath)) {
+      writeImmutableJson(attempt.settlementPath, {
+        version: "rosso.task-run-settlement.v1",
+        taskId: task.id,
+        taskRevision: task.revision,
+        attemptId,
+        inputRef: attempt.inputRef,
+        finalRecordRef: attempt.finalRecordRef,
+        status: "runner-failed",
+        semanticAcceptance: "not-evaluated",
+        error: error instanceof Error ? error.message : String(error),
+        settledAt: new Date().toISOString(),
+      });
+    }
+    throw error;
+  } finally {
+    releaseWorktreeLease(lease);
+  }
+}
+
+interface TaskRunLease {
+  path: string;
+  content: string;
+}
+
+function acquireWorktreeLease(
+  worktree: string,
+  taskId: string,
+  attemptId: string,
+): TaskRunLease {
+  const gitDirectory = canonicalGitDirectory(worktree);
+  const path = join(gitDirectory, "rossovia-task-run.lock");
+  const content = `${JSON.stringify({
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree,
+    taskId,
+    attemptId,
+    pid: process.pid,
+    acquiredAt: new Date().toISOString(),
+  }, null, 2)}\n`;
+  try {
+    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
+  } catch (error: unknown) {
+    if (isAlreadyExists(error)) {
+      throw new Error(
+        `task Worktree already has an active task-run lease: ${worktree}; lease: ${path}`,
+      );
+    }
+    throw error;
+  }
+  return { path, content };
+}
+
+interface AttemptEvidence {
+  inputPath: string;
+  finalRecordPath: string;
+  attemptPath: string;
+  settlementPath: string;
+  inputRef: string;
+  finalRecordRef: string;
+  attemptRef: string;
+  settlementRef: string;
+}
+
+function createAttempt(
+  home: string,
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  sourceRevision: number,
+  attemptId: string,
+  worktree: string,
+  arguments_: TaskRunArguments,
+): AttemptEvidence & { expectedCellInput: CellInput } {
+  const attempt = attemptEvidence(home, attemptId);
   const cellInput = {
     id: `workbench-task-${task.id}-attempt-${attemptId}`,
     intent: task.objective,
@@ -164,7 +288,7 @@ export function runPrincipalTask(
       root: worktree,
       readPaths: ["."],
       writePaths: ["."],
-      excludePaths: [...ORDINARY_OPENCODE_EXCLUDES],
+      excludePaths: ordinaryOpenCodeExcludes(worktree),
       allowedCommands: [],
     },
     instructions: [
@@ -177,124 +301,56 @@ export function runPrincipalTask(
     acceptance: task.acceptance,
   };
   const expectedCellInput = workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
-
   mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
-  mkdirSync(attemptDirectory, { recursive: false });
-  writeImmutableJson(inputPath, cellInput);
-  writeImmutableJson(attemptPath, {
+  mkdirSync(join(home, "state", "task-attempts", attemptId), { recursive: false });
+  writeImmutableJson(attempt.inputPath, cellInput);
+  writeImmutableJson(attempt.attemptPath, {
     version: "rosso.task-run-attempt.v1",
     taskId: task.id,
     taskRevision: task.revision,
-    sourceRevision: observed.sourceRevision,
+    sourceRevision,
     attemptId,
-    inputRef,
-    finalRecordRef,
+    inputRef: attempt.inputRef,
+    finalRecordRef: attempt.finalRecordRef,
     driver: arguments_.driver,
     model: arguments_.model,
     ...(arguments_.variant ? { variant: arguments_.variant } : {}),
     status: "started",
-    startedAt,
+    startedAt: new Date().toISOString(),
   });
+  return { ...attempt, expectedCellInput };
+}
 
-  let runnerResult: TaskRunRunnerResult;
-  let lease: TaskRunLease | undefined;
-  let finalRecord: CellRunRecord | undefined;
-  try {
-    lease = acquireWorktreeLease(home, worktree, task.id, attemptId);
-    runnerResult = runner.run({
-      inputPath,
-      finalRecordPath,
-      driver: arguments_.driver,
-      model: arguments_.model,
-      ...(arguments_.variant ? { variant: arguments_.variant } : {}),
-    });
-    finalRecord = validateFinalRecord(
-      finalRecordPath,
-      expectedCellInput,
-      runnerResult,
-      arguments_.model,
-    );
-    writeImmutableJson(settlementPath, {
-      version: "rosso.task-run-settlement.v1",
-      taskId: task.id,
-      taskRevision: task.revision,
-      attemptId,
-      inputRef,
-      finalRecordRef,
-      status: "recorded",
-      workCellRunId: finalRecord.runId,
-      cellStatus: finalRecord.status,
-      semanticAcceptance: "not-evaluated",
-      settledAt: new Date().toISOString(),
-    });
-  } catch (error: unknown) {
-    writeImmutableJson(settlementPath, {
-      version: "rosso.task-run-settlement.v1",
-      taskId: task.id,
-      taskRevision: task.revision,
-      attemptId,
-      inputRef,
-      finalRecordRef,
-      status: "runner-failed",
-      semanticAcceptance: "not-evaluated",
-      error: error instanceof Error ? error.message : String(error),
-      settledAt: new Date().toISOString(),
-    });
-    throw error;
-  } finally {
-    if (lease !== undefined) releaseWorktreeLease(lease);
-  }
-
+function attemptEvidence(home: string, attemptId: string): AttemptEvidence {
+  const directory = join(home, "state", "task-attempts", attemptId);
+  const inputPath = join(directory, "cell-input.json");
+  const finalRecordPath = join(directory, "cell-input.run.json");
+  const attemptPath = join(directory, "attempt.json");
+  const settlementPath = join(directory, "settlement.json");
   return {
-    version: "rosso.task-run-result.v1",
-    taskId: task.id,
-    taskRevision: task.revision,
-    sourceRevision: observed.sourceRevision,
-    attemptId,
-    inputRef,
-    finalRecordRef,
-    attemptRef,
-    settlementRef,
-    workCellRunId: finalRecord.runId,
-    cellStatus: finalRecord.status,
-    semanticAcceptance: "not-evaluated",
+    inputPath,
+    finalRecordPath,
+    attemptPath,
+    settlementPath,
+    inputRef: evidenceRef(home, inputPath),
+    finalRecordRef: evidenceRef(home, finalRecordPath),
+    attemptRef: evidenceRef(home, attemptPath),
+    settlementRef: evidenceRef(home, settlementPath),
   };
 }
 
-interface TaskRunLease {
-  path: string;
-  content: string;
+function canonicalGitDirectory(worktree: string): string {
+  const raw = requiredGit(["rev-parse", "--git-dir"], worktree);
+  return realpathSync(isAbsolute(raw) ? raw : resolve(worktree, raw));
 }
 
-function acquireWorktreeLease(
-  home: string,
-  worktree: string,
-  taskId: string,
-  attemptId: string,
-): TaskRunLease {
-  const identity = createHash("sha256").update(worktree).digest("hex");
-  const directory = join(home, "state", "task-run-leases");
-  const path = join(directory, `${identity}.json`);
-  const content = `${JSON.stringify({
-    version: "rosso.task-run-worktree-lease.v1",
-    worktree,
-    taskId,
-    attemptId,
-    pid: process.pid,
-    acquiredAt: new Date().toISOString(),
-  }, null, 2)}\n`;
-  mkdirSync(directory, { recursive: true });
-  try {
-    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    if (isAlreadyExists(error)) {
-      throw new Error(
-        `task Worktree already has an active task-run lease: ${worktree}; lease: ${path}`,
-      );
-    }
-    throw error;
-  }
-  return { path, content };
+function ordinaryOpenCodeExcludes(worktree: string): string[] {
+  const tracked = (requiredGit(["ls-files", "-z"], worktree) ?? "")
+    .split("\0")
+    .filter(Boolean);
+  return ORDINARY_OPENCODE_EXCLUDES.filter((candidate) =>
+    !tracked.some((path) => path.split("/").includes(candidate))
+  );
 }
 
 function releaseWorktreeLease(lease: TaskRunLease): void {
@@ -366,7 +422,7 @@ function validatePolicy(arguments_: TaskRunArguments): void {
   }
 }
 
-function verifyCurrentCleanWorktree(
+function resolveBoundWorktree(
   home: string,
   projectId: string,
   configuredWorktree: string,
@@ -375,6 +431,21 @@ function verifyCurrentCleanWorktree(
     throw new Error(`task Worktree does not exist: ${configuredWorktree}`);
   }
   const worktree = realpathSync(configuredWorktree);
+  verifyCurrentBinding(home, projectId, worktree);
+  return worktree;
+}
+
+function verifyCurrentCleanWorktree(
+  home: string,
+  projectId: string,
+  worktree: string,
+): void {
+  verifyCurrentBinding(home, projectId, worktree);
+  const status = requiredGit(["status", "--porcelain"], worktree) ?? "";
+  if (status.trim()) throw new Error(`task Worktree is not clean: ${worktree}`);
+}
+
+function verifyCurrentBinding(home: string, projectId: string, worktree: string): void {
   const current = loadHome(home);
   const primary = realpathSync(workspaceFor(current.workspaces, projectId).path);
   if (worktree === primary) {
@@ -387,9 +458,6 @@ function verifyCurrentCleanWorktree(
   if (!observed.includes(worktree)) {
     throw new Error(`task Worktree is not currently bound to registered project ${projectId}: ${worktree}`);
   }
-  const status = requiredGit(["status", "--porcelain"], worktree) ?? "";
-  if (status.trim()) throw new Error(`task Worktree is not clean: ${worktree}`);
-  return worktree;
 }
 
 function evidenceRef(home: string, path: string): string {
