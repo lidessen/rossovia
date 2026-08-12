@@ -20,6 +20,7 @@ import {
   statusLineInput,
   statusLineProjection,
 } from "./statusline";
+import { runPrincipalTask } from "./task-run";
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -142,6 +143,7 @@ function printUsage(): void {
   console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
   console.log("  task list");
   console.log("  task show <id>");
+  console.log("  task run <id> --driver opencode-cli --model <provider/model> [--variant <variant>] --expected-source-revision <n> --expected-revision <n>");
   console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
@@ -208,6 +210,37 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         ...(parsed.values.has("--worktree") ? { worktree: taskOption(parsed, "--worktree") } : {}),
         ...(parsed.values.has("--mission") ? { mission: taskOption(parsed, "--mission") } : {}),
       },
+    });
+  }
+  if (command === "run") {
+    const parsed = parseTaskOptions(
+      raw.slice(1),
+      1,
+      new Set([
+        "--driver",
+        "--model",
+        "--variant",
+        "--expected-source-revision",
+        "--expected-revision",
+      ]),
+      new Set(),
+    );
+    assertTaskOptions(parsed, new Set([
+      "--driver",
+      "--model",
+      "--variant",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    const driver = taskOption(parsed, "--driver");
+    if (driver !== "opencode-cli") throw new Error("task run requires --driver opencode-cli");
+    return runPrincipalTask(home, {
+      id: parsed.positionals[0]!,
+      driver,
+      model: taskOption(parsed, "--model"),
+      ...(parsed.values.has("--variant") ? { variant: taskOption(parsed, "--variant") } : {}),
+      expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
+      expectedRevision: taskRevision(parsed, "--expected-revision", false),
     });
   }
 

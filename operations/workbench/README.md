@@ -168,6 +168,9 @@ task create --title <text> --objective <text> --accept <criterion>...
   [--project <project> [--worktree <path>] [--mission <id>]]
 task list
 task show <id>
+task run <id> --driver opencode-cli --model <provider/model>
+  [--variant <variant>]
+  --expected-source-revision <n> --expected-revision <n>
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
 task correct <id> --statement <text> --source-ref <reference>
@@ -190,6 +193,21 @@ task reopen <id> --statement <text> --source-ref <reference>
 
 Cross-boundary correction delivery, authorized launch, linked-execution
 recovery, and runtime-verified result submission remain UI-only actions.
+
+`task run` is the first direct Agent-facing execution checkpoint for an open,
+Agent-owned project task already bound to one existing clean Worktree. It
+rereads the exact Task revisions, lowers the objective, acceptance conditions,
+and all current corrections into an immutable attempt-specific Work Cell input,
+then invokes the existing OpenCode CLI driver. The caller must select
+`--driver opencode-cli` and `--model` for every attempt; `--variant` is optional
+per-run policy. The Workbench retains the input, final Work Cell record, and a
+small append-only settlement under its home state. Cell settlement is execution
+evidence only: it does not submit or accept the Task. A completed Task is
+ordinary viewable history and cannot run.
+
+This checkpoint is synchronous. It does not provide background or live UI
+projection, session continuation, review display, automatic submission, or
+semantic acceptance, and it does not require Mission context.
 
 Every mutation uses the latest returned source revision and, for an existing
 task, its task revision. This detects state that was already stale when the
