@@ -58,7 +58,7 @@ import { buildProjectLensBundle } from "./scripts/project-lens-builder.js";
 const WORKTREE_ENV = "ROSSO_PROJECT_LENS_EFFECT_ROOT";
 const AUTHORIZATION_RECEIPT_ENV = "ROSSO_PROJECT_LENS_AUTHORIZATION_RECEIPT";
 const MISSION_ID = "project-lens-dogfood";
-const PROPOSAL_ID = "project-lens-dogfood-v3";
+const PROPOSAL_ID = "project-lens-dogfood-v4";
 const MISSION_SOURCE = "operations/missions/project-lens-dogfood.json";
 const RUNTIME_REF =
   "source-project:experiments/human-agent-visualization/project-lens-runtime.ts";
@@ -535,7 +535,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       description: expectedCall.task,
     }],
     whole: {
-      revision: "project-lens-dogfood-v3",
+      revision: "project-lens-dogfood-v4",
       sourceRefs: [...expectedCall.sourceRefs],
       obligations: [OBLIGATION],
       settledContributionKeys: [],
