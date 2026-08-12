@@ -368,9 +368,16 @@ export class DelegateLoopSession {
         readableResults.set(resultKey(batch.id, outcome.key), outcome);
       }
     }
+    // Some providers validate retained tool calls against every new request's
+    // definitions. Keep only the closed delegation schemas that history names;
+    // delegationOpen and the host submission guard still own activation.
+    const retainedDelegateCall = messagesReferenceTool(this.messages, "delegate");
+    const retainedDelegateFileCall = messagesReferenceTool(this.messages, "delegate_file");
     const tools = {
-      ...(delegationOpen ? { delegate: delegateTool } : {}),
-      ...(delegationOpen && this.options.delegateInputRoot !== undefined ? { delegate_file: delegateFileTool } : {}),
+      ...(delegationOpen || retainedDelegateCall ? { delegate: delegateTool } : {}),
+      ...((delegationOpen || retainedDelegateFileCall) && this.options.delegateInputRoot !== undefined
+        ? { delegate_file: delegateFileTool }
+        : {}),
       ...(!delegationOpen || this.options.delegateFileWriter === undefined
         ? {}
         : { write_file: createWriteFileTool(this.options.delegateFileWriter) }),
@@ -415,7 +422,7 @@ export class DelegateLoopSession {
         tasks: this.tasks.snapshot(),
       }),
       tools,
-      toolChoice: this.options.initialDelegateTool === undefined
+      toolChoice: this.options.initialDelegateTool === undefined || !delegationOpen
         ? "auto"
         : { type: "tool", toolName: this.options.initialDelegateTool },
       stopWhen: isStepCount(remainingModelSteps),
@@ -756,6 +763,18 @@ function compactWriteFileMessages(messages: readonly ModelMessage[]): ModelMessa
       }),
     };
   });
+}
+
+function messagesReferenceTool(
+  messages: readonly ModelMessage[],
+  toolName: "delegate" | "delegate_file",
+): boolean {
+  return messages.some((message) =>
+    typeof message.content !== "string" && message.content.some((part) => {
+      const record = asRecord(part);
+      return (record.type === "tool-call" || record.type === "tool-result") && record.toolName === toolName;
+    })
+  );
 }
 
 function finish(
