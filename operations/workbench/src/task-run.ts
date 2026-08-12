@@ -171,7 +171,7 @@ export function runPrincipalTask(
   try {
     verifyCurrentCleanWorktree(home, task.binding.projectId, worktree);
     if (arguments_.session) {
-      validateRetainedTaskSession(home, task.id, arguments_.session);
+      validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
     }
     const attempt = createAttempt(
       home,
@@ -246,7 +246,12 @@ export function runPrincipalTask(
   }
 }
 
-function validateRetainedTaskSession(home: string, taskId: string, requestedSession: string): void {
+function validateRetainedTaskSession(
+  home: string,
+  taskId: string,
+  worktree: string,
+  requestedSession: string,
+): void {
   const attemptsRoot = join(home, "state", "task-attempts");
   if (existsSync(attemptsRoot)) {
     for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
@@ -261,14 +266,17 @@ function validateRetainedTaskSession(home: string, taskId: string, requestedSess
         const record = workCellContracts().CellRunRecordSchema.parse(
           JSON.parse(readFileSync(evidence.finalRecordPath, "utf8")),
         ) as CellRunRecord;
-        if (record.executionObservation.sessionId === requestedSession) return;
+        if (
+          realpathSync(record.input.workspace.root) === worktree
+          && record.executionObservation.sessionId === requestedSession
+        ) return;
       } catch {
         // Only a valid recorded settlement and owner-backed final record can admit continuation.
       }
     }
   }
   throw new Error(
-    `task ${taskId} has no recorded Work Cell attempt with OpenCode session ${requestedSession}`,
+    `task ${taskId} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${requestedSession}`,
   );
 }
 

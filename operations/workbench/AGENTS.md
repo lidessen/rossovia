@@ -156,9 +156,10 @@ Workbench home has a task source.
   <provider/model>` plus the returned task and source revisions; add `--variant`
   only when explicitly selected for this attempt, and `--session <id>` to
   continue an OpenCode session retained by a recorded previous attempt of the
-  same still-open task. Workbench reads that owner-backed Work Cell final record
-  before launch. The result returns the actual OpenCode session id observed in
-  the new attempt's final Work Cell record; an unretained requested session or a
+  same still-open task in its current bound Worktree. Workbench reads that
+  owner-backed Work Cell final record before launch. The result returns the
+  actual OpenCode session id observed in the new attempt's final Work Cell
+  record; an unretained requested session or a
   requested session that does not match the new observation fails. Mission context is not
   required. The command creates the Work Cell input and append-only attempt
   evidence inside the Workbench home, but its settlement neither submits nor

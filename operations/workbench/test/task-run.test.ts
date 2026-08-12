@@ -21,6 +21,7 @@ import {
   acceptPrincipalTaskResult,
   correctPrincipalTask,
   createPrincipalTask,
+  rebindPrincipalTaskWorktree,
   showPrincipalTask,
   submitPrincipalTaskResult,
 } from "../src/tasks";
@@ -319,8 +320,45 @@ describe("task run public boundary", () => {
       session: "external-session",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow(`task ${created.task.id} has no recorded Work Cell attempt with OpenCode session external-session`);
+    }, runner)).toThrow(
+      `task ${created.task.id} has no recorded Work Cell attempt in the current Worktree with OpenCode session external-session`,
+    );
     expect(runner.requests).toHaveLength(0);
+  });
+
+  test("rejects a retained session from the same active task's previous Worktree", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const replacement = join(current.root, "replacement-worktree");
+    git(current.primary, "worktree", "add", "-b", "task/replacement", replacement);
+    const rebound = rebindPrincipalTaskWorktree(current.home, {
+      id: created.task.id,
+      expectedWorktreePath: realpathSync(current.worktree),
+      worktree: replacement,
+      sourceRef: "test:replace-task-run-worktree",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: rebound.sourceRevision,
+      expectedRevision: rebound.task.revision,
+    }, runner)).toThrow(
+      `task ${created.task.id} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${first.sessionId}`,
+    );
+    expect(runner.requests).toHaveLength(1);
   });
 
   test("rejects malformed or inconsistent Work Cell final records and releases the lease", () => {
