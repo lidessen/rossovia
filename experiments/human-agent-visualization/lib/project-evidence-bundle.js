@@ -2,7 +2,7 @@ import { digestValue } from "./evidence-bundle.js";
 
 export const PROJECT_BUNDLE_VERSION = "human-agent-visualization.project-evidence-bundle.v2";
 export const PROJECT_BUILDER_ID = "local-project-lens-builder";
-export const PROJECT_BUILDER_REVISION = "mvp-r6";
+export const PROJECT_BUILDER_REVISION = "mvp-r7";
 export const PROJECT_COMPARISON_CONTRACT = "project-responsibility-comparison.v2";
 
 function validationError(code, message) {
