@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { sameWorkbenchTaskExecutionContextRef } from "../../workbench/src/task-execution-context";
 import { FileMissionTimeline } from "./delegate-timeline";
 import type { TimelineEvent } from "./delegate-timeline-events";
 import {
@@ -138,7 +139,10 @@ export interface CurrentEffectProjection {
   readonly effectId: string;
   readonly launchAuthorizationRef?: LaunchAuthorizationRef;
   readonly phase: "prepared" | "executing" | "writing" | "quiesced" | "settled" | "uncertain";
-  readonly writer: {
+  readonly writer:
+    | { readonly cellId: string; readonly runId: string | null }
+    | { readonly ref: string };
+  readonly source?: {
     readonly cellId: string;
     readonly runId: string | null;
   };
@@ -595,6 +599,22 @@ async function projectCurrentEffect(
       `effect ${effect.effectId} launch authorization does not match Mission turn ${effect.prepared.turnId}`,
     );
   }
+  const turnTaskContext = effectTurn.data.start.workbenchTaskContext;
+  const effectTaskContext = effect.prepared.workbenchTaskContext;
+  if (
+    effectTaskContext !== undefined
+    && (
+      turnTaskContext === undefined
+      || !sameWorkbenchTaskExecutionContextRef(
+        turnTaskContext,
+        effectTaskContext,
+      )
+    )
+  ) {
+    throw new Error(
+      `effect ${effect.effectId} task context does not match Mission turn ${effect.prepared.turnId}`,
+    );
+  }
 
   let gitStatus: Awaited<ReturnType<typeof readGitStatus>> = {
     added: [],
@@ -619,10 +639,16 @@ async function projectCurrentEffect(
   );
   const currentTool = [...effect.tools].reverse().find((tool) => tool.status === "started");
   const settlement = effect.settlement;
+  const writerRef = effect.prepared.writerRef;
   const retainedChangedPaths = settlement?.changedPaths ?? [];
+  const gitVisibleRetainedPaths = settlement?.materializedBundle === undefined
+    ? retainedChangedPaths
+    : retainedChangedPaths.filter(
+      (path) => path !== settlement.materializedBundle?.path,
+    );
   const verificationSubjectStale = await isVerificationSubjectStale(effect);
   const stale = observationFailed || (
-    settlement !== undefined && !sameStrings(changedPaths, retainedChangedPaths)
+    settlement !== undefined && !sameStrings(changedPaths, gitVisibleRetainedPaths)
   ) || verificationSubjectStale;
   const uncertain = effect.state === "uncertain" || observationFailed;
   return {
@@ -632,10 +658,20 @@ async function projectCurrentEffect(
         ? {}
         : { launchAuthorizationRef: effectAuthorization }),
       phase: phaseFor(effect, currentTool),
-      writer: {
-        cellId: effect.prepared.cellId,
-        runId: effect.runId ?? null,
-      },
+      writer: writerRef === undefined
+        ? {
+          cellId: effect.prepared.cellId,
+          runId: effect.runId ?? null,
+        }
+        : { ref: writerRef },
+      ...(writerRef === undefined
+        ? {}
+        : {
+          source: {
+            cellId: effect.prepared.cellId,
+            runId: effect.runId ?? null,
+          },
+        }),
       workspace: {
         root: effect.prepared.worktree.root,
         baseHead: effect.prepared.worktree.baseHead,

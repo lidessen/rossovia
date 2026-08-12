@@ -264,4 +264,15 @@ describe("Principal Workbench current writable effect projection", () => {
     expect(app).not.toContain('first(cause, ["verdict"], "failed")');
     expect(html).not.toMatch(/data-(?:control|recovery)="(?:approve-effect|commit|push|merge|publish)"/);
   });
+
+  test("renders a host writer with its Cell source while preserving the legacy Cell writer", () => {
+    const app = readFileSync(join(import.meta.dir, "..", "ui", "app.js"), "utf8");
+
+    expect(app).toMatch(
+      /writerRef\s*\? `host writer \$\{text\(writerRef\)\}`\s*: `cell \$\{text\(first\(writer, \["cellId"\]\), "—"\)\} \/ run \$\{text\(first\(writer, \["runId"\]\), "—"\)\}`/s,
+    );
+    expect(app).toContain(
+      '`source cell ${text(first(source, ["cellId"]), "—")} / run ${text(first(source, ["runId"]), "—")}`',
+    );
+  });
 });

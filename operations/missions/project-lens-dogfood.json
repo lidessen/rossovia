@@ -42,11 +42,11 @@
   "currentFocus": "mainline",
   "executionProposal": {
     "version": "mission-execution-proposal.v2",
-    "proposalId": "project-lens-dogfood-v5",
+    "proposalId": "project-lens-dogfood-v6",
     "mode": "supervised",
     "status": "awaiting-principal-authorization",
     "runtimeRef": "source-project:experiments/human-agent-visualization/project-lens-runtime.ts",
-    "runtimeDigest": "3ea0b83fc2ed9c403381b9744ec906e7c3a1cd39573a93481ba90719f9c29348",
+    "runtimeDigest": "7a59254c98cd536fea593d1c9cd06517ad7b7ab99c82d85d673c9db9c2fbdc67",
     "externalProvider": {
       "name": "DeepSeek",
       "boundary": "external"

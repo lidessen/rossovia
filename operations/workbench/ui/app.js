@@ -3378,6 +3378,7 @@ export function restoredPrincipalLocusState(resolved) {
     }
 
     const writer = first(effect, ["writer"], {});
+    const source = first(effect, ["source"]);
     const workspace = first(effect, ["workspace"], {});
     const scope = first(effect, ["scope"], {});
     const diff = first(effect, ["diff"], {});
@@ -3406,8 +3407,16 @@ export function restoredPrincipalLocusState(resolved) {
           : standing === "uncertain"
             ? "uncertain"
             : "写入候选";
-    $("#effect-phase").textContent =
-      `${text(first(effect, ["phase"]), "phase 未知")}\ncell ${text(first(writer, ["cellId"]), "—")} / run ${text(first(writer, ["runId"]), "—")}`;
+    const writerRef = first(writer, ["ref"]);
+    $("#effect-phase").textContent = [
+      text(first(effect, ["phase"]), "phase 未知"),
+      writerRef
+        ? `host writer ${text(writerRef)}`
+        : `cell ${text(first(writer, ["cellId"]), "—")} / run ${text(first(writer, ["runId"]), "—")}`,
+      ...(source && typeof source === "object"
+        ? [`source cell ${text(first(source, ["cellId"]), "—")} / run ${text(first(source, ["runId"]), "—")}`]
+        : []),
+    ].join("\n");
     $("#effect-workspace").textContent =
       `${text(first(workspace, ["root"]), "root 未知")}\nbase ${text(first(workspace, ["baseHead"]), "未记录")} · baseline ${first(workspace, ["baselineClean"]) === true ? "clean" : first(workspace, ["baselineClean"]) === false ? "dirty" : "未知"}`;
     const writePaths = list(first(scope, ["writePaths"], []));
