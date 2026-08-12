@@ -1,9 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
-import { CellRunRecordSchema, type CellRunRecord } from "../../../packages/work-cell/src/contracts";
+import type { CellRunRecord } from "../../../packages/work-cell/src/contracts";
 import { resolveHome } from "./home";
 import { showPrincipalTask } from "./tasks";
+
+const requireFromHere = createRequire(import.meta.url);
 
 const TaskRunAttemptSchema = z.object({
   version: z.literal("rosso.task-run-attempt.v1"),
@@ -32,10 +35,6 @@ const TaskRunSettlementSchema = z.object({
   semanticAcceptance: z.literal("not-evaluated"),
   settledAt: z.iso.datetime(),
 }).passthrough();
-
-const OwnerCellRunRecordSchema = CellRunRecordSchema.transform(
-  (record) => record as CellRunRecord,
-);
 
 export type TaskAttemptStatus = "started" | "recorded" | "runner-failed" | "invalid";
 
@@ -196,7 +195,9 @@ function projectAttempt(
   );
   const finalRecord = parseEvidence(
     evidence.finalRecordJson,
-    OwnerCellRunRecordSchema,
+    workCellContracts().CellRunRecordSchema.transform(
+      (record) => record as CellRunRecord,
+    ),
     (candidate) => {
       const expectedCellId = `workbench-task-${requestedTaskId}-attempt-${attemptId}`;
       if (candidate.cellId !== expectedCellId || candidate.input.id !== expectedCellId) {
@@ -286,4 +287,8 @@ function evidenceRef(home: string, path: string): string {
     throw new Error(`task attempt path escapes Rossovia home: ${path}`);
   }
   return ref;
+}
+
+function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {
+  return requireFromHere("../../../packages/work-cell/src/contracts");
 }
