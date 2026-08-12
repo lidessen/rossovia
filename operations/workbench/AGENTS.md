@@ -109,7 +109,7 @@ evidence; state the reason when departing from it.
 
 ## Rossovia local task entry
 
-Treat an explicit natural-language request to create, inspect, assign, correct,
+Treat an explicit natural-language request to create, inspect, assign, run, correct,
 rebind the Worktree context, link an already authorized execution, deliver a
 retained correction, recover the linked execution, submit, accept, or reopen a
 locally Principal-attributed task as authority to use the corresponding
@@ -146,11 +146,23 @@ Workbench home has a task source.
   the runtime-owned turn and effect.
 - `assign ... --next-actor agent` identifies the next responsible actor but
   does not launch an Agent or claim live Agent work. Starting execution still
-  follows its separately accepted Mission/runtime boundary. For a bounded
-  contribution that fits the current harness, delegate directly through
+  requires an explicit runtime action. For a bounded contribution that fits
+  the current harness, delegate directly through
   [agent-delegation](../../skills/agent-delegation/SKILL.md); Workbench retains the
   obligation and returned claim, not the sub-agent runtime or coordination
   state.
+- Run an ordinary open Agent-owned project task that already has one exact clean
+  isolated Worktree with `task run <id> --driver opencode-cli --model
+  <provider/model>` plus the returned task and source revisions; add `--variant`
+  only when explicitly selected for this attempt. Mission context is not
+  required. The command creates the Work Cell input and append-only attempt
+  evidence inside the Workbench home, but its settlement neither submits nor
+  accepts the task. An atomic lease in the exact Worktree Git metadata rejects
+  overlapping writers across Workbench homes; a crash-retained lease requires
+  exact Worktree/process inspection, exact-file removal, and retry rather than
+  stale-lock inference or Task reopening. Git-tracked paths always remain in
+  Work Cell evidence even when one of their path segments is usually generated. A
+  settled task is viewable history and cannot run.
 - `task submit` retains actor-supplied references as an unverified result claim;
   their wording or prefix never establishes verification. The Workbench UI may
   instead submit the current Autonomy-verified execution only when the task's

@@ -168,6 +168,9 @@ task create --title <text> --objective <text> --accept <criterion>...
   [--project <project> [--worktree <path>] [--mission <id>]]
 task list
 task show <id>
+task run <id> --driver opencode-cli --model <provider/model>
+  [--variant <variant>]
+  --expected-source-revision <n> --expected-revision <n>
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
 task correct <id> --statement <text> --source-ref <reference>
@@ -190,6 +193,40 @@ task reopen <id> --statement <text> --source-ref <reference>
 
 Cross-boundary correction delivery, authorized launch, linked-execution
 recovery, and runtime-verified result submission remain UI-only actions.
+
+`task run` is the first direct Agent-facing execution checkpoint for an open,
+Agent-owned project task already bound to one existing clean Worktree. It
+rereads the exact Task revisions, lowers the objective, acceptance conditions,
+and all current corrections into an immutable attempt-specific Work Cell input,
+then invokes the existing OpenCode CLI driver. The caller must select
+`--driver opencode-cli` and `--model` for every attempt; `--variant` is optional
+per-run policy. The Workbench retains the input, final Work Cell record, and a
+small append-only settlement under its home state. Cell settlement is execution
+evidence only: it does not submit or accept the Task. A completed Task is
+ordinary viewable history and cannot run.
+
+This checkpoint is synchronous. It does not provide background or live UI
+projection, session continuation, review display, automatic submission, or
+semantic acceptance, and it does not require Mission context.
+
+The ordinary OpenCode checkpoint considers `.git`, `node_modules`, `dist`,
+`build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`
+as reconstructible or generated-directory exclusion candidates. Because Work
+Cell matches those names at any path segment, a candidate is excluded only when
+the bound Worktree has no Git-tracked path containing that segment; tracked
+content always remains observable in Work Cell evidence. This is local
+CellInput lowering, not a reusable execution profile or permission policy.
+
+One atomic lease in the bound Worktree's exact Git metadata directory prevents
+overlapping `task run` writers, including calls through different Rossovia
+homes. The lease is acquired before the authoritative binding and clean checks,
+and remains through execution, final-record validation, and settlement;
+ordinary failures release it in `finally`. A process crash can leave
+`rossovia-task-run.lock`. A later run fails closed and reports the exact path.
+After inspecting that Worktree and process and confirming no execution remains,
+remove only that exact lease file, then retry. This is operational cleanup, not
+Task reopening. There is no timeout, stale-lock inference, queue, or automatic
+recovery.
 
 Every mutation uses the latest returned source revision and, for an existing
 task, its task revision. This detects state that was already stale when the
