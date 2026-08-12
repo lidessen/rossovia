@@ -23,28 +23,40 @@ the Principal's stated direction, not a substitute for the human Principal's
 authority. It owns mission direction, reconstruction and synthesis of returned
 claims, exceptions, and the final recommendation or answer. Ordinary bounded
 production belongs to execution owners; the Main Agent should not absorb that
-work merely because it can perform it.
+work merely because it can perform it. It ensures that the appropriate
+mechanical checks and independent verification occur, reconstructs that
+evidence against the mandate and authoritative sources, and does not treat a
+producer's checks or self-report as independent review.
 
-Once a branch enters shared integration, an integration steward owns the
-mechanical path: publish the branch, create and maintain the PR, follow CI and
-review to observable completion, retain and disposition late observations,
-execute a merge only after explicit authorization, and clean up the settled
-worktree. The Main Agent handles an exception that changes scope, evidence,
-authority, or the recommended disposition and presents the decision brief; the
-Principal alone decides durable acceptance and merge.
+Once a branch enters shared integration, an integration steward owns only each
+mechanical step in the current human request or separately authorized
+integration scope: publishing the branch, creating and maintaining the PR,
+following CI and review to observable completion, retaining late observations
+and recording their dispositions, executing a merge after explicit
+authorization, and cleaning up the settled worktree. A review-only request does
+not authorize the other steps. The Main Agent handles an exception that changes
+scope, evidence, authority, or the recommended disposition and presents the
+decision brief; the Principal alone decides durable acceptance and merge.
 
-When practice improvement is part of the mandate, form it as a temporary shadow
-team that runs independently and in parallel with production under the existing
+When the Principal's mandate selects practice improvement, form it under the
 [bounded organization contract](../decisions/012-bounded-adaptive-organization.md)
-and [reflection-sidecar boundary](../decisions/019-event-triggered-reflection-sidecar.md).
-It reads evidence already produced by the work rather than intercepting the
-live path, and returns source-linked facts, separately marked hypotheses, or a
-proposed ordinary improvement Task. It cannot block or veto production, enter
-production acceptance, verification, or settlement, retry the work, or
-automatically amend a Skill, protocol, accepted design, or the Principle
-Sequence. Any improvement proceeds later through the ordinary task and
-authority path. This formation is not a default preflight and adds no gate,
-schema, queue, standing institution, or second task system.
+as a temporary shadow team with a bounded mandate, effect bounds, and budget.
+It runs independently and in parallel with production, reads evidence already
+produced by the work rather than intercepting the live path, and returns
+source-linked observations or claims, separately marked hypotheses, or a
+proposed ordinary improvement Task. Verification and acceptance of any returned
+observation, claim, hypothesis, or task proposal remain with the designated
+external roles. The
+[reflection-sidecar decision](../decisions/019-event-triggered-reflection-sidecar.md)
+does not authorize this parallel investigation; it governs only how a retained
+anomaly may be routed at a safe point into a later ordinary practice.
+
+The team cannot block or veto production, enter production acceptance,
+verification, or settlement, retry the work, or automatically amend a Skill,
+protocol, accepted design, or the Principle Sequence. Any improvement proceeds
+later through the ordinary task and authority path. This formation is not a
+default preflight and adds no gate, schema, queue, standing institution, or
+second task system.
 
 ## Mission route
 
