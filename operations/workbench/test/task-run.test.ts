@@ -315,6 +315,40 @@ describe("task run public boundary", () => {
     expect(runner.requests).toHaveLength(2);
   });
 
+  test("preserves leading whitespace and embedded newlines in raw Git-visible paths", () => {
+    for (const retainedPath of [" leading-space.ts", "line\nbreak.ts"]) {
+      const current = fixture();
+      const created = agentTask(current);
+      const runner = new FakeRunner((record, request) => {
+        if (request.session === undefined) {
+          writeFileSync(join(current.worktree, retainedPath), "export const draft = true;\n");
+          return {
+            ...record,
+            workspaceDiff: { added: [retainedPath], changed: [], removed: [] },
+          };
+        }
+        return record;
+      });
+      const first = runPrincipalTask(current.home, {
+        id: created.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, runner);
+
+      expect(() => runPrincipalTask(current.home, {
+        id: created.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        session: first.sessionId,
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, runner)).not.toThrow();
+      expect(runner.requests).toHaveLength(2);
+    }
+  });
+
   test("rejects extra tracked or untracked paths outside the latest retained workspace diff", () => {
     for (const extra of ["README.md", "notes/unowned.md"]) {
       const current = fixture();
@@ -624,6 +658,67 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, new FakeRunner())).not.toThrow();
+  });
+
+  test("rechecks correction, Worktree binding, and settlement after lease acquisition", () => {
+    for (const drift of ["correction", "rebind", "settle"] as const) {
+      const current = fixture();
+      const created = agentTask(current);
+      const replacement = join(current.root, "replacement-worktree");
+      if (drift === "rebind") {
+        git(current.primary, "worktree", "add", "-b", "task/replacement", replacement);
+      }
+      const runner = new FakeRunner();
+
+      expect(() => runPrincipalTask(current.home, {
+        id: created.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, runner, {
+        beforeLeaseAcquire() {
+          if (drift === "correction") {
+            correctPrincipalTask(current.home, {
+              id: created.task.id,
+              statement: "Use the corrected boundary.",
+              sourceRef: "test:drift-correction",
+              nextActor: "agent",
+              expectedSourceRevision: 1,
+              expectedRevision: 1,
+            });
+          } else if (drift === "rebind") {
+            rebindPrincipalTaskWorktree(current.home, {
+              id: created.task.id,
+              expectedWorktreePath: realpathSync(current.worktree),
+              worktree: replacement,
+              sourceRef: "test:drift-rebind",
+              expectedSourceRevision: 1,
+              expectedRevision: 1,
+            });
+          } else {
+            const submitted = submitPrincipalTaskResult(current.home, {
+              id: created.task.id,
+              summary: "Drifted result claim",
+              evidenceRefs: ["test:drift-claim"],
+              sourceRef: "test:drift-submit",
+              expectedSourceRevision: 1,
+              expectedRevision: 1,
+            });
+            acceptPrincipalTaskResult(current.home, {
+              id: created.task.id,
+              sourceRef: "test:drift-accept",
+              expectedSourceRevision: submitted.sourceRevision,
+              expectedRevision: submitted.task.revision,
+            });
+          }
+        },
+      })).toThrow(
+        `task ${created.task.id} changed before attempt creation after the task-run lease was acquired`,
+      );
+      expect(runner.requests).toHaveLength(0);
+      expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+    }
   });
 
   test("keeps tracked generated-name paths observable in Work Cell evidence", () => {

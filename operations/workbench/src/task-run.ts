@@ -16,6 +16,7 @@ import type {
   CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
 import { loadHome, resolveHome, workspaceFor } from "./home";
+import { runCommand } from "./process";
 import { showPrincipalTaskAttempts } from "./task-attempts";
 import { showPrincipalTask } from "./tasks";
 import { requiredGit } from "./workspace";
@@ -164,6 +165,7 @@ export function runPrincipalTask(
   dependencies.beforeLeaseAcquire?.();
   const lease = acquireWorktreeLease(worktree, task.id, attemptId);
   try {
+    verifyTaskSnapshotAfterLease(home, observed);
     verifyCurrentBinding(home, task.binding.projectId, worktree);
     if (arguments_.session) {
       const retained = validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
@@ -291,11 +293,7 @@ function verifyContinuationDiff(
     ...retained.changed,
     ...retained.removed,
   ]);
-  const currentPaths = new Set([
-    ...nulSeparatedPaths(requiredGit(["diff", "--name-only", "--no-renames", "-z", "--"], worktree)),
-    ...nulSeparatedPaths(requiredGit(["diff", "--cached", "--name-only", "--no-renames", "-z", "--"], worktree)),
-    ...nulSeparatedPaths(requiredGit(["ls-files", "--others", "--exclude-standard", "-z"], worktree)),
-  ]);
+  const currentPaths = gitVisiblePaths(worktree);
   const extraPaths = [...currentPaths].filter((path) => !retainedPaths.has(path)).sort();
   if (extraPaths.length > 0) {
     throw new Error(
@@ -304,8 +302,34 @@ function verifyContinuationDiff(
   }
 }
 
-function nulSeparatedPaths(output: string | null): string[] {
-  return (output ?? "").split("\0").filter(Boolean);
+function gitVisiblePaths(worktree: string): Set<string> {
+  const result = runCommand(
+    "git",
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    { cwd: worktree },
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.trim() || `git status failed in ${worktree}`);
+  }
+  if (!result.stdout) return new Set();
+  const fields = result.stdout.split("\0");
+  if (fields.pop() !== "") throw new Error("Git porcelain v1 -z output was not NUL-terminated");
+  const paths = new Set<string>();
+  for (let index = 0; index < fields.length; index += 1) {
+    const entry = fields[index]!;
+    if (entry.length < 4 || entry[2] !== " ") {
+      throw new Error("Git porcelain v1 -z output contained an invalid status entry");
+    }
+    const status = entry.slice(0, 2);
+    paths.add(entry.slice(3));
+    if (status.includes("R") || status.includes("C")) {
+      const source = fields[index + 1];
+      if (!source) throw new Error("Git porcelain v1 -z rename entry lacked its source path");
+      paths.add(source);
+      index += 1;
+    }
+  }
+  return paths;
 }
 
 interface TaskRunLease {
@@ -527,6 +551,24 @@ function resolveBoundWorktree(
   const worktree = realpathSync(configuredWorktree);
   verifyCurrentBinding(home, projectId, worktree);
   return worktree;
+}
+
+function verifyTaskSnapshotAfterLease(
+  home: string,
+  expected: ReturnType<typeof showPrincipalTask>,
+): void {
+  const current = showPrincipalTask(home, expected.task.id);
+  if (
+    current.sourceRevision !== expected.sourceRevision
+    || current.task.revision !== expected.task.revision
+    || current.task.lifecycle !== expected.task.lifecycle
+    || current.task.nextActor !== expected.task.nextActor
+    || !isDeepStrictEqual(current.task.binding, expected.task.binding)
+  ) {
+    throw new Error(
+      `task ${expected.task.id} changed before attempt creation after the task-run lease was acquired`,
+    );
+  }
 }
 
 function verifyCleanStatus(worktree: string): void {
