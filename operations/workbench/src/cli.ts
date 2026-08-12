@@ -20,6 +20,7 @@ import {
   statusLineInput,
   statusLineProjection,
 } from "./statusline";
+import { showPrincipalTaskAttempts } from "./task-attempts";
 import { runPrincipalTask } from "./task-run";
 
 try {
@@ -143,6 +144,7 @@ function printUsage(): void {
   console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
   console.log("  task list");
   console.log("  task show <id>");
+  console.log("  task attempts <id>");
   console.log("  task run <id> --driver opencode-cli --model <provider/model> [--variant <variant>] [--session <id>] --expected-source-revision <n> --expected-revision <n>");
   console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
@@ -180,6 +182,10 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
   if (command === "show") {
     if (raw.length !== 2) throw new Error("task show requires exactly one task id");
     return controlPlane.show(raw[1]!);
+  }
+  if (command === "attempts") {
+    if (raw.length !== 2) throw new Error("task attempts requires exactly one task id");
+    return showPrincipalTaskAttempts(home, raw[1]!);
   }
   if (command === "create") {
     const parsed = parseTaskOptions(

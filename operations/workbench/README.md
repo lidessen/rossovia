@@ -168,6 +168,7 @@ task create --title <text> --objective <text> --accept <criterion>...
   [--project <project> [--worktree <path>] [--mission <id>]]
 task list
 task show <id>
+task attempts <id>
 task run <id> --driver opencode-cli --model <provider/model>
   [--variant <variant>] [--session <id>]
   --expected-source-revision <n> --expected-revision <n>
@@ -219,6 +220,23 @@ it does not require Mission context. Session continuation is explicit per
 attempt: the caller supplies the retained session id, and the final record —
 not a copy made by the Workbench — remains the source for the observed session,
 model, status, usage, workspace diff, and verification.
+
+`task attempts <id>` is a read-only view over that same append-only evidence.
+It projects every recorded attempt of the task, sorted by start time, without
+copying Work Cell facts: the requested driver, model, variant, and session come
+from the immutable attempt record; the observed session, cell status, usage,
+workspace diff, and verification come from the retained Work Cell final record;
+settlement status and time come from the append-only settlement. An attempt
+without a settlement (a crash-retained in-flight run) projects as `started`
+without observed facts; a `runner-failed` attempt keeps its settlement status
+and any final record the runner had already retained. Each projection carries
+the stable `inputRef`, `attemptRef`, `finalRecordRef`, and `settlementRef`
+source references so the caller can read the originals. Per-source `evidence`
+standing distinguishes `available`, `unavailable`, and `invalid`; malformed
+evidence attributable to the requested task remains visible, but its unvalidated
+fields are not projected. Evidence without a parseable task identity cannot be
+safely attributed and is not included. The raw Work Cell trace is never exposed
+by the view.
 
 The ordinary OpenCode checkpoint considers `.git`, `node_modules`, `dist`,
 `build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`

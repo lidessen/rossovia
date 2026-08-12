@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -30,6 +31,7 @@ import {
   type TaskRunRequest,
   type TaskRunRunner,
 } from "../src/task-run";
+import { showPrincipalTaskAttempts } from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
 const repositoryRoot = resolve(import.meta.dir, "../../..");
@@ -614,6 +616,333 @@ describe("task run public boundary", () => {
   });
 });
 
+describe("task attempts projection", () => {
+  test("returns an empty list when the task has no recorded attempts", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    expect(showPrincipalTaskAttempts(current.home, created.task.id)).toEqual([]);
+  });
+
+  test("projects recorded attempts sorted by startedAt with observed facts and stable refs", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner(undefined, ["session-a"]);
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      variant: "high",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const second = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(2);
+    const [firstProjection, secondProjection] = projections;
+    expect(firstProjection).toMatchObject({
+      attemptId: first.attemptId,
+      taskRevision: 1,
+      sourceRevision: 1,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      variant: "high",
+      observedSession: "session-a",
+      cellStatus: "passed",
+      status: "recorded",
+      inputRef: first.inputRef,
+      finalRecordRef: first.finalRecordRef,
+      attemptRef: first.attemptRef,
+      settlementRef: first.settlementRef,
+    });
+    expect(firstProjection!.requestedSession).toBeUndefined();
+    expect(firstProjection!.startedAt).toBeDefined();
+    expect(firstProjection!.settledAt).toBeDefined();
+    expect(secondProjection).toMatchObject({
+      attemptId: second.attemptId,
+      requestedSession: first.sessionId,
+      observedSession: first.sessionId,
+      status: "recorded",
+    });
+    expect(firstProjection!.startedAt! <= secondProjection!.startedAt!).toBeTrue();
+    expect(firstProjection!.startedAt).not.toBe(secondProjection!.startedAt);
+
+    const finalRecord = JSON.parse(
+      readFileSync(join(current.home, second.finalRecordRef), "utf8"),
+    );
+    expect(secondProjection!.usage).toEqual(finalRecord.usage);
+    expect(secondProjection!.workspaceDiff).toEqual(finalRecord.workspaceDiff);
+    expect(secondProjection!.verification).toEqual(finalRecord.verification);
+    expect(secondProjection!.observedSession).toBe(
+      finalRecord.executionObservation.sessionId,
+    );
+  });
+
+  test("includes runner-failed attempts with settlement status and retained final record facts", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner(undefined, ["requested-1", "observed-9"]);
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).toThrow("requested OpenCode session does not match the observed session");
+
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(2);
+    const failedProjection = projections[1]!;
+    expect(failedProjection).toMatchObject({
+      requestedSession: first.sessionId,
+      observedSession: "observed-9",
+      cellStatus: "passed",
+      status: "runner-failed",
+    });
+    expect(failedProjection.settledAt).toBeDefined();
+  });
+
+  test("projects a crash-retained in-flight attempt without settlement facts", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attemptId = randomUUID();
+    const directory = join(current.home, "state", "task-attempts", attemptId);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "attempt.json"), `${JSON.stringify({
+      version: "rosso.task-run-attempt.v1",
+      taskId: created.task.id,
+      taskRevision: 1,
+      sourceRevision: 1,
+      attemptId,
+      inputRef: `state/task-attempts/${attemptId}/cell-input.json`,
+      finalRecordRef: `state/task-attempts/${attemptId}/cell-input.run.json`,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      status: "started",
+      startedAt: "2026-08-12T12:00:00.000Z",
+    }, null, 2)}\n`);
+
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(1);
+    const inFlightProjection = projections[0]!;
+    expect(inFlightProjection).toMatchObject({
+      attemptId,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      status: "started",
+      startedAt: "2026-08-12T12:00:00.000Z",
+    });
+    expect(inFlightProjection.requestedSession).toBeUndefined();
+    expect(inFlightProjection.observedSession).toBeUndefined();
+    expect(inFlightProjection.cellStatus).toBeUndefined();
+    expect(inFlightProjection.settledAt).toBeUndefined();
+    expect(inFlightProjection.evidence).toEqual({
+      attempt: { standing: "available" },
+      finalRecord: { standing: "unavailable" },
+      settlement: { standing: "unavailable" },
+    });
+  });
+
+  test("keeps attributable malformed evidence visible without projecting unowned facts", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const valid = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner());
+    writeFileSync(join(current.home, valid.finalRecordRef), "{}\n");
+
+    const malformedAttemptId = randomUUID();
+    const malformedDirectory = join(current.home, "state", "task-attempts", malformedAttemptId);
+    mkdirSync(malformedDirectory, { recursive: true });
+    writeFileSync(join(malformedDirectory, "attempt.json"), `${JSON.stringify({
+      version: "rosso.task-run-attempt.v1",
+      taskId: created.task.id,
+      attemptId: malformedAttemptId,
+      model: 42,
+    }, null, 2)}\n`);
+
+    const invalidSettlementId = randomUUID();
+    const invalidSettlementDirectory = join(
+      current.home,
+      "state",
+      "task-attempts",
+      invalidSettlementId,
+    );
+    mkdirSync(invalidSettlementDirectory, { recursive: true });
+    writeFileSync(join(invalidSettlementDirectory, "attempt.json"), `${JSON.stringify({
+      version: "rosso.task-run-attempt.v1",
+      taskId: created.task.id,
+      taskRevision: 1,
+      sourceRevision: 1,
+      attemptId: invalidSettlementId,
+      inputRef: `state/task-attempts/${invalidSettlementId}/cell-input.json`,
+      finalRecordRef: `state/task-attempts/${invalidSettlementId}/cell-input.run.json`,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      status: "started",
+      startedAt: "2026-08-12T13:00:00.000Z",
+    }, null, 2)}\n`);
+    writeFileSync(join(invalidSettlementDirectory, "settlement.json"), "{not-json\n");
+
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(3);
+
+    const invalidFinal = projections.find((projection) => projection.attemptId === valid.attemptId)!;
+    expect(invalidFinal.status).toBe("recorded");
+    expect(invalidFinal.evidence.finalRecord.standing).toBe("invalid");
+    expect(invalidFinal.evidence.settlement).toEqual({ standing: "available" });
+    expect(invalidFinal).not.toHaveProperty("observedSession");
+    expect(invalidFinal).not.toHaveProperty("cellStatus");
+    expect(invalidFinal).not.toHaveProperty("usage");
+    expect(invalidFinal).not.toHaveProperty("workspaceDiff");
+    expect(invalidFinal).not.toHaveProperty("verification");
+
+    const invalidAttempt = projections.find(
+      (projection) => projection.attemptId === malformedAttemptId,
+    )!;
+    expect(invalidAttempt.status).toBe("invalid");
+    expect(invalidAttempt.evidence).toMatchObject({
+      attempt: { standing: "invalid" },
+      finalRecord: { standing: "unavailable" },
+      settlement: { standing: "unavailable" },
+    });
+    expect(invalidAttempt.inputRef).toBe(
+      `state/task-attempts/${malformedAttemptId}/cell-input.json`,
+    );
+    expect(invalidAttempt).not.toHaveProperty("model");
+
+    const invalidSettlement = projections.find(
+      (projection) => projection.attemptId === invalidSettlementId,
+    )!;
+    expect(invalidSettlement.status).toBe("invalid");
+    expect(invalidSettlement.evidence.settlement.standing).toBe("invalid");
+    expect(invalidSettlement.evidence.finalRecord).toEqual({ standing: "unavailable" });
+  });
+
+  test("does not leak an unrelated task's malformed attempt into the requested projection", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const unrelatedAttemptId = randomUUID();
+    const directory = join(current.home, "state", "task-attempts", unrelatedAttemptId);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "attempt.json"), `${JSON.stringify({
+      taskId: "unrelated-task",
+      attemptId: unrelatedAttemptId,
+      model: 42,
+    }, null, 2)}\n`);
+
+    expect(showPrincipalTaskAttempts(current.home, created.task.id)).toEqual([]);
+  });
+
+  test("gives the attempt task claim exclusive ownership when settlement conflicts", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner());
+    const other = createPrincipalTask(current.home, {
+      title: "Settlement claim target",
+      objective: "Must not gain another task's attempt",
+      acceptance: ["Conflicting evidence remains scoped to its attempt owner"],
+      nextActor: "agent",
+      sourceRef: "test:conflicting-settlement-owner",
+      expectedSourceRevision: 1,
+    });
+    const settlementPath = join(current.home, run.settlementRef);
+    const settlement = JSON.parse(readFileSync(settlementPath, "utf8"));
+    writeFileSync(settlementPath, `${JSON.stringify({
+      ...settlement,
+      taskId: other.task.id,
+    }, null, 2)}\n`);
+
+    const ownerProjection = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(ownerProjection).toHaveLength(1);
+    expect(ownerProjection[0]).toMatchObject({
+      attemptId: run.attemptId,
+      status: "invalid",
+      evidence: { settlement: { standing: "invalid" } },
+    });
+    expect(ownerProjection[0]!.settledAt).toBeUndefined();
+    expect(showPrincipalTaskAttempts(current.home, other.task.id)).toEqual([]);
+  });
+
+  test("projects only the requested task's attempts and rejects unknown tasks", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const other = createPrincipalTask(current.home, {
+      title: "Unrelated task",
+      objective: "Keep its attempts separate",
+      acceptance: ["The projection stays scoped"],
+      nextActor: "agent",
+      sourceRef: "test:unrelated-attempts",
+      expectedSourceRevision: 1,
+    });
+    expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(1);
+    expect(showPrincipalTaskAttempts(current.home, other.task.id)).toEqual([]);
+    expect(() => showPrincipalTaskAttempts(current.home, "missing-task"))
+      .toThrow("Principal task not found");
+  });
+
+  test("the CLI exposes task attempts as a read-only projection", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner());
+
+    const result = taskCliWithOutput(current.home, "attempts", created.task.id);
+    expect(result.exitCode).toBe(0);
+    const projections = JSON.parse(result.stdout);
+    expect(projections).toHaveLength(1);
+    expect(projections[0].attemptId).toBe(run.attemptId);
+    expect(projections[0].settlementRef).toBe(run.settlementRef);
+    expect(projections[0]).not.toHaveProperty("trace");
+
+    const missing = taskCli(current.home, "attempts");
+    expect(missing.exitCode).toBe(2);
+    expect(missing.stderr).toContain("task attempts requires exactly one task id");
+
+    const unknown = taskCli(current.home, "attempts", "missing-task");
+    expect(unknown.exitCode).toBe(2);
+    expect(unknown.stderr).toContain("Principal task not found");
+  });
+});
+
 function taskCli(home: string, ...arguments_: string[]): {
   exitCode: number;
   stderr: string;
@@ -631,4 +960,23 @@ function taskCli(home: string, ...arguments_: string[]): {
     stderr: "pipe",
   });
   return { exitCode: result.exitCode, stderr: result.stderr.toString() };
+}
+
+function taskCliWithOutput(home: string, ...arguments_: string[]): {
+  exitCode: number;
+  stdout: string;
+} {
+  const result = Bun.spawnSync([
+    process.execPath,
+    bunCli,
+    "--home",
+    home,
+    "task",
+    ...arguments_,
+  ], {
+    cwd: repositoryRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return { exitCode: result.exitCode, stdout: result.stdout.toString() };
 }
