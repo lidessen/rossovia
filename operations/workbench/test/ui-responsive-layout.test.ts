@@ -288,6 +288,21 @@ describe("Workbench responsive layout", () => {
     );
   });
 
+  test("keeps ordinary Task attempt evidence readable at desktop and mobile widths", () => {
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+
+    expect(html).toContain('id="local-task-attempts"');
+    expect(app).toContain('class="local-task-facts task-attempt-facts"');
+    expect(app).toContain('class="local-task-facts task-attempt-observed"');
+    expect(styles).toMatch(/\.local-task-facts dd\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(
+      /\.task-attempt-evidence li\[data-standing="available"\] small\s*\{[^}]*color:\s*var\(--green\);/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-form-grid,\s*\.local-task-facts\s*\{[^}]*grid-template-columns:\s*1fr;/s,
+    );
+  });
+
   test("refreshes the factual snapshot after a task source failure", () => {
     expect(app).toContain('error?.code === "source-unavailable"');
     expect(app).toContain("await loadSnapshot({ manual: true, ensure: true })");

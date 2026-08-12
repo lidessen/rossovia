@@ -2015,6 +2015,7 @@ export function restoredPrincipalLocusState(resolved) {
           </article>
         `).join("")
       : '<p class="empty-note">尚无纠正或结果声明。</p>';
+    renderTaskAttempts(detail);
     const correctionDeliveryCandidate = first(
       executionContext,
       ["correctionDeliveryCandidate"],
@@ -2159,6 +2160,160 @@ export function restoredPrincipalLocusState(resolved) {
           ? "当前运行时无法重新确认提交时的 selector；请纠正或重新提交。"
           : "只接受 Workbench 本地任务，不代表产品、Mission、提交、合并或发布接受。";
     renderTaskActionReceipt($("#local-task-action-result"), "mutation");
+  }
+
+  function renderTaskAttempts(detail) {
+    const attempts = first(detail, ["attempts"]);
+    const summary = $("#local-task-attempts-summary");
+    const panel = $("#local-task-attempts");
+    if (attempts === null || attempts === undefined) {
+      summary.hidden = false;
+      summary.dataset.standing = "unavailable";
+      summary.textContent = "运行尝试来源未投影。";
+      panel.innerHTML = "";
+      return;
+    }
+    if (first(attempts, ["standing"]) === "unavailable") {
+      summary.hidden = false;
+      summary.dataset.standing = "unavailable";
+      const reason = text(first(attempts, ["reason"]), "原因未声明");
+      const sourceRef = text(first(attempts, ["sourceRef"]), "来源未声明");
+      summary.textContent = `运行尝试来源不可用：${reason}`;
+      panel.innerHTML =
+        `<p class="empty-note">尝试来源：${escapeHtml(sourceRef)}</p>`;
+      return;
+    }
+    const attemptList = list(first(attempts, ["attempts"], []));
+    if (attemptList.length === 0) {
+      summary.hidden = false;
+      summary.dataset.standing = "none";
+      summary.textContent = "尚无运行尝试";
+      panel.innerHTML = "";
+      return;
+    }
+    summary.dataset.standing = "available";
+    summary.hidden = true;
+    panel.innerHTML = attemptList.map(renderTaskAttempt).join("");
+  }
+
+  function renderTaskAttempt(attempt) {
+    const statusCopy = {
+      recorded: "recorded · 已记录",
+      started: "started · 运行中",
+      "runner-failed": "runner-failed · Runner 失败",
+      invalid: "invalid · 证据无效",
+    };
+    const status = text(first(attempt, ["status"]), "invalid");
+    const attemptId = text(first(attempt, ["attemptId"]), "未识别 attempt");
+    const startedAt = formatTime(text(first(attempt, ["startedAt"]), ""), "时间未知");
+    const settledAt = text(first(attempt, ["settledAt"]), "");
+    const requestedSession = text(first(attempt, ["requestedSession"]), "");
+    const evidence = first(attempt, ["evidence"], {});
+    const evidenceSources = [
+      ["attempt", "A", "Attempt"],
+      ["finalRecord", "F", "Work Cell final"],
+      ["settlement", "S", "Settlement"],
+    ];
+    const evidenceRows = evidenceSources.map(([key, mark, label]) => {
+      const standing = text(first(first(evidence, [key], {}), ["standing"]), "unavailable");
+      const error = text(first(first(evidence, [key], {}), ["error"]), "");
+      return `
+        <li data-source="${escapeHtml(key)}" data-standing="${escapeHtml(standing)}">
+          <span>${escapeHtml(mark)}</span>
+          <div>
+            <strong>${escapeHtml(label)}</strong>
+            <small>${escapeHtml(standing)}${error ? ` · ${escapeHtml(error)}` : ""}</small>
+          </div>
+        </li>
+      `;
+    }).join("");
+    const finalStanding = text(
+      first(first(evidence, ["finalRecord"], {}), ["standing"]),
+      "unavailable",
+    );
+    const observedFacts = finalStanding === "available"
+      ? `
+        <dl class="local-task-facts task-attempt-observed">
+          <div><dt>Cell 状态</dt><dd>${escapeHtml(text(first(attempt, ["cellStatus"]), "未投影"))}</dd></div>
+          <div><dt>观察到 session</dt><dd>${escapeHtml(text(first(attempt, ["observedSession"]), "未投影"))}</dd></div>
+          <div><dt>Usage</dt><dd>${renderTaskAttemptUsage(first(attempt, ["usage"]))}</dd></div>
+          <div><dt>Workspace diff</dt><dd>${renderTaskAttemptDiff(first(attempt, ["workspaceDiff"]))}</dd></div>
+          <div><dt>Work Cell 验证（机械）</dt><dd>${renderTaskAttemptVerification(first(attempt, ["verification"]))}</dd></div>
+        </dl>
+      `
+      : "";
+    return `
+      <article class="local-task-history-entry task-attempt" data-status="${escapeHtml(status)}" data-attempt="${escapeHtml(attemptId)}">
+        <header>
+          <span class="task-attempt-status">${escapeHtml(statusCopy[status] || status)}</span>
+          <span class="task-attempt-time">
+            ${escapeHtml(startedAt)}${settledAt ? ` · 已结算 ${escapeHtml(formatTime(settledAt, settledAt))}` : ""}
+          </span>
+        </header>
+        <dl class="local-task-facts task-attempt-facts">
+          <div><dt>Attempt</dt><dd>${escapeHtml(attemptId)}</dd></div>
+          ${modelFact(attempt, "driver", "请求 driver")}
+          ${modelFact(attempt, "model", "请求 model")}
+          ${modelFact(attempt, "variant", "请求 variant")}
+          ${modelFact(attempt, "taskRevision", "Task 修订")}
+          ${modelFact(attempt, "sourceRevision", "Source 修订")}
+          <div><dt>请求 session</dt><dd>${escapeHtml(requestedSession || "未请求 · 新 session")}</dd></div>
+        </dl>
+        ${observedFacts}
+        <div class="task-attempt-evidence">
+          <span>Evidence standing</span>
+          <ul class="execution-evidence-layers">${evidenceRows}</ul>
+        </div>
+        <details class="task-attempt-sources">
+          <summary>Stable source refs</summary>
+          <dl class="local-task-facts task-attempt-refs">
+            <div><dt>inputRef</dt><dd>${escapeHtml(text(first(attempt, ["inputRef"]), "—"))}</dd></div>
+            <div><dt>attemptRef</dt><dd>${escapeHtml(text(first(attempt, ["attemptRef"]), "—"))}</dd></div>
+            <div><dt>finalRecordRef</dt><dd>${escapeHtml(text(first(attempt, ["finalRecordRef"]), "—"))}</dd></div>
+            <div><dt>settlementRef</dt><dd>${escapeHtml(text(first(attempt, ["settlementRef"]), "—"))}</dd></div>
+          </dl>
+        </details>
+      </article>
+    `;
+  }
+
+  function modelFact(attempt, key, label) {
+    const value = text(first(attempt, [key]), "");
+    return value ? `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>` : "";
+  }
+
+  function renderTaskAttemptUsage(usage) {
+    if (usage === null || usage === undefined) return "未投影";
+    const input = text(first(usage, ["inputTokens"]), "—");
+    const output = text(first(usage, ["outputTokens"]), "—");
+    const cached = text(first(usage, ["cachedInputTokens"]), "—");
+    const total = text(first(usage, ["totalTokens"]), "—");
+    return `in ${escapeHtml(input)} · out ${escapeHtml(output)} · cached ${escapeHtml(cached)} · total ${escapeHtml(total)}`;
+  }
+
+  function renderTaskAttemptDiff(diff) {
+    if (diff === null || diff === undefined) return "未投影";
+    const added = list(first(diff, ["added"], []));
+    const changed = list(first(diff, ["changed"], []));
+    const removed = list(first(diff, ["removed"], []));
+    const renderPaths = (paths) => paths.map((path) => escapeHtml(path)).join(", ");
+    const parts = [];
+    if (added.length) parts.push(`+${added.length} · ${renderPaths(added)}`);
+    if (changed.length) parts.push(`~${changed.length} · ${renderPaths(changed)}`);
+    if (removed.length) parts.push(`−${removed.length} · ${renderPaths(removed)}`);
+    return parts.length ? parts.join("；") : "无改动";
+  }
+
+  function renderTaskAttemptVerification(verification) {
+    if (verification === null || verification === undefined) return "未投影";
+    const passed = first(verification, ["passed"]);
+    const terminal = first(first(verification, ["terminal"], {}), ["passed"]);
+    const standing = (value) => value === true
+      ? "通过"
+      : value === false
+        ? "未通过"
+        : "未投影";
+    return `整体 ${standing(passed)} · terminal ${standing(terminal)}`;
   }
 
   function renderTaskCreateWorktrees() {

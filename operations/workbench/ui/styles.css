@@ -3816,6 +3816,93 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 0.65rem 0;
 }
 
+.local-task-attempts {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.task-attempts-summary {
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-attempts-summary[data-standing="unavailable"] {
+  color: var(--ochre);
+}
+
+.task-attempt {
+  min-width: 0;
+}
+
+.task-attempt > header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  justify-content: space-between;
+}
+
+.task-attempt-status,
+.task-attempt-evidence > span,
+.task-attempt-sources summary {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.task-attempt[data-status="recorded"] .task-attempt-status {
+  color: var(--green);
+}
+
+.task-attempt[data-status="started"] .task-attempt-status {
+  color: var(--ochre);
+}
+
+.task-attempt[data-status="runner-failed"] .task-attempt-status,
+.task-attempt[data-status="invalid"] .task-attempt-status {
+  color: var(--red);
+}
+
+.task-attempt-time {
+  color: var(--ink-faint);
+  font-size: 0.6rem;
+}
+
+.task-attempt .local-task-facts dd {
+  font-family: var(--mono);
+}
+
+.task-attempt-observed {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--line);
+  padding: 0.5rem 0.6rem;
+}
+
+.task-attempt-evidence > span {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.task-attempt-evidence li[data-standing="invalid"] small {
+  color: var(--red);
+}
+
+.task-attempt-evidence li[data-standing="available"] small {
+  color: var(--green);
+}
+
+.task-attempt-sources summary {
+  cursor: pointer;
+}
+
+.task-attempt-sources[open] summary {
+  margin-bottom: 0.35rem;
+}
+
 .task-correction-delivery {
   background: var(--paper-deep);
   border-left: 2px solid var(--ochre);
@@ -4671,6 +4758,16 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .local-task-facts > div:nth-child(even) {
     border-left: 0;
     padding-left: 0;
+  }
+
+  .task-attempt > header {
+    align-items: flex-start;
+    display: grid;
+  }
+
+  .task-attempt-observed {
+    margin-inline: -0.85rem;
+    padding-inline: 0.85rem;
   }
 
   .task-primary-actions {

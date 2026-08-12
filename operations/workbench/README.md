@@ -214,12 +214,15 @@ settlement under its home state. Cell settlement is execution evidence only: it
 does not submit or accept the Task. A completed Task is ordinary viewable
 history and cannot run.
 
-This checkpoint is synchronous. It does not provide background or live UI
-projection, review display, automatic submission, or semantic acceptance, and
-it does not require Mission context. Session continuation is explicit per
+This checkpoint is synchronous. It does not provide a background or live
+streaming projection of the running checkpoint, review display, automatic
+submission, or semantic acceptance, and it does not require Mission context.
+Session continuation is explicit per
 attempt: the caller supplies the retained session id, and the final record —
 not a copy made by the Workbench — remains the source for the observed session,
-model, status, usage, workspace diff, and verification.
+model, status, usage, workspace diff, and verification. The read-only attempt
+projection described below appears only after the run settles; it is evidence
+history, not a live execution view.
 
 `task attempts <id>` is a read-only view over that same append-only evidence.
 It projects every recorded attempt of the task, sorted by start time, without
@@ -237,6 +240,24 @@ evidence attributable to the requested task remains visible, but its unvalidated
 fields are not projected. Evidence without a parseable task identity cannot be
 safely attributed and is not included. The raw Work Cell trace is never exposed
 by the view.
+
+The Principal task detail shows the same read-only attempt projection under
+`运行尝试` (Read-only run history). It reuses the existing
+`task attempts <id>` owner sources without copying or rewriting attempt, final
+Work Cell record, or settlement bytes. The panel distinguishes a Task with no
+recorded attempts (`尚无运行尝试`) from an attempt source that cannot be read:
+the latter keeps the stable `state/task-attempts` source reference and an
+attributable reason on that Task, and a single Task's failed attempts read does
+not fail the whole snapshot. Each attempt card keeps the `recorded`, `started`,
+`runner-failed`, and `invalid` statuses distinct, labels per-source evidence
+standing for the attempt, final record, and settlement, and shows observed
+session, cell status, usage, workspace diff, and verification only when the
+retained final record is `available` — an invalid or unavailable final record
+never projects stale usage, diff, verification, or session facts. The panel
+does not expose the raw Work Cell trace. This ordinary attempt projection is
+not an independent review display, an automatic submission, or semantic
+acceptance: no attempt standing, cell status, or verification display accepts
+the Task or claims the Agent's product result.
 
 The ordinary OpenCode checkpoint considers `.git`, `node_modules`, `dist`,
 `build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`

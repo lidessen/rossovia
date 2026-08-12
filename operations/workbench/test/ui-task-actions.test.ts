@@ -9,7 +9,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  CellInputSchema,
+  CellRunRecordSchema,
+} from "../../../packages/work-cell/src/contracts";
 import {
   authorizeExecution,
   executionAuthorizationReceiptPath,
@@ -39,6 +43,11 @@ import {
   type WorkbenchTaskExecutionContextRef,
 } from "../src/task-execution-context";
 import { principalTasksPath } from "../src/tasks";
+import {
+  runPrincipalTask,
+  type TaskRunRequest,
+  type TaskRunRunner,
+} from "../src/task-run";
 import type {
   AutonomyClient,
   TrustedRunnerStart,
@@ -79,6 +88,72 @@ function fixture() {
     roots: [],
   }, {} as AutonomyClient);
   return { root, home, origin, handler };
+}
+
+function retainedAttemptRunner(): TaskRunRunner {
+  return {
+    run(request: TaskRunRequest) {
+      const input = CellInputSchema.parse(
+        JSON.parse(readFileSync(request.inputPath, "utf8")),
+      );
+      const record = CellRunRecordSchema.parse({
+        version: "work-cell.run.v4",
+        runId: "ui-attempt-run",
+        cellId: input.id,
+        driver: {
+          adapter: "opencode-cli.v1",
+          provider: "deepseek",
+          model: request.model,
+        },
+        startedAt: "2026-08-12T18:01:00.000Z",
+        finishedAt: "2026-08-12T18:02:00.000Z",
+        durationMs: 60_000,
+        status: "passed",
+        input,
+        finalText: "Retained UI fixture result.",
+        artifacts: [],
+        verification: {
+          passed: true,
+          terminal: { passed: true, required: [], called: [] },
+          artifacts: { passed: true, errors: [] },
+        },
+        workspaceDiff: {
+          added: ["evidence/new.txt"],
+          changed: ["src/existing.ts"],
+          removed: [],
+        },
+        usage: {
+          inputTokens: 120,
+          outputTokens: 40,
+          totalTokens: 160,
+          cachedInputTokens: 20,
+        },
+        usageByPhase: {
+          preparation: {
+            inputTokens: 20,
+            outputTokens: 0,
+            totalTokens: 20,
+            cachedInputTokens: 20,
+          },
+          execution: {
+            inputTokens: 100,
+            outputTokens: 40,
+            totalTokens: 140,
+            cachedInputTokens: 0,
+          },
+        },
+        executionObservation: { sessionId: "session-ui-attempt" },
+        trace: [],
+        rawSteps: [],
+      });
+      writeFileSync(
+        request.finalRecordPath,
+        `${JSON.stringify(record, null, 2)}\n`,
+        { flag: "wx" },
+      );
+      return { runId: record.runId, status: record.status };
+    },
+  };
 }
 
 function git(cwd: string, ...arguments_: string[]): string {
@@ -2185,4 +2260,146 @@ describe("Workbench task UI actions", () => {
       }));
     },
   );
+
+  test("projects owner-backed attempt facts without mutating sources or retaining stale final facts", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "attempt-worktree");
+    git(project, "worktree", "add", "-b", "task/attempt-ui", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Inspect an ordinary task attempt",
+      objective: "Project existing owner evidence into the Task detail",
+      acceptance: ["No attempt source bytes change during GET"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    expect(created.status).toBe(200);
+    const taskId = (await created.json()).result.task.id as string;
+    const attempt = runPrincipalTask(home, {
+      id: taskId,
+      driver: "opencode-cli",
+      model: "deepseek/deepseek-v4-flash",
+      variant: "low",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, retainedAttemptRunner());
+    const sourcePaths = [
+      principalTasksPath(home),
+      attempt.inputRef,
+      attempt.attemptRef,
+      attempt.finalRecordRef,
+      attempt.settlementRef,
+    ].map((source) => isAbsolute(source) ? source : join(home, source));
+    const before = sourcePaths.map((source) => readFileSync(source));
+
+    const response = await handler(new Request(`${origin}/api/snapshot`));
+    expect(response.status).toBe(200);
+    const snapshot = await response.json();
+    const taskItem = snapshot.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${taskId}`,
+    );
+    const projected = taskItem.taskDetail.attempts;
+    expect(projected).toMatchObject({
+      standing: "available",
+      sourceRef: "state/task-attempts",
+      attempts: [{
+        attemptId: attempt.attemptId,
+        driver: "opencode-cli",
+        model: "deepseek/deepseek-v4-flash",
+        variant: "low",
+        observedSession: "session-ui-attempt",
+        cellStatus: "passed",
+        status: "recorded",
+        usage: { totalTokens: 160 },
+        workspaceDiff: {
+          added: ["evidence/new.txt"],
+          changed: ["src/existing.ts"],
+          removed: [],
+        },
+        verification: { passed: true, terminal: { passed: true } },
+        evidence: {
+          attempt: { standing: "available" },
+          finalRecord: { standing: "available" },
+          settlement: { standing: "available" },
+        },
+      }],
+    });
+    expect(projected.attempts[0]).not.toHaveProperty("trace");
+    expect(projected.attempts[0]).not.toHaveProperty("rawSteps");
+    expect(taskItem.taskDetail.task.resultClaims).toEqual([]);
+    sourcePaths.forEach((source, index) => {
+      expect(readFileSync(source)).toEqual(before[index]!);
+    });
+
+    const finalPath = join(home, attempt.finalRecordRef);
+    writeFileSync(finalPath, "{}\n");
+    const invalidFinalBytes = readFileSync(finalPath);
+    const refreshed = await (
+      await handler(new Request(`${origin}/api/snapshot`))
+    ).json();
+    const refreshedTask = refreshed.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${taskId}`,
+    );
+    const refreshedAttempt = refreshedTask.taskDetail.attempts.attempts[0];
+    expect(refreshedAttempt.status).toBe("recorded");
+    expect(refreshedAttempt.evidence.finalRecord.standing).toBe("invalid");
+    expect(refreshedAttempt).not.toHaveProperty("observedSession");
+    expect(refreshedAttempt).not.toHaveProperty("cellStatus");
+    expect(refreshedAttempt).not.toHaveProperty("usage");
+    expect(refreshedAttempt).not.toHaveProperty("workspaceDiff");
+    expect(refreshedAttempt).not.toHaveProperty("verification");
+    expect(readFileSync(finalPath)).toEqual(invalidFinalBytes);
+  });
+
+  test("distinguishes an available empty attempt source from an unavailable source", async () => {
+    const { handler, home, origin } = fixture();
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Task without an attempt",
+      objective: "Keep empty history distinct from a failed owner read",
+      acceptance: ["The Task stays visible in both cases"],
+      nextActor: "principal",
+      expectedSourceRevision: 0,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    const taskBytes = readFileSync(principalTasksPath(home));
+
+    const emptyResponse = await handler(new Request(`${origin}/api/snapshot`));
+    expect(emptyResponse.status).toBe(200);
+    const emptySnapshot = await emptyResponse.json();
+    const emptyTask = emptySnapshot.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${taskId}`,
+    );
+    expect(emptyTask.taskDetail.attempts).toEqual({
+      standing: "available",
+      sourceRef: "state/task-attempts",
+      attempts: [],
+    });
+    expect(readFileSync(principalTasksPath(home))).toEqual(taskBytes);
+
+    const attemptsRoot = join(home, "state", "task-attempts");
+    writeFileSync(attemptsRoot, "owner source unavailable\n");
+    const unavailableBytes = readFileSync(attemptsRoot);
+    const unavailableResponse = await handler(
+      new Request(`${origin}/api/snapshot`),
+    );
+    expect(unavailableResponse.status).toBe(200);
+    const unavailableSnapshot = await unavailableResponse.json();
+    const unavailableTask = unavailableSnapshot.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${taskId}`,
+    );
+    expect(unavailableTask.taskDetail.attempts).toMatchObject({
+      standing: "unavailable",
+      sourceRef: "state/task-attempts",
+      reason: expect.any(String),
+    });
+    expect(readFileSync(principalTasksPath(home))).toEqual(taskBytes);
+    expect(readFileSync(attemptsRoot)).toEqual(unavailableBytes);
+  });
 });

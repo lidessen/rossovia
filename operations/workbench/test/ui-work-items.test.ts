@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { buildWorkItemProjection } from "../src/ui/work-items";
+import {
+  buildWorkItemProjection,
+  taskAttemptsSourceRef,
+} from "../src/ui/work-items";
 import {
   workbenchTaskCorrectionGuidanceRefs,
   workbenchTaskExecutionContextFor,
@@ -260,6 +263,64 @@ describe("Workbench work-item shell projection", () => {
       reason: "Principal task source was not observed.",
     });
     expect(projection.items.some((item) => item.kind === "principal-task")).toBeFalse();
+  });
+
+  test("joins the existing owner-backed attempt projection onto its Task detail", () => {
+    const task = {
+      id: "task-attempts",
+      title: "Inspect ordinary task attempts",
+      objective: "Expose existing attempt evidence without copying facts",
+      acceptance: ["The owner projection remains attributable"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-attempts",
+      },
+      binding: { kind: "independent" as const },
+      lifecycle: "open" as const,
+      nextActor: "principal" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-08-12T18:00:00Z",
+      updatedAt: "2026-08-12T18:00:00Z",
+    };
+    const attempts = {
+      standing: "available" as const,
+      sourceRef: taskAttemptsSourceRef,
+      attempts: [{
+        attemptId: "attempt-a",
+        driver: "opencode-cli",
+        model: "deepseek/deepseek-v4-flash",
+        status: "started" as const,
+        startedAt: "2026-08-12T18:01:00Z",
+        inputRef: "state/task-attempts/attempt-a/cell-input.json",
+        attemptRef: "state/task-attempts/attempt-a/attempt.json",
+        finalRecordRef: "state/task-attempts/attempt-a/cell-input.run.json",
+        settlementRef: "state/task-attempts/attempt-a/settlement.json",
+        evidence: {
+          attempt: { standing: "available" as const },
+          finalRecord: { standing: "unavailable" as const },
+          settlement: { standing: "unavailable" as const },
+        },
+      }],
+    };
+
+    const projection = buildWorkItemProjection(snapshot as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 1,
+        tasks: [task],
+      },
+    }, { [task.id]: attempts });
+    const item = projection.items.find(
+      (candidate) => candidate.id === `principal-task:${task.id}`,
+    );
+
+    expect(item?.taskDetail?.attempts).toBe(attempts);
+    expect(item?.taskDetail?.task).toBe(task);
   });
 
   test("joins Mission context and its current carrier without upgrading Agent responsibility into task execution", () => {

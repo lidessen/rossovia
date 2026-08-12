@@ -20,7 +20,9 @@ import {
 } from "../../ui/operational-semantics.js";
 import {
   buildWorkItemProjection,
+  taskAttemptsSourceRef,
   type PrincipalTaskSourceObservation,
+  type TaskAttemptSourceObservation,
 } from "./work-items";
 import {
   executeTaskCreateAction,
@@ -43,6 +45,7 @@ import {
   submitVerifiedTaskResult,
 } from "./task-verified-result";
 import { loadPrincipalTasks, principalTasksPath } from "../tasks";
+import { showPrincipalTaskAttempts } from "../task-attempts";
 import {
   createLocalTaskControlPlane,
   type LocalTaskControlPlane,
@@ -389,6 +392,7 @@ async function buildLiveSnapshot(
       summary: taskSource.reason,
       source: taskSource.sourceRef,
     }];
+  const taskAttempts = readTaskAttemptsProjections(options.home, taskSource);
   const liveSnapshot = {
     ...snapshot,
     complete:
@@ -404,8 +408,38 @@ async function buildLiveSnapshot(
   };
   return {
     ...liveSnapshot,
-    workItems: buildWorkItemProjection(liveSnapshot, taskSource),
+    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts),
   };
+}
+
+/**
+ * Read-only per-task attempt projection. A single task whose attempt evidence
+ * cannot be read must not fail the whole snapshot: it stays HTTP 200 with the
+ * stable source reference and an attributable reason on that task. Reading
+ * never copies or rewrites the attempt, final record, or settlement sources.
+ */
+function readTaskAttemptsProjections(
+  home: string | undefined,
+  taskSource: PrincipalTaskSourceObservation,
+): Readonly<Record<string, TaskAttemptSourceObservation>> {
+  if (taskSource.standing !== "available") return {};
+  const projections: Record<string, TaskAttemptSourceObservation> = {};
+  for (const task of taskSource.source.tasks) {
+    try {
+      projections[task.id] = {
+        standing: "available",
+        sourceRef: taskAttemptsSourceRef,
+        attempts: showPrincipalTaskAttempts(home, task.id),
+      };
+    } catch (error: unknown) {
+      projections[task.id] = {
+        standing: "unavailable",
+        sourceRef: taskAttemptsSourceRef,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  return projections;
 }
 
 async function deliverTaskCorrection(

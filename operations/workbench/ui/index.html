@@ -573,6 +573,22 @@
             </form>
           </section>
 
+          <section class="local-task-history local-task-attempts" aria-labelledby="local-task-attempts-heading">
+            <div class="field-heading compact">
+              <div>
+                <p class="eyebrow">Read-only run history</p>
+                <h3 id="local-task-attempts-heading">运行尝试</h3>
+              </div>
+            </div>
+            <p class="task-attempts-summary" id="local-task-attempts-summary" hidden></p>
+            <div id="local-task-attempts"></div>
+            <p class="task-boundary-note">
+              只读投影同一 ROSSO_HOME 下已有的 TaskAttemptProjection；不复制或改写
+              attempt、final 与 settlement 证据，不显示原始 Work Cell trace，也不代表
+              独立 review、自动提交或语义接受。
+            </p>
+          </section>
+
           <section class="local-task-actions">
             <form class="local-task-action" id="task-rebind-worktree-form" hidden>
               <label>

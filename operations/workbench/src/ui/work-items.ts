@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import type { TaskAttemptProjection } from "../task-attempts";
 import {
   MissionAnchorSeedSchema,
   type MissionAnchorSeed,
@@ -47,6 +48,27 @@ export type WorkItemNextActor =
   | "external"
   | "none"
   | "unknown";
+
+/**
+ * Read-only observation of one task's attempt evidence source. A task with no
+ * recorded attempts projects as `available` with an empty attempts list; a
+ * source that cannot be read projects as `unavailable` with the stable source
+ * reference and reason so the snapshot stays observable without losing the
+ * attributable read failure.
+ */
+export type TaskAttemptSourceObservation =
+  | {
+    readonly standing: "available";
+    readonly sourceRef: string;
+    readonly attempts: readonly TaskAttemptProjection[];
+  }
+  | {
+    readonly standing: "unavailable";
+    readonly sourceRef: string;
+    readonly reason: string;
+  };
+
+export const taskAttemptsSourceRef = "state/task-attempts";
 
 export type TaskLaunchReadinessBlockerCode =
   | "exact-context-required"
@@ -299,6 +321,7 @@ export interface WorkItemProjection {
     readonly worktreeAuthority: "observation-only" | "unavailable";
     readonly worktreeStanding: "not-declared" | "observed" | "unavailable";
     readonly worktreeReason?: string;
+    readonly attempts?: TaskAttemptSourceObservation;
     readonly task: PrincipalTask;
   };
 }
@@ -716,6 +739,7 @@ function missionWorkItems(
 function principalTaskWorkItems(
   snapshot: WorkItemSnapshot,
   observation: PrincipalTaskSourceObservation,
+  taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
 ): WorkItemProjection[] {
   if (observation.standing !== "available") return [];
   return observation.source.tasks.map((task): WorkItemProjection => {
@@ -1446,6 +1470,15 @@ function principalTaskWorkItems(
             ? "observed"
             : "unavailable",
         ...(worktreeReason === undefined ? {} : { worktreeReason }),
+        ...(taskAttempts === undefined
+          ? {}
+          : {
+            attempts: taskAttempts[task.id] ?? {
+              standing: "unavailable",
+              sourceRef: taskAttemptsSourceRef,
+              reason: "task attempt source was not observed",
+            },
+          }),
         task,
       },
     };
@@ -1670,6 +1703,7 @@ export function buildWorkItemProjection(
     sourceRef: "unavailable",
     reason: "Principal task source was not observed.",
   },
+  taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
 ): WorkItemSetProjection {
   const attention = attentionWorkItems(snapshot);
   const runners = runnerWorkItems(snapshot);
@@ -1682,7 +1716,7 @@ export function buildWorkItemProjection(
   const items = [
     ...attention,
     ...runners,
-    ...principalTaskWorkItems(snapshot, taskSource),
+    ...principalTaskWorkItems(snapshot, taskSource, taskAttempts),
     ...missionWorkItems(snapshot, activeMissionKeys),
   ].sort((left, right) => {
     const attentionRank = {
