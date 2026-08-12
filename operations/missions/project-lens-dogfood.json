@@ -9,7 +9,7 @@
     "experiments/human-agent-visualization/DESIGN.md#project-lens"
   ],
   "createdAt": "2026-08-11T18:00:00Z",
-  "updatedAt": "2026-08-11T18:00:00Z",
+  "updatedAt": "2026-08-12T06:27:40Z",
   "mainline": {
     "contradiction": "Project Lens has a real deterministic local builder, while Rossovia needs one project-owned supervised runtime that truthfully separates the builder's complete local traversal from narrower external focus selection and consumes one fresh task-bound authorization.",
     "acceptance": [
@@ -21,7 +21,22 @@
     ],
     "status": "active"
   },
-  "branches": [],
+  "branches": [
+    {
+      "id": "continuation-start",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "修复同一 Mission 既有 initial anchor 后的后续监督启动，并只处理经证实的 stale runner/socket 启动残留，使 Project Lens v3 能在 provider 前通过正式 UI launch 通路",
+      "returnCondition": "最小补丁由独立审查证明不删除 timeline、不重置初始 anchor、不绕过 UI、不新增 gate；针对既有 timeline 后续 turn 与确证 stale runner 的回归测试通过并集成 main",
+      "sources": [
+        "runtime-observation:project-lens-v3-prelaunch-anchor-conflict",
+        "runtime-observation:project-lens-v3-stale-runner-socket"
+      ],
+      "status": "closed",
+      "disposition": "no-change",
+      "mainlineDelta": "Current HEAD already omits initialAnchor for seeded Mission continuation; the observed socket remains owned by live carrier PID 31825 while sandboxed connect reports masked ENOENT, so no Workbench or Autonomy code change is admitted."
+    }
+  ],
   "currentFocus": "mainline",
   "executionProposal": {
     "version": "mission-execution-proposal.v2",
