@@ -94,24 +94,28 @@ function pathInScope(path, scope) {
   return path === scope || path.startsWith(scope.endsWith("/") ? scope : `${scope}/`);
 }
 
+function atxHeadingText(value) {
+  return value.replace(/[ \t]+#+$/, "");
+}
+
 function markdownSection(content, heading) {
   if (!content) return null;
   const lines = content.replace(/\r\n/g, "\n").split("\n");
   let start = -1;
   let level = 0;
   for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(#{1,6})\s+(.+?)\s*$/);
-    if (match && match[2] === heading) {
+    const match = lines[index].match(/^( {0,3})(#{1,6})\s+(.+?)\s*$/);
+    if (match && atxHeadingText(match[3]) === heading) {
       start = index;
-      level = match[1].length;
+      level = match[2].length;
       break;
     }
   }
   if (start === -1) return null;
   let end = lines.length;
   for (let index = start + 1; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(#{1,6})\s+/);
-    if (match && match[1].length <= level) {
+    const match = lines[index].match(/^( {0,3})(#{1,6})\s+/);
+    if (match && match[2].length <= level) {
       end = index;
       break;
     }
