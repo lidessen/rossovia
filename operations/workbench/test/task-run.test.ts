@@ -853,6 +853,42 @@ describe("task attempts projection", () => {
     expect(showPrincipalTaskAttempts(current.home, created.task.id)).toEqual([]);
   });
 
+  test("gives the attempt task claim exclusive ownership when settlement conflicts", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner());
+    const other = createPrincipalTask(current.home, {
+      title: "Settlement claim target",
+      objective: "Must not gain another task's attempt",
+      acceptance: ["Conflicting evidence remains scoped to its attempt owner"],
+      nextActor: "agent",
+      sourceRef: "test:conflicting-settlement-owner",
+      expectedSourceRevision: 1,
+    });
+    const settlementPath = join(current.home, run.settlementRef);
+    const settlement = JSON.parse(readFileSync(settlementPath, "utf8"));
+    writeFileSync(settlementPath, `${JSON.stringify({
+      ...settlement,
+      taskId: other.task.id,
+    }, null, 2)}\n`);
+
+    const ownerProjection = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(ownerProjection).toHaveLength(1);
+    expect(ownerProjection[0]).toMatchObject({
+      attemptId: run.attemptId,
+      status: "invalid",
+      evidence: { settlement: { standing: "invalid" } },
+    });
+    expect(ownerProjection[0]!.settledAt).toBeUndefined();
+    expect(showPrincipalTaskAttempts(current.home, other.task.id)).toEqual([]);
+  });
+
   test("projects only the requested task's attempts and rejects unknown tasks", () => {
     const current = fixture();
     const created = agentTask(current);

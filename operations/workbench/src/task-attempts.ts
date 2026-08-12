@@ -127,9 +127,9 @@ function readAttemptEvidence(
   const directory = join(home, "state", "task-attempts", attemptId);
   const attemptJson = readJson(join(directory, "attempt.json"));
   const settlementJson = readJson(join(directory, "settlement.json"));
-  const claimedTaskIds = [taskIdClaim(attemptJson.value), taskIdClaim(settlementJson.value)]
-    .filter((claim): claim is string => claim !== undefined);
-  if (!claimedTaskIds.some((claim) => claim.toLowerCase() === requestedTaskId)) return undefined;
+  const attemptTaskId = taskIdClaim(attemptJson.value);
+  const ownerTaskId = attemptTaskId ?? taskIdClaim(settlementJson.value);
+  if (ownerTaskId?.toLowerCase() !== requestedTaskId) return undefined;
   return {
     attemptJson,
     settlementJson,
