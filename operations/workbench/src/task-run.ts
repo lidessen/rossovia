@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -17,6 +16,7 @@ import type {
   CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
 import { loadHome, resolveHome, workspaceFor } from "./home";
+import { showPrincipalTaskAttempts } from "./task-attempts";
 import { showPrincipalTask } from "./tasks";
 import { requiredGit } from "./workspace";
 
@@ -39,11 +39,6 @@ const WorkCellCliResultSchema = z.object({
   output: z.string().min(1),
   runId: z.string().min(1),
   status: z.string().min(1),
-}).passthrough();
-
-const RecordedTaskRunSettlementSchema = z.object({
-  taskId: z.string().min(1),
-  status: z.literal("recorded"),
 }).passthrough();
 
 export interface TaskRunArguments {
@@ -169,9 +164,12 @@ export function runPrincipalTask(
   dependencies.beforeLeaseAcquire?.();
   const lease = acquireWorktreeLease(worktree, task.id, attemptId);
   try {
-    verifyCurrentCleanWorktree(home, task.binding.projectId, worktree);
+    verifyCurrentBinding(home, task.binding.projectId, worktree);
     if (arguments_.session) {
-      validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
+      const retained = validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
+      verifyContinuationDiff(worktree, retained.workspaceDiff);
+    } else {
+      verifyCleanStatus(worktree);
     }
     const attempt = createAttempt(
       home,
@@ -251,33 +249,63 @@ function validateRetainedTaskSession(
   taskId: string,
   worktree: string,
   requestedSession: string,
-): void {
-  const attemptsRoot = join(home, "state", "task-attempts");
-  if (existsSync(attemptsRoot)) {
-    for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const evidence = attemptEvidence(home, entry.name);
-      if (!existsSync(evidence.settlementPath) || !existsSync(evidence.finalRecordPath)) continue;
-      try {
-        const settlement = RecordedTaskRunSettlementSchema.parse(
-          JSON.parse(readFileSync(evidence.settlementPath, "utf8")),
-        );
-        if (settlement.taskId !== taskId) continue;
-        const record = workCellContracts().CellRunRecordSchema.parse(
-          JSON.parse(readFileSync(evidence.finalRecordPath, "utf8")),
-        ) as CellRunRecord;
-        if (
-          realpathSync(record.input.workspace.root) === worktree
-          && record.executionObservation.sessionId === requestedSession
-        ) return;
-      } catch {
-        // Only a valid recorded settlement and owner-backed final record can admit continuation.
-      }
+): Pick<CellRunRecord, "workspaceDiff"> {
+  const attempts = showPrincipalTaskAttempts(home, taskId);
+  let latest: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] } | undefined;
+  for (let index = attempts.length - 1; index >= 0; index -= 1) {
+    const attempt = attempts[index]!;
+    if (
+      attempt.status !== "recorded"
+      || attempt.observedSession === undefined
+      || attempt.workspaceDiff === undefined
+      || Object.values(attempt.evidence).some((source) => source.standing !== "available")
+    ) continue;
+    try {
+      const record = workCellContracts().CellRunRecordSchema.parse(
+        JSON.parse(readFileSync(join(home, attempt.finalRecordRef), "utf8")),
+      ) as CellRunRecord;
+      if (realpathSync(record.input.workspace.root) !== worktree) continue;
+      latest = { session: attempt.observedSession, workspaceDiff: attempt.workspaceDiff };
+      break;
+    } catch {
+      // Only a valid recorded attempt and owner-backed final record can admit continuation.
     }
   }
-  throw new Error(
-    `task ${taskId} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${requestedSession}`,
-  );
+  if (latest === undefined) {
+    throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
+  }
+  if (latest.session !== requestedSession) {
+    throw new Error(
+      `task ${taskId} latest usable OpenCode session in the current Worktree is ${latest.session}, not ${requestedSession}`,
+    );
+  }
+  return { workspaceDiff: latest.workspaceDiff };
+}
+
+function verifyContinuationDiff(
+  worktree: string,
+  retained: CellRunRecord["workspaceDiff"],
+): void {
+  const retainedPaths = new Set([
+    ...retained.added,
+    ...retained.changed,
+    ...retained.removed,
+  ]);
+  const currentPaths = new Set([
+    ...nulSeparatedPaths(requiredGit(["diff", "--name-only", "--no-renames", "-z", "--"], worktree)),
+    ...nulSeparatedPaths(requiredGit(["diff", "--cached", "--name-only", "--no-renames", "-z", "--"], worktree)),
+    ...nulSeparatedPaths(requiredGit(["ls-files", "--others", "--exclude-standard", "-z"], worktree)),
+  ]);
+  const extraPaths = [...currentPaths].filter((path) => !retainedPaths.has(path)).sort();
+  if (extraPaths.length > 0) {
+    throw new Error(
+      `task Worktree has Git-visible paths outside the latest retained workspace diff: ${extraPaths.join(", ")}`,
+    );
+  }
+}
+
+function nulSeparatedPaths(output: string | null): string[] {
+  return (output ?? "").split("\0").filter(Boolean);
 }
 
 interface TaskRunLease {
@@ -501,12 +529,7 @@ function resolveBoundWorktree(
   return worktree;
 }
 
-function verifyCurrentCleanWorktree(
-  home: string,
-  projectId: string,
-  worktree: string,
-): void {
-  verifyCurrentBinding(home, projectId, worktree);
+function verifyCleanStatus(worktree: string): void {
   const status = requiredGit(["status", "--porcelain"], worktree) ?? "";
   if (status.trim()) throw new Error(`task Worktree is not clean: ${worktree}`);
 }

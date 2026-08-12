@@ -151,19 +151,22 @@ Workbench home has a task source.
   [agent-delegation](../../skills/agent-delegation/SKILL.md); Workbench retains the
   obligation and returned claim, not the sub-agent runtime or coordination
   state.
-- Run an ordinary open Agent-owned project task that already has one exact clean
+- Run an ordinary open Agent-owned project task that already has one exact
   isolated Worktree with `task run <id> --driver opencode-cli --model
   <provider/model>` plus the returned task and source revisions; add `--variant`
   only when explicitly selected for this attempt, and `--session <id>` to
-  continue an OpenCode session retained by a recorded previous attempt of the
-  same still-open task in its current bound Worktree. Workbench reads that
-  owner-backed Work Cell final record before launch. The result returns the
-  actual OpenCode session id observed in the new attempt's final Work Cell
-  record; an unretained requested session or a
-  requested session that does not match the new observation fails. Mission context is not
-  required. The command creates the Work Cell input and append-only attempt
-  evidence inside the Workbench home, but its settlement neither submits nor
-  accepts the task. An atomic lease in the exact Worktree Git metadata rejects
+  continue only the latest usable OpenCode session retained by a recorded
+  previous attempt of the same still-open task in its current bound Worktree.
+  A fresh run remains Git-clean-only. An explicit continuation may retain a
+  dirty Worktree only when every currently staged, unstaged, or non-ignored
+  untracked path is present in that latest owner-backed Work Cell final record's
+  `workspaceDiff`; ignored artifacts do not block, and path membership proves
+  no content identity. The result returns the actual OpenCode session id
+  observed in the new attempt's final Work Cell record; a requested session
+  that is absent, not latest, or does not match the new observation fails.
+  Mission context is not required. The command creates the Work Cell input and
+  append-only attempt evidence inside the Workbench home, but its settlement
+  neither submits nor accepts the task. An atomic lease in the exact Worktree Git metadata rejects
   overlapping writers across Workbench homes; a crash-retained lease requires
   exact Worktree/process inspection, exact-file removal, and retry rather than
   stale-lock inference or Task reopening. Git-tracked paths always remain in

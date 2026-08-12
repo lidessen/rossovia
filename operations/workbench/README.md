@@ -203,17 +203,23 @@ Cross-boundary correction delivery, authorized launch, linked-execution
 recovery, and runtime-verified result submission remain UI-only actions.
 
 `task run` is the first direct Agent-facing execution checkpoint for an open,
-Agent-owned project task already bound to one existing clean Worktree. It
+Agent-owned project task already bound to one existing isolated Worktree. A
+fresh run without `--session` still requires that Worktree to be Git-clean. It
 rereads the exact Task revisions, lowers the objective, acceptance conditions,
 and all current corrections into an immutable attempt-specific Work Cell input,
 then invokes the existing OpenCode CLI driver. The caller must select
 `--driver opencode-cli` and `--model` for every attempt; `--variant` is optional
-per-run policy. To continue the same still-open task on the session retained by
-one of its recorded previous attempts in the current bound Worktree, pass that
-session id explicitly with `--session <id>`. Workbench reads the owner-backed
-Work Cell final record before forwarding the session to the Work Cell CLI; a
-session absent from this active Task's current-Worktree recorded attempts, or
-one that does not match the session observed in the returned final record,
+per-run policy. To continue the same still-open task, explicitly pass the
+session retained by its latest usable recorded attempt in the current bound
+Worktree with `--session <id>`. Workbench reads that owner-backed Work Cell
+final record before forwarding the session to the Work Cell CLI. The Worktree
+may remain dirty only when its current staged, unstaged, and non-ignored
+untracked path set is a subset of that record's `workspaceDiff` path union;
+ignored artifacts do not block continuation. This is a mechanical path-ownership
+check, not a content digest or proof that file contents still match the prior
+attempt. A session absent from this active Task's current-Worktree recorded
+attempts, a session older than the latest usable observation, an extra
+Git-visible path, or a session that does not match the returned final record
 fails. Every run result reports the OpenCode session id actually observed in
 that attempt's final Work Cell record, whether or not a session was requested.
 The Workbench retains the input, final Work Cell record, and a small append-only
@@ -281,8 +287,9 @@ CellInput lowering, not a reusable execution profile or permission policy.
 
 One atomic lease in the bound Worktree's exact Git metadata directory prevents
 overlapping `task run` writers, including calls through different Rossovia
-homes. The lease is acquired before the authoritative binding and clean checks,
-and remains through execution, final-record validation, and settlement;
+homes. The lease is acquired before the authoritative binding and Worktree
+admissibility checks, and remains through execution, final-record validation,
+and settlement;
 ordinary failures release it in `finally`. A process crash can leave
 `rossovia-task-run.lock`. A later run fails closed and reports the exact path.
 After inspecting that Worktree and process and confirming no execution remains,

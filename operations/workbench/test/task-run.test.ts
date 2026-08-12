@@ -281,6 +281,137 @@ describe("task run public boundary", () => {
     });
   });
 
+  test("continues the latest retained session when its Git-visible dirty paths remain owned", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const retainedPath = "app/blog/content.ts";
+    const runner = new FakeRunner((record, request) => {
+      if (request.session === undefined) {
+        mkdirSync(join(current.worktree, "app", "blog"), { recursive: true });
+        writeFileSync(join(current.worktree, retainedPath), "export const draft = true;\n");
+        return {
+          ...record,
+          workspaceDiff: { added: [retainedPath], changed: [], removed: [] },
+        };
+      }
+      return record;
+    });
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).not.toThrow();
+    expect(runner.requests).toHaveLength(2);
+  });
+
+  test("rejects extra tracked or untracked paths outside the latest retained workspace diff", () => {
+    for (const extra of ["README.md", "notes/unowned.md"]) {
+      const current = fixture();
+      const created = agentTask(current);
+      const retainedPath = "app/blog/content.ts";
+      const runner = new FakeRunner((record) => {
+        mkdirSync(join(current.worktree, "app", "blog"), { recursive: true });
+        writeFileSync(join(current.worktree, retainedPath), "export const draft = true;\n");
+        return {
+          ...record,
+          workspaceDiff: { added: [retainedPath], changed: [], removed: [] },
+        };
+      });
+      const first = runPrincipalTask(current.home, {
+        id: created.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, runner);
+      mkdirSync(join(current.worktree, "notes"), { recursive: true });
+      writeFileSync(join(current.worktree, extra), "unowned\n");
+
+      expect(() => runPrincipalTask(current.home, {
+        id: created.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        session: first.sessionId,
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, runner)).toThrow(
+        `task Worktree has Git-visible paths outside the latest retained workspace diff: ${extra}`,
+      );
+      expect(runner.requests).toHaveLength(1);
+    }
+  });
+
+  test("does not let ignored artifacts block an explicit session continuation", () => {
+    const current = fixture();
+    writeFileSync(join(current.worktree, ".gitignore"), "build/\n");
+    git(current.worktree, "add", ".gitignore");
+    git(current.worktree, "commit", "-m", "ignore build artifacts");
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    mkdirSync(join(current.worktree, "build"), { recursive: true });
+    writeFileSync(join(current.worktree, "build", "artifact.js"), "generated\n");
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).not.toThrow();
+    expect(runner.requests).toHaveLength(2);
+  });
+
+  test("requires the requested session to be the latest usable observation", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner(undefined, ["session-old", "session-latest"]);
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).toThrow(
+      `task ${created.task.id} latest usable OpenCode session in the current Worktree is session-latest, not session-old`,
+    );
+    expect(runner.requests).toHaveLength(2);
+  });
+
   test("fails when the requested OpenCode session differs from the observed session", () => {
     const current = fixture();
     const created = agentTask(current);
@@ -323,7 +454,7 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner)).toThrow(
-      `task ${created.task.id} has no recorded Work Cell attempt in the current Worktree with OpenCode session external-session`,
+      `task ${created.task.id} has no usable recorded Work Cell attempt in the current Worktree`,
     );
     expect(runner.requests).toHaveLength(0);
   });
@@ -358,7 +489,7 @@ describe("task run public boundary", () => {
       expectedSourceRevision: rebound.sourceRevision,
       expectedRevision: rebound.task.revision,
     }, runner)).toThrow(
-      `task ${created.task.id} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${first.sessionId}`,
+      `task ${created.task.id} has no usable recorded Work Cell attempt in the current Worktree`,
     );
     expect(runner.requests).toHaveLength(1);
   });
