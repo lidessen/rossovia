@@ -356,13 +356,13 @@ function sourceStep(id, order, title, summary, source, standing = "source-declar
   };
 }
 
-function derivedStep(id, order, title, summary, sources, standing, excerptValue) {
+function derivedStep(id, order, title, summary, sources, standing, excerptValue, revision = PROJECT_BUILDER_REVISION) {
   return {
     id, order, layer: "projection", title, summary,
     evidence: {
       authority: "从当前 revision 的文件与 manifest 确定性重建",
       sourceRefs: sources.map((source) => source.sourceRef),
-      revision: PROJECT_BUILDER_REVISION,
+      revision,
       standing,
       disconfirmingEvidence: "文件集合、manifest 或 revision 改变时，该投影必须重建。",
       excerpt: excerptValue,
@@ -458,6 +458,15 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
     .filter(Boolean);
   const entries = likelyEntrypoints(files);
   const topLevel = [...new Set(files.map((file) => file.split("/")[0]))].slice(0, 16);
+  const observedTree = {
+    id: `source:observed-tree@${revision}`,
+    kind: "observed-tree",
+    sourceRef: `observed-tree@${revision}`,
+    revision,
+    excerpt: `${files.length} 个可检查文件；入口候选：${entries.join("、") || "无"}`,
+  };
+  observedTree.digest = await digestValue({ sourceRef: observedTree.sourceRef, revision: observedTree.revision, excerpt: observedTree.excerpt });
+  retained.push(observedTree);
   const purposeStep = declaredPurpose
     ? sourceStep("purpose", 1, "项目声明的用途", firstProse(declaredPurpose.excerpt), declaredPurpose)
     : derivedStep("purpose", 1, "项目用途声明不可用", "没有观察到 README 用途声明；不能从代码或 manifest 片段补成项目用途。", retained, "purpose-unavailable", `unavailable: README purpose declaration; observed ${retained.map((source) => source.sourceRef).join(", ")}`);
@@ -466,7 +475,7 @@ export async function buildProjectLensBundle({ repo, intent = "understand", audi
     derivedStep("revision", 2, "这次介绍绑定的修订", `${basename(root)} · ${revision.slice(0, 18)}${dirty ? " · 含工作树修改" : ""}`, retained, "observed-revision", `${files.length} 个可检查文件；顶层：${topLevel.join("、")}`),
   ];
   if (governing[0]) steps.push(derivedStep("governing-source", steps.length + 1, "观察到的治理／设计来源", governing.map((source) => source.sourceRef).join(" → "), governing, "declared-governing-sources", governing.map((source) => source.sourceRef).join("\n")));
-  steps.push(derivedStep("observed-entry", steps.length + 1, "可观察的代码入口", entries.length ? entries.join(" → ") : "仓库没有暴露常见代码入口；不要从目录名补成架构。", manifest ? [manifest] : [readme], entries.length ? "observed-entrypoints" : "entrypoint-unavailable", entries.join("\n") || "unavailable"));
+  steps.push(derivedStep("observed-entry", steps.length + 1, "可观察的代码入口", entries.length ? entries.join("、") : "仓库没有暴露常见代码入口；不要从目录名补成架构。", [observedTree], entries.length ? "observed-entrypoints" : "entrypoint-unavailable", entries.join("\n") || "unavailable", observedTree.revision));
   const focused = normalizedFocusSources.map((path) => retained.find((source) => source.sourceRef === path)).filter(Boolean);
   const arrivalSources = [...new Set([...(focused.length ? focused : [readme, ...governing.slice(0, 2)]), ...commandSources.slice(0, 1)])];
   steps.push(explanationStep("arrival-path", steps.length + 1, `${intent} 的建议到达路径`, `面向“${audience}”，先读声明来源，再沿一个可观察入口到验证面；这条顺序是 Agent 选择，不是仓库事实。`, arrivalSources, `${arrivalSources.map((source) => source.sourceRef).join(" → ")} → ${commands[0]?.command ?? "verification unavailable"}`));
