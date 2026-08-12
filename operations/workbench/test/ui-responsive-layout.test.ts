@@ -174,6 +174,18 @@ describe("Workbench responsive layout", () => {
     );
   });
 
+  test("allows long review history identities and evidence to wrap without widening mobile Peek", () => {
+    expect(styles).toMatch(
+      /\.task-result-reviews\s*\{[^}]*min-width:\s*0;/s,
+    );
+    expect(styles).toMatch(
+      /\.task-review-claim-owner > strong,\s*\.task-review-claim-owner > small,\s*\.task-review-claim-owner > p\s*\{[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+    expect(styles).toMatch(
+      /\.local-task-facts dd\s*\{[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+  });
+
   test("separates pending Agent responsibility from exact live Agent work across desktop and narrow task views", () => {
     expect(html).toContain('data-view="agent"');
     expect(html).toContain('<span>Agent 运行中</span>');

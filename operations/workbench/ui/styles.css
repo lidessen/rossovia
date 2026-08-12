@@ -3817,6 +3817,55 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   border-left-color: var(--green);
 }
 
+.task-result-reviews {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.task-result-review[data-current-claim="false"] {
+  background: var(--paper-deep);
+  border-left-color: var(--line);
+}
+
+.task-review-claim-owner {
+  border-bottom: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding-bottom: 0.55rem;
+}
+
+.task-review-claim-owner > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  text-transform: uppercase;
+}
+
+.task-review-claim-owner > strong,
+.task-review-claim-owner > small,
+.task-review-claim-owner > p {
+  overflow-wrap: anywhere;
+}
+
+.task-review-claim-owner > strong {
+  font-family: var(--mono);
+  font-size: 0.61rem;
+}
+
+.task-review-claim-owner > small {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+}
+
+.task-review-claim-owner > p {
+  font-size: 0.66rem;
+  line-height: 1.45;
+  margin: 0.15rem 0 0;
+}
+
 .task-result-layer > header {
   align-items: baseline;
   display: flex;

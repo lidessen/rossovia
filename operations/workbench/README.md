@@ -428,14 +428,18 @@ revisions and the claim's review evidence; it does not change lifecycle,
 responsibility, result resolution, or acceptance.
 
 The Task detail gives the producer claim, ordinary Work Cell mechanical
-evidence, and the latest structured independent review separate visual layers.
-The review layer shows reviewer, verdict, candidate, declared independence,
-findings, and evidence references. Candidate freshness is never retained in the
-Task source: each snapshot compares the review's full commit to the actual HEAD
-of the Task's currently bound observed Worktree. Exact equality is `current`, a
-different readable HEAD is `stale`, and a project-independent, missing, or
-unreadable bound Worktree is `unavailable`. None of these states accepts the
-Task or gives the reviewer authority to accept its own candidate.
+evidence, and structured independent-review history separate visual layers.
+Every retained assessment stays attached to its owning result claim and appears
+in review chronology; the current claim may receive primary emphasis without
+hiding assessments on superseded claims or earlier assessments on the same
+claim. Each assessment shows reviewer, verdict, candidate, declared
+independence, findings, and evidence references. Candidate freshness is never
+retained in the Task source: each snapshot compares that assessment's full
+commit to the actual HEAD of the Task's currently bound observed Worktree.
+Exact equality is `current`, a different readable HEAD is `stale`, and a
+project-independent, missing, or unreadable bound Worktree is `unavailable`.
+None of these states accepts the Task or gives the reviewer authority to accept
+its own candidate.
 
 Runner state also distinguishes control-plane reachability from production.
 `anchor-pending` means no authorized intent anchor exists: the UI presents the

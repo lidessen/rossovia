@@ -90,6 +90,33 @@ export interface TaskLaunchReadiness {
   }[];
 }
 
+export type ResultReviewFreshness =
+  | {
+    readonly standing: "current";
+    readonly observedHead: string;
+  }
+  | {
+    readonly standing: "stale";
+    readonly observedHead: string;
+  }
+  | {
+    readonly standing: "unavailable";
+    readonly reason: string;
+  };
+
+export interface ResultReviewProjection {
+  readonly claim: {
+    readonly id: string;
+    readonly submittedAt: string;
+    readonly standing: PrincipalTask["resultClaims"][number]["standing"];
+    readonly summary: string;
+    readonly latest: boolean;
+  };
+  readonly assessment: PrincipalTaskResultReview;
+  readonly independence: "independence-proven" | "independence-unproven";
+  readonly freshness: ResultReviewFreshness;
+}
+
 export interface WorkItemProjection {
   readonly id: string;
   readonly kind:
@@ -325,20 +352,9 @@ export interface WorkItemProjection {
         readonly standing: "available";
         readonly assessment: PrincipalTaskResultReview;
         readonly independence: "independence-proven" | "independence-unproven";
-        readonly freshness:
-          | {
-            readonly standing: "current";
-            readonly observedHead: string;
-          }
-          | {
-            readonly standing: "stale";
-            readonly observedHead: string;
-          }
-          | {
-            readonly standing: "unavailable";
-            readonly reason: string;
-          };
+        readonly freshness: ResultReviewFreshness;
       };
+    readonly resultReviews: readonly ResultReviewProjection[];
     readonly worktreeAuthority: "observation-only" | "unavailable";
     readonly worktreeStanding: "not-declared" | "observed" | "unavailable";
     readonly worktreeReason?: string;
@@ -1353,40 +1369,41 @@ function principalTaskWorkItems(
                 standing: "runtime-evidence-unavailable" as const,
                 reason: "the retained runtime verification selector is no longer the exact current verified execution",
               };
+    const resultReviews = task.resultClaims.flatMap(
+      (claim): ResultReviewProjection[] => claim.reviews.map((assessment) => ({
+        claim: {
+          id: claim.id,
+          submittedAt: claim.submittedAt,
+          standing: claim.standing,
+          summary: claim.summary,
+          latest: claim.id === latestClaim?.id,
+        },
+        assessment,
+        independence: reviewIndependence(assessment),
+        freshness: resultReviewFreshness(
+          task,
+          assessment,
+          observedTaskWorktree,
+          worktreeReason,
+        ),
+      })),
+    ).sort((left, right) =>
+      left.assessment.reviewedAt.localeCompare(right.assessment.reviewedAt)
+      || left.assessment.id.localeCompare(right.assessment.id)
+    );
     const latestReview = latestClaim?.reviews.at(-1);
     const latestResultReview = latestReview === undefined
       ? { standing: "none" as const }
       : {
         standing: "available" as const,
         assessment: latestReview,
-        independence: latestReview.independence.basis === "independent-review-context"
-          ? "independence-proven" as const
-          : "independence-unproven" as const,
-        freshness: task.binding.kind === "independent"
-          ? {
-            standing: "unavailable" as const,
-            reason: "independent task has no bound Worktree whose HEAD can be observed",
-          }
-          : observedTaskWorktree === undefined
-            ? {
-              standing: "unavailable" as const,
-              reason: worktreeReason
-                ?? "bound task Worktree is unavailable in the current snapshot",
-            }
-            : observedTaskWorktree.head === null
-              ? {
-                standing: "unavailable" as const,
-                reason: "bound task Worktree HEAD could not be read",
-              }
-              : observedTaskWorktree.head === latestReview.candidate.commit
-                ? {
-                  standing: "current" as const,
-                  observedHead: observedTaskWorktree.head,
-                }
-                : {
-                  standing: "stale" as const,
-                  observedHead: observedTaskWorktree.head,
-                },
+        independence: reviewIndependence(latestReview),
+        freshness: resultReviewFreshness(
+          task,
+          latestReview,
+          observedTaskWorktree,
+          worktreeReason,
+        ),
       };
     const sourceRefs = [
       observation.sourceRef,
@@ -1522,6 +1539,7 @@ function principalTaskWorkItems(
         },
         latestResultVerification,
         latestResultReview,
+        resultReviews,
         worktreeAuthority: expectedWorktreePath === undefined || worktreeObserved
           ? "observation-only"
           : "unavailable",
@@ -1717,6 +1735,44 @@ function sameRuntimeVerificationSelector(
   return left.kind === right.kind
     && left.effectId === right.effectId
     && left.verificationEventId === right.verificationEventId;
+}
+
+function reviewIndependence(
+  assessment: PrincipalTaskResultReview,
+): ResultReviewProjection["independence"] {
+  return assessment.independence.basis === "independent-review-context"
+    ? "independence-proven"
+    : "independence-unproven";
+}
+
+function resultReviewFreshness(
+  task: PrincipalTask,
+  assessment: PrincipalTaskResultReview,
+  observedTaskWorktree: ProjectProjection["worktrees"][number] | undefined,
+  worktreeReason: string | undefined,
+): ResultReviewFreshness {
+  if (task.binding.kind === "independent") {
+    return {
+      standing: "unavailable",
+      reason: "independent task has no bound Worktree whose HEAD can be observed",
+    };
+  }
+  if (observedTaskWorktree === undefined) {
+    return {
+      standing: "unavailable",
+      reason: worktreeReason
+        ?? "bound task Worktree is unavailable in the current snapshot",
+    };
+  }
+  if (observedTaskWorktree.head === null) {
+    return {
+      standing: "unavailable",
+      reason: "bound task Worktree HEAD could not be read",
+    };
+  }
+  return observedTaskWorktree.head === assessment.candidate.commit
+    ? { standing: "current", observedHead: observedTaskWorktree.head }
+    : { standing: "stale", observedHead: observedTaskWorktree.head };
 }
 
 function sameObservedPath(

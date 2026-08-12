@@ -2197,16 +2197,19 @@ export function restoredPrincipalLocusState(resolved) {
       `;
     }
 
-    const projected = first(detail, ["latestResultReview"], { standing: "none" });
-    const review = $("#task-result-review");
-    if (first(projected, ["standing"]) !== "available") {
-      review.innerHTML = `
-        <span>Independent review</span>
-        <p class="empty-note">尚无结构化独立审查。</p>
-      `;
-      return;
-    }
+    const reviews = list(first(detail, ["resultReviews"], []));
+    const reviewHistory = $("#task-result-reviews");
+    reviewHistory.innerHTML = reviews.length === 0
+      ? `<div class="task-result-layer task-result-review">
+          <span>Independent review history</span>
+          <p class="empty-note">尚无结构化独立审查。</p>
+        </div>`
+      : reviews.map(renderTaskResultReview).join("");
+  }
+
+  function renderTaskResultReview(projected) {
     const assessment = first(projected, ["assessment"], {});
+    const claim = first(projected, ["claim"], {});
     const candidate = first(assessment, ["candidate"], {});
     const independence = first(assessment, ["independence"], {});
     const freshness = first(projected, ["freshness"], {});
@@ -2217,33 +2220,42 @@ export function restoredPrincipalLocusState(resolved) {
     );
     const observedHead = text(first(freshness, ["observedHead"]), "");
     const freshnessReason = text(first(freshness, ["reason"]), "");
-    review.innerHTML = `
-      <header>
-        <span>Independent review</span>
+    const latest = first(claim, ["latest"]) === true;
+    return `
+      <article class="task-result-layer task-result-review" data-claim-standing="${escapeHtml(text(first(claim, ["standing"]), "unknown"))}" data-current-claim="${latest}">
+        <header>
+          <span>${latest ? "Current claim review" : "Historical claim review"}</span>
         <strong data-verdict="${escapeHtml(text(first(assessment, ["verdict"]), "failed"))}">${escapeHtml(text(first(assessment, ["verdict"]), "failed"))}</strong>
-      </header>
-      <dl class="local-task-facts">
-        <div><dt>Reviewer</dt><dd>${escapeHtml(text(first(assessment, ["reviewerRef"]), "—"))}</dd></div>
-        <div><dt>Assessment</dt><dd>${escapeHtml(text(first(assessment, ["id"]), "—"))}</dd></div>
-        <div><dt>Candidate · git-commit</dt><dd>${escapeHtml(text(first(candidate, ["commit"]), "—"))}</dd></div>
-        <div><dt>Producer attempt</dt><dd>${escapeHtml(text(first(assessment, ["producerAttemptId"]), "未声明"))}</dd></div>
-        <div><dt>Independence</dt><dd>${escapeHtml(independenceStanding)} · ${escapeHtml(text(first(independence, ["sourceRef"]), "—"))}</dd></div>
-        <div><dt>Freshness</dt><dd>${escapeHtml(freshnessStanding)}${observedHead ? ` · HEAD ${escapeHtml(observedHead)}` : ""}${freshnessReason ? ` · ${escapeHtml(freshnessReason)}` : ""}</dd></div>
-        <div><dt>Reviewed</dt><dd>${escapeHtml(formatTime(text(first(assessment, ["reviewedAt"]), ""), "—"))}</dd></div>
-        <div><dt>Claim binding</dt><dd>${escapeHtml(text(first(assessment, ["resultClaimId"]), "—"))}</dd></div>
-      </dl>
-      <div class="task-review-findings">
-        <span>Findings</span>
-        <ul>${list(first(assessment, ["findings"], []))
-          .map((finding) => `<li>${escapeHtml(finding)}</li>`)
-          .join("")}</ul>
-      </div>
-      <details class="task-attempt-sources">
-        <summary>Review evidence refs</summary>
-        <ul class="task-result-refs">${list(first(assessment, ["evidenceRefs"], []))
-          .map((reference) => `<li>${escapeHtml(reference)}</li>`)
-          .join("")}</ul>
-      </details>
+        </header>
+        <div class="task-review-claim-owner">
+          <span>Owned by result claim</span>
+          <strong>${escapeHtml(text(first(claim, ["id"]), "—"))}</strong>
+          <small>${escapeHtml(text(first(claim, ["standing"]), "unknown"))} · submitted ${escapeHtml(formatTime(text(first(claim, ["submittedAt"]), ""), "—"))}</small>
+          <p>${escapeHtml(text(first(claim, ["summary"]), "未提供 claim 摘要"))}</p>
+        </div>
+        <dl class="local-task-facts">
+          <div><dt>Reviewer</dt><dd>${escapeHtml(text(first(assessment, ["reviewerRef"]), "—"))}</dd></div>
+          <div><dt>Assessment</dt><dd>${escapeHtml(text(first(assessment, ["id"]), "—"))}</dd></div>
+          <div><dt>Candidate · git-commit</dt><dd>${escapeHtml(text(first(candidate, ["commit"]), "—"))}</dd></div>
+          <div><dt>Producer attempt</dt><dd>${escapeHtml(text(first(assessment, ["producerAttemptId"]), "未声明"))}</dd></div>
+          <div><dt>Independence</dt><dd>${escapeHtml(independenceStanding)} · ${escapeHtml(text(first(independence, ["sourceRef"]), "—"))}</dd></div>
+          <div><dt>Freshness</dt><dd>${escapeHtml(freshnessStanding)}${observedHead ? ` · HEAD ${escapeHtml(observedHead)}` : ""}${freshnessReason ? ` · ${escapeHtml(freshnessReason)}` : ""}</dd></div>
+          <div><dt>Reviewed</dt><dd>${escapeHtml(formatTime(text(first(assessment, ["reviewedAt"]), ""), "—"))}</dd></div>
+          <div><dt>Claim binding</dt><dd>${escapeHtml(text(first(assessment, ["resultClaimId"]), "—"))}</dd></div>
+        </dl>
+        <div class="task-review-findings">
+          <span>Findings</span>
+          <ul>${list(first(assessment, ["findings"], []))
+            .map((finding) => `<li>${escapeHtml(finding)}</li>`)
+            .join("")}</ul>
+        </div>
+        <details class="task-attempt-sources">
+          <summary>Review evidence refs</summary>
+          <ul class="task-result-refs">${list(first(assessment, ["evidenceRefs"], []))
+            .map((reference) => `<li>${escapeHtml(reference)}</li>`)
+            .join("")}</ul>
+        </details>
+      </article>
     `;
   }
 

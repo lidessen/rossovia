@@ -43,6 +43,7 @@ import {
   type WorkbenchTaskExecutionContextRef,
 } from "../src/task-execution-context";
 import {
+  correctPrincipalTask,
   createPrincipalTask,
   principalTasksPath,
   reviewPrincipalTaskResult,
@@ -2390,19 +2391,63 @@ describe("Workbench task UI actions", () => {
       expectedSourceRevision: 1,
       expectedRevision: 1,
     });
-    reviewPrincipalTaskResult(home, {
+    const historicalReview = reviewPrincipalTaskResult(home, {
       id: created.task.id,
-      assessmentId: "snapshot-review-1",
+      assessmentId: "snapshot-review-historical",
       resultClaimId: submitted.task.resultClaims[0]!.id,
       reviewerRef: "reviewer:snapshot-independent",
       independenceBasis: "independent-review-context",
       independenceSourceRef: "review-context:snapshot-independent",
+      candidateCommit: "d".repeat(40),
+      verdict: "passed",
+      findings: ["No blocking findings."],
+      evidenceRefs: ["review:historical"],
+      expectedSourceRevision: 2,
+      expectedRevision: 2,
+    });
+    const corrected = correctPrincipalTask(home, {
+      id: created.task.id,
+      statement: "Submit a corrected candidate.",
+      sourceRef: "principal:correction",
+      nextActor: "agent",
+      expectedSourceRevision: historicalReview.sourceRevision,
+      expectedRevision: historicalReview.task.revision,
+    });
+    const current = submitPrincipalTaskResult(home, {
+      id: created.task.id,
+      summary: "Corrected committed candidate is ready.",
+      evidenceRefs: ["git:corrected-candidate"],
+      sourceRef: "agent:producer",
+      expectedSourceRevision: corrected.sourceRevision,
+      expectedRevision: corrected.task.revision,
+    });
+    const currentReviewOne = reviewPrincipalTaskResult(home, {
+      id: created.task.id,
+      assessmentId: "snapshot-review-current-stale",
+      resultClaimId: current.task.resultClaims.at(-1)!.id,
+      reviewerRef: "reviewer:snapshot-one",
+      independenceBasis: "independent-review-context",
+      independenceSourceRef: "review-context:snapshot-one",
+      candidateCommit: "e".repeat(40),
+      verdict: "failed",
+      findings: ["Candidate predates the current Worktree HEAD."],
+      evidenceRefs: ["review:stale-head"],
+      expectedSourceRevision: current.sourceRevision,
+      expectedRevision: current.task.revision,
+    });
+    reviewPrincipalTaskResult(home, {
+      id: created.task.id,
+      assessmentId: "snapshot-review-current-exact",
+      resultClaimId: current.task.resultClaims.at(-1)!.id,
+      reviewerRef: "reviewer:snapshot-two",
+      independenceBasis: "independent-review-context",
+      independenceSourceRef: "review-context:snapshot-two",
       candidateCommit,
       verdict: "passed",
       findings: ["No blocking findings."],
       evidenceRefs: ["review:exact-head"],
-      expectedSourceRevision: 2,
-      expectedRevision: 2,
+      expectedSourceRevision: currentReviewOne.sourceRevision,
+      expectedRevision: currentReviewOne.task.revision,
     });
     const before = readFileSync(principalTasksPath(home));
 
@@ -2416,7 +2461,39 @@ describe("Workbench task UI actions", () => {
       standing: "available",
       independence: "independence-proven",
       freshness: { standing: "current", observedHead: candidateCommit },
-      assessment: { id: "snapshot-review-1", verdict: "passed" },
+      assessment: { id: "snapshot-review-current-exact", verdict: "passed" },
+    });
+    expect(taskItem.taskDetail.resultReviews).toHaveLength(3);
+    expect(taskItem.taskDetail.resultReviews.map(
+      (entry: { assessment: { id: string } }) => entry.assessment.id,
+    ).sort()).toEqual([
+      "snapshot-review-current-exact",
+      "snapshot-review-current-stale",
+      "snapshot-review-historical",
+    ]);
+    const projectedById = Object.fromEntries(taskItem.taskDetail.resultReviews.map((entry: {
+      assessment: { id: string };
+      claim: { latest: boolean; standing: string };
+      freshness: { standing: string };
+    }) => [entry.assessment.id, {
+      latest: entry.claim.latest,
+      claimStanding: entry.claim.standing,
+      freshness: entry.freshness.standing,
+    }]));
+    expect(projectedById["snapshot-review-historical"]).toEqual({
+      latest: false,
+      claimStanding: "superseded",
+      freshness: "stale",
+    });
+    expect(projectedById["snapshot-review-current-stale"]).toEqual({
+      latest: true,
+      claimStanding: "submitted",
+      freshness: "stale",
+    });
+    expect(projectedById["snapshot-review-current-exact"]).toEqual({
+      latest: true,
+      claimStanding: "submitted",
+      freshness: "current",
     });
     expect(readFileSync(principalTasksPath(home))).toEqual(before);
   });

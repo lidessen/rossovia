@@ -70,15 +70,20 @@ describe("Principal Workbench static asset contract", () => {
     );
 
     expect(html).toContain('id="task-result-producer"');
-    expect(html).toContain('id="task-result-review"');
+    expect(html).toContain('id="task-result-reviews"');
     expect(html).toContain("Producer 声明、Work Cell 机械证据与独立审查是不同证据层");
     expect(renderer).toContain("Producer result claim");
-    expect(renderer).toContain("Independent review");
+    expect(renderer).toContain('first(detail, ["resultReviews"], [])');
+    expect(renderer).toContain("Independent review history");
+    expect(renderer).toContain("Current claim review");
+    expect(renderer).toContain("Historical claim review");
+    expect(renderer).toContain("Owned by result claim");
     expect(renderer).toContain("Reviewer");
     expect(renderer).toContain("Candidate · git-commit");
     expect(renderer).toContain("Independence");
     expect(renderer).toContain("Freshness");
     expect(renderer).toContain("Findings");
     expect(renderer).toContain("Review evidence refs");
+    expect(renderer).not.toContain('first(detail, ["latestResultReview"]');
   });
 });

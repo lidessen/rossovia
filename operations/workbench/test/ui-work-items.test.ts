@@ -443,6 +443,147 @@ describe("Workbench work-item shell projection", () => {
     });
   });
 
+  test("projects every retained review in chronology with its owning current or historical claim", () => {
+    const observedHead = "c".repeat(40);
+    const staleHead = "d".repeat(40);
+    const review = (
+      id: string,
+      reviewedAt: string,
+      resultClaimId: string,
+      candidateCommit: string,
+    ) => ({
+      id,
+      reviewedAt,
+      resultClaimId,
+      reviewerRef: `reviewer:${id}`,
+      independence: {
+        basis: "independent-review-context" as const,
+        sourceRef: `review-context:${id}`,
+      },
+      candidate: { kind: "git-commit" as const, commit: candidateCommit },
+      verdict: "passed" as const,
+      findings: [`Finding for ${id}`],
+      evidenceRefs: [`review:${id}`],
+    });
+    const task = {
+      id: "task-review-history",
+      title: "Retain review history",
+      objective: "Keep each assessment attached to its result claim",
+      acceptance: ["Every retained assessment remains inspectable"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:review-history",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-ui",
+      },
+      lifecycle: "verifying" as const,
+      nextActor: "principal" as const,
+      revision: 7,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [{
+        id: "claim-historical",
+        submittedAt: "2026-08-12T18:00:00Z",
+        summary: "Earlier candidate.",
+        evidenceRefs: ["git:earlier"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "agent:producer-one",
+        standing: "superseded" as const,
+        reviews: [review(
+          "assessment-historical",
+          "2026-08-12T18:10:00Z",
+          "claim-historical",
+          staleHead,
+        )],
+        resolution: {
+          kind: "superseded" as const,
+          at: "2026-08-12T18:15:00Z",
+          reason: "correction" as const,
+        },
+      }, {
+        id: "claim-current",
+        submittedAt: "2026-08-12T18:20:00Z",
+        summary: "Corrected candidate.",
+        evidenceRefs: ["git:corrected"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "agent:producer-two",
+        standing: "submitted" as const,
+        reviews: [
+          review(
+            "assessment-current-later",
+            "2026-08-12T18:40:00Z",
+            "claim-current",
+            observedHead,
+          ),
+          review(
+            "assessment-current-earlier",
+            "2026-08-12T18:30:00Z",
+            "claim-current",
+            staleHead,
+          ),
+        ],
+        resolution: null,
+      }],
+      createdAt: "2026-08-12T17:00:00Z",
+      updatedAt: "2026-08-12T18:40:00Z",
+    };
+    const observed = {
+      ...snapshot,
+      projects: snapshot.projects.map((project) => ({
+        ...project,
+        worktrees: project.worktrees.map((worktree) =>
+          worktree.path === "/workspace/skills-ui"
+            ? { ...worktree, head: observedHead, dirty: false, gitBranch: null }
+            : worktree
+        ),
+      })),
+    };
+
+    const reviews = buildWorkItemProjection(observed as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 7,
+        tasks: [task],
+      },
+    }).items[0]!.taskDetail!.resultReviews;
+
+    expect(reviews.map((entry) => entry.assessment.id)).toEqual([
+      "assessment-historical",
+      "assessment-current-earlier",
+      "assessment-current-later",
+    ]);
+    expect(reviews.map((entry) => ({
+      assessment: entry.assessment.id,
+      claim: entry.claim.id,
+      standing: entry.claim.standing,
+      latest: entry.claim.latest,
+      freshness: entry.freshness.standing,
+    }))).toEqual([{
+      assessment: "assessment-historical",
+      claim: "claim-historical",
+      standing: "superseded",
+      latest: false,
+      freshness: "stale",
+    }, {
+      assessment: "assessment-current-earlier",
+      claim: "claim-current",
+      standing: "submitted",
+      latest: true,
+      freshness: "stale",
+    }, {
+      assessment: "assessment-current-later",
+      claim: "claim-current",
+      standing: "submitted",
+      latest: true,
+      freshness: "current",
+    }]);
+  });
+
   test("joins Mission context and its current carrier without upgrading Agent responsibility into task execution", () => {
     const launchTask = {
       id: "task-a",
