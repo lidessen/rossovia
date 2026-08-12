@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildProjectLensBundle } from "../scripts/project-lens-builder.js";
-import { validateProjectBundle, finalizeProjectBundle } from "../lib/project-evidence-bundle.js";
+import { validateProjectBundle, finalizeProjectBundle, PROJECT_BUILDER_REVISION } from "../lib/project-evidence-bundle.js";
 import { validateProjectBundleAgainstRepository } from "../scripts/project-lens-builder.js";
 import { digestValue } from "../lib/evidence-bundle.js";
 
@@ -52,6 +52,18 @@ describe("Project Lens real repository bundle", () => {
     expect(bundle.projection.steps.map((step) => step.layer)).toEqual(expect.arrayContaining(["source", "projection", "explanation"]));
     expect(bundle.projection.verificationCommands.map((entry) => entry.command)).toContain("bun run test");
     expect(bundle.projection.steps.find((step) => step.id === "arrival-path").evidence.sourceRefs).toEqual(["AGENTS.md", "src/app.js", "tests/app.test.js", "package.json"]);
+  });
+
+  test("observed entrypoints cite the observed-tree source without order arrows", async () => {
+    const bundle = await buildProjectLensBundle({ repo: fixtureRoot });
+    expect(bundle.builder.revision).toBe(PROJECT_BUILDER_REVISION);
+    const entry = bundle.projection.steps.find((step) => step.id === "observed-entry");
+    expect(entry.layer).toBe("projection");
+    expect(entry.evidence.sourceRefs).toEqual([`observed-tree@${bundle.subject.revision}`]);
+    expect(bundle.sources.map((source) => source.sourceRef)).toContain(`observed-tree@${bundle.subject.revision}`);
+    expect(entry.evidence.revision).toBe(bundle.subject.revision);
+    expect(entry.summary).not.toContain("→");
+    expect(entry.evidence.excerpt).not.toContain("→");
   });
 
   test("rejects a bundle whose retained source excerpt was changed", async () => {
