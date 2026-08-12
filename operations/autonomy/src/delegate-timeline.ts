@@ -526,7 +526,11 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
         artifactRefs: [...outcome.artifactRefs],
       });
       const evidence = evidenceFor(input.run, index);
-      const settlementDigest = digest({ outcome: storedOutcome, evidence });
+      const persistedSettlement = JSON.parse(JSON.stringify({
+        outcome: storedOutcome,
+        evidence,
+      })) as { outcome: typeof storedOutcome; evidence: typeof evidence };
+      const settlementDigest = digest(persistedSettlement);
       await this.mutateTimeline(child.timelineId, (events) => {
         requireOpened(events, input.checkpoint, child, prepared.data.checkpointDigest);
         requireDispatched(events, input.checkpoint, child, prepared.data.checkpointDigest);
@@ -545,8 +549,8 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
             checkpointDigest: prepared.data.checkpointDigest,
             callId: child.callId,
             settlementDigest,
-            outcome: storedOutcome,
-            evidence,
+            outcome: persistedSettlement.outcome,
+            evidence: persistedSettlement.evidence,
           },
         };
       });

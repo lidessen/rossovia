@@ -16,6 +16,7 @@ import {
   type PreparedDelegateBatch,
   type TaskShapeAdmission,
 } from "../src/delegate-admission";
+import { digest } from "../src/canonical-json";
 import {
   DelegateLoopSession,
   runDelegateLoop,
@@ -624,6 +625,50 @@ test("parent recovery remains pending until child timelines settle and rejects a
   );
   await expect(timeline.recordBatchSettlements({ checkpoint, run, outcomes: conflicting }))
     .rejects.toThrow("conflicting settlement");
+});
+
+test("child settlement digest matches the Cell record representation retained in JSONL", async () => {
+  const root = await fixture();
+  const prepared = preparedBatch(root, "persisted-digest");
+  const batchInput = { ...prepared.batchInput, contributions: prepared.batchInput.contributions.slice(0, 1) };
+  const checkpoint: DelegateBatchCheckpoint = {
+    ...prepared.checkpoint,
+    tasks: prepared.checkpoint.tasks.slice(0, 1),
+    invocations: prepared.checkpoint.invocations.slice(0, 1),
+    admission: admitPreparedDelegateBatch(batchInput),
+  };
+  const timeline = new FileMissionTimeline(join(root, ".mission-persisted-digest"));
+
+  await timeline.prepareBatch(checkpoint);
+  await timeline.markBatchDispatched(checkpoint);
+  const run = await runPreparedDelegateBatch(batchInput, () => new ResultDriver("completed"), { concurrency: 1 });
+  if (run.kind !== "direct") throw new Error("expected one direct delegated Cell");
+  const runWithUndefined = {
+    ...run,
+    record: { ...run.record, output: undefined },
+  };
+  const outcomes = [{
+    key: prepared.calls[0]!.key,
+    cellId: run.record.cellId,
+    status: "unverifiable",
+    runId: run.record.runId,
+    artifactRefs: run.record.artifacts.map((artifact) => artifact.path),
+  }];
+
+  await timeline.recordBatchSettlements({ checkpoint, run: runWithUndefined, outcomes });
+  expect((await timeline.resolveBatch(checkpoint))?.map((outcome) => outcome.key))
+    .toEqual(["contract"]);
+  const recovered = await timeline.recoverBatch(checkpoint.parentLoopId, checkpoint.id);
+  const childEvents = (await readFile(timeline.timelinePath(recovered.children[0]!.timelineId), "utf8"))
+    .trim().split("\n").map((line) => JSON.parse(line) as {
+      type: string;
+      data: { settlementDigest?: string; outcome?: unknown; evidence?: unknown };
+    });
+  const settlement = childEvents.find((event) => event.type === "delegate.child-settled");
+  expect(settlement?.data.settlementDigest).toBe(digest({
+    outcome: settlement?.data.outcome,
+    evidence: settlement?.data.evidence,
+  }));
 });
 
 test("checkpoint admission rejects a Task snapshot that is not bound to its delegate", async () => {
