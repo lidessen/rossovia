@@ -7,6 +7,7 @@ export * from "./task-tools";
 export * from "./run-cell";
 export * from "./ai-sdk-driver";
 export * from "./codex-cli-driver";
+export * from "./opencode-cli-driver";
 export * from "./codex-app-server-driver";
 export * from "./orchestration";
 export * from "./swarm";

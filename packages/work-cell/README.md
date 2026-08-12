@@ -31,6 +31,33 @@ non-empty, `write_file` only when write scope exists, and `run_command` only
 when commands are allow-listed. An unavailable capability is absent from the
 model-facing tool surface rather than present as a guaranteed failure.
 
+The ordinary `run` command keeps that AI SDK driver as its default. A caller may
+instead select the OpenCode CLI explicitly for an already-prepared coding Cell:
+
+```bash
+# Fresh session in the Cell workspace.
+bun src/cli.ts run path/to/cell.json \
+  --driver opencode-cli --model deepseek/deepseek-v4-flash --variant high
+
+# Caller-directed correction or continuation of one known OpenCode session.
+bun src/cli.ts run path/to/cell.json \
+  --driver opencode-cli --model deepseek/deepseek-v4-flash --variant high \
+  --session SESSION_ID
+```
+
+The caller must provide an isolated disposable worktree as `workspace.root`.
+OpenCode's native coding tools are not the preventive command allowlist exposed
+by `Workspace.runCommand`; the adapter does not emulate that boundary with a
+permission subsystem. OpenCode Cells must declare `workspace.writePaths: ["."]`
+so the host snapshots the full worktree, then settle the result through the
+retained diff, declared artifacts, named tests, and independent review.
+`--variant` and `--executable` remain explicit caller choices. `--task-tools`
+belongs only to the default AI SDK
+driver and is rejected with `--driver opencode-cli`; it does not alter
+OpenCode's native loop. To use the existing AI SDK path as a fallback, run the
+command again without `--driver`; the OpenCode adapter never falls back or
+retries automatically.
+
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
 API's construction, request translation, error meaning, and pricing; and
