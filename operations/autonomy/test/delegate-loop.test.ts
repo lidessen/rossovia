@@ -269,6 +269,73 @@ test("delegate_file keeps a large semantic task out of parent model messages and
   expect(JSON.stringify(secondPrompt)).toContain(resultFile!);
 });
 
+test("an exhausted delegate_file batch keeps retained history protocol-valid without starting another batch", async () => {
+  const root = await fixture();
+  const packet = call("file-contract", "inspect-contract", "source:contract");
+  await writeFile(join(root, "delegate-call.json"), `${JSON.stringify(packet)}\n`, "utf8");
+  let modelCalls = 0;
+  let prepared = 0;
+  let drivers = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        return response([fileToolCall("file-call", { inputFile: "delegate-call.json" })], "tool-calls");
+      }
+
+      const retainedToolParts = options.prompt.flatMap((message) => {
+        if ((message.role !== "assistant" && message.role !== "tool") || !Array.isArray(message.content)) return [];
+        return message.content.flatMap((part) =>
+          part.type === "tool-call" || part.type === "tool-result"
+            ? [{ role: message.role, type: part.type, toolName: part.toolName }]
+            : []
+        );
+      });
+      expect(retainedToolParts).toEqual(expect.arrayContaining([
+        { role: "assistant", type: "tool-call", toolName: "delegate_file" },
+        { role: "tool", type: "tool-result", toolName: "delegate_file" },
+      ]));
+      const retainedToolNames = retainedToolParts.map((part) => part.toolName);
+      expect(retainedToolNames).toContain("delegate_file");
+      const definedToolNames = new Set((options.tools ?? []).map((definition) => definition.name));
+      if (retainedToolNames.some((name) => !definedToolNames.has(name))) {
+        throw new Error(
+          "Invalid value for 'tool_call': no function named 'delegate_file' was specified in the 'tools' parameter.",
+        );
+      }
+      expect(definedToolNames).not.toContain("delegate");
+      expect(options.toolChoice).toEqual({ type: "auto" });
+      expect(JSON.stringify(options.prompt)).toContain("Delegation open: no");
+      return response([{ type: "text", text: "The file-backed contribution settled." }], "stop");
+    },
+  });
+
+  const result = await runDelegateLoop(loopInput(root), {
+    model,
+    delegateInputRoot: root,
+    initialDelegateTool: "delegate_file",
+    prepareContribution: async (delegateCall) => {
+      prepared += 1;
+      return execution(root, delegateCall, "reliable-primitive");
+    },
+    timeline: new FileMissionTimeline(join(root, ".mission-file-history")),
+    createDriver: () => {
+      drivers += 1;
+      return new ResultDriver("completed");
+    },
+    concurrency: 1,
+    maxModelSteps: 2,
+    maxDelegateBatches: 1,
+    maxCallsPerStep: 1,
+  });
+
+  expect(modelCalls).toBe(2);
+  expect(prepared).toBe(1);
+  expect(drivers).toBe(1);
+  expect(result.batches).toHaveLength(1);
+  expect(result.batches[0]?.outcomes[0]?.status).toBe("completed");
+});
+
 test("the parent reads one settled child semantic result without gaining filesystem access", async () => {
   const root = await fixture();
   const timeline = new FileMissionTimeline(join(root, ".mission-result-read"));
