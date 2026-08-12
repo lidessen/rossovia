@@ -15,6 +15,7 @@ import { CurrentVerifiedResultProjectionSchema } from "./projection";
 import type {
   AutonomyEffectVerificationSelector,
   PrincipalTask,
+  PrincipalTaskResultReview,
   PrincipalTasks,
 } from "../contracts";
 import {
@@ -317,6 +318,26 @@ export interface WorkItemProjection {
       | {
         readonly standing: "accepted-runtime-evidence-retained";
         readonly selector: AutonomyEffectVerificationSelector;
+      };
+    readonly latestResultReview:
+      | { readonly standing: "none" }
+      | {
+        readonly standing: "available";
+        readonly assessment: PrincipalTaskResultReview;
+        readonly independence: "independence-proven" | "independence-unproven";
+        readonly freshness:
+          | {
+            readonly standing: "current";
+            readonly observedHead: string;
+          }
+          | {
+            readonly standing: "stale";
+            readonly observedHead: string;
+          }
+          | {
+            readonly standing: "unavailable";
+            readonly reason: string;
+          };
       };
     readonly worktreeAuthority: "observation-only" | "unavailable";
     readonly worktreeStanding: "not-declared" | "observed" | "unavailable";
@@ -1332,6 +1353,41 @@ function principalTaskWorkItems(
                 standing: "runtime-evidence-unavailable" as const,
                 reason: "the retained runtime verification selector is no longer the exact current verified execution",
               };
+    const latestReview = latestClaim?.reviews.at(-1);
+    const latestResultReview = latestReview === undefined
+      ? { standing: "none" as const }
+      : {
+        standing: "available" as const,
+        assessment: latestReview,
+        independence: latestReview.independence.basis === "independent-review-context"
+          ? "independence-proven" as const
+          : "independence-unproven" as const,
+        freshness: task.binding.kind === "independent"
+          ? {
+            standing: "unavailable" as const,
+            reason: "independent task has no bound Worktree whose HEAD can be observed",
+          }
+          : observedTaskWorktree === undefined
+            ? {
+              standing: "unavailable" as const,
+              reason: worktreeReason
+                ?? "bound task Worktree is unavailable in the current snapshot",
+            }
+            : observedTaskWorktree.head === null
+              ? {
+                standing: "unavailable" as const,
+                reason: "bound task Worktree HEAD could not be read",
+              }
+              : observedTaskWorktree.head === latestReview.candidate.commit
+                ? {
+                  standing: "current" as const,
+                  observedHead: observedTaskWorktree.head,
+                }
+                : {
+                  standing: "stale" as const,
+                  observedHead: observedTaskWorktree.head,
+                },
+      };
     const sourceRefs = [
       observation.sourceRef,
       task.origin.sourceRef,
@@ -1344,6 +1400,10 @@ function principalTaskWorkItems(
       ...task.resultClaims.flatMap((claim) => [
         claim.sourceRef,
         ...claim.evidenceRefs,
+        ...claim.reviews.flatMap((review) => [
+          review.independence.sourceRef,
+          ...review.evidenceRefs,
+        ]),
         ...(claim.resolution?.kind === "accepted"
           ? [claim.resolution.sourceRef]
           : []),
@@ -1461,6 +1521,7 @@ function principalTaskWorkItems(
           verifiedResultCandidate,
         },
         latestResultVerification,
+        latestResultReview,
         worktreeAuthority: expectedWorktreePath === undefined || worktreeObserved
           ? "observation-only"
           : "unavailable",

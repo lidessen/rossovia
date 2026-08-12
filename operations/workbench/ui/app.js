@@ -1923,6 +1923,7 @@ export function restoredPrincipalLocusState(resolved) {
     $("#local-task-acceptance").innerHTML = task.acceptance
       .map((criterion) => `<li>${escapeHtml(criterion)}</li>`)
       .join("");
+    renderTaskResultEvaluation(detail, task);
 
     const currentTurnGuidance = first(
       first(executionContext, ["currentTurn"], {}),
@@ -1988,10 +1989,10 @@ export function restoredPrincipalLocusState(resolved) {
               ? "已接受结果 · 接受时运行时已验证"
               : "已接受结果 · Agent 声明未验证"
             : claim.standing === "superseded"
-              ? "已被后续要求取代"
+              ? "历史结果 · 已被后续要求取代"
               : runtimeVerified
-                ? "待接受结果 · 运行时已验证"
-                : "待接受结果 · Agent 声明未验证",
+                ? "当前结果 · 运行时已验证"
+                : "当前结果 · Agent 声明未验证",
           summary: claim.summary,
           source: [
             claim.sourceRef,
@@ -2014,7 +2015,7 @@ export function restoredPrincipalLocusState(resolved) {
             <small>${escapeHtml(entry.source)}</small>
           </article>
         `).join("")
-      : '<p class="empty-note">尚无纠正或结果声明。</p>';
+      : '<p class="empty-note">尚无上下文变更、纠正或结果。</p>';
     renderTaskAttempts(detail);
     const correctionDeliveryCandidate = first(
       executionContext,
@@ -2162,6 +2163,90 @@ export function restoredPrincipalLocusState(resolved) {
     renderTaskActionReceipt($("#local-task-action-result"), "mutation");
   }
 
+  function renderTaskResultEvaluation(detail, task) {
+    const claim = list(first(task, ["resultClaims"], [])).at(-1);
+    const producer = $("#task-result-producer");
+    if (claim === undefined) {
+      producer.innerHTML = `
+        <span>Producer result claim</span>
+        <p class="empty-note">尚无结果声明。</p>
+      `;
+    } else {
+      const evidence = first(claim, ["evidence"], {
+        kind: "agent-references-unverified",
+      });
+      const evidenceKind = text(
+        first(evidence, ["kind"]),
+        "agent-references-unverified",
+      );
+      producer.innerHTML = `
+        <header>
+          <span>Producer result claim</span>
+          <strong data-standing="${escapeHtml(text(first(claim, ["standing"]), "submitted"))}">${escapeHtml(text(first(claim, ["standing"]), "submitted"))}</strong>
+        </header>
+        <p>${escapeHtml(text(first(claim, ["summary"]), "未提供摘要"))}</p>
+        <dl class="local-task-facts">
+          <div><dt>Claim</dt><dd>${escapeHtml(text(first(claim, ["id"]), "—"))}</dd></div>
+          <div><dt>Evidence class</dt><dd>${escapeHtml(evidenceKind)}</dd></div>
+          <div><dt>Producer source</dt><dd>${escapeHtml(text(first(claim, ["sourceRef"]), "—"))}</dd></div>
+          <div><dt>Submitted</dt><dd>${escapeHtml(formatTime(text(first(claim, ["submittedAt"]), ""), "—"))}</dd></div>
+        </dl>
+        <ul class="task-result-refs">${list(first(claim, ["evidenceRefs"], []))
+          .map((reference) => `<li>${escapeHtml(reference)}</li>`)
+          .join("")}</ul>
+      `;
+    }
+
+    const projected = first(detail, ["latestResultReview"], { standing: "none" });
+    const review = $("#task-result-review");
+    if (first(projected, ["standing"]) !== "available") {
+      review.innerHTML = `
+        <span>Independent review</span>
+        <p class="empty-note">尚无结构化独立审查。</p>
+      `;
+      return;
+    }
+    const assessment = first(projected, ["assessment"], {});
+    const candidate = first(assessment, ["candidate"], {});
+    const independence = first(assessment, ["independence"], {});
+    const freshness = first(projected, ["freshness"], {});
+    const freshnessStanding = text(first(freshness, ["standing"]), "unavailable");
+    const independenceStanding = text(
+      first(projected, ["independence"]),
+      "independence-unproven",
+    );
+    const observedHead = text(first(freshness, ["observedHead"]), "");
+    const freshnessReason = text(first(freshness, ["reason"]), "");
+    review.innerHTML = `
+      <header>
+        <span>Independent review</span>
+        <strong data-verdict="${escapeHtml(text(first(assessment, ["verdict"]), "failed"))}">${escapeHtml(text(first(assessment, ["verdict"]), "failed"))}</strong>
+      </header>
+      <dl class="local-task-facts">
+        <div><dt>Reviewer</dt><dd>${escapeHtml(text(first(assessment, ["reviewerRef"]), "—"))}</dd></div>
+        <div><dt>Assessment</dt><dd>${escapeHtml(text(first(assessment, ["id"]), "—"))}</dd></div>
+        <div><dt>Candidate · git-commit</dt><dd>${escapeHtml(text(first(candidate, ["commit"]), "—"))}</dd></div>
+        <div><dt>Producer attempt</dt><dd>${escapeHtml(text(first(assessment, ["producerAttemptId"]), "未声明"))}</dd></div>
+        <div><dt>Independence</dt><dd>${escapeHtml(independenceStanding)} · ${escapeHtml(text(first(independence, ["sourceRef"]), "—"))}</dd></div>
+        <div><dt>Freshness</dt><dd>${escapeHtml(freshnessStanding)}${observedHead ? ` · HEAD ${escapeHtml(observedHead)}` : ""}${freshnessReason ? ` · ${escapeHtml(freshnessReason)}` : ""}</dd></div>
+        <div><dt>Reviewed</dt><dd>${escapeHtml(formatTime(text(first(assessment, ["reviewedAt"]), ""), "—"))}</dd></div>
+        <div><dt>Claim binding</dt><dd>${escapeHtml(text(first(assessment, ["resultClaimId"]), "—"))}</dd></div>
+      </dl>
+      <div class="task-review-findings">
+        <span>Findings</span>
+        <ul>${list(first(assessment, ["findings"], []))
+          .map((finding) => `<li>${escapeHtml(finding)}</li>`)
+          .join("")}</ul>
+      </div>
+      <details class="task-attempt-sources">
+        <summary>Review evidence refs</summary>
+        <ul class="task-result-refs">${list(first(assessment, ["evidenceRefs"], []))
+          .map((reference) => `<li>${escapeHtml(reference)}</li>`)
+          .join("")}</ul>
+      </details>
+    `;
+  }
+
   function renderTaskAttempts(detail) {
     const attempts = first(detail, ["attempts"]);
     const summary = $("#local-task-attempts-summary");
@@ -2199,7 +2284,7 @@ export function restoredPrincipalLocusState(resolved) {
   function renderTaskAttempt(attempt) {
     const statusCopy = {
       recorded: "recorded · 已记录",
-      started: "started · 运行中",
+      started: "started · 未见 settlement",
       "runner-failed": "runner-failed · Runner 失败",
       invalid: "invalid · 证据无效",
     };

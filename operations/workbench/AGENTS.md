@@ -190,6 +190,15 @@ Workbench home has a task source.
   Principal-attributed acceptance settles the Workbench task. Attribution is
   not identity authentication, and local settlement never implies Mission,
   product, integration, merge, or publication acceptance.
+- Append a structured independent assessment only with `task append-review`
+  against the exact current result-claim ID while the task is `verifying`.
+  Supply explicit independence basis/source identity and one full Git commit;
+  do not infer either from reviewer prose, names, models, sessions, or result
+  evidence references. The append is review evidence only: it preserves
+  lifecycle, next actor, result resolution, and Principal acceptance. Review
+  freshness is rebuilt by comparing that commit with the currently observed
+  bound Worktree HEAD; independent or unreadable Worktree context is
+  `unavailable`, never guessed.
 - Keep corrections on the same task. Recording a correction changes only the
   local task. Deliver it to an Agent only through the Workbench UI's explicit
   delivery action after the task's latest execution link resolves to one exact

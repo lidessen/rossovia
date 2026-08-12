@@ -151,6 +151,7 @@ function printUsage(): void {
   console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task rebind-worktree <id> --expected-worktree <path> --worktree <path> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task submit <id> --summary <text> --evidence-ref <reference>... --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task append-review <id> --assessment-id <id> --result-claim-id <id> [--producer-attempt-id <id>] --reviewer-ref <reference> --independence-basis <independent-review-context|unproven> --independence-source-ref <reference> --candidate-commit <40-hex> --verdict <passed|failed> --finding <text>... --evidence-ref <reference>... --expected-source-revision <n> --expected-revision <n>");
   console.log("  task accept <id> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task reopen <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
@@ -266,14 +267,81 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
       "--authorization-id",
       "--expected-worktree",
       "--worktree",
+      "--assessment-id",
+      "--result-claim-id",
+      "--producer-attempt-id",
+      "--reviewer-ref",
+      "--independence-basis",
+      "--independence-source-ref",
+      "--candidate-commit",
+      "--verdict",
     ]),
-    new Set(["--evidence-ref"]),
+    new Set(["--evidence-ref", "--finding"]),
   );
   const expectation = {
     id: parsed.positionals[0]!,
     expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
     expectedRevision: taskRevision(parsed, "--expected-revision", false),
   };
+  if (command === "append-review") {
+    const reviewed = parseTaskOptions(
+      raw.slice(1),
+      1,
+      new Set([
+        "--assessment-id",
+        "--result-claim-id",
+        "--producer-attempt-id",
+        "--reviewer-ref",
+        "--independence-basis",
+        "--independence-source-ref",
+        "--candidate-commit",
+        "--verdict",
+        "--expected-source-revision",
+        "--expected-revision",
+      ]),
+      new Set(["--finding", "--evidence-ref"]),
+    );
+    assertTaskOptions(reviewed, new Set([
+      "--assessment-id",
+      "--result-claim-id",
+      "--producer-attempt-id",
+      "--reviewer-ref",
+      "--independence-basis",
+      "--independence-source-ref",
+      "--candidate-commit",
+      "--verdict",
+      "--finding",
+      "--evidence-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    const independence = taskOption(reviewed, "--independence-basis");
+    if (independence !== "independent-review-context" && independence !== "unproven") {
+      throw new Error("--independence-basis must be independent-review-context or unproven");
+    }
+    const verdict = taskOption(reviewed, "--verdict");
+    if (verdict !== "passed" && verdict !== "failed") {
+      throw new Error("--verdict must be passed or failed");
+    }
+    return controlPlane.execute({
+      kind: "review",
+      arguments: {
+        ...expectation,
+        assessmentId: taskOption(reviewed, "--assessment-id"),
+        resultClaimId: taskOption(reviewed, "--result-claim-id"),
+        ...(reviewed.values.has("--producer-attempt-id")
+          ? { producerAttemptId: taskOption(reviewed, "--producer-attempt-id") }
+          : {}),
+        reviewerRef: taskOption(reviewed, "--reviewer-ref"),
+        independenceBasis: independence,
+        independenceSourceRef: taskOption(reviewed, "--independence-source-ref"),
+        candidateCommit: taskOption(reviewed, "--candidate-commit"),
+        verdict,
+        findings: taskOptions(reviewed, "--finding"),
+        evidenceRefs: taskOptions(reviewed, "--evidence-ref"),
+      },
+    });
+  }
   if (command === "assign") {
     assertTaskOptions(parsed, new Set([
       "--next-actor",

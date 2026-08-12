@@ -9,6 +9,7 @@ import {
   PrincipalTaskError,
   rebindPrincipalTaskWorktree,
   reopenPrincipalTask,
+  reviewPrincipalTaskResult,
   showPrincipalTask,
   submitPrincipalTaskResult,
   type TaskAcceptArguments,
@@ -19,6 +20,7 @@ import {
   type TaskMutationResult,
   type TaskRebindWorktreeArguments,
   type TaskReopenArguments,
+  type TaskReviewArguments,
   type TaskSubmitArguments,
 } from "./tasks";
 
@@ -29,6 +31,9 @@ export type LocalTaskControlErrorCode =
   | "task-not-found"
   | "task-drift"
   | "invalid-transition"
+  | "claim-mismatch"
+  | "invalid-candidate"
+  | "duplicate-review"
   | "source-unavailable";
 
 export class LocalTaskControlError extends Error {
@@ -48,6 +53,7 @@ export type LocalTaskCommand =
   | { readonly kind: "link-execution"; readonly arguments: TaskLinkExecutionArguments }
   | { readonly kind: "rebind-worktree"; readonly arguments: TaskRebindWorktreeArguments }
   | { readonly kind: "submit"; readonly arguments: TaskSubmitArguments }
+  | { readonly kind: "review"; readonly arguments: TaskReviewArguments }
   | { readonly kind: "accept"; readonly arguments: TaskAcceptArguments }
   | { readonly kind: "reopen"; readonly arguments: TaskReopenArguments };
 
@@ -69,6 +75,7 @@ interface LocalTaskControlDependencies {
   readonly linkExecution: typeof linkPrincipalTaskExecution;
   readonly rebindWorktree: typeof rebindPrincipalTaskWorktree;
   readonly submit: typeof submitPrincipalTaskResult;
+  readonly review: typeof reviewPrincipalTaskResult;
   readonly accept: typeof acceptPrincipalTaskResult;
   readonly reopen: typeof reopenPrincipalTask;
 }
@@ -82,6 +89,7 @@ const defaultDependencies: LocalTaskControlDependencies = {
   linkExecution: linkPrincipalTaskExecution,
   rebindWorktree: rebindPrincipalTaskWorktree,
   submit: submitPrincipalTaskResult,
+  review: reviewPrincipalTaskResult,
   accept: acceptPrincipalTaskResult,
   reopen: reopenPrincipalTask,
 };
@@ -135,6 +143,12 @@ export function createLocalTaskControlPlane(
         return executeTaskOperation(
           "invalid-transition",
           () => dependencies.submit(home, command.arguments),
+        );
+      }
+      if (command.kind === "review") {
+        return executeTaskOperation(
+          "invalid-transition",
+          () => dependencies.review(home, command.arguments),
         );
       }
       if (command.kind === "accept") {

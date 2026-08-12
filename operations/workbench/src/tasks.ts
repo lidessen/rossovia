@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import {
   PrincipalTaskCorrectionDeliverySchema,
   PrincipalTaskResultEvidenceSchema,
+  PrincipalTaskResultReviewSchema,
   PrincipalTasksSchema,
   type AutonomyEffectVerificationSelector,
   type PrincipalTask,
@@ -69,6 +70,19 @@ export interface TaskSubmitArguments extends TaskMutationExpectation {
   sourceRef: string;
 }
 
+export interface TaskReviewArguments extends TaskMutationExpectation {
+  assessmentId: string;
+  resultClaimId: string;
+  producerAttemptId?: string;
+  reviewerRef: string;
+  independenceBasis: "independent-review-context" | "unproven";
+  independenceSourceRef: string;
+  candidateCommit: string;
+  verdict: "passed" | "failed";
+  findings: string[];
+  evidenceRefs: string[];
+}
+
 export interface TaskAcceptArguments extends TaskMutationExpectation {
   sourceRef: string;
   runtimeVerificationSelector?: AutonomyEffectVerificationSelector;
@@ -115,6 +129,9 @@ export type PrincipalTaskErrorCode =
   | "task-not-found"
   | "task-drift"
   | "invalid-transition"
+  | "claim-mismatch"
+  | "invalid-candidate"
+  | "duplicate-review"
   | "source-unavailable";
 
 export class PrincipalTaskError extends Error {
@@ -240,10 +257,83 @@ export function submitPrincipalTaskResult(
       ),
       sourceRef: nonempty(arguments_.sourceRef, "task result source ref"),
       standing: "submitted",
+      reviews: [],
       resolution: null,
     });
     task.lifecycle = "verifying";
     task.nextActor = "principal";
+  });
+}
+
+export function reviewPrincipalTaskResult(
+  homeArgument: string | undefined,
+  arguments_: TaskReviewArguments,
+): TaskMutationResult {
+  return mutateTask(homeArgument, arguments_, (task, timestamp) => {
+    if (task.lifecycle !== "verifying") {
+      throw new PrincipalTaskError(
+        "invalid-transition",
+        `task ${task.id} is ${task.lifecycle}; only a verifying task's current submitted result may receive a review`,
+      );
+    }
+    const claim = submittedClaim(task);
+    if (claim === undefined) {
+      throw new PrincipalTaskError(
+        "invalid-transition",
+        `task ${task.id} has no submitted result claim to review`,
+      );
+    }
+    if (claim.id !== arguments_.resultClaimId) {
+      throw new PrincipalTaskError(
+        "claim-mismatch",
+        `task ${task.id} result claim ${arguments_.resultClaimId} is not the current submitted claim ${claim.id}`,
+      );
+    }
+    const candidateCommit = arguments_.candidateCommit;
+    if (!/^[0-9a-f]{40}$/u.test(candidateCommit)) {
+      throw new PrincipalTaskError(
+        "invalid-candidate",
+        `task ${task.id} review candidate must be a full 40-hex git commit: ${candidateCommit}`,
+      );
+    }
+    if (task.resultClaims.some((resultClaim) =>
+      resultClaim.reviews.some((review) =>
+        review.id.toLowerCase() === arguments_.assessmentId.trim().toLowerCase()
+      )
+    )) {
+      throw new PrincipalTaskError(
+        "duplicate-review",
+        `task ${task.id} already retains review assessment ${arguments_.assessmentId}`,
+      );
+    }
+    const review = PrincipalTaskResultReviewSchema.parse({
+      id: nonempty(arguments_.assessmentId, "review assessment id"),
+      reviewedAt: timestamp,
+      resultClaimId: claim.id,
+      ...(arguments_.producerAttemptId === undefined
+        ? {}
+        : {
+          producerAttemptId: nonempty(
+            arguments_.producerAttemptId,
+            "review producer attempt id",
+          ),
+        }),
+      reviewerRef: nonempty(arguments_.reviewerRef, "review reviewer ref"),
+      independence: {
+        basis: arguments_.independenceBasis,
+        sourceRef: nonempty(
+          arguments_.independenceSourceRef,
+          "review independence source ref",
+        ),
+      },
+      candidate: { kind: "git-commit", commit: candidateCommit },
+      verdict: arguments_.verdict,
+      findings: nonemptyList(arguments_.findings, "review findings"),
+      evidenceRefs: nonemptyList(arguments_.evidenceRefs, "review evidence refs"),
+    });
+    // A review is evidence on the already-submitted result. It never changes the
+    // claim standing/resolution, task lifecycle, or next actor.
+    claim.reviews.push(review);
   });
 }
 

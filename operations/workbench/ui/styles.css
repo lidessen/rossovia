@@ -3789,9 +3789,89 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .local-task-requirements,
-.local-task-history {
+.local-task-history,
+.local-task-result-evaluation {
   border-bottom: 1px solid var(--line);
   padding: 0.9rem 0;
+}
+
+.local-task-result-evaluation {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.task-result-layer {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+}
+
+.task-result-producer {
+  background: var(--paper-deep);
+}
+
+.task-result-review {
+  background: color-mix(in srgb, var(--paper-deep) 88%, #dce8df);
+  border-left-color: var(--green);
+}
+
+.task-result-layer > header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+}
+
+.task-result-layer > span,
+.task-result-layer > header span,
+.task-review-findings > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.task-result-layer > header strong {
+  color: var(--ochre);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+}
+
+.task-result-review > header strong[data-verdict="passed"] {
+  color: var(--green);
+}
+
+.task-result-review > header strong[data-verdict="failed"] {
+  color: var(--red);
+}
+
+.task-result-layer > p {
+  font-size: 0.7rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.task-result-refs,
+.task-review-findings ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  padding-left: 1rem;
+}
+
+.task-result-refs {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+}
+
+.task-review-findings li {
+  font-size: 0.67rem;
+  line-height: 1.45;
 }
 
 .local-task-requirements p,

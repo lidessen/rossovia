@@ -42,7 +42,12 @@ import {
   workbenchTaskExecutionContextRef,
   type WorkbenchTaskExecutionContextRef,
 } from "../src/task-execution-context";
-import { principalTasksPath } from "../src/tasks";
+import {
+  createPrincipalTask,
+  principalTasksPath,
+  reviewPrincipalTaskResult,
+  submitPrincipalTaskResult,
+} from "../src/tasks";
 import {
   runPrincipalTask,
   type TaskRunRequest,
@@ -2356,6 +2361,64 @@ describe("Workbench task UI actions", () => {
     expect(refreshedAttempt).not.toHaveProperty("workspaceDiff");
     expect(refreshedAttempt).not.toHaveProperty("verification");
     expect(readFileSync(finalPath)).toEqual(invalidFinalBytes);
+  });
+
+  test("derives structured review freshness during GET without mutating Task source bytes", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    registerProject(home, {
+      path: project,
+      id: "repository:review-snapshot-fixture",
+      aliases: ["review-snapshot"],
+    });
+    const candidateCommit = git(project, "rev-parse", "HEAD");
+    const created = createPrincipalTask(home, {
+      title: "Project one structured review",
+      objective: "Keep GET byte-pure while deriving candidate freshness",
+      acceptance: ["The observed bound Worktree HEAD determines freshness"],
+      nextActor: "agent",
+      sourceRef: "test:review-snapshot",
+      expectedSourceRevision: 0,
+      project: "review-snapshot",
+      worktree: project,
+    });
+    const submitted = submitPrincipalTaskResult(home, {
+      id: created.task.id,
+      summary: "Committed candidate is ready.",
+      evidenceRefs: ["git:candidate"],
+      sourceRef: "agent:producer",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    reviewPrincipalTaskResult(home, {
+      id: created.task.id,
+      assessmentId: "snapshot-review-1",
+      resultClaimId: submitted.task.resultClaims[0]!.id,
+      reviewerRef: "reviewer:snapshot-independent",
+      independenceBasis: "independent-review-context",
+      independenceSourceRef: "review-context:snapshot-independent",
+      candidateCommit,
+      verdict: "passed",
+      findings: ["No blocking findings."],
+      evidenceRefs: ["review:exact-head"],
+      expectedSourceRevision: 2,
+      expectedRevision: 2,
+    });
+    const before = readFileSync(principalTasksPath(home));
+
+    const response = await handler(new Request(`${origin}/api/snapshot`));
+    expect(response.status).toBe(200);
+    const snapshot = await response.json();
+    const taskItem = snapshot.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${created.task.id}`,
+    );
+    expect(taskItem.taskDetail.latestResultReview).toMatchObject({
+      standing: "available",
+      independence: "independence-proven",
+      freshness: { standing: "current", observedHead: candidateCommit },
+      assessment: { id: "snapshot-review-1", verdict: "passed" },
+    });
+    expect(readFileSync(principalTasksPath(home))).toEqual(before);
   });
 
   test("distinguishes an available empty attempt source from an unavailable source", async () => {

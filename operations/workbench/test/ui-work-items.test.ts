@@ -323,6 +323,126 @@ describe("Workbench work-item shell projection", () => {
     expect(item?.taskDetail?.task).toBe(task);
   });
 
+  test("derives review current, stale, and unavailable from the observed bound Worktree HEAD", () => {
+    const candidateCommit = "c".repeat(40);
+    const otherCommit = "d".repeat(40);
+    const task = {
+      id: "task-reviewed-result",
+      title: "Inspect one reviewed candidate",
+      objective: "Derive freshness without storing it",
+      acceptance: ["Freshness follows the bound Worktree HEAD"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:reviewed-result",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-ui",
+      },
+      lifecycle: "verifying" as const,
+      nextActor: "principal" as const,
+      revision: 3,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [{
+        id: "claim-reviewed-result",
+        submittedAt: "2026-08-12T18:00:00Z",
+        summary: "Candidate is ready.",
+        evidenceRefs: ["git:candidate"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "agent:producer",
+        standing: "submitted" as const,
+        reviews: [{
+          id: "assessment-current",
+          reviewedAt: "2026-08-12T18:05:00Z",
+          resultClaimId: "claim-reviewed-result",
+          producerAttemptId: "producer-attempt",
+          reviewerRef: "reviewer:independent",
+          independence: {
+            basis: "independent-review-context" as const,
+            sourceRef: "review-context:independent",
+          },
+          candidate: { kind: "git-commit" as const, commit: candidateCommit },
+          verdict: "passed" as const,
+          findings: ["No blocking findings."],
+          evidenceRefs: ["review:current-head"],
+        }],
+        resolution: null,
+      }],
+      createdAt: "2026-08-12T17:00:00Z",
+      updatedAt: "2026-08-12T18:05:00Z",
+    };
+    const withHead = (head: string | null, includeWorktree = true) => ({
+      ...snapshot,
+      projects: snapshot.projects.map((project) => ({
+        ...project,
+        worktrees: includeWorktree
+          ? project.worktrees.map((worktree) =>
+            worktree.path === "/workspace/skills-ui"
+              ? { ...worktree, head, dirty: false, gitBranch: null }
+              : worktree
+          )
+          : project.worktrees.filter((worktree) => worktree.path !== "/workspace/skills-ui"),
+      })),
+    });
+    const project = (head: string | null, includeWorktree = true) =>
+      buildWorkItemProjection(withHead(head, includeWorktree) as never, {
+        standing: "available",
+        sourceRef: "/home/state/tasks.json",
+        source: {
+          version: "rosso.principal-tasks.v1",
+          sourceRevision: 3,
+          tasks: [task],
+        },
+      }).items[0]!.taskDetail!.latestResultReview;
+
+    expect(project(candidateCommit)).toMatchObject({
+      standing: "available",
+      independence: "independence-proven",
+      freshness: { standing: "current", observedHead: candidateCommit },
+    });
+    expect(project(otherCommit)).toMatchObject({
+      standing: "available",
+      freshness: { standing: "stale", observedHead: otherCommit },
+    });
+    expect(project(null)).toMatchObject({
+      standing: "available",
+      freshness: { standing: "unavailable" },
+    });
+    expect(project(candidateCommit, false)).toMatchObject({
+      standing: "available",
+      freshness: { standing: "unavailable" },
+    });
+    const unprovenTask = {
+      ...task,
+      resultClaims: [{
+        ...task.resultClaims[0]!,
+        reviews: [{
+          ...task.resultClaims[0]!.reviews[0]!,
+          reviewerRef: "reviewer:name-does-not-prove-independence",
+          independence: {
+            basis: "unproven" as const,
+            sourceRef: "review-context:unproven",
+          },
+        }],
+      }],
+    };
+    const unproven = buildWorkItemProjection(withHead(candidateCommit) as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 3,
+        tasks: [unprovenTask],
+      },
+    }).items[0]!.taskDetail!.latestResultReview;
+    expect(unproven).toMatchObject({
+      standing: "available",
+      independence: "independence-unproven",
+    });
+  });
+
   test("joins Mission context and its current carrier without upgrading Agent responsibility into task execution", () => {
     const launchTask = {
       id: "task-a",

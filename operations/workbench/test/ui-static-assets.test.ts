@@ -50,8 +50,35 @@ describe("Principal Workbench static asset contract", () => {
     expect(attemptRenderer).toContain("尚无运行尝试");
     expect(attemptRenderer).toContain("运行尝试来源不可用");
     expect(attemptRenderer).toContain("Work Cell 验证（机械）");
+    expect(attemptRenderer).toContain("started · 未见 settlement");
+    expect(attemptRenderer).not.toContain("started · 运行中");
     expect(attemptRenderer).toContain("Stable source refs");
     expect(attemptRenderer).not.toContain('first(attempt, ["trace"]');
     expect(attemptRenderer).not.toContain("resultClaims");
+  });
+
+  test("separates producer claim, mechanical evidence, and independent review", async () => {
+    const html = await (
+      await handler(new Request("http://127.0.0.1:4317/"))
+    ).text();
+    const app = await (
+      await handler(new Request("http://127.0.0.1:4317/app.js"))
+    ).text();
+    const renderer = app.slice(
+      app.indexOf("function renderTaskResultEvaluation"),
+      app.indexOf("function renderTaskAttempts"),
+    );
+
+    expect(html).toContain('id="task-result-producer"');
+    expect(html).toContain('id="task-result-review"');
+    expect(html).toContain("Producer 声明、Work Cell 机械证据与独立审查是不同证据层");
+    expect(renderer).toContain("Producer result claim");
+    expect(renderer).toContain("Independent review");
+    expect(renderer).toContain("Reviewer");
+    expect(renderer).toContain("Candidate · git-commit");
+    expect(renderer).toContain("Independence");
+    expect(renderer).toContain("Freshness");
+    expect(renderer).toContain("Findings");
+    expect(renderer).toContain("Review evidence refs");
   });
 });

@@ -19,6 +19,7 @@ import {
   listPrincipalTasks,
   rebindPrincipalTaskWorktree,
   reopenPrincipalTask,
+  reviewPrincipalTaskResult,
   submitPrincipalTaskResult,
 } from "../src/tasks";
 
@@ -112,7 +113,181 @@ function taskCli(taskHome: string, ...arguments_: string[]): {
   };
 }
 
+function reviewArguments(overrides: {
+  id: string;
+  resultClaimId: string;
+  expectedSourceRevision: number;
+  expectedRevision: number;
+  [key: string]: unknown;
+}) {
+  return {
+    assessmentId: "review-assessment-negative",
+    producerAttemptId: "producer-attempt-negative",
+    reviewerRef: "reviewer:negative",
+    independenceBasis: "unproven" as const,
+    independenceSourceRef: "review-context:unproven",
+    candidateCommit: "a".repeat(40),
+    verdict: "failed" as const,
+    findings: ["One blocking finding."],
+    evidenceRefs: ["review:negative"],
+    ...overrides,
+  };
+}
+
 describe("Principal-created local task source", () => {
+  test("appends one structured review to the current unresolved result without accepting it", () => {
+    const taskHome = home();
+    const projectRoot = repository(resolve(taskHome, ".."));
+    registerProject(taskHome, {
+      path: projectRoot,
+      id: "repository:review-fixture",
+      aliases: ["review-fixture"],
+    });
+    const candidateCommit = git(projectRoot, "rev-parse", "HEAD");
+    const created = createPrincipalTask(taskHome, {
+      title: "Review one committed candidate",
+      objective: "Retain independent review separately from acceptance",
+      acceptance: ["The review remains bound to the submitted claim"],
+      nextActor: "agent",
+      sourceRef: "conversation:review-task",
+      expectedSourceRevision: 0,
+      project: "review-fixture",
+      worktree: projectRoot,
+    });
+    const submitted = submitPrincipalTaskResult(taskHome, {
+      id: created.task.id,
+      summary: "Committed candidate is ready for review.",
+      evidenceRefs: ["git:candidate"],
+      sourceRef: "agent:producer",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    const claimId = submitted.task.resultClaims[0]!.id;
+    const reviewed = reviewPrincipalTaskResult(taskHome, {
+      id: created.task.id,
+      assessmentId: "review-assessment-1",
+      resultClaimId: claimId,
+      producerAttemptId: "producer-attempt-1",
+      reviewerRef: "reviewer:independent-context-1",
+      independenceBasis: "independent-review-context",
+      independenceSourceRef: "review-context:independent-from-producer",
+      candidateCommit,
+      verdict: "passed",
+      findings: ["No merge-affecting findings."],
+      evidenceRefs: ["review:current-head", "test:focused"],
+      expectedSourceRevision: 2,
+      expectedRevision: 2,
+    });
+
+    expect(reviewed).toMatchObject({
+      sourceRevision: 3,
+      task: {
+        lifecycle: "verifying",
+        nextActor: "principal",
+        revision: 3,
+        resultClaims: [{
+          id: claimId,
+          standing: "submitted",
+          resolution: null,
+          reviews: [{
+            id: "review-assessment-1",
+            resultClaimId: claimId,
+            producerAttemptId: "producer-attempt-1",
+            reviewerRef: "reviewer:independent-context-1",
+            independence: {
+              basis: "independent-review-context",
+              sourceRef: "review-context:independent-from-producer",
+            },
+            candidate: { kind: "git-commit", commit: candidateCommit },
+            verdict: "passed",
+            findings: ["No merge-affecting findings."],
+            evidenceRefs: ["review:current-head", "test:focused"],
+          }],
+        }],
+      },
+    });
+  });
+
+  test("rejects review drift, wrong claim/state, duplicate identity, and invalid candidate without partial write", () => {
+    const taskHome = home();
+    const created = createPrincipalTask(taskHome, {
+      title: "Fail closed review append",
+      objective: "Reject invalid review mutations atomically",
+      acceptance: ["Invalid writes leave source bytes unchanged"],
+      nextActor: "agent",
+      sourceRef: "conversation:review-negative",
+      expectedSourceRevision: 0,
+    });
+    expect(() => reviewPrincipalTaskResult(taskHome, reviewArguments({
+      id: created.task.id,
+      resultClaimId: "missing-claim",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }))).toThrow("only a verifying task");
+    const submitted = submitPrincipalTaskResult(taskHome, {
+      id: created.task.id,
+      summary: "Candidate claim",
+      evidenceRefs: ["git:candidate"],
+      sourceRef: "agent:producer",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    const path = join(taskHome, "state", "tasks.json");
+    const claimId = submitted.task.resultClaims[0]!.id;
+    const valid = reviewArguments({
+      id: created.task.id,
+      resultClaimId: claimId,
+      expectedSourceRevision: 2,
+      expectedRevision: 2,
+    });
+    const invalidCases = [
+      { ...valid, expectedSourceRevision: 1 },
+      { ...valid, expectedRevision: 1 },
+      { ...valid, resultClaimId: "wrong-claim" },
+      { ...valid, candidateCommit: "short" },
+    ];
+    for (const arguments_ of invalidCases) {
+      const before = readFileSync(path, "utf8");
+      expect(() => reviewPrincipalTaskResult(taskHome, arguments_)).toThrow();
+      expect(readFileSync(path, "utf8")).toBe(before);
+    }
+
+    const reviewed = reviewPrincipalTaskResult(taskHome, valid);
+    const beforeDuplicate = readFileSync(path, "utf8");
+    expect(() => reviewPrincipalTaskResult(taskHome, {
+      ...valid,
+      expectedSourceRevision: reviewed.sourceRevision,
+      expectedRevision: reviewed.task.revision,
+    })).toThrow("already retains review assessment");
+    expect(readFileSync(path, "utf8")).toBe(beforeDuplicate);
+  });
+
+  test("parses legacy result claims with no review array unchanged", () => {
+    const taskHome = home();
+    const created = createPrincipalTask(taskHome, {
+      title: "Legacy task",
+      objective: "Continue to parse old source bytes",
+      acceptance: ["Missing reviews defaults to an empty list"],
+      nextActor: "agent",
+      sourceRef: "conversation:legacy",
+      expectedSourceRevision: 0,
+    });
+    submitPrincipalTaskResult(taskHome, {
+      id: created.task.id,
+      summary: "Legacy claim",
+      evidenceRefs: ["test:legacy"],
+      sourceRef: "agent:legacy",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    const path = join(taskHome, "state", "tasks.json");
+    const source = JSON.parse(readFileSync(path, "utf8"));
+    delete source.tasks[0].resultClaims[0].reviews;
+    writeFileSync(path, `${JSON.stringify(source, null, 2)}\n`);
+
+    expect(listPrincipalTasks(taskHome).tasks[0]!.resultClaims[0]!.reviews).toEqual([]);
+  });
+
   test("retains one task through assignment, correction, result claim, local acceptance, and reopen", () => {
     const taskHome = home();
     const created = createPrincipalTask(taskHome, {
@@ -665,7 +840,7 @@ describe("Principal-created local task source", () => {
       task: { id: taskId, revision: 1 },
     });
 
-    const steps: string[][] = [
+    const initialSteps: string[][] = [
       [
         "assign",
         taskId,
@@ -704,15 +879,63 @@ describe("Principal-created local task source", () => {
         "--expected-revision",
         "3",
       ],
+    ];
+    for (const step of initialSteps) {
+      const result = taskCli(taskHome, ...step);
+      expect(result.exitCode, result.stderr).toBe(0);
+    }
+    const submitted = JSON.parse(taskCli(taskHome, "show", taskId).stdout);
+    const claimId = submitted.task.resultClaims[0].id;
+    const review = taskCli(
+      taskHome,
+      "append-review",
+      taskId,
+      "--assessment-id",
+      "cli-review-1",
+      "--result-claim-id",
+      claimId,
+      "--producer-attempt-id",
+      "cli-producer-1",
+      "--reviewer-ref",
+      "reviewer:cli-independent",
+      "--independence-basis",
+      "independent-review-context",
+      "--independence-source-ref",
+      "review-context:cli-independent",
+      "--candidate-commit",
+      "b".repeat(40),
+      "--verdict",
+      "passed",
+      "--finding",
+      "No blocking findings.",
+      "--evidence-ref",
+      "test:cli-review",
+      "--expected-source-revision",
+      "4",
+      "--expected-revision",
+      "4",
+    );
+    expect(review.exitCode, review.stderr).toBe(0);
+    expect(JSON.parse(review.stdout)).toMatchObject({
+      sourceRevision: 5,
+      task: {
+        revision: 5,
+        lifecycle: "verifying",
+        nextActor: "principal",
+        resultClaims: [{ reviews: [{ id: "cli-review-1" }] }],
+      },
+    });
+
+    const finalSteps: string[][] = [
       [
         "accept",
         taskId,
         "--source-ref",
         "test:principal-local-accept",
         "--expected-source-revision",
-        "4",
+        "5",
         "--expected-revision",
-        "4",
+        "5",
       ],
       [
         "reopen",
@@ -724,12 +947,12 @@ describe("Principal-created local task source", () => {
         "--next-actor",
         "principal",
         "--expected-source-revision",
-        "5",
+        "6",
         "--expected-revision",
-        "5",
+        "6",
       ],
     ];
-    for (const step of steps) {
+    for (const step of finalSteps) {
       const result = taskCli(taskHome, ...step);
       expect(result.exitCode, result.stderr).toBe(0);
     }
@@ -738,12 +961,12 @@ describe("Principal-created local task source", () => {
     expect(listed.exitCode).toBe(0);
     expect(JSON.parse(listed.stdout)).toMatchObject({
       version: "rosso.principal-tasks.v1",
-      sourceRevision: 6,
+      sourceRevision: 7,
       tasks: [{
         id: taskId,
         lifecycle: "open",
         nextActor: "principal",
-        revision: 6,
+        revision: 7,
         resultClaims: [{
           standing: "accepted",
           resolution: {

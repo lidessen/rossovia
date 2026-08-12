@@ -185,6 +185,13 @@ task rebind-worktree <id> --expected-worktree <path> --worktree <path>
 task submit <id> --summary <text> --evidence-ref <reference>...
   --source-ref <reference>
   --expected-source-revision <n> --expected-revision <n>
+task append-review <id> --assessment-id <id> --result-claim-id <id>
+  [--producer-attempt-id <id>] --reviewer-ref <reference>
+  --independence-basis <independent-review-context|unproven>
+  --independence-source-ref <reference>
+  --candidate-commit <full-40-hex> --verdict <passed|failed>
+  --finding <text>... --evidence-ref <reference>...
+  --expected-source-revision <n> --expected-revision <n>
 task accept <id> --source-ref <reference>
   --expected-source-revision <n> --expected-revision <n>
 task reopen <id> --statement <text> --source-ref <reference>
@@ -214,9 +221,12 @@ settlement under its home state. Cell settlement is execution evidence only: it
 does not submit or accept the Task. A completed Task is ordinary viewable
 history and cannot run.
 
-This checkpoint is synchronous. It does not provide a background or live
-streaming projection of the running checkpoint, review display, automatic
-submission, or semantic acceptance, and it does not require Mission context.
+This checkpoint is synchronous. Its attempt view is non-streaming history, not
+live execution detection: a crash-retained attempt without a settlement remains
+visible as `started`, meaning only that an attempt record exists and no
+settlement was observed. It does not provide a background or live streaming
+projection, independent review display, automatic submission, or semantic
+acceptance, and it does not require Mission context.
 Session continuation is explicit per
 attempt: the caller supplies the retained session id, and the final record —
 not a copy made by the Workbench — remains the source for the observed session,
@@ -250,7 +260,9 @@ the latter keeps the stable `state/task-attempts` source reference and an
 attributable reason on that Task, and a single Task's failed attempts read does
 not fail the whole snapshot. Each attempt card keeps the `recorded`, `started`,
 `runner-failed`, and `invalid` statuses distinct, labels per-source evidence
-standing for the attempt, final record, and settlement, and shows observed
+standing for the attempt, final record, and settlement. `started` is explicitly
+historical missing-settlement evidence, never a claim that execution is still
+live. The detail shows observed
 session, cell status, usage, workspace diff, and verification only when the
 retained final record is `available` — an invalid or unavailable final record
 never projects stale usage, diff, verification, or session facts. The panel
@@ -401,6 +413,29 @@ result stays in verification and must be corrected or resubmitted. An
 unverified claim may still be explicitly accepted, but the UI and retained
 acceptance basis label that choice as `agent-claim`. Neither path expands the
 local acceptance boundary.
+
+`task append-review` is a separate evidence append for the current unresolved
+result claim while the Task is `verifying`. The caller supplies a stable
+assessment ID, exact result-claim ID, reviewer reference, optional producer
+attempt ID, explicit independence basis and its source identity, one full Git
+commit candidate, `passed` or `failed`, concise findings, and evidence
+references. Workbench does not infer independence from a reviewer name, model,
+session, or prose, and it does not interpret actor-provided result evidence as a
+review. Optimistic source and Task revisions, current-claim binding, unique
+assessment identity, and the full-commit candidate are checked before the
+atomic source replacement. A successful append changes only Task/source
+revisions and the claim's review evidence; it does not change lifecycle,
+responsibility, result resolution, or acceptance.
+
+The Task detail gives the producer claim, ordinary Work Cell mechanical
+evidence, and the latest structured independent review separate visual layers.
+The review layer shows reviewer, verdict, candidate, declared independence,
+findings, and evidence references. Candidate freshness is never retained in the
+Task source: each snapshot compares the review's full commit to the actual HEAD
+of the Task's currently bound observed Worktree. Exact equality is `current`, a
+different readable HEAD is `stale`, and a project-independent, missing, or
+unreadable bound Worktree is `unavailable`. None of these states accepts the
+Task or gives the reviewer authority to accept its own candidate.
 
 Runner state also distinguishes control-plane reachability from production.
 `anchor-pending` means no authorized intent anchor exists: the UI presents the
