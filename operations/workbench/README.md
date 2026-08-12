@@ -209,6 +209,21 @@ This checkpoint is synchronous. It does not provide background or live UI
 projection, session continuation, review display, automatic submission, or
 semantic acceptance, and it does not require Mission context.
 
+The ordinary OpenCode checkpoint snapshots the whole Worktree except
+reconstructible or generated directories: `.git`, `node_modules`, `dist`,
+`build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`.
+These exclusions bound evidence collection; they are not a reusable execution
+profile or permission policy.
+
+One atomic lease per canonical Worktree prevents overlapping `task run`
+writers. The lease starts immediately before the Work Cell runner and remains
+through final-record validation and settlement; ordinary failures release it in
+`finally`. A process crash can leave the lease under
+`state/task-run-leases/`. A later run fails closed and reports the exact lease
+path. After verifying the owning process is no longer active and inspecting the
+Worktree for unsettled effects, removing that exact file is the manual reopening
+action. There is no timeout, stale-lock inference, queue, or automatic recovery.
+
 Every mutation uses the latest returned source revision and, for an existing
 task, its task revision. This detects state that was already stale when the
 mutation read it. The local MVP does not support concurrent writers that both

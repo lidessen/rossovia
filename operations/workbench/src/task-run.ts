@@ -1,29 +1,43 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import type {
+  CellInput,
+  CellRunRecord,
+} from "../../../packages/work-cell/src/contracts";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import { showPrincipalTask } from "./tasks";
 import { requiredGit } from "./workspace";
 
-const CellStatusSchema = z.enum([
-  "passed",
-  "failed",
-  "verification_failed",
-  "protocol_error",
-  "capability_mismatch",
-  "cancelled",
-]);
+const ORDINARY_OPENCODE_EXCLUDES = [
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "target",
+  "coverage",
+  ".next",
+  "outputs",
+  ".work-cell",
+  ".reasonix",
+] as const;
+
+const requireFromHere = createRequire(import.meta.url);
 
 const WorkCellCliResultSchema = z.object({
   output: z.string().min(1),
   runId: z.string().min(1),
-  status: CellStatusSchema,
+  status: z.string().min(1),
 }).passthrough();
 
 export interface TaskRunArguments {
@@ -45,7 +59,7 @@ export interface TaskRunRequest {
 
 export interface TaskRunRunnerResult {
   runId: string;
-  status: z.infer<typeof CellStatusSchema>;
+  status: string;
 }
 
 export interface TaskRunRunner {
@@ -63,7 +77,7 @@ export interface TaskRunResult {
   attemptRef: string;
   settlementRef: string;
   workCellRunId: string;
-  cellStatus: z.infer<typeof CellStatusSchema>;
+  cellStatus: CellRunRecord["status"];
   semanticAcceptance: "not-evaluated";
 }
 
@@ -143,17 +157,14 @@ export function runPrincipalTask(
   const attemptRef = evidenceRef(home, attemptPath);
   const settlementRef = evidenceRef(home, settlementPath);
   const startedAt = new Date().toISOString();
-
-  mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
-  mkdirSync(attemptDirectory, { recursive: false });
-  writeImmutableJson(inputPath, {
+  const cellInput = {
     id: `workbench-task-${task.id}-attempt-${attemptId}`,
     intent: task.objective,
     workspace: {
       root: worktree,
       readPaths: ["."],
       writePaths: ["."],
-      excludePaths: [],
+      excludePaths: [...ORDINARY_OPENCODE_EXCLUDES],
       allowedCommands: [],
     },
     instructions: [
@@ -164,12 +175,12 @@ export function runPrincipalTask(
     context: [],
     capabilitiesRequired: [],
     acceptance: task.acceptance,
-    budget: {
-      maxSteps: 20,
-      maxDurationMs: 300_000,
-      maxCommandOutputBytes: 64_000,
-    },
-  });
+  };
+  const expectedCellInput = workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
+
+  mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
+  mkdirSync(attemptDirectory, { recursive: false });
+  writeImmutableJson(inputPath, cellInput);
   writeImmutableJson(attemptPath, {
     version: "rosso.task-run-attempt.v1",
     taskId: task.id,
@@ -186,7 +197,10 @@ export function runPrincipalTask(
   });
 
   let runnerResult: TaskRunRunnerResult;
+  let lease: TaskRunLease | undefined;
+  let finalRecord: CellRunRecord | undefined;
   try {
+    lease = acquireWorktreeLease(home, worktree, task.id, attemptId);
     runnerResult = runner.run({
       inputPath,
       finalRecordPath,
@@ -194,9 +208,12 @@ export function runPrincipalTask(
       model: arguments_.model,
       ...(arguments_.variant ? { variant: arguments_.variant } : {}),
     });
-    if (!existsSync(finalRecordPath)) {
-      throw new Error(`Work Cell runner did not retain its final record at ${finalRecordPath}`);
-    }
+    finalRecord = validateFinalRecord(
+      finalRecordPath,
+      expectedCellInput,
+      runnerResult,
+      arguments_.model,
+    );
     writeImmutableJson(settlementPath, {
       version: "rosso.task-run-settlement.v1",
       taskId: task.id,
@@ -205,8 +222,8 @@ export function runPrincipalTask(
       inputRef,
       finalRecordRef,
       status: "recorded",
-      workCellRunId: runnerResult.runId,
-      cellStatus: runnerResult.status,
+      workCellRunId: finalRecord.runId,
+      cellStatus: finalRecord.status,
       semanticAcceptance: "not-evaluated",
       settledAt: new Date().toISOString(),
     });
@@ -224,6 +241,8 @@ export function runPrincipalTask(
       settledAt: new Date().toISOString(),
     });
     throw error;
+  } finally {
+    if (lease !== undefined) releaseWorktreeLease(lease);
   }
 
   return {
@@ -236,10 +255,97 @@ export function runPrincipalTask(
     finalRecordRef,
     attemptRef,
     settlementRef,
-    workCellRunId: runnerResult.runId,
-    cellStatus: runnerResult.status,
+    workCellRunId: finalRecord.runId,
+    cellStatus: finalRecord.status,
     semanticAcceptance: "not-evaluated",
   };
+}
+
+interface TaskRunLease {
+  path: string;
+  content: string;
+}
+
+function acquireWorktreeLease(
+  home: string,
+  worktree: string,
+  taskId: string,
+  attemptId: string,
+): TaskRunLease {
+  const identity = createHash("sha256").update(worktree).digest("hex");
+  const directory = join(home, "state", "task-run-leases");
+  const path = join(directory, `${identity}.json`);
+  const content = `${JSON.stringify({
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree,
+    taskId,
+    attemptId,
+    pid: process.pid,
+    acquiredAt: new Date().toISOString(),
+  }, null, 2)}\n`;
+  mkdirSync(directory, { recursive: true });
+  try {
+    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
+  } catch (error: unknown) {
+    if (isAlreadyExists(error)) {
+      throw new Error(
+        `task Worktree already has an active task-run lease: ${worktree}; lease: ${path}`,
+      );
+    }
+    throw error;
+  }
+  return { path, content };
+}
+
+function releaseWorktreeLease(lease: TaskRunLease): void {
+  if (readFileSync(lease.path, "utf8") !== lease.content) {
+    throw new Error(`task-run lease ownership changed before release: ${lease.path}`);
+  }
+  rmSync(lease.path);
+}
+
+function validateFinalRecord(
+  path: string,
+  expectedInput: CellInput,
+  runnerResult: TaskRunRunnerResult,
+  model: string,
+): CellRunRecord {
+  let record: CellRunRecord;
+  try {
+    record = workCellContracts().CellRunRecordSchema.parse(
+      JSON.parse(readFileSync(path, "utf8")),
+    ) as CellRunRecord;
+  } catch (error: unknown) {
+    throw new Error(
+      `invalid Work Cell final record at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  if (record.cellId !== expectedInput.id) {
+    throw new Error(`Work Cell final record cell id does not match immutable input: ${record.cellId}`);
+  }
+  if (!isDeepStrictEqual(record.input, expectedInput)) {
+    throw new Error("Work Cell final record input does not match immutable CellInput");
+  }
+  if (record.runId !== runnerResult.runId || record.status !== runnerResult.status) {
+    throw new Error("Work Cell final record run id/status does not match runner settlement");
+  }
+  if (
+    record.driver.adapter !== "opencode-cli.v1"
+    || record.driver.provider !== model.split("/", 1)[0]
+    || record.driver.model !== model
+  ) {
+    throw new Error(`Work Cell final record driver does not match requested OpenCode model: ${model}`);
+  }
+  return record;
+}
+
+function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {
+  return requireFromHere("../../../packages/work-cell/src/contracts");
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
 function validatePolicy(arguments_: TaskRunArguments): void {

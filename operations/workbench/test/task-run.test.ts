@@ -9,6 +9,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import {
+  CellInputSchema,
+  CellRunRecordSchema,
+} from "../../../packages/work-cell/src/contracts";
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
 import {
@@ -27,6 +31,7 @@ import {
 const temporaryRoots: string[] = [];
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
+type ParsedCellRunRecord = ReturnType<typeof CellRunRecordSchema.parse>;
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -91,15 +96,65 @@ function agentTask(fixture_: Fixture) {
 class FakeRunner implements TaskRunRunner {
   readonly requests: TaskRunRequest[] = [];
 
+  constructor(
+    private readonly retain: (
+      record: ParsedCellRunRecord,
+      request: TaskRunRequest,
+    ) => unknown = (record) => record,
+  ) {}
+
   run(request: TaskRunRequest) {
     this.requests.push(request);
-    writeFileSync(request.finalRecordPath, `${JSON.stringify({
-      version: "work-cell.run.v4",
+    const result = {
       runId: `fake-run-${this.requests.length}`,
-      status: "passed",
-    })}\n`, { flag: "wx" });
-    return { runId: `fake-run-${this.requests.length}`, status: "passed" as const };
+      status: "passed" as const,
+    };
+    const record = validWorkCellRecord(request, result);
+    writeFileSync(
+      request.finalRecordPath,
+      `${JSON.stringify(this.retain(record, request), null, 2)}\n`,
+      { flag: "wx" },
+    );
+    return result;
   }
+}
+
+function validWorkCellRecord(
+  request: TaskRunRequest,
+  result: { runId: string; status: "passed" },
+): ParsedCellRunRecord {
+  const input = CellInputSchema.parse(JSON.parse(readFileSync(request.inputPath, "utf8")));
+  return CellRunRecordSchema.parse({
+    version: "work-cell.run.v4",
+    runId: result.runId,
+    cellId: input.id,
+    driver: {
+      adapter: "opencode-cli.v1",
+      provider: request.model.split("/", 1)[0],
+      model: request.model,
+    },
+    startedAt: "2026-08-12T00:00:00.000Z",
+    finishedAt: "2026-08-12T00:00:01.000Z",
+    durationMs: 1_000,
+    status: result.status,
+    input,
+    finalText: "Fake Work Cell settled.",
+    artifacts: [],
+    verification: {
+      passed: true,
+      terminal: { passed: true, required: [], called: [] },
+      artifacts: { passed: true, errors: [] },
+    },
+    workspaceDiff: { added: [], changed: [], removed: [] },
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+    usageByPhase: {
+      preparation: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+      execution: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+    },
+    executionObservation: {},
+    trace: [],
+    rawSteps: [],
+  });
 }
 
 describe("task run public boundary", () => {
@@ -146,8 +201,21 @@ describe("task run public boundary", () => {
       workspace: {
         root: realpathSync(current.worktree),
         writePaths: ["."],
+        excludePaths: [
+          ".git",
+          "node_modules",
+          "dist",
+          "build",
+          "target",
+          "coverage",
+          ".next",
+          "outputs",
+          ".work-cell",
+          ".reasonix",
+        ],
       },
     });
+    expect(input).not.toHaveProperty("budget");
     expect(corrected.task.binding).not.toHaveProperty("missionId");
     expect(first.attemptId).not.toBe(second.attemptId);
     expect(first.inputRef).not.toBe(second.inputRef);
@@ -171,6 +239,86 @@ describe("task run public boundary", () => {
       sourceRevision: 3,
       task: corrected.task,
     });
+  });
+
+  test("rejects malformed or inconsistent Work Cell final records and releases the lease", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const cases: Array<{
+      retain: ConstructorParameters<typeof FakeRunner>[0];
+      error: string;
+    }> = [
+      {
+        retain: () => ({ version: "work-cell.run.v4", runId: "fake-run-1", status: "passed" }),
+        error: "invalid Work Cell final record",
+      },
+      {
+        retain: (record) => ({ ...record, cellId: "another-cell" }),
+        error: "cell id does not match immutable input",
+      },
+      {
+        retain: (record) => ({ ...record, runId: "another-run" }),
+        error: "run id/status does not match runner settlement",
+      },
+      {
+        retain: (record) => ({ ...record, status: "failed" }),
+        error: "run id/status does not match runner settlement",
+      },
+      {
+        retain: (record) => ({
+          ...record,
+          driver: { ...record.driver, adapter: "another-adapter" },
+        }),
+        error: "driver does not match requested OpenCode model",
+      },
+      {
+        retain: (record) => ({
+          ...record,
+          driver: { ...record.driver, model: "opencode/another" },
+        }),
+        error: "driver does not match requested OpenCode model",
+      },
+    ];
+
+    for (const candidate of cases) {
+      expect(() => runPrincipalTask(current.home, {
+        id: created.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, new FakeRunner(candidate.retain))).toThrow(candidate.error);
+    }
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner())).not.toThrow();
+  });
+
+  test("rejects a concurrent run on the same Worktree and permits a later run after release", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const arguments_ = {
+      id: created.task.id,
+      driver: "opencode-cli" as const,
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    };
+    const overlapping = new FakeRunner((record) => {
+      expect(() => runPrincipalTask(
+        current.home,
+        arguments_,
+        new FakeRunner(),
+      )).toThrow("active task-run lease");
+      return record;
+    });
+
+    expect(() => runPrincipalTask(current.home, arguments_, overlapping)).not.toThrow();
+    expect(() => runPrincipalTask(current.home, arguments_, new FakeRunner())).not.toThrow();
   });
 
   test("requires explicit OpenCode driver and model at the CLI boundary", () => {

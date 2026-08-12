@@ -157,7 +157,10 @@ Workbench home has a task source.
   only when explicitly selected for this attempt. Mission context is not
   required. The command creates the Work Cell input and append-only attempt
   evidence inside the Workbench home, but its settlement neither submits nor
-  accepts the task. A settled task is viewable history and cannot run.
+  accepts the task. An atomic canonical-Worktree lease rejects overlapping
+  writers; a crash-retained lease requires explicit inspection and manual
+  removal rather than inferred stale-lock recovery. A settled task is viewable
+  history and cannot run.
 - `task submit` retains actor-supplied references as an unverified result claim;
   their wording or prefix never establishes verification. The Workbench UI may
   instead submit the current Autonomy-verified execution only when the task's
