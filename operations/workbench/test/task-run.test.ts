@@ -529,7 +529,7 @@ describe("task run public boundary", () => {
     expect(runner.requests).toHaveLength(2);
   });
 
-  test("requires the requested session to be the latest usable observation", () => {
+  test("requires the requested session to be the latest observation", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner(undefined, ["session-old", "session-latest"]);
@@ -556,12 +556,12 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner)).toThrow(
-      `task ${created.task.id} latest usable OpenCode session in the current Worktree is session-latest, not session-old`,
+      `task ${created.task.id} latest observed OpenCode session in the current Worktree is session-latest, not session-old`,
     );
     expect(runner.requests).toHaveLength(2);
   });
 
-  test("fails when the requested OpenCode session differs from the observed session", () => {
+  test("a failed mismatched observation terminates the previously passed session branch", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner(undefined, ["requested-session-1", "observed-session-9"]);
@@ -589,6 +589,17 @@ describe("task run public boundary", () => {
       readFileSync(join(attemptDirectory, attempt, "settlement.json"), "utf8"),
     ).status);
     expect(statuses).toContain("runner-failed");
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).toThrow(
+      `task ${created.task.id} latest observed OpenCode session in the current Worktree is observed-session-9, not requested-session-1`,
+    );
+    expect(runner.requests).toHaveLength(2);
   });
 
   test("rejects a session that was not observed in a prior attempt of the same active task", () => {

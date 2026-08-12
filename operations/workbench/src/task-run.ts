@@ -253,42 +253,43 @@ function validateRetainedTaskSession(
   requestedSession: string,
 ): Pick<CellRunRecord, "workspaceDiff"> {
   const attempts = showPrincipalTaskAttempts(home, taskId);
-  const usable: Array<{
+  const observed: Array<{
     session: string;
     requestedSession?: string;
-    workspaceDiff: CellRunRecord["workspaceDiff"];
+    workspaceDiff?: CellRunRecord["workspaceDiff"];
   }> = [];
   for (const attempt of attempts) {
     if (
-      attempt.status !== "recorded"
-      || attempt.cellStatus !== "passed"
-      || attempt.observedSession === undefined
-      || attempt.workspaceDiff === undefined
-      || Object.values(attempt.evidence).some((source) => source.standing !== "available")
+      attempt.observedSession === undefined
+      || attempt.evidence.finalRecord.standing !== "available"
     ) continue;
     try {
       const record = workCellContracts().CellRunRecordSchema.parse(
         JSON.parse(readFileSync(join(home, attempt.finalRecordRef), "utf8")),
       ) as CellRunRecord;
       if (realpathSync(record.input.workspace.root) !== worktree) continue;
-      usable.push({
+      const pathAnchor = attempt.status === "recorded"
+        && attempt.cellStatus === "passed"
+        && attempt.workspaceDiff !== undefined
+        && Object.values(attempt.evidence).every((source) => source.standing === "available");
+      observed.push({
         session: attempt.observedSession,
         ...(attempt.requestedSession !== undefined
           ? { requestedSession: attempt.requestedSession }
           : {}),
-        workspaceDiff: attempt.workspaceDiff,
+        ...(pathAnchor ? { workspaceDiff: attempt.workspaceDiff } : {}),
       });
     } catch {
-      // Only a valid recorded attempt and owner-backed final record can admit continuation.
+      // Only an attributable final record in the exact Worktree can affect session continuity.
     }
   }
-  const latest = usable.at(-1);
+  const latest = observed.at(-1);
   if (latest === undefined) {
     throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
   }
   if (latest.session !== requestedSession) {
     throw new Error(
-      `task ${taskId} latest usable OpenCode session in the current Worktree is ${latest.session}, not ${requestedSession}`,
+      `task ${taskId} latest observed OpenCode session in the current Worktree is ${latest.session}, not ${requestedSession}`,
     );
   }
   const cumulative = {
@@ -296,14 +297,23 @@ function validateRetainedTaskSession(
     changed: new Set<string>(),
     removed: new Set<string>(),
   };
-  for (let index = usable.length - 1; index >= 0; index -= 1) {
-    const attempt = usable[index]!;
+  let hasPathAnchor = false;
+  for (let index = observed.length - 1; index >= 0; index -= 1) {
+    const attempt = observed[index]!;
     if (attempt.session !== requestedSession) break;
-    for (const kind of ["added", "changed", "removed"] as const) {
-      for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
+    if (attempt.workspaceDiff !== undefined) {
+      hasPathAnchor = true;
+      for (const kind of ["added", "changed", "removed"] as const) {
+        for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
+      }
     }
     if (attempt.requestedSession === undefined) break;
     if (attempt.requestedSession !== requestedSession) break;
+  }
+  if (!hasPathAnchor) {
+    throw new Error(
+      `task ${taskId} has no usable recorded Work Cell attempt in the current Worktree session branch`,
+    );
   }
   return {
     workspaceDiff: {
