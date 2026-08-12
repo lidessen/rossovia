@@ -46,8 +46,25 @@ non-producing reviewer, use the
 [agent-delegation](skills/agent-delegation/SKILL.md) Skill and the active
 harness's native sub-agent capabilities. Actively inspect for those
 contributions rather than waiting for the human to enumerate them. Keep coupled
-judgment and shared mutable effects under one owner, reconstruct returned claims
-against authoritative sources, and retain Main-Agent ownership of the whole.
+judgment and shared mutable effects under one owner. The Main Agent acts as the
+session-level proxy for the Principal's stated direction: it retains whole-task
+direction, synthesis, exception handling, and the final judgment returned to
+the Principal, while bounded production work ordinarily belongs to delegated
+execution owners. Reconstruct their claims against authoritative sources; do
+not make the Main Agent the default production worker merely because it can
+perform the work itself. This proxy relation does not transfer the human
+Principal's approval, budget, acceptance, or merge authority.
+
+When practice improvement is part of the mandate, form it as a temporary,
+independently parallel shadow team beside production work. It asynchronously
+consumes evidence the work already produces—such as plans, traces, diffs,
+checks, reviews, and corrections—and may return source-linked observations of
+bad smells, explicit hypotheses, or a proposed ordinary improvement Task. It
+does not interrupt or veto production, participate in that work's acceptance,
+verification, or settlement, or amend a Skill, protocol, accepted design, or
+the Principle Sequence. Route an accepted improvement through the same ordinary
+task and authority path as any other work; do not make the shadow team a
+default preflight or give it its own queue, gate, schema, or task system.
 
 This is a direct Agent method from the repository entry. Do not initialize or
 route through Rossovia Workbench, Work Cell, Autonomy, or another task system
@@ -72,8 +89,12 @@ merge, load `design/operations/OPERATING-PROTOCOL.md` and preserve
 generic publishing tool must not replace it with a simpler body. Lead the PR
 description with the concrete problem, components and behavior changed,
 observable result, and intentional non-goals. Mission, authority, review, and
-checks support that account rather than replace it. Before recommending or
-performing a merge, require a named independent
+checks support that account rather than replace it. Delegate branch
+publication, PR operation, CI follow-through, late-review disposition,
+authorized merge execution, and worktree cleanup to an integration steward.
+The Main Agent retains the decision brief, authorization judgment, and
+exceptions rather than performing this mechanical sequence itself. Before
+recommending or performing a merge, require a named independent
 review record for the current head and present its compact packet through the
 Principal Decision Brief. Do not treat an empty or pending review surface as
 completed. Keep transient reply choices in the current conversation or human
