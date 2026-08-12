@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -20,6 +21,7 @@ import {
   acceptPrincipalTaskResult,
   correctPrincipalTask,
   createPrincipalTask,
+  rebindPrincipalTaskWorktree,
   showPrincipalTask,
   submitPrincipalTaskResult,
 } from "../src/tasks";
@@ -102,6 +104,7 @@ class FakeRunner implements TaskRunRunner {
       record: ParsedCellRunRecord,
       request: TaskRunRequest,
     ) => unknown = (record) => record,
+    private readonly observedSessions: string[] = [],
   ) {}
 
   run(request: TaskRunRequest) {
@@ -110,7 +113,10 @@ class FakeRunner implements TaskRunRunner {
       runId: `fake-run-${this.requests.length}`,
       status: "passed" as const,
     };
-    const record = validWorkCellRecord(request, result);
+    const observedSession = this.observedSessions[this.requests.length - 1]
+      ?? request.session
+      ?? `fresh-session-${this.requests.length}`;
+    const record = validWorkCellRecord(request, result, observedSession);
     writeFileSync(
       request.finalRecordPath,
       `${JSON.stringify(this.retain(record, request), null, 2)}\n`,
@@ -123,6 +129,7 @@ class FakeRunner implements TaskRunRunner {
 function validWorkCellRecord(
   request: TaskRunRequest,
   result: { runId: string; status: "passed" },
+  sessionId = "session-1",
 ): ParsedCellRunRecord {
   const input = CellInputSchema.parse(JSON.parse(readFileSync(request.inputPath, "utf8")));
   return CellRunRecordSchema.parse({
@@ -152,7 +159,7 @@ function validWorkCellRecord(
       preparation: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
       execution: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
     },
-    executionObservation: {},
+    executionObservation: { sessionId },
     trace: [],
     rawSteps: [],
   });
@@ -242,6 +249,118 @@ describe("task run public boundary", () => {
     });
   });
 
+  test("returns the observed OpenCode session and continues the same active task by session", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+
+    const fresh = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    expect(fresh.sessionId).toBe("fresh-session-1");
+
+    const resumed = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: fresh.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    expect(resumed.sessionId).toBe(fresh.sessionId);
+    expect(runner.requests[1]).toMatchObject({
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: fresh.sessionId,
+    });
+  });
+
+  test("fails when the requested OpenCode session differs from the observed session", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner(undefined, ["requested-session-1", "observed-session-9"]);
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    expect(first.sessionId).toBe("requested-session-1");
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: "requested-session-1",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).toThrow(
+      "requested OpenCode session does not match the observed session: requested requested-session-1, observed observed-session-9",
+    );
+    const attemptDirectory = join(current.home, "state", "task-attempts");
+    const attempts = readdirSync(attemptDirectory);
+    const statuses = attempts.map((attempt) => JSON.parse(
+      readFileSync(join(attemptDirectory, attempt, "settlement.json"), "utf8"),
+    ).status);
+    expect(statuses).toContain("runner-failed");
+  });
+
+  test("rejects a session that was not observed in a prior attempt of the same active task", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: "external-session",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).toThrow(
+      `task ${created.task.id} has no recorded Work Cell attempt in the current Worktree with OpenCode session external-session`,
+    );
+    expect(runner.requests).toHaveLength(0);
+  });
+
+  test("rejects a retained session from the same active task's previous Worktree", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const replacement = join(current.root, "replacement-worktree");
+    git(current.primary, "worktree", "add", "-b", "task/replacement", replacement);
+    const rebound = rebindPrincipalTaskWorktree(current.home, {
+      id: created.task.id,
+      expectedWorktreePath: realpathSync(current.worktree),
+      worktree: replacement,
+      sourceRef: "test:replace-task-run-worktree",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: rebound.sourceRevision,
+      expectedRevision: rebound.task.revision,
+    }, runner)).toThrow(
+      `task ${created.task.id} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${first.sessionId}`,
+    );
+    expect(runner.requests).toHaveLength(1);
+  });
+
   test("rejects malformed or inconsistent Work Cell final records and releases the lease", () => {
     const current = fixture();
     const created = agentTask(current);
@@ -278,6 +397,10 @@ describe("task run public boundary", () => {
           driver: { ...record.driver, model: "opencode/another" },
         }),
         error: "driver does not match requested OpenCode model",
+      },
+      {
+        retain: (record) => ({ ...record, executionObservation: {} }),
+        error: "did not retain the observed OpenCode session id",
       },
     ];
 
@@ -417,6 +540,10 @@ describe("task run public boundary", () => {
     const missingModel = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--expected-source-revision", "0", "--expected-revision", "1");
     expect(missingModel.exitCode).toBe(2);
     expect(missingModel.stderr).toContain("task command requires --model <value>");
+
+    const emptySession = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--session", "   ", "--expected-source-revision", "0", "--expected-revision", "1");
+    expect(emptySession.exitCode).toBe(2);
+    expect(emptySession.stderr).toContain("task run --session must be a non-empty string");
   });
 
   test("rejects dirty, nonexistent, unbound, and completed tasks before the runner", () => {

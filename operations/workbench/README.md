@@ -169,7 +169,7 @@ task create --title <text> --objective <text> --accept <criterion>...
 task list
 task show <id>
 task run <id> --driver opencode-cli --model <provider/model>
-  [--variant <variant>]
+  [--variant <variant>] [--session <id>]
   --expected-source-revision <n> --expected-revision <n>
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
@@ -200,14 +200,25 @@ rereads the exact Task revisions, lowers the objective, acceptance conditions,
 and all current corrections into an immutable attempt-specific Work Cell input,
 then invokes the existing OpenCode CLI driver. The caller must select
 `--driver opencode-cli` and `--model` for every attempt; `--variant` is optional
-per-run policy. The Workbench retains the input, final Work Cell record, and a
-small append-only settlement under its home state. Cell settlement is execution
-evidence only: it does not submit or accept the Task. A completed Task is
-ordinary viewable history and cannot run.
+per-run policy. To continue the same still-open task on the session retained by
+one of its recorded previous attempts in the current bound Worktree, pass that
+session id explicitly with `--session <id>`. Workbench reads the owner-backed
+Work Cell final record before forwarding the session to the Work Cell CLI; a
+session absent from this active Task's current-Worktree recorded attempts, or
+one that does not match the session observed in the returned final record,
+fails. Every run result reports the OpenCode session id actually observed in
+that attempt's final Work Cell record, whether or not a session was requested.
+The Workbench retains the input, final Work Cell record, and a small append-only
+settlement under its home state. Cell settlement is execution evidence only: it
+does not submit or accept the Task. A completed Task is ordinary viewable
+history and cannot run.
 
 This checkpoint is synchronous. It does not provide background or live UI
-projection, session continuation, review display, automatic submission, or
-semantic acceptance, and it does not require Mission context.
+projection, review display, automatic submission, or semantic acceptance, and
+it does not require Mission context. Session continuation is explicit per
+attempt: the caller supplies the retained session id, and the final record —
+not a copy made by the Workbench — remains the source for the observed session,
+model, status, usage, workspace diff, and verification.
 
 The ordinary OpenCode checkpoint considers `.git`, `node_modules`, `dist`,
 `build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`

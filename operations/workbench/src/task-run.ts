@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -40,6 +41,11 @@ const WorkCellCliResultSchema = z.object({
   status: z.string().min(1),
 }).passthrough();
 
+const RecordedTaskRunSettlementSchema = z.object({
+  taskId: z.string().min(1),
+  status: z.literal("recorded"),
+}).passthrough();
+
 export interface TaskRunArguments {
   id: string;
   expectedSourceRevision: number;
@@ -47,6 +53,8 @@ export interface TaskRunArguments {
   driver: "opencode-cli";
   model: string;
   variant?: string;
+  /** OpenCode session id retained by a previous attempt of the same active task. */
+  session?: string;
 }
 
 export interface TaskRunRequest {
@@ -55,6 +63,7 @@ export interface TaskRunRequest {
   driver: "opencode-cli";
   model: string;
   variant?: string;
+  session?: string;
 }
 
 export interface TaskRunRunnerResult {
@@ -83,6 +92,8 @@ export interface TaskRunResult {
   settlementRef: string;
   workCellRunId: string;
   cellStatus: CellRunRecord["status"];
+  /** Actual OpenCode session id observed in the Work Cell final record. */
+  sessionId: string;
   semanticAcceptance: "not-evaluated";
 }
 
@@ -99,6 +110,7 @@ export class WorkCellCliRunner implements TaskRunRunner {
       "--model",
       request.model,
       ...(request.variant ? ["--variant", request.variant] : []),
+      ...(request.session ? ["--session", request.session] : []),
     ], {
       cwd: repositoryRoot,
       stdout: "pipe",
@@ -158,6 +170,9 @@ export function runPrincipalTask(
   const lease = acquireWorktreeLease(worktree, task.id, attemptId);
   try {
     verifyCurrentCleanWorktree(home, task.binding.projectId, worktree);
+    if (arguments_.session) {
+      validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
+    }
     const attempt = createAttempt(
       home,
       task,
@@ -172,12 +187,14 @@ export function runPrincipalTask(
       driver: arguments_.driver,
       model: arguments_.model,
       ...(arguments_.variant ? { variant: arguments_.variant } : {}),
+      ...(arguments_.session ? { session: arguments_.session } : {}),
     });
     const finalRecord = validateFinalRecord(
       attempt.finalRecordPath,
       attempt.expectedCellInput,
       runnerResult,
       arguments_.model,
+      arguments_.session,
     );
     writeImmutableJson(attempt.settlementPath, {
       version: "rosso.task-run-settlement.v1",
@@ -204,6 +221,7 @@ export function runPrincipalTask(
       settlementRef: attempt.settlementRef,
       workCellRunId: finalRecord.runId,
       cellStatus: finalRecord.status,
+      sessionId: finalRecord.executionObservation.sessionId!,
       semanticAcceptance: "not-evaluated",
     };
   } catch (error: unknown) {
@@ -226,6 +244,40 @@ export function runPrincipalTask(
   } finally {
     releaseWorktreeLease(lease);
   }
+}
+
+function validateRetainedTaskSession(
+  home: string,
+  taskId: string,
+  worktree: string,
+  requestedSession: string,
+): void {
+  const attemptsRoot = join(home, "state", "task-attempts");
+  if (existsSync(attemptsRoot)) {
+    for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const evidence = attemptEvidence(home, entry.name);
+      if (!existsSync(evidence.settlementPath) || !existsSync(evidence.finalRecordPath)) continue;
+      try {
+        const settlement = RecordedTaskRunSettlementSchema.parse(
+          JSON.parse(readFileSync(evidence.settlementPath, "utf8")),
+        );
+        if (settlement.taskId !== taskId) continue;
+        const record = workCellContracts().CellRunRecordSchema.parse(
+          JSON.parse(readFileSync(evidence.finalRecordPath, "utf8")),
+        ) as CellRunRecord;
+        if (
+          realpathSync(record.input.workspace.root) === worktree
+          && record.executionObservation.sessionId === requestedSession
+        ) return;
+      } catch {
+        // Only a valid recorded settlement and owner-backed final record can admit continuation.
+      }
+    }
+  }
+  throw new Error(
+    `task ${taskId} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${requestedSession}`,
+  );
 }
 
 interface TaskRunLease {
@@ -315,6 +367,7 @@ function createAttempt(
     driver: arguments_.driver,
     model: arguments_.model,
     ...(arguments_.variant ? { variant: arguments_.variant } : {}),
+    ...(arguments_.session ? { session: arguments_.session } : {}),
     status: "started",
     startedAt: new Date().toISOString(),
   });
@@ -365,6 +418,7 @@ function validateFinalRecord(
   expectedInput: CellInput,
   runnerResult: TaskRunRunnerResult,
   model: string,
+  requestedSession?: string,
 ): CellRunRecord {
   let record: CellRunRecord;
   try {
@@ -393,6 +447,15 @@ function validateFinalRecord(
   ) {
     throw new Error(`Work Cell final record driver does not match requested OpenCode model: ${model}`);
   }
+  const observedSession = record.executionObservation.sessionId;
+  if (!observedSession) {
+    throw new Error("Work Cell final record did not retain the observed OpenCode session id");
+  }
+  if (requestedSession !== undefined && requestedSession !== observedSession) {
+    throw new Error(
+      `requested OpenCode session does not match the observed session: requested ${requestedSession}, observed ${observedSession}`,
+    );
+  }
   return record;
 }
 
@@ -413,6 +476,9 @@ function validatePolicy(arguments_: TaskRunArguments): void {
   }
   if (arguments_.variant !== undefined && !arguments_.variant.trim()) {
     throw new Error("task run --variant must be a non-empty string");
+  }
+  if (arguments_.session !== undefined && !arguments_.session.trim()) {
+    throw new Error("task run --session must be a non-empty string");
   }
   if (!Number.isSafeInteger(arguments_.expectedSourceRevision) || arguments_.expectedSourceRevision < 0) {
     throw new Error("--expected-source-revision must be a non-negative integer");
