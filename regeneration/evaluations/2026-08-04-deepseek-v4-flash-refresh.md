@@ -164,3 +164,50 @@ and opaque fingerprint retention, and a judge that passes both its synthetic
 control and a representative evidence-volume control before seeing held-out
 outputs. The accepted no-admission remains in force until one of those reopening
 observations produces new accepted evidence.
+
+## 2026-08-12 Workbench observation
+
+An ordinary supervised Workbench Task→Work Cell loop produced two
+whole-execution-profile observations the same day. They are scheduling and
+task-shape observations only. They are **not a matched Flash-versus-Pro
+comparison**, so no claim follows that Pro is weaker than Flash, that thinking
+level causes the difference, or any price conclusion.
+
+The Blog observation is a Flash `high` run on the bounded write task
+`a83768b1-1218-4527-ab9e-e6180448877c` (localize the agent-era-blog development
+preview to simplified-Chinese semantics), bound to the
+`agent-era-blog/chinese-first-preview` worktree. A fresh attempt
+(`3acf5aec-aaa1-4ce4-95b1-967d534c41cb`) settled in 74.7 s with session
+`ses_00848fab7ffeiyd0Hhg045Hij3`; an explicit same-session continuation
+(`673912d0-ebc8-4d67-8b15-0adccf7fdc2b`) settled in 44.8 s and completed a
+Principal correction delivered into that same observed session, retained in the
+final Work Cell record, verified and independently reviewed, and closed at
+commit `50caa7e5d53b75564f715ba96abe61cad86aedc8`. This is a bounded write
+completing with an in-session correction under the 300-second envelope.
+
+The Pro observation is the adapter-implementation Task
+`b7c3a59e-aec2-4fe2-b025-4f829dec39f4` (retain observed usage on a cancelled
+OpenCode attempt), bound to the `workbench-cancelled-usage` worktree. Three
+attempts — Pro `high` (`d21612a9-b181-4569-bda0-59e0cf181e74`), Pro `high`
+(`1a62e13f-5955-4132-8c17-c0f5f764c87f`), Pro `low`
+(`14b76c23-9009-4a63-9bac-4c6f2a534f29`) — each ran to the 300-second
+right-censoring boundary (300,725 / 300,738 / 300,736 ms), each reported a zero
+workspace diff, no retained session, and top-level usage of 0, and each failed
+settlement because the final record did not retain the observed session id.
+The failed adapter-only candidate (`1cfaaed8beb70f09de3eb4472b402a185da70711`)
+was fully reverted to the baseline (`5d67f067c57a47ee1f39d71336533ca8d645bb1f`),
+so the Task closed as **no-change**, accepted after an independent review. For
+the current profile and this adapter implementation form the 300-second
+envelope is `unsupported-escalate`: the implementation moved to a native worker
+and the DeepSeek attempts remain failure and budget evidence.
+
+Two boundaries are preserved. First, the three Pro cancellations, the failed
+Codex candidate, its revert, and the no-change closure are retained as
+evidence; none of them is a capability admission. Second, top-level
+`usage = 0` on a cancelled run does not mean the model never started — the
+timeout settlement discarded observed usage before it could be attributed, so
+that zero is an observation gap, not proof of non-execution. Flash's Blog run
+is a bounded write success, but it is a single accepted Task, not a held-out
+field; combined with the unmatched Pro timeouts it forms no reusable admission
+and changes neither the accepted 2026-08-05 no-admission nor provider
+preference.
