@@ -169,6 +169,15 @@ Workbench home has a task source.
   stale-lock inference or Task reopening. Git-tracked paths always remain in
   Work Cell evidence even when one of their path segments is usually generated. A
   settled task is viewable history and cannot run.
+- Run `task attempts <id>` to project the task's recorded attempts as a
+  read-only view sorted by start time. The projection reads, never copies or
+  rewrites, the existing attempt, final Work Cell record, and settlement files:
+  requested driver/model/variant/session come from the attempt record, observed
+  session/cell status/usage/workspace diff/verification come from the final
+  record, and settlement status comes from the settlement. It carries the stable
+  source references and exposes per-source `available`, `unavailable`, or
+  `invalid` standing rather than dropping attributable malformed evidence. It
+  never exposes the raw Work Cell trace and changes no task or attempt state.
 - `task submit` retains actor-supplied references as an unverified result claim;
   their wording or prefix never establishes verification. The Workbench UI may
   instead submit the current Autonomy-verified execution only when the task's
