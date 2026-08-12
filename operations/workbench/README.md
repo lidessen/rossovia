@@ -242,8 +242,10 @@ Session continuation is explicit per
 attempt: the caller supplies the retained session id, and the final record —
 not a copy made by the Workbench — remains the source for the observed session,
 model, status, usage, workspace diff, and verification. The read-only attempt
-projection described below appears only after the run settles; it is evidence
-history, not a live execution view.
+projection described below reads owner-backed history whenever requested.
+Complete observed and settlement facts appear only after the corresponding
+final record and settlement are retained; a crash-retained `started` entry may
+appear earlier and is not a live execution claim.
 
 `task attempts <id>` is a read-only view over that same append-only evidence.
 It projects every recorded attempt of the task, sorted by start time, without
