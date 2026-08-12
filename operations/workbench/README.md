@@ -214,14 +214,17 @@ session retained by its latest usable recorded attempt in the current bound
 Worktree with `--session <id>`. Workbench reads that owner-backed Work Cell
 final record before forwarding the session to the Work Cell CLI. The Worktree
 may remain dirty only when its current staged, unstaged, and non-ignored
-untracked path set is a subset of that record's `workspaceDiff` path union;
-ignored artifacts do not block continuation. This is a mechanical path-ownership
-check, not a content digest or proof that file contents still match the prior
-attempt. A session absent from this active Task's current-Worktree recorded
-attempts, a session older than the latest usable observation, an extra
-Git-visible path, or a session that does not match the returned final record
-fails. Every run result reports the OpenCode session id actually observed in
-that attempt's final Work Cell record, whether or not a session was requested.
+untracked path set is a subset of the cumulative `workspaceDiff` path union
+reconstructed from that session's continuous, owner-backed attempt history in
+the current Worktree; a fresh attempt or a different observed session starts a
+new history branch. Ignored artifacts do not block continuation. This is a
+mechanical path-ownership check, not a content digest or proof that file
+contents still match a prior attempt. A session absent from this active Task's
+current-Worktree recorded attempts, a session older than the latest usable
+observation, an extra Git-visible path, or a session that does not match the
+returned final record fails. Every run result reports the OpenCode session id
+actually observed in that attempt's final Work Cell record, whether or not a
+session was requested.
 The Workbench retains the input, final Work Cell record, and a small append-only
 settlement under its home state. Cell settlement is execution evidence only: it
 does not submit or accept the Task. A completed Task is ordinary viewable

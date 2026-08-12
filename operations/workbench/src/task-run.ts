@@ -253,11 +253,15 @@ function validateRetainedTaskSession(
   requestedSession: string,
 ): Pick<CellRunRecord, "workspaceDiff"> {
   const attempts = showPrincipalTaskAttempts(home, taskId);
-  let latest: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] } | undefined;
-  for (let index = attempts.length - 1; index >= 0; index -= 1) {
-    const attempt = attempts[index]!;
+  const usable: Array<{
+    session: string;
+    requestedSession?: string;
+    workspaceDiff: CellRunRecord["workspaceDiff"];
+  }> = [];
+  for (const attempt of attempts) {
     if (
       attempt.status !== "recorded"
+      || attempt.cellStatus !== "passed"
       || attempt.observedSession === undefined
       || attempt.workspaceDiff === undefined
       || Object.values(attempt.evidence).some((source) => source.standing !== "available")
@@ -267,12 +271,18 @@ function validateRetainedTaskSession(
         JSON.parse(readFileSync(join(home, attempt.finalRecordRef), "utf8")),
       ) as CellRunRecord;
       if (realpathSync(record.input.workspace.root) !== worktree) continue;
-      latest = { session: attempt.observedSession, workspaceDiff: attempt.workspaceDiff };
-      break;
+      usable.push({
+        session: attempt.observedSession,
+        ...(attempt.requestedSession !== undefined
+          ? { requestedSession: attempt.requestedSession }
+          : {}),
+        workspaceDiff: attempt.workspaceDiff,
+      });
     } catch {
       // Only a valid recorded attempt and owner-backed final record can admit continuation.
     }
   }
+  const latest = usable.at(-1);
   if (latest === undefined) {
     throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
   }
@@ -281,7 +291,27 @@ function validateRetainedTaskSession(
       `task ${taskId} latest usable OpenCode session in the current Worktree is ${latest.session}, not ${requestedSession}`,
     );
   }
-  return { workspaceDiff: latest.workspaceDiff };
+  const cumulative = {
+    added: new Set<string>(),
+    changed: new Set<string>(),
+    removed: new Set<string>(),
+  };
+  for (let index = usable.length - 1; index >= 0; index -= 1) {
+    const attempt = usable[index]!;
+    if (attempt.session !== requestedSession) break;
+    for (const kind of ["added", "changed", "removed"] as const) {
+      for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
+    }
+    if (attempt.requestedSession === undefined) break;
+    if (attempt.requestedSession !== requestedSession) break;
+  }
+  return {
+    workspaceDiff: {
+      added: [...cumulative.added].sort(),
+      changed: [...cumulative.changed].sort(),
+      removed: [...cumulative.removed].sort(),
+    },
+  };
 }
 
 function verifyContinuationDiff(
@@ -297,7 +327,7 @@ function verifyContinuationDiff(
   const extraPaths = [...currentPaths].filter((path) => !retainedPaths.has(path)).sort();
   if (extraPaths.length > 0) {
     throw new Error(
-      `task Worktree has Git-visible paths outside the latest retained workspace diff: ${extraPaths.join(", ")}`,
+      `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${extraPaths.join(", ")}`,
     );
   }
 }

@@ -315,6 +315,69 @@ describe("task run public boundary", () => {
     expect(runner.requests).toHaveLength(2);
   });
 
+  test("retains cumulative added, removed, and renamed paths across a later subset attempt", () => {
+    const current = fixture();
+    const firstPath = "app/blog/content.ts";
+    const untouchedPath = "app/blog/metadata.ts";
+    const removedPath = "legacy.txt";
+    const renamedPath = "docs/README.md";
+    writeFileSync(join(current.worktree, removedPath), "legacy\n");
+    git(current.worktree, "add", removedPath);
+    git(current.worktree, "commit", "-m", "add legacy fixture");
+    const created = agentTask(current);
+    const runner = new FakeRunner((record) => {
+      mkdirSync(join(current.worktree, "app", "blog"), { recursive: true });
+      if (runner.requests.length === 1) {
+        writeFileSync(join(current.worktree, firstPath), "export const content = 1;\n");
+        writeFileSync(join(current.worktree, untouchedPath), "export const metadata = 1;\n");
+        mkdirSync(join(current.worktree, "docs"), { recursive: true });
+        git(current.worktree, "mv", "README.md", renamedPath);
+        rmSync(join(current.worktree, removedPath));
+        return {
+          ...record,
+          workspaceDiff: {
+            added: [firstPath, untouchedPath, renamedPath],
+            changed: [],
+            removed: ["README.md", removedPath],
+          },
+        };
+      }
+      if (runner.requests.length === 2) {
+        writeFileSync(join(current.worktree, firstPath), "export const content = 2;\n");
+        return {
+          ...record,
+          workspaceDiff: { added: [], changed: [firstPath], removed: [] },
+        };
+      }
+      return record;
+    });
+    const first = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: first.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).not.toThrow();
+    expect(runner.requests).toHaveLength(3);
+  });
+
   test("preserves leading whitespace and embedded newlines in raw Git-visible paths", () => {
     for (const retainedPath of [" leading-space.ts", "line\nbreak.ts"]) {
       const current = fixture();
@@ -349,7 +412,59 @@ describe("task run public boundary", () => {
     }
   });
 
-  test("rejects extra tracked or untracked paths outside the latest retained workspace diff", () => {
+  test("does not inherit path ownership across a fresh-session discontinuity", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const priorPath = "prior-session.ts";
+    const currentPath = "current-session.ts";
+    const runner = new FakeRunner((record) => {
+      if (runner.requests.length === 1) {
+        writeFileSync(join(current.worktree, priorPath), "export const prior = true;\n");
+        return {
+          ...record,
+          workspaceDiff: { added: [priorPath], changed: [], removed: [] },
+        };
+      }
+      if (runner.requests.length === 2) {
+        writeFileSync(join(current.worktree, currentPath), "export const current = true;\n");
+        return {
+          ...record,
+          workspaceDiff: { added: [currentPath], changed: [], removed: [] },
+        };
+      }
+      return record;
+    }, ["session-prior", "session-current"]);
+    runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    rmSync(join(current.worktree, priorPath));
+    const currentSession = runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    writeFileSync(join(current.worktree, priorPath), "unowned in current session\n");
+
+    expect(() => runPrincipalTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: currentSession.sessionId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).toThrow(
+      `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${priorPath}`,
+    );
+    expect(runner.requests).toHaveLength(2);
+  });
+
+  test("rejects extra tracked or untracked paths outside retained same-session history", () => {
     for (const extra of ["README.md", "notes/unowned.md"]) {
       const current = fixture();
       const created = agentTask(current);
@@ -380,7 +495,7 @@ describe("task run public boundary", () => {
         expectedSourceRevision: 1,
         expectedRevision: 1,
       }, runner)).toThrow(
-        `task Worktree has Git-visible paths outside the latest retained workspace diff: ${extra}`,
+        `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${extra}`,
       );
       expect(runner.requests).toHaveLength(1);
     }
