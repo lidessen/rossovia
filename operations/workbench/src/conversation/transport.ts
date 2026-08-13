@@ -18,6 +18,8 @@ import { FileConversationJournal } from "./journal";
  * server frames are provisional or diagnostic and are never replayed.
  */
 export const ConversationSocketPathPrefix = "/api/conversations/" as const;
+/** Matches the existing Workbench HTTP request-body limit. */
+export const CONVERSATION_SOCKET_MAX_MESSAGE_BYTES = 64 * 1024;
 
 export const ClientMessageSubmitFrameSchema = z.object({
   type: z.literal("message.submit"),
@@ -83,6 +85,7 @@ export type ServerProjectionChangedFrame = z.infer<typeof ServerProjectionChange
 
 export const ProtocolErrorCodeSchema = z.enum([
   "invalid-frame",
+  "frame-too-large",
   "conflict",
   "unsupported-frame",
   "journal-error",
@@ -148,8 +151,9 @@ export interface ConversationSocketRuntimeOptions {
  * socket to live events; events appended during replay are buffered and
  * flushed without duplication. Only `journal.event` advances the cursor.
  * The fake echo turn receipts a message, records a started and settled turn,
- * and streams the payload back as provisional `response.delta` text; it owns
- * no model, canonical action, interruption, or projection surface.
+ * streams the payload back as provisional `response.delta` text, then retains
+ * the complete settled echo for reconnect; it owns no model, canonical action,
+ * interruption, or projection surface.
  */
 export class ConversationSocketRuntime {
   readonly journal: FileConversationJournal;
@@ -267,6 +271,16 @@ export class ConversationSocketRuntime {
   private onMessage(ws: Bun.ServerWebSocket<ConversationSocketData>, message: string | Buffer<ArrayBuffer>): void {
     const entry = this.sockets.get(ws);
     if (entry === undefined) return;
+    const messageBytes = typeof message === "string"
+      ? Buffer.byteLength(message, "utf8")
+      : message.byteLength;
+    if (messageBytes > CONVERSATION_SOCKET_MAX_MESSAGE_BYTES) {
+      this.send(entry, protocolErrorFrame(
+        "frame-too-large",
+        `client frame exceeds the ${CONVERSATION_SOCKET_MAX_MESSAGE_BYTES} byte limit`,
+      ));
+      return;
+    }
     let frame: ClientFrame;
     try {
       const parsed: unknown = typeof message === "string" ? JSON.parse(message) : null;
@@ -316,7 +330,11 @@ export class ConversationSocketRuntime {
         await Bun.sleep(this.deltaDelayMs);
         this.broadcast(entry.conversationId, responseDeltaFrame({ turnId, messageId, text }));
       }
-      const settled = await this.journal.settleTurn(entry.conversationId, { turnId, messageId });
+      const settled = await this.journal.settleTurn(entry.conversationId, {
+        turnId,
+        messageId,
+        response: frame.payload,
+      });
       this.broadcast(entry.conversationId, journalEventFrame(settled));
     } catch (error: unknown) {
       if (error instanceof ConversationConflictError) {

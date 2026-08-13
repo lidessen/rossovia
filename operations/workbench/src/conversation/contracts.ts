@@ -75,7 +75,8 @@ export type SourceRevisionSelector = z.infer<typeof SourceRevisionSelectorSchema
 /**
  * Optional metadata the provider actually reported for a settled turn.
  * Evidence only: identity and fingerprint, plus sanitized numeric usage. No
- * raw provider text, reasoning, content, or trace is retained here.
+ * raw provider text, reasoning, or trace is retained here. The coordinator's
+ * complete settled response is retained separately on the turn settlement.
  */
 export const ObservedProviderEvidenceSchema = z.object({
   provider: z.string().min(1).optional(),
@@ -139,9 +140,19 @@ export type ActionUncertainDraft = z.infer<typeof ActionUncertainDraftSchema>;
 export const TurnSettledDraftSchema = z.object({
   turnId: TurnIdSchema,
   messageId: MessageIdSchema,
+  response: z.string(),
   observedEvidence: ObservedProviderEvidenceSchema.optional(),
 }).strict();
 export type TurnSettledDraft = z.infer<typeof TurnSettledDraftSchema>;
+
+/**
+ * Stored v1 turn settlements may predate durable response retention. New
+ * appends require `response`, while readers preserve those additive-field
+ * predecessors without rewriting the journal.
+ */
+const StoredTurnSettledDataSchema = TurnSettledDraftSchema.extend({
+  response: z.string().optional(),
+}).strict();
 
 export const TurnFailedDraftSchema = z.object({
   turnId: TurnIdSchema,
@@ -244,7 +255,7 @@ export const ConversationEventSchema = z.discriminatedUnion("type", [
     sequence: z.number().int().nonnegative(),
     at: z.string().datetime({ offset: true }),
     type: z.literal("coordinator.turn-settled"),
-    data: TurnSettledDraftSchema,
+    data: StoredTurnSettledDataSchema,
   }).strict(),
   z.object({
     version: z.literal(CONVERSATION_EVENT_VERSION),

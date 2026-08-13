@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { mkdir, open, readFile } from "node:fs/promises";
+import { mkdir, open, readFile, unlink } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   CONVERSATION_EVENT_VERSION,
@@ -45,15 +45,14 @@ import {
 /**
  * Fsynced, append-only per-conversation interaction journal. One file per
  * conversation under `state/conversation-events/`; writes are
- * process-serialized per conversation and every record is synced before the
- * next one starts. This class owns no cross-process writer coordination: the
- * current Workbench server is the sole writer, and a second independent
- * writer must fail rather than pretend this process-local queue is a file
- * lock. It retains only settled events and the cursor; canonical
- * Task/Mission/effect owners keep their own state.
+ * process-serialized per conversation across journal instances and every
+ * record is synced before the next one starts. An atomic per-conversation
+ * filesystem lease rejects a concurrent writer from another process instead
+ * of allowing both to assign the same sequence. It retains only settled
+ * events and the cursor; canonical Task/Mission/effect owners keep their own
+ * state.
  */
 export class FileConversationJournal {
-  private readonly locks = new Map<string, Promise<void>>();
   private readonly root: string;
 
   constructor(
@@ -240,17 +239,55 @@ export class FileConversationJournal {
   }
 
   private async withLock(conversationId: string, action: () => Promise<void>): Promise<void> {
-    const previous = this.locks.get(conversationId) ?? Promise.resolve();
+    const journalPath = this.conversationPath(conversationId);
+    const previous = writerQueues.get(journalPath) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolvePromise) => { release = resolvePromise; });
     const tail = previous.then(() => current);
-    this.locks.set(conversationId, tail);
+    writerQueues.set(journalPath, tail);
     await previous;
     try {
-      await action();
+      await withFilesystemWriterLease(journalPath, action);
     } finally {
       release();
-      if (this.locks.get(conversationId) === tail) this.locks.delete(conversationId);
+      if (writerQueues.get(journalPath) === tail) writerQueues.delete(journalPath);
+    }
+  }
+}
+
+/**
+ * Same-process journal instances share this queue by exact resolved journal
+ * path. The filesystem lease below covers an independent Workbench process.
+ */
+const writerQueues = new Map<string, Promise<void>>();
+
+export class ConversationJournalWriterConflictError extends Error {
+  readonly lockPath: string;
+
+  constructor(lockPath: string) {
+    super(`conversation journal writer lease is already held: ${lockPath}`);
+    this.name = "ConversationJournalWriterConflictError";
+    this.lockPath = lockPath;
+  }
+}
+
+async function withFilesystemWriterLease(journalPath: string, action: () => Promise<void>): Promise<void> {
+  const lockPath = `${journalPath}.writer.lock`;
+  await mkdir(dirname(journalPath), { recursive: true });
+  let lease;
+  try {
+    lease = await open(lockPath, "wx");
+  } catch (error) {
+    if (isAlreadyExists(error)) throw new ConversationJournalWriterConflictError(lockPath);
+    throw error;
+  }
+  try {
+    await action();
+  } finally {
+    try {
+      await lease.close();
+    } finally {
+      await unlink(lockPath);
     }
   }
 }
@@ -382,6 +419,11 @@ function requireSameMessage(conversationId: string, turn: TurnStartedEvent, mess
 function isMissing(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error &&
     (error as { code?: unknown }).code === "ENOENT";
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error &&
+    (error as { code?: unknown }).code === "EEXIST";
 }
 
 async function repairIncompleteTail(path: string): Promise<void> {

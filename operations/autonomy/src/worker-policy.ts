@@ -5,9 +5,6 @@ import {
   type DeepSeekInferencePolicy,
 } from "../../../packages/work-cell/src/providers/deepseek";
 import {
-  KIMI_CODING_DEFAULT_MODEL,
-} from "../../../packages/work-cell/src/providers/kimi-coding";
-import {
   WORKER_CARD_VERSION,
   WorkerCardSchema,
   WorkerCatalog,
@@ -16,6 +13,9 @@ import {
 
 const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
 const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
+const OPENCODE_PROVIDER_ID = "opencode-go";
+const OPENCODE_CREDENTIAL = "OPENCODE_API_KEY";
+const KIMI_VISUAL_MODEL = "kimi-k2.7-code";
 
 /** Current host policy. Mechanism callers may instead supply any WorkerCatalog. */
 export function currentWorkerCards(
@@ -61,16 +61,16 @@ export function currentWorkerCards(
       id: "kimi-coding",
       labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
       description:
-        "Kimi Coding handles complex code engineering with thinking, tool use, and image input across repository analysis, implementation, debugging, UI screenshots, and architecture diagrams. Recommended for code-heavy or visual-plus-code tasks that benefit from sustained reasoning.",
+        "Kimi K2.7 Code handles complex code engineering with thinking, tool use, and image input across repository analysis, implementation, debugging, UI screenshots, and architecture diagrams. Recommended for code-heavy or visual-plus-code tasks that benefit from sustained reasoning.",
       executionProfile: {
         id: "kimi-coding",
         version: "execution-profile.v1",
-        provider: "kimi-coding",
-        model: KIMI_CODING_DEFAULT_MODEL,
+        provider: OPENCODE_PROVIDER_ID,
+        model: KIMI_VISUAL_MODEL,
       },
-      availability: environment.KIMI_CODE_API_KEY
+      availability: environment[OPENCODE_CREDENTIAL]
         ? { status: "available" }
-        : { status: "unavailable", reason: "KIMI_CODE_API_KEY is not configured" },
+        : { status: "unavailable", reason: `${OPENCODE_CREDENTIAL} is not configured` },
     }),
   ];
 }
@@ -117,9 +117,9 @@ export function createCurrentWorkerCatalog(
       card: kimi!,
       createDriver: () => new AiSdkValidationDriver({
         route: [{
-          provider: "kimi-coding",
-          credential: { source: "env", name: "KIMI_CODE_API_KEY" },
-          model: KIMI_CODING_DEFAULT_MODEL,
+          provider: OPENCODE_PROVIDER_ID,
+          credential: { source: "env", name: OPENCODE_CREDENTIAL },
+          model: kimi!.executionProfile.model,
         }],
         environment,
       }),

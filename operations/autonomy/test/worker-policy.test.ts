@@ -9,7 +9,7 @@ import {
 test("current worker cards expose capability and execution defaults from one policy", () => {
   const cards = currentWorkerCards({
     DEEPSEEK_API_KEY: "configured",
-    KIMI_CODE_API_KEY: "configured",
+    OPENCODE_API_KEY: "configured",
   } as NodeJS.ProcessEnv);
 
   const deepseek = cards.find((card) => card.id === "deepseek-flash");
@@ -28,12 +28,34 @@ test("current worker cards expose capability and execution defaults from one pol
   expect(kimi?.labels).toContain("vision");
   expect(kimi?.description).toContain("image input");
   expect(kimi?.description).toContain("Recommended");
+  expect(kimi).toMatchObject({
+    executionProfile: {
+      provider: "opencode-go",
+      model: "kimi-k2.7-code",
+    },
+    availability: { status: "available" },
+  });
+});
+
+test("Kimi availability follows the OpenCode carrier credential", () => {
+  const legacyCredentialOnly = currentWorkerCards({
+    KIMI_CODE_API_KEY: "configured",
+  } as NodeJS.ProcessEnv).find((card) => card.id === "kimi-coding");
+  expect(legacyCredentialOnly?.availability).toEqual({
+    status: "unavailable",
+    reason: "OPENCODE_API_KEY is not configured",
+  });
+
+  const openCodeCredential = currentWorkerCards({
+    OPENCODE_API_KEY: "configured",
+  } as NodeJS.ProcessEnv).find((card) => card.id === "kimi-coding");
+  expect(openCodeCredential?.availability).toEqual({ status: "available" });
 });
 
 test("deepseek card reasoning effort matches the inference policy used to construct its catalog driver", () => {
   const environment = {
     DEEPSEEK_API_KEY: "configured",
-    KIMI_CODE_API_KEY: "configured",
+    OPENCODE_API_KEY: "configured",
   } as NodeJS.ProcessEnv;
   const cards = currentWorkerCards(environment);
   const deepseekFlash = cards.find((card) => card.id === "deepseek-flash");

@@ -66,20 +66,22 @@ alter OpenCode's native loop. To use the existing AI SDK path as a fallback,
 run the command again without `--driver`; the OpenCode adapter never falls back
 or retries automatically.
 
-`CellInput.tasks` seeds are accepted by the OpenCode adapter, which initializes
-them as native session todos before the first agent message. It starts a
-loopback `opencode serve` server, creates a zero-message session through `POST
-/session`, writes each seed as an ordinary pending todo through the
-version-specific local database seam (`opencode db path`; 1.18.x `todo` table
-keyed by `session_id`/`position`), verifies the rows through `GET
-/session/{sessionID}/todo`, attaches the CLI run to that session
-(`--attach <url> --session <id>`), and stops the server. Any seeding failure —
-server start, session creation, database write, or verification — fails the
-run visibly; there is no silent prompt fallback and no instruction to the
-worker to adopt todos through `todowrite`. The adapter returns no task state,
-so task-cycle verification engages only for drivers that report it (the AI SDK
-TaskStore path); seeding never creates a todo-based phase, gate, or completion
-validator.
+`CellInput.tasks` seeds are accepted by the OpenCode adapter as native session
+todos. For a fresh run, it starts a loopback `opencode serve` server, creates a
+zero-message session through `POST /session`, and writes each seed as an
+ordinary pending todo through the version-specific local database seam
+(`opencode db path`; 1.18.x `todo` table keyed by
+`session_id`/`position`). For a resumed run, the supplied tasks must match the
+existing session todos. In both cases the adapter verifies the initial rows
+through `GET /session/{sessionID}/todo`, attaches the CLI run to that session
+(`--attach <url> --session <id>`), and reads the final native todo state back
+into the generic task projection. `runCell` then applies the same invariant as
+for every other driver: supplied tasks may not remain `pending` or
+`in_progress` at Cell completion. A newly created session is deleted with
+bounded best-effort cleanup if initialization or execution fails before a
+successful attributable result; cleanup never replaces the original failure.
+There is no silent prompt fallback and no instruction to the worker to adopt
+todos through `todowrite`.
 
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
@@ -179,9 +181,11 @@ worker is still running. Each complete JSONL line is parsed exactly once, and a
 safe structural projection (`opencode.cli.progress`: event type, session
 identity, tool name) reaches the live trace before the child exits. Text
 parts, reasoning, and tool input/output are never projected into live progress;
-the full events, usage, session, final text, and raw evidence are still emitted
-only after the process settles, so the final record and its semantics are
-unchanged.
+usage and session evidence are accumulated across the complete stream, while
+raw events, progress, malformed lines, stderr, and stopped-step text are
+retained only up to explicit byte bounds. The final record includes a retention
+marker when raw evidence was omitted; an oversized final stopped-step text
+fails visibly instead of being accepted as a complete final result.
 
 When a live observer is attached, the AI SDK driver uses its streaming agent
 path. Provider-exposed reasoning produces bounded start, character-progress,

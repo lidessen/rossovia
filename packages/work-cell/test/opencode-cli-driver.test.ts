@@ -69,7 +69,7 @@ describe("OpenCode CLI driver", () => {
       if (candidate.argv[0] === "db") {
         return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
       }
-      return success();
+      return success("ses_fixture");
     }), { serverAdapter: server.adapter });
     const input = cellInput(root);
     input.tasks = [
@@ -102,7 +102,11 @@ describe("OpenCode CLI driver", () => {
       expect(row.status).toBe("pending");
       expect(row.priority).toBe("high");
     }
-    expect(server.calls).toEqual(["POST /session", "GET /session/ses_fixture/todo"]);
+    expect(server.calls).toEqual([
+      "POST /session",
+      "GET /session/ses_fixture/todo",
+      "GET /session/ses_fixture/todo",
+    ]);
     expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db", "run"]);
     expect(server.stopped).toBe(true);
   });
@@ -181,6 +185,75 @@ describe("OpenCode CLI driver", () => {
     expect(server.stopped).toBe(true);
   });
 
+  test("deletes the created session after a command failure and preserves the command error", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return {
+        exitCode: 19,
+        stdout: jsonLines(event("step_finish", { reason: "error", tokens: {} }, "ses_fixture")),
+        stderr: "fixture command failure",
+        durationMs: 3,
+      };
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI exited with code 19: fixture command failure",
+    });
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session after a timeout and preserves the timeout error", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return await new Promise<OpenCodeCliProcessResult>((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason), { once: true });
+      });
+    }), { serverAdapter: server.adapter, timeoutMs: 200 });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI execution timed out after 200ms",
+    });
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session when successful exit lacks final text and preserves that error", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return {
+        exitCode: 0,
+        stdout: jsonLines(event("step_start", {}, "ses_fixture")),
+        stderr: "",
+        durationMs: 3,
+      };
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI completed without final stopped-step text",
+    });
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
   test("fails visibly when the loopback server cannot start, without a silent prompt fallback", async () => {
     const root = await fixture();
     const canonicalRoot = await realpath(root);
@@ -201,11 +274,15 @@ describe("OpenCode CLI driver", () => {
     expect(runs).toBe(0);
   });
 
-  test("runs a todo-seeded Cell without inventing task-cycle verification the OpenCode adapter cannot report", async () => {
+  test("projects final native todos so runCell verifies supplied task completion", async () => {
     const root = await fixture();
     const canonicalRoot = await realpath(root);
     const dbPath = await todoDatabase(root);
-    const server = await fakeOpenCodeServer(dbPath);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        return [{ content: "Adopt the todos", status: call === 1 ? "pending" : "completed", priority: "high" }];
+      },
+    });
     const executable = await fixtureExecutable(root, [
       `if [ "$1" = "db" ]; then echo "${dbPath}"; exit 0; fi`,
       `printf '%s\\n' '{"type":"step_start","sessionID":"ses_fixture","part":{}}'`,
@@ -226,9 +303,36 @@ describe("OpenCode CLI driver", () => {
 
     expect(record.status).toBe("passed");
     expect(record.finalText).toBe("Todos seeded.");
-    expect(record.verification).not.toHaveProperty("tasks");
-    expect(record.tasks).toBeUndefined();
+    expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
+    expect(record.tasks).toEqual([{
+      id: "task-1",
+      subject: "Adopt the todos",
+      description: "Adopt the todos through todowrite.",
+      status: "completed",
+      owner: "opencode-fixture",
+      blockedBy: [],
+    }]);
     expect(server.stopped).toBe(true);
+  });
+
+  test("projects nonterminal native todos so runCell rejects an unsettled seeded task", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("verification_failed");
+    expect(record.verification.tasks).toMatchObject({ passed: false, pending: 1 });
+    expect(record.error).toContain("task cycle is unsettled");
+    expect(server.calls).not.toContain("DELETE /session/ses_fixture");
   });
 
   test("puts resume session before dir", async () => {
@@ -237,7 +341,7 @@ describe("OpenCode CLI driver", () => {
     let request!: OpenCodeCliProcessRequest;
     const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
       request = candidate;
-      return success();
+      return success("resume-123");
     }), { sessionId: "resume-123" });
 
     await driver.run(cellInput(root), context(canonicalRoot).value);
@@ -555,6 +659,48 @@ describe("OpenCode CLI driver", () => {
     expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(2);
   });
 
+  test("bounds long live JSONL retention without losing final session or usage evidence", async () => {
+    const root = await fixture();
+    const noisyEvent = JSON.stringify(event("tool", {
+      type: "tool",
+      tool: "bash",
+      state: { output: "x".repeat(200) },
+    }, "long-1"));
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '${JSON.stringify(event("step_start", {}, "long-1"))}'`,
+      ...Array.from({ length: 200 }, () => `printf '%s\\n' '${noisyEvent}'`),
+      `printf '%s\\n' '${JSON.stringify(event("text", { text: "Complete." }, "long-1"))}'`,
+      `printf '%s\\n' '${JSON.stringify(event("step_finish", {
+        reason: "stop",
+        cost: 0.02,
+        tokens: { input: 21, output: 8, total: 29, cache: { read: 5 } },
+      }, "long-1"))}'`,
+    ]);
+    const input = cellInput(root);
+    input.budget.maxCommandOutputBytes = 128;
+
+    const record = await runCell(input, realDriver(root, executable));
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Complete.");
+    expect(record.executionObservation.sessionId).toBe("long-1");
+    expect(record.usage).toEqual({ inputTokens: 21, outputTokens: 8, totalTokens: 29, cachedInputTokens: 5 });
+    const raw = executionRawSteps(record);
+    expect(raw).toContainEqual(expect.objectContaining({
+      type: "opencode.cli.retention",
+      omittedEvents: expect.any(Number),
+      omittedProgress: expect.any(Number),
+      finalTextTruncated: false,
+    }));
+    const retention = raw.find(
+      (step) => (step as Record<string, unknown>).type === "opencode.cli.retention",
+    ) as Record<string, unknown>;
+    expect(retention.omittedEvents).toBeGreaterThan(0);
+    expect(retention.omittedProgress).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify(raw))).toBeLessThan(5_000);
+    expect(Buffer.byteLength(JSON.stringify(record.trace))).toBeLessThan(10_000);
+  });
+
   test("nonzero exit of a live child retains observed usage", async () => {
     const root = await fixture();
     const executable = await fixtureExecutable(root, [
@@ -643,9 +789,10 @@ async function todoDatabase(root: string): Promise<string> {
 
 async function fakeOpenCodeServer(
   dbPath: string,
-  options: { todoResponse?: () => unknown[] } = {},
+  options: { todoResponse?: (call: number) => unknown[] } = {},
 ): Promise<{ url: string; adapter: OpenCodeCliServerAdapter; calls: string[]; stopped: boolean }> {
   const calls: string[] = [];
+  let todoCalls = 0;
   const db = new Database(dbPath);
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -657,9 +804,14 @@ async function fakeOpenCodeServer(
         return Response.json({ id: "ses_fixture" });
       }
       if (request.method === "GET" && url.pathname.startsWith("/session/") && url.pathname.endsWith("/todo")) {
-        if (options.todoResponse !== undefined) return Response.json(options.todoResponse());
-        const rows = db.query("select content from todo order by position").all() as Array<{ content: string }>;
-        return Response.json(rows.map((row) => ({ content: row.content, status: "pending", priority: "high" })));
+        todoCalls += 1;
+        if (options.todoResponse !== undefined) return Response.json(options.todoResponse(todoCalls));
+        const rows = db.query("select content, status, priority from todo order by position")
+          .all() as Array<{ content: string; status: string; priority: string }>;
+        return Response.json(rows);
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/session/")) {
+        return Response.json(true);
       }
       return new Response("not found", { status: 404 });
     },
@@ -685,12 +837,12 @@ function event(type: string, part: Record<string, unknown>, sessionID = "session
   return { type, sessionID, part };
 }
 
-function success(): OpenCodeCliProcessResult {
+function success(sessionID = "session-1"): OpenCodeCliProcessResult {
   return {
     exitCode: 0,
     stdout: jsonLines(
-      event("step_start", {}), event("text", { text: "Complete." }),
-      event("step_finish", { reason: "stop", cost: 0, tokens: { input: 1, output: 1, total: 2, cache: { read: 0 } } }),
+      event("step_start", {}, sessionID), event("text", { text: "Complete." }, sessionID),
+      event("step_finish", { reason: "stop", cost: 0, tokens: { input: 1, output: 1, total: 2, cache: { read: 0 } } }, sessionID),
     ),
     stderr: "", durationMs: 3,
   };

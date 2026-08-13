@@ -110,7 +110,7 @@ function assertFailed(result: ConversationTurnResult): asserts result is Extract
   expect(result.kind).toBe("failed");
 }
 
-test("streams every text delta before finish and passes the stream usage through untouched", async () => {
+test("streams every text delta and does not infer observed effort from the requested adapter policy", async () => {
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
     provider: "deepseek",
@@ -129,10 +129,34 @@ test("streams every text delta before finish and passes the stream usage through
       kind: "finish",
       provider: "deepseek",
       model: "deepseek-v4-pro",
-      reasoningEffort: "max",
       usage: FLAT_USAGE_PASSTHROUGH,
     },
   ]);
+});
+
+test("retains a provider fingerprint only when DeepSeek returns it in provider metadata", async () => {
+  const fingerprintFinish: LanguageModelV4StreamPart = {
+    ...STOP_FINISH,
+    providerMetadata: { deepseek: { systemFingerprint: "fp-returned" } },
+  };
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [...textParts(["settled"]), fingerprintFinish]),
+  });
+
+  const events = await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(events.at(-1)).toEqual({
+    kind: "finish",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    providerFingerprint: "fp-returned",
+    usage: FLAT_USAGE_PASSTHROUGH,
+  });
 });
 
 test("wires the adapter-configured model with an explicit DeepSeek inference policy", async () => {
@@ -363,7 +387,7 @@ test("omits observed reasoning effort and disables thinking when the policy is d
   ]);
 });
 
-test("settles a normal turn through the injected real adapter with sanitized usage and matching evidence", async () => {
+test("settles a normal turn with requested max separate from unavailable observed effort", async () => {
   const seen: ConversationTurnSafetyEvent[] = [];
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
@@ -386,7 +410,7 @@ test("settles a normal turn through the injected real adapter with sanitized usa
     outcome: "finished",
     provider: "deepseek",
     model: "deepseek-v4-pro",
-    reasoningEffort: "max",
+    reasoningEffort: "unavailable",
     usage: SANITIZED_USAGE,
   });
   expect(seen).toEqual([

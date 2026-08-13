@@ -58,7 +58,8 @@ export const ConversationTurnPortEventSchema = z.discriminatedUnion("kind", [
     kind: z.literal("finish"),
     provider: z.string().min(1).optional(),
     model: z.string().min(1).optional(),
-    reasoningEffort: z.string().min(1).optional(),
+    observedReasoningEffort: z.string().min(1).optional(),
+    providerFingerprint: z.string().min(1).optional(),
     usage: z.unknown().optional(),
   }).strict(),
   z.object({ kind: z.literal("error"), message: z.string().min(1) }).strict(),
@@ -90,6 +91,7 @@ export const ObservedTurnEvidenceSchema = z.object({
   provider: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
   reasoningEffort: z.string().min(1).optional(),
+  fingerprint: z.string().min(1).optional(),
   usage: SanitizedUsageSchema.optional(),
   error: z.string().min(1).optional(),
 }).strict();
@@ -143,6 +145,7 @@ interface ObservedFacts {
   readonly provider?: string;
   readonly model?: string;
   readonly reasoningEffort?: string;
+  readonly fingerprint?: string;
 }
 
 const USAGE_FIELDS = ["inputTokens", "outputTokens", "totalTokens", "cachedInputTokens"] as const;
@@ -285,9 +288,12 @@ function observedFacts(event: Extract<ConversationTurnPortEvent, { kind: "finish
   return {
     ...(event.provider === undefined ? {} : { provider: event.provider }),
     ...(event.model === undefined ? {} : { model: event.model }),
-    ...(event.reasoningEffort === undefined
+    ...(event.observedReasoningEffort === undefined
       ? {}
-      : { reasoningEffort: event.reasoningEffort }),
+      : { reasoningEffort: event.observedReasoningEffort }),
+    ...(event.providerFingerprint === undefined
+      ? {}
+      : { fingerprint: event.providerFingerprint }),
   };
 }
 
@@ -318,6 +324,7 @@ function buildObserved(
     ...(facts.provider === undefined ? {} : { provider: facts.provider }),
     ...(facts.model === undefined ? {} : { model: facts.model }),
     ...(facts.reasoningEffort === undefined ? { reasoningEffort: "unavailable" } : { reasoningEffort: facts.reasoningEffort }),
+    ...(facts.fingerprint === undefined ? {} : { fingerprint: facts.fingerprint }),
     ...(extra.error === undefined ? {} : { error: extra.error }),
     ...(extra.usage === undefined ? {} : { usage: extra.usage }),
   });

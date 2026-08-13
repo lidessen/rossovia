@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  CONVERSATION_SOCKET_MAX_MESSAGE_BYTES,
   ConversationSocketRuntime,
   ServerFrameSchema,
   type ConversationSocketData,
@@ -512,6 +513,32 @@ describe("conversation socket live delivery", () => {
     }
   });
 
+  test("rejects an oversized WebSocket message before receipt or turn start", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root);
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      client.ws.send(JSON.stringify({
+        type: "message.submit",
+        clientMessageId: randomUUID(),
+        payload: "x".repeat(CONVERSATION_SOCKET_MAX_MESSAGE_BYTES),
+      }));
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "protocol.error"),
+        "oversized frame rejection",
+      );
+      const error = client.messages.find(
+        (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
+      );
+      expect(error?.code).toBe("frame-too-large");
+      expect(await runtime.journal.readEvents(conversationId)).toEqual([]);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
   test("rejects interrupt and control frames the echo runtime does not own", async () => {
     const root = tempRoot();
     const { runtime, server, socketUrl } = await startServer(root);
@@ -568,6 +595,12 @@ describe("conversation socket reconnect replay", () => {
         expect(durableSequences(reconnected.messages)).toEqual([2]);
         expect(reconnected.messages.filter((frame) => frame.type === "response.delta")).toEqual([]);
         expect(reconnected.messages.filter((frame) => frame.type === "activity.delta")).toEqual([]);
+        const settlement = reconnected.messages.find((frame) =>
+          frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled");
+        expect(settlement?.type === "journal.event"
+          && settlement.event.type === "coordinator.turn-settled"
+          ? settlement.event.data.response
+          : undefined).toBe("hello world");
 
         const fullReplay = await connect(socketUrl(conversationId, -1));
         try {
@@ -646,6 +679,12 @@ describe("conversation socket reconnect replay", () => {
         expect(durableSequences(reconnected.messages)).toEqual([2]);
         expect(reconnected.messages.filter((frame) => frame.type === "response.delta")).toEqual([]);
         expect(reconnected.messages.filter((frame) => frame.type === "activity.delta")).toEqual([]);
+        const settlement = reconnected.messages.find((frame) =>
+          frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled");
+        expect(settlement?.type === "journal.event"
+          && settlement.event.type === "coordinator.turn-settled"
+          ? settlement.event.data.response
+          : undefined).toBe(payload);
       } finally {
         reconnected.ws.close();
       }

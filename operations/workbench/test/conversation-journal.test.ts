@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,7 +10,10 @@ import {
   type ConversationEvent,
   type RequestedCoordinatorPolicy,
 } from "../src/conversation/contracts";
-import { FileConversationJournal } from "../src/conversation/journal";
+import {
+  ConversationJournalWriterConflictError,
+  FileConversationJournal,
+} from "../src/conversation/journal";
 
 const temporaryRoots: string[] = [];
 
@@ -172,6 +175,7 @@ describe("FileConversationJournal sequence and replay", () => {
     const turnSettled = await journal.settleTurn(conversation, {
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
+      response: "The fixture task is settled.",
     });
 
     expect([message.event.sequence, turn.sequence, action.sequence, settled.sequence, turnSettled.sequence])
@@ -222,6 +226,31 @@ describe("FileConversationJournal sequence and replay", () => {
     expect(events.map((event) => event.sequence)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     expect(new Set(events.map((event) => event.eventId)).size).toBe(8);
     expect(await journal.lastCursor(conversation)).toBe(7);
+  });
+
+  test("serializes two same-home journal instances and visibly rejects an independently held writer lease", async () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-conversation-journal-"));
+    temporaryRoots.push(root);
+    const first = new FileConversationJournal(root);
+    const second = new FileConversationJournal(root);
+    const conversation = conversationId();
+
+    await Promise.all(Array.from({ length: 12 }, (_, index) =>
+      receiptedMessage(index % 2 === 0 ? first : second, conversation, `two-instance-${index}`)
+    ));
+    const events = await first.readEvents(conversation);
+    expect(events.map((event) => event.sequence)).toEqual(Array.from({ length: 12 }, (_, index) => index));
+    expect(new Set(events.map((event) => event.eventId)).size).toBe(12);
+
+    const lockPath = `${first.conversationPath(conversation)}.writer.lock`;
+    closeSync(openSync(lockPath, "wx"));
+    try {
+      await expect(receiptedMessage(second, conversation, "held by another process"))
+        .rejects.toBeInstanceOf(ConversationJournalWriterConflictError);
+      expect(await first.lastCursor(conversation)).toBe(11);
+    } finally {
+      unlinkSync(lockPath);
+    }
   });
 });
 
@@ -344,11 +373,13 @@ describe("FileConversationJournal causal integrity", () => {
     await expect(journal.settleTurn(conversation, {
       turnId: randomUUID(),
       messageId: message.event.data.messageId,
+      response: "missing turn",
     })).rejects.toThrow(/no started turn/);
 
     await expect(journal.settleTurn(conversation, {
       turnId: turn.data.turnId,
       messageId: randomUUID(),
+      response: "mismatched message",
     })).rejects.toThrow(/does not match message/);
   });
 
@@ -398,6 +429,7 @@ describe("FileConversationJournal causal integrity", () => {
     await journal.settleTurn(conversation, {
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
+      response: "settled",
     });
     await expect(journal.interruptTurn(conversation, {
       turnId: turn.data.turnId,
@@ -435,7 +467,7 @@ describe("FileConversationJournal causal integrity", () => {
 });
 
 describe("FileConversationJournal durable vocabulary boundary", () => {
-  test("keeps the event vocabulary free of provisional frames and raw provider content", async () => {
+  test("keeps provisional frames and raw provider evidence out while retaining the complete settled response", async () => {
     const journal = createJournal();
     const conversation = conversationId();
     const message = await receiptedMessage(journal, conversation);
@@ -459,6 +491,7 @@ describe("FileConversationJournal durable vocabulary boundary", () => {
     const settledTurn = await journal.settleTurn(conversation, {
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
+      response: "The complete settled response.",
       observedEvidence: { provider: "deepseek", model: "deepseek-v4-pro", fingerprint: "fp-1" },
     });
 
@@ -483,8 +516,9 @@ describe("FileConversationJournal durable vocabulary boundary", () => {
       ["actionId", "evidenceRefs", "messageId", "turnId"].sort(),
     );
     expect(Object.keys(settledTurn.data).sort()).toEqual(
-      ["messageId", "observedEvidence", "turnId"].sort(),
+      ["messageId", "observedEvidence", "response", "turnId"].sort(),
     );
+    expect(settledTurn.data.response).toBe("The complete settled response.");
     expect(settledTurn.data.observedEvidence).toEqual({ provider: "deepseek", model: "deepseek-v4-pro", fingerprint: "fp-1" });
     expect(Object.keys(settledTurn.data.observedEvidence ?? {}).some((key) => /text|content|trace|usage/i.test(key)))
       .toBe(false);
@@ -503,6 +537,7 @@ describe("FileConversationJournal durable vocabulary boundary", () => {
     await expect(journal.settleTurn(conversation, {
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
+      response: "provider response",
       observedEvidence: {
         provider: "deepseek",
         rawResponse: "full provider text",
@@ -543,6 +578,7 @@ describe("FileConversationJournal review corrections M1-M3", () => {
     const settledTurn = await journal.settleTurn(conversation, {
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
+      response: "The fixture action is settled.",
       observedEvidence: {
         provider: "deepseek",
         model: "deepseek-v4-pro",
@@ -561,6 +597,7 @@ describe("FileConversationJournal review corrections M1-M3", () => {
       fingerprint: "fp-1",
       usage: { inputTokens: 1234, outputTokens: 56 },
     });
+    expect(settledTurn.data.response).toBe("The fixture action is settled.");
 
     const replay = await journal.readEventsAfter(conversation, -1);
     expect(replay[1]?.data).toEqual(turn.data);
@@ -610,12 +647,14 @@ describe("FileConversationJournal review corrections M1-M3", () => {
     await expect(journal.settleTurn(conversation, {
       turnId,
       messageId: message.event.data.messageId,
+      response: "invalid usage",
       observedEvidence: { usage: { inputTokens: -1, outputTokens: 0 } },
     })).rejects.toThrow();
 
     await expect(journal.settleTurn(conversation, {
       turnId,
       messageId: message.event.data.messageId,
+      response: "invalid usage",
       observedEvidence: { usage: { inputTokens: 1.5, outputTokens: 0 } },
     })).rejects.toThrow();
 

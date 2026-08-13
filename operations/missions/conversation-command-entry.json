@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-13T09:08:03Z",
+  "updatedAt": "2026-08-13T18:17:13Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -30,8 +30,10 @@
         "official-openai:realtime-docs/2026-08-13",
         "repository:23246d48b8e01792e34d8b0f4bed22f030b66bf1"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Integrated the completed source-and-authority design, text-first duplex contract, coordinator and temporary-team boundary, DeepSeek Pro max policy, and staged implementation plan into mainline; evidence is retained in design/organization/sessions/2026-08-13-conversation-command-entry-system-case.md and design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md. Implementation remains in progress."
     }
   ],
-  "currentFocus": "research-and-design"
+  "currentFocus": "mainline"
 }

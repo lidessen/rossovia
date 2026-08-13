@@ -209,7 +209,8 @@ test("emits the first delta before finish and settles a normal completed turn", 
       kind: "finish",
       provider: CURRENT_COORDINATOR_POLICY.provider,
       model: CURRENT_COORDINATOR_POLICY.model,
-      reasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
+      observedReasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
+      providerFingerprint: "fp-returned",
       usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20, cachedInputTokens: 0 },
     },
   ], seen);
@@ -228,6 +229,7 @@ test("emits the first delta before finish and settles a normal completed turn", 
     provider: CURRENT_COORDINATOR_POLICY.provider,
     model: CURRENT_COORDINATOR_POLICY.model,
     reasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
+    fingerprint: "fp-returned",
     usage: { inputTokens: 12, outputTokens: 8, totalTokens: 20, cachedInputTokens: 0 },
   });
 });
@@ -243,7 +245,7 @@ test("forwards one optional typed request and returns it in the final result", a
       kind: "finish",
       provider: CURRENT_COORDINATOR_POLICY.provider,
       model: CURRENT_COORDINATOR_POLICY.model,
-      reasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
+      observedReasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
     },
   ], seen);
 
@@ -296,7 +298,7 @@ test("fails visibly when observed provider or model does not match the requested
       kind: "finish",
       provider: "anthropic",
       model: CURRENT_COORDINATOR_POLICY.model,
-      reasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
+      observedReasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
     },
   ]);
   assertFailed(providerMismatch);
@@ -309,7 +311,7 @@ test("fails visibly when observed provider or model does not match the requested
       kind: "finish",
       provider: CURRENT_COORDINATOR_POLICY.provider,
       model: "claude-3-5-sonnet",
-      reasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
+      observedReasoningEffort: CURRENT_COORDINATOR_POLICY.reasoningEffort,
     },
   ]);
   assertFailed(modelMismatch);
@@ -318,13 +320,13 @@ test("fails visibly when observed provider or model does not match the requested
   expect(modelMismatch.observed.model).toBe("claude-3-5-sonnet");
 });
 
-test("fails visibly when observed reasoning effort contradicts the requested effort", async () => {
+test("fails visibly when documented provider metadata reports an effort that contradicts the request", async () => {
   const result = await runTurn(fullOptions(), [
     {
       kind: "finish",
       provider: CURRENT_COORDINATOR_POLICY.provider,
       model: CURRENT_COORDINATOR_POLICY.model,
-      reasoningEffort: "medium",
+      observedReasoningEffort: "medium",
     },
   ]);
   assertFailed(result);

@@ -220,6 +220,58 @@ function validWorkCellRecord(
 }
 
 describe("task run public boundary", () => {
+  test("selects the available Kimi worker and lowers its exact OpenCode carrier identity", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const originalOpenCodeKey = process.env.OPENCODE_API_KEY;
+    const originalKimiKey = process.env.KIMI_CODE_API_KEY;
+    process.env.OPENCODE_API_KEY = "configured-for-test";
+    delete process.env.KIMI_CODE_API_KEY;
+
+    try {
+      const result = runPrincipalTaskImpl(current.home, {
+        id: created.task.id,
+        workerId: "kimi-coding",
+      }, runner);
+      const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+      expect(input.executionProfile).toMatchObject({
+        provider: "opencode-go",
+        model: "kimi-k2.7-code",
+      });
+      expect(runner.requests).toEqual([
+        expect.objectContaining({
+          driver: "opencode-cli",
+          model: "opencode-go/kimi-k2.7-code",
+        }),
+      ]);
+    } finally {
+      restoreEnvironment("OPENCODE_API_KEY", originalOpenCodeKey);
+      restoreEnvironment("KIMI_CODE_API_KEY", originalKimiKey);
+    }
+  });
+
+  test("rejects the Kimi worker when only its obsolete provider credential is configured", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const originalOpenCodeKey = process.env.OPENCODE_API_KEY;
+    const originalKimiKey = process.env.KIMI_CODE_API_KEY;
+    delete process.env.OPENCODE_API_KEY;
+    process.env.KIMI_CODE_API_KEY = "configured-for-test";
+
+    try {
+      expect(() => runPrincipalTaskImpl(current.home, {
+        id: created.task.id,
+        workerId: "kimi-coding",
+      }, runner)).toThrow("worker kimi-coding is unavailable: OPENCODE_API_KEY is not configured");
+      expect(runner.requests).toHaveLength(0);
+    } finally {
+      restoreEnvironment("OPENCODE_API_KEY", originalOpenCodeKey);
+      restoreEnvironment("KIMI_CODE_API_KEY", originalKimiKey);
+    }
+  });
+
   test("lowers exact current task guidance without Mission and appends immutable attempts", () => {
     const current = fixture();
     const created = agentTask(current);
@@ -1030,7 +1082,13 @@ describe("task run public boundary", () => {
         model: "deepseek-v4-pro",
         reasoningEffort: "max",
       }),
-      expect.objectContaining({ id: "kimi-coding", reasoningEffort: "provider-default" }),
+      expect.objectContaining({
+        id: "kimi-coding",
+        provider: "opencode-go",
+        model: "kimi-k2.7-code",
+        reasoningEffort: "provider-default",
+        availability: { status: "available" },
+      }),
     ]));
 
     const missingWorker = taskCli(current.home, "run", "unused");
@@ -1480,7 +1538,7 @@ function workbenchCli(home: string, ...arguments_: string[]): {
     env: {
       ...process.env,
       DEEPSEEK_API_KEY: "configured-for-test",
-      KIMI_CODE_API_KEY: "configured-for-test",
+      OPENCODE_API_KEY: "configured-for-test",
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -1490,6 +1548,11 @@ function workbenchCli(home: string, ...arguments_: string[]): {
     stdout: result.stdout.toString(),
     stderr: result.stderr.toString(),
   };
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }
 
 function taskCliWithOutput(home: string, ...arguments_: string[]): {

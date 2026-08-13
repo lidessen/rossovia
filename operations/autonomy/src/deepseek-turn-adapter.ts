@@ -94,6 +94,7 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
       }
 
       try {
+        let providerFingerprint: string | undefined;
         const result = streamText({
           model,
           prompt: prompt.prompt,
@@ -110,6 +111,10 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
             yield { kind: "error", message: errorMessage(part.error) };
             return;
           }
+          if (part.type === "finish-step") {
+            providerFingerprint ??= observedDeepSeekMetadata(part.providerMetadata).providerFingerprint;
+            continue;
+          }
           if (part.type === "finish") {
             if (part.finishReason === "error") {
               yield { kind: "error", message: "the model stream finished with an error reason" };
@@ -119,7 +124,7 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
               kind: "finish",
               provider: DEEPSEEK_PROVIDER_ID,
               model: model.modelId,
-              ...(options.thinking === "enabled" ? { reasoningEffort: options.reasoningEffort } : {}),
+              ...(providerFingerprint === undefined ? {} : { providerFingerprint }),
               usage: part.totalUsage,
             };
             return;
@@ -137,6 +142,17 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
       }
     },
   };
+}
+
+function observedDeepSeekMetadata(metadata: unknown): { readonly providerFingerprint?: string } {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return {};
+  const deepseek = (metadata as Record<string, unknown>)[DEEPSEEK_PROVIDER_ID];
+  if (typeof deepseek !== "object" || deepseek === null || Array.isArray(deepseek)) return {};
+  const record = deepseek as Record<string, unknown>;
+  const fingerprint = typeof record.systemFingerprint === "string" && record.systemFingerprint.trim() !== ""
+    ? record.systemFingerprint
+    : undefined;
+  return fingerprint === undefined ? {} : { providerFingerprint: fingerprint };
 }
 
 function inferencePolicyFor(options: DeepSeekTurnAdapterOptions): InferencePolicyDecision {

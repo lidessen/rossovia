@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises";
 import { createServer } from "node:net";
 import { isAbsolute } from "node:path";
 import { Database } from "bun:sqlite";
-import type { CellInput, CellUsage, DriverDescriptor, TaskSeed } from "./contracts";
+import type { CellInput, CellUsage, DriverDescriptor, Task, TaskSeed, TaskStatus } from "./contracts";
 import {
   CellExecutionError,
   type CellDriver,
@@ -21,6 +21,8 @@ export interface OpenCodeCliProcessRequest {
   environment: Record<string, string>;
   stdin: string;
   signal: AbortSignal;
+  /** Maximum bytes retained from either process output stream. */
+  maxOutputBytes?: number;
   /**
    * Delivers each complete stdout line as it arrives, including the final
    * unterminated remainder. An adapter that calls this must deliver every
@@ -89,8 +91,8 @@ export class BunOpenCodeCliProcessAdapter implements OpenCodeCliProcessAdapter {
     child.stdin.write(request.stdin);
     child.stdin.end();
     const [stdout, stderr, exitCode] = await Promise.all([
-      readStdoutLines(child.stdout, request.onLine),
-      new Response(child.stderr).text(),
+      readStdoutLines(child.stdout, request.onLine, request.maxOutputBytes),
+      readBoundedText(child.stderr, request.maxOutputBytes),
       child.exited,
     ]);
     return {
@@ -111,9 +113,13 @@ export class BunOpenCodeCliProcessAdapter implements OpenCodeCliProcessAdapter {
 async function readStdoutLines(
   stream: ReadableStream<Uint8Array>,
   onLine: ((line: string) => void) | undefined,
+  maxOutputBytes = DEFAULT_PROCESS_OUTPUT_BYTES,
 ): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
+  const maxLineBytes = Math.max(maxOutputBytes, MIN_STRUCTURAL_RETENTION_BYTES);
+  // A live consumer is the parse sink. Do not retain a second copy of the
+  // complete stream merely to return it after every line has been delivered.
   let stdout = "";
   let remainder = "";
   for (;;) {
@@ -121,28 +127,47 @@ async function readStdoutLines(
     if (done) break;
     const text = decoder.decode(value, { stream: true });
     if (text === "") continue;
-    stdout += text;
-    const combined = `${remainder}${text}`;
-    const lastNewline = combined.lastIndexOf("\n");
-    if (lastNewline === -1) {
-      remainder = combined;
-      continue;
+    if (onLine === undefined) stdout = appendBounded(stdout, text, maxOutputBytes);
+    let start = 0;
+    for (;;) {
+      const newline = text.indexOf("\n", start);
+      if (newline === -1) break;
+      remainder = appendBounded(remainder, text.slice(start, newline), maxLineBytes);
+      onLine?.(stripLineBreak(remainder));
+      remainder = "";
+      start = newline + 1;
     }
-    for (const line of combined.slice(0, lastNewline).split("\n")) {
-      onLine?.(stripLineBreak(line));
-    }
-    remainder = combined.slice(lastNewline + 1);
+    remainder = appendBounded(remainder, text.slice(start), maxLineBytes);
   }
   const tail = decoder.decode();
   if (tail !== "") {
-    stdout += tail;
-    remainder += tail;
+    if (onLine === undefined) stdout = appendBounded(stdout, tail, maxOutputBytes);
+    remainder = appendBounded(remainder, tail, maxLineBytes);
   }
   if (remainder !== "") onLine?.(stripLineBreak(remainder));
   return stdout;
 }
 
+async function readBoundedText(
+  stream: ReadableStream<Uint8Array>,
+  maxOutputBytes = DEFAULT_PROCESS_OUTPUT_BYTES,
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text = appendBounded(text, decoder.decode(value, { stream: true }), maxOutputBytes);
+  }
+  return appendBounded(text, decoder.decode(), maxOutputBytes);
+}
+
 const SERVER_READY_TIMEOUT_MS = 10_000;
+const SESSION_CLEANUP_TIMEOUT_MS = 2_000;
+const DEFAULT_PROCESS_OUTPUT_BYTES = 64_000;
+const MIN_STRUCTURAL_RETENTION_BYTES = 1_024;
+const MAX_SESSION_ID_BYTES = 1_024;
 
 export class BunOpenCodeCliServerAdapter implements OpenCodeCliServerAdapter {
   async start(request: OpenCodeCliServerRequest): Promise<OpenCodeCliServerHandle> {
@@ -255,6 +280,7 @@ export class OpenCodeCliDriver implements CellDriver {
     const signal = AbortSignal.any([context.signal, timeoutSignal]);
     const seeds = input.tasks ?? [];
     let server: OpenCodeCliServerHandle | undefined;
+    let createdSessionId: string | undefined;
     try {
       const argv = [
         "run", prompt,
@@ -262,18 +288,28 @@ export class OpenCodeCliDriver implements CellDriver {
         // OpenCode names its provider-specific reasoning-effort option `--variant`.
         ...(this.reasoningEffort ? ["--variant", this.reasoningEffort] : []),
       ];
-      if (seeds.length > 0 && this.sessionId === undefined) {
+      let taskSessionId: string | undefined;
+      if (seeds.length > 0) {
         server = await this.startSeedServer(workspace, signal);
-        const sessionId = await this.createSession(server.url, signal);
-        try {
-          const dbPath = await this.databasePath(workspace, signal);
-          seedNativeTodos(dbPath, sessionId, seeds);
-          await this.verifyNativeTodos(server.url, sessionId, seeds, signal);
-        } catch (error) {
-          await this.deleteSession(server.url, sessionId, signal);
-          throw error;
+        taskSessionId = this.sessionId ?? await this.createSession(server.url, signal);
+        if (this.sessionId === undefined) {
+          createdSessionId = taskSessionId;
+          const dbPath = await this.databasePath(
+            workspace,
+            signal,
+            input.budget.maxCommandOutputBytes,
+          );
+          seedNativeTodos(dbPath, taskSessionId, seeds);
         }
-        argv.push("--session", sessionId, "--attach", server.url, "--dir", workspace);
+        await this.nativeTaskProjection(
+          server.url,
+          taskSessionId,
+          input.id,
+          seeds,
+          signal,
+          this.sessionId === undefined ? "seeded" : "existing",
+        );
+        argv.push("--session", taskSessionId, "--attach", server.url, "--dir", workspace);
       } else {
         argv.push(...(this.sessionId ? ["--session", this.sessionId] : []), "--dir", workspace);
       }
@@ -296,11 +332,10 @@ export class OpenCodeCliDriver implements CellDriver {
           environment: currentEnvironment(),
           stdin: "",
           signal,
+          maxOutputBytes: input.budget.maxCommandOutputBytes,
           onLine(rawLine) {
             liveLines += 1;
-            const event = accumulator.accept(rawLine);
-            if (event === undefined) return;
-            const progress = liveProgress(event);
+            const progress = accumulator.accept(rawLine);
             if (progress !== undefined) context.emit("opencode.cli.progress", progress);
           },
         });
@@ -314,11 +349,12 @@ export class OpenCodeCliDriver implements CellDriver {
       }
 
       if (liveLines === 0) {
-        for (const rawLine of processResult.stdout.split(/\r?\n/u)) accumulator.accept(rawLine);
+        consumeStdoutLines(processResult.stdout, (rawLine) => accumulator.accept(rawLine));
       }
       const parsed = accumulator.finish();
       for (const event of parsed.events) context.emit("opencode.cli.event", event);
       for (const entry of parsed.unparsed) context.emit("opencode.cli.stdout.unparsed", entry);
+      if (parsed.retention) context.emit("opencode.cli.retention", parsed.retention);
       const stderr = truncate(processResult.stderr.trim(), input.budget.maxCommandOutputBytes);
       if (stderr) context.emit("opencode.cli.stderr", { text: stderr });
 
@@ -342,17 +378,43 @@ export class OpenCodeCliDriver implements CellDriver {
       if (!parsed.sessionId) {
         throw new CellExecutionError("OpenCode CLI completed without a session id", parsed.usage);
       }
+      const expectedSessionId = taskSessionId ?? this.sessionId;
+      if (expectedSessionId !== undefined && parsed.sessionId !== expectedSessionId) {
+        throw new CellExecutionError(
+          `OpenCode CLI returned session ${parsed.sessionId} for requested session ${expectedSessionId}`,
+          parsed.usage,
+        );
+      }
       if (parsed.finalText === undefined || !parsed.finalText.trim()) {
         throw new CellExecutionError("OpenCode CLI completed without final stopped-step text", parsed.usage);
       }
+      if (parsed.finalTextTruncated) {
+        throw new CellExecutionError(
+          `OpenCode CLI final stopped-step text exceeds maxCommandOutputBytes (${input.budget.maxCommandOutputBytes})`,
+          parsed.usage,
+        );
+      }
+      const tasks = taskSessionId && server
+        ? await this.nativeTaskProjection(
+            server.url,
+            taskSessionId,
+            input.id,
+            seeds,
+            signal,
+            "final",
+            parsed.usage,
+          )
+        : undefined;
 
       return {
         terminalToolsCalled: [],
+        ...(tasks ? { tasks } : {}),
         finalText: parsed.finalText,
         usage: parsed.usage,
         rawSteps: [
           ...parsed.events,
           ...parsed.unparsed,
+          ...(parsed.retention ? [parsed.retention] : []),
           {
             type: "opencode.cli.process",
             exitCode: processResult.exitCode,
@@ -368,6 +430,18 @@ export class OpenCodeCliDriver implements CellDriver {
           observedCost: parsed.observedCost,
         },
       };
+    } catch (error) {
+      if (server && createdSessionId) {
+        const deleted = await this.deleteSession(server.url, createdSessionId);
+        context.emit("opencode.cli.session_cleanup", { sessionId: createdSessionId, deleted });
+      }
+      try {
+        await server?.stop();
+      } catch {
+        // Preserve the attributable execution failure after bounded cleanup.
+      }
+      server = undefined;
+      throw error;
     } finally {
       await server?.stop();
     }
@@ -419,7 +493,11 @@ export class OpenCodeCliDriver implements CellDriver {
     return body.id;
   }
 
-  private async databasePath(workspace: string, signal: AbortSignal): Promise<string> {
+  private async databasePath(
+    workspace: string,
+    signal: AbortSignal,
+    maxOutputBytes: number,
+  ): Promise<string> {
     let result: OpenCodeCliProcessResult;
     try {
       result = await this.processAdapter.run({
@@ -429,6 +507,7 @@ export class OpenCodeCliDriver implements CellDriver {
         environment: currentEnvironment(),
         stdin: "",
         signal,
+        maxOutputBytes,
       });
     } catch (error) {
       throw new CellExecutionError(`OpenCode CLI db path failed: ${errorMessage(error)}`, EMPTY_USAGE);
@@ -444,49 +523,85 @@ export class OpenCodeCliDriver implements CellDriver {
     return path;
   }
 
-  private async deleteSession(url: string, sessionId: string, signal: AbortSignal): Promise<void> {
+  private async deleteSession(url: string, sessionId: string): Promise<boolean> {
     try {
-      await fetch(`${url}/session/${encodeURIComponent(sessionId)}`, { method: "DELETE", signal });
+      const response = await fetch(`${url}/session/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+        signal: AbortSignal.timeout(SESSION_CLEANUP_TIMEOUT_MS),
+      });
+      return response.ok;
     } catch {
-      // best-effort cleanup; the original seeding failure is preserved
+      // Cleanup is bounded and must never replace the attributable execution
+      // failure that caused it.
+      return false;
     }
   }
 
-  private async verifyNativeTodos(
+  private async nativeTaskProjection(
     url: string,
     sessionId: string,
+    owner: string,
     seeds: TaskSeed[],
     signal: AbortSignal,
-  ): Promise<void> {
+    phase: "seeded" | "existing" | "final",
+    usage: CellUsage = EMPTY_USAGE,
+  ): Promise<Task[]> {
+    const label = phase === "final"
+      ? "OpenCode final todo projection"
+      : "OpenCode todo initialization verification";
     let response: Response;
     try {
       response = await fetch(`${url}/session/${encodeURIComponent(sessionId)}/todo`, { signal });
     } catch (error) {
-      throw new CellExecutionError(`OpenCode todo verification failed: ${errorMessage(error)}`, EMPTY_USAGE);
+      throw new CellExecutionError(`${label} failed: ${errorMessage(error)}`, usage);
     }
     if (!response.ok) {
-      throw new CellExecutionError(`OpenCode todo verification failed with HTTP ${response.status}`, EMPTY_USAGE);
+      throw new CellExecutionError(`${label} failed with HTTP ${response.status}`, usage);
     }
     let body: unknown;
     try {
       body = await response.json();
     } catch {
-      throw new CellExecutionError("OpenCode todo verification returned a non-JSON response", EMPTY_USAGE);
+      throw new CellExecutionError(`${label} returned a non-JSON response`, usage);
     }
     if (!Array.isArray(body)) {
-      throw new CellExecutionError("OpenCode todo verification returned a non-array response", EMPTY_USAGE);
+      throw new CellExecutionError(`${label} returned a non-array response`, usage);
     }
     const contents = body
       .map((todo) => (isRecord(todo) && typeof todo.content === "string" ? todo.content : undefined))
       .filter((content): content is string => content !== undefined);
-    const expected = seeds.map((seed) => seed.subject).sort();
-    const observed = [...contents].sort();
-    if (contents.length !== expected.length || expected.some((content, index) => content !== observed[index])) {
+    const expected = seeds.map((seed) => seed.subject);
+    if (contents.length !== expected.length || expected.some((content, index) => content !== contents[index])) {
       throw new CellExecutionError(
-        `OpenCode todo initialization verification failed: expected ${JSON.stringify(seeds.map((seed) => seed.subject))} but the session reports ${JSON.stringify(contents)}`,
-        EMPTY_USAGE,
+        `${label} failed: expected ${JSON.stringify(expected)} but the session reports ${JSON.stringify(contents)}`,
+        usage,
       );
     }
+    const tasks = body.map((todo, index): Task => {
+      const status = isRecord(todo) ? todo.status : undefined;
+      if (!isTaskStatus(status)) {
+        throw new CellExecutionError(
+          `${label} returned invalid status at position ${index}: ${String(status)}`,
+          usage,
+        );
+      }
+      const seed = seeds[index]!;
+      return {
+        id: `task-${index + 1}`,
+        subject: seed.subject,
+        description: seed.description,
+        status,
+        owner,
+        blockedBy: [],
+      };
+    });
+    if (phase === "seeded" && tasks.some((task) => task.status !== "pending")) {
+      throw new CellExecutionError(
+        `${label} failed: newly seeded todos must all be pending`,
+        usage,
+      );
+    }
+    return tasks;
   }
 
   private async resolveWorkspace(input: CellInput, context: DriverContext): Promise<string> {
@@ -554,30 +669,43 @@ function seedNativeTodos(dbPath: string, sessionId: string, seeds: TaskSeed[]): 
 interface ParsedOpenCodeOutput {
   events: Record<string, unknown>[];
   unparsed: Array<{ type: "opencode.cli.stdout.unparsed"; line: string }>;
+  retention: Record<string, unknown> | undefined;
   sessionId: string | undefined;
   sessionError: string | undefined;
   finalText: string | undefined;
+  finalTextTruncated: boolean;
   usage: CellUsage;
   observedCost: number;
 }
 
 /**
  * Incremental parse state over the JSONL stdout. `accept` consumes one
- * complete line exactly once and returns the parsed event when the line was
- * a valid JSON object, so live consumption and final aggregation share one
- * parse and can never double-count usage or duplicate events.
+ * complete line exactly once. It always accumulates fixed-size session and
+ * usage evidence, while raw events, live progress, malformed output, and the
+ * current final-step text each have explicit byte bounds.
  */
 class OpenCodeStdoutAccumulator {
   readonly events: Record<string, unknown>[] = [];
   readonly unparsed: ParsedOpenCodeOutput["unparsed"] = [];
-  private readonly sessionIds = new Set<string>();
   private readonly usage: CellUsage = { ...EMPTY_USAGE };
+  private readonly structuralLimit: number;
+  private sessionIdValue: string | undefined;
+  private sessionErrorValue: string | undefined;
   private observedCost = 0;
   private stepText = "";
   private finalText: string | undefined;
-  private retainedBytes = 0;
+  private stepTextTruncated = false;
+  private finalTextTruncated = false;
+  private retainedEventBytes = 0;
+  private retainedProgressBytes = 0;
+  private retainedUnparsedBytes = 0;
+  private omittedEvents = 0;
+  private omittedProgress = 0;
+  private omittedUnparsed = 0;
 
-  constructor(private readonly maxUnparsedBytes: number) {}
+  constructor(private readonly maxOutputBytes: number) {
+    this.structuralLimit = Math.max(maxOutputBytes, MIN_STRUCTURAL_RETENTION_BYTES);
+  }
 
   accept(rawLine: string): Record<string, unknown> | undefined {
     const line = rawLine.trim();
@@ -593,11 +721,19 @@ class OpenCodeStdoutAccumulator {
       this.retainUnparsed(rawLine);
       return undefined;
     }
-    this.events.push(event);
-    if (typeof event.sessionID === "string" && event.sessionID.trim()) this.sessionIds.add(event.sessionID);
+    this.retainEvent(event);
+    this.observeSession(event.sessionID);
     const part = isRecord(event.part) ? event.part : undefined;
-    if (event.type === "step_start") this.stepText = "";
-    if (event.type === "text" && part && typeof part.text === "string") this.stepText += part.text;
+    if (event.type === "step_start") {
+      this.stepText = "";
+      this.stepTextTruncated = false;
+    }
+    if (event.type === "text" && part && typeof part.text === "string") {
+      const remaining = Math.max(0, this.maxOutputBytes - Buffer.byteLength(this.stepText));
+      const retained = truncate(part.text, remaining);
+      this.stepText += retained;
+      if (retained !== part.text) this.stepTextTruncated = true;
+    }
     if (event.type === "step_finish" && part) {
       const tokens = isRecord(part.tokens) ? part.tokens : {};
       this.usage.inputTokens += nonnegative(tokens.input);
@@ -606,33 +742,86 @@ class OpenCodeStdoutAccumulator {
       const cache = isRecord(tokens.cache) ? tokens.cache : {};
       this.usage.cachedInputTokens += nonnegative(cache.read);
       this.observedCost += nonnegative(part.cost);
-      if (part.reason === "stop") this.finalText = this.stepText;
+      if (part.reason === "stop") {
+        this.finalText = this.stepText;
+        this.finalTextTruncated = this.stepTextTruncated;
+      }
     }
-    return event;
+    return this.retainProgress(event);
   }
 
   finish(): ParsedOpenCodeOutput {
-    const sessionId = this.sessionIds.size === 1 ? [...this.sessionIds][0] : undefined;
-    const sessionError = this.sessionIds.size > 1
-      ? `OpenCode CLI returned conflicting session ids: ${[...this.sessionIds].join(", ")}`
-      : undefined;
+    const hasOmissions = this.omittedEvents > 0
+      || this.omittedProgress > 0
+      || this.omittedUnparsed > 0
+      || this.finalTextTruncated;
     return {
       events: this.events,
       unparsed: this.unparsed,
-      sessionId,
-      sessionError,
+      retention: hasOmissions
+        ? {
+            type: "opencode.cli.retention",
+            maxOutputBytes: this.maxOutputBytes,
+            omittedEvents: this.omittedEvents,
+            omittedProgress: this.omittedProgress,
+            omittedUnparsed: this.omittedUnparsed,
+            finalTextTruncated: this.finalTextTruncated,
+          }
+        : undefined,
+      sessionId: this.sessionErrorValue ? undefined : this.sessionIdValue,
+      sessionError: this.sessionErrorValue,
       finalText: this.finalText,
+      finalTextTruncated: this.finalTextTruncated,
       usage: { ...this.usage },
       observedCost: this.observedCost,
     };
   }
 
+  private observeSession(value: unknown): void {
+    if (typeof value !== "string" || !value.trim() || this.sessionErrorValue) return;
+    if (Buffer.byteLength(value) > MAX_SESSION_ID_BYTES) {
+      this.sessionErrorValue = `OpenCode CLI returned a session id larger than ${MAX_SESSION_ID_BYTES} bytes`;
+      return;
+    }
+    if (this.sessionIdValue === undefined) {
+      this.sessionIdValue = value;
+    } else if (this.sessionIdValue !== value) {
+      this.sessionErrorValue = `OpenCode CLI returned conflicting session ids: ${this.sessionIdValue}, ${value}`;
+    }
+  }
+
+  private retainEvent(event: Record<string, unknown>): void {
+    const bytes = Buffer.byteLength(JSON.stringify(event));
+    if (bytes > this.structuralLimit - this.retainedEventBytes) {
+      this.omittedEvents += 1;
+      return;
+    }
+    this.retainedEventBytes += bytes;
+    this.events.push(event);
+  }
+
+  private retainProgress(event: Record<string, unknown>): Record<string, unknown> | undefined {
+    const progress = liveProgress(event);
+    if (progress === undefined) return undefined;
+    const bytes = Buffer.byteLength(JSON.stringify(progress));
+    if (bytes > this.structuralLimit - this.retainedProgressBytes) {
+      this.omittedProgress += 1;
+      return undefined;
+    }
+    this.retainedProgressBytes += bytes;
+    return progress;
+  }
+
   private retainUnparsed(rawLine: string): void {
-    const remaining = this.maxUnparsedBytes - this.retainedBytes;
-    if (remaining <= 0) return;
+    const remaining = this.maxOutputBytes - this.retainedUnparsedBytes;
+    if (remaining <= 0) {
+      this.omittedUnparsed += 1;
+      return;
+    }
     const retained = truncate(rawLine, remaining);
-    this.retainedBytes += Buffer.byteLength(retained);
+    this.retainedUnparsedBytes += Buffer.byteLength(retained);
     this.unparsed.push({ type: "opencode.cli.stdout.unparsed", line: retained });
+    if (retained !== rawLine) this.omittedUnparsed += 1;
   }
 }
 
@@ -699,8 +888,28 @@ function nonnegative(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+function isTaskStatus(value: unknown): value is TaskStatus {
+  return value === "pending" || value === "in_progress" || value === "completed";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function consumeStdoutLines(stdout: string, accept: (line: string) => void): void {
+  let start = 0;
+  for (;;) {
+    const newline = stdout.indexOf("\n", start);
+    if (newline === -1) break;
+    accept(stripLineBreak(stdout.slice(start, newline)));
+    start = newline + 1;
+  }
+  if (start < stdout.length) accept(stripLineBreak(stdout.slice(start)));
+}
+
+function appendBounded(value: string, addition: string, maxBytes: number): string {
+  const remaining = Math.max(0, maxBytes - Buffer.byteLength(value));
+  return remaining === 0 ? value : value + truncate(addition, remaining);
 }
 
 function truncate(value: string, maxBytes: number): string {

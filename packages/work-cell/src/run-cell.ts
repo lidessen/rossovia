@@ -230,14 +230,10 @@ export async function runCell(
         terminalTools.map((terminal) => terminal.name),
         driverResult.terminalToolsCalled,
       );
-      // Task-cycle verification engages only when the driver reports task
-      // state. The AI SDK path returns its TaskStore snapshot; the OpenCode
-      // CLI adapter initializes ordinary task seeds as native session todos
-      // through its host-owned loopback-server and local-database seam before
-      // the first agent message and never mirrors them back as a task stream,
-      // so it is not a verification surface and no completion validator is
-      // invented for it.
-      taskVerification = driverResult.tasks !== undefined
+      // Supplied tasks are a generic Cell completion condition. A driver may
+      // also expose a task cycle that emerged during execution, but it may not
+      // make caller-supplied tasks disappear by omitting its final projection.
+      taskVerification = input.tasks !== undefined || driverResult.tasks !== undefined
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;
       if (terminalResult.error) {
