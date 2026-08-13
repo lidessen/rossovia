@@ -49,6 +49,7 @@ export type DelegateCall = z.infer<typeof DelegateCallSchema>;
 
 export const WorkerSpawnCallSchema = DelegateCallSchema.extend({
   workerId: z.string().min(1),
+  imagePaths: z.array(z.string().min(1)).min(1).optional(),
 }).strict();
 export type WorkerSpawnCall = z.infer<typeof WorkerSpawnCallSchema>;
 export type DelegatePreparationCall = DelegateCall | WorkerSpawnCall;
@@ -275,7 +276,7 @@ const delegateFileTool = tool({
 
 const workerSpawnTool = tool({
   description:
-    "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId. Listing is optional; the host validates and binds the worker before dispatch.",
+    "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId. Optional imagePaths are workspace-relative local images for a vision worker. Listing is optional; the host validates and binds the worker before dispatch.",
   inputSchema: WorkerSpawnCallSchema,
   outputSchema: DelegateToolResultSchema,
 });
@@ -541,8 +542,12 @@ export class DelegateLoopSession {
           ? "catalog-enabled delegation requires worker_spawn with an explicit workerId"
           : "legacy delegate mode does not accept workerId selection");
       }
-      if ("workerId" in call && typeof call.workerId === "string") {
-        this.options.workerCatalog!.assertSupports(call.workerId, [call.capabilityNeed]);
+      if ("workerId" in call) {
+        const workerCall = WorkerSpawnCallSchema.parse(call);
+        this.options.workerCatalog!.assertSupports(workerCall.workerId, [
+          workerCall.capabilityNeed,
+          ...(workerCall.imagePaths?.length ? ["vision"] : []),
+        ]);
       }
       if (this.seenContributionKeys.has(call.key)) throw new Error(`duplicate delegate contribution key ${call.key}`);
       const task = this.tasks.get(call.taskId);
@@ -564,7 +569,20 @@ export class DelegateLoopSession {
 
     // Preparation may inspect host evidence but cannot execute Cells. All
     // prepared contributions are admitted together before checkpoint or dispatch.
-    const execution = await Promise.all(calls.map((call) => this.options.prepareContribution(call)));
+    const execution = await Promise.all(calls.map(async (call) => {
+      const prepared = await this.options.prepareContribution(call);
+      if (!("workerId" in call) || !call.imagePaths?.length) return prepared;
+      if (!prepared.cell || typeof prepared.cell !== "object" || Array.isArray(prepared.cell)) {
+        throw new Error(`worker contribution ${call.key} did not prepare an object Cell`);
+      }
+      return {
+        ...prepared,
+        cell: {
+          ...prepared.cell,
+          imagePaths: [...call.imagePaths],
+        },
+      };
+    }));
     const currentUncovered = uncovered(this.input.whole.obligations, this.coveredObligations);
     const batchInput: PreparedDelegateBatch = {
       id: `${this.input.id}:batch:${this.batches.length + 1}`,
@@ -724,7 +742,7 @@ Use task_create/task_update/task_list/task_get as the shared coordination memory
 
 After a child settles, use \`read_delegate_result\` with its returned batchId and key when the child's semantic result is needed for reconstruction. This tool can read only settled children from this parent loop; it does not accept filesystem paths. A metadata-only projection means the bounded semantic payload was unavailable and must not be guessed.
 
-Each call carries only the semantic contribution: stable key, taskId, task, declared source and obligation references, local acceptance, and bounded capability need. Do not provide workspace paths, work-proof declarations, concurrency, provider choice, budgets, Task Shape internals, or a nested-delegation policy. The host supplies runtime availability, lineage, effect containment, and the other execution policy after admission. The prepared Cell declares its mechanical completion needs directly through terminal tools, output schema, or artifacts. Do not add an opaque result-contract label.
+Each call carries only the semantic contribution: stable key, taskId, task, declared source and obligation references, local acceptance, and bounded capability need. Do not provide workspace paths except local images in a vision worker's \`worker_spawn.imagePaths\`, which must point inside the frozen workspace read scope. Do not provide work-proof declarations, concurrency, provider choice, budgets, Task Shape internals, or a nested-delegation policy. The host supplies runtime availability, lineage, effect containment, and the other execution policy after admission. The prepared Cell declares its mechanical completion needs directly through terminal tools, output schema, or artifacts. Do not add an opaque result-contract label.
 
 Several calls in one response are one candidate batch. Emit several only when they are independent in this step; the host validates the complete batch before starting any Cell. A returned tool result is execution evidence, not semantic acceptance or Mission completion.
 

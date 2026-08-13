@@ -82,7 +82,10 @@ export class WorkerCatalog {
       throw new Error(`catalog-backed Cell ${parsed.id} must retain an executionProfile`);
     }
     const entry = this.requireRunnable(parsed.workerId);
-    this.assertSupports(entry.card.id, parsed.capabilitiesRequired);
+    this.assertSupports(entry.card.id, [
+      ...parsed.capabilitiesRequired,
+      ...(parsed.imagePaths?.length ? ["vision"] : []),
+    ]);
     assertExecutionProfile(entry.card, parsed.executionProfile);
     const driver = entry.createDriver();
     if (

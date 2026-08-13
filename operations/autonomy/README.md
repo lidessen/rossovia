@@ -46,10 +46,22 @@ legacy `createDriver` path. That mode exposes one scheduling surface:
   optional. The host verifies that the selected card carries the contribution's
   `capabilityNeed`, preparation retains `workerId` on the Cell, ordinary
   admission checkpoints it, and Work Cell resolves the matching driver.
+- `worker_spawn` may additionally carry `imagePaths`, an explicit list of
+  workspace-relative local images. Their presence automatically requires a
+  `vision` worker; the prepared Cell retains the paths, and Work Cell applies
+  its declared read scope and post-`realpath` containment before constructing
+  the model request.
 
 Catalog mode does not expose `delegate` or `delegate_file`; legacy mode remains
 unchanged. Current cards are host policy in `src/worker-policy.ts`; the generic
 catalog mechanism lives in Work Cell.
+
+The current host policy gives the Kimi Coding card a `vision` label and
+describes image-plus-code work, while the DeepSeek Flash card remains text/code
+only and has no `vision` label. `createCurrentWorkerCatalog` is a helper a host
+may choose to install; this contract does not claim that the Rossovia CLI wires
+it automatically. The bounded Kimi `k3` image-transport smoke is recorded in
+[Work Cell's local image-input evidence](../../packages/work-cell/README.md#local-image-input-evidence).
 
 `actorRef` and `sourceRef` retain attribution supplied by the host. They are not
 independent authentication. Git, worktree, pull-request, and other external

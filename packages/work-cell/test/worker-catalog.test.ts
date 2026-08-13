@@ -73,6 +73,16 @@ test("driver resolution rejects a selected worker missing a Cell required label"
   expect(() => catalog.createDriver(input)).toThrow("missing required labels: vision");
 });
 
+test("local image input requires a vision worker even when the Cell omits a vision label", () => {
+  const catalog = catalogWith([
+    card("deepseek-flash", "deepseek", "deepseek-v4-flash", ["coding", "text"], "Handles text/code work. Recommended for non-visual engineering."),
+  ]);
+  const input = cell("/tmp", "image-cell", "deepseek-flash", "deepseek", "deepseek-v4-flash", ["coding"]);
+  input.imagePaths = ["images/probe.png"];
+
+  expect(() => catalog.createDriver(input)).toThrow("missing required labels: vision");
+});
+
 function catalogWith(cards: readonly WorkerCard[]): WorkerCatalog {
   return new WorkerCatalog(cards.map((worker) => ({
     card: worker,

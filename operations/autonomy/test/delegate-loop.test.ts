@@ -138,6 +138,68 @@ test("catalog mode rejects an explicit worker missing the contribution's require
   expect(prepared).toBe(0);
 });
 
+test("worker_spawn preserves local image paths through host preparation and admission", async () => {
+  const root = await fixture();
+  const catalog = workerCatalog([
+    workerCard(
+      "vision-worker",
+      "visual-provider",
+      "visual-model",
+      "Handles screenshots and diagrams with code context. Recommended for visual-plus-code inspection.",
+      ["read", "vision"],
+    ),
+  ]);
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response([namedToolCall("spawn-vision", "worker_spawn", {
+          ...call("visual", "inspect-contract", "source:contract"),
+          workerId: "vision-worker",
+          imagePaths: ["screenshots/current.png"],
+        })], "tool-calls");
+      }
+      return response([{ type: "text", text: "The visual worker settled." }], "stop");
+    },
+  });
+
+  const result = await runDelegateLoop(loopInput(root), {
+    model,
+    workerCatalog: catalog,
+    prepareContribution: async (delegateCall) => {
+      if (!("workerId" in delegateCall)) throw new Error("expected catalog worker selection");
+      const prepared = workerExecution(root, delegateCall);
+      return {
+        ...prepared,
+        taskShape: {
+          ...prepared.taskShape,
+          referenceProfile: { id: "vision-worker", revision: "profile-revision-1" },
+        },
+        cell: {
+          ...(prepared.cell as CellInput),
+          executionProfile: {
+            id: "vision-worker",
+            version: "execution-profile.v1",
+            provider: "visual-provider",
+            model: "visual-model",
+            parallelism: "serial",
+          },
+        },
+      };
+    },
+    timeline: new FileMissionTimeline(join(root, ".mission-vision-worker")),
+    concurrency: 1,
+    maxModelSteps: 3,
+    maxDelegateBatches: 1,
+    maxCallsPerStep: 1,
+  });
+
+  expect(result.batches[0]?.run.kind).toBe("direct");
+  if (result.batches[0]?.run.kind !== "direct") throw new Error("expected direct worker run");
+  expect(result.batches[0].run.record.input.imagePaths).toEqual(["screenshots/current.png"]);
+});
+
 test("one AI SDK step collects an independent delegate batch before dispatch and returns compact results", async () => {
   const root = await fixture();
   let modelCalls = 0;
@@ -900,6 +962,8 @@ test("DelegateLoopSession parks the parent and resumes its model only after the 
   expect(firstOrientation).toContain("Remaining delegate batches: 2");
   expect(firstOrientation).toContain("Guard references: guard:independent-claim-check");
   expect(firstOrientation).toContain("Reconstruction owner: mission:turn-1-reconstruction");
+  expect(firstOrientation).toContain("local images in a vision worker's `worker_spawn.imagePaths`");
+  expect(firstOrientation).toContain("inside the frozen workspace read scope");
   expect(firstOrientation).toContain('\\"status\\":\\"pending\\"');
   expect(firstOrientation).toContain(
     "Uncovered contribution obligations: inspect-contract, inspect-callers, document-boundary",

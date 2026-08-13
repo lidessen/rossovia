@@ -35,9 +35,9 @@ export function currentWorkerCards(
     WorkerCardSchema.parse({
       version: WORKER_CARD_VERSION,
       id: "kimi-coding",
-      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
+      labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
       description:
-        "Kimi Coding handles complex code engineering with thinking and tool use across repository analysis, implementation, debugging, and review. Recommended for code-heavy tasks that benefit from sustained reasoning; visual inputs are not advertised by this worker until typed media transport is enabled.",
+        "Kimi Coding handles complex code engineering with thinking, tool use, and image input across repository analysis, implementation, debugging, UI screenshots, and architecture diagrams. Recommended for code-heavy or visual-plus-code tasks that benefit from sustained reasoning.",
       executionProfile: {
         id: "kimi-coding",
         version: "execution-profile.v1",

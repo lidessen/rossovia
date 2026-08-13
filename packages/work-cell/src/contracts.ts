@@ -150,6 +150,8 @@ export const CellInputSchema = z.object({
   workerId: z.string().min(1).optional(),
   intent: z.string().min(1),
   workspace: WorkspacePolicySchema,
+  /** Workspace-relative local images supplied to a vision-capable worker. */
+  imagePaths: z.array(z.string().min(1)).min(1).optional(),
   instructions: z.array(z.string().min(1)).min(1),
   capabilities: z.array(z.string().min(1)).default([]),
   context: z.array(CellContextSchema).default([]),

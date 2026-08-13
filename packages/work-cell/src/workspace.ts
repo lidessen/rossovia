@@ -78,6 +78,13 @@ export class Workspace {
     return lines.slice(Math.max(0, startLine - 1), endLine).join("\n");
   }
 
+  async readBinary(path: string): Promise<Uint8Array> {
+    const absolute = await this.resolveReadable(path);
+    const info = await lstat(absolute);
+    if (!info.isFile()) throw new Error(`binary input is not a regular file: ${path}`);
+    return new Uint8Array(await readFile(absolute));
+  }
+
   async writeText(path: string, content: string): Promise<void> {
     const absolute = await this.resolveWritable(path);
     await mkdir(dirname(absolute), { recursive: true });

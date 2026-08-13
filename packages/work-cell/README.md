@@ -31,6 +31,14 @@ non-empty, `write_file` only when write scope exists, and `run_command` only
 when commands are allow-listed. An unavailable capability is absent from the
 model-facing tool surface rather than present as a guaranteed failure.
 
+`CellInput.imagePaths` may name one or more workspace-relative local images.
+Every path must resolve to a regular file inside the declared workspace
+`readPaths`; the same exclusion, root-containment, and post-`realpath` scope
+checks used by ordinary reads apply. The AI SDK driver materializes the bytes
+only while constructing the model request. The retained Cell input keeps the
+paths, while the run record, raw steps, and trace do not persist the image
+bytes.
+
 The ordinary `run` command keeps that AI SDK driver as its default. A caller may
 instead select the OpenCode CLI explicitly for an already-prepared coding Cell:
 
@@ -86,6 +94,25 @@ resolution fails closed when the worker is unknown, unavailable, missing any
 a driver with another provider/model identity. The orchestration and Swarm
 factories receive each `CellInput`, so a mixed-worker batch creates the selected
 driver independently for every admitted Cell.
+
+A catalog-backed Cell with `imagePaths` automatically requires the factual
+`vision` label even when the caller omitted it from `capabilitiesRequired`.
+Driver resolution therefore rejects image input on a text-only worker instead
+of sending it to an incompatible model.
+
+### Local image-input evidence
+
+On 2026-08-13, a local smoke ran the ordinary
+`bun src/cli.ts run <cell.json>` path with a non-sensitive PNG in
+`imagePaths`. The provider profile placed Kimi Coding `k3` first, and retained
+serving metadata reported `kimi-coding/k3`; this CLI invocation did not resolve
+its `workerId` through `WorkerCatalog`. The Cell passed, correctly identified
+the blue rectangle on the left and the red rectangle on the right, and used
+1,683 total tokens. See the
+[minimal retained evidence](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md)
+for the result and its limits. This establishes the bounded local-image
+transport path for that run; it does not establish general visual accuracy or
+turn Work Cell into a media storage system.
 
 Provider observation is separate from execution preference. The generic
 observation result keeps availability, quota freshness, normalized windows, and

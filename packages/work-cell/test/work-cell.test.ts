@@ -495,6 +495,20 @@ describe("Workspace containment", () => {
     // Plain basename still works
     await expect(workspace.runCommand(["true"])).resolves.toMatchObject({ exitCode: 0 });
   });
+
+  test("reads binary inputs only through the declared workspace read scope", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "images"), { recursive: true });
+    await writeFile(join(root, "images", "probe.png"), new Uint8Array([1, 2, 3]));
+    const parsed = input(root);
+    parsed.workspace.readPaths = ["images"];
+    const workspace = await Workspace.create(parsed.workspace, parsed.budget);
+
+    expect(Array.from(await workspace.readBinary("images/probe.png"))).toEqual([1, 2, 3]);
+    await expect(workspace.readBinary("principles/SEQUENCE.md")).rejects.toThrow("outside declared scope");
+    await expect(workspace.readBinary("../outside.png")).rejects.toThrow("path escapes workspace");
+    await expect(workspace.readBinary("images")).rejects.toThrow("not a regular file");
+  });
 });
 
 class ScriptedDriver implements CellDriver, SequenceSelector {
