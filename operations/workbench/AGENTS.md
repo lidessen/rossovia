@@ -151,19 +151,25 @@ Workbench home has a task source.
   [agent-delegation](../../skills/agent-delegation/SKILL.md); Workbench retains the
   obligation and returned claim, not the sub-agent runtime or coordination
   state.
-- Run an ordinary open Agent-owned project task that already has one exact clean
+- Run an ordinary open Agent-owned project task that already has one exact
   isolated Worktree with `task run <id> --driver opencode-cli --model
   <provider/model>` plus the returned task and source revisions; add `--variant`
   only when explicitly selected for this attempt, and `--session <id>` to
-  continue an OpenCode session retained by a recorded previous attempt of the
-  same still-open task in its current bound Worktree. Workbench reads that
-  owner-backed Work Cell final record before launch. The result returns the
-  actual OpenCode session id observed in the new attempt's final Work Cell
-  record; an unretained requested session or a
-  requested session that does not match the new observation fails. Mission context is not
-  required. The command creates the Work Cell input and append-only attempt
-  evidence inside the Workbench home, but its settlement neither submits nor
-  accepts the task. An atomic lease in the exact Worktree Git metadata rejects
+  continue only the latest observed OpenCode session retained by an attributable
+  previous attempt of the same still-open task in its current bound Worktree.
+  A fresh run remains Git-clean-only. An explicit continuation may retain a
+  dirty Worktree only when every currently staged, unstaged, or non-ignored
+  untracked path is present in the cumulative `workspaceDiff` union of usable,
+  owner-backed attempts on that continuous same-session branch. A failed or
+  otherwise unusable attempt contributes no paths, but a different observed
+  session still terminates the prior branch. Ignored artifacts do not block,
+  and path membership proves no content identity. The result returns the actual
+  OpenCode session id observed in the new attempt's final Work Cell record; a
+  requested session that is absent, not latest, or does not match the new
+  observation fails.
+  Mission context is not required. The command creates the Work Cell input and
+  append-only attempt evidence inside the Workbench home, but its settlement
+  neither submits nor accepts the task. An atomic lease in the exact Worktree Git metadata rejects
   overlapping writers across Workbench homes; a crash-retained lease requires
   exact Worktree/process inspection, exact-file removal, and retry rather than
   stale-lock inference or Task reopening. Git-tracked paths always remain in
@@ -190,6 +196,15 @@ Workbench home has a task source.
   Principal-attributed acceptance settles the Workbench task. Attribution is
   not identity authentication, and local settlement never implies Mission,
   product, integration, merge, or publication acceptance.
+- Append a structured independent assessment only with `task append-review`
+  against the exact current result-claim ID while the task is `verifying`.
+  Supply explicit independence basis/source identity and one full Git commit;
+  do not infer either from reviewer prose, names, models, sessions, or result
+  evidence references. The append is review evidence only: it preserves
+  lifecycle, next actor, result resolution, and Principal acceptance. Review
+  freshness is rebuilt by comparing that commit with the currently observed
+  bound Worktree HEAD; independent or unreadable Worktree context is
+  `unavailable`, never guessed.
 - Keep corrections on the same task. Recording a correction changes only the
   local task. Deliver it to an Agent only through the Workbench UI's explicit
   delivery action after the task's latest execution link resolves to one exact

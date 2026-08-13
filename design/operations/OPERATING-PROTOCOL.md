@@ -16,6 +16,57 @@ Scheduled jobs, GitHub Issues, comments, webhooks, and other future events are
 intake proposals only until separately designed and shadow-tested. They cannot
 cause acceptance, budget release, merge, or a change to accepted design.
 
+## Execution topology
+
+Within a temporary agent team, the Main Agent is the session-level proxy for
+the Principal's stated direction, not a substitute for the human Principal's
+authority. It owns mission direction, reconstruction and synthesis of returned
+claims, exceptions, and the final recommendation or answer. Ordinary bounded
+production belongs to execution owners; the Main Agent should not absorb that
+work merely because it can perform it. It ensures that the appropriate
+mechanical checks and independent verification occur, reconstructs that
+evidence against the mandate and authoritative sources, and does not treat a
+producer's checks or self-report as independent review.
+
+When an execution owner cannot progress, the Main Agent may intervene in the
+conditions of that owner's performance: clarify the objective or acceptance,
+restore missing context, improve tool or strategy guidance, give feedback, or
+reshape, reassign, or request another worker attempt. The intervention should
+restore the worker's ability to produce; the Main Agent does not resolve the
+concrete production problem itself. This is ordinary direction, not an
+approval gate, permission layer, escalation bureaucracy, or automatic retry
+controller.
+
+Once a branch enters shared integration, an integration steward owns only each
+mechanical step in the current human request or separately authorized
+integration scope: publishing the branch, creating and maintaining the PR,
+following CI and review to observable completion, retaining late observations
+and recording their dispositions, executing a merge after explicit
+authorization, and cleaning up the settled worktree. A review-only request does
+not authorize the other steps. The Main Agent handles an exception that changes
+scope, evidence, authority, or the recommended disposition and presents the
+decision brief; the Principal alone decides durable acceptance and merge.
+
+When the Principal's mandate selects practice improvement, form it under the
+[bounded organization contract](../decisions/012-bounded-adaptive-organization.md)
+as a temporary shadow team with a bounded mandate, effect bounds, and budget.
+It runs independently and in parallel with production, reads evidence already
+produced by the work rather than intercepting the live path, and returns
+source-linked observations or claims, separately marked hypotheses, or a
+proposed ordinary improvement Task. Verification and acceptance of any returned
+observation, claim, hypothesis, or task proposal remain with the designated
+external roles. The
+[reflection-sidecar decision](../decisions/019-event-triggered-reflection-sidecar.md)
+does not authorize this parallel investigation; it governs only how a retained
+anomaly may be routed at a safe point into a later ordinary practice.
+
+The team cannot block or veto production, enter production acceptance,
+verification, or settlement, retry the work, or automatically amend a Skill,
+protocol, accepted design, or the Principle Sequence. Any improvement proceeds
+later through the ordinary task and authority path. This formation is not a
+default preflight and adds no gate, schema, queue, standing institution, or
+second task system.
+
 ## Mission route
 
 | Movement | Minimum input | Responsible seat | Required output | Stop / handoff |
@@ -25,7 +76,7 @@ cause acceptance, budget release, merge, or a change to accepted design.
 | Plan when material | settled phase or choice with different commitments | strategic/work-estimation advisers | proposed Strategy Case or Work Estimate with envelope/continuation boundary | human approval before executable mission |
 | Execute | approved mission, acceptance, branch/worktree bounds | Execution owner | branch-local diff, Work Cell trace where used, and check results | unresolved work remains explicit |
 | Verify | proposed diff and acceptance | independent AI reviewer | mechanical work proof plus concise traceable correctness judgment | failure returns to execution or principal |
-| Integrate | accepted review and human decision | Integration steward + Principal | merged PR, rejected/closed PR, or return-to-work record | only principal decides merge |
+| Integrate | accepted review and human decision | Integration steward under Principal decision | merged PR, rejected/closed PR, or return-to-work record | only principal decides merge |
 | Learn | a traceable failed check, drift, or phase result | correction formation | smallest routed next practice and reopening observation | no automatic protocol/skill amendment |
 
 At every material human gate, the producing role delivers a
@@ -75,20 +126,22 @@ queue.
 3. Record the mandate, branch, worktree path, acceptance, verifier, and
    proposed budget/continuation gate in the PR template or its linked durable
    record. One active agent writes one branch at a time.
-4. Run the declared local checks before opening a PR. Push only the mission
-   branch; never use an agent session to push `main`.
-5. Open a PR into `main`, preserve failed checks and review observations, obtain
-   independent AI review evidence, and present its compact decision view to the
-   Principal for confirmation. A green check is necessary evidence, not
-   acceptance. The named reviewer must submit an explicit record for the
-   current head; an empty or pending review surface is not completion. Use
-   asynchronous platform review only as supplemental evidence when it lacks a
-   reliable completion signal; see
+4. Run the declared local checks before opening a PR. The integration steward
+   pushes only the mission branch; never use an agent session to push `main`.
+5. The integration steward opens and maintains a PR into `main`, preserves
+   failed checks and review observations, and follows CI and the named
+   independent AI reviewer to observable completion. The Main Agent reconstructs
+   the resulting compact decision view and presents it to the Principal for
+   confirmation. A green check is necessary evidence, not acceptance. The named
+   reviewer must submit an explicit record for the current head; an empty or
+   pending review surface is not completion. Use asynchronous platform review
+   only as supplemental evidence when it lacks a reliable completion signal; see
    [decision 023](../decisions/023-ai-review-evidence-and-principal-confirmation.md).
-6. After merge, rejection, or explicit abandonment, retain the PR and any
-   promoted evidence. Before settling or pruning the Mission, re-read the PR
-   for late review observations and record a disposition for each one. Then
-   remove the merged/abandoned worktree:
+6. After the Principal authorizes merge—or decides rejection, return, or
+   abandonment—the integration steward executes that disposition and retains
+   the PR and any promoted evidence. Before settling or pruning the Mission,
+   the steward re-reads the PR for late review observations and records a
+   disposition for each one. It then removes the merged/abandoned worktree:
 
    ```text
    git worktree remove ../skills-worktrees/<slug>

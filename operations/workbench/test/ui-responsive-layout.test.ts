@@ -174,6 +174,18 @@ describe("Workbench responsive layout", () => {
     );
   });
 
+  test("allows long review history identities and evidence to wrap without widening mobile Peek", () => {
+    expect(styles).toMatch(
+      /\.task-result-reviews\s*\{[^}]*min-width:\s*0;/s,
+    );
+    expect(styles).toMatch(
+      /\.task-review-claim-owner > strong,\s*\.task-review-claim-owner > small,\s*\.task-review-claim-owner > p\s*\{[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+    expect(styles).toMatch(
+      /\.local-task-facts dd\s*\{[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+  });
+
   test("separates pending Agent responsibility from exact live Agent work across desktop and narrow task views", () => {
     expect(html).toContain('data-view="agent"');
     expect(html).toContain('<span>Agent 运行中</span>');
@@ -285,6 +297,21 @@ describe("Workbench responsive layout", () => {
     );
     expect(mobile).toMatch(
       /\.task-primary-actions \.primary-action\s*\{[^}]*min-height:\s*46px;[^}]*width:\s*100%;/s,
+    );
+  });
+
+  test("keeps ordinary Task attempt evidence readable at desktop and mobile widths", () => {
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+
+    expect(html).toContain('id="local-task-attempts"');
+    expect(app).toContain('class="local-task-facts task-attempt-facts"');
+    expect(app).toContain('class="local-task-facts task-attempt-observed"');
+    expect(styles).toMatch(/\.local-task-facts dd\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(
+      /\.task-attempt-evidence li\[data-standing="available"\] small\s*\{[^}]*color:\s*var\(--green\);/s,
+    );
+    expect(mobile).toMatch(
+      /\.task-form-grid,\s*\.local-task-facts\s*\{[^}]*grid-template-columns:\s*1fr;/s,
     );
   });
 

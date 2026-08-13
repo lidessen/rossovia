@@ -30,4 +30,60 @@ describe("Principal Workbench static asset contract", () => {
 
     expect(response.status).toBe(404);
   });
+
+  test("keeps ordinary Task attempts read-only and distinct from result acceptance", async () => {
+    const html = await (
+      await handler(new Request("http://127.0.0.1:4317/"))
+    ).text();
+    const app = await (
+      await handler(new Request("http://127.0.0.1:4317/app.js"))
+    ).text();
+    const attemptRenderer = app.slice(
+      app.indexOf("function renderTaskAttempts"),
+      app.indexOf("function renderTaskCreateWorktrees"),
+    );
+
+    expect(html).toContain('id="local-task-attempts"');
+    expect(html).toContain("Read-only run history");
+    expect(html).toContain("不显示原始 Work Cell trace");
+    expect(html).toContain("不代表\n              独立 review、自动提交或语义接受");
+    expect(attemptRenderer).toContain("尚无运行尝试");
+    expect(attemptRenderer).toContain("运行尝试来源不可用");
+    expect(attemptRenderer).toContain("Work Cell 验证（机械）");
+    expect(attemptRenderer).toContain("started · 未见 settlement");
+    expect(attemptRenderer).not.toContain("started · 运行中");
+    expect(attemptRenderer).toContain("Stable source refs");
+    expect(attemptRenderer).not.toContain('first(attempt, ["trace"]');
+    expect(attemptRenderer).not.toContain("resultClaims");
+  });
+
+  test("separates producer claim, mechanical evidence, and independent review", async () => {
+    const html = await (
+      await handler(new Request("http://127.0.0.1:4317/"))
+    ).text();
+    const app = await (
+      await handler(new Request("http://127.0.0.1:4317/app.js"))
+    ).text();
+    const renderer = app.slice(
+      app.indexOf("function renderTaskResultEvaluation"),
+      app.indexOf("function renderTaskAttempts"),
+    );
+
+    expect(html).toContain('id="task-result-producer"');
+    expect(html).toContain('id="task-result-reviews"');
+    expect(html).toContain("Producer 声明、Work Cell 机械证据与独立审查是不同证据层");
+    expect(renderer).toContain("Producer result claim");
+    expect(renderer).toContain('first(detail, ["resultReviews"], [])');
+    expect(renderer).toContain("Independent review history");
+    expect(renderer).toContain("Current claim review");
+    expect(renderer).toContain("Historical claim review");
+    expect(renderer).toContain("Owned by result claim");
+    expect(renderer).toContain("Reviewer");
+    expect(renderer).toContain("Candidate · git-commit");
+    expect(renderer).toContain("Independence");
+    expect(renderer).toContain("Freshness");
+    expect(renderer).toContain("Findings");
+    expect(renderer).toContain("Review evidence refs");
+    expect(renderer).not.toContain('first(detail, ["latestResultReview"]');
+  });
 });

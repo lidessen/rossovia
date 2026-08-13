@@ -114,6 +114,8 @@ function workItems(
           verifiedResultCandidate: null,
         },
         latestResultVerification: { standing: "none" },
+        latestResultReview: { standing: "none" },
+        resultReviews: [],
         worktreeAuthority: "observation-only",
         worktreeStanding: "not-declared",
         task: {

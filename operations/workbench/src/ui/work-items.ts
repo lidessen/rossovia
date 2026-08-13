@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import type { TaskAttemptProjection } from "../task-attempts";
 import {
   MissionAnchorSeedSchema,
   type MissionAnchorSeed,
@@ -14,6 +15,7 @@ import { CurrentVerifiedResultProjectionSchema } from "./projection";
 import type {
   AutonomyEffectVerificationSelector,
   PrincipalTask,
+  PrincipalTaskResultReview,
   PrincipalTasks,
 } from "../contracts";
 import {
@@ -48,6 +50,27 @@ export type WorkItemNextActor =
   | "none"
   | "unknown";
 
+/**
+ * Read-only observation of one task's attempt evidence source. A task with no
+ * recorded attempts projects as `available` with an empty attempts list; a
+ * source that cannot be read projects as `unavailable` with the stable source
+ * reference and reason so the snapshot stays observable without losing the
+ * attributable read failure.
+ */
+export type TaskAttemptSourceObservation =
+  | {
+    readonly standing: "available";
+    readonly sourceRef: string;
+    readonly attempts: readonly TaskAttemptProjection[];
+  }
+  | {
+    readonly standing: "unavailable";
+    readonly sourceRef: string;
+    readonly reason: string;
+  };
+
+export const taskAttemptsSourceRef = "state/task-attempts";
+
 export type TaskLaunchReadinessBlockerCode =
   | "exact-context-required"
   | "mission-unavailable"
@@ -65,6 +88,33 @@ export interface TaskLaunchReadiness {
     readonly code: TaskLaunchReadinessBlockerCode;
     readonly message: string;
   }[];
+}
+
+export type ResultReviewFreshness =
+  | {
+    readonly standing: "current";
+    readonly observedHead: string;
+  }
+  | {
+    readonly standing: "stale";
+    readonly observedHead: string;
+  }
+  | {
+    readonly standing: "unavailable";
+    readonly reason: string;
+  };
+
+export interface ResultReviewProjection {
+  readonly claim: {
+    readonly id: string;
+    readonly submittedAt: string;
+    readonly standing: PrincipalTask["resultClaims"][number]["standing"];
+    readonly summary: string;
+    readonly latest: boolean;
+  };
+  readonly assessment: PrincipalTaskResultReview;
+  readonly independence: "independence-proven" | "independence-unproven";
+  readonly freshness: ResultReviewFreshness;
 }
 
 export interface WorkItemProjection {
@@ -296,9 +346,19 @@ export interface WorkItemProjection {
         readonly standing: "accepted-runtime-evidence-retained";
         readonly selector: AutonomyEffectVerificationSelector;
       };
+    readonly latestResultReview:
+      | { readonly standing: "none" }
+      | {
+        readonly standing: "available";
+        readonly assessment: PrincipalTaskResultReview;
+        readonly independence: "independence-proven" | "independence-unproven";
+        readonly freshness: ResultReviewFreshness;
+      };
+    readonly resultReviews: readonly ResultReviewProjection[];
     readonly worktreeAuthority: "observation-only" | "unavailable";
     readonly worktreeStanding: "not-declared" | "observed" | "unavailable";
     readonly worktreeReason?: string;
+    readonly attempts?: TaskAttemptSourceObservation;
     readonly task: PrincipalTask;
   };
 }
@@ -716,6 +776,7 @@ function missionWorkItems(
 function principalTaskWorkItems(
   snapshot: WorkItemSnapshot,
   observation: PrincipalTaskSourceObservation,
+  taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
 ): WorkItemProjection[] {
   if (observation.standing !== "available") return [];
   return observation.source.tasks.map((task): WorkItemProjection => {
@@ -1308,6 +1369,42 @@ function principalTaskWorkItems(
                 standing: "runtime-evidence-unavailable" as const,
                 reason: "the retained runtime verification selector is no longer the exact current verified execution",
               };
+    const resultReviews = task.resultClaims.flatMap(
+      (claim): ResultReviewProjection[] => claim.reviews.map((assessment) => ({
+        claim: {
+          id: claim.id,
+          submittedAt: claim.submittedAt,
+          standing: claim.standing,
+          summary: claim.summary,
+          latest: claim.id === latestClaim?.id,
+        },
+        assessment,
+        independence: reviewIndependence(assessment),
+        freshness: resultReviewFreshness(
+          task,
+          assessment,
+          observedTaskWorktree,
+          worktreeReason,
+        ),
+      })),
+    ).sort((left, right) =>
+      left.assessment.reviewedAt.localeCompare(right.assessment.reviewedAt)
+      || left.assessment.id.localeCompare(right.assessment.id)
+    );
+    const latestReview = latestClaim?.reviews.at(-1);
+    const latestResultReview = latestReview === undefined
+      ? { standing: "none" as const }
+      : {
+        standing: "available" as const,
+        assessment: latestReview,
+        independence: reviewIndependence(latestReview),
+        freshness: resultReviewFreshness(
+          task,
+          latestReview,
+          observedTaskWorktree,
+          worktreeReason,
+        ),
+      };
     const sourceRefs = [
       observation.sourceRef,
       task.origin.sourceRef,
@@ -1320,6 +1417,10 @@ function principalTaskWorkItems(
       ...task.resultClaims.flatMap((claim) => [
         claim.sourceRef,
         ...claim.evidenceRefs,
+        ...claim.reviews.flatMap((review) => [
+          review.independence.sourceRef,
+          ...review.evidenceRefs,
+        ]),
         ...(claim.resolution?.kind === "accepted"
           ? [claim.resolution.sourceRef]
           : []),
@@ -1437,6 +1538,8 @@ function principalTaskWorkItems(
           verifiedResultCandidate,
         },
         latestResultVerification,
+        latestResultReview,
+        resultReviews,
         worktreeAuthority: expectedWorktreePath === undefined || worktreeObserved
           ? "observation-only"
           : "unavailable",
@@ -1446,6 +1549,15 @@ function principalTaskWorkItems(
             ? "observed"
             : "unavailable",
         ...(worktreeReason === undefined ? {} : { worktreeReason }),
+        ...(taskAttempts === undefined
+          ? {}
+          : {
+            attempts: taskAttempts[task.id] ?? {
+              standing: "unavailable",
+              sourceRef: taskAttemptsSourceRef,
+              reason: "task attempt source was not observed",
+            },
+          }),
         task,
       },
     };
@@ -1625,6 +1737,44 @@ function sameRuntimeVerificationSelector(
     && left.verificationEventId === right.verificationEventId;
 }
 
+function reviewIndependence(
+  assessment: PrincipalTaskResultReview,
+): ResultReviewProjection["independence"] {
+  return assessment.independence.basis === "independent-review-context"
+    ? "independence-proven"
+    : "independence-unproven";
+}
+
+function resultReviewFreshness(
+  task: PrincipalTask,
+  assessment: PrincipalTaskResultReview,
+  observedTaskWorktree: ProjectProjection["worktrees"][number] | undefined,
+  worktreeReason: string | undefined,
+): ResultReviewFreshness {
+  if (task.binding.kind === "independent") {
+    return {
+      standing: "unavailable",
+      reason: "independent task has no bound Worktree whose HEAD can be observed",
+    };
+  }
+  if (observedTaskWorktree === undefined) {
+    return {
+      standing: "unavailable",
+      reason: worktreeReason
+        ?? "bound task Worktree is unavailable in the current snapshot",
+    };
+  }
+  if (observedTaskWorktree.head === null) {
+    return {
+      standing: "unavailable",
+      reason: "bound task Worktree HEAD could not be read",
+    };
+  }
+  return observedTaskWorktree.head === assessment.candidate.commit
+    ? { standing: "current", observedHead: observedTaskWorktree.head }
+    : { standing: "stale", observedHead: observedTaskWorktree.head };
+}
+
 function sameObservedPath(
   left: string | undefined,
   right: string | undefined,
@@ -1670,6 +1820,7 @@ export function buildWorkItemProjection(
     sourceRef: "unavailable",
     reason: "Principal task source was not observed.",
   },
+  taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
 ): WorkItemSetProjection {
   const attention = attentionWorkItems(snapshot);
   const runners = runnerWorkItems(snapshot);
@@ -1682,7 +1833,7 @@ export function buildWorkItemProjection(
   const items = [
     ...attention,
     ...runners,
-    ...principalTaskWorkItems(snapshot, taskSource),
+    ...principalTaskWorkItems(snapshot, taskSource, taskAttempts),
     ...missionWorkItems(snapshot, activeMissionKeys),
   ].sort((left, right) => {
     const attentionRank = {

@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -17,6 +16,8 @@ import type {
   CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
 import { loadHome, resolveHome, workspaceFor } from "./home";
+import { runCommand } from "./process";
+import { showPrincipalTaskAttempts } from "./task-attempts";
 import { showPrincipalTask } from "./tasks";
 import { requiredGit } from "./workspace";
 
@@ -39,11 +40,6 @@ const WorkCellCliResultSchema = z.object({
   output: z.string().min(1),
   runId: z.string().min(1),
   status: z.string().min(1),
-}).passthrough();
-
-const RecordedTaskRunSettlementSchema = z.object({
-  taskId: z.string().min(1),
-  status: z.literal("recorded"),
 }).passthrough();
 
 export interface TaskRunArguments {
@@ -169,9 +165,13 @@ export function runPrincipalTask(
   dependencies.beforeLeaseAcquire?.();
   const lease = acquireWorktreeLease(worktree, task.id, attemptId);
   try {
-    verifyCurrentCleanWorktree(home, task.binding.projectId, worktree);
+    verifyTaskSnapshotAfterLease(home, observed);
+    verifyCurrentBinding(home, task.binding.projectId, worktree);
     if (arguments_.session) {
-      validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
+      const retained = validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
+      verifyContinuationDiff(worktree, retained.workspaceDiff);
+    } else {
+      verifyCleanStatus(worktree);
     }
     const attempt = createAttempt(
       home,
@@ -251,33 +251,125 @@ function validateRetainedTaskSession(
   taskId: string,
   worktree: string,
   requestedSession: string,
-): void {
-  const attemptsRoot = join(home, "state", "task-attempts");
-  if (existsSync(attemptsRoot)) {
-    for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const evidence = attemptEvidence(home, entry.name);
-      if (!existsSync(evidence.settlementPath) || !existsSync(evidence.finalRecordPath)) continue;
-      try {
-        const settlement = RecordedTaskRunSettlementSchema.parse(
-          JSON.parse(readFileSync(evidence.settlementPath, "utf8")),
-        );
-        if (settlement.taskId !== taskId) continue;
-        const record = workCellContracts().CellRunRecordSchema.parse(
-          JSON.parse(readFileSync(evidence.finalRecordPath, "utf8")),
-        ) as CellRunRecord;
-        if (
-          realpathSync(record.input.workspace.root) === worktree
-          && record.executionObservation.sessionId === requestedSession
-        ) return;
-      } catch {
-        // Only a valid recorded settlement and owner-backed final record can admit continuation.
-      }
+): Pick<CellRunRecord, "workspaceDiff"> {
+  const attempts = showPrincipalTaskAttempts(home, taskId);
+  const observed: Array<{
+    session: string;
+    requestedSession?: string;
+    workspaceDiff?: CellRunRecord["workspaceDiff"];
+  }> = [];
+  for (const attempt of attempts) {
+    if (
+      attempt.observedSession === undefined
+      || attempt.evidence.finalRecord.standing !== "available"
+    ) continue;
+    try {
+      const record = workCellContracts().CellRunRecordSchema.parse(
+        JSON.parse(readFileSync(join(home, attempt.finalRecordRef), "utf8")),
+      ) as CellRunRecord;
+      if (realpathSync(record.input.workspace.root) !== worktree) continue;
+      const pathAnchor = attempt.status === "recorded"
+        && attempt.cellStatus === "passed"
+        && attempt.workspaceDiff !== undefined
+        && Object.values(attempt.evidence).every((source) => source.standing === "available");
+      observed.push({
+        session: attempt.observedSession,
+        ...(attempt.requestedSession !== undefined
+          ? { requestedSession: attempt.requestedSession }
+          : {}),
+        ...(pathAnchor ? { workspaceDiff: attempt.workspaceDiff } : {}),
+      });
+    } catch {
+      // Only an attributable final record in the exact Worktree can affect session continuity.
     }
   }
-  throw new Error(
-    `task ${taskId} has no recorded Work Cell attempt in the current Worktree with OpenCode session ${requestedSession}`,
+  const latest = observed.at(-1);
+  if (latest === undefined) {
+    throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
+  }
+  if (latest.session !== requestedSession) {
+    throw new Error(
+      `task ${taskId} latest observed OpenCode session in the current Worktree is ${latest.session}, not ${requestedSession}`,
+    );
+  }
+  const cumulative = {
+    added: new Set<string>(),
+    changed: new Set<string>(),
+    removed: new Set<string>(),
+  };
+  let hasPathAnchor = false;
+  for (let index = observed.length - 1; index >= 0; index -= 1) {
+    const attempt = observed[index]!;
+    if (attempt.session !== requestedSession) break;
+    if (attempt.workspaceDiff !== undefined) {
+      hasPathAnchor = true;
+      for (const kind of ["added", "changed", "removed"] as const) {
+        for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
+      }
+    }
+    if (attempt.requestedSession === undefined) break;
+    if (attempt.requestedSession !== requestedSession) break;
+  }
+  if (!hasPathAnchor) {
+    throw new Error(
+      `task ${taskId} has no usable recorded Work Cell attempt in the current Worktree session branch`,
+    );
+  }
+  return {
+    workspaceDiff: {
+      added: [...cumulative.added].sort(),
+      changed: [...cumulative.changed].sort(),
+      removed: [...cumulative.removed].sort(),
+    },
+  };
+}
+
+function verifyContinuationDiff(
+  worktree: string,
+  retained: CellRunRecord["workspaceDiff"],
+): void {
+  const retainedPaths = new Set([
+    ...retained.added,
+    ...retained.changed,
+    ...retained.removed,
+  ]);
+  const currentPaths = gitVisiblePaths(worktree);
+  const extraPaths = [...currentPaths].filter((path) => !retainedPaths.has(path)).sort();
+  if (extraPaths.length > 0) {
+    throw new Error(
+      `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${extraPaths.join(", ")}`,
+    );
+  }
+}
+
+function gitVisiblePaths(worktree: string): Set<string> {
+  const result = runCommand(
+    "git",
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+    { cwd: worktree },
   );
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr.trim() || `git status failed in ${worktree}`);
+  }
+  if (!result.stdout) return new Set();
+  const fields = result.stdout.split("\0");
+  if (fields.pop() !== "") throw new Error("Git porcelain v1 -z output was not NUL-terminated");
+  const paths = new Set<string>();
+  for (let index = 0; index < fields.length; index += 1) {
+    const entry = fields[index]!;
+    if (entry.length < 4 || entry[2] !== " ") {
+      throw new Error("Git porcelain v1 -z output contained an invalid status entry");
+    }
+    const status = entry.slice(0, 2);
+    paths.add(entry.slice(3));
+    if (status.includes("R") || status.includes("C")) {
+      const source = fields[index + 1];
+      if (!source) throw new Error("Git porcelain v1 -z rename entry lacked its source path");
+      paths.add(source);
+      index += 1;
+    }
+  }
+  return paths;
 }
 
 interface TaskRunLease {
@@ -501,12 +593,25 @@ function resolveBoundWorktree(
   return worktree;
 }
 
-function verifyCurrentCleanWorktree(
+function verifyTaskSnapshotAfterLease(
   home: string,
-  projectId: string,
-  worktree: string,
+  expected: ReturnType<typeof showPrincipalTask>,
 ): void {
-  verifyCurrentBinding(home, projectId, worktree);
+  const current = showPrincipalTask(home, expected.task.id);
+  if (
+    current.sourceRevision !== expected.sourceRevision
+    || current.task.revision !== expected.task.revision
+    || current.task.lifecycle !== expected.task.lifecycle
+    || current.task.nextActor !== expected.task.nextActor
+    || !isDeepStrictEqual(current.task.binding, expected.task.binding)
+  ) {
+    throw new Error(
+      `task ${expected.task.id} changed before attempt creation after the task-run lease was acquired`,
+    );
+  }
+}
+
+function verifyCleanStatus(worktree: string): void {
   const status = requiredGit(["status", "--porcelain"], worktree) ?? "";
   if (status.trim()) throw new Error(`task Worktree is not clean: ${worktree}`);
 }

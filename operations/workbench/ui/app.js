@@ -1923,6 +1923,7 @@ export function restoredPrincipalLocusState(resolved) {
     $("#local-task-acceptance").innerHTML = task.acceptance
       .map((criterion) => `<li>${escapeHtml(criterion)}</li>`)
       .join("");
+    renderTaskResultEvaluation(detail, task);
 
     const currentTurnGuidance = first(
       first(executionContext, ["currentTurn"], {}),
@@ -1988,10 +1989,10 @@ export function restoredPrincipalLocusState(resolved) {
               ? "已接受结果 · 接受时运行时已验证"
               : "已接受结果 · Agent 声明未验证"
             : claim.standing === "superseded"
-              ? "已被后续要求取代"
+              ? "历史结果 · 已被后续要求取代"
               : runtimeVerified
-                ? "待接受结果 · 运行时已验证"
-                : "待接受结果 · Agent 声明未验证",
+                ? "当前结果 · 运行时已验证"
+                : "当前结果 · Agent 声明未验证",
           summary: claim.summary,
           source: [
             claim.sourceRef,
@@ -2014,7 +2015,8 @@ export function restoredPrincipalLocusState(resolved) {
             <small>${escapeHtml(entry.source)}</small>
           </article>
         `).join("")
-      : '<p class="empty-note">尚无纠正或结果声明。</p>';
+      : '<p class="empty-note">尚无上下文变更、纠正或结果。</p>';
+    renderTaskAttempts(detail);
     const correctionDeliveryCandidate = first(
       executionContext,
       ["correctionDeliveryCandidate"],
@@ -2159,6 +2161,256 @@ export function restoredPrincipalLocusState(resolved) {
           ? "当前运行时无法重新确认提交时的 selector；请纠正或重新提交。"
           : "只接受 Workbench 本地任务，不代表产品、Mission、提交、合并或发布接受。";
     renderTaskActionReceipt($("#local-task-action-result"), "mutation");
+  }
+
+  function renderTaskResultEvaluation(detail, task) {
+    const claim = list(first(task, ["resultClaims"], [])).at(-1);
+    const producer = $("#task-result-producer");
+    if (claim === undefined) {
+      producer.innerHTML = `
+        <span>Producer result claim</span>
+        <p class="empty-note">尚无结果声明。</p>
+      `;
+    } else {
+      const evidence = first(claim, ["evidence"], {
+        kind: "agent-references-unverified",
+      });
+      const evidenceKind = text(
+        first(evidence, ["kind"]),
+        "agent-references-unverified",
+      );
+      producer.innerHTML = `
+        <header>
+          <span>Producer result claim</span>
+          <strong data-standing="${escapeHtml(text(first(claim, ["standing"]), "submitted"))}">${escapeHtml(text(first(claim, ["standing"]), "submitted"))}</strong>
+        </header>
+        <p>${escapeHtml(text(first(claim, ["summary"]), "未提供摘要"))}</p>
+        <dl class="local-task-facts">
+          <div><dt>Claim</dt><dd>${escapeHtml(text(first(claim, ["id"]), "—"))}</dd></div>
+          <div><dt>Evidence class</dt><dd>${escapeHtml(evidenceKind)}</dd></div>
+          <div><dt>Producer source</dt><dd>${escapeHtml(text(first(claim, ["sourceRef"]), "—"))}</dd></div>
+          <div><dt>Submitted</dt><dd>${escapeHtml(formatTime(text(first(claim, ["submittedAt"]), ""), "—"))}</dd></div>
+        </dl>
+        <ul class="task-result-refs">${list(first(claim, ["evidenceRefs"], []))
+          .map((reference) => `<li>${escapeHtml(reference)}</li>`)
+          .join("")}</ul>
+      `;
+    }
+
+    const reviews = list(first(detail, ["resultReviews"], []));
+    const reviewHistory = $("#task-result-reviews");
+    reviewHistory.innerHTML = reviews.length === 0
+      ? `<div class="task-result-layer task-result-review">
+          <span>Independent review history</span>
+          <p class="empty-note">尚无结构化独立审查。</p>
+        </div>`
+      : reviews.map(renderTaskResultReview).join("");
+  }
+
+  function renderTaskResultReview(projected) {
+    const assessment = first(projected, ["assessment"], {});
+    const claim = first(projected, ["claim"], {});
+    const candidate = first(assessment, ["candidate"], {});
+    const independence = first(assessment, ["independence"], {});
+    const freshness = first(projected, ["freshness"], {});
+    const freshnessStanding = text(first(freshness, ["standing"]), "unavailable");
+    const independenceStanding = text(
+      first(projected, ["independence"]),
+      "independence-unproven",
+    );
+    const observedHead = text(first(freshness, ["observedHead"]), "");
+    const freshnessReason = text(first(freshness, ["reason"]), "");
+    const latest = first(claim, ["latest"]) === true;
+    return `
+      <article class="task-result-layer task-result-review" data-claim-standing="${escapeHtml(text(first(claim, ["standing"]), "unknown"))}" data-current-claim="${latest}">
+        <header>
+          <span>${latest ? "Current claim review" : "Historical claim review"}</span>
+        <strong data-verdict="${escapeHtml(text(first(assessment, ["verdict"]), "failed"))}">${escapeHtml(text(first(assessment, ["verdict"]), "failed"))}</strong>
+        </header>
+        <div class="task-review-claim-owner">
+          <span>Owned by result claim</span>
+          <strong>${escapeHtml(text(first(claim, ["id"]), "—"))}</strong>
+          <small>${escapeHtml(text(first(claim, ["standing"]), "unknown"))} · submitted ${escapeHtml(formatTime(text(first(claim, ["submittedAt"]), ""), "—"))}</small>
+          <p>${escapeHtml(text(first(claim, ["summary"]), "未提供 claim 摘要"))}</p>
+        </div>
+        <dl class="local-task-facts">
+          <div><dt>Reviewer</dt><dd>${escapeHtml(text(first(assessment, ["reviewerRef"]), "—"))}</dd></div>
+          <div><dt>Assessment</dt><dd>${escapeHtml(text(first(assessment, ["id"]), "—"))}</dd></div>
+          <div><dt>Candidate · git-commit</dt><dd>${escapeHtml(text(first(candidate, ["commit"]), "—"))}</dd></div>
+          <div><dt>Producer attempt</dt><dd>${escapeHtml(text(first(assessment, ["producerAttemptId"]), "未声明"))}</dd></div>
+          <div><dt>Independence</dt><dd>${escapeHtml(independenceStanding)} · ${escapeHtml(text(first(independence, ["sourceRef"]), "—"))}</dd></div>
+          <div><dt>Freshness</dt><dd>${escapeHtml(freshnessStanding)}${observedHead ? ` · HEAD ${escapeHtml(observedHead)}` : ""}${freshnessReason ? ` · ${escapeHtml(freshnessReason)}` : ""}</dd></div>
+          <div><dt>Reviewed</dt><dd>${escapeHtml(formatTime(text(first(assessment, ["reviewedAt"]), ""), "—"))}</dd></div>
+          <div><dt>Claim binding</dt><dd>${escapeHtml(text(first(assessment, ["resultClaimId"]), "—"))}</dd></div>
+        </dl>
+        <div class="task-review-findings">
+          <span>Findings</span>
+          <ul>${list(first(assessment, ["findings"], []))
+            .map((finding) => `<li>${escapeHtml(finding)}</li>`)
+            .join("")}</ul>
+        </div>
+        <details class="task-attempt-sources">
+          <summary>Review evidence refs</summary>
+          <ul class="task-result-refs">${list(first(assessment, ["evidenceRefs"], []))
+            .map((reference) => `<li>${escapeHtml(reference)}</li>`)
+            .join("")}</ul>
+        </details>
+      </article>
+    `;
+  }
+
+  function renderTaskAttempts(detail) {
+    const attempts = first(detail, ["attempts"]);
+    const summary = $("#local-task-attempts-summary");
+    const panel = $("#local-task-attempts");
+    if (attempts === null || attempts === undefined) {
+      summary.hidden = false;
+      summary.dataset.standing = "unavailable";
+      summary.textContent = "运行尝试来源未投影。";
+      panel.innerHTML = "";
+      return;
+    }
+    if (first(attempts, ["standing"]) === "unavailable") {
+      summary.hidden = false;
+      summary.dataset.standing = "unavailable";
+      const reason = text(first(attempts, ["reason"]), "原因未声明");
+      const sourceRef = text(first(attempts, ["sourceRef"]), "来源未声明");
+      summary.textContent = `运行尝试来源不可用：${reason}`;
+      panel.innerHTML =
+        `<p class="empty-note">尝试来源：${escapeHtml(sourceRef)}</p>`;
+      return;
+    }
+    const attemptList = list(first(attempts, ["attempts"], []));
+    if (attemptList.length === 0) {
+      summary.hidden = false;
+      summary.dataset.standing = "none";
+      summary.textContent = "尚无运行尝试";
+      panel.innerHTML = "";
+      return;
+    }
+    summary.dataset.standing = "available";
+    summary.hidden = true;
+    panel.innerHTML = attemptList.map(renderTaskAttempt).join("");
+  }
+
+  function renderTaskAttempt(attempt) {
+    const statusCopy = {
+      recorded: "recorded · 已记录",
+      started: "started · 未见 settlement",
+      "runner-failed": "runner-failed · Runner 失败",
+      invalid: "invalid · 证据无效",
+    };
+    const status = text(first(attempt, ["status"]), "invalid");
+    const attemptId = text(first(attempt, ["attemptId"]), "未识别 attempt");
+    const startedAt = formatTime(text(first(attempt, ["startedAt"]), ""), "时间未知");
+    const settledAt = text(first(attempt, ["settledAt"]), "");
+    const requestedSession = text(first(attempt, ["requestedSession"]), "");
+    const evidence = first(attempt, ["evidence"], {});
+    const evidenceSources = [
+      ["attempt", "A", "Attempt"],
+      ["finalRecord", "F", "Work Cell final"],
+      ["settlement", "S", "Settlement"],
+    ];
+    const evidenceRows = evidenceSources.map(([key, mark, label]) => {
+      const standing = text(first(first(evidence, [key], {}), ["standing"]), "unavailable");
+      const error = text(first(first(evidence, [key], {}), ["error"]), "");
+      return `
+        <li data-source="${escapeHtml(key)}" data-standing="${escapeHtml(standing)}">
+          <span>${escapeHtml(mark)}</span>
+          <div>
+            <strong>${escapeHtml(label)}</strong>
+            <small>${escapeHtml(standing)}${error ? ` · ${escapeHtml(error)}` : ""}</small>
+          </div>
+        </li>
+      `;
+    }).join("");
+    const finalStanding = text(
+      first(first(evidence, ["finalRecord"], {}), ["standing"]),
+      "unavailable",
+    );
+    const observedFacts = finalStanding === "available"
+      ? `
+        <dl class="local-task-facts task-attempt-observed">
+          <div><dt>Cell 状态</dt><dd>${escapeHtml(text(first(attempt, ["cellStatus"]), "未投影"))}</dd></div>
+          <div><dt>观察到 session</dt><dd>${escapeHtml(text(first(attempt, ["observedSession"]), "未投影"))}</dd></div>
+          <div><dt>Usage</dt><dd>${renderTaskAttemptUsage(first(attempt, ["usage"]))}</dd></div>
+          <div><dt>Workspace diff</dt><dd>${renderTaskAttemptDiff(first(attempt, ["workspaceDiff"]))}</dd></div>
+          <div><dt>Work Cell 验证（机械）</dt><dd>${renderTaskAttemptVerification(first(attempt, ["verification"]))}</dd></div>
+        </dl>
+      `
+      : "";
+    return `
+      <article class="local-task-history-entry task-attempt" data-status="${escapeHtml(status)}" data-attempt="${escapeHtml(attemptId)}">
+        <header>
+          <span class="task-attempt-status">${escapeHtml(statusCopy[status] || status)}</span>
+          <span class="task-attempt-time">
+            ${escapeHtml(startedAt)}${settledAt ? ` · 已结算 ${escapeHtml(formatTime(settledAt, settledAt))}` : ""}
+          </span>
+        </header>
+        <dl class="local-task-facts task-attempt-facts">
+          <div><dt>Attempt</dt><dd>${escapeHtml(attemptId)}</dd></div>
+          ${modelFact(attempt, "driver", "请求 driver")}
+          ${modelFact(attempt, "model", "请求 model")}
+          ${modelFact(attempt, "variant", "请求 variant")}
+          ${modelFact(attempt, "taskRevision", "Task 修订")}
+          ${modelFact(attempt, "sourceRevision", "Source 修订")}
+          <div><dt>请求 session</dt><dd>${escapeHtml(requestedSession || "未请求 · 新 session")}</dd></div>
+        </dl>
+        ${observedFacts}
+        <div class="task-attempt-evidence">
+          <span>Evidence standing</span>
+          <ul class="execution-evidence-layers">${evidenceRows}</ul>
+        </div>
+        <details class="task-attempt-sources">
+          <summary>Stable source refs</summary>
+          <dl class="local-task-facts task-attempt-refs">
+            <div><dt>inputRef</dt><dd>${escapeHtml(text(first(attempt, ["inputRef"]), "—"))}</dd></div>
+            <div><dt>attemptRef</dt><dd>${escapeHtml(text(first(attempt, ["attemptRef"]), "—"))}</dd></div>
+            <div><dt>finalRecordRef</dt><dd>${escapeHtml(text(first(attempt, ["finalRecordRef"]), "—"))}</dd></div>
+            <div><dt>settlementRef</dt><dd>${escapeHtml(text(first(attempt, ["settlementRef"]), "—"))}</dd></div>
+          </dl>
+        </details>
+      </article>
+    `;
+  }
+
+  function modelFact(attempt, key, label) {
+    const value = text(first(attempt, [key]), "");
+    return value ? `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>` : "";
+  }
+
+  function renderTaskAttemptUsage(usage) {
+    if (usage === null || usage === undefined) return "未投影";
+    const input = text(first(usage, ["inputTokens"]), "—");
+    const output = text(first(usage, ["outputTokens"]), "—");
+    const cached = text(first(usage, ["cachedInputTokens"]), "—");
+    const total = text(first(usage, ["totalTokens"]), "—");
+    return `in ${escapeHtml(input)} · out ${escapeHtml(output)} · cached ${escapeHtml(cached)} · total ${escapeHtml(total)}`;
+  }
+
+  function renderTaskAttemptDiff(diff) {
+    if (diff === null || diff === undefined) return "未投影";
+    const added = list(first(diff, ["added"], []));
+    const changed = list(first(diff, ["changed"], []));
+    const removed = list(first(diff, ["removed"], []));
+    const renderPaths = (paths) => paths.map((path) => escapeHtml(path)).join(", ");
+    const parts = [];
+    if (added.length) parts.push(`+${added.length} · ${renderPaths(added)}`);
+    if (changed.length) parts.push(`~${changed.length} · ${renderPaths(changed)}`);
+    if (removed.length) parts.push(`−${removed.length} · ${renderPaths(removed)}`);
+    return parts.length ? parts.join("；") : "无改动";
+  }
+
+  function renderTaskAttemptVerification(verification) {
+    if (verification === null || verification === undefined) return "未投影";
+    const passed = first(verification, ["passed"]);
+    const terminal = first(first(verification, ["terminal"], {}), ["passed"]);
+    const standing = (value) => value === true
+      ? "通过"
+      : value === false
+        ? "未通过"
+        : "未投影";
+    return `整体 ${standing(passed)} · terminal ${standing(terminal)}`;
   }
 
   function renderTaskCreateWorktrees() {

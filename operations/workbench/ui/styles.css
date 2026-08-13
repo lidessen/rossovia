@@ -3789,9 +3789,138 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .local-task-requirements,
-.local-task-history {
+.local-task-history,
+.local-task-result-evaluation {
   border-bottom: 1px solid var(--line);
   padding: 0.9rem 0;
+}
+
+.local-task-result-evaluation {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.task-result-layer {
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.7rem 0.75rem;
+}
+
+.task-result-producer {
+  background: var(--paper-deep);
+}
+
+.task-result-review {
+  background: color-mix(in srgb, var(--paper-deep) 88%, #dce8df);
+  border-left-color: var(--green);
+}
+
+.task-result-reviews {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.task-result-review[data-current-claim="false"] {
+  background: var(--paper-deep);
+  border-left-color: var(--line);
+}
+
+.task-review-claim-owner {
+  border-bottom: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  padding-bottom: 0.55rem;
+}
+
+.task-review-claim-owner > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  text-transform: uppercase;
+}
+
+.task-review-claim-owner > strong,
+.task-review-claim-owner > small,
+.task-review-claim-owner > p {
+  overflow-wrap: anywhere;
+}
+
+.task-review-claim-owner > strong {
+  font-family: var(--mono);
+  font-size: 0.61rem;
+}
+
+.task-review-claim-owner > small {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+}
+
+.task-review-claim-owner > p {
+  font-size: 0.66rem;
+  line-height: 1.45;
+  margin: 0.15rem 0 0;
+}
+
+.task-result-layer > header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+}
+
+.task-result-layer > span,
+.task-result-layer > header span,
+.task-review-findings > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.task-result-layer > header strong {
+  color: var(--ochre);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+}
+
+.task-result-review > header strong[data-verdict="passed"] {
+  color: var(--green);
+}
+
+.task-result-review > header strong[data-verdict="failed"] {
+  color: var(--red);
+}
+
+.task-result-layer > p {
+  font-size: 0.7rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.task-result-refs,
+.task-review-findings ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  padding-left: 1rem;
+}
+
+.task-result-refs {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+}
+
+.task-review-findings li {
+  font-size: 0.67rem;
+  line-height: 1.45;
 }
 
 .local-task-requirements p,
@@ -3814,6 +3943,93 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   display: grid;
   gap: 0.25rem;
   padding: 0.65rem 0;
+}
+
+.local-task-attempts {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.task-attempts-summary {
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-attempts-summary[data-standing="unavailable"] {
+  color: var(--ochre);
+}
+
+.task-attempt {
+  min-width: 0;
+}
+
+.task-attempt > header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  justify-content: space-between;
+}
+
+.task-attempt-status,
+.task-attempt-evidence > span,
+.task-attempt-sources summary {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.task-attempt[data-status="recorded"] .task-attempt-status {
+  color: var(--green);
+}
+
+.task-attempt[data-status="started"] .task-attempt-status {
+  color: var(--ochre);
+}
+
+.task-attempt[data-status="runner-failed"] .task-attempt-status,
+.task-attempt[data-status="invalid"] .task-attempt-status {
+  color: var(--red);
+}
+
+.task-attempt-time {
+  color: var(--ink-faint);
+  font-size: 0.6rem;
+}
+
+.task-attempt .local-task-facts dd {
+  font-family: var(--mono);
+}
+
+.task-attempt-observed {
+  background: var(--paper-deep);
+  border-left: 2px solid var(--line);
+  padding: 0.5rem 0.6rem;
+}
+
+.task-attempt-evidence > span {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.task-attempt-evidence li[data-standing="invalid"] small {
+  color: var(--red);
+}
+
+.task-attempt-evidence li[data-standing="available"] small {
+  color: var(--green);
+}
+
+.task-attempt-sources summary {
+  cursor: pointer;
+}
+
+.task-attempt-sources[open] summary {
+  margin-bottom: 0.35rem;
 }
 
 .task-correction-delivery {
@@ -4671,6 +4887,16 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .local-task-facts > div:nth-child(even) {
     border-left: 0;
     padding-left: 0;
+  }
+
+  .task-attempt > header {
+    align-items: flex-start;
+    display: grid;
+  }
+
+  .task-attempt-observed {
+    margin-inline: -0.85rem;
+    padding-inline: 0.85rem;
   }
 
   .task-primary-actions {

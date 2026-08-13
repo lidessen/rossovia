@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { buildWorkItemProjection } from "../src/ui/work-items";
+import {
+  buildWorkItemProjection,
+  taskAttemptsSourceRef,
+} from "../src/ui/work-items";
 import {
   workbenchTaskCorrectionGuidanceRefs,
   workbenchTaskExecutionContextFor,
@@ -260,6 +263,325 @@ describe("Workbench work-item shell projection", () => {
       reason: "Principal task source was not observed.",
     });
     expect(projection.items.some((item) => item.kind === "principal-task")).toBeFalse();
+  });
+
+  test("joins the existing owner-backed attempt projection onto its Task detail", () => {
+    const task = {
+      id: "task-attempts",
+      title: "Inspect ordinary task attempts",
+      objective: "Expose existing attempt evidence without copying facts",
+      acceptance: ["The owner projection remains attributable"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:task-attempts",
+      },
+      binding: { kind: "independent" as const },
+      lifecycle: "open" as const,
+      nextActor: "principal" as const,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-08-12T18:00:00Z",
+      updatedAt: "2026-08-12T18:00:00Z",
+    };
+    const attempts = {
+      standing: "available" as const,
+      sourceRef: taskAttemptsSourceRef,
+      attempts: [{
+        attemptId: "attempt-a",
+        driver: "opencode-cli",
+        model: "deepseek/deepseek-v4-flash",
+        status: "started" as const,
+        startedAt: "2026-08-12T18:01:00Z",
+        inputRef: "state/task-attempts/attempt-a/cell-input.json",
+        attemptRef: "state/task-attempts/attempt-a/attempt.json",
+        finalRecordRef: "state/task-attempts/attempt-a/cell-input.run.json",
+        settlementRef: "state/task-attempts/attempt-a/settlement.json",
+        evidence: {
+          attempt: { standing: "available" as const },
+          finalRecord: { standing: "unavailable" as const },
+          settlement: { standing: "unavailable" as const },
+        },
+      }],
+    };
+
+    const projection = buildWorkItemProjection(snapshot as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 1,
+        tasks: [task],
+      },
+    }, { [task.id]: attempts });
+    const item = projection.items.find(
+      (candidate) => candidate.id === `principal-task:${task.id}`,
+    );
+
+    expect(item?.taskDetail?.attempts).toBe(attempts);
+    expect(item?.taskDetail?.task).toBe(task);
+  });
+
+  test("derives review current, stale, and unavailable from the observed bound Worktree HEAD", () => {
+    const candidateCommit = "c".repeat(40);
+    const otherCommit = "d".repeat(40);
+    const task = {
+      id: "task-reviewed-result",
+      title: "Inspect one reviewed candidate",
+      objective: "Derive freshness without storing it",
+      acceptance: ["Freshness follows the bound Worktree HEAD"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:reviewed-result",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-ui",
+      },
+      lifecycle: "verifying" as const,
+      nextActor: "principal" as const,
+      revision: 3,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [{
+        id: "claim-reviewed-result",
+        submittedAt: "2026-08-12T18:00:00Z",
+        summary: "Candidate is ready.",
+        evidenceRefs: ["git:candidate"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "agent:producer",
+        standing: "submitted" as const,
+        reviews: [{
+          id: "assessment-current",
+          reviewedAt: "2026-08-12T18:05:00Z",
+          resultClaimId: "claim-reviewed-result",
+          producerAttemptId: "producer-attempt",
+          reviewerRef: "reviewer:independent",
+          independence: {
+            basis: "independent-review-context" as const,
+            sourceRef: "review-context:independent",
+          },
+          candidate: { kind: "git-commit" as const, commit: candidateCommit },
+          verdict: "passed" as const,
+          findings: ["No blocking findings."],
+          evidenceRefs: ["review:current-head"],
+        }],
+        resolution: null,
+      }],
+      createdAt: "2026-08-12T17:00:00Z",
+      updatedAt: "2026-08-12T18:05:00Z",
+    };
+    const withHead = (head: string | null, includeWorktree = true) => ({
+      ...snapshot,
+      projects: snapshot.projects.map((project) => ({
+        ...project,
+        worktrees: includeWorktree
+          ? project.worktrees.map((worktree) =>
+            worktree.path === "/workspace/skills-ui"
+              ? { ...worktree, head, dirty: false, gitBranch: null }
+              : worktree
+          )
+          : project.worktrees.filter((worktree) => worktree.path !== "/workspace/skills-ui"),
+      })),
+    });
+    const project = (head: string | null, includeWorktree = true) =>
+      buildWorkItemProjection(withHead(head, includeWorktree) as never, {
+        standing: "available",
+        sourceRef: "/home/state/tasks.json",
+        source: {
+          version: "rosso.principal-tasks.v1",
+          sourceRevision: 3,
+          tasks: [task],
+        },
+      }).items[0]!.taskDetail!.latestResultReview;
+
+    expect(project(candidateCommit)).toMatchObject({
+      standing: "available",
+      independence: "independence-proven",
+      freshness: { standing: "current", observedHead: candidateCommit },
+    });
+    expect(project(otherCommit)).toMatchObject({
+      standing: "available",
+      freshness: { standing: "stale", observedHead: otherCommit },
+    });
+    expect(project(null)).toMatchObject({
+      standing: "available",
+      freshness: { standing: "unavailable" },
+    });
+    expect(project(candidateCommit, false)).toMatchObject({
+      standing: "available",
+      freshness: { standing: "unavailable" },
+    });
+    const unprovenTask = {
+      ...task,
+      resultClaims: [{
+        ...task.resultClaims[0]!,
+        reviews: [{
+          ...task.resultClaims[0]!.reviews[0]!,
+          reviewerRef: "reviewer:name-does-not-prove-independence",
+          independence: {
+            basis: "unproven" as const,
+            sourceRef: "review-context:unproven",
+          },
+        }],
+      }],
+    };
+    const unproven = buildWorkItemProjection(withHead(candidateCommit) as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 3,
+        tasks: [unprovenTask],
+      },
+    }).items[0]!.taskDetail!.latestResultReview;
+    expect(unproven).toMatchObject({
+      standing: "available",
+      independence: "independence-unproven",
+    });
+  });
+
+  test("projects every retained review in chronology with its owning current or historical claim", () => {
+    const observedHead = "c".repeat(40);
+    const staleHead = "d".repeat(40);
+    const review = (
+      id: string,
+      reviewedAt: string,
+      resultClaimId: string,
+      candidateCommit: string,
+    ) => ({
+      id,
+      reviewedAt,
+      resultClaimId,
+      reviewerRef: `reviewer:${id}`,
+      independence: {
+        basis: "independent-review-context" as const,
+        sourceRef: `review-context:${id}`,
+      },
+      candidate: { kind: "git-commit" as const, commit: candidateCommit },
+      verdict: "passed" as const,
+      findings: [`Finding for ${id}`],
+      evidenceRefs: [`review:${id}`],
+    });
+    const task = {
+      id: "task-review-history",
+      title: "Retain review history",
+      objective: "Keep each assessment attached to its result claim",
+      acceptance: ["Every retained assessment remains inspectable"],
+      origin: {
+        kind: "principal-explicit" as const,
+        sourceRef: "conversation:review-history",
+      },
+      binding: {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-ui",
+      },
+      lifecycle: "verifying" as const,
+      nextActor: "principal" as const,
+      revision: 7,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [{
+        id: "claim-historical",
+        submittedAt: "2026-08-12T18:00:00Z",
+        summary: "Earlier candidate.",
+        evidenceRefs: ["git:earlier"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "agent:producer-one",
+        standing: "superseded" as const,
+        reviews: [review(
+          "assessment-historical",
+          "2026-08-12T18:10:00Z",
+          "claim-historical",
+          staleHead,
+        )],
+        resolution: {
+          kind: "superseded" as const,
+          at: "2026-08-12T18:15:00Z",
+          reason: "correction" as const,
+        },
+      }, {
+        id: "claim-current",
+        submittedAt: "2026-08-12T18:20:00Z",
+        summary: "Corrected candidate.",
+        evidenceRefs: ["git:corrected"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "agent:producer-two",
+        standing: "submitted" as const,
+        reviews: [
+          review(
+            "assessment-current-later",
+            "2026-08-12T18:40:00Z",
+            "claim-current",
+            observedHead,
+          ),
+          review(
+            "assessment-current-earlier",
+            "2026-08-12T18:30:00Z",
+            "claim-current",
+            staleHead,
+          ),
+        ],
+        resolution: null,
+      }],
+      createdAt: "2026-08-12T17:00:00Z",
+      updatedAt: "2026-08-12T18:40:00Z",
+    };
+    const observed = {
+      ...snapshot,
+      projects: snapshot.projects.map((project) => ({
+        ...project,
+        worktrees: project.worktrees.map((worktree) =>
+          worktree.path === "/workspace/skills-ui"
+            ? { ...worktree, head: observedHead, dirty: false, gitBranch: null }
+            : worktree
+        ),
+      })),
+    };
+
+    const reviews = buildWorkItemProjection(observed as never, {
+      standing: "available",
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1",
+        sourceRevision: 7,
+        tasks: [task],
+      },
+    }).items[0]!.taskDetail!.resultReviews;
+
+    expect(reviews.map((entry) => entry.assessment.id)).toEqual([
+      "assessment-historical",
+      "assessment-current-earlier",
+      "assessment-current-later",
+    ]);
+    expect(reviews.map((entry) => ({
+      assessment: entry.assessment.id,
+      claim: entry.claim.id,
+      standing: entry.claim.standing,
+      latest: entry.claim.latest,
+      freshness: entry.freshness.standing,
+    }))).toEqual([{
+      assessment: "assessment-historical",
+      claim: "claim-historical",
+      standing: "superseded",
+      latest: false,
+      freshness: "stale",
+    }, {
+      assessment: "assessment-current-earlier",
+      claim: "claim-current",
+      standing: "submitted",
+      latest: true,
+      freshness: "stale",
+    }, {
+      assessment: "assessment-current-later",
+      claim: "claim-current",
+      standing: "submitted",
+      latest: true,
+      freshness: "current",
+    }]);
   });
 
   test("joins Mission context and its current carrier without upgrading Agent responsibility into task execution", () => {
