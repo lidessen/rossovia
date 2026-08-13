@@ -265,9 +265,14 @@ export class OpenCodeCliDriver implements CellDriver {
       if (seeds.length > 0 && this.sessionId === undefined) {
         server = await this.startSeedServer(workspace, signal);
         const sessionId = await this.createSession(server.url, signal);
-        const dbPath = await this.databasePath(workspace, signal);
-        seedNativeTodos(dbPath, sessionId, seeds);
-        await this.verifyNativeTodos(server.url, sessionId, seeds, signal);
+        try {
+          const dbPath = await this.databasePath(workspace, signal);
+          seedNativeTodos(dbPath, sessionId, seeds);
+          await this.verifyNativeTodos(server.url, sessionId, seeds, signal);
+        } catch (error) {
+          await this.deleteSession(server.url, sessionId, signal);
+          throw error;
+        }
         argv.push("--session", sessionId, "--attach", server.url, "--dir", workspace);
       } else {
         argv.push(...(this.sessionId ? ["--session", this.sessionId] : []), "--dir", workspace);
@@ -437,6 +442,14 @@ export class OpenCodeCliDriver implements CellDriver {
     const path = result.stdout.trim();
     if (!path) throw new CellExecutionError("OpenCode CLI db path returned an empty path", EMPTY_USAGE);
     return path;
+  }
+
+  private async deleteSession(url: string, sessionId: string, signal: AbortSignal): Promise<void> {
+    try {
+      await fetch(`${url}/session/${encodeURIComponent(sessionId)}`, { method: "DELETE", signal });
+    } catch {
+      // best-effort cleanup; the original seeding failure is preserved
+    }
   }
 
   private async verifyNativeTodos(

@@ -126,6 +126,57 @@ describe("OpenCode CLI driver", () => {
     await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
       message: "OpenCode todo initialization verification failed: expected [\"Adopt the todos\"] but the session reports []",
     });
+    expect(server.calls).toEqual(["POST /session", "GET /session/ses_fixture/todo", "DELETE /session/ses_fixture"]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session when the native todo write fails, preserving the original failure", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = join(root, "opencode-broken.db");
+    const broken = new Database(dbPath);
+    broken.close();
+    const server = await fakeOpenCodeServer(dbPath);
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      }
+      return success();
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: expect.stringContaining("OpenCode native todo initialization failed"),
+    });
+    expect(server.calls).toEqual(["POST /session", "DELETE /session/ses_fixture"]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session when the database path lookup fails, preserving the original failure", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 9, stdout: "", stderr: "fixture db path failure", durationMs: 1 };
+      }
+      return success();
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI db path exited with code 9: fixture db path failure",
+    });
+    expect(server.calls).toEqual(["POST /session", "DELETE /session/ses_fixture"]);
     expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
     expect(server.stopped).toBe(true);
   });
