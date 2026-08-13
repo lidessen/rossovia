@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-13T18:17:13Z",
+  "updatedAt": "2026-08-13T20:54:03Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -33,7 +33,20 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "Integrated the completed source-and-authority design, text-first duplex contract, coordinator and temporary-team boundary, DeepSeek Pro max policy, and staged implementation plan into mainline; evidence is retained in design/organization/sessions/2026-08-13-conversation-command-entry-system-case.md and design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md. Implementation remains in progress."
+    },
+    {
+      "id": "p4a-task-operations",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Implement the minimum non-UI DeepSeek-selected canonical task create/correct path over the existing conversation socket without adding execution carriers, UI, or a second Task authority.",
+      "returnCondition": "Return only after deterministic inquiry/create/same-Task-correct/refusal/failure/uncertainty/idempotency evidence, one disposable-home live socket create-then-correct probe, Workbench and Autonomy checks, independent review readiness, and one clean exact commit; otherwise suspend with the exact blocker.",
+      "sources": [
+        "principal:2026-08-13-p4a-task-operations",
+        "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#wave-2",
+        "system-case:design/organization/sessions/2026-08-13-conversation-command-entry-system-case.md#from-one-explicit-message-to-the-existing-task-and-mission-operations"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "p4a-task-operations"
 }
