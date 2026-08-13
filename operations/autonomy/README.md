@@ -33,6 +33,37 @@ human-initiated.
 | one-use execution of an exact retained reconciliation-action decision through separate proposal and verification Cells, retained full-run evidence, and the guarded live runner commit | collecting the Principal reply, selecting provider policy, retrying an uncertain commit, or granting later product and integration authority |
 | a project-specific adapter over Work Cell execution and orchestration | changes to the generic Work Cell contract |
 
+## Capability-described workers
+
+A host may enable `DelegateLoopSession` with `workerCatalog` instead of the
+legacy `createDriver` path. That mode exposes one scheduling surface:
+
+- `worker_list({ requiredLabels })` filters runnable cards by every hard factual
+  label and returns provider/model identity, capability description,
+  availability, and configured execution-profile ID. It never auto-selects.
+- `worker_spawn({ workerId, ...semanticContribution })` explicitly selects one
+  worker while preserving the existing semantic contribution. Listing first is
+  optional. The host verifies that the selected card carries the contribution's
+  `capabilityNeed`, preparation retains `workerId` on the Cell, ordinary
+  admission checkpoints it, and Work Cell resolves the matching driver.
+- `worker_spawn` may additionally carry `imagePaths`, an explicit list of
+  workspace-relative local images. Their presence automatically requires a
+  `vision` worker; the prepared Cell retains the paths, and Work Cell applies
+  its declared read scope and post-`realpath` containment before constructing
+  the model request.
+
+Catalog mode does not expose `delegate` or `delegate_file`; legacy mode remains
+unchanged. Current cards are host policy in `src/worker-policy.ts`; the generic
+catalog mechanism lives in Work Cell.
+
+The current host policy gives the Kimi Coding card a `vision` label and
+describes image-plus-code work, while the DeepSeek Flash card remains text/code
+only and has no `vision` label. `createCurrentWorkerCatalog` is a helper a host
+may choose to install; this contract does not claim that the Rossovia CLI wires
+it automatically. The bounded Kimi image-transport smokes, including one
+direct catalog-backed driver run, are recorded in
+[the minimal evidence record](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md).
+
 `actorRef` and `sourceRef` retain attribution supplied by the host. They are not
 independent authentication. Git, worktree, pull-request, and other external
 effects require separate adapters and human gates; this package carries no

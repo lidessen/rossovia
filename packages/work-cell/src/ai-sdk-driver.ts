@@ -1,4 +1,4 @@
-import { Output, ToolLoopAgent, isStepCount, tool } from "ai";
+import { Output, ToolLoopAgent, isStepCount, tool, type UserModelMessage } from "ai";
 import { z } from "zod";
 import {
   type CellInput,
@@ -205,9 +205,12 @@ export class AiSdkValidationDriver implements CellDriver {
     let closureUsage: CellUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
     let executionResult: MaterializedAgentResult;
     let closureResult: MaterializedAgentResult | undefined;
+    const firstUserInput = await renderFirstUserInput(input, context);
     try {
       const callbacks: Parameters<typeof executionAgent.generate>[0] = {
-        prompt: renderTaskPrompt(input),
+        ...(typeof firstUserInput === "string"
+          ? { prompt: firstUserInput }
+          : { messages: [firstUserInput] }),
         abortSignal: context.signal,
         ...(context.budgetControl ? {} : { timeout: { totalMs: input.budget.maxDurationMs } }),
         onStepStart: ({ callId, provider, modelId, stepNumber, activeTools }) => {
@@ -355,7 +358,9 @@ export class AiSdkValidationDriver implements CellDriver {
       try {
         const generatedClosure = await closureAgent.generate({
           messages: [
-            { role: "user", content: renderTaskPrompt(input) },
+            typeof firstUserInput === "string"
+              ? { role: "user", content: firstUserInput }
+              : firstUserInput,
             {
               role: "user",
               content: `Retained successful tool evidence from the execution trace:\n${renderRecoveryEvidence(executionResult.steps)}`,
@@ -870,6 +875,26 @@ function renderTaskPrompt(input: CellInput): string {
     `Workspace write scope:\n${input.workspace.writePaths.join("\n") || "read-only"}`,
     `Allowed command executables:\n${input.workspace.allowedCommands.join(", ") || "none"}`,
   ].join("\n\n");
+}
+
+async function renderFirstUserInput(
+  input: CellInput,
+  context: DriverContext,
+): Promise<string | UserModelMessage> {
+  const task = renderTaskPrompt(input);
+  if (!input.imagePaths?.length) return task;
+  const images = await Promise.all(input.imagePaths.map(async (path) => ({
+    type: "file" as const,
+    mediaType: "image",
+    data: await context.workspace.readBinary(path),
+  })));
+  return {
+    role: "user",
+    content: [
+      { type: "text", text: task },
+      ...images,
+    ],
+  };
 }
 
 function addUsage(left: CellUsage, right: CellUsage): CellUsage {

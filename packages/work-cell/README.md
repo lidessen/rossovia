@@ -31,6 +31,14 @@ non-empty, `write_file` only when write scope exists, and `run_command` only
 when commands are allow-listed. An unavailable capability is absent from the
 model-facing tool surface rather than present as a guaranteed failure.
 
+`CellInput.imagePaths` may name one or more workspace-relative local images.
+Every path must resolve to a regular file inside the declared workspace
+`readPaths`; the same exclusion, root-containment, and post-`realpath` scope
+checks used by ordinary reads apply. The AI SDK driver materializes the bytes
+only while constructing the model request. The retained Cell input keeps the
+paths, while the run record, raw steps, and trace do not persist the image
+bytes.
+
 The ordinary `run` command keeps that AI SDK driver as its default. A caller may
 instead select the OpenCode CLI explicitly for an already-prepared coding Cell:
 
@@ -70,6 +78,43 @@ consumption, not marginal money spent by one Cell. Any subscription or mixed
 route therefore retains usage and serving evidence but omits a dollar estimate
 until cost audit can attribute usage per served call and distinguish allowance
 from actual spend.
+
+## Worker catalog mechanism
+
+`WorkerCatalog` is the host-supplied mechanism for heterogeneous Cells. A card
+has a stable scheduler-facing `id`, factual `labels`, a concise model capability
+`description`, one availability fact, and the existing `executionProfile` as
+its provider/model evidence identity. The catalog returns only runnable cards
+matching every requested label; it does not score, rank, or select one. The
+scheduling Agent chooses `workerId` explicitly.
+
+Catalog-backed Cells retain both `workerId` and `executionProfile`. Driver
+resolution fails closed when the worker is unknown, unavailable, missing any
+`capabilitiesRequired` label, has a mismatched execution profile, or constructs
+a driver with another provider/model identity. The orchestration and Swarm
+factories receive each `CellInput`, so a mixed-worker batch creates the selected
+driver independently for every admitted Cell.
+
+A catalog-backed Cell with `imagePaths` automatically requires the factual
+`vision` label even when the caller omitted it from `capabilitiesRequired`.
+Driver resolution therefore rejects image input on a text-only worker instead
+of sending it to an incompatible model.
+
+### Local image-input evidence
+
+On 2026-08-13, two local smokes sent the same non-sensitive PNG through
+`imagePaths`. The ordinary `bun src/cli.ts run <cell.json>` path used the
+provider profile and was served by `kimi-coding/k3`; a second probe directly
+used `createCurrentWorkerCatalog(process.env)` and
+`catalog.createDriver(input)`, with the selected Kimi card and driver both
+identifying `kimi-coding/kimi-for-coding`. Both Cells passed and correctly
+identified the blue rectangle on the left and the red rectangle on the right,
+using 1,683 and 1,496 total tokens respectively. See the
+[minimal retained evidence](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md)
+for the results and their limits. This establishes the bounded local-image
+transport and direct catalog-backed driver paths for those runs; it does not
+establish general visual accuracy, automatic Rossovia CLI catalog wiring, or a
+media storage system.
 
 Provider observation is separate from execution preference. The generic
 observation result keeps availability, quota freshness, normalized windows, and
@@ -142,7 +187,7 @@ only after its producer explicitly closes it and every dispatched Cell settles:
 
 ```ts
 const queue = new InMemoryCellQueue();
-const running = runOrchestration(queue, createDriver, { concurrency: 4 });
+const running = runOrchestration(queue, (input) => catalog.createDriver(input), { concurrency: 4 });
 
 await queue.submit(firstCell);
 await queue.submit(secondCell);

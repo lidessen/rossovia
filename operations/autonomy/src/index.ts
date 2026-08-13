@@ -1,5 +1,6 @@
 export * from "./delegate-admission";
 export * from "./delegate-loop";
+export * from "./worker-policy";
 export * from "./delegate-timeline";
 export * from "./delegate-timeline-events";
 export * from "./effect-journal";

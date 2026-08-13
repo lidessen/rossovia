@@ -10,6 +10,7 @@ export * from "./codex-cli-driver";
 export * from "./opencode-cli-driver";
 export * from "./codex-app-server-driver";
 export * from "./orchestration";
+export * from "./worker-catalog";
 export * from "./swarm";
 export * from "./provider-observation";
 export * from "./provider-profile";
