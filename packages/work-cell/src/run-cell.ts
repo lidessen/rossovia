@@ -231,10 +231,12 @@ export async function runCell(
         driverResult.terminalToolsCalled,
       );
       // Task-cycle verification engages only when the driver reports task
-      // state. The AI SDK path returns its TaskStore snapshot; the OpenCode CLI
-      // adapter presents seeds as already-created ordinary todos in the prompt
-      // and cannot observe native todo state, so it is not a verification
-      // surface and no completion validator is invented for it.
+      // state. The AI SDK path returns its TaskStore snapshot; the OpenCode
+      // CLI adapter initializes ordinary task seeds as native session todos
+      // through its host-owned loopback-server and local-database seam before
+      // the first agent message and never mirrors them back as a task stream,
+      // so it is not a verification surface and no completion validator is
+      // invented for it.
       taskVerification = driverResult.tasks !== undefined
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;

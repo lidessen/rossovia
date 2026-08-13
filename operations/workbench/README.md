@@ -213,11 +213,15 @@ its current objective, acceptance conditions, and corrections into an immutable
 attempt-specific Work Cell input. Any Principal-supplied ordinary todos lower
 into that input's existing task seeds only when non-empty; `task show` and the
 immutable Cell input retain them as the single todo data set. The OpenCode CLI
-adapter has no stable host entry to write native todos, so it presents those
-seeds in the prompt as already-created ordinary todos and requires the worker
-to adopt each one through its native `todowrite` tool as its first action and
-keep it updated; no todo-based phase, gate, or completion validator is
-invented, and the AI SDK path keeps its existing seeded TaskStore behavior. To continue the same still-open task, pass
+adapter (installed 1.18.x) initializes those seeds as native session todos
+before the first agent message: it starts a loopback `opencode serve` server,
+creates a zero-message session, writes the seeds into the version-specific
+local database identified by `opencode db path`, verifies them through `GET
+/session/{sessionID}/todo`, attaches the CLI run to that session, and stops the
+server. Seeding failure fails the run visibly; no prompt adoption instruction,
+todo-based phase, gate, or completion validator is invented, and the AI SDK
+path keeps its existing seeded TaskStore behavior. To continue the same
+still-open task, pass
 `--continue`; Workbench selects the latest usable OpenCode session retained by
 an attributable attempt in the current bound Worktree. The Worktree
 may remain dirty only when its current staged, unstaged, and non-ignored

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import type { CellInput, CellRunRecord, CellUsage, TraceEvent } from "../src/contracts";
 import { CellExecutionError, type DriverContext } from "../src/driver";
 import { createLiveTraceFile } from "../src/live-trace-file";
@@ -12,6 +13,8 @@ import {
   type OpenCodeCliProcessAdapter,
   type OpenCodeCliProcessRequest,
   type OpenCodeCliProcessResult,
+  type OpenCodeCliServerAdapter,
+  type OpenCodeCliServerHandle,
 } from "../src/opencode-cli-driver";
 
 const temporaryRoots: string[] = [];
@@ -55,14 +58,19 @@ describe("OpenCode CLI driver", () => {
     });
   });
 
-  test("presents seeded tasks as already-created ordinary todos with native todowrite guidance", async () => {
+  test("initializes seeded tasks as native session todos and attaches the CLI run to that session", async () => {
     const root = await fixture();
     const canonicalRoot = await realpath(root);
-    let request: OpenCodeCliProcessRequest | undefined;
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const requests: OpenCodeCliProcessRequest[] = [];
     const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
-      request = candidate;
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      }
       return success();
-    }));
+    }), { serverAdapter: server.adapter });
     const input = cellInput(root);
     input.tasks = [
       { subject: "Adopt the todos", description: "Adopt the todos through todowrite." },
@@ -71,31 +79,105 @@ describe("OpenCode CLI driver", () => {
 
     await driver.run(input, context(canonicalRoot).value);
 
-    const prompt = request!.argv[1]!;
-    expect(prompt).toContain("already created these ordinary todos");
-    expect(prompt).toContain("- Adopt the todos: Adopt the todos through todowrite.");
-    expect(prompt).toContain("- Run the named checks: Run the named checks.");
-    expect(prompt).toContain("native todowrite tool");
-    expect(prompt).toContain("preserving its wording");
-    expect(prompt).toContain("not a separate startup phase or acceptance gate");
+    const runRequest = requests.find((candidate) => candidate.argv[0] === "run")!;
+    const seededId = runRequest.argv[runRequest.argv.indexOf("--session") + 1]!;
+    expect(seededId).toBe("ses_fixture");
+    expect(runRequest.argv).toContain("--attach");
+    expect(runRequest.argv).toContain(server.url);
+    expect(runRequest.argv.slice(-4)).toEqual(["--attach", server.url, "--dir", canonicalRoot]);
+    const prompt = runRequest.argv[1]!;
+    expect(prompt).not.toContain("ordinary todos");
+    expect(prompt).not.toContain("todowrite");
+    expect(prompt).not.toContain("already created");
+
+    const native = new Database(dbPath);
+    const rows = native.query(
+      "select session_id, content, status, priority, position from todo order by position",
+    ).all() as Array<Record<string, string | number>>;
+    native.close();
+    expect(rows.map((row) => row.content)).toEqual(["Adopt the todos", "Run the named checks"]);
+    expect(rows.map((row) => row.position)).toEqual([0, 1]);
+    for (const row of rows) {
+      expect(row.session_id).toBe("ses_fixture");
+      expect(row.status).toBe("pending");
+      expect(row.priority).toBe("high");
+    }
+    expect(server.calls).toEqual(["POST /session", "GET /session/ses_fixture/todo"]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db", "run"]);
+    expect(server.stopped).toBe(true);
   });
 
-  test("runs seeded tasks through the prompt without failing task-cycle verification the CLI cannot observe", async () => {
+  test("fails visibly when the seeded todos cannot be verified and never launches the run", async () => {
     const root = await fixture();
-    const executable = await fixtureExecutable(root, [
-      `printf '%s\\n' '{"type":"step_start","sessionID":"todo-1","part":{}}'`,
-      `printf '%s\\n' '{"type":"text","sessionID":"todo-1","part":{"text":"Todos adopted."}}'`,
-      `printf '%s\\n' '{"type":"step_finish","sessionID":"todo-1","part":{"reason":"stop","cost":0,"tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
-    ]);
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, { todoResponse: () => [] });
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      }
+      return success();
+    }), { serverAdapter: server.adapter });
     const input = cellInput(root);
     input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
 
-    const record = await runCell(input, realDriver(root, executable));
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode todo initialization verification failed: expected [\"Adopt the todos\"] but the session reports []",
+    });
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("fails visibly when the loopback server cannot start, without a silent prompt fallback", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    let runs = 0;
+    const driver = openCodeDriver(root, fixtureProcess(async () => { runs += 1; return success(); }), {
+      serverAdapter: {
+        async start() {
+          throw new Error("fixture serve failure");
+        },
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI todo seeding could not start the loopback server: fixture serve failure",
+    });
+    expect(runs).toBe(0);
+  });
+
+  test("runs a todo-seeded Cell without inventing task-cycle verification the OpenCode adapter cannot report", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const executable = await fixtureExecutable(root, [
+      `if [ "$1" = "db" ]; then echo "${dbPath}"; exit 0; fi`,
+      `printf '%s\\n' '{"type":"step_start","sessionID":"ses_fixture","part":{}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"ses_fixture","part":{"text":"Todos seeded."}}'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"ses_fixture","part":{"reason":"stop","cost":0,"tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = new OpenCodeCliDriver({
+      executable,
+      model: "anthropic/fixture",
+      workspacePolicy: { select: () => canonicalRoot },
+      processAdapter: new BunOpenCodeCliProcessAdapter(),
+      serverAdapter: server.adapter,
+    });
+
+    const record = await runCell(input, driver);
 
     expect(record.status).toBe("passed");
-    expect(record.finalText).toBe("Todos adopted.");
+    expect(record.finalText).toBe("Todos seeded.");
     expect(record.verification).not.toHaveProperty("tasks");
     expect(record.tasks).toBeUndefined();
+    expect(server.stopped).toBe(true);
   });
 
   test("puts resume session before dir", async () => {
@@ -443,7 +525,7 @@ describe("OpenCode CLI driver", () => {
 function openCodeDriver(
   root: string,
   processAdapter: OpenCodeCliProcessAdapter,
-  options: { reasoningEffort?: string; sessionId?: string; timeoutMs?: number } = {},
+  options: { reasoningEffort?: string; sessionId?: string; timeoutMs?: number; serverAdapter?: OpenCodeCliServerAdapter } = {},
 ): OpenCodeCliDriver {
   return new OpenCodeCliDriver({
     executable: "/fixture/bin/opencode", model: "anthropic/fixture",
@@ -489,6 +571,63 @@ async function fixture(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "work-cell-opencode-driver-test-"));
   temporaryRoots.push(root);
   return root;
+}
+
+async function todoDatabase(root: string): Promise<string> {
+  const dbPath = join(root, "opencode.db");
+  const db = new Database(dbPath);
+  db.run(`CREATE TABLE todo (
+    session_id text NOT NULL,
+    content text NOT NULL,
+    status text NOT NULL,
+    priority text NOT NULL,
+    position integer NOT NULL,
+    time_created integer NOT NULL,
+    time_updated integer NOT NULL,
+    PRIMARY KEY (session_id, position)
+  )`);
+  db.close();
+  return dbPath;
+}
+
+async function fakeOpenCodeServer(
+  dbPath: string,
+  options: { todoResponse?: () => unknown[] } = {},
+): Promise<{ url: string; adapter: OpenCodeCliServerAdapter; calls: string[]; stopped: boolean }> {
+  const calls: string[] = [];
+  const db = new Database(dbPath);
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      calls.push(`${request.method} ${url.pathname}`);
+      if (request.method === "POST" && url.pathname === "/session") {
+        return Response.json({ id: "ses_fixture" });
+      }
+      if (request.method === "GET" && url.pathname.startsWith("/session/") && url.pathname.endsWith("/todo")) {
+        if (options.todoResponse !== undefined) return Response.json(options.todoResponse());
+        const rows = db.query("select content from todo order by position").all() as Array<{ content: string }>;
+        return Response.json(rows.map((row) => ({ content: row.content, status: "pending", priority: "high" })));
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  const url = `http://127.0.0.1:${server.port}`;
+  let stopped = false;
+  const adapter: OpenCodeCliServerAdapter = {
+    async start(): Promise<OpenCodeCliServerHandle> {
+      return {
+        url,
+        async stop() {
+          stopped = true;
+          server.stop(true);
+          db.close();
+        },
+      };
+    },
+  };
+  return { url, adapter, calls, get stopped() { return stopped; } };
 }
 
 function event(type: string, part: Record<string, unknown>, sessionID = "session-1"): unknown {

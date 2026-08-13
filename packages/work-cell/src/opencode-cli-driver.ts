@@ -1,6 +1,8 @@
 import { realpath } from "node:fs/promises";
+import { createServer } from "node:net";
 import { isAbsolute } from "node:path";
-import type { CellInput, CellUsage, DriverDescriptor } from "./contracts";
+import { Database } from "bun:sqlite";
+import type { CellInput, CellUsage, DriverDescriptor, TaskSeed } from "./contracts";
 import {
   CellExecutionError,
   type CellDriver,
@@ -39,6 +41,22 @@ export interface OpenCodeCliProcessAdapter {
   run(request: OpenCodeCliProcessRequest): Promise<OpenCodeCliProcessResult>;
 }
 
+export interface OpenCodeCliServerRequest {
+  executable: string;
+  cwd: string;
+  environment: Record<string, string>;
+  signal: AbortSignal;
+}
+
+export interface OpenCodeCliServerHandle {
+  url: string;
+  stop(): Promise<void>;
+}
+
+export interface OpenCodeCliServerAdapter {
+  start(request: OpenCodeCliServerRequest): Promise<OpenCodeCliServerHandle>;
+}
+
 export interface OpenCodeCliDriverOptions {
   executable: string;
   model: string;
@@ -47,6 +65,7 @@ export interface OpenCodeCliDriverOptions {
   workspacePolicy: OpenCodeCliWorkspacePolicy;
   timeoutMs?: number;
   processAdapter?: OpenCodeCliProcessAdapter;
+  serverAdapter?: OpenCodeCliServerAdapter;
 }
 
 const EMPTY_USAGE: CellUsage = {
@@ -123,6 +142,70 @@ async function readStdoutLines(
   return stdout;
 }
 
+const SERVER_READY_TIMEOUT_MS = 10_000;
+
+export class BunOpenCodeCliServerAdapter implements OpenCodeCliServerAdapter {
+  async start(request: OpenCodeCliServerRequest): Promise<OpenCodeCliServerHandle> {
+    const port = await freeLoopbackPort();
+    let child: ReturnType<typeof Bun.spawn>;
+    try {
+      child = Bun.spawn([request.executable, "serve", "--port", String(port), "--hostname", "127.0.0.1"], {
+        cwd: request.cwd,
+        env: request.environment,
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    } catch (error) {
+      throw new Error(`could not spawn opencode serve: ${errorMessage(error)}`);
+    }
+    const url = `http://127.0.0.1:${port}`;
+    let stopped = false;
+    const stop = async (): Promise<void> => {
+      if (stopped) return;
+      stopped = true;
+      child.kill();
+      const exited = await Promise.race([child.exited.then(() => true), sleep(2_000).then(() => false)]);
+      if (!exited) child.kill("SIGKILL");
+    };
+    const deadline = Date.now() + SERVER_READY_TIMEOUT_MS;
+    for (;;) {
+      if (request.signal.aborted) {
+        await stop();
+        throw new Error("aborted before the opencode server became ready");
+      }
+      try {
+        const response = await fetch(`${url}/doc`, { signal: request.signal });
+        if (response.ok) return { url, stop };
+      } catch {
+        // not ready yet
+      }
+      if (Date.now() > deadline) {
+        await stop();
+        throw new Error("opencode serve did not become ready within 10s");
+      }
+      await sleep(100);
+    }
+  }
+}
+
+async function freeLoopbackPort(): Promise<number> {
+  const server = createServer();
+  const port = await new Promise<number>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close(() => resolve(typeof address === "object" && address !== null ? address.port : 0));
+    });
+  });
+  if (port === 0) throw new Error("could not allocate a loopback port");
+  return port;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function stripLineBreak(line: string): string {
   return line.endsWith("\r") ? line.slice(0, -1) : line;
 }
@@ -133,6 +216,7 @@ export class OpenCodeCliDriver implements CellDriver {
   private readonly reasoningEffort: string | undefined;
   private readonly sessionId: string | undefined;
   private readonly processAdapter: OpenCodeCliProcessAdapter;
+  private readonly serverAdapter: OpenCodeCliServerAdapter;
 
   constructor(private readonly options: OpenCodeCliDriverOptions) {
     this.executable = required(options.executable, "OpenCode CLI executable");
@@ -143,6 +227,7 @@ export class OpenCodeCliDriver implements CellDriver {
       throw new Error("OpenCode CLI timeoutMs must be a positive integer");
     }
     this.processAdapter = options.processAdapter ?? new BunOpenCodeCliProcessAdapter();
+    this.serverAdapter = options.serverAdapter ?? new BunOpenCodeCliServerAdapter();
     this.descriptor = {
       adapter: "opencode-cli.v1",
       provider: model.split("/", 1)[0]!,
@@ -168,105 +253,227 @@ export class OpenCodeCliDriver implements CellDriver {
     );
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const signal = AbortSignal.any([context.signal, timeoutSignal]);
-    const argv = [
-      "run", prompt,
-      "--pure", "--auto", "--format", "json", "--model", this.descriptor.model,
-      // OpenCode names its provider-specific reasoning-effort option `--variant`.
-      ...(this.reasoningEffort ? ["--variant", this.reasoningEffort] : []),
-      ...(this.sessionId ? ["--session", this.sessionId] : []),
-      "--dir", workspace,
-    ];
-
-    context.emit("opencode.cli.started", {
-      adapter: this.descriptor.adapter,
-      model: this.descriptor.model,
-      workspace,
-      timeoutMs,
-    });
-
-    let processResult: OpenCodeCliProcessResult;
-    const accumulator = new OpenCodeStdoutAccumulator(input.budget.maxCommandOutputBytes);
-    let liveLines = 0;
+    const seeds = input.tasks ?? [];
+    let server: OpenCodeCliServerHandle | undefined;
     try {
-      processResult = await this.processAdapter.run({
+      const argv = [
+        "run", prompt,
+        "--pure", "--auto", "--format", "json", "--model", this.descriptor.model,
+        // OpenCode names its provider-specific reasoning-effort option `--variant`.
+        ...(this.reasoningEffort ? ["--variant", this.reasoningEffort] : []),
+      ];
+      if (seeds.length > 0 && this.sessionId === undefined) {
+        server = await this.startSeedServer(workspace, signal);
+        const sessionId = await this.createSession(server.url, signal);
+        const dbPath = await this.databasePath(workspace, signal);
+        seedNativeTodos(dbPath, sessionId, seeds);
+        await this.verifyNativeTodos(server.url, sessionId, seeds, signal);
+        argv.push("--session", sessionId, "--attach", server.url, "--dir", workspace);
+      } else {
+        argv.push(...(this.sessionId ? ["--session", this.sessionId] : []), "--dir", workspace);
+      }
+
+      context.emit("opencode.cli.started", {
+        adapter: this.descriptor.adapter,
+        model: this.descriptor.model,
+        workspace,
+        timeoutMs,
+      });
+
+      let processResult: OpenCodeCliProcessResult;
+      const accumulator = new OpenCodeStdoutAccumulator(input.budget.maxCommandOutputBytes);
+      let liveLines = 0;
+      try {
+        processResult = await this.processAdapter.run({
+          executable: this.executable,
+          argv,
+          cwd: workspace,
+          environment: currentEnvironment(),
+          stdin: "",
+          signal,
+          onLine(rawLine) {
+            liveLines += 1;
+            const event = accumulator.accept(rawLine);
+            if (event === undefined) return;
+            const progress = liveProgress(event);
+            if (progress !== undefined) context.emit("opencode.cli.progress", progress);
+          },
+        });
+      } catch (error) {
+        const usage = { ...EMPTY_USAGE };
+        context.observeUsage(usage);
+        throw new CellExecutionError(
+          abortMessage(context.signal, timeoutSignal, timeoutMs, error),
+          usage,
+        );
+      }
+
+      if (liveLines === 0) {
+        for (const rawLine of processResult.stdout.split(/\r?\n/u)) accumulator.accept(rawLine);
+      }
+      const parsed = accumulator.finish();
+      for (const event of parsed.events) context.emit("opencode.cli.event", event);
+      for (const entry of parsed.unparsed) context.emit("opencode.cli.stdout.unparsed", entry);
+      const stderr = truncate(processResult.stderr.trim(), input.budget.maxCommandOutputBytes);
+      if (stderr) context.emit("opencode.cli.stderr", { text: stderr });
+
+      context.observeUsage(parsed.usage);
+      context.emit("opencode.cli.finished", {
+        exitCode: processResult.exitCode,
+        durationMs: processResult.durationMs,
+        usage: parsed.usage,
+      });
+
+      if (signal.aborted) {
+        throw new CellExecutionError(abortMessage(context.signal, timeoutSignal, timeoutMs), parsed.usage);
+      }
+      if (processResult.exitCode !== 0) {
+        throw new CellExecutionError(
+          `OpenCode CLI exited with code ${processResult.exitCode}: ${stderr || "no stderr"}`,
+          parsed.usage,
+        );
+      }
+      if (parsed.sessionError) throw new CellExecutionError(parsed.sessionError, parsed.usage);
+      if (!parsed.sessionId) {
+        throw new CellExecutionError("OpenCode CLI completed without a session id", parsed.usage);
+      }
+      if (parsed.finalText === undefined || !parsed.finalText.trim()) {
+        throw new CellExecutionError("OpenCode CLI completed without final stopped-step text", parsed.usage);
+      }
+
+      return {
+        terminalToolsCalled: [],
+        finalText: parsed.finalText,
+        usage: parsed.usage,
+        rawSteps: [
+          ...parsed.events,
+          ...parsed.unparsed,
+          {
+            type: "opencode.cli.process",
+            exitCode: processResult.exitCode,
+            durationMs: processResult.durationMs,
+            stderr,
+          },
+        ],
+        providerMetadata: {
+          adapter: this.descriptor.adapter,
+          sessionId: parsed.sessionId,
+          exitCode: processResult.exitCode,
+          durationMs: processResult.durationMs,
+          observedCost: parsed.observedCost,
+        },
+      };
+    } finally {
+      await server?.stop();
+    }
+  }
+
+  private async startSeedServer(workspace: string, signal: AbortSignal): Promise<OpenCodeCliServerHandle> {
+    try {
+      return await this.serverAdapter.start({
         executable: this.executable,
-        argv,
+        cwd: workspace,
+        environment: currentEnvironment(),
+        signal,
+      });
+    } catch (error) {
+      throw new CellExecutionError(
+        `OpenCode CLI todo seeding could not start the loopback server: ${errorMessage(error)}`,
+        EMPTY_USAGE,
+      );
+    }
+  }
+
+  private async createSession(url: string, signal: AbortSignal): Promise<string> {
+    let response: Response;
+    try {
+      response = await fetch(`${url}/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: "Work Cell todo-seeded run",
+          model: { id: this.descriptor.model, providerID: this.descriptor.provider },
+        }),
+        signal,
+      });
+    } catch (error) {
+      throw new CellExecutionError(`OpenCode session creation failed: ${errorMessage(error)}`, EMPTY_USAGE);
+    }
+    if (!response.ok) {
+      throw new CellExecutionError(`OpenCode session creation failed with HTTP ${response.status}`, EMPTY_USAGE);
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new CellExecutionError("OpenCode session creation returned a non-JSON response", EMPTY_USAGE);
+    }
+    if (!isRecord(body) || typeof body.id !== "string" || body.id === "") {
+      throw new CellExecutionError("OpenCode session creation returned no session id", EMPTY_USAGE);
+    }
+    return body.id;
+  }
+
+  private async databasePath(workspace: string, signal: AbortSignal): Promise<string> {
+    let result: OpenCodeCliProcessResult;
+    try {
+      result = await this.processAdapter.run({
+        executable: this.executable,
+        argv: ["db", "path"],
         cwd: workspace,
         environment: currentEnvironment(),
         stdin: "",
         signal,
-        onLine(rawLine) {
-          liveLines += 1;
-          const event = accumulator.accept(rawLine);
-          if (event === undefined) return;
-          const progress = liveProgress(event);
-          if (progress !== undefined) context.emit("opencode.cli.progress", progress);
-        },
       });
     } catch (error) {
-      const usage = { ...EMPTY_USAGE };
-      context.observeUsage(usage);
+      throw new CellExecutionError(`OpenCode CLI db path failed: ${errorMessage(error)}`, EMPTY_USAGE);
+    }
+    if (result.exitCode !== 0) {
       throw new CellExecutionError(
-        abortMessage(context.signal, timeoutSignal, timeoutMs, error),
-        usage,
+        `OpenCode CLI db path exited with code ${result.exitCode}: ${result.stderr.trim() || "no stderr"}`,
+        EMPTY_USAGE,
       );
     }
+    const path = result.stdout.trim();
+    if (!path) throw new CellExecutionError("OpenCode CLI db path returned an empty path", EMPTY_USAGE);
+    return path;
+  }
 
-    if (liveLines === 0) {
-      for (const rawLine of processResult.stdout.split(/\r?\n/u)) accumulator.accept(rawLine);
+  private async verifyNativeTodos(
+    url: string,
+    sessionId: string,
+    seeds: TaskSeed[],
+    signal: AbortSignal,
+  ): Promise<void> {
+    let response: Response;
+    try {
+      response = await fetch(`${url}/session/${encodeURIComponent(sessionId)}/todo`, { signal });
+    } catch (error) {
+      throw new CellExecutionError(`OpenCode todo verification failed: ${errorMessage(error)}`, EMPTY_USAGE);
     }
-    const parsed = accumulator.finish();
-    for (const event of parsed.events) context.emit("opencode.cli.event", event);
-    for (const entry of parsed.unparsed) context.emit("opencode.cli.stdout.unparsed", entry);
-    const stderr = truncate(processResult.stderr.trim(), input.budget.maxCommandOutputBytes);
-    if (stderr) context.emit("opencode.cli.stderr", { text: stderr });
-
-    context.observeUsage(parsed.usage);
-    context.emit("opencode.cli.finished", {
-      exitCode: processResult.exitCode,
-      durationMs: processResult.durationMs,
-      usage: parsed.usage,
-    });
-
-    if (signal.aborted) {
-      throw new CellExecutionError(abortMessage(context.signal, timeoutSignal, timeoutMs), parsed.usage);
+    if (!response.ok) {
+      throw new CellExecutionError(`OpenCode todo verification failed with HTTP ${response.status}`, EMPTY_USAGE);
     }
-    if (processResult.exitCode !== 0) {
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new CellExecutionError("OpenCode todo verification returned a non-JSON response", EMPTY_USAGE);
+    }
+    if (!Array.isArray(body)) {
+      throw new CellExecutionError("OpenCode todo verification returned a non-array response", EMPTY_USAGE);
+    }
+    const contents = body
+      .map((todo) => (isRecord(todo) && typeof todo.content === "string" ? todo.content : undefined))
+      .filter((content): content is string => content !== undefined);
+    const expected = seeds.map((seed) => seed.subject).sort();
+    const observed = [...contents].sort();
+    if (contents.length !== expected.length || expected.some((content, index) => content !== observed[index])) {
       throw new CellExecutionError(
-        `OpenCode CLI exited with code ${processResult.exitCode}: ${stderr || "no stderr"}`,
-        parsed.usage,
+        `OpenCode todo initialization verification failed: expected ${JSON.stringify(seeds.map((seed) => seed.subject))} but the session reports ${JSON.stringify(contents)}`,
+        EMPTY_USAGE,
       );
     }
-    if (parsed.sessionError) throw new CellExecutionError(parsed.sessionError, parsed.usage);
-    if (!parsed.sessionId) {
-      throw new CellExecutionError("OpenCode CLI completed without a session id", parsed.usage);
-    }
-    if (parsed.finalText === undefined || !parsed.finalText.trim()) {
-      throw new CellExecutionError("OpenCode CLI completed without final stopped-step text", parsed.usage);
-    }
-
-    return {
-      terminalToolsCalled: [],
-      finalText: parsed.finalText,
-      usage: parsed.usage,
-      rawSteps: [
-        ...parsed.events,
-        ...parsed.unparsed,
-        {
-          type: "opencode.cli.process",
-          exitCode: processResult.exitCode,
-          durationMs: processResult.durationMs,
-          stderr,
-        },
-      ],
-      providerMetadata: {
-        adapter: this.descriptor.adapter,
-        sessionId: parsed.sessionId,
-        exitCode: processResult.exitCode,
-        durationMs: processResult.durationMs,
-        observedCost: parsed.observedCost,
-      },
-    };
   }
 
   private async resolveWorkspace(input: CellInput, context: DriverContext): Promise<string> {
@@ -294,14 +501,41 @@ export function createOpenCodeCliPrompt(input: CellInput): string {
     `Intent:\n${input.intent}`,
     `Instructions:\n${input.instructions.map((item) => `- ${item}`).join("\n")}`,
     `Context:\n${input.context.map((item) => `${item.title}: ${item.content}`).join("\n") || "(none)"}`,
-    ...(input.tasks === undefined
-      ? []
-      : [
-        `Tasks:\nThe host already created these ordinary todos before this run. Adopt each one through your native todowrite tool as your first action, preserving its wording, and keep it updated as the work advances. They are ordinary work todos, not a separate startup phase or acceptance gate:\n${input.tasks.map((task) => `- ${task.subject}: ${task.description}`).join("\n")}`,
-      ]),
     `Acceptance:\n${input.acceptance.map((item) => `- ${item}`).join("\n")}`,
     `Workspace policy:\n${JSON.stringify(input.workspace, null, 2)}`,
   ].join("\n");
+}
+
+function seedNativeTodos(dbPath: string, sessionId: string, seeds: TaskSeed[]): void {
+  let db: Database;
+  try {
+    db = new Database(dbPath);
+  } catch (error) {
+    throw new CellExecutionError(
+      `OpenCode native todo database could not be opened: ${errorMessage(error)}`,
+      EMPTY_USAGE,
+    );
+  }
+  try {
+    const now = Date.now();
+    const insert = db.prepare(
+      "INSERT INTO todo (session_id, content, status, priority, position, time_created, time_updated) VALUES (?, ?, 'pending', 'high', ?, ?, ?)",
+    );
+    try {
+      for (const [position, seed] of seeds.entries()) {
+        insert.run(sessionId, seed.subject, position, now, now);
+      }
+    } finally {
+      insert.finalize();
+    }
+  } catch (error) {
+    throw new CellExecutionError(
+      `OpenCode native todo initialization failed: ${errorMessage(error)}`,
+      EMPTY_USAGE,
+    );
+  } finally {
+    db.close();
+  }
 }
 
 interface ParsedOpenCodeOutput {
@@ -418,6 +652,10 @@ function required(value: string, label: string): string {
   const result = value.trim();
   if (!result) throw new Error(`${label} must not be empty`);
   return result;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function optional(value: string | undefined, label: string): string | undefined {

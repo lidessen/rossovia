@@ -66,13 +66,20 @@ alter OpenCode's native loop. To use the existing AI SDK path as a fallback,
 run the command again without `--driver`; the OpenCode adapter never falls back
 or retries automatically.
 
-`CellInput.tasks` seeds are accepted by the OpenCode adapter and presented in
-the prompt as ordinary todos the host already created, with instruction to
-adopt each one through the worker's native `todowrite` tool as its first action
-and keep it updated. The adapter has no stable host entry to write native todo
-state, so it returns no task state and the task-cycle verification engages only
-for drivers that report it (the AI SDK TaskStore path); presenting seeds never
-creates a todo-based phase, gate, or completion validator.
+`CellInput.tasks` seeds are accepted by the OpenCode adapter, which initializes
+them as native session todos before the first agent message. It starts a
+loopback `opencode serve` server, creates a zero-message session through `POST
+/session`, writes each seed as an ordinary pending todo through the
+version-specific local database seam (`opencode db path`; 1.18.x `todo` table
+keyed by `session_id`/`position`), verifies the rows through `GET
+/session/{sessionID}/todo`, attaches the CLI run to that session
+(`--attach <url> --session <id>`), and stops the server. Any seeding failure —
+server start, session creation, database write, or verification — fails the
+run visibly; there is no silent prompt fallback and no instruction to the
+worker to adopt todos through `todowrite`. The adapter returns no task state,
+so task-cycle verification engages only for drivers that report it (the AI SDK
+TaskStore path); seeding never creates a todo-based phase, gate, or completion
+validator.
 
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
