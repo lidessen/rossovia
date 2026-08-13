@@ -79,6 +79,12 @@ interface TaskRunDependencies {
   beforeLeaseAcquire?(): void;
   /** Test seam for worker card resolution; the default reads the current worker policy catalog. */
   resolveWorkerCard?(workerId: string): WorkerCard;
+  /**
+   * Execution-form seam: the default derives the OpenCode CLI request; an
+   * asynchronous catalog carrier supplies its own in-process derivation for
+   * the same guarded preparation.
+   */
+  deriveExecution?(card: WorkerCard): TaskRunExecution;
 }
 
 /** One execution request as retained on the attempt record. */
@@ -206,18 +212,13 @@ export function runPrincipalTask(
       execution.model,
       continuation?.session,
     );
-    writeImmutableJson(attempt.settlementPath, {
-      version: "rosso.task-run-settlement.v1",
+    writeTaskRunSettlement(attempt, {
       taskId: task.id,
       taskRevision: task.revision,
       attemptId,
-      inputRef: attempt.inputRef,
-      finalRecordRef: attempt.finalRecordRef,
       status: "recorded",
       workCellRunId: finalRecord.runId,
       cellStatus: finalRecord.status,
-      semanticAcceptance: "not-evaluated",
-      settledAt: new Date().toISOString(),
     });
     return {
       version: "rosso.task-run-result.v1",
@@ -237,17 +238,12 @@ export function runPrincipalTask(
   } catch (error: unknown) {
     const attempt = attemptEvidence(home, attemptId);
     if (existsSync(attempt.attemptPath) && !existsSync(attempt.settlementPath)) {
-      writeImmutableJson(attempt.settlementPath, {
-        version: "rosso.task-run-settlement.v1",
+      writeTaskRunSettlement(attempt, {
         taskId: task.id,
         taskRevision: task.revision,
         attemptId,
-        inputRef: attempt.inputRef,
-        finalRecordRef: attempt.finalRecordRef,
         status: "runner-failed",
-        semanticAcceptance: "not-evaluated",
         error: error instanceof Error ? error.message : String(error),
-        settledAt: new Date().toISOString(),
       });
     }
     throw error;
@@ -259,11 +255,11 @@ export function runPrincipalTask(
 /**
  * The synchronous guarded preparation every ordinary task run performs before
  * any execution effect: exact worker resolution, canonical Task re-read,
- * project/binding checks, the exact observed Worktree, the atomic Worktree
- * lease, a fresh Task snapshot verification, and the clean/continuation
- * Worktree status check. A conversation-owned asynchronous catalog carrier
- * reuses the same evidence family and lease through these pieces instead of a
- * parallel task-run database.
+ * project/binding checks, the exact observed Worktree and its current head,
+ * the atomic Worktree lease, a fresh Task snapshot verification, and the
+ * clean/continuation Worktree status check. A conversation-owned asynchronous
+ * catalog carrier reuses the same evidence family and lease through these
+ * pieces instead of a parallel task-run database.
  */
 export interface PreparedPrincipalTaskRun {
   readonly home: string;
@@ -285,7 +281,9 @@ export function preparePrincipalTaskRun(
   validatePolicy(arguments_);
   const home = resolveHome(homeArgument);
   const card = resolveWorkerCard(arguments_.workerId, dependencies);
-  const execution = deriveExecutionRequest(card);
+  const execution = dependencies.deriveExecution
+    ? dependencies.deriveExecution(card)
+    : deriveExecutionRequest(card);
   const observed = showPrincipalTask(home, arguments_.id);
   const task = observed.task;
   if (task.lifecycle === "settled") {
@@ -303,6 +301,10 @@ export function preparePrincipalTaskRun(
     task.binding.projectId,
     task.binding.worktreePath,
   );
+  const worktreeHead = requiredGit(["rev-parse", "HEAD"], worktree);
+  if (!/^[0-9a-f]{40}$/u.test(worktreeHead)) {
+    throw new Error(`the bound Worktree's current head cannot be read: ${worktree}`);
+  }
   const attemptId = randomUUID();
 
   dependencies.beforeLeaseAcquire?.();
@@ -605,6 +607,45 @@ export function attemptEvidence(home: string, attemptId: string): AttemptEvidenc
     attemptRef: evidenceRef(home, attemptPath),
     settlementRef: evidenceRef(home, settlementPath),
   };
+}
+
+/**
+ * The shared terminal settlement writer: every ordinary task run — the
+ * synchronous CLI path and a conversation-owned asynchronous carrier — retains
+ * the same append-only settlement shape on the attempt evidence. The terminal
+ * attempt settlement is separate evidence from any control receipt and never
+ * moves Task lifecycle.
+ */
+export interface TaskRunSettlementInput {
+  readonly taskId: string;
+  readonly taskRevision: number;
+  readonly attemptId: string;
+  readonly status: "recorded" | "runner-failed" | "control-stopped";
+  readonly workCellRunId?: string;
+  readonly cellStatus?: CellRunRecord["status"];
+  readonly controlRef?: string;
+  readonly error?: string;
+}
+
+export function writeTaskRunSettlement(
+  attempt: AttemptEvidence,
+  input: TaskRunSettlementInput,
+): void {
+  writeImmutableJson(attempt.settlementPath, {
+    version: "rosso.task-run-settlement.v1",
+    taskId: input.taskId,
+    taskRevision: input.taskRevision,
+    attemptId: input.attemptId,
+    inputRef: attempt.inputRef,
+    finalRecordRef: attempt.finalRecordRef,
+    status: input.status,
+    ...(input.workCellRunId === undefined ? {} : { workCellRunId: input.workCellRunId }),
+    ...(input.cellStatus === undefined ? {} : { cellStatus: input.cellStatus }),
+    ...(input.controlRef === undefined ? {} : { controlRef: input.controlRef }),
+    semanticAcceptance: "not-evaluated",
+    ...(input.error === undefined ? {} : { error: input.error }),
+    settledAt: new Date().toISOString(),
+  });
 }
 
 function canonicalGitDirectory(worktree: string): string {

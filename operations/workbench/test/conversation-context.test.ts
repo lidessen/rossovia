@@ -208,7 +208,9 @@ describe("ConversationContextProvider", () => {
 
     const projection = await provider.buildProjection(randomUUID());
 
-    expect(projection).toEqual({});
+    expect(projection).not.toHaveProperty("task");
+    expect(projection).not.toHaveProperty("projects");
+    expect(projection.workers?.length).toBeGreaterThan(0);
   });
 
   test("the causal task action source ref retains the conversation and action identity", () => {

@@ -30,6 +30,8 @@ export type ConversationOperationHostErrorCode =
   | "stale-context"
   | "task-not-found"
   | "task-settled"
+  | "task-not-runnable"
+  | "task-not-bound"
   | "stale-revision"
   | "operation-unavailable"
   | "carrier-duplicate"
@@ -38,6 +40,8 @@ export type ConversationOperationHostErrorCode =
   | "carrier-unknown"
   | "control-unsupported"
   | "lease-conflict"
+  | "worker-unknown"
+  | "worker-unavailable"
   | "source-unavailable";
 
 export class ConversationOperationHostError extends Error {
@@ -52,6 +56,8 @@ export interface TaskActionReceipt {
   readonly taskId: string;
   readonly sourceRevision?: number;
   readonly taskRevision?: number;
+  /** The exact retained carrier started by a settled task_continue action. */
+  readonly carrierId?: string;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -232,6 +238,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
       taskId: receipt.taskId,
       sourceRevision: receipt.sourceRevision,
       taskRevision: receipt.taskRevision,
+      carrierId: receipt.carrierId,
       evidenceRefs: [...receipt.evidenceRefs],
     };
   }
@@ -520,11 +527,16 @@ function mapCarrierError(error: ConversationCarrierError): ConversationOperation
     : error.code === "lease-conflict" ? "lease-conflict"
     : error.code === "task-not-found" ? "task-not-found"
     : error.code === "task-settled" ? "task-settled"
+    : error.code === "task-not-runnable" ? "task-not-runnable"
+    : error.code === "task-not-bound" ? "task-not-bound"
     : error.code === "stale-revision" ? "stale-revision"
     : error.code === "stale-context" ? "stale-context"
     : error.code === "worktree-dirty" ? "worktree-dirty"
     : error.code === "project-unresolved" ? "project-unresolved"
     : error.code === "worktree-unobserved" ? "worktree-unobserved"
+    : error.code === "worker-unknown" ? "worker-unknown"
+    : error.code === "worker-unavailable" ? "worker-unavailable"
+    : error.code === "source-unavailable" ? "source-unavailable"
     : "operation-unavailable";
   return new ConversationOperationHostError(code, error.message);
 }

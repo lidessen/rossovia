@@ -114,6 +114,7 @@ function fakeCard(overrides: Partial<WorkerCard> = {}): WorkerCard {
       provider: FAKE_PROVIDER,
       model: FAKE_MODEL,
       reasoningEffort: "max",
+      parallelism: "serial" as const,
     },
     availability: { status: "available" },
     ...overrides,
@@ -305,11 +306,12 @@ describe("conversation execution carrier start", () => {
     });
   });
 
-  test("duplicate delivery of the same committed action cannot spawn a second carrier", () => {
+  test("duplicate delivery of the same committed action cannot spawn a second carrier", async () => {
     const current = fixture();
-    const { host, conversationId, turnId, actionId } = carrierParts(current);
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
     const operation = continueOperation(current);
-    host.executeOperation({ conversationId, turnId, actionId, operation });
+    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const carrierId = receipt.carrierId!;
 
     try {
       host.executeOperation({ conversationId, turnId, actionId, operation });
@@ -319,6 +321,8 @@ describe("conversation execution carrier start", () => {
       expect((error as ConversationOperationHostError).code).toBe("carrier-duplicate");
     }
     expect(readAttemptDirectories(current.home)).toHaveLength(1);
+    await until(() =>
+      registry.carrier(carrierId)!.liveness().state === "settled", "duplicate delivery settlement");
   });
 
   test("a second action for the same Task is refused by the exact Worktree lease while a carrier runs", async () => {
@@ -330,6 +334,7 @@ describe("conversation execution carrier start", () => {
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
 
     const second = { conversationId: randomUUID(), turnId: randomUUID(), actionId: randomUUID() };
     try {
@@ -339,9 +344,9 @@ describe("conversation execution carrier start", () => {
       expect(error).toBeInstanceOf(ConversationOperationHostError);
       expect((error as ConversationOperationHostError).code).toBe("lease-conflict");
     }
-    expect(readAttemptDirectories(current.home)).toEqual([receipt.carrierId]);
-    registry.carrier(receipt.carrierId)!.stop({ conversationId, turnId, actionId });
-    await until(() => registry.carrier(receipt.carrierId)!.liveness().state === "settled", "settlement");
+    expect(readAttemptDirectories(current.home)).toEqual([carrierId]);
+    registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
   });
 
   test("stale Task/source/worker selectors fail visibly with no effect", () => {
@@ -388,7 +393,28 @@ describe("conversation execution carrier start", () => {
     const current = fixture();
     const { host, conversationId, turnId, actionId } = carrierParts(current);
     const settled = loadPrincipalTasks(current.home);
-    settled.tasks = settled.tasks.map((task) => ({ ...task, lifecycle: "settled" as const }));
+    settled.tasks = settled.tasks.map((task) => ({
+      ...task,
+      lifecycle: "settled" as const,
+      nextActor: "none" as const,
+      resultClaims: [{
+        id: randomUUID(),
+        submittedAt: new Date().toISOString(),
+        summary: "fixture locally accepted result",
+        evidenceRefs: ["state/tasks.json"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "test:conversation-carrier",
+        standing: "accepted" as const,
+        reviews: [],
+        resolution: {
+          kind: "accepted" as const,
+          at: new Date().toISOString(),
+          sourceRef: "test:conversation-carrier",
+          acceptanceBoundary: "workbench-local-task-only" as const,
+          basis: "agent-claim" as const,
+        },
+      }],
+    }));
     writeFileSync(join(current.home, "state", "tasks.json"), `${JSON.stringify(settled, null, 2)}\n`);
     try {
       host.executeOperation({
@@ -416,6 +442,7 @@ describe("conversation execution carrier activity and terminal settlement", () =
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
     const carrier = registry.startedCarrier(conversationId, actionId)!;
     const activity: string[] = [];
     carrier.onActivity((event) => activity.push(event.text));
@@ -423,7 +450,7 @@ describe("conversation execution carrier activity and terminal settlement", () =
     await until(() => activity.length >= 1, "carrier activity", 5_000);
     expect(activity.some((text) => text.includes("step=1"))).toBe(true);
     await until(() => carrier.liveness().state === "settled", "terminal settlement");
-    const finalRecord = readJson(join(attemptDirectory(current, receipt.carrierId), "cell-input.run.json")) as Record<string, unknown>;
+    const finalRecord = readJson(join(attemptDirectory(current, carrierId), "cell-input.run.json")) as Record<string, unknown>;
     expect(finalRecord.status).toBe("passed");
     expect((finalRecord.driver as Record<string, unknown>).model).toBe(FAKE_MODEL);
   });
@@ -437,6 +464,7 @@ describe("conversation execution carrier activity and terminal settlement", () =
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
     const carrier = registry.startedCarrier(conversationId, actionId)!;
     await until(() => carrier.liveness().state === "settled", "failed settlement");
     const liveness = carrier.liveness();
@@ -445,7 +473,7 @@ describe("conversation execution carrier activity and terminal settlement", () =
     expect(liveness.settlement.status).toBe("runner-failed");
     expect(liveness.settlement.error).toContain("fake worker failed");
     expect(liveness.settlement.cellStatus).toBe("failed");
-    const settlement = readJson(join(attemptDirectory(current, receipt.carrierId), "settlement.json")) as Record<string, unknown>;
+    const settlement = readJson(join(attemptDirectory(current, carrierId), "settlement.json")) as Record<string, unknown>;
     expect(settlement.status).toBe("runner-failed");
     expect(existsSync(leasePath(current))).toBe(false);
     const projections = showPrincipalTaskAttempts(current.home, current.taskId);
@@ -464,6 +492,7 @@ describe("conversation execution carrier stop", () => {
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
     const carrier = registry.startedCarrier(conversationId, actionId)!;
     await until(() => carrier.liveness().state === "live", "live carrier");
 
@@ -471,13 +500,13 @@ describe("conversation execution carrier stop", () => {
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
-      operation: { kind: "work_control" as const, carrierId: receipt.carrierId, control: "stop" as const },
+      operation: { kind: "work_control" as const, carrierId: carrierId, control: "stop" as const },
     };
     const controlReceipt = host.executeOperation(control);
     expect(controlReceipt.taskId).toBe(current.taskId);
     expect(controlReceipt.evidenceRefs).toEqual([
-      `state/task-attempts/${receipt.carrierId}/control.json`,
-      `state/task-attempts/${receipt.carrierId}/settlement.json`,
+      `state/task-attempts/${carrierId}/control.json`,
+      `state/task-attempts/${carrierId}/settlement.json`,
     ]);
 
     await until(() => carrier.liveness().state === "settled", "control-stopped settlement");
@@ -487,19 +516,19 @@ describe("conversation execution carrier stop", () => {
     expect(liveness.settlement.status).toBe("control-stopped");
     expect(liveness.settlement.cellStatus).toBe("cancelled");
 
-    const controlFile = readJson(join(attemptDirectory(current, receipt.carrierId), "control.json")) as Record<string, unknown>;
+    const controlFile = readJson(join(attemptDirectory(current, carrierId), "control.json")) as Record<string, unknown>;
     expect(controlFile.control).toBe("stop");
-    expect(controlFile.carrierId).toBe(receipt.carrierId);
+    expect(controlFile.carrierId).toBe(carrierId);
     expect(controlFile.sourceRef).toBe(taskActionSourceRef(control.conversationId, control.actionId));
     expect(controlFile.requestedBy).toEqual({
       conversationId: control.conversationId,
       turnId: control.turnId,
       actionId: control.actionId,
     });
-    const settlement = readJson(join(attemptDirectory(current, receipt.carrierId), "settlement.json")) as Record<string, unknown>;
+    const settlement = readJson(join(attemptDirectory(current, carrierId), "settlement.json")) as Record<string, unknown>;
     expect(settlement.status).toBe("control-stopped");
-    expect(settlement.controlRef).toBe(`state/task-attempts/${receipt.carrierId}/control.json`);
-    const finalRecord = readJson(join(attemptDirectory(current, receipt.carrierId), "cell-input.run.json")) as Record<string, unknown>;
+    expect(settlement.controlRef).toBe(`state/task-attempts/${carrierId}/control.json`);
+    const finalRecord = readJson(join(attemptDirectory(current, carrierId), "cell-input.run.json")) as Record<string, unknown>;
     expect(finalRecord.status).toBe("cancelled");
     expect(existsSync(leasePath(current))).toBe(false);
 
@@ -517,13 +546,14 @@ describe("conversation execution carrier stop", () => {
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
     for (const control of ["pause", "resume", "recover"] as const) {
       try {
         host.executeOperation({
           conversationId,
           turnId: randomUUID(),
           actionId: randomUUID(),
-          operation: { kind: "work_control", carrierId: receipt.carrierId, control },
+          operation: { kind: "work_control", carrierId: carrierId, control },
         });
         throw new Error(`expected ${control} to be unsupported`);
       } catch (error) {
@@ -531,8 +561,8 @@ describe("conversation execution carrier stop", () => {
         expect((error as ConversationOperationHostError).code).toBe("control-unsupported");
       }
     }
-    registry.carrier(receipt.carrierId)!.stop({ conversationId, turnId, actionId });
-    await until(() => registry.carrier(receipt.carrierId)!.liveness().state === "settled", "settlement");
+    registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
   });
 
   test("stop of an already settled carrier is refused visibly", async () => {
@@ -544,12 +574,13 @@ describe("conversation execution carrier stop", () => {
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
     const carrier = registry.startedCarrier(conversationId, actionId)!;
     host.executeOperation({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
-      operation: { kind: "work_control", carrierId: receipt.carrierId, control: "stop" },
+      operation: { kind: "work_control", carrierId: carrierId, control: "stop" },
     });
     await until(() => carrier.liveness().state === "settled", "settlement after stop");
     try {
@@ -557,7 +588,7 @@ describe("conversation execution carrier stop", () => {
         conversationId,
         turnId: randomUUID(),
         actionId: randomUUID(),
-        operation: { kind: "work_control", carrierId: receipt.carrierId, control: "stop" },
+        operation: { kind: "work_control", carrierId: carrierId, control: "stop" },
       });
       throw new Error("expected the second stop to be refused");
     } catch (error) {
@@ -577,6 +608,7 @@ describe("conversation execution carrier reconnect truthfulness", () => {
       actionId: first.actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
 
     // A new registry instance models a server restart: no retained handle.
     const restarted = createConversationExecutionCarrierRegistry(current.home, {
@@ -585,7 +617,7 @@ describe("conversation execution carrier reconnect truthfulness", () => {
     const projection = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(first.conversationId);
-    expect(projection.carriers).toEqual([{ id: receipt.carrierId, state: "unknown" }]);
+    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
 
     // Without the exact retained handle, a stop cannot be verified.
     const hostAfterRestart = createConversationTaskOperationHost(current.home, { carrierRegistry: restarted });
@@ -594,7 +626,7 @@ describe("conversation execution carrier reconnect truthfulness", () => {
         conversationId: first.conversationId,
         turnId: randomUUID(),
         actionId: randomUUID(),
-        operation: { kind: "work_control", carrierId: receipt.carrierId, control: "stop" },
+        operation: { kind: "work_control", carrierId: carrierId, control: "stop" },
       });
       throw new Error("expected the unretained carrier stop to be unverified");
     } catch (error) {
@@ -603,29 +635,30 @@ describe("conversation execution carrier reconnect truthfulness", () => {
     }
 
     // The original runtime handle still claims live; attempt records alone never do.
-    expect(first.registry.carrier(receipt.carrierId)!.liveness().state).toBe("live");
+    expect(first.registry.carrier(carrierId)!.liveness().state).toBe("live");
 
     // Once terminal evidence exists, a fresh registry projects that settlement.
-    first.registry.carrier(receipt.carrierId)!.stop({
+    first.registry.carrier(carrierId)!.stop({
       conversationId: first.conversationId,
       turnId: first.turnId,
       actionId: first.actionId,
     });
     await until(() =>
-      first.registry.carrier(receipt.carrierId)!.liveness().state === "settled", "settlement");
+      first.registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
     const after = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(first.conversationId);
-    expect(after.carriers).toEqual([{ id: receipt.carrierId, state: "control-stopped" }]);
+    expect(after.carriers).toEqual([{ id: carrierId, state: "control-stopped" }]);
   });
 });
 
 describe("conversation execution carrier reconciliation", () => {
-  test("finds the committed continue by its causal source ref and never respawns it", () => {
+  test("finds the committed continue by its causal source ref and never respawns it", async () => {
     const current = fixture();
-    const { host, conversationId, turnId, actionId } = carrierParts(current);
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
     const operation = continueOperation(current);
     const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const carrierId = receipt.carrierId!;
 
     const found = host.findCanonicalReceipt({ conversationId, actionId, operation });
     expect(found.standing).toBe("settled");
@@ -633,6 +666,8 @@ describe("conversation execution carrier reconciliation", () => {
     expect(found.receipt.taskId).toBe(current.taskId);
     expect(found.receipt.evidenceRefs).toEqual(receipt.evidenceRefs);
     expect(readAttemptDirectories(current.home)).toHaveLength(1);
+    await until(() =>
+      registry.carrier(carrierId)!.liveness().state === "settled", "continue receipt settlement");
   });
 
   test("reports provable absence for a continue action that never started", () => {
@@ -654,15 +689,16 @@ describe("conversation execution carrier reconciliation", () => {
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
     const control = {
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
-      operation: { kind: "work_control" as const, carrierId: receipt.carrierId, control: "stop" as const },
+      operation: { kind: "work_control" as const, carrierId: carrierId, control: "stop" as const },
     };
     host.executeOperation(control);
     await until(() =>
-      registry.carrier(receipt.carrierId)!.liveness().state === "settled", "settlement");
+      registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
 
     const found = host.findCanonicalReceipt({
       conversationId: control.conversationId,
@@ -672,8 +708,8 @@ describe("conversation execution carrier reconciliation", () => {
     expect(found.standing).toBe("settled");
     if (found.standing !== "settled") throw new Error("expected settled");
     expect(found.receipt.evidenceRefs).toEqual([
-      `state/task-attempts/${receipt.carrierId}/control.json`,
-      `state/task-attempts/${receipt.carrierId}/settlement.json`,
+      `state/task-attempts/${carrierId}/control.json`,
+      `state/task-attempts/${carrierId}/settlement.json`,
     ]);
   });
 
@@ -682,6 +718,7 @@ describe("conversation execution carrier reconciliation", () => {
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
     const operation = continueOperation(current);
     const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const carrierId = receipt.carrierId!;
 
     // The transport-level reconcile path: settled receipt found, then a
     // guarded retry would still hit the exact (turnId, actionId) mapping.
@@ -694,8 +731,8 @@ describe("conversation execution carrier reconciliation", () => {
       expect((error as ConversationOperationHostError).code).toBe("carrier-duplicate");
     }
     expect(readAttemptDirectories(current.home)).toHaveLength(1);
-    registry.carrier(receipt.carrierId)!.stop({ conversationId, turnId, actionId });
-    await until(() => registry.carrier(receipt.carrierId)!.liveness().state === "settled", "settlement");
+    registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
   });
 });
 
@@ -723,16 +760,19 @@ describe("conversation context projection", () => {
       actionId,
       operation: continueOperation(current),
     });
+    const carrierId = receipt.carrierId!;
 
     const provider = createConversationContextProvider(current.home, { carrierRegistry: registry });
     const live = await provider.buildProjection(conversationId);
-    expect(live.carriers).toEqual([{ id: receipt.carrierId, state: "live" }]);
+    expect(live.carriers).toEqual([
+      { id: carrierId, state: "live", runId: expect.any(String) },
+    ]);
     // A different conversation never sees this carrier.
     expect(await provider.buildProjection(randomUUID())).not.toHaveProperty("carriers");
 
-    registry.carrier(receipt.carrierId)!.stop({ conversationId, turnId, actionId });
-    await until(() => registry.carrier(receipt.carrierId)!.liveness().state === "settled", "settlement");
+    registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
     const terminal = await provider.buildProjection(conversationId);
-    expect(terminal.carriers).toEqual([{ id: receipt.carrierId, state: "control-stopped" }]);
+    expect(terminal.carriers).toEqual([{ id: carrierId, state: "control-stopped" }]);
   });
 });

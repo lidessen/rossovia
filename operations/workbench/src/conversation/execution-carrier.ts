@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,24 +6,21 @@ import { runCell } from "../../../../packages/work-cell/src/run-cell";
 import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
 import type { TaskContinueOperation } from "../../../autonomy/src/conversation-coordinator";
 import {
-  acquireWorktreeLease,
   attemptEvidence,
   createAttempt,
   evidenceRef,
+  preparePrincipalTaskRun,
   releaseWorktreeLease,
-  resolveBoundWorktree,
-  verifyCleanStatus,
-  verifyCurrentBinding,
-  verifyTaskSnapshotAfterLease,
   writeImmutableJson,
+  writeTaskRunSettlement,
   type AttemptCorrelation,
+  type PreparedPrincipalTaskRun,
+  type TaskRunExecution,
   type TaskRunLease,
 } from "../task-run";
-import { loadPrincipalTasks, showPrincipalTask } from "../tasks";
+import { PrincipalTaskError } from "../tasks";
 import type { PrincipalTask } from "../contracts";
-import { resolveProject } from "../resolve";
 import { resolveHome } from "../home";
-import { requiredGit } from "../workspace";
 import { taskActionSourceRef } from "./contracts";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -65,11 +61,10 @@ export interface CarrierSettlement {
   readonly error?: string;
 }
 
-export interface CarrierLiveness {
-  readonly state: "live" | "settled" | "unknown";
-  readonly runId?: string;
-  readonly settlement?: CarrierSettlement;
-}
+export type CarrierLiveness =
+  | { readonly state: "live"; readonly runId?: string }
+  | { readonly state: "settled"; readonly settlement: CarrierSettlement }
+  | { readonly state: "unknown" };
 
 export interface ConversationCarrierIdentity {
   /** The exact retained carrier identity; equals the Task attempt id. */
@@ -131,11 +126,11 @@ export interface CarrierStartReceipt {
 export interface ConversationExecutionCarrierRegistry {
   readonly home: string;
   /**
-   * Synchronously re-read every canonical selector and start at most one
-   * asynchronous carrier for one committed task_continue action. The exact
-   * durable (turnId, actionId) mapping refuses a second carrier for the same
-   * committed action. Throws `ConversationCarrierError` with no effect on any
-   * stale, unregistered, guessed, dirty, or mismatched selector.
+   * Synchronously re-run the shared guarded task-run preparation and start at
+   * most one asynchronous carrier for one committed task_continue action. The
+   * exact durable (turnId, actionId) mapping refuses a second carrier for the
+   * same committed action. Throws `ConversationCarrierError` with no effect on
+   * any stale, unregistered, guessed, dirty, or mismatched selector.
    */
   startCarrier(input: {
     readonly conversationId: string;
@@ -196,106 +191,72 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
       );
     }
 
-    const observed = this.rereadTask(input.operation);
-    const task = observed.task;
+    // The same guarded preparation every ordinary task run performs: exact
+    // worker resolution, canonical Task/source re-read, project and bound
+    // Worktree revalidation with its current head, the atomic Worktree lease,
+    // a fresh Task snapshot verification, and the clean status check. Only the
+    // execution-form derivation and the catalog identity resolution are
+    // carrier-specific; the authority sequence is never duplicated here.
+    const prepared = this.prepareCarrierRun(input.operation);
 
-    let card: WorkerCard;
+    const attemptId = prepared.attemptId;
     try {
-      card = this.catalog.card(input.operation.workerId);
-    } catch (error: unknown) {
-      throw new ConversationCarrierError(
-        "worker-unknown",
-        `worker '${input.operation.workerId}' is not an exact runnable catalog identity: ${errorMessage(error)}`,
-      );
-    }
-
-    const bound = this.rereadBoundWorktree(task);
-    const worktree = bound.worktree;
-    const worktreeHead = requiredGit(["rev-parse", "HEAD"], worktree);
-    if (!/^[0-9a-f]{40}$/u.test(worktreeHead)) {
-      throw new ConversationCarrierError(
-        "worktree-unobserved",
-        `the bound Worktree's current head cannot be read: ${worktree}`,
-      );
-    }
-
-    const attemptId = randomUUID();
-    let lease: TaskRunLease;
-    try {
-      lease = acquireWorktreeLease(worktree, task.id, attemptId);
-    } catch (error) {
-      throw new ConversationCarrierError(
-        "lease-conflict",
-        `the exact Worktree lease cannot be acquired for the continue: ${errorMessage(error)}`,
-      );
-    }
-    let attempt;
-    try {
-      verifyTaskSnapshotAfterLease(this.home, observed);
-      verifyCurrentBinding(this.home, bound.projectId, worktree);
-      verifyCleanStatus(worktree);
+      verifyExpectedRevisions(prepared, input.operation);
       const correlation: AttemptCorrelation = {
         conversationId: input.conversationId,
         turnId: input.turnId,
         actionId: input.actionId,
         sourceRef: taskActionSourceRef(input.conversationId, input.actionId),
       };
-      attempt = createAttempt(
-        this.home,
-        task,
-        observed.sourceRevision,
+      const attempt = createAttempt(
+        prepared.home,
+        prepared.task,
+        prepared.observed.sourceRevision,
         attemptId,
-        worktree,
-        card.id,
-        card,
-        {
-          driver: "ai-sdk-v7",
-          model: card.executionProfile.model,
-          ...(card.executionProfile.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: card.executionProfile.reasoningEffort }),
-        },
+        prepared.worktree,
+        prepared.card.id,
+        prepared.card,
+        prepared.execution,
         undefined,
         correlation,
       );
-    } catch (error) {
-      releaseWorktreeLease(lease);
-      throw mapCarrierError(error);
-    }
-
-    const carrier = new TaskRunCellCarrier({
-      home: this.home,
-      catalog: this.catalog,
-      identity: {
+      const carrier = new TaskRunCellCarrier({
+        home: prepared.home,
+        catalog: this.catalog,
+        identity: {
+          carrierId: attemptId,
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          actionId: input.actionId,
+          taskId: prepared.task.id,
+          attemptId,
+          workerId: prepared.card.id,
+          worktree: prepared.worktree,
+        },
+        cellInput: attempt.expectedCellInput,
+        attempt,
+        lease: prepared.lease,
+        task: prepared.task,
+      });
+      this.handles.set(attemptId, carrier);
+      this.startedByCommittedAction.set(actionKey, attemptId);
+      void carrier.run();
+      return {
         carrierId: attemptId,
-        conversationId: input.conversationId,
-        turnId: input.turnId,
-        actionId: input.actionId,
-        taskId: task.id,
-        attemptId,
-        workerId: card.id,
-        worktree,
-      },
-      cellInput: attempt.expectedCellInput,
-      attempt,
-      lease,
-      task,
-    });
-    this.handles.set(attemptId, carrier);
-    this.startedByCommittedAction.set(actionKey, attemptId);
-    void carrier.run();
-    return {
-      carrierId: attemptId,
-      taskId: task.id,
-      sourceRevision: observed.sourceRevision,
-      taskRevision: task.revision,
-      evidenceRefs: [
-        attempt.attemptRef,
-        attempt.inputRef,
-        attempt.finalRecordRef,
-        attempt.settlementRef,
-      ],
-    };
+        taskId: prepared.task.id,
+        sourceRevision: prepared.observed.sourceRevision,
+        taskRevision: prepared.task.revision,
+        evidenceRefs: [
+          attempt.attemptRef,
+          attempt.inputRef,
+          attempt.finalRecordRef,
+          attempt.settlementRef,
+        ],
+      };
+    } catch (error) {
+      releaseWorktreeLease(prepared.lease);
+      throw mapPreparationError(error);
+    }
   }
 
   carrier(carrierId: string): ConversationCarrierHandle | undefined {
@@ -353,108 +314,69 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     return carrier.stop(input.actor);
   }
 
-  /** Exact canonical Task and source revision reread immediately before the start effect. */
-  private rereadTask(operation: TaskContinueOperation): {
-    sourceRevision: number;
-    task: PrincipalTask;
-  } {
-    let observed;
+  private prepareCarrierRun(operation: TaskContinueOperation): PreparedPrincipalTaskRun {
     try {
-      observed = showPrincipalTask(this.home, operation.taskId);
+      return preparePrincipalTaskRun(
+        this.home,
+        { id: operation.taskId, workerId: operation.workerId },
+        {
+          resolveWorkerCard: (workerId) => this.catalogWorkerCard(workerId),
+          deriveExecution: carrierExecutionRequest,
+        },
+      );
     } catch (error) {
-      throw new ConversationCarrierError("source-unavailable",
-        `the canonical Task source cannot be read for the continue: ${errorMessage(error)}`);
+      throw mapPreparationError(error);
     }
-    let sourceRevision;
-    try {
-      sourceRevision = loadPrincipalTasks(this.home).sourceRevision;
-    } catch (error) {
-      throw new ConversationCarrierError("source-unavailable",
-        `the canonical Task source cannot be read for the continue: ${errorMessage(error)}`);
-    }
-    if (sourceRevision !== operation.expectedSourceRevision) {
-      throw new ConversationCarrierError(
-        "stale-revision",
-        `task source revision is stale for the continue: expected ${operation.expectedSourceRevision}, current ${sourceRevision}`,
-      );
-    }
-    const task = observed.task;
-    if (task.revision !== operation.expectedRevision) {
-      throw new ConversationCarrierError(
-        "stale-revision",
-        `task revision is stale for the continue: expected ${operation.expectedRevision}, current ${task.revision}`,
-      );
-    }
-    if (task.lifecycle === "settled") {
-      throw new ConversationCarrierError(
-        "task-settled",
-        `task ${task.id} is settled; a settled task is viewable history and cannot run`,
-      );
-    }
-    if (task.lifecycle !== "open" || task.nextActor !== "agent") {
-      throw new ConversationCarrierError(
-        "task-not-runnable",
-        `task ${task.id} must be open and assigned to the Agent before it can run`,
-      );
-    }
-    return observed;
   }
 
-  /**
-   * Re-read the registered project identity, its current primary observation,
-   * and the exact bound Worktree membership immediately before the start
-   * effect. A stale, unregistered, discovered, or guessed route fails visibly
-   * with no effect.
-   */
-  private rereadBoundWorktree(task: PrincipalTask): { worktree: string; projectId: string } {
-    const binding = task.binding;
-    if (binding.kind !== "project-context" || binding.worktreePath === undefined) {
-      throw new ConversationCarrierError(
-        "task-not-bound",
-        `task ${task.id} must be bound to an existing project Worktree before it can run`,
-      );
-    }
-    const projectId = binding.projectId;
-    const worktreePath = binding.worktreePath;
-    let resolution;
+  /** The exact catalog identity for one selector; never a policy-catalog fallback. */
+  private catalogWorkerCard(workerId: string): WorkerCard {
     try {
-      resolution = resolveProject(this.home, projectId);
+      return this.catalog.card(workerId);
     } catch (error) {
+      const message = errorMessage(error);
+      if (/is unavailable/u.test(message)) {
+        throw new ConversationCarrierError(
+          "worker-unavailable",
+          `worker '${workerId}' is not available: ${message}`,
+        );
+      }
       throw new ConversationCarrierError(
-        "project-unresolved",
-        `project '${projectId}' cannot be resolved to one registered current project: ${errorMessage(error)}`,
-      );
-    }
-    if (resolution.registration !== "registered") {
-      throw new ConversationCarrierError(
-        "project-unresolved",
-        `project '${projectId}' is ${resolution.registration}, not a registered current project; the continue has no unbound fallback`,
-      );
-    }
-    if (resolution.project.id !== projectId) {
-      throw new ConversationCarrierError(
-        "project-unresolved",
-        `project identity mismatch: the bound project '${projectId}' does not match the registered project`,
-      );
-    }
-    if (resolution.workspace.head === null) {
-      throw new ConversationCarrierError(
-        "stale-context",
-        `the registered project's current primary observation is unavailable for project '${projectId}'`,
-      );
-    }
-    try {
-      return {
-        worktree: resolveBoundWorktree(this.home, projectId, worktreePath),
-        projectId,
-      };
-    } catch (error) {
-      throw new ConversationCarrierError(
-        "worktree-unobserved",
-        `the bound Worktree cannot be verified for the continue: ${errorMessage(error)}`,
+        "worker-unknown",
+        `worker '${workerId}' is not an exact runnable catalog identity: ${message}`,
       );
     }
   }
+}
+
+/** The operation's expected selectors against the freshly prepared re-read. */
+function verifyExpectedRevisions(
+  prepared: PreparedPrincipalTaskRun,
+  operation: TaskContinueOperation,
+): void {
+  if (prepared.observed.sourceRevision !== operation.expectedSourceRevision) {
+    throw new ConversationCarrierError(
+      "stale-revision",
+      `task source revision is stale for the continue: expected ${operation.expectedSourceRevision}, current ${prepared.observed.sourceRevision}`,
+    );
+  }
+  if (prepared.task.revision !== operation.expectedRevision) {
+    throw new ConversationCarrierError(
+      "stale-revision",
+      `task revision is stale for the continue: expected ${operation.expectedRevision}, current ${prepared.task.revision}`,
+    );
+  }
+}
+
+/** The in-process AI SDK execution form a conversation carrier actually runs. */
+function carrierExecutionRequest(card: WorkerCard): TaskRunExecution {
+  return {
+    driver: "ai-sdk-v7",
+    model: card.executionProfile.model,
+    ...(card.executionProfile.reasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: card.executionProfile.reasoningEffort }),
+  };
 }
 
 interface TaskRunCellCarrierInput {
@@ -590,21 +512,13 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     if (controlRef === undefined) {
       throw new Error(`carrier ${this.identity.carrierId} was stopped without a durable control receipt`);
     }
-    writeImmutableJson(this.attempt.settlementPath, {
-      version: "rosso.task-run-settlement.v1",
+    writeTaskRunSettlement(this.attempt, {
       taskId: this.task.id,
       taskRevision: this.task.revision,
       attemptId: this.identity.attemptId,
-      inputRef: this.attempt.inputRef,
-      finalRecordRef: this.attempt.finalRecordRef,
       status: "control-stopped",
       controlRef,
-      ...(record === undefined ? {} : {
-        workCellRunId: record.runId,
-        cellStatus: record.status,
-      }),
-      semanticAcceptance: "not-evaluated",
-      settledAt: new Date().toISOString(),
+      ...(record === undefined ? {} : { workCellRunId: record.runId, cellStatus: record.status }),
     });
     return {
       status: "control-stopped",
@@ -614,18 +528,13 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
   }
 
   private settleRecorded(record: CellRunRecord): CarrierSettlement {
-    writeImmutableJson(this.attempt.settlementPath, {
-      version: "rosso.task-run-settlement.v1",
+    writeTaskRunSettlement(this.attempt, {
       taskId: this.task.id,
       taskRevision: this.task.revision,
       attemptId: this.identity.attemptId,
-      inputRef: this.attempt.inputRef,
-      finalRecordRef: this.attempt.finalRecordRef,
       status: "recorded",
       workCellRunId: record.runId,
       cellStatus: record.status,
-      semanticAcceptance: "not-evaluated",
-      settledAt: new Date().toISOString(),
     });
     return {
       status: "recorded",
@@ -635,21 +544,13 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
   }
 
   private settleRunnerFailed(error: string, record?: CellRunRecord): CarrierSettlement {
-    writeImmutableJson(this.attempt.settlementPath, {
-      version: "rosso.task-run-settlement.v1",
+    writeTaskRunSettlement(this.attempt, {
       taskId: this.task.id,
       taskRevision: this.task.revision,
       attemptId: this.identity.attemptId,
-      inputRef: this.attempt.inputRef,
-      finalRecordRef: this.attempt.finalRecordRef,
       status: "runner-failed",
-      ...(record === undefined ? {} : {
-        workCellRunId: record.runId,
-        cellStatus: record.status,
-      }),
-      semanticAcceptance: "not-evaluated",
+      ...(record === undefined ? {} : { workCellRunId: record.runId, cellStatus: record.status }),
       error,
-      settledAt: new Date().toISOString(),
     });
     return {
       status: "runner-failed",
@@ -884,19 +785,32 @@ function currentCatalog(environment: NodeJS.ProcessEnv): WorkerCatalog {
   return requireFromHere("../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
 }
 
-function mapCarrierError(error: unknown): ConversationCarrierError {
+/** One preparation/creation failure becomes a carrier-code-visible refusal. */
+function mapPreparationError(error: unknown): ConversationCarrierError {
   if (error instanceof ConversationCarrierError) return error;
+  if (error instanceof PrincipalTaskError) {
+    const code: ConversationCarrierErrorCode =
+      error.code === "task-not-found" ? "task-not-found"
+      : error.code === "task-drift" ? "stale-revision"
+      : "source-unavailable";
+    return new ConversationCarrierError(code, error.message);
+  }
   const message = errorMessage(error);
-  if (/active task-run lease/u.test(message)) {
-    return new ConversationCarrierError("lease-conflict", message);
-  }
-  if (/not clean/u.test(message)) {
-    return new ConversationCarrierError("worktree-dirty", message);
-  }
-  return new ConversationCarrierError(
-    "source-unavailable",
-    `the carrier cannot be prepared: ${message}`,
-  );
+  const code: ConversationCarrierErrorCode =
+    /cannot run settled task/u.test(message) ? "task-settled"
+    : /must be open and assigned/u.test(message) ? "task-not-runnable"
+    : /must be bound to an existing project Worktree/u.test(message) ? "task-not-bound"
+    : /no local workspace is attached/u.test(message) ? "project-unresolved"
+    : /task Worktree does not exist/u.test(message) ? "worktree-unobserved"
+    : /not currently bound to registered project/u.test(message) ? "worktree-unobserved"
+    : /must use an isolated Worktree/u.test(message) ? "worktree-unobserved"
+    : /head cannot be read/u.test(message) ? "worktree-unobserved"
+    : /already has an active task-run lease/u.test(message) ? "lease-conflict"
+    : /changed before attempt creation/u.test(message) ? "stale-context"
+    : /is not clean/u.test(message) ? "worktree-dirty"
+    : /must be a non-empty worker id/u.test(message) ? "worker-unknown"
+    : "source-unavailable";
+  return new ConversationCarrierError(code, `the carrier cannot be prepared: ${message}`);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
