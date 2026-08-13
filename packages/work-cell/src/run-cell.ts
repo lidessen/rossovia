@@ -230,6 +230,9 @@ export async function runCell(
         terminalTools.map((terminal) => terminal.name),
         driverResult.terminalToolsCalled,
       );
+      // Supplied tasks are a generic Cell completion condition. A driver may
+      // also expose a task cycle that emerged during execution, but it may not
+      // make caller-supplied tasks disappear by omitting its final projection.
       taskVerification = input.tasks !== undefined || driverResult.tasks !== undefined
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;
@@ -306,7 +309,9 @@ export async function runCell(
   emit("cell.finished", { status, usage });
 
   const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
+  const sessionId = observedSessionId(driverResult?.providerMetadata);
   const executionObservation: CellRunRecord["executionObservation"] = {
+    ...(sessionId ? { sessionId } : {}),
     ...(input.workEstimate ? { workEstimateId: input.workEstimate.id } : {}),
     ...(input.executionProfile ? { executionProfileId: input.executionProfile.id } : {}),
   };
@@ -452,6 +457,14 @@ async function verifyArtifacts(
 
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+}
+
+function observedSessionId(providerMetadata: unknown): string | undefined {
+  if (typeof providerMetadata !== "object" || providerMetadata === null || Array.isArray(providerMetadata)) {
+    return undefined;
+  }
+  const value = (providerMetadata as Record<string, unknown>).sessionId;
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function addUsage(left: CellUsage, right: CellUsage): CellUsage {

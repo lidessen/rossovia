@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CellInputSchema, type CellInput, type CellUsage } from "../src/contracts";
+import { CellInputSchema, CellRunRecordSchema, type CellInput, type CellUsage } from "../src/contracts";
 import type {
   CellDriver,
   DriverContext,
@@ -415,6 +415,28 @@ describe("Work Cell core", () => {
     });
   });
 
+  test("retains the harness-observed session id from driver provider metadata", async () => {
+    const root = await fixture();
+    const base = input(root);
+    const driver: CellDriver = {
+      descriptor: { adapter: "sessioned", provider: "deterministic", model: "fixture" },
+      async run() {
+        return {
+          terminalToolsCalled: [],
+          finalText: "continued",
+          usage: usage(1, 1),
+          rawSteps: [],
+          providerMetadata: { adapter: "opencode-cli.v1", sessionId: "resume-123", exitCode: 0 },
+        };
+      },
+    };
+
+    const record = await runCell(base, driver);
+
+    expect(record.executionObservation.sessionId).toBe("resume-123");
+    expect(CellRunRecordSchema.parse(record).executionObservation.sessionId).toBe("resume-123");
+  });
+
   test("fails closed before execution when budget approval is enabled on an unsupported driver", async () => {
     const root = await fixture();
     const base = input(root);
@@ -472,6 +494,20 @@ describe("Workspace containment", () => {
     );
     // Plain basename still works
     await expect(workspace.runCommand(["true"])).resolves.toMatchObject({ exitCode: 0 });
+  });
+
+  test("reads binary inputs only through the declared workspace read scope", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "images"), { recursive: true });
+    await writeFile(join(root, "images", "probe.png"), new Uint8Array([1, 2, 3]));
+    const parsed = input(root);
+    parsed.workspace.readPaths = ["images"];
+    const workspace = await Workspace.create(parsed.workspace, parsed.budget);
+
+    expect(Array.from(await workspace.readBinary("images/probe.png"))).toEqual([1, 2, 3]);
+    await expect(workspace.readBinary("principles/SEQUENCE.md")).rejects.toThrow("outside declared scope");
+    await expect(workspace.readBinary("../outside.png")).rejects.toThrow("path escapes workspace");
+    await expect(workspace.readBinary("images")).rejects.toThrow("not a regular file");
   });
 });
 

@@ -46,8 +46,36 @@ non-producing reviewer, use the
 [agent-delegation](skills/agent-delegation/SKILL.md) Skill and the active
 harness's native sub-agent capabilities. Actively inspect for those
 contributions rather than waiting for the human to enumerate them. Keep coupled
-judgment and shared mutable effects under one owner, reconstruct returned claims
-against authoritative sources, and retain Main-Agent ownership of the whole.
+judgment and shared mutable effects under one owner. The Main Agent acts as the
+session-level proxy for the Principal's stated direction: it retains whole-task
+direction, synthesis, exception handling, and the final judgment returned to
+the Principal, while bounded production work ordinarily belongs to delegated
+execution owners. The Main Agent ensures that the appropriate mechanical checks
+and independent verification occur, then reconstructs their evidence and the
+execution owners' claims against authoritative sources. Within that team it
+does not take over producer work or treat a producer's checks or self-report as
+independent review. This proxy relation does not transfer the human Principal's
+approval, budget, acceptance, or merge authority.
+
+When an execution owner cannot progress, the Main Agent may intervene in the
+conditions of that owner's performance: clarify the objective or acceptance,
+restore missing context, improve tool or strategy guidance, give feedback, or
+reshape, reassign, or request another worker attempt. The intervention should
+make the worker more capable of completing the work; the Main Agent does not
+close the concrete production gap itself. This guidance adds no approval gate,
+permission layer, escalation bureaucracy, or automatic retry controller.
+
+When the Principal's mandate selects practice improvement, form it as a
+temporary, independently parallel shadow team beside production work. It
+asynchronously consumes evidence the work already produces—such as plans,
+traces, diffs, checks, reviews, and corrections—and may return source-linked
+observations of bad smells, explicit hypotheses, or a proposed ordinary
+improvement Task. It does not interrupt or veto production, participate in that
+work's acceptance, verification, or settlement, or amend a Skill, protocol,
+accepted design, or the Principle Sequence. Route an accepted improvement
+through the same ordinary task and authority path as any other work; do not
+make the shadow team a default preflight or give it its own queue, gate, schema,
+or task system.
 
 This is a direct Agent method from the repository entry. Do not initialize or
 route through Rossovia Workbench, Work Cell, Autonomy, or another task system
@@ -72,11 +100,18 @@ merge, load `design/operations/OPERATING-PROTOCOL.md` and preserve
 generic publishing tool must not replace it with a simpler body. Lead the PR
 description with the concrete problem, components and behavior changed,
 observable result, and intentional non-goals. Mission, authority, review, and
-checks support that account rather than replace it. Before recommending or
-performing a merge, require a named independent
-review record for the current head and present its compact packet through the
-Principal Decision Brief. Do not treat an empty or pending review surface as
-completed. Keep transient reply choices in the current conversation or human
+checks support that account rather than replace it. Delegate branch
+publication, PR operation, CI follow-through, late-review disposition,
+authorized merge execution, and worktree cleanup to an integration steward.
+Delegate only the mechanics in the current human request or a separately
+authorized integration scope: a review-only request does not authorize branch
+publication, merge, or cleanup. The Main Agent retains the decision brief,
+authorization judgment, and exceptions rather than performing the authorized
+mechanical sequence itself. Before recommending or performing a merge, require
+a named independent review record for the current head and present its compact
+packet through the Principal Decision Brief. Do not treat an empty or pending
+review surface as completed. Keep transient reply choices in the current
+conversation or human
 interaction surface; the PR records only its current integration state,
 withheld or granted authority, and the source of any decision already made.
 Before settling or pruning the integration Mission, re-read the source PR and

@@ -42,6 +42,7 @@ export const ExecutionProfileSchema = z.object({
   version: z.literal("execution-profile.v1"),
   provider: z.string().min(1),
   model: z.string().min(1),
+  reasoningEffort: z.string().min(1).optional(),
   contextPolicy: z.string().min(1).optional(),
   toolSurface: z.string().min(1).optional(),
   parallelism: z.literal("serial").default("serial"),
@@ -146,8 +147,12 @@ export const CellPreparationSchema = z.object({
 
 export const CellInputSchema = z.object({
   id: z.string().min(1),
+  /** Scheduler-facing worker selection; executionProfile remains the evidence identity. */
+  workerId: z.string().min(1).optional(),
   intent: z.string().min(1),
   workspace: WorkspacePolicySchema,
+  /** Workspace-relative local images supplied to a vision-capable worker. */
+  imagePaths: z.array(z.string().min(1)).min(1).optional(),
   instructions: z.array(z.string().min(1)).min(1),
   capabilities: z.array(z.string().min(1)).default([]),
   context: z.array(CellContextSchema).default([]),
@@ -242,6 +247,8 @@ export interface CellRunRecord {
     settlement?: CellUsage;
   };
   executionObservation: {
+    /** Actual harness-observed session id when the driver executes through a resumable session. */
+    sessionId?: string;
     workEstimateId?: string;
     executionProfileId?: string;
     priceRevision?: string;
@@ -356,6 +363,7 @@ export const CellRunRecordSchema = z.object({
     settlement: UsageSchema.optional(),
   }).strict(),
   executionObservation: z.object({
+    sessionId: z.string().min(1).optional(),
     workEstimateId: z.string().min(1).optional(),
     executionProfileId: z.string().min(1).optional(),
     priceRevision: z.string().min(1).optional(),

@@ -14,6 +14,7 @@ import {
 } from "./delegate-admission";
 import {
   DelegateCallSchema,
+  WorkerSpawnCallSchema,
   type CompactDelegateOutcome,
   type DelegateBatchCheckpoint,
 } from "./delegate-loop";
@@ -42,20 +43,31 @@ const CheckpointShellSchema = z.object({
   wholeRevision: z.string().min(1),
   parentUsage: UsageSchema,
   tasks: z.array(TaskSchema),
-  invocations: z.array(z.object({
-    toolCallId: z.string().min(1),
-    toolName: z.enum(["delegate", "delegate_file"]),
-    call: DelegateCallSchema,
-    input: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("inline") }).strict(),
-      z.object({
+  invocations: z.array(z.discriminatedUnion("toolName", [
+    z.object({
+      toolCallId: z.string().min(1),
+      toolName: z.literal("delegate"),
+      call: DelegateCallSchema,
+      input: z.object({ kind: z.literal("inline") }).strict(),
+    }).strict(),
+    z.object({
+      toolCallId: z.string().min(1),
+      toolName: z.literal("delegate_file"),
+      call: DelegateCallSchema,
+      input: z.object({
         kind: z.literal("file"),
         path: z.string().min(1),
         sha256: z.string().regex(/^[a-f0-9]{64}$/),
         bytes: z.number().int().nonnegative(),
       }).strict(),
-    ]),
-  }).strict()).min(1),
+    }).strict(),
+    z.object({
+      toolCallId: z.string().min(1),
+      toolName: z.literal("worker_spawn"),
+      call: WorkerSpawnCallSchema,
+      input: z.object({ kind: z.literal("inline") }).strict(),
+    }).strict(),
+  ])).min(1),
   responseMessages: z.array(z.unknown()),
   admission: z.unknown(),
 }).strict();

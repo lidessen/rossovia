@@ -123,6 +123,41 @@ export const PrincipalTaskResultEvidenceSchema = z.discriminatedUnion("kind", [
   }).strict(),
 ]);
 
+/**
+ * The reviewer-supplied independence context for a result review. Workbench
+ * never derives independence from a reviewer name, model/session identity, or
+ * evidence references; it retains only this explicit declaration and its
+ * source identity, and the projection labels a declared unproven review as
+ * `independence-unproven`.
+ */
+export const PrincipalTaskResultReviewIndependenceSchema = z.object({
+  basis: z.enum(["independent-review-context", "unproven"]),
+  sourceRef: nonempty,
+}).strict();
+
+/**
+ * A review candidate located by one full Git commit. The first version supports
+ * only commit-locatable candidates; freshness compares the task's currently
+ * bound observed Worktree HEAD against this commit.
+ */
+export const PrincipalTaskResultReviewCandidateSchema = z.object({
+  kind: z.literal("git-commit"),
+  commit: z.string().regex(/^[0-9a-f]{40}$/),
+}).strict();
+
+export const PrincipalTaskResultReviewSchema = z.object({
+  id: nonempty,
+  reviewedAt: nonempty,
+  resultClaimId: nonempty,
+  producerAttemptId: nonempty.optional(),
+  reviewerRef: nonempty,
+  independence: PrincipalTaskResultReviewIndependenceSchema,
+  candidate: PrincipalTaskResultReviewCandidateSchema,
+  verdict: z.enum(["passed", "failed"]),
+  findings: z.array(nonempty).min(1),
+  evidenceRefs: z.array(nonempty).min(1),
+}).strict();
+
 export const PrincipalTaskResultClaimSchema = z.object({
   id: nonempty,
   submittedAt: nonempty,
@@ -133,6 +168,7 @@ export const PrincipalTaskResultClaimSchema = z.object({
   }),
   sourceRef: nonempty,
   standing: z.enum(["submitted", "accepted", "superseded"]),
+  reviews: z.array(PrincipalTaskResultReviewSchema).default([]),
   resolution: z.discriminatedUnion("kind", [
     z.object({
       kind: z.literal("accepted"),
@@ -164,6 +200,25 @@ export const PrincipalTaskResultClaimSchema = z.object({
       message: `result claim standing ${claim.standing} requires ${expectedResolution ?? "no"} resolution`,
     });
   }
+  const reviewIds = new Set<string>();
+  for (const review of claim.reviews) {
+    if (review.resultClaimId !== claim.id) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviews"],
+        message: `result review ${review.id} binds claim ${review.resultClaimId}, not its owner claim ${claim.id}`,
+      });
+    }
+    const reviewKey = review.id.toLowerCase();
+    if (reviewIds.has(reviewKey)) {
+      context.addIssue({
+        code: "custom",
+        path: ["reviews"],
+        message: `duplicate result review id: ${review.id}`,
+      });
+    }
+    reviewIds.add(reviewKey);
+  }
 });
 
 export const PrincipalTaskExecutionLinkSchema = z.object({
@@ -187,6 +242,8 @@ export const PrincipalTaskSchema = z.object({
   title: nonempty,
   objective: nonempty,
   acceptance: z.array(nonempty).min(1),
+  /** Ordinary work todos supplied by the Principal at creation; older tasks default to an empty list. */
+  todos: z.array(nonempty).default([]),
   origin: z.object({
     kind: z.literal("principal-explicit"),
     sourceRef: nonempty,
@@ -308,6 +365,9 @@ export type AutonomyEffectVerificationSelector = z.infer<
 >;
 export type PrincipalTaskResultEvidence = z.infer<
   typeof PrincipalTaskResultEvidenceSchema
+>;
+export type PrincipalTaskResultReview = z.infer<
+  typeof PrincipalTaskResultReviewSchema
 >;
 export type PrincipalTaskResultClaim = z.infer<typeof PrincipalTaskResultClaimSchema>;
 export type PrincipalTaskExecutionLink = z.infer<typeof PrincipalTaskExecutionLinkSchema>;

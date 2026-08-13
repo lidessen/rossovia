@@ -87,6 +87,110 @@ test("recovers one gene-expression natural finish before executing the Cell", as
   expect(calls).toBe(3);
 });
 
+test("sends workspace-scoped local images as AI SDK file parts without retaining their bytes", async () => {
+  const root = await fixture();
+  const image = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+  await mkdir(join(root, "images"), { recursive: true });
+  await writeFile(join(root, "images", "probe.png"), image);
+  let request: unknown;
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      request = options;
+      return responseV4([{ type: "text", text: "The image was inspected." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "mock-image-input",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "image-input",
+    intent: "Inspect the supplied image.",
+    workspace: { root, readPaths: ["images"], writePaths: [], excludePaths: [], allowedCommands: [] },
+    imagePaths: ["images/probe.png"],
+    instructions: ["Use the supplied image as evidence."],
+    capabilities: ["vision"],
+    capabilitiesRequired: ["vision"],
+    acceptance: ["Return one image-grounded observation."],
+    budget: { maxSteps: 1, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  const prompt = (request as { prompt?: unknown }).prompt as Array<{
+    role: string;
+    content?: Array<{ type: string; mediaType?: string; data?: { type: string; data: Uint8Array } }>;
+  }>;
+  const user = prompt.find((message) => message.role === "user");
+  const file = user?.content?.find((part) => part.type === "file");
+  expect(file).toMatchObject({ type: "file", mediaType: "image/png", data: { type: "data" } });
+  expect(Array.from(file?.data?.data ?? [])).toEqual(Array.from(image));
+  expect(record.status).toBe("passed");
+  expect(JSON.stringify(record.trace)).not.toContain("137,80,78,71");
+  expect(JSON.stringify(record.rawSteps)).not.toContain("137,80,78,71");
+});
+
+test("reuses local image file parts when terminal recovery starts", async () => {
+  const root = await fixture();
+  await mkdir(join(root, "images"), { recursive: true });
+  await writeFile(join(root, "images", "probe.png"), new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 9, 8, 7]));
+  const requests: unknown[] = [];
+  let calls = 0;
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      calls += 1;
+      requests.push(options);
+      if (calls === 1) return responseV4([{ type: "text", text: "The image is clear." }], "stop");
+      return responseV4([{
+        type: "tool-call",
+        toolCallId: "finish-image-review",
+        toolName: "finish_image_review",
+        input: JSON.stringify({ verdict: "ready" }),
+      }], "tool-calls");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "mock-image-recovery",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "image-recovery",
+    intent: "Inspect the supplied image and settle the review.",
+    workspace: { root, readPaths: ["images"], writePaths: [], excludePaths: [], allowedCommands: [] },
+    imagePaths: ["images/probe.png"],
+    instructions: ["Use the image as evidence."],
+    capabilities: ["vision"],
+    capabilitiesRequired: ["vision"],
+    acceptance: ["The terminal review is settled from the image."],
+    terminalTools: [{
+      name: "finish_image_review",
+      description: "Submit the image review.",
+      inputSchema: {
+        type: "object",
+        properties: { verdict: { type: "string", enum: ["ready"] } },
+        required: ["verdict"],
+        additionalProperties: false,
+      },
+    }],
+    budget: { maxSteps: 3, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  const recoveryPrompt = (requests[1] as { prompt?: unknown }).prompt as Array<{
+    role: string;
+    content?: string | Array<{ type: string; mediaType?: string }>;
+  }>;
+  expect(recoveryPrompt.some((message) => message.role === "user"
+    && Array.isArray(message.content)
+    && message.content.some((part) => part.type === "file" && part.mediaType === "image/png"))).toBe(true);
+  expect(record.status).toBe("passed");
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(true);
+  expect(JSON.stringify(record.trace)).not.toContain("137,80,78,71");
+});
+
 test("retains gene-expression usage when the bounded recovery is exhausted", async () => {
   const root = await fixture();
   let calls = 0;

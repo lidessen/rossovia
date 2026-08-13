@@ -31,6 +31,58 @@ non-empty, `write_file` only when write scope exists, and `run_command` only
 when commands are allow-listed. An unavailable capability is absent from the
 model-facing tool surface rather than present as a guaranteed failure.
 
+`CellInput.imagePaths` may name one or more workspace-relative local images.
+Every path must resolve to a regular file inside the declared workspace
+`readPaths`; the same exclusion, root-containment, and post-`realpath` scope
+checks used by ordinary reads apply. The AI SDK driver materializes the bytes
+only while constructing the model request. The retained Cell input keeps the
+paths, while the run record, raw steps, and trace do not persist the image
+bytes.
+
+The ordinary `run` command keeps that AI SDK driver as its default. A caller may
+instead select the OpenCode CLI explicitly for an already-prepared coding Cell:
+
+```bash
+# Fresh session in the Cell workspace.
+bun src/cli.ts run path/to/cell.json \
+  --driver opencode-cli --model deepseek/deepseek-v4-flash --reasoning-effort high
+
+# Caller-directed correction or continuation of one known OpenCode session.
+bun src/cli.ts run path/to/cell.json \
+  --driver opencode-cli --model deepseek/deepseek-v4-flash --reasoning-effort high \
+  --session SESSION_ID
+```
+
+The caller must provide an isolated disposable worktree as `workspace.root`.
+OpenCode's native coding tools are not the preventive command allowlist exposed
+by `Workspace.runCommand`; the adapter does not emulate that boundary with a
+permission subsystem. OpenCode Cells must declare `workspace.writePaths: ["."]`
+so the host snapshots the full worktree, then settle the result through the
+retained diff, declared artifacts, named tests, and independent review.
+`--reasoning-effort` and `--executable` remain explicit caller choices; Work
+Cell does not supply a default effort. `--task-tools` belongs only to the
+default AI SDK driver and is rejected with `--driver opencode-cli`; it does not
+alter OpenCode's native loop. To use the existing AI SDK path as a fallback,
+run the command again without `--driver`; the OpenCode adapter never falls back
+or retries automatically.
+
+`CellInput.tasks` seeds are accepted by the OpenCode adapter as native session
+todos. For a fresh run, it starts a loopback `opencode serve` server, creates a
+zero-message session through `POST /session`, and writes each seed as an
+ordinary pending todo through the version-specific local database seam
+(`opencode db path`; 1.18.x `todo` table keyed by
+`session_id`/`position`). For a resumed run, the supplied tasks must match the
+existing session todos. In both cases the adapter verifies the initial rows
+through `GET /session/{sessionID}/todo`, attaches the CLI run to that session
+(`--attach <url> --session <id>`), and reads the final native todo state back
+into the generic task projection. `runCell` then applies the same invariant as
+for every other driver: supplied tasks may not remain `pending` or
+`in_progress` at Cell completion. A newly created session is deleted with
+bounded best-effort cleanup if initialization or execution fails before a
+successful attributable result; cleanup never replaces the original failure.
+There is no silent prompt fallback and no instruction to the worker to adopt
+todos through `todowrite`.
+
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
 API's construction, request translation, error meaning, and pricing; and
@@ -43,6 +95,43 @@ consumption, not marginal money spent by one Cell. Any subscription or mixed
 route therefore retains usage and serving evidence but omits a dollar estimate
 until cost audit can attribute usage per served call and distinguish allowance
 from actual spend.
+
+## Worker catalog mechanism
+
+`WorkerCatalog` is the host-supplied mechanism for heterogeneous Cells. A card
+has a stable scheduler-facing `id`, factual `labels`, a concise model capability
+`description`, one availability fact, and the existing `executionProfile` as
+its provider/model evidence identity. The catalog returns only runnable cards
+matching every requested label; it does not score, rank, or select one. The
+scheduling Agent chooses `workerId` explicitly.
+
+Catalog-backed Cells retain both `workerId` and `executionProfile`. Driver
+resolution fails closed when the worker is unknown, unavailable, missing any
+`capabilitiesRequired` label, has a mismatched execution profile, or constructs
+a driver with another provider/model identity. The orchestration and Swarm
+factories receive each `CellInput`, so a mixed-worker batch creates the selected
+driver independently for every admitted Cell.
+
+A catalog-backed Cell with `imagePaths` automatically requires the factual
+`vision` label even when the caller omitted it from `capabilitiesRequired`.
+Driver resolution therefore rejects image input on a text-only worker instead
+of sending it to an incompatible model.
+
+### Local image-input evidence
+
+On 2026-08-13, two local smokes sent the same non-sensitive PNG through
+`imagePaths`. The ordinary `bun src/cli.ts run <cell.json>` path used the
+provider profile and was served by `kimi-coding/k3`; a second probe directly
+used `createCurrentWorkerCatalog(process.env)` and
+`catalog.createDriver(input)`, with the selected Kimi card and driver both
+identifying `kimi-coding/kimi-for-coding`. Both Cells passed and correctly
+identified the blue rectangle on the left and the red rectangle on the right,
+using 1,683 and 1,496 total tokens respectively. See the
+[minimal retained evidence](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md)
+for the results and their limits. This establishes the bounded local-image
+transport and direct catalog-backed driver paths for those runs; it does not
+establish general visual accuracy, automatic Rossovia CLI catalog wiring, or a
+media storage system.
 
 Provider observation is separate from execution preference. The generic
 observation result keeps availability, quota freshness, normalized windows, and
@@ -87,6 +176,17 @@ the sink fails, the Cell continues, records `cell.observer.failed`, and does not
 claim the partial path as an available result. A background caller can tail a
 healthy file without parsing a partial final record.
 
+The OpenCode CLI driver consumes its child's stdout line by line while the
+worker is still running. Each complete JSONL line is parsed exactly once, and a
+safe structural projection (`opencode.cli.progress`: event type, session
+identity, tool name) reaches the live trace before the child exits. Text
+parts, reasoning, and tool input/output are never projected into live progress;
+usage and session evidence are accumulated across the complete stream, while
+raw events, progress, malformed lines, stderr, and stopped-step text are
+retained only up to explicit byte bounds. The final record includes a retention
+marker when raw evidence was omitted; an oversized final stopped-step text
+fails visibly instead of being accepted as a complete final result.
+
 When a live observer is attached, the AI SDK driver uses its streaming agent
 path. Provider-exposed reasoning produces bounded start, character-progress,
 and finish events; response production is projected the same way. Raw
@@ -115,7 +215,7 @@ only after its producer explicitly closes it and every dispatched Cell settles:
 
 ```ts
 const queue = new InMemoryCellQueue();
-const running = runOrchestration(queue, createDriver, { concurrency: 4 });
+const running = runOrchestration(queue, (input) => catalog.createDriver(input), { concurrency: 4 });
 
 await queue.submit(firstCell);
 await queue.submit(secondCell);

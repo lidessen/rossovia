@@ -20,6 +20,8 @@ import {
   statusLineInput,
   statusLineProjection,
 } from "./statusline";
+import { showPrincipalTaskAttempts } from "./task-attempts";
+import { listPrincipalTaskWorkers, runPrincipalTask } from "./task-run";
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -31,6 +33,8 @@ try {
     const result = listProjects(home);
     console.log(JSON.stringify(result, null, 2));
     if (!result.complete) process.exitCode = 2;
+  } else if (args[0] === "worker" && args[1] === "list" && args.length === 2) {
+    console.log(JSON.stringify(listPrincipalTaskWorkers(), null, 2));
   } else if (args[0] === "init") {
     const options = parseInit(args.slice(1));
     const initialized = initializeHome(home);
@@ -134,19 +138,23 @@ function printUsage(): void {
   console.log("  register <path> --id <stable-id> [--alias <alias>]...");
   console.log("  attach <project> <path>");
   console.log("  project list");
+  console.log("  worker list");
   console.log("  preference set <id> --statement <text> [--project <project>] [--reopen-when <condition>]");
   console.log("  preference list [--project <project>]");
   console.log("  preference retire <id> [--project <project>]");
   console.log("  execution inspect <project> <mission-id>");
   console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
-  console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
+  console.log("  task create --title <text> --objective <text> --accept <criterion>... [--todo <text>]... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
   console.log("  task list");
   console.log("  task show <id>");
+  console.log("  task attempts <id>");
+  console.log("  task run <id> --worker <worker-id> [--continue]");
   console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task rebind-worktree <id> --expected-worktree <path> --worktree <path> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task submit <id> --summary <text> --evidence-ref <reference>... --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task append-review <id> --assessment-id <id> --result-claim-id <id> [--producer-attempt-id <id>] --reviewer-ref <reference> --independence-basis <independent-review-context|unproven> --independence-source-ref <reference> --candidate-commit <40-hex> --verdict <passed|failed> --finding <text>... --evidence-ref <reference>... --expected-source-revision <n> --expected-revision <n>");
   console.log("  task accept <id> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task reopen <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
@@ -179,6 +187,10 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
     if (raw.length !== 2) throw new Error("task show requires exactly one task id");
     return controlPlane.show(raw[1]!);
   }
+  if (command === "attempts") {
+    if (raw.length !== 2) throw new Error("task attempts requires exactly one task id");
+    return showPrincipalTaskAttempts(home, raw[1]!);
+  }
   if (command === "create") {
     const parsed = parseTaskOptions(
       raw.slice(1),
@@ -193,7 +205,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         "--worktree",
         "--mission",
       ]),
-      new Set(["--accept"]),
+      new Set(["--accept", "--todo"]),
     );
     return controlPlane.execute({
       kind: "create",
@@ -201,6 +213,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         title: taskOption(parsed, "--title"),
         objective: taskOption(parsed, "--objective"),
         acceptance: taskOptions(parsed, "--accept"),
+        ...(parsed.values.has("--todo") ? { todos: taskOptions(parsed, "--todo") } : {}),
         nextActor: taskActor(parsed),
         sourceRef: taskOption(parsed, "--source-ref"),
         expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
@@ -208,6 +221,21 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         ...(parsed.values.has("--worktree") ? { worktree: taskOption(parsed, "--worktree") } : {}),
         ...(parsed.values.has("--mission") ? { mission: taskOption(parsed, "--mission") } : {}),
       },
+    });
+  }
+  if (command === "run") {
+    const parsed = parseTaskOptions(
+      raw.slice(1),
+      1,
+      new Set(["--worker"]),
+      new Set(),
+      new Set(["--continue"]),
+    );
+    assertTaskOptions(parsed, new Set(["--worker", "--continue"]));
+    return runPrincipalTask(home, {
+      id: parsed.positionals[0]!,
+      workerId: taskOption(parsed, "--worker"),
+      ...(parsed.values.has("--continue") ? { continueRun: true } : {}),
     });
   }
 
@@ -224,14 +252,81 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
       "--authorization-id",
       "--expected-worktree",
       "--worktree",
+      "--assessment-id",
+      "--result-claim-id",
+      "--producer-attempt-id",
+      "--reviewer-ref",
+      "--independence-basis",
+      "--independence-source-ref",
+      "--candidate-commit",
+      "--verdict",
     ]),
-    new Set(["--evidence-ref"]),
+    new Set(["--evidence-ref", "--finding"]),
   );
   const expectation = {
     id: parsed.positionals[0]!,
     expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
     expectedRevision: taskRevision(parsed, "--expected-revision", false),
   };
+  if (command === "append-review") {
+    const reviewed = parseTaskOptions(
+      raw.slice(1),
+      1,
+      new Set([
+        "--assessment-id",
+        "--result-claim-id",
+        "--producer-attempt-id",
+        "--reviewer-ref",
+        "--independence-basis",
+        "--independence-source-ref",
+        "--candidate-commit",
+        "--verdict",
+        "--expected-source-revision",
+        "--expected-revision",
+      ]),
+      new Set(["--finding", "--evidence-ref"]),
+    );
+    assertTaskOptions(reviewed, new Set([
+      "--assessment-id",
+      "--result-claim-id",
+      "--producer-attempt-id",
+      "--reviewer-ref",
+      "--independence-basis",
+      "--independence-source-ref",
+      "--candidate-commit",
+      "--verdict",
+      "--finding",
+      "--evidence-ref",
+      "--expected-source-revision",
+      "--expected-revision",
+    ]));
+    const independence = taskOption(reviewed, "--independence-basis");
+    if (independence !== "independent-review-context" && independence !== "unproven") {
+      throw new Error("--independence-basis must be independent-review-context or unproven");
+    }
+    const verdict = taskOption(reviewed, "--verdict");
+    if (verdict !== "passed" && verdict !== "failed") {
+      throw new Error("--verdict must be passed or failed");
+    }
+    return controlPlane.execute({
+      kind: "review",
+      arguments: {
+        ...expectation,
+        assessmentId: taskOption(reviewed, "--assessment-id"),
+        resultClaimId: taskOption(reviewed, "--result-claim-id"),
+        ...(reviewed.values.has("--producer-attempt-id")
+          ? { producerAttemptId: taskOption(reviewed, "--producer-attempt-id") }
+          : {}),
+        reviewerRef: taskOption(reviewed, "--reviewer-ref"),
+        independenceBasis: independence,
+        independenceSourceRef: taskOption(reviewed, "--independence-source-ref"),
+        candidateCommit: taskOption(reviewed, "--candidate-commit"),
+        verdict,
+        findings: taskOptions(reviewed, "--finding"),
+        evidenceRefs: taskOptions(reviewed, "--evidence-ref"),
+      },
+    });
+  }
   if (command === "assign") {
     assertTaskOptions(parsed, new Set([
       "--next-actor",
@@ -361,14 +456,21 @@ function parseTaskOptions(
   positionalCount: number,
   singles: ReadonlySet<string>,
   repeated: ReadonlySet<string>,
+  booleans: ReadonlySet<string> = new Set(),
 ): ParsedTaskOptions {
   const positionals = raw.slice(0, positionalCount);
   if (positionals.length !== positionalCount || positionals.some((value) => value.startsWith("--"))) {
     throw new Error("missing required task command argument");
   }
   const values = new Map<string, string[]>();
-  for (let index = positionalCount; index < raw.length; index += 2) {
+  for (let index = positionalCount; index < raw.length;) {
     const option = raw[index];
+    if (option && booleans.has(option)) {
+      if (values.has(option)) throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
+      values.set(option, []);
+      index += 1;
+      continue;
+    }
     const value = raw[index + 1];
     if (
       !option
@@ -380,6 +482,7 @@ function parseTaskOptions(
       throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
     }
     values.set(option, [...(values.get(option) ?? []), value]);
+    index += 2;
   }
   return { positionals, values };
 }

@@ -109,7 +109,7 @@ evidence; state the reason when departing from it.
 
 ## Rossovia local task entry
 
-Treat an explicit natural-language request to create, inspect, assign, correct,
+Treat an explicit natural-language request to create, inspect, assign, run, correct,
 rebind the Worktree context, link an already authorized execution, deliver a
 retained correction, recover the linked execution, submit, accept, or reopen a
 locally Principal-attributed task as authority to use the corresponding
@@ -119,7 +119,9 @@ legacy-home guard above and run
 Workbench home has a task source.
 
 - Run `task list` or `task show <id>` before mutating an existing task and pass
-  the returned source and task revisions to the requested mutation.
+  the returned source and task revisions to revision-bound mutations. `task
+  run` is the exception: it rereads the current Task immediately before its
+  effect and does not expose revisions to the caller.
 - Create a task only from an explicit current request. Do not turn an inferred
   preference, observation, project history, or Agent suggestion into task
   state.
@@ -146,11 +148,49 @@ Workbench home has a task source.
   the runtime-owned turn and effect.
 - `assign ... --next-actor agent` identifies the next responsible actor but
   does not launch an Agent or claim live Agent work. Starting execution still
-  follows its separately accepted Mission/runtime boundary. For a bounded
-  contribution that fits the current harness, delegate directly through
+  requires an explicit runtime action. For a bounded contribution that fits
+  the current harness, delegate directly through
   [agent-delegation](../../skills/agent-delegation/SKILL.md); Workbench retains the
   obligation and returned claim, not the sub-agent runtime or coordination
   state.
+- Run `worker list` to inspect the host-owned worker descriptions, capabilities,
+  provider/model/reasoning defaults, and availability. Run an ordinary open
+  Agent-owned project task that already has one exact isolated Worktree with
+  `task run <id> --worker <worker-id>`. Add `--continue` to continue only the
+  latest usable OpenCode session retained by an attributable previous attempt
+  of the same still-open task in its current bound Worktree. Do not ask the
+  human or calling Agent for driver, provider/model syntax, reasoning effort,
+  session ID, or Task revisions.
+  The 30-minute run ceiling is only an emergency ceiling while the OpenCode
+  adapter has no completed-step soft-budget control; it is not an approval or
+  budget mechanism.
+  A fresh run remains Git-clean-only. An explicit continuation may retain a
+  dirty Worktree only when every currently staged, unstaged, or non-ignored
+  untracked path is present in the cumulative `workspaceDiff` union of usable,
+  owner-backed attempts on that continuous same-session branch. A failed or
+  otherwise unusable attempt contributes no paths, but a different observed
+  session still terminates the prior branch. Ignored artifacts do not block,
+  and path membership proves no content identity. The result returns the actual
+  OpenCode session id observed in the new attempt's final Work Cell record; no
+  usable latest session or a continued session that does not match the new
+  observation fails.
+  Mission context is not required. The command creates the Work Cell input and
+  append-only attempt evidence inside the Workbench home, but its settlement
+  neither submits nor accepts the task. An atomic lease in the exact Worktree Git metadata rejects
+  overlapping writers across Workbench homes; a crash-retained lease requires
+  exact Worktree/process inspection, exact-file removal, and retry rather than
+  stale-lock inference or Task reopening. Git-tracked paths always remain in
+  Work Cell evidence even when one of their path segments is usually generated. A
+  settled task is viewable history and cannot run.
+- Run `task attempts <id>` to project the task's recorded attempts as a
+  read-only view sorted by start time. The projection reads, never copies or
+  rewrites, the existing attempt, final Work Cell record, and settlement files:
+  selected worker and resolved driver/model/reasoning/session come from the
+  attempt record; observed session/cell status/usage/workspace diff/verification
+  come from the final record, and settlement status comes from the settlement. It carries the
+  stable source references and exposes per-source `available`, `unavailable`,
+  or `invalid` standing rather than dropping attributable malformed evidence.
+  It never exposes the raw Work Cell trace and changes no task or attempt state.
 - `task submit` retains actor-supplied references as an unverified result claim;
   their wording or prefix never establishes verification. The Workbench UI may
   instead submit the current Autonomy-verified execution only when the task's
@@ -163,6 +203,15 @@ Workbench home has a task source.
   Principal-attributed acceptance settles the Workbench task. Attribution is
   not identity authentication, and local settlement never implies Mission,
   product, integration, merge, or publication acceptance.
+- Append a structured independent assessment only with `task append-review`
+  against the exact current result-claim ID while the task is `verifying`.
+  Supply explicit independence basis/source identity and one full Git commit;
+  do not infer either from reviewer prose, names, models, sessions, or result
+  evidence references. The append is review evidence only: it preserves
+  lifecycle, next actor, result resolution, and Principal acceptance. Review
+  freshness is rebuilt by comparing that commit with the currently observed
+  bound Worktree HEAD; independent or unreadable Worktree context is
+  `unavailable`, never guessed.
 - Keep corrections on the same task. Recording a correction changes only the
   local task. Deliver it to an Agent only through the Workbench UI's explicit
   delivery action after the task's latest execution link resolves to one exact

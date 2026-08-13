@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildProjectLensBundle } from "../scripts/project-lens-builder.js";
-import { validateProjectBundle, finalizeProjectBundle } from "../lib/project-evidence-bundle.js";
+import { validateProjectBundle, finalizeProjectBundle, PROJECT_BUILDER_REVISION } from "../lib/project-evidence-bundle.js";
 import { validateProjectBundleAgainstRepository } from "../scripts/project-lens-builder.js";
 import { digestValue } from "../lib/evidence-bundle.js";
 
@@ -52,6 +52,18 @@ describe("Project Lens real repository bundle", () => {
     expect(bundle.projection.steps.map((step) => step.layer)).toEqual(expect.arrayContaining(["source", "projection", "explanation"]));
     expect(bundle.projection.verificationCommands.map((entry) => entry.command)).toContain("bun run test");
     expect(bundle.projection.steps.find((step) => step.id === "arrival-path").evidence.sourceRefs).toEqual(["AGENTS.md", "src/app.js", "tests/app.test.js", "package.json"]);
+  });
+
+  test("observed entrypoints cite the observed-tree source without order arrows", async () => {
+    const bundle = await buildProjectLensBundle({ repo: fixtureRoot });
+    expect(bundle.builder.revision).toBe(PROJECT_BUILDER_REVISION);
+    const entry = bundle.projection.steps.find((step) => step.id === "observed-entry");
+    expect(entry.layer).toBe("projection");
+    expect(entry.evidence.sourceRefs).toEqual([`observed-tree@${bundle.subject.revision}`]);
+    expect(bundle.sources.map((source) => source.sourceRef)).toContain(`observed-tree@${bundle.subject.revision}`);
+    expect(entry.evidence.revision).toBe(bundle.subject.revision);
+    expect(entry.summary).not.toContain("→");
+    expect(entry.evidence.excerpt).not.toContain("→");
   });
 
   test("rejects a bundle whose retained source excerpt was changed", async () => {
@@ -295,6 +307,128 @@ describe("Project Lens real repository bundle", () => {
       expect(responsibility.standing).toBe("unavailable");
       expect(responsibility.designSays.current).toBeNull();
       expect(responsibility.reconciliation.summary).toContain("不能用目录结构补成责任边界");
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves a valid ATX heading whose content has optional closing hashes", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-closing-hashes-"));
+    try {
+      await mkdir(join(repo, "src"));
+      await Bun.write(join(repo, "README.md"), "# Closing hashes\n\nA repository whose design heading uses the closing hash form.\n");
+      await Bun.write(join(repo, "DESIGN.md"), "# Design\n\n## Project Lens ##\n\nOwns source-linked explanation.\n\n   ## Other ##\n\nUnrelated.\n");
+      await Bun.write(join(repo, "src/app.js"), "export const version = 1;\n");
+      runGit(repo, "init", "-q");
+      runGit(repo, "config", "user.email", "project-lens@example.invalid");
+      runGit(repo, "config", "user.name", "Project Lens Test");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "base");
+      const base = runGit(repo, "rev-parse", "HEAD");
+
+      const bundle = await buildProjectLensBundle({
+        repo,
+        baseRevision: base,
+        responsibilities: [{
+          id: "project-lens",
+          title: "Project Lens responsibility",
+          design: { sourceRef: "DESIGN.md", heading: "Project Lens" },
+          implementationScopes: ["src"],
+        }],
+      });
+      const responsibility = bundle.projection.comparison.responsibilities[0];
+
+      expect(responsibility.standing).toBe("unchanged");
+      expect(responsibility.designSays.current).toMatchObject({ sourceRef: "DESIGN.md", lineStart: 3, lineEnd: 6 });
+      expect(responsibility.designSays.current.sectionDigest).toBe(responsibility.designSays.base.sectionDigest);
+      expect(responsibility.designSays.summary).toContain("Owns source-linked explanation");
+      expect(bundle.projection.comparison.unresolved).toEqual([]);
+      expect((await validateProjectBundle(bundle)).valid).toBe(true);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("resolves an indented ATX target with optional closing hashes and keeps four-space text plain content", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-indented-heading-"));
+    try {
+      await mkdir(join(repo, "src"));
+      await Bun.write(join(repo, "README.md"), "# Indented heading\n\nA repository whose design heading is indented up to three spaces.\n");
+      await Bun.write(join(repo, "DESIGN.md"), "# Design\n\n   ## Project Lens ##\n\nOwns source-linked explanation.\n\n    ## Four Space Peer ##\n\nStill owned by Project Lens.\n\n   ## Other ##\n\nUnrelated.\n");
+      await Bun.write(join(repo, "src/app.js"), "export const version = 1;\n");
+      runGit(repo, "init", "-q");
+      runGit(repo, "config", "user.email", "project-lens@example.invalid");
+      runGit(repo, "config", "user.name", "Project Lens Test");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "base");
+      const base = runGit(repo, "rev-parse", "HEAD");
+
+      const bundle = await buildProjectLensBundle({
+        repo,
+        baseRevision: base,
+        responsibilities: [{
+          id: "project-lens",
+          title: "Project Lens responsibility",
+          design: { sourceRef: "DESIGN.md", heading: "Project Lens" },
+          implementationScopes: ["src"],
+        }],
+      });
+      const responsibility = bundle.projection.comparison.responsibilities[0];
+
+      expect(responsibility.standing).toBe("unchanged");
+      expect(responsibility.designSays.current).toMatchObject({ sourceRef: "DESIGN.md", lineStart: 3, lineEnd: 10 });
+      expect(responsibility.designSays.current.sectionDigest).toBe(responsibility.designSays.base.sectionDigest);
+      expect(responsibility.designSays.summary).toContain("Still owned by Project Lens");
+      expect(responsibility.designSays.summary).toContain("## Four Space Peer ##");
+      expect(responsibility.designSays.summary).not.toContain("Unrelated");
+      expect(bundle.projection.comparison.unresolved).toEqual([]);
+      expect((await validateProjectBundle(bundle)).valid).toBe(true);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps a literal hash inside heading content such as C# matched without stripping", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "project-lens-literal-hash-"));
+    try {
+      await mkdir(join(repo, "src"));
+      await Bun.write(join(repo, "README.md"), "# Literal hash\n\nA repository whose design headings contain a literal hash character.\n");
+      await Bun.write(join(repo, "DESIGN.md"), "# Design\n\n## Why C# ##\n\nOwns source-linked explanation.\n\n## C# ##\n\nAlso owned.\n\n## Other\n\nUnrelated.\n");
+      await Bun.write(join(repo, "src/app.js"), "export const version = 1;\n");
+      runGit(repo, "init", "-q");
+      runGit(repo, "config", "user.email", "project-lens@example.invalid");
+      runGit(repo, "config", "user.name", "Project Lens Test");
+      runGit(repo, "add", ".");
+      runGit(repo, "commit", "-qm", "base");
+      const base = runGit(repo, "rev-parse", "HEAD");
+
+      const bundle = await buildProjectLensBundle({
+        repo,
+        baseRevision: base,
+        responsibilities: [
+          {
+            id: "csharp",
+            title: "C# responsibility",
+            design: { sourceRef: "DESIGN.md", heading: "C#" },
+            implementationScopes: ["src"],
+          },
+          {
+            id: "why-csharp",
+            title: "Why C# responsibility",
+            design: { sourceRef: "DESIGN.md", heading: "Why C#" },
+            implementationScopes: ["src"],
+          },
+        ],
+      });
+      const byId = new Map(bundle.projection.comparison.responsibilities.map((entry) => [entry.id, entry]));
+
+      expect(byId.get("csharp").standing).toBe("unchanged");
+      expect(byId.get("csharp").designSays.current).toMatchObject({ sourceRef: "DESIGN.md", lineStart: 7, lineEnd: 10 });
+      expect(byId.get("csharp").designSays.summary).toContain("Also owned");
+      expect(byId.get("why-csharp").designSays.current).toMatchObject({ sourceRef: "DESIGN.md", lineStart: 3, lineEnd: 6 });
+      expect(byId.get("why-csharp").designSays.summary).toContain("Owns source-linked explanation");
+      expect(bundle.projection.comparison.unresolved).toEqual([]);
+      expect((await validateProjectBundle(bundle)).valid).toBe(true);
     } finally {
       await rm(repo, { recursive: true, force: true });
     }

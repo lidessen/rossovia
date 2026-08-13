@@ -114,6 +114,8 @@ function workItems(
           verifiedResultCandidate: null,
         },
         latestResultVerification: { standing: "none" },
+        latestResultReview: { standing: "none" },
+        resultReviews: [],
         worktreeAuthority: "observation-only",
         worktreeStanding: "not-declared",
         task: {
@@ -121,6 +123,7 @@ function workItems(
           title: "Task A",
           objective: "Deliver the correction",
           acceptance: ["The Mission input receipt is retained"],
+          todos: [],
           origin: {
             kind: "principal-explicit",
             sourceRef: "conversation:test",

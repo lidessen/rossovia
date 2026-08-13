@@ -8,6 +8,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import type {
+  CellInput,
   CellRunRecord,
   CellUsage,
   Task,
@@ -20,6 +21,7 @@ import {
 } from "../../../packages/work-cell/src/file-input";
 import { normalizeAiSdkUsage } from "../../../packages/work-cell/src/ai-sdk-usage";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
+import type { WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
 import type { SwarmCellOutcome } from "../../../packages/work-cell/src/swarm";
 import { TaskStore } from "../../../packages/work-cell/src/task-store";
 import { createTaskTools } from "../../../packages/work-cell/src/task-tools";
@@ -44,6 +46,17 @@ export const DelegateCallSchema = z.object({
 }).strict();
 
 export type DelegateCall = z.infer<typeof DelegateCallSchema>;
+
+export const WorkerSpawnCallSchema = DelegateCallSchema.extend({
+  workerId: z.string().min(1),
+  imagePaths: z.array(z.string().min(1)).min(1).optional(),
+}).strict();
+export type WorkerSpawnCall = z.infer<typeof WorkerSpawnCallSchema>;
+export type DelegatePreparationCall = DelegateCall | WorkerSpawnCall;
+
+const WorkerListCallSchema = z.object({
+  requiredLabels: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/)).default([]),
+}).strict();
 
 export const DelegateFileCallSchema = JsonFileInputRefSchema;
 export type DelegateFileCall = z.infer<typeof DelegateFileCallSchema>;
@@ -109,7 +122,9 @@ export interface DelegateLoopInput {
 
 export interface DelegateLoopOptions {
   readonly model: LanguageModel;
-  readonly prepareContribution: (call: DelegateCall) => Promise<PreparedDelegateExecution>;
+  readonly prepareContribution: (call: DelegatePreparationCall) => Promise<PreparedDelegateExecution>;
+  /** Enables the catalog vocabulary (`worker_list`, `worker_spawn`) and binds selected workers to drivers. */
+  readonly workerCatalog?: WorkerCatalog;
   /** Enables `delegate_file`; the model can name files only inside this host-owned root. */
   readonly delegateInputRoot?: string;
   /**
@@ -121,7 +136,8 @@ export interface DelegateLoopOptions {
   /** Optional host-scoped writer. Supplying it enables an ordinary `write_file` preparation tool. */
   readonly delegateFileWriter?: DelegateFileWriter;
   readonly timeline: DelegateTimeline;
-  readonly createDriver: () => CellDriver;
+  /** Legacy delegate-mode driver. Catalog mode resolves drivers only through workerCatalog. */
+  readonly createDriver?: (input: CellInput) => CellDriver;
   readonly concurrency: number;
   readonly maxModelSteps: number;
   readonly maxDelegateBatches: number;
@@ -157,8 +173,8 @@ export interface CompactDelegateOutcome {
 
 export interface DelegateInvocation {
   readonly toolCallId: string;
-  readonly toolName: "delegate" | "delegate_file";
-  readonly call: DelegateCall;
+  readonly toolName: "delegate" | "delegate_file" | "worker_spawn";
+  readonly call: DelegatePreparationCall;
   readonly input:
     | { readonly kind: "inline" }
     | {
@@ -258,6 +274,13 @@ const delegateFileTool = tool({
   outputSchema: DelegateToolResultSchema,
 });
 
+const workerSpawnTool = tool({
+  description:
+    "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId. Optional imagePaths are workspace-relative local images for a vision worker. Listing is optional; the host validates and binds the worker before dispatch.",
+  inputSchema: WorkerSpawnCallSchema,
+  outputSchema: DelegateToolResultSchema,
+});
+
 function createWriteFileTool(writer: DelegateFileWriter) {
   return tool({
     description:
@@ -274,7 +297,7 @@ export async function startDelegateBatch(
   checkpoint: DelegateBatchCheckpoint,
   options: Pick<
     DelegateLoopOptions,
-    "timeline" | "createDriver" | "concurrency" | "executionObserver" | "signal"
+    "timeline" | "createDriver" | "workerCatalog" | "concurrency" | "executionObserver" | "signal"
   >,
 ): Promise<DelegateBatchHandle> {
   await options.timeline.prepareBatch(checkpoint);
@@ -291,7 +314,7 @@ export async function startDelegateBatch(
   const executionSignal = options.signal === undefined
     ? controller.signal
     : AbortSignal.any([options.signal, controller.signal]);
-  const settled = runAdmittedDelegateBatch(checkpoint.admission, options.createDriver, {
+  const settled = runAdmittedDelegateBatch(checkpoint.admission, driverFactory(options), {
     concurrency: options.concurrency,
     signal: executionSignal,
     ...(options.executionObserver === undefined
@@ -360,6 +383,7 @@ export class DelegateLoopSession {
     }
 
     const delegationOpen = this.batches.length < this.options.maxDelegateBatches;
+    const catalogEnabled = this.options.workerCatalog !== undefined;
     const remainingModelSteps = this.options.maxModelSteps - this.modelSteps;
     const remainingDelegateBatches = this.options.maxDelegateBatches - this.batches.length;
     const readableResults = new Map<string, CompactDelegateOutcome>();
@@ -373,12 +397,34 @@ export class DelegateLoopSession {
     // delegationOpen and the host submission guard still own activation.
     const retainedDelegateCall = messagesReferenceTool(this.messages, "delegate");
     const retainedDelegateFileCall = messagesReferenceTool(this.messages, "delegate_file");
+    const retainedWorkerSpawnCall = messagesReferenceTool(this.messages, "worker_spawn");
     const tools = {
-      ...(delegationOpen || retainedDelegateCall ? { delegate: delegateTool } : {}),
-      ...((delegationOpen || retainedDelegateFileCall) && this.options.delegateInputRoot !== undefined
+      ...(!catalogEnabled && (delegationOpen || retainedDelegateCall) ? { delegate: delegateTool } : {}),
+      ...(!catalogEnabled && (delegationOpen || retainedDelegateFileCall) && this.options.delegateInputRoot !== undefined
         ? { delegate_file: delegateFileTool }
         : {}),
-      ...(!delegationOpen || this.options.delegateFileWriter === undefined
+      ...(catalogEnabled && (delegationOpen || retainedWorkerSpawnCall)
+        ? { worker_spawn: workerSpawnTool }
+        : {}),
+      ...(catalogEnabled
+        ? {
+          worker_list: tool({
+            description:
+              "List runnable worker capability cards matching every required factual label. Descriptions inform semantic choice; the host does not score or auto-select.",
+            inputSchema: WorkerListCallSchema,
+            execute: async ({ requiredLabels }) => this.options.workerCatalog!.list(requiredLabels).map((card) => ({
+              id: card.id,
+              provider: card.executionProfile.provider,
+              model: card.executionProfile.model,
+              labels: card.labels,
+              description: card.description,
+              availability: card.availability,
+              configuration: { executionProfileId: card.executionProfile.id },
+            })),
+          }),
+        }
+        : {}),
+      ...(catalogEnabled || !delegationOpen || this.options.delegateFileWriter === undefined
         ? {}
         : { write_file: createWriteFileTool(this.options.delegateFileWriter) }),
       ...(readableResults.size === 0
@@ -452,7 +498,11 @@ export class DelegateLoopSession {
 
     const finalToolCalls = result.finalStep.toolCalls;
     const finalDelegateCalls = finalToolCalls.filter((toolCall) =>
-      toolCall !== undefined && (toolCall.toolName === "delegate" || toolCall.toolName === "delegate_file")
+      toolCall !== undefined && (
+        toolCall.toolName === "delegate"
+        || toolCall.toolName === "delegate_file"
+        || toolCall.toolName === "worker_spawn"
+      )
     );
     if (finalDelegateCalls.length === 0) {
       return this.finish(this.modelSteps >= this.options.maxModelSteps ? "step-limit" : "returned");
@@ -468,7 +518,10 @@ export class DelegateLoopSession {
     const callIds = new Set<string>();
     const invocations = await Promise.all(finalDelegateCalls.map(async (toolCall, index): Promise<DelegateInvocation> => {
       if (toolCall === undefined) throw new Error(`delegate tool call ${index} is missing`);
-      if ((toolCall.toolName !== "delegate" && toolCall.toolName !== "delegate_file") || toolCall.providerExecuted) {
+      if (
+        (toolCall.toolName !== "delegate" && toolCall.toolName !== "delegate_file" && toolCall.toolName !== "worker_spawn")
+        || toolCall.providerExecuted
+      ) {
         throw new Error(`tool call ${index} is not a host-executed delegate call`);
       }
       if (toolCall.toolName === "delegate_file" && this.options.delegateInputRoot === undefined) {
@@ -479,7 +532,23 @@ export class DelegateLoopSession {
       const frozen = toolCall.toolName === "delegate_file"
         ? await readJsonFileInput(toolCall.input, this.options.delegateInputRoot!, DelegateCallSchema)
         : undefined;
-      const call = frozen?.value ?? DelegateCallSchema.parse(toolCall.input);
+      const call = frozen?.value ?? (
+        toolCall.toolName === "worker_spawn"
+          ? WorkerSpawnCallSchema.parse(toolCall.input)
+          : DelegateCallSchema.parse(toolCall.input)
+      );
+      if (catalogEnabled !== ("workerId" in call)) {
+        throw new Error(catalogEnabled
+          ? "catalog-enabled delegation requires worker_spawn with an explicit workerId"
+          : "legacy delegate mode does not accept workerId selection");
+      }
+      if ("workerId" in call) {
+        const workerCall = WorkerSpawnCallSchema.parse(call);
+        this.options.workerCatalog!.assertSupports(workerCall.workerId, [
+          workerCall.capabilityNeed,
+          ...(workerCall.imagePaths?.length && workerCall.capabilityNeed !== "vision" ? ["vision"] : []),
+        ]);
+      }
       if (this.seenContributionKeys.has(call.key)) throw new Error(`duplicate delegate contribution key ${call.key}`);
       const task = this.tasks.get(call.taskId);
       if (this.tasks.isBlocked(task)) throw new Error(`delegate contribution ${call.key} names blocked task ${call.taskId}`);
@@ -500,7 +569,20 @@ export class DelegateLoopSession {
 
     // Preparation may inspect host evidence but cannot execute Cells. All
     // prepared contributions are admitted together before checkpoint or dispatch.
-    const execution = await Promise.all(calls.map((call) => this.options.prepareContribution(call)));
+    const execution = await Promise.all(calls.map(async (call) => {
+      const prepared = await this.options.prepareContribution(call);
+      if (!("workerId" in call) || !call.imagePaths?.length) return prepared;
+      if (!prepared.cell || typeof prepared.cell !== "object" || Array.isArray(prepared.cell)) {
+        throw new Error(`worker contribution ${call.key} did not prepare an object Cell`);
+      }
+      return {
+        ...prepared,
+        cell: {
+          ...prepared.cell,
+          imagePaths: [...call.imagePaths],
+        },
+      };
+    }));
     const currentUncovered = uncovered(this.input.whole.obligations, this.coveredObligations);
     const batchInput: PreparedDelegateBatch = {
       id: `${this.input.id}:batch:${this.batches.length + 1}`,
@@ -530,7 +612,8 @@ export class DelegateLoopSession {
     };
     const handle = await startDelegateBatch(checkpoint, {
       timeline: this.options.timeline,
-      createDriver: this.options.createDriver,
+      ...(this.options.createDriver === undefined ? {} : { createDriver: this.options.createDriver }),
+      ...(this.options.workerCatalog === undefined ? {} : { workerCatalog: this.options.workerCatalog }),
       concurrency: this.options.concurrency,
       ...(this.options.executionObserver === undefined
         ? {}
@@ -653,13 +736,13 @@ function renderDelegateInstructions(
 
 ## Delegate boundary
 
-Use \`delegate\` only for a contribution that has already been shaped against the declared execution profile and can be accepted from bounded evidence. When \`delegate_file\` is available, use it for the same semantic call already present as a JSON file so a large task description does not enter later parent model steps. Do not copy the file content into the delegate_file call. When \`write_file\` is available, write a complete DelegateCall JSON packet first, retain its returned digest, and call delegate_file in a later step. Never mix write_file and delegate calls in one submission step. A role label, confident wording, schema validity, or protocol completion is not capability evidence. If the work is still \`transform\` or \`unsupported-escalate\`, do not delegate it as an ordinary Cell.
+${inputWorkerBoundary(input, state)}
 
 Use task_create/task_update/task_list/task_get as the shared coordination memory. Create a task before delegating it, then pass that task's host-assigned ID as taskId. The host binds an admitted delegate to that task, and child settlement advances its process status. Task completion is coordination evidence, never semantic correctness. Do not delegate a blocked or completed task.
 
 After a child settles, use \`read_delegate_result\` with its returned batchId and key when the child's semantic result is needed for reconstruction. This tool can read only settled children from this parent loop; it does not accept filesystem paths. A metadata-only projection means the bounded semantic payload was unavailable and must not be guessed.
 
-Each call carries only the semantic contribution: stable key, taskId, task, declared source and obligation references, local acceptance, and bounded capability need. Do not provide workspace paths, work-proof declarations, concurrency, provider choice, budgets, Task Shape internals, or a nested-delegation policy. The host supplies runtime availability, lineage, effect containment, and the other execution policy after admission. The prepared Cell declares its mechanical completion needs directly through terminal tools, output schema, or artifacts. Do not add an opaque result-contract label.
+Each call carries only the semantic contribution: stable key, taskId, task, declared source and obligation references, local acceptance, and bounded capability need. Do not provide workspace paths except local images in a vision worker's \`worker_spawn.imagePaths\`, which must point inside the frozen workspace read scope. Do not provide work-proof declarations, concurrency, provider choice, budgets, Task Shape internals, or a nested-delegation policy. The host supplies runtime availability, lineage, effect containment, and the other execution policy after admission. The prepared Cell declares its mechanical completion needs directly through terminal tools, output schema, or artifacts. Do not add an opaque result-contract label.
 
 Several calls in one response are one candidate batch. Emit several only when they are independent in this step; the host validates the complete batch before starting any Cell. A returned tool result is execution evidence, not semantic acceptance or Mission completion.
 
@@ -680,7 +763,7 @@ Current tasks: ${JSON.stringify(state.tasks)}
 Allowed capability needs: ${input.whole.capabilityNeeds.join(", ")}`;
 }
 
-function projectOutcomes(calls: readonly DelegateCall[], run: DelegateBatchRun): CompactDelegateOutcome[] {
+function projectOutcomes(calls: readonly DelegatePreparationCall[], run: DelegateBatchRun): CompactDelegateOutcome[] {
   if (run.kind === "direct") return [projectCell(calls[0]!.key, run.record)];
   return run.record.outcomes.map((outcome, index) => projectSwarmCell(calls[index]!.key, outcome));
 }
@@ -729,6 +812,16 @@ function compactToolResult(
 }
 
 function validateLoopOptions(options: DelegateLoopOptions): void {
+  if ((options.workerCatalog === undefined) === (options.createDriver === undefined)) {
+    throw new Error("configure exactly one execution path: workerCatalog or createDriver");
+  }
+  if (options.workerCatalog !== undefined && (
+    options.delegateInputRoot !== undefined
+    || options.delegateFileWriter !== undefined
+    || options.initialDelegateTool !== undefined
+  )) {
+    throw new Error("catalog-enabled delegation exposes only worker_list and worker_spawn selection tools");
+  }
   if (options.delegateFileWriter !== undefined && options.delegateInputRoot === undefined) {
     throw new Error("delegateFileWriter requires delegateInputRoot so written packets can be resolved");
   }
@@ -767,7 +860,7 @@ function compactWriteFileMessages(messages: readonly ModelMessage[]): ModelMessa
 
 function messagesReferenceTool(
   messages: readonly ModelMessage[],
-  toolName: "delegate" | "delegate_file",
+  toolName: "delegate" | "delegate_file" | "worker_spawn",
 ): boolean {
   return messages.some((message) =>
     typeof message.content !== "string" && message.content.some((part) => {
@@ -775,6 +868,21 @@ function messagesReferenceTool(
       return (record.type === "tool-call" || record.type === "tool-result") && record.toolName === toolName;
     })
   );
+}
+
+function driverFactory(
+  options: Pick<DelegateLoopOptions, "createDriver" | "workerCatalog">,
+): (input: CellInput) => CellDriver {
+  if (options.workerCatalog !== undefined) return (input) => options.workerCatalog!.createDriver(input);
+  if (options.createDriver !== undefined) return options.createDriver;
+  throw new Error("delegate execution has no driver path");
+}
+
+function inputWorkerBoundary(
+  _input: DelegateLoopInput,
+  _state: { readonly delegationOpen: boolean },
+): string {
+  return "Use the worker tools exposed in this turn. In catalog mode, inspect runnable cards with `worker_list` when useful, then explicitly choose `workerId` in `worker_spawn`; listing is not required before spawning. Card descriptions are evidence for your semantic choice, not host routing policy. In legacy mode, use `delegate` or `delegate_file` as described by their tools. A role label, confident wording, schema validity, or protocol completion is not capability evidence. If the work is still `transform` or `unsupported-escalate`, do not spawn it as an ordinary Cell.";
 }
 
 function finish(

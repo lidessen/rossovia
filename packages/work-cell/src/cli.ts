@@ -8,6 +8,7 @@ import {
   TaskToolSetSchema,
   type TaskToolSet,
 } from "./ai-sdk-driver";
+import { OpenCodeCliDriver } from "./opencode-cli-driver";
 import { AiSdkValidationSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
 import { CellInputSchema, type CellRunRecord, type TraceEvent } from "./contracts";
 import { persistDeliberationRecord, runDeliberation } from "./adapters/deliberation/runtime";
@@ -49,7 +50,15 @@ async function main(args: string[]): Promise<void> {
   if (!command) usage();
 
   if (command === "run") {
-    const { path, taskToolSet } = parseExecutionArguments(rest, "run");
+    const {
+      path,
+      taskToolSet,
+      driver: selectedDriver,
+      model,
+      reasoningEffort,
+      sessionId,
+      executable,
+    } = parseExecutionArguments(rest, "run");
     const absolutePath = resolve(path);
     const raw = JSON.parse(await readFile(absolutePath, "utf8"));
     if (raw.workspace?.root && !isAbsolute(raw.workspace.root)) {
@@ -57,7 +66,16 @@ async function main(args: string[]): Promise<void> {
     }
     const input = CellInputSchema.parse(raw);
     const liveTrace = createLiveTraceFile(absolutePath, console.error);
-    const record = await runCell(input, new AiSdkValidationDriver({ taskToolSet }), {
+    const driver = selectedDriver === "opencode-cli"
+      ? new OpenCodeCliDriver({
+          executable: executable ?? "opencode",
+          model: model!,
+          ...(reasoningEffort ? { reasoningEffort } : {}),
+          ...(sessionId ? { sessionId } : {}),
+          workspacePolicy: { select: (_input, context) => context.workspace.root },
+        })
+      : new AiSdkValidationDriver({ taskToolSet });
+    const record = await runCell(input, driver, {
       onTrace(event) {
         liveTrace.observe(event);
         console.error(renderLiveEvent(event));
@@ -281,6 +299,10 @@ function renderLiveEvent(event: TraceEvent): string {
     const data = event.data as { phase?: string; characters?: number };
     return `[work-cell] response finished${data.phase ? ` phase=${data.phase}` : ""} characters=${data.characters ?? 0}`;
   }
+  if (event.type === "opencode.cli.progress") {
+    const data = event.data as { type?: string; sessionID?: string; tool?: string };
+    return `[work-cell] opencode ${data.type ?? "event"}${data.tool ? ` tool=${data.tool}` : ""}`;
+  }
   if (event.type === "cell.finished") {
     const data = event.data as { status?: string; usage?: { totalTokens?: number } };
     return `[work-cell] finished status=${data.status ?? "unknown"} total=${data.usage?.totalTokens ?? 0}`;
@@ -474,31 +496,78 @@ function requiredPath(args: string[], command: string): string {
 function parseExecutionArguments(
   args: string[],
   command: "run" | "swarm",
-): { path: string; taskToolSet: TaskToolSet } {
+): {
+  path: string;
+  taskToolSet: TaskToolSet;
+  driver?: "opencode-cli";
+  model?: string;
+  reasoningEffort?: string;
+  sessionId?: string;
+  executable?: string;
+} {
   const path = requiredPath(args, command);
   let taskToolSet: TaskToolSet = "manage";
   let taskToolSetDeclared = false;
+  let driver: "opencode-cli" | undefined;
+  let model: string | undefined;
+  let reasoningEffort: string | undefined;
+  let sessionId: string | undefined;
+  let executable: string | undefined;
+  const declared = new Set<string>();
   for (let index = 1; index < args.length; index += 1) {
     const flag = args[index];
     const value = args[index + 1];
     if (!flag || !value) throw new Error(`missing value for ${flag ?? `${command} option`}`);
-    if (flag !== "--task-tools") throw new Error(`unknown ${command} option: ${flag}`);
-    if (taskToolSetDeclared) throw new Error("--task-tools may be declared only once");
-    const parsed = TaskToolSetSchema.safeParse(value);
-    if (!parsed.success) {
-      throw new Error("--task-tools must be manage, read-update, or read-only");
+    if (flag === "--task-tools") {
+      if (taskToolSetDeclared) throw new Error("--task-tools may be declared only once");
+      const parsed = TaskToolSetSchema.safeParse(value);
+      if (!parsed.success) {
+        throw new Error("--task-tools must be manage, read-update, or read-only");
+      }
+      taskToolSet = parsed.data;
+      taskToolSetDeclared = true;
+    } else if (command === "run" && ["--driver", "--model", "--reasoning-effort", "--session", "--executable"].includes(flag)) {
+      if (declared.has(flag)) throw new Error(`${flag} may be declared only once`);
+      declared.add(flag);
+      if (flag === "--driver") {
+        if (value !== "opencode-cli") throw new Error("--driver currently supports only opencode-cli");
+        driver = value;
+      } else if (flag === "--model") model = value;
+      else if (flag === "--reasoning-effort") reasoningEffort = value;
+      else if (flag === "--session") sessionId = value;
+      else executable = value;
+    } else {
+      throw new Error(`unknown ${command} option: ${flag}`);
     }
-    taskToolSet = parsed.data;
-    taskToolSetDeclared = true;
     index += 1;
   }
-  return { path, taskToolSet };
+  if (driver === "opencode-cli" && !model) {
+    throw new Error("--driver opencode-cli requires --model PROVIDER/MODEL");
+  }
+  if (driver === "opencode-cli" && model && !/^[^/]+\/[^/]+$/.test(model)) {
+    throw new Error("--model must use PROVIDER/MODEL for --driver opencode-cli");
+  }
+  if (driver === "opencode-cli" && taskToolSetDeclared) {
+    throw new Error("--task-tools applies only to the default AI SDK driver");
+  }
+  if (!driver && (model || reasoningEffort || sessionId || executable)) {
+    throw new Error("--model, --reasoning-effort, --session, and --executable require --driver opencode-cli");
+  }
+  return {
+    path,
+    taskToolSet,
+    ...(driver ? { driver } : {}),
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+    ...(sessionId ? { sessionId } : {}),
+    ...(executable ? { executable } : {}),
+  };
 }
 
 function usage(): never {
   console.error([
     "Usage:",
-    "  bun src/cli.ts run <cell.json> [--task-tools <manage|read-update|read-only>]",
+    "  bun src/cli.ts run <cell.json> [--task-tools <manage|read-update|read-only>] [--driver opencode-cli --model <provider/model> [--reasoning-effort <effort>] [--session <id>] [--executable <path>]]",
     "  bun src/cli.ts swarm <swarm.json> [--task-tools <manage|read-update|read-only>]",
     "  bun src/cli.ts experiment <experiment.json>",
     "  bun src/cli.ts model evaluate <model-evaluation.json>",

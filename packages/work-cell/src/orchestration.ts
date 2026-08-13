@@ -74,7 +74,7 @@ export class OrchestrationRunError extends Error {
 
 export async function runOrchestration(
   source: WorkSource,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   options: { concurrency: number; signal?: AbortSignal },
 ): Promise<OrchestrationRun> {
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1) {
@@ -121,7 +121,7 @@ export async function runOrchestration(
       try {
         const record = await runCell(
           lease.item.input,
-          createDriver(),
+          createDriver(lease.item.input),
           { signal: executionSignal },
         );
         settlement = {

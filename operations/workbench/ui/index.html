@@ -9,6 +9,7 @@
       content="Rossovia Principal Workbench — supervise projects, Missions, worktrees, and Agent work."
     />
     <title>Rossovia 工作台</title>
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body data-projection-state="loading">
@@ -545,11 +546,26 @@
             <ul id="local-task-acceptance"></ul>
           </section>
 
+          <section class="local-task-result-evaluation" aria-labelledby="local-task-result-evaluation-heading">
+            <div class="field-heading compact">
+              <div>
+                <p class="eyebrow">Result evaluation</p>
+                <h3 id="local-task-result-evaluation-heading">结果声明与独立审查</h3>
+              </div>
+            </div>
+            <div class="task-result-layer task-result-producer" id="task-result-producer"></div>
+            <div class="task-result-reviews" id="task-result-reviews"></div>
+            <p class="task-boundary-note">
+              Producer 声明、Work Cell 机械证据与独立审查是不同证据层。审查不接受自己的候选，
+              也不会改变 Task 生命周期、下一责任方或 Principal 的本地接受权。
+            </p>
+          </section>
+
           <section class="local-task-history">
             <div class="field-heading compact">
               <div>
                 <p class="eyebrow">Traceable history</p>
-                <h3>纠正与结果</h3>
+                <h3>上下文变更与结果历史</h3>
               </div>
             </div>
             <div id="local-task-history"></div>
@@ -571,6 +587,22 @@
               </p>
               <button type="submit">续接当前任务执行</button>
             </form>
+          </section>
+
+          <section class="local-task-history local-task-attempts" aria-labelledby="local-task-attempts-heading">
+            <div class="field-heading compact">
+              <div>
+                <p class="eyebrow">Read-only run history</p>
+                <h3 id="local-task-attempts-heading">运行尝试</h3>
+              </div>
+            </div>
+            <p class="task-attempts-summary" id="local-task-attempts-summary" hidden></p>
+            <div id="local-task-attempts"></div>
+            <p class="task-boundary-note">
+              只读投影同一 ROSSO_HOME 下已有的 TaskAttemptProjection；不复制或改写
+              attempt、final 与 settlement 证据，不显示原始 Work Cell trace，也不代表
+              独立 review、自动提交或语义接受。
+            </p>
           </section>
 
           <section class="local-task-actions">

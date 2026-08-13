@@ -77,6 +77,9 @@ export class TaskActionError extends Error {
       | "task-not-found"
       | "task-drift"
       | "invalid-transition"
+      | "claim-mismatch"
+      | "invalid-candidate"
+      | "duplicate-review"
       | "source-unavailable",
     message: string,
   ) {

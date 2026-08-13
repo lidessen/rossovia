@@ -248,6 +248,54 @@ test("the Kimi Coding adapter keeps its real provider identity and required reas
   });
 });
 
+test("the Kimi Coding adapter encodes a local PNG file part as an image data URL", async () => {
+  let body: Record<string, unknown> | undefined;
+  const model = createKimiCodingModel({
+    apiKey: "kimi-key",
+    fetch: (async (_input, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({
+        id: "response-image-1",
+        object: "chat.completion",
+        created: 1,
+        model: "kimi-for-coding",
+        choices: [{
+          index: 0,
+          message: { role: "assistant", content: "image received", reasoning_content: "checked" },
+          finish_reason: "stop",
+        }],
+        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+      });
+    }) as typeof fetch,
+  });
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]);
+
+  const result = await generateText({
+    model,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: "Inspect this image." },
+        { type: "file", mediaType: "image", data: png },
+      ],
+    }],
+    maxRetries: 0,
+  });
+
+  expect(result.text).toBe("image received");
+  expect(body).toBeDefined();
+  const messages = body?.messages as Array<{
+    role: string;
+    content: Array<{ type: string; image_url?: { url: string } }>;
+  }>;
+  expect(messages[0]?.content).toContainEqual({
+    type: "image_url",
+    image_url: {
+      url: `data:image/png;base64,${Buffer.from(png).toString("base64")}`,
+    },
+  });
+});
+
 test("the Kimi Coding adapter lowers unsupported forced tool choice without weakening terminal verification", () => {
   const named = adaptKimiCodingToolChoice({
     toolChoice: { type: "tool", toolName: "finish_review" },

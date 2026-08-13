@@ -163,11 +163,15 @@ Agent inspection and local task-lifecycle operations:
 
 ```text
 task create --title <text> --objective <text> --accept <criterion>...
+  [--todo <text>]...
   --next-actor <principal|agent|external> --source-ref <reference>
   --expected-source-revision <n>
   [--project <project> [--worktree <path>] [--mission <id>]]
 task list
 task show <id>
+task attempts <id>
+worker list
+task run <id> --worker <worker-id> [--continue]
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
 task correct <id> --statement <text> --source-ref <reference>
@@ -181,6 +185,13 @@ task rebind-worktree <id> --expected-worktree <path> --worktree <path>
 task submit <id> --summary <text> --evidence-ref <reference>...
   --source-ref <reference>
   --expected-source-revision <n> --expected-revision <n>
+task append-review <id> --assessment-id <id> --result-claim-id <id>
+  [--producer-attempt-id <id>] --reviewer-ref <reference>
+  --independence-basis <independent-review-context|unproven>
+  --independence-source-ref <reference>
+  --candidate-commit <full-40-hex> --verdict <passed|failed>
+  --finding <text>... --evidence-ref <reference>...
+  --expected-source-revision <n> --expected-revision <n>
 task accept <id> --source-ref <reference>
   --expected-source-revision <n> --expected-revision <n>
 task reopen <id> --statement <text> --source-ref <reference>
@@ -190,6 +201,126 @@ task reopen <id> --statement <text> --source-ref <reference>
 
 Cross-boundary correction delivery, authorized launch, linked-execution
 recovery, and runtime-verified result submission remain UI-only actions.
+
+`task run` is the first direct Agent-facing execution checkpoint for an open,
+Agent-owned project task already bound to one existing isolated Worktree. A
+fresh run without `--continue` still requires that Worktree to be Git-clean.
+The caller selects one ID from `worker list`; the host-owned worker policy
+supplies its description, capability labels, provider, model, reasoning effort,
+and current availability. Driver and provider syntax are not caller inputs.
+Immediately before creating the attempt, Workbench rereads the Task and lowers
+its current objective, acceptance conditions, and corrections into an immutable
+attempt-specific Work Cell input. Any Principal-supplied ordinary todos lower
+into that input's existing task seeds only when non-empty; `task show` and the
+immutable Cell input retain them as the single todo data set. The OpenCode CLI
+adapter (installed 1.18.x) initializes those seeds as native session todos
+before the first agent message: it starts a loopback `opencode serve` server,
+creates a zero-message session, writes the seeds into the version-specific
+local database identified by `opencode db path`, verifies them through `GET
+/session/{sessionID}/todo`, attaches the CLI run to that session, and stops the
+server. Seeding failure fails the run visibly; no prompt adoption instruction,
+todo-based phase, gate, or completion validator is invented, and the AI SDK
+path keeps its existing seeded TaskStore behavior. To continue the same
+still-open task, pass
+`--continue`; Workbench selects the latest usable OpenCode session retained by
+an attributable attempt in the current bound Worktree. The Worktree
+may remain dirty only when its current staged, unstaged, and non-ignored
+untracked path set is a subset of the cumulative `workspaceDiff` path union
+reconstructed from that session's continuous, owner-backed attempt history in
+the current Worktree; a fresh attempt or a different observed session starts a
+new history branch. A failed or otherwise unusable attempt contributes no path
+ownership, but its different observed session still terminates the previous
+branch. Ignored artifacts do not block continuation. This is a mechanical
+path-ownership check, not a content digest or proof that file contents still
+match a prior attempt. A session absent from this active Task's current-Worktree
+attempts, a session older than the latest observation, an extra Git-visible
+path, no latest usable continuation session, or a continued session that does
+not match the returned final record fails. Every run result reports the OpenCode session id actually observed in
+that attempt's final Work Cell record.
+The Workbench retains the input, final Work Cell record, and a small append-only
+settlement under its home state. Cell settlement is execution evidence only: it
+does not submit or accept the Task. A completed Task is ordinary viewable
+history and cannot run.
+
+Ordinary task execution sets a 30-minute emergency ceiling instead of inheriting
+Work Cell's five-minute probe default. The OpenCode CLI adapter does not yet
+support completed-step soft-budget requests, so this change deliberately does
+not invent an approval protocol; the ceiling remains a hard runtime boundary.
+
+This checkpoint is synchronous. Its attempt view is non-streaming history, not
+live execution detection: a crash-retained attempt without a settlement remains
+visible as `started`, meaning only that an attempt record exists and no
+settlement was observed. It does not provide a background or live streaming
+projection, independent review display, automatic submission, or semantic
+acceptance, and it does not require Mission context.
+Continuation is explicit per attempt, but session identity stays owner-backed:
+the caller requests `--continue` and Workbench resolves the latest usable
+retained session. The final record—not a copy made by the Workbench—remains the
+source for the observed session, model, status, usage, workspace diff, and
+verification. The read-only attempt
+projection described below reads owner-backed history whenever requested.
+Complete observed and settlement facts appear only after the corresponding
+final record and settlement are retained; a crash-retained `started` entry may
+appear earlier and is not a live execution claim.
+
+`task attempts <id>` is a read-only view over that same append-only evidence.
+It projects every recorded attempt of the task, sorted by start time, without
+copying Work Cell facts: the selected worker, resolved driver/model/reasoning
+effort, and any resolved continuation session come from the immutable attempt
+record; the observed session, cell status, usage, workspace diff, and
+verification come from the retained Work
+Cell final record; settlement status and time come from the append-only
+settlement. An attempt without a settlement (a crash-retained in-flight run)
+projects as `started` without observed facts; a `runner-failed` attempt keeps
+its settlement status and any final record the runner had already retained.
+Each projection carries
+the stable `inputRef`, `attemptRef`, `finalRecordRef`, and `settlementRef`
+source references so the caller can read the originals. Per-source `evidence`
+standing distinguishes `available`, `unavailable`, and `invalid`; malformed
+evidence attributable to the requested task remains visible, but its unvalidated
+fields are not projected. Evidence without a parseable task identity cannot be
+safely attributed and is not included. The raw Work Cell trace is never exposed
+by the view.
+
+The Principal task detail shows the same read-only attempt projection under
+`运行尝试` (Read-only run history). It reuses the existing
+`task attempts <id>` owner sources without copying or rewriting attempt, final
+Work Cell record, or settlement bytes. The panel distinguishes a Task with no
+recorded attempts (`尚无运行尝试`) from an attempt source that cannot be read:
+the latter keeps the stable `state/task-attempts` source reference and an
+attributable reason on that Task, and a single Task's failed attempts read does
+not fail the whole snapshot. Each attempt card keeps the `recorded`, `started`,
+`runner-failed`, and `invalid` statuses distinct, labels per-source evidence
+standing for the attempt, final record, and settlement. `started` is explicitly
+historical missing-settlement evidence, never a claim that execution is still
+live. The detail shows observed
+session, cell status, usage, workspace diff, and verification only when the
+retained final record is `available` — an invalid or unavailable final record
+never projects stale usage, diff, verification, or session facts. The panel
+does not expose the raw Work Cell trace. This ordinary attempt projection is
+not an independent review display, an automatic submission, or semantic
+acceptance: no attempt standing, cell status, or verification display accepts
+the Task or claims the Agent's product result.
+
+The ordinary OpenCode checkpoint considers `.git`, `node_modules`, `dist`,
+`build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`
+as reconstructible or generated-directory exclusion candidates. Because Work
+Cell matches those names at any path segment, a candidate is excluded only when
+the bound Worktree has no Git-tracked path containing that segment; tracked
+content always remains observable in Work Cell evidence. This is local
+CellInput lowering, not a reusable execution profile or permission policy.
+
+One atomic lease in the bound Worktree's exact Git metadata directory prevents
+overlapping `task run` writers, including calls through different Rossovia
+homes. The lease is acquired before the authoritative binding and Worktree
+admissibility checks, and remains through execution, final-record validation,
+and settlement;
+ordinary failures release it in `finally`. A process crash can leave
+`rossovia-task-run.lock`. A later run fails closed and reports the exact path.
+After inspecting that Worktree and process and confirming no execution remains,
+remove only that exact lease file, then retry. This is operational cleanup, not
+Task reopening. There is no timeout, stale-lock inference, queue, or automatic
+recovery.
 
 Every mutation uses the latest returned source revision and, for an existing
 task, its task revision. This detects state that was already stale when the
@@ -314,6 +445,33 @@ result stays in verification and must be corrected or resubmitted. An
 unverified claim may still be explicitly accepted, but the UI and retained
 acceptance basis label that choice as `agent-claim`. Neither path expands the
 local acceptance boundary.
+
+`task append-review` is a separate evidence append for the current unresolved
+result claim while the Task is `verifying`. The caller supplies a stable
+assessment ID, exact result-claim ID, reviewer reference, optional producer
+attempt ID, explicit independence basis and its source identity, one full Git
+commit candidate, `passed` or `failed`, concise findings, and evidence
+references. Workbench does not infer independence from a reviewer name, model,
+session, or prose, and it does not interpret actor-provided result evidence as a
+review. Optimistic source and Task revisions, current-claim binding, unique
+assessment identity, and the full-commit candidate are checked before the
+atomic source replacement. A successful append changes only Task/source
+revisions and the claim's review evidence; it does not change lifecycle,
+responsibility, result resolution, or acceptance.
+
+The Task detail gives the producer claim, ordinary Work Cell mechanical
+evidence, and structured independent-review history separate visual layers.
+Every retained assessment stays attached to its owning result claim and appears
+in review chronology; the current claim may receive primary emphasis without
+hiding assessments on superseded claims or earlier assessments on the same
+claim. Each assessment shows reviewer, verdict, candidate, declared
+independence, findings, and evidence references. Candidate freshness is never
+retained in the Task source: each snapshot compares that assessment's full
+commit to the actual HEAD of the Task's currently bound observed Worktree.
+Exact equality is `current`, a different readable HEAD is `stale`, and a
+project-independent, missing, or unreadable bound Worktree is `unavailable`.
+None of these states accepts the Task or gives the reviewer authority to accept
+its own candidate.
 
 Runner state also distinguishes control-plane reachability from production.
 `anchor-pending` means no authorized intent anchor exists: the UI presents the
