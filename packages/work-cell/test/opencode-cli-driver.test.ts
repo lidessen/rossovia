@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CellInput, CellUsage } from "../src/contracts";
+import type { CellInput, CellRunRecord, CellUsage, TraceEvent } from "../src/contracts";
 import { CellExecutionError, type DriverContext } from "../src/driver";
+import { createLiveTraceFile } from "../src/live-trace-file";
+import { runCell } from "../src/run-cell";
 import {
+  BunOpenCodeCliProcessAdapter,
   OpenCodeCliDriver,
   type OpenCodeCliProcessAdapter,
   type OpenCodeCliProcessRequest,
@@ -233,6 +236,131 @@ describe("OpenCode CLI driver", () => {
     await driver.run(cellInput(root), context(canonicalRoot).value);
     expect(runs).toBe(1);
   });
+
+  test("delivers structured live progress to the trace JSONL before the child exits", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"slow-1","part":{}}'`,
+      "sleep 1",
+      `printf '%s\\n' '{"type":"text","sessionID":"slow-1","part":{"text":"Complete."}}'`,
+      "sleep 1",
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"slow-1","part":{"reason":"stop","cost":0.01,"tokens":{"input":5,"output":3,"total":8,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.budget.maxDurationMs = 15_000;
+    const observed: TraceEvent[] = [];
+    const liveTrace = createLiveTraceFile(join(root, "cell-input.json"), () => {});
+    const startedAt = performance.now();
+    const run = runCell(input, realDriver(root, executable), {
+      onTrace(event) {
+        observed.push(event);
+        liveTrace.observe(event);
+      },
+    });
+
+    const first = await waitFor(
+      () => observed.find((event) => event.type === "opencode.cli.progress"),
+      2_000,
+    );
+    const elapsedBeforeFirstProgress = performance.now() - startedAt;
+    expect(elapsedBeforeFirstProgress).toBeLessThan(1_500);
+    expect(first!.data).toEqual({ type: "step_start", sessionID: "slow-1" });
+    expect(JSON.stringify(first!.data)).not.toContain("text");
+
+    const record = await run;
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Complete.");
+    expect(record.executionObservation.sessionId).toBe("slow-1");
+    expect(record.usage).toEqual({ inputTokens: 5, outputTokens: 3, totalTokens: 8, cachedInputTokens: 0 });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(3);
+    expect(observed.filter((event) => event.type === "opencode.cli.event")).toHaveLength(3);
+    expect(executionRawSteps(record).filter((step) => rawStepText(step) === "Complete.")).toHaveLength(1);
+
+    const jsonlPath = liveTrace.availablePath();
+    expect(jsonlPath).toBeDefined();
+    const jsonl = await readFile(jsonlPath!, "utf8");
+    const progressLines = jsonl.split("\n").filter((line) => line.includes('"opencode.cli.progress"'));
+    expect(progressLines.length).toBeGreaterThanOrEqual(1);
+    for (const line of progressLines) {
+      const event = JSON.parse(line) as TraceEvent;
+      const keys = Object.keys(event.data as Record<string, unknown>);
+      expect(keys.every((key) => ["type", "sessionID", "stepId", "tool"].includes(key))).toBe(true);
+      expect(keys).not.toContain("part");
+      expect(keys).not.toContain("text");
+      expect(keys).not.toContain("reasoning");
+      expect(keys).not.toContain("input");
+      expect(keys).not.toContain("output");
+    }
+  });
+
+  test("buffers stdout lines spanning chunk boundaries and parses each line exactly once", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s' '{"type":"step_start","sessionID":"chunked-1","part":{"note":"ignored"'`,
+      "sleep 0.3",
+      `printf '%s\\n' '}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"chunked-1","part":{"text":"Chunked."}}'`,
+      `printf '%s' '{"type":"step_finish","sessionID":"chunked-1","part":{"reason":"stop","cost":0.02,"tokens":{"input":2,"output":4,"total":6,"cache":{"read":1}}}}'`,
+    ]);
+    const observed: TraceEvent[] = [];
+    const record = await runCell(cellInput(root), realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Chunked.");
+    expect(record.usage).toEqual({ inputTokens: 2, outputTokens: 4, totalTokens: 6, cachedInputTokens: 1 });
+    expect(observed.find((event) => event.type === "opencode.cli.progress")?.data).toEqual({
+      type: "step_start",
+      sessionID: "chunked-1",
+    });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(3);
+    expect(observed.filter((event) => event.type === "opencode.cli.event")).toHaveLength(3);
+    expect(executionRawSteps(record).filter((step) => rawStepText(step) === "Chunked.")).toHaveLength(1);
+  });
+
+  test("retains bounded unparsed evidence and usage when a live child emits malformed lines", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"u-1","part":{}}'`,
+      `printf '%s\\n' '[1,2,3]'`,
+      `printf '%s\\n' 'abcdefghij'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"u-1","part":{"reason":"error","tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.budget.maxCommandOutputBytes = 8;
+    const observed: TraceEvent[] = [];
+    const record = await runCell(input, realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toBe("OpenCode CLI completed without final stopped-step text");
+    expect(record.usage).toEqual({ inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 });
+    const unparsedData = observed
+      .filter((event) => event.type === "opencode.cli.stdout.unparsed")
+      .map((event) => event.data);
+    expect(unparsedData).toContainEqual({ type: "opencode.cli.stdout.unparsed", line: "[1,2,3]" });
+    expect(unparsedData).toContainEqual({ type: "opencode.cli.stdout.unparsed", line: "a" });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(2);
+  });
+
+  test("nonzero exit of a live child retains observed usage", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"nz-1","part":{"reason":"error","cost":0.2,"tokens":{"input":13,"output":2,"total":15,"cache":{"read":3}}}}'`,
+      `printf '%s' 'provider rejected request' >&2`,
+    ], 19);
+    const observed: TraceEvent[] = [];
+    const record = await runCell(cellInput(root), realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toBe("OpenCode CLI exited with code 19: provider rejected request");
+    expect(record.usage).toEqual({ inputTokens: 13, outputTokens: 2, totalTokens: 15, cachedInputTokens: 3 });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(1);
+  });
 });
 
 function openCodeDriver(
@@ -303,4 +431,48 @@ function success(): OpenCodeCliProcessResult {
 
 function jsonLines(...events: unknown[]): string {
   return `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+}
+
+function realDriver(root: string, executable: string): OpenCodeCliDriver {
+  return new OpenCodeCliDriver({
+    executable,
+    model: "anthropic/fixture",
+    workspacePolicy: { select: () => root },
+    processAdapter: new BunOpenCodeCliProcessAdapter(),
+  });
+}
+
+async function fixtureExecutable(root: string, scriptLines: string[], exitCode = 0): Promise<string> {
+  const executable = join(root, "fixture-opencode");
+  await writeFile(executable, `${["#!/bin/sh", ...scriptLines, `exit ${exitCode}`].join("\n")}\n`, {
+    mode: 0o755,
+  });
+  return executable;
+}
+
+async function waitFor<T>(probe: () => T | undefined, timeoutMs: number): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = probe();
+    if (found !== undefined) return found;
+    if (Date.now() > deadline) throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function rawStepText(step: unknown): string | undefined {
+  if (!step || typeof step !== "object") return undefined;
+  const record = step as Record<string, unknown>;
+  const part = record.part;
+  return part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string"
+    ? (part as Record<string, unknown>).text as string
+    : undefined;
+}
+
+function executionRawSteps(record: CellRunRecord): unknown[] {
+  const phase = record.rawSteps.find((entry) => (entry as Record<string, unknown>).phase === "execution");
+  const steps = phase && typeof phase === "object"
+    ? (phase as Record<string, unknown>).steps
+    : undefined;
+  return Array.isArray(steps) ? steps as unknown[] : [];
 }
