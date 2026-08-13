@@ -169,9 +169,8 @@ task create --title <text> --objective <text> --accept <criterion>...
 task list
 task show <id>
 task attempts <id>
-task run <id> --driver opencode-cli --model <provider/model>
-  [--reasoning-effort <effort>] [--session <id>]
-  --expected-source-revision <n> --expected-revision <n>
+worker list
+task run <id> --worker <worker-id> [--continue]
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
 task correct <id> --statement <text> --source-ref <reference>
@@ -204,16 +203,15 @@ recovery, and runtime-verified result submission remain UI-only actions.
 
 `task run` is the first direct Agent-facing execution checkpoint for an open,
 Agent-owned project task already bound to one existing isolated Worktree. A
-fresh run without `--session` still requires that Worktree to be Git-clean. It
-rereads the exact Task revisions, lowers the objective, acceptance conditions,
-and all current corrections into an immutable attempt-specific Work Cell input,
-then invokes the existing OpenCode CLI driver. The caller must select
-`--driver opencode-cli` and `--model` for every attempt; `--reasoning-effort` is
-optional explicit per-run policy. Workbench does not supply a default effort.
-To continue the same still-open task, explicitly pass the
-latest session observed by an attributable attempt in the current bound
-Worktree with `--session <id>`. Workbench reads that owner-backed Work Cell
-history before forwarding the session to the Work Cell CLI. The Worktree
+fresh run without `--continue` still requires that Worktree to be Git-clean.
+The caller selects one ID from `worker list`; the host-owned worker policy
+supplies its description, capability labels, provider, model, reasoning effort,
+and current availability. Driver and provider syntax are not caller inputs.
+Immediately before creating the attempt, Workbench rereads the Task and lowers
+its current objective, acceptance conditions, and corrections into an immutable
+attempt-specific Work Cell input. To continue the same still-open task, pass
+`--continue`; Workbench selects the latest usable OpenCode session retained by
+an attributable attempt in the current bound Worktree. The Worktree
 may remain dirty only when its current staged, unstaged, and non-ignored
 untracked path set is a subset of the cumulative `workspaceDiff` path union
 reconstructed from that session's continuous, owner-backed attempt history in
@@ -224,14 +222,18 @@ branch. Ignored artifacts do not block continuation. This is a mechanical
 path-ownership check, not a content digest or proof that file contents still
 match a prior attempt. A session absent from this active Task's current-Worktree
 attempts, a session older than the latest observation, an extra Git-visible
-path, or a session that does not match the returned final record fails. Every
-run result reports the OpenCode session id
-actually observed in that attempt's final Work Cell record, whether or not a
-session was requested.
+path, no latest usable continuation session, or a continued session that does
+not match the returned final record fails. Every run result reports the OpenCode session id actually observed in
+that attempt's final Work Cell record.
 The Workbench retains the input, final Work Cell record, and a small append-only
 settlement under its home state. Cell settlement is execution evidence only: it
 does not submit or accept the Task. A completed Task is ordinary viewable
 history and cannot run.
+
+Ordinary task execution sets a 30-minute emergency ceiling instead of inheriting
+Work Cell's five-minute probe default. The OpenCode CLI adapter does not yet
+support completed-step soft-budget requests, so this change deliberately does
+not invent an approval protocol; the ceiling remains a hard runtime boundary.
 
 This checkpoint is synchronous. Its attempt view is non-streaming history, not
 live execution detection: a crash-retained attempt without a settlement remains
@@ -239,10 +241,11 @@ visible as `started`, meaning only that an attempt record exists and no
 settlement was observed. It does not provide a background or live streaming
 projection, independent review display, automatic submission, or semantic
 acceptance, and it does not require Mission context.
-Session continuation is explicit per
-attempt: the caller supplies the retained session id, and the final record —
-not a copy made by the Workbench — remains the source for the observed session,
-model, status, usage, workspace diff, and verification. The read-only attempt
+Continuation is explicit per attempt, but session identity stays owner-backed:
+the caller requests `--continue` and Workbench resolves the latest usable
+retained session. The final record—not a copy made by the Workbench—remains the
+source for the observed session, model, status, usage, workspace diff, and
+verification. The read-only attempt
 projection described below reads owner-backed history whenever requested.
 Complete observed and settlement facts appear only after the corresponding
 final record and settlement are retained; a crash-retained `started` entry may
@@ -250,9 +253,10 @@ appear earlier and is not a live execution claim.
 
 `task attempts <id>` is a read-only view over that same append-only evidence.
 It projects every recorded attempt of the task, sorted by start time, without
-copying Work Cell facts: the requested driver, model, reasoning effort, and
-session come from the immutable attempt record; the observed session, cell
-status, usage, workspace diff, and verification come from the retained Work
+copying Work Cell facts: the selected worker, resolved driver/model/reasoning
+effort, and any resolved continuation session come from the immutable attempt
+record; the observed session, cell status, usage, workspace diff, and
+verification come from the retained Work
 Cell final record; settlement status and time come from the append-only
 settlement. An attempt without a settlement (a crash-retained in-flight run)
 projects as `started` without observed facts; a `runner-failed` attempt keeps

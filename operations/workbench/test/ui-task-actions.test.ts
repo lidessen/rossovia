@@ -2290,12 +2290,24 @@ describe("Workbench task UI actions", () => {
     const taskId = (await created.json()).result.task.id as string;
     const attempt = runPrincipalTask(home, {
       id: taskId,
-      driver: "opencode-cli",
-      model: "deepseek/deepseek-v4-flash",
-      reasoningEffort: "low",
-      expectedSourceRevision: 1,
-      expectedRevision: 1,
-    }, retainedAttemptRunner());
+      workerId: "deepseek-flash-test",
+    }, retainedAttemptRunner(), {
+      resolveWorkerCard: () => ({
+        version: "work-cell.worker-card.v1",
+        id: "deepseek-flash-test",
+        labels: ["coding", "text", "write", "commands"],
+        description: "UI projection fixture worker.",
+        executionProfile: {
+          id: "deepseek-flash-test",
+          version: "execution-profile.v1",
+          provider: "deepseek",
+          model: "deepseek/deepseek-v4-flash",
+          reasoningEffort: "low",
+          parallelism: "serial",
+        },
+        availability: { status: "available" },
+      }),
+    });
     const sourcePaths = [
       principalTasksPath(home),
       attempt.inputRef,
@@ -2317,6 +2329,7 @@ describe("Workbench task UI actions", () => {
       sourceRef: "state/task-attempts",
       attempts: [{
         attemptId: attempt.attemptId,
+        workerId: "deepseek-flash-test",
         driver: "opencode-cli",
         model: "deepseek/deepseek-v4-flash",
         reasoningEffort: "low",

@@ -10,6 +10,7 @@ import {
 } from "../../../packages/work-cell/src/providers/kimi-coding";
 
 const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
+const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 
 /** Current host policy. Mechanism callers may instead supply any WorkerCatalog. */
 export function currentWorkerCards(
@@ -27,6 +28,24 @@ export function currentWorkerCards(
         version: "execution-profile.v1",
         provider: "deepseek",
         model: DEEPSEEK_FLASH_MODEL,
+        reasoningEffort: "max",
+      },
+      availability: environment.DEEPSEEK_API_KEY
+        ? { status: "available" }
+        : { status: "unavailable", reason: "DEEPSEEK_API_KEY is not configured" },
+    }),
+    WorkerCardSchema.parse({
+      version: WORKER_CARD_VERSION,
+      id: "deepseek-pro",
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands", "architecture"],
+      description:
+        "DeepSeek Pro handles architecture, system design, complex analysis, and consequential code engineering that benefit from deeper reasoning. Recommended for design-heavy or difficult text/code work that does not require visual input.",
+      executionProfile: {
+        id: "deepseek-pro",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: DEEPSEEK_PRO_MODEL,
+        reasoningEffort: "max",
       },
       availability: environment.DEEPSEEK_API_KEY
         ? { status: "available" }
@@ -54,15 +73,26 @@ export function currentWorkerCards(
 export function createCurrentWorkerCatalog(
   environment: NodeJS.ProcessEnv = process.env,
 ): WorkerCatalog {
-  const [deepseek, kimi] = currentWorkerCards(environment);
+  const [deepseekFlash, deepseekPro, kimi] = currentWorkerCards(environment);
   return new WorkerCatalog([
     {
-      card: deepseek!,
+      card: deepseekFlash!,
       createDriver: () => new AiSdkValidationDriver({
         route: [{
           provider: "deepseek",
           credential: { source: "env", name: "DEEPSEEK_API_KEY" },
           model: DEEPSEEK_FLASH_MODEL,
+        }],
+        environment,
+      }),
+    },
+    {
+      card: deepseekPro!,
+      createDriver: () => new AiSdkValidationDriver({
+        route: [{
+          provider: "deepseek",
+          credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+          model: DEEPSEEK_PRO_MODEL,
         }],
         environment,
       }),

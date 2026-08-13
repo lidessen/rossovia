@@ -15,6 +15,8 @@ import type {
   CellInput,
   CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
+import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
+import { currentWorkerCards } from "../../autonomy/src/worker-policy";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import { runCommand } from "./process";
 import { showPrincipalTaskAttempts } from "./task-attempts";
@@ -34,6 +36,11 @@ const ORDINARY_OPENCODE_EXCLUDES = [
   ".reasonix",
 ] as const;
 
+// Ordinary project work must not inherit Work Cell's five-minute probe default.
+// OpenCode has no completed-step budget-control adapter yet, so this is a broad
+// emergency ceiling rather than a user-facing approval mechanism.
+const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
+
 const requireFromHere = createRequire(import.meta.url);
 
 const WorkCellCliResultSchema = z.object({
@@ -44,13 +51,10 @@ const WorkCellCliResultSchema = z.object({
 
 export interface TaskRunArguments {
   id: string;
-  expectedSourceRevision: number;
-  expectedRevision: number;
-  driver: "opencode-cli";
-  model: string;
-  reasoningEffort?: string;
-  /** OpenCode session id retained by a previous attempt of the same active task. */
-  session?: string;
+  /** Worker selected from the current worker policy catalog. */
+  workerId: string;
+  /** Continue the latest retained same-session branch instead of starting fresh. */
+  continueRun?: boolean;
 }
 
 export interface TaskRunRequest {
@@ -74,6 +78,8 @@ export interface TaskRunRunner {
 interface TaskRunDependencies {
   /** Test seam for reproducing drift after initial binding resolution. */
   beforeLeaseAcquire?(): void;
+  /** Test seam for worker card resolution; the default reads the current worker policy catalog. */
+  resolveWorkerCard?(workerId: string): WorkerCard;
 }
 
 export interface TaskRunResult {
@@ -91,6 +97,36 @@ export interface TaskRunResult {
   /** Actual OpenCode session id observed in the Work Cell final record. */
   sessionId: string;
   semanticAcceptance: "not-evaluated";
+}
+
+export interface TaskWorkerListResult {
+  version: "rosso.task-worker-list.v1";
+  workers: Array<{
+    id: string;
+    labels: string[];
+    description: string;
+    provider: string;
+    model: string;
+    reasoningEffort: string;
+    availability: WorkerCard["availability"];
+  }>;
+}
+
+export function listPrincipalTaskWorkers(
+  environment: NodeJS.ProcessEnv = process.env,
+): TaskWorkerListResult {
+  return {
+    version: "rosso.task-worker-list.v1",
+    workers: currentWorkerCards(environment).map((card) => ({
+      id: card.id,
+      labels: [...card.labels],
+      description: card.description,
+      provider: card.executionProfile.provider,
+      model: card.executionProfile.model,
+      reasoningEffort: card.executionProfile.reasoningEffort ?? "provider-default",
+      availability: structuredClone(card.availability),
+    })),
+  };
 }
 
 export class WorkCellCliRunner implements TaskRunRunner {
@@ -135,17 +171,9 @@ export function runPrincipalTask(
 ): TaskRunResult {
   validatePolicy(arguments_);
   const home = resolveHome(homeArgument);
+  const card = resolveWorkerCard(arguments_.workerId, dependencies);
+  const execution = deriveExecutionRequest(card);
   const observed = showPrincipalTask(home, arguments_.id);
-  if (observed.sourceRevision !== arguments_.expectedSourceRevision) {
-    throw new Error(
-      `Principal task source revision is stale: expected ${arguments_.expectedSourceRevision}, current ${observed.sourceRevision}`,
-    );
-  }
-  if (observed.task.revision !== arguments_.expectedRevision) {
-    throw new Error(
-      `task revision is stale for ${observed.task.id}: expected ${arguments_.expectedRevision}, current ${observed.task.revision}`,
-    );
-  }
   const task = observed.task;
   if (task.lifecycle === "settled") {
     throw new Error(`cannot run settled task ${task.id}; completed tasks are viewable history`);
@@ -169,9 +197,11 @@ export function runPrincipalTask(
   try {
     verifyTaskSnapshotAfterLease(home, observed);
     verifyCurrentBinding(home, task.binding.projectId, worktree);
-    if (arguments_.session) {
-      const retained = validateRetainedTaskSession(home, task.id, worktree, arguments_.session);
-      verifyContinuationDiff(worktree, retained.workspaceDiff);
+    const continuation = arguments_.continueRun
+      ? continuationEvidence(home, task.id, worktree)
+      : undefined;
+    if (continuation !== undefined) {
+      verifyContinuationDiff(worktree, continuation.workspaceDiff);
     } else {
       verifyCleanStatus(worktree);
     }
@@ -181,24 +211,27 @@ export function runPrincipalTask(
       observed.sourceRevision,
       attemptId,
       worktree,
-      arguments_,
+      arguments_.workerId,
+      card,
+      execution,
+      continuation,
     );
     const runnerResult = runner.run({
       inputPath: attempt.inputPath,
       finalRecordPath: attempt.finalRecordPath,
-      driver: arguments_.driver,
-      model: arguments_.model,
-      ...(arguments_.reasoningEffort
-        ? { reasoningEffort: arguments_.reasoningEffort }
+      driver: execution.driver,
+      model: execution.model,
+      ...(execution.reasoningEffort
+        ? { reasoningEffort: execution.reasoningEffort }
         : {}),
-      ...(arguments_.session ? { session: arguments_.session } : {}),
+      ...(continuation ? { session: continuation.session } : {}),
     });
     const finalRecord = validateFinalRecord(
       attempt.finalRecordPath,
       attempt.expectedCellInput,
       runnerResult,
-      arguments_.model,
-      arguments_.session,
+      execution.model,
+      continuation?.session,
     );
     writeImmutableJson(attempt.settlementPath, {
       version: "rosso.task-run-settlement.v1",
@@ -250,12 +283,58 @@ export function runPrincipalTask(
   }
 }
 
-function validateRetainedTaskSession(
+function continuationEvidence(
   home: string,
   taskId: string,
   worktree: string,
-  requestedSession: string,
-): Pick<CellRunRecord, "workspaceDiff"> {
+): { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] } {
+  const observed = observedRetainedSessions(home, taskId, worktree);
+  const latest = observed.at(-1);
+  if (latest === undefined) {
+    throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
+  }
+  const cumulative = {
+    added: new Set<string>(),
+    changed: new Set<string>(),
+    removed: new Set<string>(),
+  };
+  let hasPathAnchor = false;
+  for (let index = observed.length - 1; index >= 0; index -= 1) {
+    const attempt = observed[index]!;
+    if (attempt.session !== latest.session) break;
+    if (attempt.workspaceDiff !== undefined) {
+      hasPathAnchor = true;
+      for (const kind of ["added", "changed", "removed"] as const) {
+        for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
+      }
+    }
+    if (attempt.requestedSession === undefined) break;
+    if (attempt.requestedSession !== latest.session) break;
+  }
+  if (!hasPathAnchor) {
+    throw new Error(
+      `task ${taskId} has no usable recorded Work Cell attempt in the current Worktree session branch`,
+    );
+  }
+  return {
+    session: latest.session,
+    workspaceDiff: {
+      added: [...cumulative.added].sort(),
+      changed: [...cumulative.changed].sort(),
+      removed: [...cumulative.removed].sort(),
+    },
+  };
+}
+
+function observedRetainedSessions(
+  home: string,
+  taskId: string,
+  worktree: string,
+): Array<{
+  session: string;
+  requestedSession?: string;
+  workspaceDiff?: CellRunRecord["workspaceDiff"];
+}> {
   const attempts = showPrincipalTaskAttempts(home, taskId);
   const observed: Array<{
     session: string;
@@ -287,45 +366,7 @@ function validateRetainedTaskSession(
       // Only an attributable final record in the exact Worktree can affect session continuity.
     }
   }
-  const latest = observed.at(-1);
-  if (latest === undefined) {
-    throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
-  }
-  if (latest.session !== requestedSession) {
-    throw new Error(
-      `task ${taskId} latest observed OpenCode session in the current Worktree is ${latest.session}, not ${requestedSession}`,
-    );
-  }
-  const cumulative = {
-    added: new Set<string>(),
-    changed: new Set<string>(),
-    removed: new Set<string>(),
-  };
-  let hasPathAnchor = false;
-  for (let index = observed.length - 1; index >= 0; index -= 1) {
-    const attempt = observed[index]!;
-    if (attempt.session !== requestedSession) break;
-    if (attempt.workspaceDiff !== undefined) {
-      hasPathAnchor = true;
-      for (const kind of ["added", "changed", "removed"] as const) {
-        for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
-      }
-    }
-    if (attempt.requestedSession === undefined) break;
-    if (attempt.requestedSession !== requestedSession) break;
-  }
-  if (!hasPathAnchor) {
-    throw new Error(
-      `task ${taskId} has no usable recorded Work Cell attempt in the current Worktree session branch`,
-    );
-  }
-  return {
-    workspaceDiff: {
-      added: [...cumulative.added].sort(),
-      changed: [...cumulative.changed].sort(),
-      removed: [...cumulative.removed].sort(),
-    },
-  };
+  return observed;
 }
 
 function verifyContinuationDiff(
@@ -426,11 +467,16 @@ function createAttempt(
   sourceRevision: number,
   attemptId: string,
   worktree: string,
-  arguments_: TaskRunArguments,
+  workerId: string,
+  worker: WorkerCard,
+  execution: TaskRunExecution,
+  continuation?: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] },
 ): AttemptEvidence & { expectedCellInput: CellInput } {
   const attempt = attemptEvidence(home, attemptId);
   const cellInput = {
     id: `workbench-task-${task.id}-attempt-${attemptId}`,
+    workerId,
+    executionProfile: worker.executionProfile,
     intent: task.objective,
     workspace: {
       root: worktree,
@@ -447,6 +493,7 @@ function createAttempt(
     context: [],
     capabilitiesRequired: [],
     acceptance: task.acceptance,
+    budget: { maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS },
   };
   const expectedCellInput = workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
   mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
@@ -460,12 +507,13 @@ function createAttempt(
     attemptId,
     inputRef: attempt.inputRef,
     finalRecordRef: attempt.finalRecordRef,
-    driver: arguments_.driver,
-    model: arguments_.model,
-    ...(arguments_.reasoningEffort
-      ? { reasoningEffort: arguments_.reasoningEffort }
+    workerId,
+    driver: execution.driver,
+    model: execution.model,
+    ...(execution.reasoningEffort
+      ? { reasoningEffort: execution.reasoningEffort }
       : {}),
-    ...(arguments_.session ? { session: arguments_.session } : {}),
+    ...(continuation ? { session: continuation.session } : {}),
     status: "started",
     startedAt: new Date().toISOString(),
   });
@@ -566,24 +614,35 @@ function isAlreadyExists(error: unknown): boolean {
 }
 
 function validatePolicy(arguments_: TaskRunArguments): void {
-  if (arguments_.driver !== "opencode-cli") {
-    throw new Error("task run requires --driver opencode-cli");
+  if (!arguments_.workerId.trim()) throw new Error("task run --worker must be a non-empty worker id");
+}
+
+interface TaskRunExecution {
+  driver: "opencode-cli";
+  model: string;
+  reasoningEffort?: string;
+}
+
+function resolveWorkerCard(
+  workerId: string,
+  dependencies: TaskRunDependencies,
+): WorkerCard {
+  if (dependencies.resolveWorkerCard) return dependencies.resolveWorkerCard(workerId);
+  const card = currentWorkerCards().find((candidate) => candidate.id === workerId);
+  if (card === undefined) throw new Error(`unknown worker ${workerId}; run 'rossovia worker list'`);
+  if (card.availability.status === "unavailable") {
+    throw new Error(`worker ${workerId} is unavailable: ${card.availability.reason}`);
   }
-  if (!/^[^/\s]+\/[^/\s]+$/u.test(arguments_.model)) {
-    throw new Error("task run requires --model PROVIDER/MODEL");
-  }
-  if (arguments_.reasoningEffort !== undefined && !arguments_.reasoningEffort.trim()) {
-    throw new Error("task run --reasoning-effort must be a non-empty string");
-  }
-  if (arguments_.session !== undefined && !arguments_.session.trim()) {
-    throw new Error("task run --session must be a non-empty string");
-  }
-  if (!Number.isSafeInteger(arguments_.expectedSourceRevision) || arguments_.expectedSourceRevision < 0) {
-    throw new Error("--expected-source-revision must be a non-negative integer");
-  }
-  if (!Number.isSafeInteger(arguments_.expectedRevision) || arguments_.expectedRevision < 1) {
-    throw new Error("--expected-revision must be a positive integer");
-  }
+  return card;
+}
+
+function deriveExecutionRequest(card: WorkerCard): TaskRunExecution {
+  const { provider, model, reasoningEffort } = card.executionProfile;
+  return {
+    driver: "opencode-cli",
+    model: model.includes("/") ? model : `${provider}/${model}`,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  };
 }
 
 function resolveBoundWorktree(

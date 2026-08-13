@@ -118,7 +118,7 @@ function parseRequiredLabels(labels: readonly string[]): string[] {
 
 function assertExecutionProfile(card: WorkerCard, actual: ExecutionProfile): void {
   const expected = card.executionProfile;
-  for (const field of ["id", "version", "provider", "model", "contextPolicy", "toolSurface", "parallelism", "priceRevision"] as const) {
+  for (const field of ["id", "version", "provider", "model", "reasoningEffort", "contextPolicy", "toolSurface", "parallelism", "priceRevision"] as const) {
     if (actual[field] !== expected[field]) {
       throw new Error(
         `worker ${card.id} requires execution profile ${expected.id}; field ${field} does not match catalog configuration`,
