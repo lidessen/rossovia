@@ -23,6 +23,17 @@ const TaskRunAttemptSchema = z.object({
   session: z.string().min(1).optional(),
   status: z.literal("started"),
   startedAt: z.iso.datetime(),
+  /**
+   * Optional conversation correlation retained by a conversation-owned
+   * catalog attempt: the exact durable turn/action identity and the causal
+   * action source reference the reconciliation path searches for.
+   */
+  correlation: z.object({
+    conversationId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    actionId: z.string().uuid(),
+    sourceRef: z.string().min(1),
+  }).strict().optional(),
 }).passthrough();
 
 const TaskRunSettlementSchema = z.object({
@@ -32,12 +43,14 @@ const TaskRunSettlementSchema = z.object({
   attemptId: z.string().min(1),
   inputRef: z.string().min(1),
   finalRecordRef: z.string().min(1),
-  status: z.enum(["recorded", "runner-failed"]),
+  status: z.enum(["recorded", "runner-failed", "control-stopped"]),
   semanticAcceptance: z.literal("not-evaluated"),
   settledAt: z.iso.datetime(),
+  /** Durable control receipt reference retained when a work_control stop settled this attempt. */
+  controlRef: z.string().min(1).optional(),
 }).passthrough();
 
-export type TaskAttemptStatus = "started" | "recorded" | "runner-failed" | "invalid";
+export type TaskAttemptStatus = "started" | "recorded" | "runner-failed" | "control-stopped" | "invalid";
 
 export type TaskAttemptEvidenceStanding =
   | { standing: "available" }
@@ -52,6 +65,13 @@ export interface TaskAttemptProjection {
   driver?: string;
   model?: string;
   reasoningEffort?: string;
+  /** Conversation correlation retained by a conversation-owned catalog attempt. */
+  correlation?: {
+    conversationId: string;
+    turnId: string;
+    actionId: string;
+    sourceRef: string;
+  };
   /** Session requested by the caller for this attempt, when one was supplied. */
   requestedSession?: string;
   /** Session observed in this attempt's retained Work Cell final record, when available. */
@@ -222,6 +242,9 @@ function projectAttempt(
       model: attempt.value.model,
       ...(attempt.value.reasoningEffort !== undefined
         ? { reasoningEffort: attempt.value.reasoningEffort }
+        : {}),
+      ...(attempt.value.correlation !== undefined
+        ? { correlation: attempt.value.correlation }
         : {}),
       ...(attempt.value.session !== undefined ? { requestedSession: attempt.value.session } : {}),
       startedAt: attempt.value.startedAt,

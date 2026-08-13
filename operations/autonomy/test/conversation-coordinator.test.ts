@@ -714,7 +714,8 @@ test("strict operation schemas accept exactly the four typed kinds and reject ev
     taskId: "task-1",
     expectedSourceRevision: 3,
     expectedRevision: 2,
-  })).toEqual({ kind: "task_continue", taskId: "task-1", expectedSourceRevision: 3, expectedRevision: 2 });
+    workerId: "deepseek-flash",
+  })).toEqual({ kind: "task_continue", taskId: "task-1", expectedSourceRevision: 3, expectedRevision: 2, workerId: "deepseek-flash" });
   expect(ConversationOperationSchema.parse({
     kind: "work_control",
     carrierId: "attempt-1",
@@ -755,7 +756,14 @@ test("strict operation schemas accept exactly the four typed kinds and reject ev
     taskId: "task-1",
     expectedSourceRevision: 3,
     expectedRevision: 2,
+    workerId: "deepseek-flash",
     statement: "not part of this kind",
+  })).toThrow();
+  expect(() => ConversationOperationSchema.parse({
+    kind: "task_continue",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
   })).toThrow();
 });
 

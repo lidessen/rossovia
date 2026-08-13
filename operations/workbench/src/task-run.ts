@@ -59,7 +59,7 @@ export interface TaskRunArguments {
 export interface TaskRunRequest {
   inputPath: string;
   finalRecordPath: string;
-  driver: "opencode-cli";
+  driver: string;
   model: string;
   reasoningEffort?: string;
   session?: string;
@@ -79,6 +79,13 @@ interface TaskRunDependencies {
   beforeLeaseAcquire?(): void;
   /** Test seam for worker card resolution; the default reads the current worker policy catalog. */
   resolveWorkerCard?(workerId: string): WorkerCard;
+}
+
+/** One execution request as retained on the attempt record. */
+export interface TaskRunExecution {
+  driver: string;
+  model: string;
+  reasoningEffort?: string;
 }
 
 export interface TaskRunResult {
@@ -168,42 +175,9 @@ export function runPrincipalTask(
   runner: TaskRunRunner = new WorkCellCliRunner(),
   dependencies: TaskRunDependencies = {},
 ): TaskRunResult {
-  validatePolicy(arguments_);
-  const home = resolveHome(homeArgument);
-  const card = resolveWorkerCard(arguments_.workerId, dependencies);
-  const execution = deriveExecutionRequest(card);
-  const observed = showPrincipalTask(home, arguments_.id);
-  const task = observed.task;
-  if (task.lifecycle === "settled") {
-    throw new Error(`cannot run settled task ${task.id}; completed tasks are viewable history`);
-  }
-  if (task.lifecycle !== "open" || task.nextActor !== "agent") {
-    throw new Error(`task ${task.id} must be open and assigned to the Agent before it can run`);
-  }
-  if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
-    throw new Error(`task ${task.id} must be bound to an existing project Worktree before it can run`);
-  }
-
-  const worktree = resolveBoundWorktree(
-    home,
-    task.binding.projectId,
-    task.binding.worktreePath,
-  );
-  const attemptId = randomUUID();
-
-  dependencies.beforeLeaseAcquire?.();
-  const lease = acquireWorktreeLease(worktree, task.id, attemptId);
+  const prepared = preparePrincipalTaskRun(homeArgument, arguments_, dependencies);
+  const { home, task, observed, worktree, attemptId, lease, execution, continuation } = prepared;
   try {
-    verifyTaskSnapshotAfterLease(home, observed);
-    verifyCurrentBinding(home, task.binding.projectId, worktree);
-    const continuation = arguments_.continueRun
-      ? continuationEvidence(home, task.id, worktree)
-      : undefined;
-    if (continuation !== undefined) {
-      verifyContinuationDiff(worktree, continuation.workspaceDiff);
-    } else {
-      verifyCleanStatus(worktree);
-    }
     const attempt = createAttempt(
       home,
       task,
@@ -211,7 +185,7 @@ export function runPrincipalTask(
       attemptId,
       worktree,
       arguments_.workerId,
-      card,
+      prepared.card,
       execution,
       continuation,
     );
@@ -279,6 +253,85 @@ export function runPrincipalTask(
     throw error;
   } finally {
     releaseWorktreeLease(lease);
+  }
+}
+
+/**
+ * The synchronous guarded preparation every ordinary task run performs before
+ * any execution effect: exact worker resolution, canonical Task re-read,
+ * project/binding checks, the exact observed Worktree, the atomic Worktree
+ * lease, a fresh Task snapshot verification, and the clean/continuation
+ * Worktree status check. A conversation-owned asynchronous catalog carrier
+ * reuses the same evidence family and lease through these pieces instead of a
+ * parallel task-run database.
+ */
+export interface PreparedPrincipalTaskRun {
+  readonly home: string;
+  readonly card: WorkerCard;
+  readonly execution: TaskRunExecution;
+  readonly observed: ReturnType<typeof showPrincipalTask>;
+  readonly task: ReturnType<typeof showPrincipalTask>["task"];
+  readonly worktree: string;
+  readonly attemptId: string;
+  readonly lease: TaskRunLease;
+  readonly continuation?: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] };
+}
+
+export function preparePrincipalTaskRun(
+  homeArgument: string | undefined,
+  arguments_: TaskRunArguments,
+  dependencies: TaskRunDependencies = {},
+): PreparedPrincipalTaskRun {
+  validatePolicy(arguments_);
+  const home = resolveHome(homeArgument);
+  const card = resolveWorkerCard(arguments_.workerId, dependencies);
+  const execution = deriveExecutionRequest(card);
+  const observed = showPrincipalTask(home, arguments_.id);
+  const task = observed.task;
+  if (task.lifecycle === "settled") {
+    throw new Error(`cannot run settled task ${task.id}; completed tasks are viewable history`);
+  }
+  if (task.lifecycle !== "open" || task.nextActor !== "agent") {
+    throw new Error(`task ${task.id} must be open and assigned to the Agent before it can run`);
+  }
+  if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
+    throw new Error(`task ${task.id} must be bound to an existing project Worktree before it can run`);
+  }
+
+  const worktree = resolveBoundWorktree(
+    home,
+    task.binding.projectId,
+    task.binding.worktreePath,
+  );
+  const attemptId = randomUUID();
+
+  dependencies.beforeLeaseAcquire?.();
+  const lease = acquireWorktreeLease(worktree, task.id, attemptId);
+  try {
+    verifyTaskSnapshotAfterLease(home, observed);
+    verifyCurrentBinding(home, task.binding.projectId, worktree);
+    const continuation = arguments_.continueRun
+      ? continuationEvidence(home, task.id, worktree)
+      : undefined;
+    if (continuation !== undefined) {
+      verifyContinuationDiff(worktree, continuation.workspaceDiff);
+    } else {
+      verifyCleanStatus(worktree);
+    }
+    return {
+      home,
+      card,
+      execution,
+      observed,
+      task,
+      worktree,
+      attemptId,
+      lease,
+      ...(continuation === undefined ? {} : { continuation }),
+    };
+  } catch (error) {
+    releaseWorktreeLease(lease);
+    throw error;
   }
 }
 
@@ -416,12 +469,12 @@ function gitVisiblePaths(worktree: string): Set<string> {
   return paths;
 }
 
-interface TaskRunLease {
+export interface TaskRunLease {
   path: string;
   content: string;
 }
 
-function acquireWorktreeLease(
+export function acquireWorktreeLease(
   worktree: string,
   taskId: string,
   attemptId: string,
@@ -449,7 +502,7 @@ function acquireWorktreeLease(
   return { path, content };
 }
 
-interface AttemptEvidence {
+export interface AttemptEvidence {
   inputPath: string;
   finalRecordPath: string;
   attemptPath: string;
@@ -460,7 +513,19 @@ interface AttemptEvidence {
   settlementRef: string;
 }
 
-function createAttempt(
+/**
+ * Correlation retained on a conversation-owned catalog attempt: the exact
+ * durable turn/action identity and the causal source reference reconciliation
+ * searches for after a crash. It is evidence only; it changes no Task state.
+ */
+export interface AttemptCorrelation {
+  readonly conversationId: string;
+  readonly turnId: string;
+  readonly actionId: string;
+  readonly sourceRef: string;
+}
+
+export function createAttempt(
   home: string,
   task: ReturnType<typeof showPrincipalTask>["task"],
   sourceRevision: number,
@@ -470,6 +535,7 @@ function createAttempt(
   worker: WorkerCard,
   execution: TaskRunExecution,
   continuation?: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] },
+  correlation?: AttemptCorrelation,
 ): AttemptEvidence & { expectedCellInput: CellInput } {
   const attempt = attemptEvidence(home, attemptId);
   const cellInput = {
@@ -516,13 +582,14 @@ function createAttempt(
       ? { reasoningEffort: execution.reasoningEffort }
       : {}),
     ...(continuation ? { session: continuation.session } : {}),
+    ...(correlation === undefined ? {} : { correlation }),
     status: "started",
     startedAt: new Date().toISOString(),
   });
   return { ...attempt, expectedCellInput };
 }
 
-function attemptEvidence(home: string, attemptId: string): AttemptEvidence {
+export function attemptEvidence(home: string, attemptId: string): AttemptEvidence {
   const directory = join(home, "state", "task-attempts", attemptId);
   const inputPath = join(directory, "cell-input.json");
   const finalRecordPath = join(directory, "cell-input.run.json");
@@ -554,7 +621,7 @@ function ordinaryOpenCodeExcludes(worktree: string): string[] {
   );
 }
 
-function releaseWorktreeLease(lease: TaskRunLease): void {
+export function releaseWorktreeLease(lease: TaskRunLease): void {
   if (readFileSync(lease.path, "utf8") !== lease.content) {
     throw new Error(`task-run lease ownership changed before release: ${lease.path}`);
   }
@@ -627,12 +694,6 @@ function validatePolicy(arguments_: TaskRunArguments): void {
   if (!arguments_.workerId.trim()) throw new Error("task run --worker must be a non-empty worker id");
 }
 
-interface TaskRunExecution {
-  driver: "opencode-cli";
-  model: string;
-  reasoningEffort?: string;
-}
-
 function resolveWorkerCard(
   workerId: string,
   dependencies: TaskRunDependencies,
@@ -655,7 +716,7 @@ function deriveExecutionRequest(card: WorkerCard): TaskRunExecution {
   };
 }
 
-function resolveBoundWorktree(
+export function resolveBoundWorktree(
   home: string,
   projectId: string,
   configuredWorktree: string,
@@ -668,7 +729,7 @@ function resolveBoundWorktree(
   return worktree;
 }
 
-function verifyTaskSnapshotAfterLease(
+export function verifyTaskSnapshotAfterLease(
   home: string,
   expected: ReturnType<typeof showPrincipalTask>,
 ): void {
@@ -686,12 +747,12 @@ function verifyTaskSnapshotAfterLease(
   }
 }
 
-function verifyCleanStatus(worktree: string): void {
+export function verifyCleanStatus(worktree: string): void {
   const status = requiredGit(["status", "--porcelain"], worktree) ?? "";
   if (status.trim()) throw new Error(`task Worktree is not clean: ${worktree}`);
 }
 
-function verifyCurrentBinding(home: string, projectId: string, worktree: string): void {
+export function verifyCurrentBinding(home: string, projectId: string, worktree: string): void {
   const current = loadHome(home);
   const primary = realpathSync(workspaceFor(current.workspaces, projectId).path);
   if (worktree === primary) {
@@ -706,7 +767,7 @@ function verifyCurrentBinding(home: string, projectId: string, worktree: string)
   }
 }
 
-function evidenceRef(home: string, path: string): string {
+export function evidenceRef(home: string, path: string): string {
   const ref = relative(home, path);
   if (!ref || isAbsolute(ref) || ref.split(/[\\/]/u).includes("..")) {
     throw new Error(`task attempt path escapes Rossovia home: ${path}`);
@@ -714,7 +775,7 @@ function evidenceRef(home: string, path: string): string {
   return ref;
 }
 
-function writeImmutableJson(path: string, value: unknown): void {
+export function writeImmutableJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, {
     encoding: "utf8",
     flag: "wx",

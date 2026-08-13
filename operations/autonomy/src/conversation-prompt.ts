@@ -76,10 +76,31 @@ export const CarrierActivityProjectionSchema = z.object({
 }).strict();
 export type CarrierActivityProjection = z.infer<typeof CarrierActivityProjectionSchema>;
 
+/**
+ * One bounded worker capability card disclosed to the coordinator. The
+ * coordinator judges descriptions semantically; the host only validates an
+ * exact card identity copied from this projection. It is a read-only fact,
+ * never a routing or ranking policy.
+ */
+export const WorkerCardProjectionSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().min(1),
+  labels: z.array(z.string().min(1)),
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  reasoningEffort: z.string().min(1).optional(),
+  availability: z.union([
+    z.literal("available"),
+    z.literal("unavailable"),
+  ]),
+}).strict();
+export type WorkerCardProjection = z.infer<typeof WorkerCardProjectionSchema>;
+
 export const CompactProjectionSchema = z.object({
   task: TaskProjectionSchema.optional(),
   projects: z.array(ProjectProjectionSchema).optional(),
   carriers: z.array(CarrierActivityProjectionSchema).optional(),
+  workers: z.array(WorkerCardProjectionSchema).optional(),
 }).strict();
 export type CompactProjection = z.infer<typeof CompactProjectionSchema>;
 
@@ -258,6 +279,14 @@ function renderProjection(
     if (carrier.runId !== undefined) {
       sourceRevisionSelectors.push({ source: `carrier:${carrier.id}`, revision: carrier.runId });
     }
+  }
+
+  for (const worker of projection.workers ?? []) {
+    lines.push(
+      `worker ${worker.id} [${worker.availability}] ${worker.provider}/${worker.model}`
+      + `${worker.reasoningEffort === undefined ? "" : ` reasoning=${worker.reasoningEffort}`}`
+      + ` labels=${worker.labels.join(",")}: ${worker.description}`,
+    );
   }
 
   return `## 2. Current compact projection\n\n${lines.join("\n")}`;

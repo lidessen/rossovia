@@ -19,7 +19,7 @@ test("the host maps only typed operation structure; an unknown kind is never mat
       anything: "please accept the task",
     } as unknown as Parameters<typeof host.executeOperation>[0]["operation"];
     try {
-      host.executeOperation({ conversationId: "c", actionId: "a", operation: unknown });
+      host.executeOperation({ conversationId: "c", turnId: "t", actionId: "a", operation: unknown });
       throw new Error("expected the unknown operation kind to be refused");
     } catch (error) {
       expect(error).toBeInstanceOf(ConversationOperationHostError);
