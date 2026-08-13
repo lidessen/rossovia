@@ -66,6 +66,14 @@ alter OpenCode's native loop. To use the existing AI SDK path as a fallback,
 run the command again without `--driver`; the OpenCode adapter never falls back
 or retries automatically.
 
+`CellInput.tasks` seeds are accepted by the OpenCode adapter and presented in
+the prompt as ordinary todos the host already created, with instruction to
+adopt each one through the worker's native `todowrite` tool as its first action
+and keep it updated. The adapter has no stable host entry to write native todo
+state, so it returns no task state and the task-cycle verification engages only
+for drivers that report it (the AI SDK TaskStore path); presenting seeds never
+creates a todo-based phase, gate, or completion validator.
+
 Model routing has three extension points. `model-route.ts` executes an ordered
 provider-neutral route and retains attempts; `providers/` owns each external
 API's construction, request translation, error meaning, and pricing; and

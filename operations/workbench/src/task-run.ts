@@ -492,6 +492,9 @@ function createAttempt(
     context: [],
     capabilitiesRequired: [],
     acceptance: task.acceptance,
+    ...(task.todos.length > 0
+      ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }
+      : {}),
     budget: { maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS },
   };
   const expectedCellInput = workCellContracts().CellInputSchema.parse(cellInput) as CellInput;

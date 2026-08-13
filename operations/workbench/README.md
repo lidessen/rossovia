@@ -163,6 +163,7 @@ Agent inspection and local task-lifecycle operations:
 
 ```text
 task create --title <text> --objective <text> --accept <criterion>...
+  [--todo <text>]...
   --next-actor <principal|agent|external> --source-ref <reference>
   --expected-source-revision <n>
   [--project <project> [--worktree <path>] [--mission <id>]]
@@ -209,7 +210,14 @@ supplies its description, capability labels, provider, model, reasoning effort,
 and current availability. Driver and provider syntax are not caller inputs.
 Immediately before creating the attempt, Workbench rereads the Task and lowers
 its current objective, acceptance conditions, and corrections into an immutable
-attempt-specific Work Cell input. To continue the same still-open task, pass
+attempt-specific Work Cell input. Any Principal-supplied ordinary todos lower
+into that input's existing task seeds only when non-empty; `task show` and the
+immutable Cell input retain them as the single todo data set. The OpenCode CLI
+adapter has no stable host entry to write native todos, so it presents those
+seeds in the prompt as already-created ordinary todos and requires the worker
+to adopt each one through its native `todowrite` tool as its first action and
+keep it updated; no todo-based phase, gate, or completion validator is
+invented, and the AI SDK path keeps its existing seeded TaskStore behavior. To continue the same still-open task, pass
 `--continue`; Workbench selects the latest usable OpenCode session retained by
 an attributable attempt in the current bound Worktree. The Worktree
 may remain dirty only when its current staged, unstaged, and non-ignored

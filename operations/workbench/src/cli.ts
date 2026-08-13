@@ -144,7 +144,7 @@ function printUsage(): void {
   console.log("  preference retire <id> [--project <project>]");
   console.log("  execution inspect <project> <mission-id>");
   console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
-  console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
+  console.log("  task create --title <text> --objective <text> --accept <criterion>... [--todo <text>]... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
   console.log("  task list");
   console.log("  task show <id>");
   console.log("  task attempts <id>");
@@ -205,7 +205,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         "--worktree",
         "--mission",
       ]),
-      new Set(["--accept"]),
+      new Set(["--accept", "--todo"]),
     );
     return controlPlane.execute({
       kind: "create",
@@ -213,6 +213,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         title: taskOption(parsed, "--title"),
         objective: taskOption(parsed, "--objective"),
         acceptance: taskOptions(parsed, "--accept"),
+        ...(parsed.values.has("--todo") ? { todos: taskOptions(parsed, "--todo") } : {}),
         nextActor: taskActor(parsed),
         sourceRef: taskOption(parsed, "--source-ref"),
         expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),

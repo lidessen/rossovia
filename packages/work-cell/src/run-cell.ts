@@ -230,7 +230,12 @@ export async function runCell(
         terminalTools.map((terminal) => terminal.name),
         driverResult.terminalToolsCalled,
       );
-      taskVerification = input.tasks !== undefined || driverResult.tasks !== undefined
+      // Task-cycle verification engages only when the driver reports task
+      // state. The AI SDK path returns its TaskStore snapshot; the OpenCode CLI
+      // adapter presents seeds as already-created ordinary todos in the prompt
+      // and cannot observe native todo state, so it is not a verification
+      // surface and no completion validator is invented for it.
+      taskVerification = driverResult.tasks !== undefined
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;
       if (terminalResult.error) {

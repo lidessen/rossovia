@@ -153,7 +153,6 @@ export class OpenCodeCliDriver implements CellDriver {
   async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
     if (input.terminalTools) unsupported("terminalTools");
     if (input.outputSchema) unsupported("outputSchema");
-    if (input.tasks) unsupported("tasks");
     if (!input.workspace.writePaths.includes(".")) {
       throw new CellExecutionError(
         'OpenCode CLI driver requires workspace.writePaths to include "." for full-worktree change capture',
@@ -295,6 +294,11 @@ export function createOpenCodeCliPrompt(input: CellInput): string {
     `Intent:\n${input.intent}`,
     `Instructions:\n${input.instructions.map((item) => `- ${item}`).join("\n")}`,
     `Context:\n${input.context.map((item) => `${item.title}: ${item.content}`).join("\n") || "(none)"}`,
+    ...(input.tasks === undefined
+      ? []
+      : [
+        `Tasks:\nThe host already created these ordinary todos before this run. Adopt each one through your native todowrite tool as your first action, preserving its wording, and keep it updated as the work advances. They are ordinary work todos, not a separate startup phase or acceptance gate:\n${input.tasks.map((task) => `- ${task.subject}: ${task.description}`).join("\n")}`,
+      ]),
     `Acceptance:\n${input.acceptance.map((item) => `- ${item}`).join("\n")}`,
     `Workspace policy:\n${JSON.stringify(input.workspace, null, 2)}`,
   ].join("\n");

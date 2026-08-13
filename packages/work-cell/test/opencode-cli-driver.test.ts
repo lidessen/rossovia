@@ -48,9 +48,54 @@ describe("OpenCode CLI driver", () => {
       "disposable worktree", "make only the requested changes", "Run the named checks",
       "changed files, checks, and remaining uncertainty",
     ]) expect(prompt).toContain(text);
+    expect(prompt).not.toContain("ordinary todos");
+    expect(prompt).not.toContain("todowrite");
     expect(driver.descriptor).toEqual({
       adapter: "opencode-cli.v1", provider: "anthropic", model: "anthropic/fixture",
     });
+  });
+
+  test("presents seeded tasks as already-created ordinary todos with native todowrite guidance", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    let request: OpenCodeCliProcessRequest | undefined;
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      request = candidate;
+      return success();
+    }));
+    const input = cellInput(root);
+    input.tasks = [
+      { subject: "Adopt the todos", description: "Adopt the todos through todowrite." },
+      { subject: "Run the named checks", description: "Run the named checks." },
+    ];
+
+    await driver.run(input, context(canonicalRoot).value);
+
+    const prompt = request!.argv[1]!;
+    expect(prompt).toContain("already created these ordinary todos");
+    expect(prompt).toContain("- Adopt the todos: Adopt the todos through todowrite.");
+    expect(prompt).toContain("- Run the named checks: Run the named checks.");
+    expect(prompt).toContain("native todowrite tool");
+    expect(prompt).toContain("preserving its wording");
+    expect(prompt).toContain("not a separate startup phase or acceptance gate");
+  });
+
+  test("runs seeded tasks through the prompt without failing task-cycle verification the CLI cannot observe", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"todo-1","part":{}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"todo-1","part":{"text":"Todos adopted."}}'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"todo-1","part":{"reason":"stop","cost":0,"tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    const record = await runCell(input, realDriver(root, executable));
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Todos adopted.");
+    expect(record.verification).not.toHaveProperty("tasks");
+    expect(record.tasks).toBeUndefined();
   });
 
   test("puts resume session before dir", async () => {
@@ -209,10 +254,10 @@ describe("OpenCode CLI driver", () => {
   test("rejects unsupported contracts before process launch", async () => {
     const root = await fixture();
     const canonicalRoot = await realpath(root);
-    for (const field of ["terminalTools", "outputSchema", "tasks"] as const) {
+    for (const field of ["terminalTools", "outputSchema"] as const) {
       let runs = 0;
       const driver = openCodeDriver(root, fixtureProcess(async () => { runs += 1; return success(); }));
-      const input = { ...cellInput(root), [field]: field === "terminalTools" ? [] : {} } as CellInput;
+      const input = { ...cellInput(root), [field]: [] } as CellInput;
       await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
         message: `OpenCode CLI driver does not support ${field}`,
       });

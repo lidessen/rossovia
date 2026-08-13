@@ -325,6 +325,62 @@ describe("task run public boundary", () => {
     });
   });
 
+  test("lowers ordinary todos into the immutable CellInput.tasks seeds only when non-empty", () => {
+    const current = fixture();
+    const created = createPrincipalTask(current.home, {
+      title: "Run one todo-backed task",
+      objective: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable"],
+      todos: ["Implement the backend task loop", "Run the named checks"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-todos",
+      expectedSourceRevision: 0,
+      project: "task-run",
+      worktree: current.worktree,
+    });
+    const runner = new FakeRunner();
+    const withTodos = runTestTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const seededInput = JSON.parse(
+      readFileSync(join(current.home, withTodos.inputRef), "utf8"),
+    );
+    expect(seededInput.tasks).toEqual([
+      { subject: "Implement the backend task loop", description: "Implement the backend task loop" },
+      { subject: "Run the named checks", description: "Run the named checks" },
+    ]);
+
+    const plain = createPrincipalTask(current.home, {
+      title: "Run one todo-less task",
+      objective: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-without-todos",
+      expectedSourceRevision: 1,
+      project: "task-run",
+      worktree: current.worktree,
+    });
+    const withoutTodos = runTestTask(current.home, {
+      id: plain.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 2,
+      expectedRevision: 1,
+    }, runner);
+    const plainInput = JSON.parse(
+      readFileSync(join(current.home, withoutTodos.inputRef), "utf8"),
+    );
+    expect(plainInput).not.toHaveProperty("tasks");
+    expect(plainInput).toMatchObject({
+      intent: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable"],
+    });
+  });
+
   test("returns the observed OpenCode session and continues the same active task by session", () => {
     const current = fixture();
     const created = agentTask(current);
