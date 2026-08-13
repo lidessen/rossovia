@@ -126,6 +126,12 @@ export const ProjectOrientationSchema = z.object({
 }).strict();
 export type ProjectOrientation = z.infer<typeof ProjectOrientationSchema>;
 
+export const ChildEvidenceRefSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+}).strict();
+export type ChildEvidenceRef = z.infer<typeof ChildEvidenceRefSchema>;
+
 export const ChildSummarySchema = z.object({
   id: z.string().min(1),
   contribution: z.string().min(1),
@@ -133,7 +139,7 @@ export const ChildSummarySchema = z.object({
   sourceScope: z.string().min(1).optional(),
   admissibleClaims: z.array(z.string().min(1)).optional(),
   uncertainty: z.string().min(1).optional(),
-  evidenceRefs: z.array(z.string().min(1)).optional(),
+  evidenceRefs: z.array(ChildEvidenceRefSchema).optional(),
 }).strict();
 export type ChildSummary = z.infer<typeof ChildSummarySchema>;
 
@@ -306,7 +312,8 @@ function renderChildren(children: ChildSummary[]): string {
       lines.push(`  uncertainty: ${child.uncertainty}`);
     }
     if (child.evidenceRefs !== undefined && child.evidenceRefs.length > 0) {
-      lines.push(`  evidence: read on demand via keyed result-read: ${child.evidenceRefs.join(", ")}`);
+      const locators = child.evidenceRefs.map((ref) => `${ref.batchId}/${ref.key}`);
+      lines.push(`  evidence: read on demand via keyed result-read: ${locators.join(", ")}`);
     }
   }
   return `## 6. Child result summaries\n\n${lines.join("\n")}`;

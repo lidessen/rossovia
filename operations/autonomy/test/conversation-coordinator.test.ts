@@ -78,7 +78,7 @@ function fullOptions(): ConversationTurnOptions {
         sourceScope: "operations/workbench/src",
         admissibleClaims: ["invariant preserved"],
         uncertainty: "None for the bounded read.",
-        evidenceRefs: ["evidence:child-1/result"],
+        evidenceRefs: [{ batchId: "turn-result-read:batch:1", key: "evidence:child-1/result" }],
       },
     ],
     port: fakePort([]),
