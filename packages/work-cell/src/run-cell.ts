@@ -232,7 +232,8 @@ export async function runCell(
       );
       // Supplied tasks are a generic Cell completion condition. A driver may
       // also expose a task cycle that emerged during execution, but it may not
-      // make caller-supplied tasks disappear by omitting its final projection.
+      // make caller-supplied tasks disappear by omitting or emptying its final
+      // projection.
       taskVerification = input.tasks !== undefined || driverResult.tasks !== undefined
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;
@@ -365,6 +366,16 @@ function verifyTaskCycle(tasks: CellRunRecord["tasks"]): TaskVerification {
       completed: 0,
       blocked: 0,
       errors: ["driver completed without the enabled task state"],
+    };
+  }
+  if (tasks.length === 0) {
+    return {
+      passed: false,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      blocked: 0,
+      errors: ["driver completed with an empty task projection"],
     };
   }
   let store: TaskStore;

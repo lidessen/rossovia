@@ -71,13 +71,22 @@ todos. For a fresh run, it starts a loopback `opencode serve` server, creates a
 zero-message session through `POST /session`, and writes each seed as an
 ordinary pending todo through the version-specific local database seam
 (`opencode db path`; 1.18.x `todo` table keyed by
-`session_id`/`position`). For a resumed run, the supplied tasks must match the
-existing session todos. In both cases the adapter verifies the initial rows
-through `GET /session/{sessionID}/todo`, attaches the CLI run to that session
-(`--attach <url> --session <id>`), and reads the final native todo state back
-into the generic task projection. `runCell` then applies the same invariant as
-for every other driver: supplied tasks may not remain `pending` or
-`in_progress` at Cell completion. A newly created session is deleted with
+`session_id`/`position`), then verifies the initial rows through
+`GET /session/{sessionID}/todo` before the first agent message: every seeded
+subject must be present, in its original order, and pending. A resumed run
+verifies the existing session todos only structurally — non-empty content and
+a legal status — without requiring them to match the supplied seeds. In both
+cases the adapter attaches the CLI run to that session
+(`--attach <url> --session <id>`) and reads the final native todo state back
+into the generic task projection. The final projection likewise accepts
+worker refinement, replacement, and count changes, verifying only non-empty
+content and legal status, so a continuation never fails because the worker
+rewrote the original seed wording; the retained record projects the actual
+native todos. `runCell` then applies the same invariant as for every other
+driver: supplied tasks may not remain `pending` or `in_progress` at Cell
+completion, and a driver that omits its final task projection or returns an
+empty one fails verification. Completed todos are mechanical process evidence,
+never a claim of semantic correctness. A newly created session is deleted with
 bounded best-effort cleanup if initialization or execution fails before a
 successful attributable result; cleanup never replaces the original failure.
 There is no silent prompt fallback and no instruction to the worker to adopt
