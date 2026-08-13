@@ -18,7 +18,7 @@ const TaskRunAttemptSchema = z.object({
   finalRecordRef: z.string().min(1),
   driver: z.string().min(1),
   model: z.string().min(1),
-  variant: z.string().min(1).optional(),
+  reasoningEffort: z.string().min(1).optional(),
   session: z.string().min(1).optional(),
   status: z.literal("started"),
   startedAt: z.iso.datetime(),
@@ -49,7 +49,7 @@ export interface TaskAttemptProjection {
   sourceRevision?: number;
   driver?: string;
   model?: string;
-  variant?: string;
+  reasoningEffort?: string;
   /** Session requested by the caller for this attempt, when one was supplied. */
   requestedSession?: string;
   /** Session observed in this attempt's retained Work Cell final record, when available. */
@@ -217,7 +217,9 @@ function projectAttempt(
       sourceRevision: attempt.value.sourceRevision,
       driver: attempt.value.driver,
       model: attempt.value.model,
-      ...(attempt.value.variant !== undefined ? { variant: attempt.value.variant } : {}),
+      ...(attempt.value.reasoningEffort !== undefined
+        ? { reasoningEffort: attempt.value.reasoningEffort }
+        : {}),
       ...(attempt.value.session !== undefined ? { requestedSession: attempt.value.session } : {}),
       startedAt: attempt.value.startedAt,
     } : {}),

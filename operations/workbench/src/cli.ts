@@ -145,7 +145,7 @@ function printUsage(): void {
   console.log("  task list");
   console.log("  task show <id>");
   console.log("  task attempts <id>");
-  console.log("  task run <id> --driver opencode-cli --model <provider/model> [--variant <variant>] [--session <id>] --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task run <id> --driver opencode-cli --model <provider/model> [--reasoning-effort <effort>] [--session <id>] --expected-source-revision <n> --expected-revision <n>");
   console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
@@ -226,7 +226,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
       new Set([
         "--driver",
         "--model",
-        "--variant",
+        "--reasoning-effort",
         "--session",
         "--expected-source-revision",
         "--expected-revision",
@@ -236,7 +236,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
     assertTaskOptions(parsed, new Set([
       "--driver",
       "--model",
-      "--variant",
+      "--reasoning-effort",
       "--session",
       "--expected-source-revision",
       "--expected-revision",
@@ -247,7 +247,9 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
       id: parsed.positionals[0]!,
       driver,
       model: taskOption(parsed, "--model"),
-      ...(parsed.values.has("--variant") ? { variant: taskOption(parsed, "--variant") } : {}),
+      ...(parsed.values.has("--reasoning-effort")
+        ? { reasoningEffort: taskOption(parsed, "--reasoning-effort") }
+        : {}),
       ...(parsed.values.has("--session") ? { session: taskOption(parsed, "--session") } : {}),
       expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
       expectedRevision: taskRevision(parsed, "--expected-revision", false),

@@ -153,8 +153,9 @@ Workbench home has a task source.
   state.
 - Run an ordinary open Agent-owned project task that already has one exact
   isolated Worktree with `task run <id> --driver opencode-cli --model
-  <provider/model>` plus the returned task and source revisions; add `--variant`
-  only when explicitly selected for this attempt, and `--session <id>` to
+  <provider/model>` plus the returned task and source revisions; add
+  `--reasoning-effort` only when explicitly selected for this attempt, and
+  `--session <id>` to
   continue only the latest observed OpenCode session retained by an attributable
   previous attempt of the same still-open task in its current bound Worktree.
   A fresh run remains Git-clean-only. An explicit continuation may retain a
@@ -178,12 +179,12 @@ Workbench home has a task source.
 - Run `task attempts <id>` to project the task's recorded attempts as a
   read-only view sorted by start time. The projection reads, never copies or
   rewrites, the existing attempt, final Work Cell record, and settlement files:
-  requested driver/model/variant/session come from the attempt record, observed
-  session/cell status/usage/workspace diff/verification come from the final
-  record, and settlement status comes from the settlement. It carries the stable
-  source references and exposes per-source `available`, `unavailable`, or
-  `invalid` standing rather than dropping attributable malformed evidence. It
-  never exposes the raw Work Cell trace and changes no task or attempt state.
+  requested driver/model/reasoning effort/session come from the attempt record,
+  observed session/cell status/usage/workspace diff/verification come from the
+  final record, and settlement status comes from the settlement. It carries the
+  stable source references and exposes per-source `available`, `unavailable`,
+  or `invalid` standing rather than dropping attributable malformed evidence.
+  It never exposes the raw Work Cell trace and changes no task or attempt state.
 - `task submit` retains actor-supplied references as an unverified result claim;
   their wording or prefix never establishes verification. The Workbench UI may
   instead submit the current Autonomy-verified execution only when the task's

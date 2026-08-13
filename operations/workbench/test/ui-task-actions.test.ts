@@ -2292,7 +2292,7 @@ describe("Workbench task UI actions", () => {
       id: taskId,
       driver: "opencode-cli",
       model: "deepseek/deepseek-v4-flash",
-      variant: "low",
+      reasoningEffort: "low",
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, retainedAttemptRunner());
@@ -2319,7 +2319,7 @@ describe("Workbench task UI actions", () => {
         attemptId: attempt.attemptId,
         driver: "opencode-cli",
         model: "deepseek/deepseek-v4-flash",
-        variant: "low",
+        reasoningEffort: "low",
         observedSession: "session-ui-attempt",
         cellStatus: "passed",
         status: "recorded",

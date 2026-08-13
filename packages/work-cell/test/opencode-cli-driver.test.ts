@@ -25,7 +25,7 @@ describe("OpenCode CLI driver", () => {
     const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
       request = candidate;
       return success();
-    }), { variant: "high" });
+    }), { reasoningEffort: "high" });
     const observation = context(canonicalRoot);
 
     await driver.run(cellInput(root), observation.value);
@@ -238,7 +238,7 @@ describe("OpenCode CLI driver", () => {
 function openCodeDriver(
   root: string,
   processAdapter: OpenCodeCliProcessAdapter,
-  options: { variant?: string; sessionId?: string; timeoutMs?: number } = {},
+  options: { reasoningEffort?: string; sessionId?: string; timeoutMs?: number } = {},
 ): OpenCodeCliDriver {
   return new OpenCodeCliDriver({
     executable: "/fixture/bin/opencode", model: "anthropic/fixture",

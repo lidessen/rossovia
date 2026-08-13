@@ -2351,7 +2351,7 @@ export function restoredPrincipalLocusState(resolved) {
           <div><dt>Attempt</dt><dd>${escapeHtml(attemptId)}</dd></div>
           ${modelFact(attempt, "driver", "请求 driver")}
           ${modelFact(attempt, "model", "请求 model")}
-          ${modelFact(attempt, "variant", "请求 variant")}
+          ${modelFact(attempt, "reasoningEffort", "请求推理强度")}
           ${modelFact(attempt, "taskRevision", "Task 修订")}
           ${modelFact(attempt, "sourceRevision", "Source 修订")}
           <div><dt>请求 session</dt><dd>${escapeHtml(requestedSession || "未请求 · 新 session")}</dd></div>
