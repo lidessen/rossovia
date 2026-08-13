@@ -94,6 +94,7 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
       }
 
       try {
+        let observedModel: string | undefined;
         let providerFingerprint: string | undefined;
         const result = streamText({
           model,
@@ -112,6 +113,13 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
             return;
           }
           if (part.type === "finish-step") {
+            // AI SDK initializes finish-step.response.modelId from the
+            // constructed model. Only a different returned value proves that
+            // the provider reported an observed model identity.
+            const responseModel = part.response.modelId.trim();
+            if (responseModel !== "" && responseModel !== model.modelId) {
+              observedModel = responseModel;
+            }
             providerFingerprint ??= observedDeepSeekMetadata(part.providerMetadata).providerFingerprint;
             continue;
           }
@@ -122,8 +130,7 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
             }
             yield {
               kind: "finish",
-              provider: DEEPSEEK_PROVIDER_ID,
-              model: model.modelId,
+              ...(observedModel === undefined ? {} : { model: observedModel }),
               ...(providerFingerprint === undefined ? {} : { providerFingerprint }),
               usage: part.totalUsage,
             };

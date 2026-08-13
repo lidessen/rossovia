@@ -1,8 +1,8 @@
 {
   "probe": "conversation-deepseek-v4-pro-live-probe",
   "version": 1,
-  "intent": "One authorized read-only DeepSeek Pro/max live inquiry through the frozen P3b1 ConversationTurnPort contract. The probe records requested policy, observed provider/model identity, sanitized usage, and the event sequence. It does not modify any Task, Mission, or project state; the only write is this evidence file.",
-  "evidenceCorrection": "The adapter version used for this probe copied the requested max effort into observed evidence. DeepSeek returned no documented observed-effort field in the retained response metadata, so observed reasoning effort is unavailable. The response text is model-authored content, not provider metadata. No paid probe was rerun.",
+  "intent": "One authorized read-only DeepSeek Pro/max live inquiry through the frozen P3b1 ConversationTurnPort contract. The probe records requested policy, returned identity availability, sanitized usage, and the event sequence. It does not modify any Task, Mission, or project state; the only write is this evidence file.",
+  "evidenceCorrection": "The adapter version used for this probe copied configured provider, constructed model, and requested max effort into observed evidence. The retained response metadata does not prove a provider-returned provider, model, or effort identity, so all three observed fields are unavailable. The response text is model-authored content, not provider metadata. No paid probe was rerun.",
   "authorization": "P3b2 acceptance: one authorized DeepSeek Pro/max read-only live inquiry",
   "startedAt": "2026-08-13T17:50:16.885Z",
   "environment": {
@@ -24,8 +24,8 @@
   },
   "observed": {
     "outcome": "finished",
-    "provider": "deepseek",
-    "model": "deepseek-v4-pro",
+    "provider": "unavailable",
+    "model": "unavailable",
     "reasoningEffort": "unavailable",
     "usage": {
       "inputTokens": 289,

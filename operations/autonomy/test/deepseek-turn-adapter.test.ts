@@ -127,8 +127,6 @@ test("streams every text delta and does not infer observed effort from the reque
     { kind: "delta", text: "settled." },
     {
       kind: "finish",
-      provider: "deepseek",
-      model: "deepseek-v4-pro",
       usage: FLAT_USAGE_PASSTHROUGH,
     },
   ]);
@@ -152,8 +150,6 @@ test("retains a provider fingerprint only when DeepSeek returns it in provider m
 
   expect(events.at(-1)).toEqual({
     kind: "finish",
-    provider: "deepseek",
-    model: "deepseek-v4-pro",
     providerFingerprint: "fp-returned",
     usage: FLAT_USAGE_PASSTHROUGH,
   });
@@ -383,11 +379,11 @@ test("omits observed reasoning effort and disables thinking when the policy is d
   expect(seen[0]?.inferencePolicy).toEqual({ thinking: "disabled" });
   expect(events).toEqual([
     { kind: "delta", text: "settled" },
-    { kind: "finish", provider: "deepseek", model: "deepseek-v4-pro", usage: FLAT_USAGE_PASSTHROUGH },
+    { kind: "finish", usage: FLAT_USAGE_PASSTHROUGH },
   ]);
 });
 
-test("settles a normal turn with requested max separate from unavailable observed effort", async () => {
+test("settles with requested identity separate from unavailable observed provider, model, and effort", async () => {
   const seen: ConversationTurnSafetyEvent[] = [];
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
@@ -408,8 +404,6 @@ test("settles a normal turn with requested max separate from unavailable observe
   expect(result.requested.reasoningEffort).toBe("max");
   expect(result.observed).toEqual({
     outcome: "finished",
-    provider: "deepseek",
-    model: "deepseek-v4-pro",
     reasoningEffort: "unavailable",
     usage: SANITIZED_USAGE,
   });
@@ -420,7 +414,7 @@ test("settles a normal turn with requested max separate from unavailable observe
   ]);
 });
 
-test("a policy/model mismatch through the injected real adapter remains a visible failure with no fallback", async () => {
+test("a provider-returned flash model mismatches requested and constructed pro with no fallback", async () => {
   const seen: ConversationTurnSafetyEvent[] = [];
   let constructed = 0;
   const adapter = createDeepSeekTurnAdapter({
@@ -431,18 +425,19 @@ test("a policy/model mismatch through the injected real adapter remains a visibl
     reasoningEffort: "max",
     createModel: () => {
       constructed += 1;
-      return mockModel("deepseek-v4-pro", adapterParts());
+      return mockModel("deepseek-v4-pro", [
+        { type: "response-metadata", modelId: "deepseek-v4-flash" },
+        ...adapterParts(),
+      ]);
     },
   });
-  const result = await startConversationTurn(turnOptions(seen, adapter, {
-    ...CURRENT_COORDINATOR_POLICY,
-    model: "deepseek-v4-flash",
-    disclosureEnvelope: "Sources are disclosed by ref and digest only.",
-  })).result;
+  const result = await startConversationTurn(turnOptions(seen, adapter)).result;
 
   assertFailed(result);
   expect(constructed).toBe(1);
-  expect(result.error).toContain("observed model deepseek-v4-pro does not match requested model deepseek-v4-flash");
+  expect(result.error).toContain("observed model deepseek-v4-flash does not match requested model deepseek-v4-pro");
+  expect(result.requested.model).toBe("deepseek-v4-pro");
+  expect(result.observed.model).toBe("deepseek-v4-flash");
   expect(seen.some((event) => event.kind === "error")).toBe(true);
   expect(seen.some((event) => event.kind === "finished")).toBe(false);
 });

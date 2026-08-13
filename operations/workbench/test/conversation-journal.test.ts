@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -228,7 +228,7 @@ describe("FileConversationJournal sequence and replay", () => {
     expect(await journal.lastCursor(conversation)).toBe(7);
   });
 
-  test("serializes two same-home journal instances and visibly rejects an independently held writer lease", async () => {
+  test("rejects a live competing writer and recovers its lease after that owner is killed", async () => {
     const root = mkdtempSync(join(tmpdir(), "rossovia-conversation-journal-"));
     temporaryRoots.push(root);
     const first = new FileConversationJournal(root);
@@ -243,16 +243,57 @@ describe("FileConversationJournal sequence and replay", () => {
     expect(new Set(events.map((event) => event.eventId)).size).toBe(12);
 
     const lockPath = `${first.conversationPath(conversation)}.writer.lock`;
-    closeSync(openSync(lockPath, "wx"));
+    const leaseId = randomUUID();
+    const child = Bun.spawn([process.execPath, "-e", `
+      import { mkdirSync, writeFileSync } from "node:fs";
+      import { join } from "node:path";
+      const lockPath = process.env.ROSSOVIA_TEST_LOCK_PATH;
+      const leaseId = process.env.ROSSOVIA_TEST_LEASE_ID;
+      if (!lockPath || !leaseId) throw new Error("missing fixture lease environment");
+      mkdirSync(lockPath);
+      writeFileSync(join(lockPath, "owner.json"), JSON.stringify({
+        version: "rosso.conversation-writer-lease.v1",
+        pid: process.pid,
+        leaseId,
+      }) + "\\n");
+      setInterval(() => {}, 1_000);
+    `], {
+      env: {
+        ...process.env,
+        ROSSOVIA_TEST_LOCK_PATH: lockPath,
+        ROSSOVIA_TEST_LEASE_ID: leaseId,
+      },
+      stdout: "ignore",
+      stderr: "pipe",
+    });
     try {
+      await waitFor(() => existsSync(join(lockPath, "owner.json")));
       await expect(receiptedMessage(second, conversation, "held by another process"))
         .rejects.toBeInstanceOf(ConversationJournalWriterConflictError);
       expect(await first.lastCursor(conversation)).toBe(11);
+      child.kill("SIGKILL");
+      await child.exited;
+
+      const recovered = await receiptedMessage(second, conversation, "after killed writer");
+      expect(recovered.event.sequence).toBe(12);
+      expect(await first.lastCursor(conversation)).toBe(12);
+      expect(existsSync(lockPath)).toBe(false);
     } finally {
-      unlinkSync(lockPath);
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+        await child.exited;
+      }
     }
   });
 });
+
+async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`fixture did not become ready within ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 describe("FileConversationJournal fsync seam and tail repair", () => {
   test("reads ignore an incomplete tail and the next append truncates it without losing fsynced events", async () => {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { mkdir, open, readFile, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   CONVERSATION_EVENT_VERSION,
@@ -274,21 +274,111 @@ export class ConversationJournalWriterConflictError extends Error {
 async function withFilesystemWriterLease(journalPath: string, action: () => Promise<void>): Promise<void> {
   const lockPath = `${journalPath}.writer.lock`;
   await mkdir(dirname(journalPath), { recursive: true });
-  let lease;
+  const owner = WriterLeaseOwnerSchema.parse({
+    version: WRITER_LEASE_VERSION,
+    pid: process.pid,
+    leaseId: randomUUID(),
+  });
+  const candidatePath = `${lockPath}.candidate-${owner.leaseId}`;
+  await mkdir(candidatePath);
   try {
-    lease = await open(lockPath, "wx");
+    await writeFile(join(candidatePath, WRITER_LEASE_OWNER_FILE), `${JSON.stringify(owner)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await installWriterLease(candidatePath, lockPath);
+    await action();
+  } finally {
+    await removeWriterLeaseDirectory(candidatePath);
+    await releaseWriterLease(lockPath, owner.leaseId);
+  }
+}
+
+const WRITER_LEASE_VERSION = "rosso.conversation-writer-lease.v1" as const;
+const WRITER_LEASE_OWNER_FILE = "owner.json";
+const WriterLeaseOwnerSchema = z.object({
+  version: z.literal(WRITER_LEASE_VERSION),
+  pid: z.number().int().positive(),
+  leaseId: z.string().uuid(),
+}).strict();
+type WriterLeaseOwner = z.infer<typeof WriterLeaseOwnerSchema>;
+
+async function installWriterLease(candidatePath: string, lockPath: string): Promise<void> {
+  try {
+    await rename(candidatePath, lockPath);
+    return;
   } catch (error) {
-    if (isAlreadyExists(error)) throw new ConversationJournalWriterConflictError(lockPath);
+    if (!isOccupiedLeasePath(error)) throw error;
+  }
+
+  const existing = await readWriterLeaseOwner(lockPath);
+  if (existing === undefined || !isProcessDefinitelyAbsent(existing.pid)) {
+    throw new ConversationJournalWriterConflictError(lockPath);
+  }
+
+  // All contenders for one stale lease use the same non-empty recovery
+  // tombstone. It stays beside the journal: a contender delayed after reading
+  // this stale owner can never rename a newly acquired live lease over it.
+  const recoveryPath = `${lockPath}.recovered-${existing.leaseId}`;
+  try {
+    await rename(lockPath, recoveryPath);
+  } catch (error) {
+    if (isMissing(error) || isOccupiedLeasePath(error)) {
+      throw new ConversationJournalWriterConflictError(lockPath);
+    }
     throw error;
   }
   try {
-    await action();
-  } finally {
-    try {
-      await lease.close();
-    } finally {
-      await unlink(lockPath);
-    }
+    await rename(candidatePath, lockPath);
+  } catch (error) {
+    if (isOccupiedLeasePath(error)) throw new ConversationJournalWriterConflictError(lockPath);
+    throw error;
+  }
+}
+
+async function readWriterLeaseOwner(lockPath: string): Promise<WriterLeaseOwner | undefined> {
+  try {
+    return WriterLeaseOwnerSchema.parse(
+      JSON.parse(await readFile(join(lockPath, WRITER_LEASE_OWNER_FILE), "utf8")),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function isProcessDefinitelyAbsent(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return typeof error === "object" && error !== null && "code" in error &&
+      (error as { code?: unknown }).code === "ESRCH";
+  }
+}
+
+async function releaseWriterLease(lockPath: string, leaseId: string): Promise<void> {
+  const owner = await readWriterLeaseOwner(lockPath);
+  if (owner?.leaseId !== leaseId) return;
+  const releasePath = `${lockPath}.releasing-${leaseId}`;
+  try {
+    await rename(lockPath, releasePath);
+  } catch (error) {
+    if (isMissing(error)) return;
+    throw error;
+  }
+  await removeWriterLeaseDirectory(releasePath);
+}
+
+async function removeWriterLeaseDirectory(path: string): Promise<void> {
+  try {
+    await unlink(join(path, WRITER_LEASE_OWNER_FILE));
+  } catch (error) {
+    if (!isMissing(error) && !isNotDirectory(error)) throw error;
+  }
+  try {
+    await rmdir(path);
+  } catch (error) {
+    if (!isMissing(error)) throw error;
   }
 }
 
@@ -421,9 +511,16 @@ function isMissing(error: unknown): boolean {
     (error as { code?: unknown }).code === "ENOENT";
 }
 
-function isAlreadyExists(error: unknown): boolean {
+function isOccupiedLeasePath(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("code" in error)) return false;
+  return ["EEXIST", "ENOTEMPTY", "EISDIR", "ENOTDIR"].includes(
+    String((error as { code?: unknown }).code),
+  );
+}
+
+function isNotDirectory(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error &&
-    (error as { code?: unknown }).code === "EEXIST";
+    (error as { code?: unknown }).code === "ENOTDIR";
 }
 
 async function repairIncompleteTail(path: string): Promise<void> {
