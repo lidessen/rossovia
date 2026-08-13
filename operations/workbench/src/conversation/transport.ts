@@ -133,6 +133,8 @@ const DefaultDeltaDelayMs = 10;
 export interface ConversationSocketRuntimeOptions {
   /** Delay between provisional echo deltas of one fake turn. */
   readonly deltaDelayMs?: number;
+  /** Delay before the replay read, to make replay-phase behavior deterministic in tests. */
+  readonly replayDelayMs?: number;
   /** Clock seam for the owned journal; defaults to ISO now. */
   readonly now?: () => string;
 }
@@ -152,25 +154,29 @@ export interface ConversationSocketRuntimeOptions {
 export class ConversationSocketRuntime {
   readonly journal: FileConversationJournal;
   private readonly deltaDelayMs: number;
+  private readonly replayDelayMs: number;
   private readonly sockets = new Map<Bun.ServerWebSocket<ConversationSocketData>, SocketEntry>();
   private readonly subscribers = new Map<string, Set<SocketEntry>>();
 
   constructor(root: string, options: ConversationSocketRuntimeOptions = {}) {
     this.journal = new FileConversationJournal(root, options.now);
     this.deltaDelayMs = options.deltaDelayMs ?? DefaultDeltaDelayMs;
+    this.replayDelayMs = options.replayDelayMs ?? 0;
   }
 
   /**
    * Validate one upgrade request for the exact socket route, loopback
    * origin, UUID conversation identity, and `after` cursor, then upgrade it.
-   * Returns a rejection response, or `undefined` when the socket was
-   * upgraded (Bun ignores the fetch return after a successful upgrade).
+   * A cursor above the conversation's current journal head is rejected
+   * rather than accepted, so the socket can never skip live events. Returns
+   * a rejection response, or `undefined` when the socket was upgraded (Bun
+   * ignores the fetch return after a successful upgrade).
    */
-  upgrade(
+  async upgrade(
     request: Request,
     server: Bun.Server<ConversationSocketData>,
     port: number,
-  ): Response | undefined {
+  ): Promise<Response | undefined> {
     const url = new URL(request.url);
     const candidate = conversationSocketId(url.pathname);
     if (candidate === null) {
@@ -186,6 +192,17 @@ export class ConversationSocketRuntime {
     const cursor = parseAfterCursor(url.searchParams.get("after"));
     if (cursor === null) {
       return jsonError(400, "invalid-cursor", "after must be an integer of at least -1");
+    }
+    let head: number;
+    try {
+      head = await this.journal.lastCursor(parsedId.data);
+    } catch (error: unknown) {
+      return jsonError(500, "journal-error",
+        `conversation journal read failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (cursor > head) {
+      return jsonError(400, "cursor-beyond-head",
+        `after ${cursor} exceeds the conversation journal head ${head}`, { head });
     }
     if (!server.upgrade(request, {
       data: { conversationId: parsedId.data, cursor },
@@ -223,6 +240,7 @@ export class ConversationSocketRuntime {
 
   private async replay(entry: SocketEntry): Promise<void> {
     try {
+      if (this.replayDelayMs > 0) await Bun.sleep(this.replayDelayMs);
       const events = await this.journal.readEventsAfter(entry.conversationId, entry.replayedUpTo);
       for (const event of events) {
         if (entry.closed) return;
@@ -279,7 +297,10 @@ export class ConversationSocketRuntime {
         payload: frame.payload,
       });
       if (result.duplicate) {
-        this.send(entry, journalEventFrame(result.event));
+        // The retained receipt is a journal.event like any other: it goes
+        // through the replay buffer/dedup path so a replay-phase duplicate
+        // can never be delivered out of journal order.
+        this.broadcast(entry.conversationId, journalEventFrame(result.event));
         return;
       }
       this.broadcast(entry.conversationId, journalEventFrame(result.event));
@@ -397,8 +418,13 @@ function chunkText(text: string, size: number): string[] {
   return chunks;
 }
 
-function jsonError(status: number, error: string, message: string): Response {
-  return Response.json({ error, message }, {
+function jsonError(
+  status: number,
+  error: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): Response {
+  return Response.json({ error, message, ...extra }, {
     status,
     headers: {
       "Cache-Control": "no-store",

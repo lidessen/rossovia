@@ -97,7 +97,7 @@ export function createWorkbenchRequestHandler(
           message: "The conversation socket route requires the native Bun server instance.",
         }, 500);
       }
-      const outcome = dependencies.conversationSocket.upgrade(request, server, server.port ?? options.port);
+      const outcome = await dependencies.conversationSocket.upgrade(request, server, server.port ?? options.port);
       if (outcome !== undefined) return outcome;
       // A successful upgrade makes Bun ignore the fetch return.
       return undefined as unknown as Response;

@@ -48,25 +48,36 @@ function stubServer(port = 4317, acceptUpgrade = true): {
 }
 
 function routeFixture(): {
+  runtime: ConversationSocketRuntime;
   handler: (request: Request, server?: Bun.Server<ConversationSocketData>) => Promise<Response>;
   server: Bun.Server<ConversationSocketData>;
   upgrades: ConversationSocketData[];
 } {
+  const runtime = new ConversationSocketRuntime(tempRoot());
   const { server, upgrades } = stubServer();
   const handler = createWorkbenchRequestHandler(
     { port: 4317, roots: [] },
     {} as AutonomyClient,
-    { conversationSocket: new ConversationSocketRuntime(tempRoot()) },
+    { conversationSocket: runtime },
   );
-  return { handler, server, upgrades };
+  return { runtime, handler, server, upgrades };
 }
 
-async function startServer(root: string, deltaDelayMs = 12): Promise<{
+async function receiptedJournal(runtime: ConversationSocketRuntime, conversationId: string, count: number): Promise<void> {
+  for (let index = 0; index < count; index += 1) {
+    await runtime.journal.submitMessage(conversationId, {
+      clientMessageId: randomUUID(),
+      payload: `fixture message ${index}`,
+    });
+  }
+}
+
+async function startServer(root: string, deltaDelayMs = 12, replayDelayMs = 0): Promise<{
   runtime: ConversationSocketRuntime;
   server: Bun.Server<ConversationSocketData>;
   socketUrl: (conversationId: string, after: number) => string;
 }> {
-  const runtime = new ConversationSocketRuntime(root, { deltaDelayMs });
+  const runtime = new ConversationSocketRuntime(root, { deltaDelayMs, replayDelayMs });
   const handler = createWorkbenchRequestHandler(
     { port: 0, roots: [] },
     {} as AutonomyClient,
@@ -134,8 +145,9 @@ function receiptFrames(messages: readonly ServerFrame[], clientMessageId: string
 
 describe("conversation socket route validation", () => {
   test("upgrades the exact socket route with a UUID conversationId and the after cursor", async () => {
-    const { handler, server, upgrades } = routeFixture();
+    const { runtime, handler, server, upgrades } = routeFixture();
     const conversationId = randomUUID();
+    await receiptedJournal(runtime, conversationId, 4);
     const outcome = await handler(new Request(socketPath(conversationId, "?after=3")), server);
 
     expect(outcome).toBeUndefined();
@@ -160,6 +172,26 @@ describe("conversation socket route validation", () => {
       expect(await response.json()).toMatchObject({ error: "invalid-cursor" });
     }
     expect(upgrades).toEqual([]);
+  });
+
+  test("rejects an after cursor beyond the conversation's current journal head", async () => {
+    const { runtime, handler, server, upgrades } = routeFixture();
+    const conversationId = randomUUID();
+    await receiptedJournal(runtime, conversationId, 3);
+    expect(await runtime.journal.lastCursor(conversationId)).toBe(2);
+
+    const beyondHead = await handler(new Request(socketPath(conversationId, "?after=3")), server);
+    expect(beyondHead.status).toBe(400);
+    expect(await beyondHead.json()).toMatchObject({
+      error: "cursor-beyond-head",
+      head: 2,
+    });
+
+    const atHead = await handler(new Request(socketPath(conversationId, "?after=2")), server);
+    const fullReplay = await handler(new Request(socketPath(conversationId, "?after=-1")), server);
+    expect(atHead).toBeUndefined();
+    expect(fullReplay).toBeUndefined();
+    expect(upgrades.map((upgrade) => upgrade.cursor)).toEqual([2, -1]);
   });
 
   test("rejects a non-UUID conversationId", async () => {
@@ -228,7 +260,7 @@ describe("conversation socket route validation", () => {
   test("returns 400 when the native server refuses the upgrade", async () => {
     const { server } = stubServer(4317, false);
     const runtime = new ConversationSocketRuntime(tempRoot());
-    const response = runtime.upgrade(
+    const response = await runtime.upgrade(
       new Request(socketPath(randomUUID(), "?after=-1")),
       server,
       4317,
@@ -342,6 +374,53 @@ describe("conversation socket live delivery", () => {
       };
       expect(echoByTurn.get(turnIdAt(1))).toBe(longPayload);
       expect(echoByTurn.get(turnIdAt(3))).toBe("second while streaming");
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a cursor at the journal head still receives later live durable events", async () => {
+    const root = tempRoot();
+    const { server, socketUrl } = await startServer(root);
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "first intent");
+      await waitFor(() => durableSequences(client.messages).length === 3, "first turn settles");
+      expect(durableSequences(client.messages)).toEqual([0, 1, 2]);
+      client.ws.close();
+
+      const atHead = await connect(socketUrl(conversationId, 2));
+      try {
+        await Bun.sleep(100);
+        expect(atHead.messages).toEqual([]);
+        submit(atHead, randomUUID(), "later intent");
+        await waitFor(() => durableSequences(atHead.messages).length === 3, "later live events after the head cursor");
+        expect(durableSequences(atHead.messages)).toEqual([3, 4, 5]);
+      } finally {
+        atHead.ws.close();
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("rejects an upgrade with a cursor beyond the current journal head at the HTTP boundary", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root);
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "settled turn");
+      await waitFor(() => durableSequences(client.messages).length === 3, "turn settles");
+      expect(await runtime.journal.lastCursor(conversationId)).toBe(2);
+
+      const response = await fetch(
+        `http://127.0.0.1:${server.port}/api/conversations/${conversationId}/socket?after=9`,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "cursor-beyond-head", head: 2 });
     } finally {
       client.ws.close();
       server.stop(true);
@@ -498,6 +577,43 @@ describe("conversation socket reconnect replay", () => {
         } finally {
           fullReplay.ws.close();
         }
+      } finally {
+        reconnected.ws.close();
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("a duplicate submit during replay is buffered, ordered, and deduplicated", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root, 12, 150);
+    const conversationId = randomUUID();
+    const firstClientMessageId = randomUUID();
+    const first = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(first, firstClientMessageId, "first intent");
+      await waitFor(() => durableSequences(first.messages).length === 3, "first turn settles");
+      submit(first, randomUUID(), "second intent");
+      await waitFor(() => durableSequences(first.messages).length === 6, "second turn settles");
+      first.ws.close();
+
+      const reconnected = await connect(socketUrl(conversationId, 1));
+      submit(reconnected, firstClientMessageId, "first intent");
+      try {
+        await waitFor(
+          () => durableSequences(reconnected.messages).length === 4,
+          "replay completes with the buffered duplicate receipt deduplicated",
+        );
+        expect(durableSequences(reconnected.messages)).toEqual([2, 3, 4, 5]);
+        expect(reconnected.messages.some((frame) =>
+          frame.type === "journal.event" && frame.event.sequence <= 1)).toBe(false);
+        expect(reconnected.messages.filter((frame) => frame.type === "response.delta")).toEqual([]);
+
+        const events = await runtime.journal.readEvents(conversationId);
+        expect(events.map((event) => event.sequence)).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(events.filter((event) => event.type === "message.received")).toHaveLength(2);
+        expect(events.filter((event) => event.type === "coordinator.turn-started")).toHaveLength(2);
       } finally {
         reconnected.ws.close();
       }
