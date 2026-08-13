@@ -7,6 +7,7 @@ import {
   CONVERSATION_EVENT_VERSION,
   ConversationConflictError,
   digest,
+  StoredActionRequestedDataSchema,
   type ConversationEvent,
   type RequestedCoordinatorPolicy,
 } from "../src/conversation/contracts";
@@ -14,6 +15,7 @@ import {
   ConversationJournalWriterConflictError,
   FileConversationJournal,
 } from "../src/conversation/journal";
+import type { ConversationOperation } from "../../autonomy/src/conversation-coordinator";
 
 const temporaryRoots: string[] = [];
 
@@ -37,6 +39,43 @@ const policy: RequestedCoordinatorPolicy = {
   thinking: "enabled",
   reasoningEffort: "max",
 };
+
+function operationFor(kind: "task_create" | "task_correct" | "task_continue" | "work_control"): ConversationOperation {
+  switch (kind) {
+    case "task_create":
+      return {
+        kind,
+        title: "fixture task",
+        objective: "create the fixture task",
+        acceptance: ["fixture acceptance"],
+        projectId: "fixture-project",
+        expectedPrimaryHead: "1".repeat(40),
+        worktreePath: "/tmp/fixture-worktree",
+        expectedWorktreeHead: "1".repeat(40),
+      };
+    case "task_correct":
+      return {
+        kind,
+        taskId: "fixture-task-id",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+        statement: "fixture correction",
+      };
+    case "task_continue":
+      return {
+        kind,
+        taskId: "fixture-task-id",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      };
+    case "work_control":
+      return {
+        kind,
+        carrierId: "fixture-carrier",
+        control: "stop",
+      };
+  }
+}
 
 async function receiptedMessage(
   journal: FileConversationJournal,
@@ -164,7 +203,7 @@ describe("FileConversationJournal sequence and replay", () => {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "task_create",
+      operation: operationFor("task_create"),
     });
     const settled = await journal.settleAction(conversation, {
       actionId: action.data.actionId,
@@ -304,7 +343,7 @@ describe("FileConversationJournal fsync seam and tail repair", () => {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "work_control",
+      operation: operationFor("work_control"),
     });
     const path = journal.conversationPath(conversation);
     const retained = await journal.readEvents(conversation);
@@ -394,14 +433,14 @@ describe("FileConversationJournal causal integrity", () => {
       actionId: randomUUID(),
       turnId: randomUUID(),
       messageId: message.event.data.messageId,
-      kind: "task_create",
+      operation: operationFor("task_create"),
     })).rejects.toThrow(/no started turn/);
 
     await expect(journal.requestAction(conversation, {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: randomUUID(),
-      kind: "task_create",
+      operation: operationFor("task_create"),
     })).rejects.toThrow(/does not match message/);
 
     await expect(journal.settleAction(conversation, {
@@ -445,13 +484,13 @@ describe("FileConversationJournal causal integrity", () => {
       actionId,
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "task_correct",
+      operation: operationFor("task_correct"),
     });
     await expect(journal.requestAction(conversation, {
       actionId,
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "task_correct",
+      operation: operationFor("task_correct"),
     })).rejects.toThrow(/already requested action/);
 
     await journal.settleAction(conversation, {
@@ -491,7 +530,7 @@ describe("FileConversationJournal causal integrity", () => {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "work_control",
+      operation: operationFor("work_control"),
     });
     await journal.interruptTurn(conversation, {
       turnId: turn.data.turnId,
@@ -504,6 +543,84 @@ describe("FileConversationJournal causal integrity", () => {
       evidenceRefs: ["attempt:started:1"],
     });
     expect(settled.sequence).toBe(4);
+  });
+  test("derives the stored action kind from the exact operation and rejects a caller-supplied kind field", async () => {
+    const journal = createJournal();
+    const conversation = conversationId();
+    const message = await receiptedMessage(journal, conversation);
+    const turn = await journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+    });
+
+    const action = await journal.requestAction(conversation, {
+      actionId: randomUUID(),
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      operation: operationFor("task_correct"),
+    });
+    expect(action.data.kind).toBe("task_correct");
+    expect(action.data.operation.kind).toBe("task_correct");
+
+    // The draft schema carries no kind field: naming a different kind is
+    // structurally rejected before any append or effect.
+    await expect(journal.requestAction(conversation, {
+      actionId: randomUUID(),
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      kind: "task_create",
+      operation: operationFor("task_correct"),
+    } as never)).rejects.toThrow();
+
+    const events = await journal.readEvents(conversation);
+    expect(events.filter((event) => event.type === "action.requested")).toHaveLength(1);
+    const replayed = await journal.readEventsAfter(conversation, -1);
+    const requested = replayed[2];
+    if (requested?.type !== "action.requested") throw new Error("expected a replayed action.requested");
+    expect(requested.data.kind).toBe("task_correct");
+  });
+
+  test("rejects a persisted action.requested line whose stored kind differs from its operation kind", async () => {
+    const journal = createJournal();
+    const conversation = conversationId();
+    const { message, turn } = await startedTurn(journal, conversation);
+
+    // A structurally complete stored line whose kind/operation pair is
+    // inconsistent: the stored kind says task_create while the operation is
+    // a task_correct. The durable reader must refuse it, not guess.
+    const mismatchedData = {
+      actionId: randomUUID(),
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      kind: "task_create",
+      operation: {
+        kind: "task_correct",
+        taskId: "fixture-task-id",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+        statement: "fixture correction",
+      },
+    };
+    const mismatchedLine = {
+      version: CONVERSATION_EVENT_VERSION,
+      eventId: randomUUID(),
+      conversationId: conversation,
+      sequence: 2,
+      at: new Date().toISOString(),
+      type: "action.requested",
+      data: mismatchedData,
+    };
+    const path = journal.conversationPath(conversation);
+    appendFileSync(path, `${JSON.stringify(mismatchedLine)}\n`, "utf8");
+
+    await expect(journal.readEvents(conversation)).rejects.toThrow();
+    // Rejection is read-only: the stored line is preserved, never rewritten.
+    expect(readFileSync(path, "utf8")).toContain("task_correct");
+
+    // The schema itself rejects the mismatched pairing before any event
+    // wrapping or journal append.
+    expect(() => StoredActionRequestedDataSchema.parse(mismatchedData)).toThrow();
   });
 });
 
@@ -521,7 +638,7 @@ describe("FileConversationJournal durable vocabulary boundary", () => {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "task_continue",
+      operation: operationFor("task_continue"),
     });
     const settledAction = await journal.settleAction(conversation, {
       actionId: action.data.actionId,
@@ -608,7 +725,7 @@ describe("FileConversationJournal review corrections M1-M3", () => {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "task_create",
+      operation: operationFor("task_create"),
     });
     const settled = await journal.settleAction(conversation, {
       actionId: action.data.actionId,
@@ -715,7 +832,7 @@ describe("FileConversationJournal review corrections M1-M3", () => {
       actionId: randomUUID(),
       turnId: turn.data.turnId,
       messageId: message.event.data.messageId,
-      kind: "task_create",
+      operation: operationFor("task_create"),
     });
     const reason = "provider disconnected mid-flight with an uninspectable write";
     const uncertain = await journal.uncertainAction(conversation, {

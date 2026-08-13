@@ -1,0 +1,269 @@
+{
+  "probe": "conversation-socket-task-create-correct-live-probe",
+  "version": 1,
+  "intent": "One authorized disposable-home local loopback Workbench conversation socket probe through the real production path: the socket runtime runs the production DeepSeek Pro/max coordinator turn owner, the canonical context provider, and the canonical Task operation host. The probe submits one create message and one correction message in a disposable OS temp Workbench home, then records the durable journal events, the canonical Task ID/revision lineage, and sanitized provider evidence. It does not touch the Principal's Rossovia home; the only writes are this evidence file and a disposable OS temp home.",
+  "authorization": "P4a acceptance: one authorized disposable-home socket-to-DeepSeek live probe that creates then corrects one Task",
+  "startedAt": "2026-08-13T22:03:37.390Z",
+  "environment": {
+    "DEEPSEEK_API_KEY": "set",
+    "DEEPSEEK_BASE_URL": "unset",
+    "ROSSO_HOME": "unset (principal home untouched)"
+  },
+  "fixture": {
+    "home": "disposable OS temp (removed after the probe)",
+    "projectId": "conversation-probe-fixture",
+    "primaryHead": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12",
+    "worktreePath": "/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree",
+    "worktreeHead": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+  },
+  "loopback": {
+    "hostname": "127.0.0.1",
+    "port": 56777
+  },
+  "finishedAt": "2026-08-13T22:04:27.640Z",
+  "conversationId": "9ea80334-2b69-44c8-a072-3e9f5a82e72d",
+  "messages": [
+    {
+      "clientMessageId": "de9d90b7-d7ff-4797-881c-451097bfc5ff",
+      "payload": "Create a local task for the registered project 'conversation-probe-fixture': add a bounded probe marker file to the dedicated worktree at /var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree. The task acceptance is that the marker file exists. Use the project and worktree selectors from the current projection."
+    },
+    {
+      "clientMessageId": "097a642d-87ce-4285-b1b8-48b30d5fe0a1",
+      "payload": "Keep this same task, but the result must also preserve a second invariant: the probe marker file must contain exactly one line. Use the current taskId, sourceRevision, and revision from the current projection."
+    }
+  ],
+  "journalEvents": [
+    {
+      "sequence": 0,
+      "type": "message.received",
+      "at": "2026-08-13T22:03:37.500Z"
+    },
+    {
+      "sequence": 1,
+      "type": "coordinator.turn-started",
+      "at": "2026-08-13T22:03:37.561Z"
+    },
+    {
+      "sequence": 2,
+      "type": "action.requested",
+      "at": "2026-08-13T22:04:17.213Z"
+    },
+    {
+      "sequence": 3,
+      "type": "action.settled",
+      "at": "2026-08-13T22:04:17.295Z"
+    },
+    {
+      "sequence": 4,
+      "type": "coordinator.turn-settled",
+      "at": "2026-08-13T22:04:17.297Z"
+    },
+    {
+      "sequence": 5,
+      "type": "message.received",
+      "at": "2026-08-13T22:04:17.313Z"
+    },
+    {
+      "sequence": 6,
+      "type": "coordinator.turn-started",
+      "at": "2026-08-13T22:04:17.367Z"
+    },
+    {
+      "sequence": 7,
+      "type": "action.requested",
+      "at": "2026-08-13T22:04:27.567Z"
+    },
+    {
+      "sequence": 8,
+      "type": "action.settled",
+      "at": "2026-08-13T22:04:27.580Z"
+    },
+    {
+      "sequence": 9,
+      "type": "coordinator.turn-settled",
+      "at": "2026-08-13T22:04:27.583Z"
+    }
+  ],
+  "requestedActions": [
+    {
+      "actionId": "c972ccbd-48aa-41e3-841a-a3836f26e796",
+      "turnId": "b6450dee-37fc-4a23-a2eb-affe1a7af159",
+      "kind": "task_create",
+      "operation": {
+        "kind": "task_create",
+        "title": "Add bounded probe marker file to the dedicated worktree",
+        "objective": "Add a bounded probe marker file to the dedicated worktree at /private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree for the registered project conversation-probe-fixture.",
+        "acceptance": [
+          "The probe marker file exists in the dedicated worktree at /private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree."
+        ],
+        "todos": [
+          "Write a bounded probe marker file in the dedicated worktree",
+          "Confirm the marker file exists in the dedicated worktree"
+        ],
+        "projectId": "conversation-probe-fixture",
+        "expectedPrimaryHead": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12",
+        "worktreePath": "/private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree",
+        "expectedWorktreeHead": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+      }
+    },
+    {
+      "actionId": "24941d4f-c6b6-436d-9b56-68ae50b63fb0",
+      "turnId": "e73b510f-2b02-43e5-85a0-1f4965d2775f",
+      "kind": "task_correct",
+      "operation": {
+        "kind": "task_correct",
+        "taskId": "c02b5a78-71fb-45b5-8f5f-44dbda1d195e",
+        "expectedSourceRevision": 1,
+        "expectedRevision": 1,
+        "statement": "Add a bounded probe marker file to the dedicated worktree at /private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree for the registered project conversation-probe-fixture. The probe marker file must contain exactly one line."
+      }
+    }
+  ],
+  "settledActions": [
+    {
+      "actionId": "c972ccbd-48aa-41e3-841a-a3836f26e796",
+      "evidenceRefs": [
+        "workbench:state/tasks.json:task/c02b5a78-71fb-45b5-8f5f-44dbda1d195e@1"
+      ]
+    },
+    {
+      "actionId": "24941d4f-c6b6-436d-9b56-68ae50b63fb0",
+      "evidenceRefs": [
+        "workbench:state/tasks.json:task/c02b5a78-71fb-45b5-8f5f-44dbda1d195e@2"
+      ]
+    }
+  ],
+  "failedActions": [],
+  "uncertainActions": [],
+  "turnStarts": [
+    {
+      "turnId": "b6450dee-37fc-4a23-a2eb-affe1a7af159",
+      "requestedPolicy": {
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "thinking": "enabled",
+        "reasoningEffort": "max"
+      },
+      "prompt": {
+        "revision": "rosso.conversation-prompt.v3",
+        "digest": "16e530c354209fa1e5c72b373bd9a4b1a68406bc02eb00b7a2aabdddb05bd4e1"
+      },
+      "disclosedSources": [
+        {
+          "ref": "workbench:config/projects.json",
+          "digest": "58b6c71674a49062f0ebcf4adeae542c36f7559507cbea977030e31dbfc20e02"
+        }
+      ],
+      "sourceRevisionSelectors": [
+        {
+          "source": "project:conversation-probe-fixture",
+          "revision": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+        },
+        {
+          "source": "worktree:/private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/project",
+          "revision": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+        },
+        {
+          "source": "worktree:/private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree",
+          "revision": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+        }
+      ]
+    },
+    {
+      "turnId": "e73b510f-2b02-43e5-85a0-1f4965d2775f",
+      "requestedPolicy": {
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "thinking": "enabled",
+        "reasoningEffort": "max"
+      },
+      "prompt": {
+        "revision": "rosso.conversation-prompt.v3",
+        "digest": "4d49c3bcb384e6a70c6c17562062a61bea9df8b2e79713be45508e618b0a892d"
+      },
+      "disclosedSources": [
+        {
+          "ref": "workbench:state/tasks.json",
+          "digest": "5e1b33bb5f4b8d8e77ac8a326f158dc67b0899173f02cae1c7b46e093da4f344"
+        },
+        {
+          "ref": "workbench:config/projects.json",
+          "digest": "58b6c71674a49062f0ebcf4adeae542c36f7559507cbea977030e31dbfc20e02"
+        }
+      ],
+      "sourceRevisionSelectors": [
+        {
+          "source": "task:c02b5a78-71fb-45b5-8f5f-44dbda1d195e",
+          "revision": "1"
+        },
+        {
+          "source": "project:conversation-probe-fixture",
+          "revision": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+        },
+        {
+          "source": "worktree:/private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/project",
+          "revision": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+        },
+        {
+          "source": "worktree:/private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree",
+          "revision": "91f5c8a92231b7c48c9987978e7ad3adfbc31e12"
+        }
+      ]
+    }
+  ],
+  "turnSettlements": [
+    {
+      "turnId": "b6450dee-37fc-4a23-a2eb-affe1a7af159",
+      "response": "",
+      "observedEvidence": {
+        "fingerprint": "a307abda487cd1b463329ccb945ce396",
+        "usage": {
+          "inputTokens": 2019,
+          "outputTokens": 3680
+        }
+      }
+    },
+    {
+      "turnId": "e73b510f-2b02-43e5-85a0-1f4965d2775f",
+      "response": "",
+      "observedEvidence": {
+        "fingerprint": "a307abda487cd1b463329ccb945ce396",
+        "usage": {
+          "inputTokens": 2144,
+          "outputTokens": 1021
+        }
+      }
+    }
+  ],
+  "deltas": "",
+  "deltaCount": 0,
+  "canonicalTasks": {
+    "taskId": "c02b5a78-71fb-45b5-8f5f-44dbda1d195e",
+    "revision": 2,
+    "lifecycle": "open",
+    "binding": {
+      "kind": "project-context",
+      "projectId": "conversation-probe-fixture",
+      "worktreePath": "/private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree"
+    },
+    "originSourceRef": "conversation:9ea80334-2b69-44c8-a072-3e9f5a82e72d:action:c972ccbd-48aa-41e3-841a-a3836f26e796",
+    "corrections": [
+      {
+        "id": "77a67dc5-f547-49e4-90d9-6daef46886e0",
+        "statement": "Add a bounded probe marker file to the dedicated worktree at /private/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/rossovia-conversation-task-probe-kRbstT/worktree for the registered project conversation-probe-fixture. The probe marker file must contain exactly one line.",
+        "sourceRef": "conversation:9ea80334-2b69-44c8-a072-3e9f5a82e72d:action:24941d4f-c6b6-436d-9b56-68ae50b63fb0"
+      }
+    ]
+  },
+  "lineage": {
+    "taskCount": 1,
+    "createdAndCorrectedSameTaskId": true,
+    "createActionSourceRefMatchesOrigin": true,
+    "correctActionSourceRefMatchesCorrection": true,
+    "taskRevisionAfterCorrect": 2
+  },
+  "principalHomeUntouched": {
+    "mechanism": "the probe built its own disposable home with mkdtemp and initialized it there; ROSSO_HOME was unset"
+  },
+  "status": "finished"
+}

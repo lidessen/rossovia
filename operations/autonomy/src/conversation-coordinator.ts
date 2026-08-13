@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   composeConversationPrompt,
   DisclosedSourceSchema,
+  GitObjectSchema,
   SourceRevisionSelectorSchema,
   type ChildSummary,
   type CompactProjection,
@@ -43,6 +44,63 @@ export const ConversationTurnRequestSchema = z.discriminatedUnion("kind", [
 ]);
 export type ConversationTurnRequest = z.infer<typeof ConversationTurnRequestSchema>;
 
+/**
+ * The strict typed consequential operation vocabulary. A turn may select at
+ * most one operation per Principal message, enforced by the kernel; the host
+ * re-validates every field against current sources immediately before any
+ * effect. The schema is structure only: it never classifies prose by regex,
+ * keyword, or fixed phrase. `task_continue` and `work_control` remain typed
+ * but unavailable until the execution carrier wave owns them.
+ */
+export const TaskCreateOperationSchema = z.object({
+  kind: z.literal("task_create"),
+  title: z.string().min(1).max(300),
+  objective: z.string().min(1).max(4_000),
+  acceptance: z.array(z.string().min(1).max(1_000)).min(1).max(20),
+  todos: z.array(z.string().min(1).max(1_000)).max(50).optional(),
+  /** Exact registered project ID the model must copy from the projection. */
+  projectId: z.string().min(1),
+  /** Expected current-primary head of that registered project, copied from the projection. */
+  expectedPrimaryHead: GitObjectSchema,
+  /** Exact observed Worktree path the model must copy from the projection. */
+  worktreePath: z.string().min(1),
+  /** Expected head of that exact observed Worktree, copied from the projection. */
+  expectedWorktreeHead: GitObjectSchema,
+}).strict();
+export type TaskCreateOperation = z.infer<typeof TaskCreateOperationSchema>;
+
+export const TaskCorrectOperationSchema = z.object({
+  kind: z.literal("task_correct"),
+  taskId: z.string().min(1),
+  expectedSourceRevision: z.number().int().nonnegative(),
+  expectedRevision: z.number().int().positive(),
+  statement: z.string().min(1).max(4_000),
+}).strict();
+export type TaskCorrectOperation = z.infer<typeof TaskCorrectOperationSchema>;
+
+export const TaskContinueOperationSchema = z.object({
+  kind: z.literal("task_continue"),
+  taskId: z.string().min(1),
+  expectedSourceRevision: z.number().int().nonnegative(),
+  expectedRevision: z.number().int().positive(),
+}).strict();
+export type TaskContinueOperation = z.infer<typeof TaskContinueOperationSchema>;
+
+export const WorkControlOperationSchema = z.object({
+  kind: z.literal("work_control"),
+  carrierId: z.string().min(1),
+  control: z.enum(["pause", "resume", "stop", "recover"]),
+}).strict();
+export type WorkControlOperation = z.infer<typeof WorkControlOperationSchema>;
+
+export const ConversationOperationSchema = z.discriminatedUnion("kind", [
+  TaskCreateOperationSchema,
+  TaskCorrectOperationSchema,
+  TaskContinueOperationSchema,
+  WorkControlOperationSchema,
+]);
+export type ConversationOperation = z.infer<typeof ConversationOperationSchema>;
+
 export const SanitizedUsageSchema = z.object({
   inputTokens: z.number().nonnegative().default(0),
   outputTokens: z.number().nonnegative().default(0),
@@ -54,6 +112,7 @@ export type SanitizedUsage = z.infer<typeof SanitizedUsageSchema>;
 export const ConversationTurnPortEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("delta"), text: z.string() }).strict(),
   z.object({ kind: z.literal("request"), request: ConversationTurnRequestSchema }).strict(),
+  z.object({ kind: z.literal("operation"), operation: ConversationOperationSchema }).strict(),
   z.object({
     kind: z.literal("finish"),
     provider: z.string().min(1).optional(),
@@ -69,6 +128,7 @@ export type ConversationTurnPortEvent = z.infer<typeof ConversationTurnPortEvent
 export const ConversationTurnSafetyEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("delta"), text: z.string() }).strict(),
   z.object({ kind: z.literal("request"), request: ConversationTurnRequestSchema }).strict(),
+  z.object({ kind: z.literal("operation"), operation: ConversationOperationSchema }).strict(),
   z.object({ kind: z.literal("finished"), usage: SanitizedUsageSchema }).strict(),
   z.object({ kind: z.literal("error"), message: z.string().min(1) }).strict(),
 ]);
@@ -102,6 +162,7 @@ export const ConversationTurnResultSchema = z.discriminatedUnion("kind", [
     kind: z.literal("finished"),
     text: z.string(),
     request: ConversationTurnRequestSchema.optional(),
+    operation: ConversationOperationSchema.optional(),
     usage: SanitizedUsageSchema,
     requested: RequestedTurnEvidenceSchema,
     observed: ObservedTurnEvidenceSchema,
@@ -237,7 +298,9 @@ async function executeTurn(
 
   let text = "";
   let request: ConversationTurnRequest | undefined;
+  let operation: ConversationOperation | undefined;
   let sawRequest = false;
+  let sawOperation = false;
   let facts: ObservedFacts = {};
 
   const emit = (event: ConversationTurnSafetyEvent): void => {
@@ -275,16 +338,29 @@ async function executeTurn(
           break;
         }
         case "request": {
-          if (sawRequest) {
+          if (sawRequest || sawOperation) {
             emit({
               kind: "error",
-              message: `duplicate ${event.request.kind} request; at most one request per Principal message`,
+              message: `duplicate ${event.request.kind} request; at most one request or operation per Principal message`,
             });
-            return failed(`duplicate ${event.request.kind} request; at most one request per Principal message`);
+            return failed(`duplicate ${event.request.kind} request; at most one request or operation per Principal message`);
           }
           sawRequest = true;
           request = event.request;
           emit({ kind: "request", request: event.request });
+          break;
+        }
+        case "operation": {
+          if (sawRequest || sawOperation) {
+            emit({
+              kind: "error",
+              message: `duplicate ${event.operation.kind} operation; at most one consequential operation per Principal message`,
+            });
+            return failed(`duplicate ${event.operation.kind} operation; at most one consequential operation per Principal message`);
+          }
+          sawOperation = true;
+          operation = event.operation;
+          emit({ kind: "operation", operation: event.operation });
           break;
         }
         case "finish": {
@@ -300,6 +376,7 @@ async function executeTurn(
             kind: "finished",
             text,
             ...(request === undefined ? {} : { request }),
+            ...(operation === undefined ? {} : { operation }),
             usage,
             requested,
             observed: buildObserved("finished", facts, { usage }),

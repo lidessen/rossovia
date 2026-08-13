@@ -1062,3 +1062,494 @@ function turnIdAtFromFrames(messages: readonly ServerFrame[], sequence: number):
   }
   return frame.event.data.turnId;
 }
+
+import type {
+  ConversationOperation,
+} from "../../autonomy/src/conversation-coordinator";
+import type { CompactProjection } from "../../autonomy/src/conversation-prompt";
+import { taskActionSourceRef } from "../src/conversation/contracts";
+import {
+  ConversationOperationHostError,
+  type ConversationOperationHost,
+} from "../src/conversation/operations";
+import type { ConversationContextProvider } from "../src/conversation/context";
+
+const CREATE_OPERATION: ConversationOperation = {
+  kind: "task_create",
+  title: "Publish the bounded fixture result",
+  objective: "Produce the bounded fixture result.",
+  acceptance: ["the fixture result exists"],
+  projectId: "fixture-project",
+  expectedPrimaryHead: "1".repeat(40),
+  worktreePath: "/tmp/fixture-worktree",
+  expectedWorktreeHead: "1".repeat(40),
+};
+
+function operationScript(response: string, operation: ConversationOperation): PortScript {
+  return async function* () {
+    yield { kind: "delta", text: response };
+    yield { kind: "operation", operation };
+    yield { kind: "finish", usage: SETTLED_USAGE };
+  };
+}
+
+type FakeHostReceipt = {
+  taskId: string;
+  sourceRevision: number;
+  taskRevision: number;
+  evidenceRefs: readonly string[];
+};
+
+function scriptedOperationHost(
+  options: { failWith?: string } = {},
+): ConversationOperationHost & {
+  executed: Array<{ conversationId: string; actionId: string; operation: ConversationOperation }>;
+  canonical: Map<string, FakeHostReceipt>;
+} {
+  const canonical = new Map<string, FakeHostReceipt>();
+  const executed: Array<{ conversationId: string; actionId: string; operation: ConversationOperation }> = [];
+  return {
+    home: "/tmp/fake-operation-host",
+    executed,
+    canonical,
+    executeOperation(input) {
+      if (options.failWith !== undefined) {
+        throw new ConversationOperationHostError("project-unresolved", options.failWith);
+      }
+      executed.push(input);
+      const receipt: FakeHostReceipt = {
+        taskId: randomUUID(),
+        sourceRevision: 1,
+        taskRevision: 1,
+        evidenceRefs: [`workbench:state/tasks.json:task/${randomUUID()}@1`],
+      };
+      canonical.set(taskActionSourceRef(input.conversationId, input.actionId), receipt);
+      return receipt;
+    },
+    findCanonicalReceipt(input) {
+      const receipt = canonical.get(taskActionSourceRef(input.conversationId, input.actionId));
+      return receipt === undefined
+        ? { standing: "absent" as const }
+        : { standing: "settled" as const, receipt };
+    },
+  };
+}
+
+async function startOperationServer(
+  root: string,
+  owner: ConversationTurnOwner,
+  operationHost?: ConversationOperationHost,
+  projectionProvider?: ConversationContextProvider,
+): Promise<{
+  runtime: ConversationSocketRuntime;
+  server: Bun.Server<ConversationSocketData>;
+  socketUrl: (conversationId: string, after: number) => string;
+}> {
+  const runtime = new ConversationSocketRuntime(root, {
+    turnOwner: owner,
+    ...(operationHost === undefined ? {} : { operationHost }),
+    ...(projectionProvider === undefined ? {} : { projectionProvider }),
+  });
+  const handler = createWorkbenchRequestHandler(
+    { port: 0, roots: [] },
+    {} as AutonomyClient,
+    { conversationSocket: runtime },
+  );
+  const server: Bun.Server<ConversationSocketData> = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request, srv) => handler(request, srv),
+    websocket: runtime.websocket,
+  });
+  return {
+    runtime,
+    server,
+    socketUrl: (conversationId: string, after: number) =>
+      `ws://127.0.0.1:${server.port}/api/conversations/${conversationId}/socket?after=${after}`,
+  };
+}
+
+test("a finished turn with one typed operation journals action.requested before the effect and settles the canonical receipt", async () => {
+  const root = tempRoot();
+  const host = scriptedOperationHost();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Creating one task.", CREATE_OPERATION)]),
+    host,
+  );
+  const conversationId = randomUUID();
+  const client = await connect(socketUrl(conversationId, -1));
+  submit(client, randomUUID(), "create the fixture task");
+
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+
+  const events = await runtime.journal.readEvents(conversationId);
+  const sequences = events.map((event) => `${event.sequence}:${event.type}`);
+  expect(sequences).toEqual([
+    "0:message.received",
+    "1:coordinator.turn-started",
+    "2:action.requested",
+    "3:action.settled",
+    "4:coordinator.turn-settled",
+  ]);
+  const requested = events[2]!;
+  if (requested.type !== "action.requested") throw new Error("expected action.requested");
+  expect(requested.data.kind).toBe("task_create");
+  expect(requested.data.operation).toEqual(CREATE_OPERATION);
+  const settled = events[3]!;
+  if (settled.type !== "action.settled") throw new Error("expected action.settled");
+  expect(host.executed).toHaveLength(1);
+  expect(host.executed[0]).toMatchObject({
+    conversationId,
+    operation: CREATE_OPERATION,
+  });
+  expect(settled.data.actionId).toBe(host.executed[0]!.actionId);
+  expect([...settled.data.evidenceRefs]).toEqual(
+    Array.from(host.canonical.values())[0]!.evidenceRefs.map((ref) => ref),
+  );
+  expect(client.messages.some((frame) => frame.type === "projection.changed")).toBe(true);
+  server.stop(true);
+});
+
+test("an inquiry turn with no operation performs no action and no mutation", async () => {
+  const root = tempRoot();
+  const host = scriptedOperationHost();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([settledScript("The current state is settled; no action.")]),
+    host,
+  );
+  const conversationId = randomUUID();
+  const client = await connect(socketUrl(conversationId, -1));
+  submit(client, randomUUID(), "what is the current state");
+
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+
+  const events = await runtime.journal.readEvents(conversationId);
+  expect(events.some((event) => event.type === "action.requested")).toBe(false);
+  expect(host.executed).toHaveLength(0);
+  server.stop(true);
+});
+
+test("a duplicate client message never repeats the committed mutation", async () => {
+  const root = tempRoot();
+  const host = scriptedOperationHost();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Creating one task.", CREATE_OPERATION)]),
+    host,
+  );
+  const conversationId = randomUUID();
+  const client = await connect(socketUrl(conversationId, -1));
+  const clientMessageId = randomUUID();
+  submit(client, clientMessageId, "create the fixture task");
+  submit(client, clientMessageId, "create the fixture task");
+
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+  await waitFor(() => receiptFrames(client.messages, clientMessageId).length >= 1, "receipt delivery");
+  await Bun.sleep(50);
+
+  const events = await runtime.journal.readEvents(conversationId);
+  expect(events.filter((event) => event.type === "action.requested")).toHaveLength(1);
+  expect(events.filter((event) => event.type === "action.settled")).toHaveLength(1);
+  expect(host.executed).toHaveLength(1);
+  server.stop(true);
+});
+
+test("a reconnect replays each durable action event exactly once without re-execution", async () => {
+  const root = tempRoot();
+  const host = scriptedOperationHost();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Creating one task.", CREATE_OPERATION)]),
+    host,
+  );
+  const conversationId = randomUUID();
+  const first = await connect(socketUrl(conversationId, -1));
+  submit(first, randomUUID(), "create the fixture task");
+  await waitFor(() => first.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+  first.ws.close();
+
+  const second = await connect(socketUrl(conversationId, -1));
+  await waitFor(() => second.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "replayed turn");
+  await Bun.sleep(50);
+
+  const replayed = second.messages.filter((frame) => frame.type === "journal.event");
+  expect(replayed.filter((frame) => frame.event.type === "action.requested")).toHaveLength(1);
+  expect(replayed.filter((frame) => frame.event.type === "action.settled")).toHaveLength(1);
+  expect(host.executed).toHaveLength(1);
+  const events = await runtime.journal.readEvents(conversationId);
+  expect(events.filter((event) => event.type === "action.requested")).toHaveLength(1);
+  server.stop(true);
+});
+
+test("a refused operation journals a visible action.failed with no effect and settles the turn", async () => {
+  const root = tempRoot();
+  const host = scriptedOperationHost({ failWith: "project is not registered" });
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Attempting a create.", CREATE_OPERATION)]),
+    host,
+  );
+  const conversationId = randomUUID();
+  const client = await connect(socketUrl(conversationId, -1));
+  submit(client, randomUUID(), "create the fixture task");
+
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+
+  const events = await runtime.journal.readEvents(conversationId);
+  const failed = events.find((event) => event.type === "action.failed");
+  expect(failed).toBeDefined();
+  if (failed?.type !== "action.failed") throw new Error("expected action.failed");
+  expect(failed.data.reason).toBe("project is not registered");
+  expect(host.canonical.size).toBe(0);
+  expect(events.some((event) => event.type === "action.settled")).toBe(false);
+  server.stop(true);
+});
+
+test("a runtime without an operation host fails the action visibly instead of dropping it", async () => {
+  const root = tempRoot();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Attempting a create.", CREATE_OPERATION)]),
+  );
+  const conversationId = randomUUID();
+  const client = await connect(socketUrl(conversationId, -1));
+  submit(client, randomUUID(), "create the fixture task");
+
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+
+  const events = await runtime.journal.readEvents(conversationId);
+  const failed = events.find((event) => event.type === "action.failed");
+  expect(failed).toBeDefined();
+  if (failed?.type !== "action.failed") throw new Error("expected action.failed");
+  expect(failed.data.reason).toContain("not installed");
+  server.stop(true);
+});
+
+test("after a crash between effect and journal settlement, reconnect reconciles the canonical receipt without re-mutation", async () => {
+  const root = tempRoot();
+  const conversationId = randomUUID();
+  const host = scriptedOperationHost();
+  // Stage the crash: a durably journaled action.requested whose effect already
+  // committed in the canonical owner but whose terminal event was never
+  // journaled because the server died between the two.
+  const staging = new ConversationSocketRuntime(root, {
+    turnOwner: scriptedOwner([operationScript("Creating one task.", CREATE_OPERATION)]),
+  });
+  const message = await staging.journal.submitMessage(conversationId, {
+    clientMessageId: randomUUID(),
+    payload: "create the fixture task",
+  });
+  const turn = await staging.journal.startTurn(conversationId, {
+    turnId: randomUUID(),
+    messageId: message.event.data.messageId,
+    requestedPolicy: FAKE_REQUESTED_POLICY,
+  });
+  const actionId = randomUUID();
+  const committed: FakeHostReceipt = {
+    taskId: randomUUID(),
+    sourceRevision: 1,
+    taskRevision: 1,
+    evidenceRefs: [`workbench:state/tasks.json:task/${randomUUID()}@1`],
+  };
+  host.canonical.set(taskActionSourceRef(conversationId, actionId), committed);
+  await staging.journal.requestAction(conversationId, {
+    actionId,
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    operation: CREATE_OPERATION,
+  });
+  await staging.journal.settleTurn(conversationId, {
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    response: "created",
+  });
+
+  // The server restarts with the same canonical owner and a fresh runtime;
+  // the reconnect triggers reconciliation before replay.
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([settledScript("fixture response")]),
+    host,
+  );
+  const client = await connect(socketUrl(conversationId, -1));
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "action.settled"), "reconciled settlement");
+
+  expect(host.executed).toHaveLength(0);
+  const events = await runtime.journal.readEvents(conversationId);
+  const settled = events.find((event) => event.type === "action.settled");
+  expect(settled).toBeDefined();
+  if (settled?.type !== "action.settled") throw new Error("expected action.settled");
+  expect(settled.data.actionId).toBe(actionId);
+  expect([...settled.data.evidenceRefs]).toEqual([...committed.evidenceRefs]);
+  server.stop(true);
+});
+
+test("an unsettled action whose effect is provably absent is retried exactly once and settled", async () => {
+  const root = tempRoot();
+  const conversationId = randomUUID();
+  const host = scriptedOperationHost();
+  const staging = new ConversationSocketRuntime(root, {
+    turnOwner: scriptedOwner([operationScript("Creating one task.", CREATE_OPERATION)]),
+  });
+  const message = await staging.journal.submitMessage(conversationId, {
+    clientMessageId: randomUUID(),
+    payload: "create the fixture task",
+  });
+  const turn = await staging.journal.startTurn(conversationId, {
+    turnId: randomUUID(),
+    messageId: message.event.data.messageId,
+    requestedPolicy: FAKE_REQUESTED_POLICY,
+  });
+  await staging.journal.requestAction(conversationId, {
+    actionId: randomUUID(),
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    operation: CREATE_OPERATION,
+  });
+
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([settledScript("fixture response")]),
+    host,
+  );
+  const client = await connect(socketUrl(conversationId, -1));
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "action.settled"), "retried settlement");
+
+  expect(host.executed).toHaveLength(1);
+  expect(host.executed[0]).toMatchObject({ conversationId, operation: CREATE_OPERATION });
+  const events = await runtime.journal.readEvents(conversationId);
+  expect(events.filter((event) => event.type === "action.settled")).toHaveLength(1);
+  server.stop(true);
+});
+
+test("a failed action.requested journal append fails the turn visibly and never calls the operation host", async () => {
+  const root = tempRoot();
+  const host = scriptedOperationHost();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Attempting a create.", CREATE_OPERATION)]),
+    host,
+  );
+  const originalRequestAction = runtime.journal.requestAction.bind(runtime.journal);
+  runtime.journal.requestAction = () => Promise.reject(new Error("journal append failed"));
+  try {
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    submit(client, randomUUID(), "create the fixture task");
+
+    await waitFor(() => client.messages.some((frame) =>
+      frame.type === "journal.event" && frame.event.type === "coordinator.turn-failed"), "failed turn");
+
+    const events = await runtime.journal.readEvents(conversationId);
+    expect(events.some((event) => event.type === "action.requested")).toBe(false);
+    expect(events.some((event) => event.type === "coordinator.turn-settled")).toBe(false);
+    const failed = events.find((event) => event.type === "coordinator.turn-failed");
+    if (failed?.type !== "coordinator.turn-failed") throw new Error("expected coordinator.turn-failed");
+    expect(failed.data.reason).toContain("could not be journaled before the effect");
+    expect(host.executed).toHaveLength(0);
+    expect(host.canonical.size).toBe(0);
+  } finally {
+    runtime.journal.requestAction = originalRequestAction;
+    server.stop(true);
+  }
+});
+
+test("a failed action.settled append leaves the action reconcilable: reconnect settles the committed receipt without re-execution", async () => {
+  const root = tempRoot();
+  const conversationId = randomUUID();
+  const host = scriptedOperationHost();
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([operationScript("Creating one task.", CREATE_OPERATION)]),
+    host,
+  );
+  const originalSettleAction = runtime.journal.settleAction.bind(runtime.journal);
+  let failNextSettle = true;
+  runtime.journal.settleAction = (id: string, draft: Parameters<FileConversationJournal["settleAction"]>[1]) => {
+    if (failNextSettle) {
+      failNextSettle = false;
+      return Promise.reject(new Error("append after the effect failed"));
+    }
+    return originalSettleAction(id, draft);
+  };
+  try {
+    const first = await connect(socketUrl(conversationId, -1));
+    submit(first, randomUUID(), "create the fixture task");
+    await waitFor(() => first.messages.some((frame) =>
+      frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+    first.ws.close();
+
+    let events = await runtime.journal.readEvents(conversationId);
+    expect(events.filter((event) => event.type === "action.requested")).toHaveLength(1);
+    expect(events.some((event) => event.type === "action.settled")).toBe(false);
+    expect(events.some((event) => event.type === "action.failed")).toBe(false);
+    expect(host.executed).toHaveLength(1);
+
+    // Reconnect: reconciliation finds the canonical receipt and appends the
+    // settlement without calling the host again.
+    const second = await connect(socketUrl(conversationId, -1));
+    await waitFor(() => second.messages.some((frame) =>
+      frame.type === "journal.event" && frame.event.type === "action.settled"), "reconciled settlement");
+
+    events = await runtime.journal.readEvents(conversationId);
+    const settled = events.find((event) => event.type === "action.settled");
+    if (settled?.type !== "action.settled") throw new Error("expected action.settled");
+    expect([...settled.data.evidenceRefs]).toEqual(
+      Array.from(host.canonical.values())[0]!.evidenceRefs.map((ref) => ref),
+    );
+    expect(host.executed).toHaveLength(1);
+    expect(events.filter((event) => event.type === "action.failed")).toHaveLength(0);
+    second.ws.close();
+  } finally {
+    runtime.journal.settleAction = originalSettleAction;
+    server.stop(true);
+  }
+});
+
+test("the projection provider result flows into the turn owner preparation", async () => {
+  const root = tempRoot();
+  const captured: Array<CompactProjection | undefined> = [];
+  let base = scriptedOwner([settledScript("fixture response")]);
+  const owner: ConversationTurnOwner = {
+    prepare: (input) => {
+      captured.push(input.projection);
+      return base.prepare(input);
+    },
+    start: (preparation, onDelta) => base.start(preparation, onDelta),
+  };
+  const provider: ConversationContextProvider = {
+    buildProjection: async () => ({
+      projects: [{
+        name: "fixture-project",
+        id: "fixture-project",
+        status: "registered",
+        primaryHead: "1".repeat(40),
+        worktrees: [{ path: "/tmp/fixture-worktree", head: "1".repeat(40) }],
+      }],
+    }),
+  };
+  const { runtime, server, socketUrl } = await startOperationServer(root, owner, undefined, provider);
+  const conversationId = randomUUID();
+  const client = await connect(socketUrl(conversationId, -1));
+  submit(client, randomUUID(), "show the projection");
+
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "coordinator.turn-settled"), "settled turn");
+  await waitFor(() => captured.length === 1, "prepared turn");
+
+  expect(captured[0]?.projects).toHaveLength(1);
+  expect(captured[0]?.projects?.[0]?.id).toBe("fixture-project");
+  expect(captured[0]?.projects?.[0]?.worktrees?.[0]?.head).toBe("1".repeat(40));
+  server.stop(true);
+});

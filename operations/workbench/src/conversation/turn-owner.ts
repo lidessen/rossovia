@@ -9,6 +9,7 @@ import {
 } from "../../../autonomy/src/conversation-coordinator";
 import {
   CURRENT_COORDINATOR_POLICY,
+  type CompactProjection,
   type ConversationPolicy,
 } from "../../../autonomy/src/conversation-prompt";
 import { createDeepSeekTurnAdapter } from "../../../autonomy/src/deepseek-turn-adapter";
@@ -41,6 +42,12 @@ export interface TurnPrepareInput {
   readonly turnId: string;
   readonly messageId: string;
   readonly payload: string;
+  /**
+   * The compact current projection the coordinator reads against, built by
+   * the runtime from the canonical Workbench sources immediately before
+   * preparation. Omission composes a projection-less turn.
+   */
+  readonly projection?: CompactProjection;
 }
 
 export interface TurnPreparation {
@@ -54,13 +61,44 @@ export interface TurnPreparation {
 
 /**
  * The production policy for every Workbench conversation turn: the accepted
- * DeepSeek Pro reasoning=max carrier. It is a requested fact recorded on
- * `coordinator.turn-started`; observed identity stays in the settlement.
+ * DeepSeek Pro reasoning=max carrier plus the exact consequential operation
+ * vocabulary. It is a requested fact recorded on `coordinator.turn-started`;
+ * observed identity stays in the settlement. Available tools carry their
+ * meaning; unavailable tools stay named so the coordinator reports them
+ * instead of calling them. No operation executes here.
  */
 export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
   ...CURRENT_COORDINATOR_POLICY,
   disclosureEnvelope:
     "Sources are disclosed by ref and digest only; raw provider output is never retained in the conversation journal.",
+  tools: [
+    {
+      name: "task_create",
+      availability: "available",
+      meaning:
+        "Form one new local obligation from this message. Copy the exact registered project ID, expected current-primary head, exact observed Worktree path, and expected Worktree head from the current projection; never invent or guess them. The host re-reads and compares every selector immediately before the effect and refuses stale, discovered, unregistered, or guessed context, so an incomplete or ambiguous route is not usable.",
+    },
+    {
+      name: "task_correct",
+      availability: "available",
+      meaning:
+        "Change a constraint or expected outcome of the still-active Task shown in the current projection. Copy the exact current taskId, sourceRevision, and revision from the projection. Never call it for a missing or settled Task, and never adjust a revision by guessing.",
+    },
+    {
+      name: "task_continue",
+      availability: "unavailable",
+      meaning:
+        "Continuation is not yet available: the execution carrier wave does not own it. Do not call this tool; report that continuation is unavailable instead.",
+    },
+    {
+      name: "work_control",
+      availability: "unavailable",
+      meaning:
+        "Persistent-work control requires an exact execution carrier and is not yet available. Do not call this tool; report that control is unavailable instead.",
+    },
+  ],
+  abstention:
+    "At most one operation is allowed per Principal message; a second is a visible failure. On ambiguity, abstain: answer with what you know and ask for the missing judgment. Never route a message by keyword or fixed phrase.",
 };
 
 export interface CoordinatorTurnOwnerOptions {
@@ -89,6 +127,7 @@ export function createCoordinatorTurnOwner(
           lineage: { messageId: input.messageId, turnId: input.turnId },
         },
         policy: COORDINATOR_CONVERSATION_POLICY,
+        ...(input.projection === undefined ? {} : { projection: input.projection }),
       });
       return {
         requestedPolicy: {

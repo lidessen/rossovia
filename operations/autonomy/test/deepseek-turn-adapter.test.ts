@@ -497,3 +497,161 @@ test("an interrupt through the injected real adapter settles as interrupted with
   expect(result.observed.outcome).toBe("interrupted");
   expect(seen).toEqual([{ kind: "delta", text: "started" }]);
 });
+
+test("exposes the four strict typed operation tools to the model call", async () => {
+  const seenCalls: Array<{ tools?: ReadonlyArray<{ name?: string }> }> = [];
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => new MockLanguageModelV4({
+      provider: DEEPSEEK_SDK_PROVIDER_ID,
+      modelId: "deepseek-v4-pro",
+      doStream: async (options) => {
+        seenCalls.push({ tools: options.tools ?? [] });
+        return { stream: simulateReadableStream({ chunks: adapterParts() }) };
+      },
+    }),
+  });
+
+  await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(seenCalls).toHaveLength(1);
+  const names = (seenCalls[0]?.tools ?? []).map((entry) => entry.name);
+  expect([...names].sort()).toEqual([
+    "task_continue",
+    "task_correct",
+    "task_create",
+    "work_control",
+  ]);
+});
+
+test("forwards a model tool call as one typed operation port event with the kind restored", async () => {
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [
+      ...textParts(["Creating one task."]),
+      {
+        type: "tool-call",
+        toolCallId: "call-1",
+        toolName: "task_create",
+        input: JSON.stringify({
+          title: "Add the fixture result",
+          objective: "Produce the bounded fixture result.",
+          acceptance: ["the fixture exists"],
+          projectId: "skills-dogfood",
+          expectedPrimaryHead: "1".repeat(40),
+          worktreePath: "/tmp/skills-dogfood",
+          expectedWorktreeHead: "1".repeat(40),
+        }),
+      },
+      STOP_FINISH,
+    ]),
+  });
+
+  const events = await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(events).toEqual([
+    { kind: "delta", text: "Creating one task." },
+    {
+      kind: "operation",
+      operation: {
+        kind: "task_create",
+        title: "Add the fixture result",
+        objective: "Produce the bounded fixture result.",
+        acceptance: ["the fixture exists"],
+        projectId: "skills-dogfood",
+        expectedPrimaryHead: "1".repeat(40),
+        worktreePath: "/tmp/skills-dogfood",
+        expectedWorktreeHead: "1".repeat(40),
+      },
+    },
+    { kind: "finish", usage: FLAT_USAGE_PASSTHROUGH },
+  ]);
+});
+
+test("forwards a task_correct tool call through the full kernel with exactly one operation", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [
+      ...textParts(["Correcting the same task."]),
+      {
+        type: "tool-call",
+        toolCallId: "call-1",
+        toolName: "task_correct",
+        input: JSON.stringify({
+          taskId: "task-1",
+          expectedSourceRevision: 3,
+          expectedRevision: 2,
+          statement: "The result must also preserve the second fixture invariant.",
+        }),
+      },
+      STOP_FINISH,
+    ]),
+  });
+  const result = await startConversationTurn(turnOptions(seen, adapter)).result;
+
+  assertFinished(result);
+  expect(result.operation).toEqual({
+    kind: "task_correct",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
+    statement: "The result must also preserve the second fixture invariant.",
+  });
+});
+
+test("rejects an unknown operation tool call as a visible error without interpreting it", async () => {
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [
+      { type: "tool-call", toolCallId: "call-1", toolName: "task_accept", input: "{}" },
+      STOP_FINISH,
+    ]),
+  });
+
+  const events = await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ kind: "error" });
+  expect((events[0] as { message: string }).message).toContain("unknown operation tool task_accept");
+});
+
+test("rejects a malformed operation tool call as a visible error with no effect event", async () => {
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [
+      {
+        type: "tool-call",
+        toolCallId: "call-1",
+        toolName: "task_create",
+        input: JSON.stringify({ title: "missing fields" }),
+      },
+      STOP_FINISH,
+    ]),
+  });
+
+  const events = await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({ kind: "error" });
+});
