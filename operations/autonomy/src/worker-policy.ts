@@ -1,13 +1,18 @@
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver, type AiSdkDriverOptions } from "../../../packages/work-cell/src/ai-sdk-driver";
+import {
+  DEEPSEEK_PROVIDER_ID,
+  DeepSeekInferencePolicySchema,
+  type DeepSeekInferencePolicy,
+} from "../../../packages/work-cell/src/providers/deepseek";
+import {
+  KIMI_CODING_DEFAULT_MODEL,
+} from "../../../packages/work-cell/src/providers/kimi-coding";
 import {
   WORKER_CARD_VERSION,
   WorkerCardSchema,
   WorkerCatalog,
   type WorkerCard,
 } from "../../../packages/work-cell/src/worker-catalog";
-import {
-  KIMI_CODING_DEFAULT_MODEL,
-} from "../../../packages/work-cell/src/providers/kimi-coding";
 
 const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
 const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
@@ -70,6 +75,31 @@ export function currentWorkerCards(
   ];
 }
 
+/** Derive the AI SDK DeepSeek inference policy from a card's declared profile. */
+export function deepSeekInferencePolicy(card: WorkerCard): DeepSeekInferencePolicy | undefined {
+  if (card.executionProfile.provider !== DEEPSEEK_PROVIDER_ID) return undefined;
+  const reasoningEffort = card.executionProfile.reasoningEffort;
+  if (reasoningEffort === undefined) return { thinking: "disabled" };
+  return DeepSeekInferencePolicySchema.parse({ thinking: "enabled", reasoningEffort });
+}
+
+/** Driver construction options for a DeepSeek card, derived from the same profile. */
+export function deepSeekDriverOptions(
+  card: WorkerCard,
+  environment: NodeJS.ProcessEnv,
+): AiSdkDriverOptions {
+  const policy = deepSeekInferencePolicy(card);
+  return {
+    route: [{
+      provider: DEEPSEEK_PROVIDER_ID,
+      credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+      model: card.executionProfile.model,
+    }],
+    environment,
+    ...(policy ? { deepSeekInferencePolicy: policy } : {}),
+  };
+}
+
 export function createCurrentWorkerCatalog(
   environment: NodeJS.ProcessEnv = process.env,
 ): WorkerCatalog {
@@ -77,25 +107,11 @@ export function createCurrentWorkerCatalog(
   return new WorkerCatalog([
     {
       card: deepseekFlash!,
-      createDriver: () => new AiSdkValidationDriver({
-        route: [{
-          provider: "deepseek",
-          credential: { source: "env", name: "DEEPSEEK_API_KEY" },
-          model: DEEPSEEK_FLASH_MODEL,
-        }],
-        environment,
-      }),
+      createDriver: () => new AiSdkValidationDriver(deepSeekDriverOptions(deepseekFlash!, environment)),
     },
     {
       card: deepseekPro!,
-      createDriver: () => new AiSdkValidationDriver({
-        route: [{
-          provider: "deepseek",
-          credential: { source: "env", name: "DEEPSEEK_API_KEY" },
-          model: DEEPSEEK_PRO_MODEL,
-        }],
-        environment,
-      }),
+      createDriver: () => new AiSdkValidationDriver(deepSeekDriverOptions(deepseekPro!, environment)),
     },
     {
       card: kimi!,

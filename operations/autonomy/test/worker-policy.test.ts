@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { currentWorkerCards } from "../src/worker-policy";
+import {
+  createCurrentWorkerCatalog,
+  currentWorkerCards,
+  deepSeekDriverOptions,
+  deepSeekInferencePolicy,
+} from "../src/worker-policy";
 
 test("current worker cards expose capability and execution defaults from one policy", () => {
   const cards = currentWorkerCards({
@@ -23,4 +28,74 @@ test("current worker cards expose capability and execution defaults from one pol
   expect(kimi?.labels).toContain("vision");
   expect(kimi?.description).toContain("image input");
   expect(kimi?.description).toContain("Recommended");
+});
+
+test("deepseek card reasoning effort matches the inference policy used to construct its catalog driver", () => {
+  const environment = {
+    DEEPSEEK_API_KEY: "configured",
+    KIMI_CODE_API_KEY: "configured",
+  } as NodeJS.ProcessEnv;
+  const cards = currentWorkerCards(environment);
+  const deepseekFlash = cards.find((card) => card.id === "deepseek-flash");
+  const deepseekPro = cards.find((card) => card.id === "deepseek-pro");
+  const kimi = cards.find((card) => card.id === "kimi-coding");
+
+  expect(deepseekFlash?.executionProfile.reasoningEffort).toBe("max");
+  expect(deepSeekInferencePolicy(deepseekFlash!)).toEqual({
+    thinking: "enabled",
+    reasoningEffort: "max",
+  });
+  expect(deepSeekInferencePolicy(deepseekPro!)).toEqual({
+    thinking: "enabled",
+    reasoningEffort: "max",
+  });
+  expect(deepSeekInferencePolicy(kimi!)).toBeUndefined();
+
+  const flashOptions = deepSeekDriverOptions(deepseekFlash!, environment);
+  expect(flashOptions.deepSeekInferencePolicy).toEqual({
+    thinking: "enabled",
+    reasoningEffort: "max",
+  });
+  expect(flashOptions.route).toEqual([{
+    provider: "deepseek",
+    credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+    model: "deepseek-v4-flash",
+  }]);
+  const proOptions = deepSeekDriverOptions(deepseekPro!, environment);
+  expect(proOptions.deepSeekInferencePolicy).toEqual({
+    thinking: "enabled",
+    reasoningEffort: "max",
+  });
+  expect(proOptions.route).toEqual([{
+    provider: "deepseek",
+    credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+    model: "deepseek-v4-pro",
+  }]);
+
+  const catalog = createCurrentWorkerCatalog(environment);
+  for (const card of cards) {
+    const driver = catalog.createDriver({
+      id: `test-${card.id}`,
+      workerId: card.id,
+      executionProfile: card.executionProfile,
+      intent: "Prove card declaration matches constructed driver options.",
+      workspace: {
+        root: "/tmp",
+        readPaths: [],
+        writePaths: [],
+        excludePaths: [],
+        allowedCommands: [],
+      },
+      instructions: ["Return the bounded result."],
+      capabilities: ["coding"],
+      context: [],
+      capabilitiesRequired: ["coding"],
+      acceptance: ["The selected worker executes the Cell."],
+      budget: { maxSteps: 1, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+    });
+    expect(driver.descriptor).toMatchObject({
+      provider: card.executionProfile.provider,
+      model: card.executionProfile.model,
+    });
+  }
 });

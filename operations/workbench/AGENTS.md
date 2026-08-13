@@ -161,6 +161,9 @@ Workbench home has a task source.
   of the same still-open task in its current bound Worktree. Do not ask the
   human or calling Agent for driver, provider/model syntax, reasoning effort,
   session ID, or Task revisions.
+  The 30-minute run ceiling is only an emergency ceiling while the OpenCode
+  adapter has no completed-step soft-budget control; it is not an approval or
+  budget mechanism.
   A fresh run remains Git-clean-only. An explicit continuation may retain a
   dirty Worktree only when every currently staged, unstaged, or non-ignored
   untracked path is present in the cumulative `workspaceDiff` union of usable,
