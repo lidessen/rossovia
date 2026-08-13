@@ -146,6 +146,8 @@ export const CellPreparationSchema = z.object({
 
 export const CellInputSchema = z.object({
   id: z.string().min(1),
+  /** Scheduler-facing worker selection; executionProfile remains the evidence identity. */
+  workerId: z.string().min(1).optional(),
   intent: z.string().min(1),
   workspace: WorkspacePolicySchema,
   instructions: z.array(z.string().min(1)).min(1),

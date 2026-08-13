@@ -71,6 +71,22 @@ route therefore retains usage and serving evidence but omits a dollar estimate
 until cost audit can attribute usage per served call and distinguish allowance
 from actual spend.
 
+## Worker catalog mechanism
+
+`WorkerCatalog` is the host-supplied mechanism for heterogeneous Cells. A card
+has a stable scheduler-facing `id`, factual `labels`, a concise model capability
+`description`, one availability fact, and the existing `executionProfile` as
+its provider/model evidence identity. The catalog returns only runnable cards
+matching every requested label; it does not score, rank, or select one. The
+scheduling Agent chooses `workerId` explicitly.
+
+Catalog-backed Cells retain both `workerId` and `executionProfile`. Driver
+resolution fails closed when the worker is unknown, unavailable, missing any
+`capabilitiesRequired` label, has a mismatched execution profile, or constructs
+a driver with another provider/model identity. The orchestration and Swarm
+factories receive each `CellInput`, so a mixed-worker batch creates the selected
+driver independently for every admitted Cell.
+
 Provider observation is separate from execution preference. The generic
 observation result keeps availability, quota freshness, normalized windows, and
 source authority distinct. Codex is observed through its local app-server
@@ -142,7 +158,7 @@ only after its producer explicitly closes it and every dispatched Cell settles:
 
 ```ts
 const queue = new InMemoryCellQueue();
-const running = runOrchestration(queue, createDriver, { concurrency: 4 });
+const running = runOrchestration(queue, (input) => catalog.createDriver(input), { concurrency: 4 });
 
 await queue.submit(firstCell);
 await queue.submit(secondCell);

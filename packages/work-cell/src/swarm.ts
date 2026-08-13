@@ -182,7 +182,7 @@ export type SwarmIndex = z.infer<typeof SwarmIndexSchema>;
 
 export async function runSwarm(
   unparsedManifest: unknown,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   signal?: AbortSignal,
 ): Promise<SwarmRun> {
   const handle = await startSwarm(unparsedManifest, createDriver, signal);
@@ -191,7 +191,7 @@ export async function runSwarm(
 
 export async function startSwarm(
   unparsedManifest: unknown,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   signal?: AbortSignal,
 ): Promise<SwarmHandle> {
   const manifest = SwarmInputSchema.parse(unparsedManifest);
@@ -217,7 +217,7 @@ export async function startSwarm(
  */
 export async function startSwarmFromFile(
   unparsedRef: JsonFileInputRef,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   options: StartSwarmFromFileOptions,
 ): Promise<FileBackedSwarmHandle> {
   const frozen = await readJsonFileInput(unparsedRef, options.inputRoot, SwarmInputSchema);
@@ -266,7 +266,7 @@ export async function startSwarmFromFile(
 
 async function runAdmittedSwarm(
   manifest: SwarmInput,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   signal: AbortSignal,
 ): Promise<SwarmRun> {
   const source = new InMemoryCellQueue("Swarm cells");

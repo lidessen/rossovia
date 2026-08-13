@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CellInput, CellUsage } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../../../packages/work-cell/src/driver";
+import { WORKER_CARD_VERSION, WorkerCatalog, type WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
 import { Workspace } from "../../../packages/work-cell/src/workspace";
 import {
   admitPreparedDelegateBatch,
@@ -24,6 +25,7 @@ import {
   type DelegateCall,
   type DelegateTimeline,
   type PreparedDelegateExecution,
+  type WorkerSpawnCall,
 } from "../src/delegate-loop";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import { digestAnchor } from "../src/mission-reconciliation";
@@ -42,6 +44,98 @@ const roots: string[] = [];
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("catalog mode lists capability cards and retains the Agent's explicit worker selection through driver dispatch", async () => {
+  const root = await fixture();
+  const catalog = workerCatalog([
+    workerCard("worker-a", "provider-a", "model-a", "Handles bounded repository reading. Recommended for concise text inspection."),
+    workerCard("worker-b", "provider-b", "model-b", "Handles broad repository reading and code analysis. Recommended for source-grounded engineering review."),
+  ]);
+  let calls = 0;
+  let listFollowup: unknown;
+  let selected: string | undefined;
+  const model = new MockLanguageModelV4({
+    doGenerate: async (options) => {
+      calls += 1;
+      const toolNames = (options.tools ?? []).map((definition) => definition.name);
+      expect(toolNames).toContain("worker_list");
+      expect(toolNames).toContain("worker_spawn");
+      expect(toolNames).not.toContain("delegate");
+      expect(toolNames).not.toContain("delegate_file");
+      if (calls === 1) {
+        return response([namedToolCall("list-workers", "worker_list", { requiredLabels: ["read"] })], "tool-calls");
+      }
+      if (calls === 2) {
+        listFollowup = options.prompt;
+        return response([namedToolCall("spawn-worker-b", "worker_spawn", {
+          ...call("contract", "inspect-contract", "source:contract"),
+          workerId: "worker-b",
+        })], "tool-calls");
+      }
+      return response([{ type: "text", text: "The explicitly selected worker settled." }], "stop");
+    },
+  });
+
+  const result = await runDelegateLoop(loopInput(root), {
+    model,
+    workerCatalog: catalog,
+    prepareContribution: async (delegateCall) => {
+      if (!("workerId" in delegateCall)) throw new Error("expected catalog worker selection");
+      selected = delegateCall.workerId;
+      return workerExecution(root, delegateCall);
+    },
+    timeline: new FileMissionTimeline(join(root, ".mission-workers")),
+    concurrency: 1,
+    maxModelSteps: 4,
+    maxDelegateBatches: 1,
+    maxCallsPerStep: 1,
+  });
+
+  expect(selected).toBe("worker-b");
+  expect(JSON.stringify(listFollowup)).toContain("source-grounded engineering review");
+  expect(result.batches[0]?.invocations[0]).toMatchObject({
+    toolName: "worker_spawn",
+    call: { workerId: "worker-b" },
+  });
+  expect(result.batches[0]?.run.kind).toBe("direct");
+  if (result.batches[0]?.run.kind !== "direct") throw new Error("expected direct worker run");
+  expect(result.batches[0].run.record.input.workerId).toBe("worker-b");
+  expect(result.batches[0].run.record.driver).toMatchObject({ provider: "provider-b", model: "model-b" });
+});
+
+test("catalog mode rejects an explicit worker missing the contribution's required label before preparation", async () => {
+  const root = await fixture();
+  const catalog = workerCatalog([
+    workerCard("text-worker", "provider-a", "model-a", "Handles text engineering. Recommended for non-visual review.", ["text"]),
+  ]);
+  const visionCall = {
+    ...call("contract", "inspect-contract", "source:contract"),
+    capabilityNeed: "vision",
+    workerId: "text-worker",
+  };
+  const model = new MockLanguageModelV4({
+    doGenerate: async () => response([namedToolCall("spawn-text-worker", "worker_spawn", visionCall)], "tool-calls"),
+  });
+  let prepared = 0;
+
+  await expect(runDelegateLoop({
+    ...loopInput(root),
+    whole: { ...whole(root), capabilityNeeds: ["vision"] },
+  }, {
+    model,
+    workerCatalog: catalog,
+    prepareContribution: async () => {
+      prepared += 1;
+      throw new Error("preparation must not start");
+    },
+    timeline: new FileMissionTimeline(join(root, ".mission-worker-mismatch")),
+    concurrency: 1,
+    maxModelSteps: 2,
+    maxDelegateBatches: 1,
+    maxCallsPerStep: 1,
+  })).rejects.toThrow("missing required labels: vision");
+  expect(prepared).toBe(0);
 });
 
 test("one AI SDK step collects an independent delegate batch before dispatch and returns compact results", async () => {
@@ -964,6 +1058,15 @@ class ResultDriver implements CellDriver {
   }
 }
 
+class SelectedResultDriver extends ResultDriver {
+  override readonly descriptor;
+
+  constructor(provider: string, model: string) {
+    super("completed");
+    this.descriptor = { adapter: "selected-worker-test", provider, model };
+  }
+}
+
 class BlockingResultDriver extends ResultDriver {
   constructor(private readonly barrier: ManualResultBarrier) { super("completed"); }
 
@@ -1102,6 +1205,55 @@ function execution(
   };
 }
 
+function workerExecution(root: string, call: WorkerSpawnCall): PreparedDelegateExecution {
+  const card = call.workerId === "worker-a"
+    ? workerCard("worker-a", "provider-a", "model-a", "Worker A")
+    : workerCard("worker-b", "provider-b", "model-b", "Worker B");
+  return {
+    label: "selected worker",
+    dependsOn: [],
+    taskShape: {
+      ...taskShape("reliable-primitive"),
+      referenceProfile: { id: card.executionProfile.id, revision: "profile-revision-1" },
+    },
+    cell: {
+      ...cell(root, call),
+      workerId: call.workerId,
+      executionProfile: card.executionProfile,
+    },
+  };
+}
+
+function workerCatalog(cards: readonly WorkerCard[]): WorkerCatalog {
+  return new WorkerCatalog(cards.map((card) => ({
+    card,
+    createDriver: () => new SelectedResultDriver(card.executionProfile.provider, card.executionProfile.model),
+  })));
+}
+
+function workerCard(
+  id: string,
+  provider: string,
+  model: string,
+  description: string,
+  labels = ["coding", "read", "tools"],
+): WorkerCard {
+  return {
+    version: WORKER_CARD_VERSION,
+    id,
+    labels,
+    description,
+    executionProfile: {
+      id,
+      version: "execution-profile.v1",
+      provider,
+      model,
+      parallelism: "serial",
+    },
+    availability: { status: "available" },
+  };
+}
+
 function taskShape(disposition: CapabilityDisposition): TaskShapeAdmission {
   return {
     referenceProfile: { id: "flash-main", revision: "profile-revision-1" },
@@ -1153,6 +1305,15 @@ function toolCall(toolCallId: string, input: DelegateCall) {
     type: "tool-call" as const,
     toolCallId,
     toolName: "delegate",
+    input: JSON.stringify(input),
+  };
+}
+
+function namedToolCall(toolCallId: string, toolName: string, input: unknown) {
+  return {
+    type: "tool-call" as const,
+    toolCallId,
+    toolName,
     input: JSON.stringify(input),
   };
 }

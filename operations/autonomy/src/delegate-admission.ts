@@ -45,6 +45,8 @@ export interface TaskShapeAdmission {
 
 export interface PreparedDelegateContribution {
   readonly key: string;
+  /** Scheduler-selected catalog key; absent only on the legacy delegate path. */
+  readonly workerId?: string;
   /** Host-owned coordination task that this contribution advances. */
   readonly taskId: string;
   /** Human-facing projection only. It has no admission authority. */
@@ -211,6 +213,9 @@ export function admitPreparedDelegateBatch(input: PreparedDelegateBatch): Admitt
       continue;
     }
     const cell = parsedCell.data;
+    if (contribution.workerId !== undefined && cell.workerId !== contribution.workerId) {
+      issues.push(`${path}.cell workerId does not preserve the scheduler selection ${contribution.workerId}`);
+    }
     if (cell.intent !== contribution.task) issues.push(`${path}.cell intent does not preserve the delegate task`);
     if (!sameStrings(cell.acceptance, contribution.acceptance)) {
       issues.push(`${path}.cell acceptance does not preserve the delegate acceptance contract`);
@@ -345,7 +350,7 @@ export type DelegateBatchRun =
 
 export async function runPreparedDelegateBatch(
   input: PreparedDelegateBatch,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   options: {
     readonly concurrency: number;
     readonly signal?: AbortSignal;
@@ -359,7 +364,7 @@ export async function runPreparedDelegateBatch(
 /** Executes an already admitted batch without repeating or weakening admission. */
 export async function runAdmittedDelegateBatch(
   admission: AdmittedDelegateBatch,
-  createDriver: () => CellDriver,
+  createDriver: (input: CellInput) => CellDriver,
   options: {
     readonly concurrency: number;
     readonly signal?: AbortSignal;
@@ -370,7 +375,7 @@ export async function runAdmittedDelegateBatch(
   if (lowered.kind === "direct") {
     const record = await runCell(
       lowered.input,
-      createDriver(),
+      createDriver(lowered.input),
       {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(options.onTrace === undefined ? {} : { onTrace: options.onTrace }),
