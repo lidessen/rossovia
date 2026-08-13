@@ -60,8 +60,9 @@ The current host policy gives the Kimi Coding card a `vision` label and
 describes image-plus-code work, while the DeepSeek Flash card remains text/code
 only and has no `vision` label. `createCurrentWorkerCatalog` is a helper a host
 may choose to install; this contract does not claim that the Rossovia CLI wires
-it automatically. The bounded Kimi `k3` image-transport smoke is recorded in
-[Work Cell's local image-input evidence](../../packages/work-cell/README.md#local-image-input-evidence).
+it automatically. The bounded Kimi image-transport smokes, including one
+direct catalog-backed driver run, are recorded in
+[the minimal evidence record](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md).
 
 `actorRef` and `sourceRef` retain attribution supplied by the host. They are not
 independent authentication. Git, worktree, pull-request, and other external

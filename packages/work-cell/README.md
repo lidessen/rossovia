@@ -102,17 +102,19 @@ of sending it to an incompatible model.
 
 ### Local image-input evidence
 
-On 2026-08-13, a local smoke ran the ordinary
-`bun src/cli.ts run <cell.json>` path with a non-sensitive PNG in
-`imagePaths`. The provider profile placed Kimi Coding `k3` first, and retained
-serving metadata reported `kimi-coding/k3`; this CLI invocation did not resolve
-its `workerId` through `WorkerCatalog`. The Cell passed, correctly identified
-the blue rectangle on the left and the red rectangle on the right, and used
-1,683 total tokens. See the
+On 2026-08-13, two local smokes sent the same non-sensitive PNG through
+`imagePaths`. The ordinary `bun src/cli.ts run <cell.json>` path used the
+provider profile and was served by `kimi-coding/k3`; a second probe directly
+used `createCurrentWorkerCatalog(process.env)` and
+`catalog.createDriver(input)`, with the selected Kimi card and driver both
+identifying `kimi-coding/kimi-for-coding`. Both Cells passed and correctly
+identified the blue rectangle on the left and the red rectangle on the right,
+using 1,683 and 1,496 total tokens respectively. See the
 [minimal retained evidence](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md)
-for the result and its limits. This establishes the bounded local-image
-transport path for that run; it does not establish general visual accuracy or
-turn Work Cell into a media storage system.
+for the results and their limits. This establishes the bounded local-image
+transport and direct catalog-backed driver paths for those runs; it does not
+establish general visual accuracy, automatic Rossovia CLI catalog wiring, or a
+media storage system.
 
 Provider observation is separate from execution preference. The generic
 observation result keeps availability, quota freshness, normalized windows, and
