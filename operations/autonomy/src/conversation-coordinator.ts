@@ -26,6 +26,7 @@ export const SkillContentRequestSchema = z.object({
 
 export const ChildResultRequestSchema = z.object({
   kind: z.literal("child-result"),
+  batchId: z.string().min(1),
   key: z.string().min(1),
 }).strict();
 

@@ -127,8 +127,11 @@ test("strict request schemas accept exactly the four typed kinds and reject ever
     .toEqual({ kind: "project-instruction", ref: "workbench:state/projects.json" });
   expect(ConversationTurnRequestSchema.parse({ kind: "skill-content", ref: "skill:agent-delegation" }))
     .toEqual({ kind: "skill-content", ref: "skill:agent-delegation" });
-  expect(ConversationTurnRequestSchema.parse({ kind: "child-result", key: "evidence:child-1/result" }))
-    .toEqual({ kind: "child-result", key: "evidence:child-1/result" });
+  expect(ConversationTurnRequestSchema.parse({
+    kind: "child-result",
+    batchId: "turn-result-read:batch:1",
+    key: "evidence:child-1/result",
+  })).toEqual({ kind: "child-result", batchId: "turn-result-read:batch:1", key: "evidence:child-1/result" });
   expect(ConversationTurnRequestSchema.parse({
     kind: "principal-decision",
     question: "Which project should receive the result?",
@@ -138,15 +141,45 @@ test("strict request schemas accept exactly the four typed kinds and reject ever
   expect(() => ConversationTurnRequestSchema.parse({ kind: "project-instruction" })).toThrow();
   expect(() => ConversationTurnRequestSchema.parse({ kind: "child-result" })).toThrow();
   expect(() => ConversationTurnRequestSchema.parse({
+    kind: "child-result",
+    key: "evidence:child-1/result",
+  })).toThrow();
+  expect(() => ConversationTurnRequestSchema.parse({
+    kind: "child-result",
+    batchId: "turn-result-read:batch:1",
+  })).toThrow();
+  expect(() => ConversationTurnRequestSchema.parse({
     kind: "skill-content",
     ref: "skill:agent-delegation",
     extra: 1,
   })).toThrow();
 });
 
-test("a keyed child-result request carries the keyed result-read evidence key", () => {
-  const parsed = ConversationTurnRequestSchema.parse({ kind: "child-result", key: "evidence:child-1/result" });
-  expect(parsed).toEqual({ kind: "child-result", key: "evidence:child-1/result" });
+test("a keyed child-result request carries the delegate (batchId, key) result-read identity", () => {
+  const parsed = ConversationTurnRequestSchema.parse({
+    kind: "child-result",
+    batchId: "turn-result-read:batch:1",
+    key: "inspect-contract",
+  });
+  expect(parsed).toEqual({
+    kind: "child-result",
+    batchId: "turn-result-read:batch:1",
+    key: "inspect-contract",
+  });
+});
+
+test("the same key in different batches remains a distinct child-result identity", () => {
+  const first = ConversationTurnRequestSchema.parse({
+    kind: "child-result",
+    batchId: "turn-result-read:batch:1",
+    key: "inspect-contract",
+  });
+  const second = ConversationTurnRequestSchema.parse({
+    kind: "child-result",
+    batchId: "turn-result-read:batch:2",
+    key: "inspect-contract",
+  });
+  expect(first).not.toEqual(second);
 });
 
 test("safety stream event schemas are strict for all forwarded kinds", () => {
@@ -396,7 +429,7 @@ test("interrupt aborts immediately and suppresses subsequent deltas and requests
       yield { kind: "delta", text: "part one " };
       await gate;
       observedAbort = signal.aborted;
-      yield { kind: "request", request: { kind: "child-result", key: "evidence:child-1/result" } };
+      yield { kind: "request", request: { kind: "child-result", batchId: "turn-result-read:batch:1", key: "inspect-contract" } };
       yield { kind: "delta", text: "part two" };
       yield { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model };
     },
@@ -446,6 +479,82 @@ test("a port that honors the abort signal settles as interrupted without an erro
   expect(result.text).toBe("started");
   expect(seen).toEqual([{ kind: "delta", text: "started" }]);
   expect(seen.some((event) => event.kind === "finished")).toBe(false);
+});
+
+test("a port that throws because of the abort settles as interrupted, not failed", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const handle = startConversationTurn({
+    ...fullOptions(),
+    port: {
+      async *run({ signal }) {
+        yield { kind: "delta", text: "started" };
+        await gate;
+        if (signal.aborted) throw new DOMException("aborted", "AbortError");
+        yield { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model };
+      },
+    },
+    onEvent: (event) => seen.push(event),
+  });
+
+  await until(() => seen.some((event) => event.kind === "delta"));
+  handle.interrupt();
+  release();
+  const result = await handle.result;
+
+  expect(result.kind).toBe("interrupted");
+  expect(result.text).toBe("started");
+  expect(result.observed.outcome).toBe("interrupted");
+  expect(seen).toEqual([{ kind: "delta", text: "started" }]);
+  expect(seen.some((event) => event.kind === "error")).toBe(false);
+});
+
+test("an immediate interrupt settles before any event is emitted", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const handle = startConversationTurn({
+    ...fullOptions(),
+    port: {
+      async *run({ signal }) {
+        for (let index = 0; index < 100 && !signal.aborted; index += 1) {
+          yield { kind: "delta", text: `chunk-${index}` };
+        }
+        yield { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model };
+      },
+    },
+    onEvent: (event) => seen.push(event),
+  });
+
+  handle.interrupt();
+  const result = await handle.result;
+
+  expect(result.kind).toBe("interrupted");
+  expect(result.text).toBe("");
+  expect(result.observed.outcome).toBe("interrupted");
+  expect(seen).toEqual([]);
+});
+
+test("events yielded after finish are drained and never forwarded", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const result = await runTurn(fullOptions(), [
+    { kind: "delta", text: "settled" },
+    {
+      kind: "finish",
+      provider: CURRENT_COORDINATOR_POLICY.provider,
+      model: CURRENT_COORDINATOR_POLICY.model,
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+    },
+    { kind: "request", request: { kind: "child-result", batchId: "turn-result-read:batch:1", key: "inspect-contract" } },
+    { kind: "delta", text: "late" },
+  ], seen);
+
+  assertFinished(result);
+  expect(result.text).toBe("settled");
+  expect(result.request).toBeUndefined();
+  expect(seen).toEqual([
+    { kind: "delta", text: "settled" },
+    { kind: "finished", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 } },
+  ]);
 });
 
 test("a malformed port event is a visible error, not a guessed turn", async () => {
