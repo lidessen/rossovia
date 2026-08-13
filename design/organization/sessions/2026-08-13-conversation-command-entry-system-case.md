@@ -36,28 +36,38 @@ architecture or current authority.
 
 A Principal opens one local browser surface and says, in ordinary language,
 that a result is needed in a named project. The system acknowledges the message,
-shows which existing source now carries the obligation, and begins or continues
-work through a local coordinator. While work and response text are still
-arriving, the Principal can add a changed constraint. The coordinator judges
-that message against the live object, records it as a correction to the same
-Task or Mission rather than inventing a replacement obligation, and makes the
-delivery and its effect on later work visible.
+resolves the spoken name to a registered project's current primary observation,
+and shows which existing source now carries the obligation. Project-bound
+execution begins only after an exact currently observed Worktree is retained on
+the Task. Ambiguous, merely discovered, unregistered, or stale resolution is
+shown instead of silently creating an independent Task or guessing a Worktree.
+While work and response text are still arriving, the Principal can add a changed
+constraint. The coordinator judges that message against the live object, records
+it as a correction to the same Task or Mission rather than inventing a
+replacement obligation, and makes the delivery and its effect on later work
+visible.
 
 The Principal can leave the page and return. The reconstructed view distinguishes
 what was merely being generated, what message or action was durably settled,
-what work is still running, and what result is only a submitted claim. It links
-progress and outcomes to the Task, Mission timeline, execution attempt, effect,
-and verification evidence that actually own those facts. Stopping a response
-does not silently stop a tool or persistent task; stopping persistent work uses
-the corresponding Task or Mission control path. Final result acceptance remains
-an explicit Principal action under the existing task boundary.
+what an owner-backed live carrier currently reports as running, and what result
+is only a submitted claim. An ordinary Task attempt marked `started` without a
+current carrier observation appears as liveness unknown, never as active work.
+The view links progress and outcomes to the Task, Mission timeline, execution
+attempt, effect, and verification evidence that actually own those facts.
+Stopping a response does not silently stop a tool or persistent task; persistent
+work can be interrupted or recovered only through an exact carrier that exposes
+that control. Final result acceptance remains an explicit Principal action under
+the existing task boundary.
 
 This is sufficient for the first product outcome when the Principal can, without
 using CLI forms:
 
-1. publish one new local obligation from an explicit message;
+1. publish one new local obligation from an explicit message after any named
+   project has a verified registered/current route;
 2. correct or continue that same still-open obligation in a later message;
-3. observe attributable ongoing work, uncertainty, interruption, and recovery;
+3. observe attributable owner-backed ongoing work, or a truthful unknown when
+   liveness/control evidence is absent, plus interruption and recovery where the
+   exact carrier supports them;
 4. reconnect without losing settled conversation or work identity;
 5. receive a result with its evidence standing, and keep acceptance distinct
    from production and review; and
@@ -73,16 +83,28 @@ satisfy it; neither this document nor its author accepts that outcome.
 **Observed.** Workbench currently exposes separate paths rather than one
 conversation runtime:
 
+- Spoken project names are aliases for a routing projection, not project or Task
+  identity. `resolve` distinguishes registered from merely discovered projects;
+  Task project context requires a registered project and its current primary
+  observation, while `task run` additionally requires an exact existing
+  Worktree binding
+  ([Workbench route](../../../operations/workbench/AGENTS.md#rossovia-workbench-entry),
+  [resolution](../../../operations/workbench/src/resolve.ts#L15-L51),
+  [Task binding](../../../operations/workbench/src/tasks.ts#L793-L850),
+  [run binding](../../../operations/workbench/src/task-run.ts#L149-L164)).
 - Local Principal Tasks are created and mutated in
   [`state/tasks.json`](../../../operations/workbench/src/tasks.ts#L147-L238),
   using source and task revisions; correction reopens the same unsettled task,
   and submitted output remains a claim until explicit acceptance.
 - CLI `task run` lowers one open task into immutable attempt input, a Work Cell
-  final record, and append-only settlement evidence; the attempt projection
-  intentionally omits the raw trace and takes requested and observed facts from
-  their respective sources
-  ([task run](../../../operations/workbench/src/task-run.ts#L95-L126),
-  [attempt projection](../../../operations/workbench/src/task-attempts.ts#L76-L108)).
+  final record, and append-only settlement evidence. Its immutable initial
+  record says only `started`; it carries no process identity, heartbeat, or live
+  observation, and the ordinary Task control plane has no pause/resume/stop
+  operation. The attempt projection intentionally omits the raw trace and takes
+  requested and observed facts from their respective sources
+  ([task run](../../../operations/workbench/src/task-run.ts#L423-L471),
+  [attempt projection](../../../operations/workbench/src/task-attempts.ts#L11-L108),
+  [Task control plane](../../../operations/workbench/src/local-task-control-plane.ts#L49-L66)).
 - A live Mission runner receives exact contribution, control, correction, and
   recovery through its runner boundary, while the Mission timeline retains
   ordered inputs, turns, delegation, and reconciliation
@@ -99,10 +121,11 @@ conversation runtime:
 
 **Design inference.** The principal gap is not another chat renderer. It is an
 owned relation from one incoming Principal message, through coordinator judgment
-and an authoritative mutation, to attributable operational events and a
-reconstructable settled reply. Putting conversational prose over the current
-HTTP forms would leave semantic routing, in-flight correction, provisional
-output, causal identity, and reconnect recovery unowned.
+and—when warranted—an authoritative mutation, to attributable operational
+events and a reconstructable settled reply. Putting conversational prose over
+the current HTTP forms would leave semantic routing, verified project context,
+in-flight correction, current liveness/control, provisional output, causal
+identity, and reconnect recovery unowned.
 
 ## Canonical authority and state map
 
@@ -112,12 +135,14 @@ with it.
 
 | Canonical source | Existing ownership | Conversation-entry relation |
 |---|---|---|
+| Registered project source and current workspace observation | A stable registered project ID owns project identity; a spoken alias resolves only to a routing projection. Project context is valid only from the registered project's current primary observation, and execution requires an exact observed Worktree ([Workbench route](../../../operations/workbench/AGENTS.md#rossovia-workbench-entry), [resolution](../../../operations/workbench/src/resolve.ts#L15-L51), [Task binding](../../../operations/workbench/src/tasks.ts#L793-L850)). | Before a project-bound Task mutation, the coordinator requires one unambiguous registered/current resolution; before execution, it requires the exact retained Worktree binding. Discovered, unregistered, ambiguous, stale, or unwritable results remain visible and cannot fall back to an independent Task or guessed Worktree. The exact pre-action representation is for planning. |
 | Local Task source | `state/tasks.json` owns the explicit local obligation, lifecycle, corrections, result claims, and Principal settlement; reviews add evidence without changing task standing ([Task source](../../../operations/workbench/src/tasks.ts#L147-L260), [review and acceptance](../../../operations/workbench/src/tasks.ts#L330-L384)). | The coordinator calls typed Task operations against current revisions. The journal references returned Task identity and revision; it never copies or decides task lifecycle. |
 | Git Mission record | A Mission record owns a material multi-session objective, open branches, acceptance, and return conditions; it is not a scheduler, backlog, or launch authority ([Mission Records](../../../operations/missions/README.md#boundaries)). | The entry projects Mission state and may route explicit input to an existing Mission. It does not create a Mission merely because a conversation exists. |
 | Authorization receipt | One receipt releases only its declared disclosure, budget, paths, and one launch; commit, merge, publish, and product acceptance stay withheld ([authorization receipt](../../../operations/workbench/src/execution-authorization.ts#L65-L111)). | The UI can present and invoke the existing authorization action when explicitly directed. A conversation message cannot imply or enlarge a receipt. |
 | Mission timeline | Ordered input receipts, turns, child delegation settlements, recovery, and reconciliation are durable Mission execution history ([timeline event contract](../../../operations/autonomy/src/delegate-timeline-events.ts), [turn contract](../../../operations/autonomy/src/mission-turn.ts)). | Conversation events refer to timeline event and turn identities. The feed does not rewrite timeline meaning into its own status. |
 | Effect journal | Prepared, started, tool, quiescence, verification, settlement, and uncertainty events own effect evidence; Principal acceptance remains withheld there ([effect journal](../../../operations/autonomy/src/effect-journal.ts#L30-L150)). | The feed projects effect facts and controls only through the owning runtime. It never infers effect completion from coordinator prose. |
-| Work Cell record and task-attempt evidence | One Cell record owns one bounded run's input, driver identity, trace, usage, workspace diff, structural verification, and terminal status; completion is process evidence, not correctness ([Work Cell contracts](../../../packages/work-cell/src/contracts.ts#L218-L260), [attempt sources](../../../operations/workbench/src/task-attempts.ts#L76-L108)). | The entry shows selected operational events and evidence references. It neither promotes a run to Task authority nor exposes raw trace as the main conversation. |
+| Work Cell record and task-attempt evidence | One Cell record owns one bounded run's input, driver identity, trace, usage, workspace diff, structural verification, and terminal status; completion is process evidence, not correctness. An ordinary attempt's retained `started` state is start evidence, not a current-running observation ([Work Cell contracts](../../../packages/work-cell/src/contracts.ts#L218-L260), [attempt sources](../../../operations/workbench/src/task-attempts.ts#L11-L108)). | The entry shows selected operational events and evidence references. It neither promotes a run to Task authority nor exposes raw trace as the main conversation, and it renders current liveness unknown unless an exact runtime-owned observation proves it. |
+| **Candidate coordinator and execution-carrier observation** | **Design inference:** current coordinator/attempt liveness and authorized interruption/recovery must be owned by the exact carrier and correlated to durable conversation, Task, and attempt identity. Existing Mission runners expose such live status and controls; ordinary local Task attempts and their control plane do not ([Mission action status](../../../operations/workbench/src/ui/actions.ts#L28-L74), [Task control plane](../../../operations/workbench/src/local-task-control-plane.ts#L49-L66)). | The UI projects only owner-backed liveness/control. For the first persistent-work capability, execution uses an exact carrier with observable liveness and authorized control, such as a live Mission carrier, or start/control remains fail-visible. The final product must still acquire this property for ordinary daily Tasks; its representation is `[owning runtime/planning to determine]`. |
 | **Candidate interaction journal** | **Design inference:** the smallest missing durable source owns only receipt and settlement of conversational messages, causal correlation between a message/response/action and canonical source references, and reconnect ordering. | It must not own objective, lifecycle, authorization, effect truth, verification, or acceptance. Any work status it shows is rebuilt from the canonical sources above. |
 | Browser UI and provider session | The current UI already builds read-only projections; the draft Principal direction says conversation must not become the backend domain model ([server projection](../../../operations/workbench/src/ui/server.ts#L309-L419), [draft direction](../../AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md#workbench-is-a-perceptual-surface)). | Both are replaceable shells. Neither is a durable work identity or recovery source. |
 
@@ -131,13 +156,15 @@ not become an obligation; a Mission timeline should not absorb ordinary local
 conversation; a provider session cannot survive provider replacement or its own
 session limit.
 
-The journal therefore records a small append-only communication history and
-references canonical work evidence. Provisional text may be streamed to the
-current connection, but it becomes reconstructable only when settled or when an
-interruption/failure is durably recorded. A projection can always re-read current
-Task, Mission, attempt, and effect state rather than treating an old conversational
-status line as truth. Retention duration, physical format, compaction, and exact
-event representation are **unknown** and belong to implementation planning.
+The journal therefore retains communication and its order monotonically and
+references canonical work evidence. Whether its physical representation is
+append-only is for planning. Provisional text may be streamed to the current
+connection, but it becomes reconstructable only when settled or when an
+interruption/failure is durably recorded. A projection re-reads current Task,
+Mission, attempt, effect, and owner-backed carrier observations rather than
+treating an old conversational status line or attempt start as current truth.
+Retention duration, physical format, compaction, and exact event representation
+are **unknown** and belong to implementation planning.
 
 This is a new source for interaction delivery only, justified by the Mission's
 reconnect and attributable-conversation acceptance. If planning finds that these
@@ -186,16 +213,19 @@ and the implementation planner owns it.
    the receipt, source revision, timeline event, attempt reference, or explicit
    failure returned by its canonical owner. Operational events are typed
    projections of those sources, not natural-language claims generated for the
-   UI.
+   UI. A non-mutating inquiry may instead settle a response from the current
+   canonical projection without requesting any action.
 4. **Continue asynchronous effects.** A function/tool call can remain in flight
    after the response that requested it. Its eventual result correlates to that
    call and canonical effect evidence; the coordinator may continue useful
    non-conflicting work while it waits.
 5. **Reconstruct after disconnect.** Reconnection reads the interaction journal
    from the last settled position, then re-reads the referenced Task, Mission,
-   attempt, and effect sources. It does not replay a Principal mutation merely
-   because the client missed its acknowledgement, and it does not ask a provider
-   session to remember durable work.
+   attempt, effect, and exact-carrier observations. It does not replay a
+   Principal mutation merely because the client missed its acknowledgement, and
+   it does not ask a provider session to remember durable work. A retained
+   `started` attempt without a current carrier observation remains liveness
+   unknown after reconnect.
 6. **Reconcile conflicts visibly.** Stale revisions, duplicate delivery,
    uncertain effects, provider failure, and disconnect during action settlement
    remain observable states with a recovery path. The default response is to
@@ -208,9 +238,9 @@ The following flow is illustrative, not a normative event schema:
 Principal message
   -> durable interaction receipt
   -> coordinator provisional text ...
-  -> typed Task/Mission/tool action requested
-  -> canonical owner validates and mutates, or returns a visible failure
-  -> settled action references canonical evidence
+  -> if mutation is warranted: typed Task/Mission/tool action requested
+     -> canonical owner validates and mutates, or returns a visible failure
+     -> settled action references canonical evidence
   -> settled coordinator response
   -> later operational events continue to update the projection
 ```
@@ -226,12 +256,40 @@ Principal message
   The supplied OpenAI sources do not establish cancellation of already-running
   custom tools.
 - **Task or Mission interruption** uses the existing persistent control and
-  recovery semantics. Mission input already distinguishes contribution from
+  recovery semantics only where its exact carrier exposes them. Mission input
+  already distinguishes contribution from
   `pause`, `resume`, `stop`, and effect approval
   ([Mission input](../../../operations/autonomy/src/mission-input.ts#L68-L91));
   turn recovery separately distinguishes resume, replace, and abandon
   ([turn recovery](../../../operations/autonomy/src/mission-turn.ts#L111-L150)).
-  A stopped response therefore cannot be interpreted as a stopped Task.
+  The ordinary local Task surface exposes no matching control. A stopped
+  response therefore cannot be interpreted as a stopped Task, and an ordinary
+  Task cannot be presented as interrupted without an owning carrier observation.
+
+### Current liveness is not start evidence
+
+**Observed.** An ordinary Task attempt is written as `started` before the
+synchronous runner returns, but that record contains neither a process identity
+nor a heartbeat; its projection can therefore show retained start evidence
+without establishing that work is currently running
+([attempt creation](../../../operations/workbench/src/task-run.ts#L423-L471),
+[attempt status](../../../operations/workbench/src/task-attempts.ts#L11-L39)).
+The ordinary local Task command surface has no pause, resume, stop, or recovery
+command, whereas current Workbench runner controls target an exact live Mission
+runner ([Task commands](../../../operations/workbench/src/local-task-control-plane.ts#L49-L66),
+[Mission controls](../../../operations/workbench/src/ui/actions.ts#L28-L74)).
+
+**Design inference.** Every “currently active” coordinator or attempt indication
+requires a fresh runtime-owned observation correlated to the durable coordinator,
+Task, attempt, and carrier identities, plus an owner-backed account of supported
+interruption/recovery. The exact representation remains
+`[owning runtime/planning to determine]`. Until it exists, ordinary attempt
+liveness is unknown. The first persistent-work slice may use an exact live
+Mission carrier that already exposes the required observation/control boundary;
+otherwise it must leave starting or controlling that work visibly unavailable.
+This containment does not narrow product acceptance: ordinary daily Task
+publication, correction, visible ongoing work, and results remain required once
+an owning carrier supplies this property.
 
 **Unknown.** The official Realtime sources supplied for this case do not
 establish transparent reconnect/resume, event replay, action idempotency, or
@@ -246,12 +304,24 @@ representation and test its failure cases.
 
 **Design inference.** The coordinator, not deterministic phrase matching,
 decides what an explicit message means in the current conversation and source
-state. Before a consequential action it reads the referenced Task or Mission
-and current revision, considers the active obligation and latest correction,
-then emits one typed operation. The host checks structure, source existence,
-current revision, target identity, scope, and available authority. It does not
-decide semantic intent or quality by regular expression, keyword, or fixed
-phrase.
+state. A status question or other non-mutating inquiry settles a response from
+the current canonical projection and interaction history without creating a
+Task or action; this is not a fifth work operation. Before a consequential
+mutation it reads the referenced Task or Mission and current revision, considers
+the active obligation and latest correction, then emits one typed operation.
+The host checks structure, source existence, current revision, target identity,
+scope, and available authority. It does not decide semantic intent or quality by
+regular expression, keyword, or fixed phrase.
+
+When the message names a project, project resolution precedes Task formation or
+mutation. The spoken alias must resolve unambiguously to a registered project's
+current primary observation; execution additionally requires one exact observed
+Worktree retained in the Task binding. Ambiguous, unregistered, merely discovered,
+stale, or unwritable resolution produces a settled visible limitation. It cannot
+fall back to an independent unbound Task or a guessed Worktree
+([routing boundary](../../../operations/workbench/AGENTS.md#rossovia-workbench-entry),
+[resolution states](../../../operations/workbench/src/resolve.ts#L15-L51),
+[Task context](../../../operations/workbench/AGENTS.md#rossovia-local-task-entry)).
 
 The semantic choices are:
 
@@ -263,12 +333,17 @@ The semantic choices are:
   linked Mission runner exists, uses the existing correction-delivery path.
 - **Continue** when the message requests more work on the same unchanged
   obligation. This is not a new Task state or database operation. The coordinator
-  chooses the currently valid existing continuation—such as assignment, an
-  attributable same-session attempt, or Mission resume—after reading the owning
-  source. If none exists, it reports that rather than guessing a carrier.
+  chooses the currently valid existing continuation after reading the owning
+  source and an exact carrier observation. A same-session attempt is reusable
+  evidence only under its existing continuation checks; `started` alone does not
+  establish a running session. If no owner-backed live/recovery path exists, the
+  coordinator reports liveness unknown or continuation unavailable rather than
+  launching over uncertainty.
 - **Control** when the message is actually about pausing, resuming, stopping, or
-  recovering an execution. The coordinator calls the matching owning runtime
-  operation and keeps response, tool, and persistent-task interruption separate.
+  recovering an execution. The coordinator calls the matching operation only on
+  an exact carrier that owns and exposes it. Ordinary Task state has no such
+  control today, so its absence is visible rather than simulated. Response,
+  tool, and persistent-task interruption remain separate.
 
 A word such as “继续” can mean continue, resume, or acceptance in different
 contexts, so it is deliberately not a routing token. If the coordinator cannot
@@ -383,8 +458,9 @@ OpenCode's provider-specific `--variant`
 ([task run carrier](../../../operations/workbench/src/task-run.ts#L95-L126),
 [attempt evidence](../../../operations/workbench/src/task-run.ts#L455-L471),
 [OpenCode adapter](../../../packages/work-cell/src/opencode-cli-driver.ts#L79-L135)).
-DeepSeek's official thinking-mode and chat-completion documentation establish
-native `high` and `max` reasoning effort for current use
+DeepSeek's official thinking-mode and chat-completion documentation currently
+list native `low`, `high`, and `max` reasoning effort; compatibility values
+`medium` and `xhigh` map to `high`
 ([thinking mode](https://api-docs.deepseek.com/guides/thinking_mode),
 [chat completion](https://api-docs.deepseek.com/api/create-chat-completion/)).
 
@@ -408,9 +484,9 @@ The current generic `ExecutionProfile` binds provider and model but has no
 reasoning-effort property
 ([execution profile](../../../packages/work-cell/src/contracts.ts#L40-L49)).
 Planning must choose the owning policy/evidence carrier without silently
-changing that shared contract. The local adapter currently also accepts `low`
-and `xhigh`; the supplied official DeepSeek sources do not establish those as
-current native values, so this design promises neither
+changing that shared contract. The local adapter accepts `low`, `high`, `xhigh`,
+and `max`; under the current official contract `xhigh` is a compatibility alias
+for `high`, not a distinct native level
 ([local schema](../../../packages/work-cell/src/providers/deepseek.ts#L17-L23)).
 
 ## Capability slices and disconfirming observations
@@ -422,25 +498,32 @@ each slice.
 ### 1. Non-UI text vertical slice
 
 One local text entry reaches the coordinator under the explicit DeepSeek Pro
-`reasoning=max` policy, produces provisional then settled text, chooses one typed
-Task create/correct/continue/control action, and returns the canonical action
-receipt and current work projection without a browser.
+`reasoning=max` policy and produces provisional then settled text. It can answer
+an inquiry from canonical projections without mutation, or choose one typed Task
+create/correct/continue/control action and return its canonical receipt. A named
+project must first resolve to registered/current context; execution also requires
+its exact observed Worktree binding.
 
 **Disconfirming observation:** semantic routing requires UI state; an action can
 be claimed without a canonical source receipt; the coordinator silently runs a
-different model/effort; or the slice needs a second Task authority.
+different model/effort; a named project falls back to an unbound Task or guessed
+Worktree; or the slice needs a second Task authority.
 
-### 2. Durable reconnect and correction slice
+### 2. Durable liveness, reconnect, and correction slice
 
 The interaction journal retains received and settled communication with causal
 references. A client disconnect during output or action settlement reconstructs
 without replaying an already committed mutation. A later Principal message can
 correct the same in-flight obligation, and response/tool/task interruption
-remain distinct.
+remain distinct. Persistent work starts only through an exact carrier with
+owner-backed current liveness and authorized interruption/recovery; the first
+slice may use an exact live Mission carrier, while ordinary Task liveness remains
+unknown until an owning runtime supplies equivalent evidence.
 
 **Disconfirming observation:** reconstruction depends on provider memory; an
 uncertain action is duplicated; a correction creates a replacement Task without
-semantic reason; or a stopped response stops persistent work implicitly.
+semantic reason; `started` is displayed as currently running; unsupported Task
+controls are simulated; or a stopped response stops persistent work implicitly.
 
 ### 3. Temporary-team slice
 
@@ -457,16 +540,19 @@ source reconstruction; or team formation is required for a trivial action.
 
 Only after the preceding behavior works without UI, the local browser becomes a
 text composer and live event projection over the same coordinator/runtime. It
-shows provisional and settled text, task/mission identity, current activity,
-corrections, interruptions, requested-versus-observed model evidence, result
-standing, and reconnect recovery. One representative multi-project daily-use
+shows provisional and settled text, task/mission identity, owner-backed current
+activity or visible liveness unknown, corrections, interruptions,
+requested-versus-observed model evidence, result standing, and reconnect
+recovery. One representative multi-project daily-use
 walkthrough exercises new-task publication, requirement update, ongoing work,
 intervention, and final result.
 
 **Disconfirming observation:** the browser owns semantic state; five-second
 snapshot polling remains the only progress channel; a refresh loses settled
 conversation or duplicates an effect; or the walkthrough needs Codex to supply
-hidden coordination.
+hidden coordination. It also fails if named-project routing can drift silently
+or ordinary `started` evidence is rendered as live work without an owner-backed
+observation.
 
 ## Alternatives considered
 
@@ -500,58 +586,69 @@ hidden coordination.
 
 **Desired behavior, operating range, and acceptance owner:** A local Principal
 can issue and revise ordinary multi-project work through a browser conversation,
-observe ongoing and settled evidence, disconnect and reconstruct, and receive a
-result without Codex acting as the hidden daily coordinator. The Mission's
+observe owner-backed ongoing work or visible liveness unknown plus settled
+evidence, disconnect and reconstruct, and receive a result without Codex acting
+as the hidden daily coordinator. The Mission's
 acceptance list and ultimately the Principal own product acceptance.
 
 **System boundary and effect path:** Principal message → durable interaction
-receipt → one local coordinator → typed existing Task/Mission/tool operation →
-canonical source/effect evidence → duplex event projection → settled response
-and later Task result claim. The browser and provider session remain adapters.
+receipt → one local coordinator → verified project/current-workspace route when
+named → optional typed existing Task/Mission/tool operation → canonical
+source/effect/carrier evidence → duplex event projection → settled response and
+later Task result claim. A non-mutating inquiry omits the operation. The browser
+and provider session remain adapters.
 
 **Principal disturbance or failure path:** A conversational message or
 provisional model output is mistaken for durable work state, causing correction,
 reconnect, interruption, or result settlement to target the wrong object or
-duplicate an effect.
+duplicate an effect. A second material path is that a spoken alias or `started`
+attempt is mistaken for verified project identity, Worktree, or current liveness.
 
 **Observable signal and evidence source:** Interaction receipt/settlement and
-causal references; current Task/Mission revisions; Mission timeline input/turn
-events; attempt requested and observed evidence; effect journal settlement or
-uncertainty; explicit result and review standing.
+causal references; registered project resolution and current primary/Worktree
+observation; current Task/Mission revisions; Mission timeline input/turn events;
+attempt start/terminal evidence kept distinct from owner-backed carrier
+liveness/control; effect journal settlement or uncertainty; explicit result and
+review standing.
 
 **Control action, authority, and recovery:** The coordinator makes semantic
 choices; the host validates typed structure, existence, revision, target, scope,
-and authority; canonical owners return receipts; reconnect rebuilds from settled
-communication and live sources; conflicts remain visible and only uncommitted
-work is retried. Independent reviewers judge consequential candidate semantics;
-the Principal keeps acceptance.
+and authority; project-bound action waits for verified registered/current context
+and exact Worktree where execution needs it; canonical owners return receipts;
+reconnect rebuilds from settled communication and live owner sources. Missing
+project or liveness/control evidence fails visibly, and only uncommitted work is
+retried. Independent reviewers judge consequential candidate semantics; the
+Principal keeps acceptance.
 
 **Required component contributions and local owners:** Conversation mechanism
 owns duplex correlation and reconstruction; the interaction journal owns only
 communication facts; provider/runtime adapters own streaming and error semantics;
 current policy owns DeepSeek Pro `max`; Task, Mission, authorization, effect, and
-Work Cell sources retain their accepted boundaries; UI owns presentation and
-input adaptation.
+Work Cell sources retain their accepted boundaries; registered-project/current
+workspace sources own routing context; the exact carrier owns liveness and
+interruption/recovery; UI owns presentation and input adaptation.
 
 **Expected work, margin, and audit signal:** Planning begins with the non-UI
-vertical slice, then recovery/correction, temporary formation, and UI. Each slice
-has an explicit disconfirming observation above. No token, time, or cost estimate
-is introduced by this design; the planning owner must estimate the supported
-work and recovery margin.
+vertical slice, then liveness/recovery/correction, temporary formation, and UI.
+Each slice has an explicit disconfirming observation above. No token, time, or
+cost estimate is introduced by this design; the planning owner must estimate the
+supported work and recovery margin.
 
 **Residual risk and who accepts it:** Natural-language intent can still be
 misclassified; provider identity/effort observation may be incomplete; tool
-cancellation and disconnect settlement may be ambiguous; a projection may lag
-canonical sources. The coordinator exposes uncertainty, the independent reviewer
-judges consequential semantic candidates, and only the Principal may accept the
-remaining product and authority risk.
+cancellation and disconnect settlement may be ambiguous; ordinary Task liveness
+has no accepted owner-backed representation yet; and project or activity
+projections may lag their canonical sources. The coordinator exposes uncertainty,
+the independent reviewer judges consequential semantic candidates, and only the
+Principal may accept the remaining product and authority risk.
 
 **Operational measure and reopening condition:** The representative daily-use
 walkthrough must complete new-task publication, same-obligation correction,
 visible ongoing work, explicit intervention, reconnect, and evidence-linked
 result without duplicate authority or Codex coordination. Reopen the design if
 operation requires a second task source, loses or duplicates an action after
-disconnect, silently changes model/effort, conflates interruption levels, or
+disconnect, silently changes model/effort, guesses project/Worktree context,
+presents attempt start as current liveness, conflates interruption levels, or
 turns temporary contributions into a permanent organization.
 
 ## What the next reviewer must try to falsify
@@ -565,17 +662,21 @@ return exact findings, not redesign it. In particular, try to show that:
    improperly treats the draft ACI program as accepted design;
 3. the duplex lifecycle permits provisional output, stale UI state, or provider
    session memory to mutate or settle canonical work;
-4. create/correct/continue/control relies on code-level phrase matching or leaves
-   semantic judgment unowned;
-5. response, tool, and persistent-task interruption can still be conflated;
-6. temporary contributions introduce a standing committee, vote, self-review,
+4. a named project can bypass registered/current-primary resolution, create an
+   independent Task on resolution failure, or execute in a guessed Worktree;
+5. create/correct/continue/control relies on code-level phrase matching, a
+   non-mutating inquiry is forced into mutation, or semantic judgment is unowned;
+6. attempt `started` can be presented as current liveness, or Task controls are
+   claimed without an exact carrier that owns them;
+7. response, tool, and persistent-task interruption can still be conflated;
+8. temporary contributions introduce a standing committee, vote, self-review,
    or new gate;
-7. DeepSeek Pro `max` leaks from current policy into reusable mechanism, silently
+9. DeepSeek Pro `max` leaks from current policy into reusable mechanism, silently
    downgrades, or presents requested effort as observed fact;
-8. a capability slice presupposes UI, transport, schema, threshold, or runtime
+10. a capability slice presupposes UI, transport, schema, threshold, or runtime
    behavior not owned by the evidence; or
-9. any existing Task, Mission, authorization, effect, Work Cell, verification,
-   or Principal acceptance boundary has been weakened.
+11. any existing project, Task, Mission, authorization, effect, Work Cell,
+    verification, or Principal acceptance boundary has been weakened.
 
 Until that independent review returns no material finding and the Principal
 accepts the architecture, this System Case remains a candidate only.
