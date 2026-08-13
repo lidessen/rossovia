@@ -43,12 +43,57 @@ test("fails closed when supplied tasks are ignored by a driver", async () => {
   expect(record.error).toBe("driver completed without the enabled task state");
 });
 
+test("fails closed when a driver returns an empty final task projection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "work-cell-run-test-"));
+  temporaryRoots.push(root);
+  const input: CellInput = {
+    id: "run-cell-fixture",
+    intent: "Exercise the generic task completion invariant.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the fixture result."],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["Supplied tasks remain verifiable."],
+    tasks: [{ subject: "Inspect the bounded source", description: "Read the bounded source." }],
+    budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
+  };
+
+  const record = await runCell(input, new EmptyTaskProjectionDriver());
+
+  expect(record.status).toBe("verification_failed");
+  expect(record.tasks).toEqual([]);
+  expect(record.verification.tasks).toEqual({
+    passed: false,
+    pending: 0,
+    inProgress: 0,
+    completed: 0,
+    blocked: 0,
+    errors: ["driver completed with an empty task projection"],
+  });
+  expect(record.error).toBe("driver completed with an empty task projection");
+});
+
 class IgnoringTaskDriver implements CellDriver {
   readonly descriptor = { adapter: "ignoring-task-fixture", provider: "deterministic", model: "fixture" };
 
   async run(): Promise<DriverResult> {
     return {
       terminalToolsCalled: [],
+      finalText: "done",
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+      rawSteps: [],
+    };
+  }
+}
+
+class EmptyTaskProjectionDriver implements CellDriver {
+  readonly descriptor = { adapter: "empty-task-fixture", provider: "deterministic", model: "fixture" };
+
+  async run(): Promise<DriverResult> {
+    return {
+      terminalToolsCalled: [],
+      tasks: [],
       finalText: "done",
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
       rawSteps: [],

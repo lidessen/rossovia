@@ -307,7 +307,7 @@ describe("OpenCode CLI driver", () => {
     expect(record.tasks).toEqual([{
       id: "task-1",
       subject: "Adopt the todos",
-      description: "Adopt the todos through todowrite.",
+      description: "Adopt the todos",
       status: "completed",
       owner: "opencode-fixture",
       blockedBy: [],
@@ -333,6 +333,197 @@ describe("OpenCode CLI driver", () => {
     expect(record.verification.tasks).toMatchObject({ passed: false, pending: 1 });
     expect(record.error).toContain("task cycle is unsettled");
     expect(server.calls).not.toContain("DELETE /session/ses_fixture");
+  });
+
+  test("projects worker-refined native todos at completion and settles mechanically", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        if (call === 1) {
+          return [
+            { content: "Adopt the todos", status: "pending", priority: "high" },
+            { content: "Run the named checks", status: "pending", priority: "high" },
+          ];
+        }
+        return [{ content: "Refined: finish the bounded changes", status: "completed", priority: "high" }];
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [
+      { subject: "Adopt the todos", description: "Adopt the todos through todowrite." },
+      { subject: "Run the named checks", description: "Run the named checks." },
+    ];
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("passed");
+    expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
+    expect(record.tasks).toEqual([{
+      id: "task-1",
+      subject: "Refined: finish the bounded changes",
+      description: "Refined: finish the bounded changes",
+      status: "completed",
+      owner: "opencode-fixture",
+      blockedBy: [],
+    }]);
+    expect(server.calls).toEqual([
+      "POST /session",
+      "GET /session/ses_fixture/todo",
+      "GET /session/ses_fixture/todo",
+    ]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("rejects a refined nonterminal native todo projection", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        if (call === 1) return [{ content: "Adopt the todos", status: "pending", priority: "high" }];
+        return [{ content: "Refined: still working", status: "in_progress", priority: "high" }];
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("verification_failed");
+    expect(record.verification.tasks).toMatchObject({ passed: false, inProgress: 1 });
+    expect(record.error).toContain("task cycle is unsettled");
+    expect(server.calls).not.toContain("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("accepts a resumed session whose native todos no longer match the supplied seeds", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        if (call === 1) return [{ content: "Refined: continue the bounded changes", status: "in_progress", priority: "high" }];
+        return [{ content: "Refined: continue the bounded changes", status: "completed", priority: "high" }];
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("resume-123");
+    }), { serverAdapter: server.adapter, sessionId: "resume-123" });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("passed");
+    expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
+    expect(record.tasks).toEqual([{
+      id: "task-1",
+      subject: "Refined: continue the bounded changes",
+      description: "Refined: continue the bounded changes",
+      status: "completed",
+      owner: "opencode-fixture",
+      blockedBy: [],
+    }]);
+    expect(server.calls).toEqual([
+      "GET /session/resume-123/todo",
+      "GET /session/resume-123/todo",
+    ]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("fails settlement when the final native todo projection is empty", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        if (call === 1) return [{ content: "Adopt the todos", status: "pending", priority: "high" }];
+        return [];
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("verification_failed");
+    expect(record.tasks).toEqual([]);
+    expect(record.verification.tasks).toEqual({
+      passed: false,
+      pending: 0,
+      inProgress: 0,
+      completed: 0,
+      blocked: 0,
+      errors: ["driver completed with an empty task projection"],
+    });
+    expect(record.error).toBe("driver completed with an empty task projection");
+    expect(server.calls).not.toContain("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("fails visibly on a malformed native todo status in the final projection", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        if (call === 1) return [{ content: "Adopt the todos", status: "pending", priority: "high" }];
+        return [{ content: "Finished todo", status: "done", priority: "high" }];
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toBe("OpenCode final todo projection returned invalid status at position 0: done");
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("fails visibly on a native todo without content in the final projection", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        if (call === 1) return [{ content: "Adopt the todos", status: "pending", priority: "high" }];
+        return [{ status: "completed", priority: "high" }];
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toBe("OpenCode final todo projection returned a missing or empty todo at position 0");
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
   });
 
   test("puts resume session before dir", async () => {

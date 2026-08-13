@@ -567,29 +567,38 @@ export class OpenCodeCliDriver implements CellDriver {
     if (!Array.isArray(body)) {
       throw new CellExecutionError(`${label} returned a non-array response`, usage);
     }
-    const contents = body
-      .map((todo) => (isRecord(todo) && typeof todo.content === "string" ? todo.content : undefined))
-      .filter((content): content is string => content !== undefined);
-    const expected = seeds.map((seed) => seed.subject);
-    if (contents.length !== expected.length || expected.some((content, index) => content !== contents[index])) {
-      throw new CellExecutionError(
-        `${label} failed: expected ${JSON.stringify(expected)} but the session reports ${JSON.stringify(contents)}`,
-        usage,
-      );
+    if (phase === "seeded") {
+      const expected = seeds.map((seed) => seed.subject);
+      const contents = body
+        .map((todo) => (isRecord(todo) && typeof todo.content === "string" ? todo.content : undefined))
+        .filter((content): content is string => content !== undefined);
+      if (contents.length !== expected.length || expected.some((content, index) => content !== contents[index])) {
+        throw new CellExecutionError(
+          `${label} failed: expected ${JSON.stringify(expected)} but the session reports ${JSON.stringify(contents)}`,
+          usage,
+        );
+      }
     }
     const tasks = body.map((todo, index): Task => {
+      const content = isRecord(todo) && typeof todo.content === "string" ? todo.content : undefined;
       const status = isRecord(todo) ? todo.status : undefined;
+      if (content === undefined || content.trim() === "") {
+        throw new CellExecutionError(
+          `${label} returned a missing or empty todo at position ${index}`,
+          usage,
+        );
+      }
       if (!isTaskStatus(status)) {
         throw new CellExecutionError(
           `${label} returned invalid status at position ${index}: ${String(status)}`,
           usage,
         );
       }
-      const seed = seeds[index]!;
+      const seed = phase === "seeded" ? seeds[index] : undefined;
       return {
         id: `task-${index + 1}`,
-        subject: seed.subject,
-        description: seed.description,
+        subject: content,
+        description: seed?.description ?? content,
         status,
         owner,
         blockedBy: [],
@@ -598,6 +607,12 @@ export class OpenCodeCliDriver implements CellDriver {
     if (phase === "seeded" && tasks.some((task) => task.status !== "pending")) {
       throw new CellExecutionError(
         `${label} failed: newly seeded todos must all be pending`,
+        usage,
+      );
+    }
+    if (phase === "existing" && tasks.length === 0) {
+      throw new CellExecutionError(
+        `${label} failed: the resumed session reports no todos`,
         usage,
       );
     }
