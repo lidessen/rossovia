@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
+import { WorkbenchTaskExecutionContextRefSchema } from "../../workbench/src/task-execution-context";
 import { LaunchAuthorizationRefSchema } from "./mission-turn";
 
 export const EFFECT_JOURNAL_EVENT_VERSION = "rosso.effect-journal-event.v1" as const;
@@ -39,7 +40,9 @@ export const EffectPreparedDataSchema = z.object({
   writePaths: UniqueScopesSchema,
   allowedCommands: z.tuple([]),
   authority: z.literal("withheld"),
+  writerRef: IdSchema.optional(),
   launchAuthorizationRef: LaunchAuthorizationRefSchema.optional(),
+  workbenchTaskContext: WorkbenchTaskExecutionContextRefSchema.optional(),
 }).strict();
 
 export const EffectStartedDataSchema = z.object({}).strict();
@@ -138,6 +141,11 @@ export const EffectSettledDataSchema = z.object({
     independent: IndependentAcceptanceSchema,
     principal: PrincipalAcceptanceSchema,
   }).strict(),
+  materializedBundle: z.object({
+    path: RelativeFileSchema,
+    sha256: DigestSchema,
+    tracking: z.literal("ignored"),
+  }).strict().optional(),
 }).strict();
 
 export const EffectUncertainDataSchema = z.object({
@@ -385,6 +393,7 @@ export function projectEffectActivity(
       case "effect-settled":
         if (state !== "quiesced") throw invalidTransition(effectId, event.type, state);
         assertOutsideScopeVerdict(effectId, first.data.writePaths, event.data);
+        assertMaterializedBundleBinding(effectId, event.data);
         settlement = event.data;
         state = "settled";
         break;
@@ -588,6 +597,16 @@ function assertOutsideScopeVerdict(
   const expectedVerdict = actualOutside.length === 0 ? "clear" : "violated";
   if (settlement.outsideScope.verdict !== expectedVerdict) {
     throw new Error(`effect ${effectId} outside-scope verdict must be ${expectedVerdict}`);
+  }
+}
+
+function assertMaterializedBundleBinding(
+  effectId: string,
+  settlement: EffectSettledData,
+): void {
+  const bundle = settlement.materializedBundle;
+  if (bundle !== undefined && !settlement.changedPaths.includes(bundle.path)) {
+    throw new Error(`effect ${effectId} materialized bundle ${bundle.path} is absent from changed paths`);
   }
 }
 

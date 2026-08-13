@@ -5,7 +5,7 @@ import {
   realpathSync,
   writeFileSync,
 } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellInput } from "../../packages/work-cell/src/contracts";
@@ -22,6 +22,7 @@ import {
   workbenchTaskCorrectionGuidanceRefs,
   workbenchTaskExecutionContextDigest,
   workbenchTaskExecutionContextRef,
+  sameWorkbenchTaskExecutionContextRef,
   type WorkbenchTaskExecutionContext,
 } from "../../operations/workbench/src/task-execution-context";
 import {
@@ -30,6 +31,7 @@ import {
   type DelegateLoopRun,
 } from "../../operations/autonomy/src/delegate-loop";
 import type { FileMissionTimeline } from "../../operations/autonomy/src/delegate-timeline";
+import { FileEffectJournal } from "../../operations/autonomy/src/effect-journal";
 import { stableStringify } from "../../operations/autonomy/src/canonical-json";
 import type { MissionExecutionController } from "../../operations/autonomy/src/mission-execution-host";
 import { missionRunnerDirectory } from "../../operations/autonomy/src/mission-runner";
@@ -53,21 +55,29 @@ import {
   validateProjectExecutionAuthorization,
 } from "../../operations/autonomy/experiments/project-execution-authorization";
 import { validateProjectBundle } from "./lib/project-evidence-bundle.js";
+import {
+  PROJECT_LENS_MATERIALIZER_REF,
+  PROJECT_LENS_OUTPUT_PATH,
+  verifyProjectLensEffect,
+} from "./project-lens-effect-verifier";
 import { buildProjectLensBundle } from "./scripts/project-lens-builder.js";
 
 const WORKTREE_ENV = "ROSSO_PROJECT_LENS_EFFECT_ROOT";
 const AUTHORIZATION_RECEIPT_ENV = "ROSSO_PROJECT_LENS_AUTHORIZATION_RECEIPT";
 const MISSION_ID = "project-lens-dogfood";
-const PROPOSAL_ID = "project-lens-dogfood-v5";
 const MISSION_SOURCE = "operations/missions/project-lens-dogfood.json";
-const RUNTIME_REF =
-  "source-project:experiments/human-agent-visualization/project-lens-runtime.ts";
+const RUNTIME_REF = PROJECT_LENS_MATERIALIZER_REF;
 const RUNTIME_SOURCE_PATH = fileURLToPath(import.meta.url);
-const OUTPUT_PATH =
-  "experiments/human-agent-visualization/generated/project-evidence-bundle.json";
 const OBLIGATION = "select-and-materialize-one-project-lens-arrival-path";
-const PROFILE_ID = "project-lens-focus-selector-v1";
-const PROFILE_REVISION = "2026-08-11-project-lens-dogfood";
+
+export const PROJECT_LENS_EXECUTION_IDENTITY = {
+  proposalId: "project-lens-dogfood-v6",
+  wholeRevision: "project-lens-dogfood-v6",
+  referenceProfile: {
+    id: "project-lens-focus-selector-v1",
+    revision: "2026-08-12-project-lens-dogfood-v6",
+  },
+} as const;
 
 // The builder recursively traverses every file below these repository roots.
 // This list is local authorization, not the provider workspace below.
@@ -144,7 +154,7 @@ const AUDIENCE = "Principal evaluating Project Lens as Rossovia dogfood";
 const EXPECTED_SCOPE = {
   readPaths: [...PROJECT_LENS_LOCAL_READ_PATHS],
   excludePaths: [...PROJECT_LENS_LOCAL_EXCLUDE_PATHS],
-  writePaths: [OUTPUT_PATH],
+  writePaths: [PROJECT_LENS_OUTPUT_PATH],
   commands: [],
 } as const satisfies Extract<
   MissionExecutionProposal,
@@ -212,7 +222,7 @@ export function projectLensAuthorizationContract(
   return {
     projectId: requiredNonempty(projectId, "registered Project Lens project ID"),
     missionId: MISSION_ID,
-    proposalId: PROPOSAL_ID,
+    proposalId: PROJECT_LENS_EXECUTION_IDENTITY.proposalId,
     missionSource: MISSION_SOURCE,
     runtimeRef: RUNTIME_REF,
     runtimeDigest: currentProjectLensRuntimeDigest(),
@@ -371,7 +381,7 @@ export function projectLensCell(
       maxCommandOutputBytes: 8_000,
     },
     executionProfile: {
-      id: PROFILE_ID,
+      id: PROJECT_LENS_EXECUTION_IDENTITY.referenceProfile.id,
       version: "execution-profile.v1",
       provider: "deepseek",
       model: "deepseek-v4-flash",
@@ -408,7 +418,7 @@ export async function materializeProjectLensCandidate(
   readonly subjectRevision: string;
 }> {
   const selection = parseFocusSources(focusSources);
-  const outputPath = resolve(worktree, OUTPUT_PATH);
+  const outputPath = resolve(worktree, PROJECT_LENS_OUTPUT_PATH);
   const buildBundle = buildProjectLensBundle as unknown as (input: {
     readonly repo: string;
     readonly intent: "understand";
@@ -535,7 +545,7 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       description: expectedCall.task,
     }],
     whole: {
-      revision: "project-lens-dogfood-v5",
+      revision: PROJECT_LENS_EXECUTION_IDENTITY.wholeRevision,
       sourceRefs: [...expectedCall.sourceRefs],
       obligations: [OBLIGATION],
       settledContributionKeys: [],
@@ -555,10 +565,10 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
       return {
         dependsOn: [],
         taskShape: {
-          referenceProfile: { id: PROFILE_ID, revision: PROFILE_REVISION },
+          referenceProfile: { ...PROJECT_LENS_EXECUTION_IDENTITY.referenceProfile },
           evidence: {
             status: "admitted" as const,
-            revision: PROFILE_REVISION,
+            revision: PROJECT_LENS_EXECUTION_IDENTITY.referenceProfile.revision,
             refs: ["evidence:project-lens-current-builder-and-direct-tests"],
           },
           disposition: "reliable-primitive" as const,
@@ -593,7 +603,10 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
     if (transition.kind !== "finished") return transition;
     materialization ??= materializeFinishedRun(
       context.timeline,
-      turn.turnId,
+      context.root,
+      context.missionId,
+      turn,
+      taskContext,
       transition.run,
       worktree,
     );
@@ -619,9 +632,12 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
   return { turn, controller };
 };
 
-async function materializeFinishedRun(
+export async function materializeFinishedRun(
   timeline: FileMissionTimeline,
-  turnId: string,
+  home: string,
+  missionId: string,
+  turn: MissionTurnStart,
+  taskContext: WorkbenchTaskExecutionContext,
   run: DelegateLoopRun,
   worktree: string,
 ): Promise<void> {
@@ -632,15 +648,166 @@ async function materializeFinishedRun(
     || batch?.outcomes.length !== 1
     || outcome?.key !== "project-lens-focus-selection"
     || outcome.status !== "completed"
+    || outcome.runId === undefined
   ) {
     throw new Error("Project Lens materialization requires one completed focus-selection Cell");
   }
-  const projection = await timeline.readResult(turnId, batch.id, outcome.key);
+  const projection = await timeline.readResult(turn.turnId, batch.id, outcome.key);
   if (projection.semantic === undefined || projection.receipt.projection !== "full") {
     throw new Error("Project Lens focus selection is unavailable from the settled Cell");
   }
   const selected = parseFocusSelection(projection.semantic.output);
-  await materializeProjectLensCandidate(worktree, selected.focusSources);
+  await recordProjectLensMaterializationEffect({
+    home,
+    missionId,
+    turn,
+    taskContext,
+    effectId: batch.id,
+    cellId: outcome.cellId,
+    runId: outcome.runId,
+    worktree,
+    focusSources: selected.focusSources,
+  });
+  const verification = await verifyProjectLensEffect({
+    home,
+    missionId,
+    effectId: batch.id,
+  });
+  if (verification.verdict === "unverifiable") {
+    throw new Error(
+      `Project Lens independent verification was unavailable: ${verification.reason ?? "unknown reason"}`,
+    );
+  }
+}
+
+async function recordProjectLensMaterializationEffect(input: {
+  readonly home: string;
+  readonly missionId: string;
+  readonly turn: MissionTurnStart;
+  readonly taskContext: WorkbenchTaskExecutionContext;
+  readonly effectId: string;
+  readonly cellId: string;
+  readonly runId: string;
+  readonly worktree: string;
+  readonly focusSources: readonly string[];
+}): Promise<void> {
+  const {
+    home,
+    missionId,
+    turn,
+    taskContext,
+    effectId,
+    cellId,
+    runId,
+    worktree,
+    focusSources,
+  } = input;
+  if (
+    missionId !== MISSION_ID
+    || turn.launchAuthorizationRef === undefined
+    || turn.workbenchTaskContext === undefined
+    || !sameWorkbenchTaskExecutionContextRef(
+      turn.workbenchTaskContext,
+      workbenchTaskExecutionContextRef(taskContext),
+    )
+  ) {
+    throw new Error("Project Lens materialization lineage does not match its Mission turn");
+  }
+  const runnerRoot = missionRunnerDirectory(home, missionId);
+  const journal = new FileEffectJournal(runnerRoot);
+  const baseHead = gitText(worktree, ["rev-parse", "--verify", "HEAD"]);
+  const baselineStatus = gitBytes(
+    worktree,
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+  );
+  if (baselineStatus.byteLength !== 0) {
+    throw new Error("Project Lens host materialization requires a clean Git-visible baseline");
+  }
+  const baselineDigest = sha256(Buffer.concat([
+    Buffer.from(`${baseHead}\0`, "utf8"),
+    baselineStatus,
+    gitBytes(worktree, ["ls-files", "-s", "-z"]),
+  ]));
+  await journal.prepare(effectId, {
+    missionId,
+    turnId: turn.turnId,
+    cellId,
+    worktree: { root: worktree, baseHead, baselineDigest },
+    writePaths: [PROJECT_LENS_OUTPUT_PATH],
+    allowedCommands: [],
+    authority: "withheld",
+    writerRef: PROJECT_LENS_MATERIALIZER_REF,
+    launchAuthorizationRef: turn.launchAuthorizationRef,
+    workbenchTaskContext: workbenchTaskExecutionContextRef(taskContext),
+  });
+  await journal.start(effectId);
+  await journal.observeRun(effectId, runId);
+  try {
+    const materialized = await materializeProjectLensCandidate(
+      worktree,
+      focusSources,
+    );
+    const bundleSha256 = await fileSha256(materialized.outputPath);
+    if (bundleSha256 === null) {
+      throw new Error("Project Lens host materializer did not retain its declared bundle");
+    }
+    if (
+      gitText(worktree, ["rev-parse", "--verify", "HEAD"]) !== baseHead
+      || gitBytes(
+        worktree,
+        ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+      ).byteLength !== 0
+      || gitExitCode(worktree, [
+        "check-ignore",
+        "--quiet",
+        "--",
+        PROJECT_LENS_OUTPUT_PATH,
+      ]) !== 0
+    ) {
+      throw new Error("Project Lens host materialization escaped its ignored bundle boundary");
+    }
+    const artifactDirectory = join(
+      runnerRoot,
+      "effect-artifacts",
+      sha256(effectId).slice(0, 16),
+    );
+    const patchSource = Buffer.alloc(0);
+    const patchDigest = sha256(patchSource);
+    const patchPath = join(artifactDirectory, `${patchDigest}.patch`);
+    await mkdir(artifactDirectory, { recursive: true });
+    await writeFile(patchPath, patchSource, { flag: "wx" });
+    await journal.quiesce(effectId, { reason: "completed", activeToolCalls: [] });
+    await journal.settle(effectId, {
+      patch: {
+        ref: relative(runnerRoot, patchPath),
+        digest: patchDigest,
+      },
+      changedPaths: [PROJECT_LENS_OUTPUT_PATH],
+      outsideScope: { verdict: "clear", paths: [] },
+      acceptance: {
+        mechanical: {
+          verdict: "passed",
+          evidenceRefs: [`file:${relative(runnerRoot, patchPath)}`],
+        },
+        independent: { verdict: "not-run", evidenceRefs: [] },
+        principal: { verdict: "withheld", evidenceRefs: [] },
+      },
+      materializedBundle: {
+        path: PROJECT_LENS_OUTPUT_PATH,
+        sha256: bundleSha256,
+        tracking: "ignored",
+      },
+    });
+  } catch (error) {
+    const activity = await journal.activity(effectId).catch(() => undefined);
+    if (activity !== undefined && activity.state !== "settled" && activity.state !== "uncertain") {
+      await journal.uncertain(effectId, {
+        reason: "effect-observation-incomplete",
+        evidenceRefs: [`error:sha256:${sha256(errorMessage(error))}`],
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
 }
 
 function prepareDelegateInput(
@@ -769,4 +936,51 @@ function parseFocusSources(
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function gitText(root: string, args: readonly string[]): string {
+  return gitBytes(root, args).toString("utf8").trim();
+}
+
+function gitBytes(root: string, args: readonly string[]): Buffer {
+  const result = Bun.spawnSync(["git", "-C", root, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      result.stderr.toString().trim() || `git ${args.join(" ")} failed`,
+    );
+  }
+  return Buffer.from(result.stdout);
+}
+
+function gitExitCode(root: string, args: readonly string[]): number | null {
+  const result = Bun.spawnSync(["git", "-C", root, ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return result.exitCode;
+}
+
+async function fileSha256(path: string): Promise<string | null> {
+  try {
+    return sha256(await readFile(path));
+  } catch (error) {
+    if (
+      typeof error === "object"
+      && error !== null
+      && "code" in error
+      && (error as { code?: unknown }).code === "ENOENT"
+    ) return null;
+    throw error;
+  }
+}
+
+function sha256(value: string | Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

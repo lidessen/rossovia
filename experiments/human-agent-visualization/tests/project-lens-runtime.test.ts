@@ -15,23 +15,37 @@ import {
   PROJECT_LENS_LOCAL_EXCLUDE_PATHS,
   PROJECT_LENS_LOCAL_READ_PATHS,
   PROJECT_LENS_PROVIDER_READ_PATHS,
+  PROJECT_LENS_EXECUTION_IDENTITY,
   createMissionRuntime,
   currentProjectLensRuntimeDigest,
   materializeProjectLensCandidate,
   missionRuntimeRecoveryCapabilities,
   projectLensAuthorizationContract,
   projectLensCall,
+  projectLensCell,
   projectLensExecutionProposal,
   projectLensProviderWorkspace,
+  materializeFinishedRun,
 } from "../project-lens-runtime";
+import {
+  PROJECT_LENS_MATERIALIZER_REF,
+  PROJECT_LENS_OUTPUT_PATH,
+} from "../project-lens-effect-verifier";
+import { FileMissionTimeline } from "../../../operations/autonomy/src/delegate-timeline";
+import { FileEffectJournal } from "../../../operations/autonomy/src/effect-journal";
+import { projectMissionActivity } from "../../../operations/autonomy/src/mission-activity";
+import { missionRunnerDirectory } from "../../../operations/autonomy/src/mission-runner";
+import { MISSION_TURN_VERSION } from "../../../operations/autonomy/src/mission-turn";
 import {
   executionAuthorizationReceiptPath,
   type ExecutionAuthorizationReceipt,
 } from "../../../operations/workbench/src/execution-authorization";
 import { missionExecutionProposalDigest } from "../../../operations/workbench/src/mission-execution-proposal";
+import { CurrentEffectProjectionSchema } from "../../../operations/workbench/src/ui/projection";
 import {
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
   WorkbenchTaskExecutionContextSchema,
+  workbenchTaskExecutionContextRef,
 } from "../../../operations/workbench/src/task-execution-context";
 
 const roots: string[] = [];
@@ -52,6 +66,15 @@ test("the Mission contract separates complete local traversal from external prov
     replace: false,
   });
   expect(contract.runtimeDigest).toBe(currentProjectLensRuntimeDigest());
+  expect(PROJECT_LENS_EXECUTION_IDENTITY).toEqual({
+    proposalId: "project-lens-dogfood-v6",
+    wholeRevision: "project-lens-dogfood-v6",
+    referenceProfile: {
+      id: "project-lens-focus-selector-v1",
+      revision: "2026-08-12-project-lens-dogfood-v6",
+    },
+  });
+  expect(contract.proposalId).toBe(PROJECT_LENS_EXECUTION_IDENTITY.proposalId);
   expect(contract.scope).toEqual({
     readPaths: [...PROJECT_LENS_LOCAL_READ_PATHS],
     excludePaths: [...PROJECT_LENS_LOCAL_EXCLUDE_PATHS],
@@ -88,8 +111,11 @@ test("the Mission proposal is semantically bound to the loaded runtime bytes", (
     "../../../operations/missions/project-lens-dogfood.json",
   ), "utf8"));
   expect(mission.executionProposal).toEqual(projectLensExecutionProposal());
+  expect(mission.executionProposal.proposalId).toBe("project-lens-dogfood-v6");
   expect(mission.executionProposal.runtimeDigest)
     .toBe(currentProjectLensRuntimeDigest());
+  expect(missionExecutionProposalDigest(mission.executionProposal))
+    .toBe("a8c56bfad8f361e27434cf5ef5adfd8f928e3e9cd75871d2203dd3de8adae208");
 });
 
 test("the provider call consumes the exact task objective, correction, and acceptance", () => {
@@ -123,6 +149,17 @@ test("the provider call consumes the exact task objective, correction, and accep
   expect(call.sourceRefs).toContain(
     `workbench-task:${context.taskId}@${context.taskRevision}`,
   );
+});
+
+test("the prepared Project Lens Cell uses the accepted execution reference profile", () => {
+  const context = taskContext(
+    "33333333-3333-4333-8333-333333333333",
+    "a".repeat(64),
+  );
+  const cell = projectLensCell("/candidate", projectLensCall(context));
+
+  expect(cell.executionProfile.id)
+    .toBe(PROJECT_LENS_EXECUTION_IDENTITY.referenceProfile.id);
 });
 
 test("the runtime waits for a reconciled anchor and then consumes the task-bound authorization once", async () => {
@@ -207,6 +244,254 @@ test("the real builder reads an allowed counterexample and excludes a nested bui
   expect(visibleChanged.subjectRevision).not.toBe(first.subjectRevision);
 });
 
+test("the Project Lens effect projects the host materializer as writer and the Cell as source lineage before settlement", async () => {
+  const fixture = projectLensEffectFixture();
+  const effectId = "project-lens-turn-prepared:batch:1";
+  const runId = "project-lens-focus-run-prepared";
+  const cellId = "project-lens-focus-selection";
+  const task = taskContext(
+    "33333333-3333-4333-8333-333333333333",
+    "a".repeat(64),
+  );
+  const turn = projectLensTurn("project-lens-turn-prepared", task);
+  const runnerRoot = missionRunnerDirectory(fixture.home, "project-lens-dogfood");
+  const timeline = new FileMissionTimeline(runnerRoot);
+  await timeline.startTurn("project-lens-dogfood", turn);
+  writeFileSync(timeline.timelinePath(turn.turnId), `${JSON.stringify({
+    version: "rosso.delegate-timeline-event.v1",
+    eventId: randomUUID(),
+    timelineId: turn.turnId,
+    sequence: 0,
+    at: "2026-08-12T10:00:00Z",
+    type: "delegate.batch-prepared",
+    data: {
+      batchId: effectId,
+      checkpointDigest: "f".repeat(64),
+      checkpoint: {},
+      children: [{ callId: "call-1", key: "focus", timelineId: "child-1" }],
+    },
+  })}\n`, { flag: "a" });
+  const journal = new FileEffectJournal(runnerRoot);
+  await journal.prepare(effectId, {
+    missionId: "project-lens-dogfood",
+    turnId: turn.turnId,
+    cellId,
+    writerRef: PROJECT_LENS_MATERIALIZER_REF,
+    worktree: {
+      root: fixture.worktree,
+      baseHead: fixture.head,
+      baselineDigest: "f".repeat(64),
+    },
+    writePaths: [PROJECT_LENS_OUTPUT_PATH],
+    allowedCommands: [],
+    authority: "withheld",
+    launchAuthorizationRef: turn.launchAuthorizationRef,
+    workbenchTaskContext: turn.workbenchTaskContext,
+  });
+
+  const prepared = await projectMissionActivity(
+    fixture.home,
+    "project-lens-dogfood",
+  );
+  expect(prepared.currentEffect).toMatchObject({
+    phase: "prepared",
+    writer: { ref: PROJECT_LENS_MATERIALIZER_REF },
+    source: { cellId, runId: null },
+  });
+
+  await journal.start(effectId);
+  await journal.observeRun(effectId, runId);
+  const executing = await projectMissionActivity(
+    fixture.home,
+    "project-lens-dogfood",
+  );
+  expect(executing.currentEffect).toMatchObject({
+    phase: "executing",
+    writer: { ref: PROJECT_LENS_MATERIALIZER_REF },
+    source: { cellId, runId },
+  });
+
+  await journal.uncertain(effectId, {
+    reason: "effect-observation-incomplete",
+    evidenceRefs: ["test:pre-settlement-failure"],
+  });
+  const uncertain = await projectMissionActivity(
+    fixture.home,
+    "project-lens-dogfood",
+  );
+  expect(uncertain.currentEffect).toMatchObject({
+    phase: "uncertain",
+    writer: { ref: PROJECT_LENS_MATERIALIZER_REF },
+    source: { cellId, runId },
+    uncertain: true,
+  });
+});
+
+test("a finished Project Lens run settles and independently verifies exactly one host-owned ignored artifact", async () => {
+  const fixture = projectLensEffectFixture();
+  const effectId = "project-lens-turn-test:batch:1";
+  const runId = "project-lens-focus-run-test";
+  const cellId = "project-lens-focus-selection";
+  const task = taskContext(
+    "33333333-3333-4333-8333-333333333333",
+    "a".repeat(64),
+  );
+  const turn = projectLensTurn("project-lens-turn-test", task);
+  const timeline = new FileMissionTimeline(
+    missionRunnerDirectory(fixture.home, "project-lens-dogfood"),
+  );
+  await timeline.startTurn("project-lens-dogfood", turn);
+  writeFileSync(timeline.timelinePath(turn.turnId), `${JSON.stringify({
+    version: "rosso.delegate-timeline-event.v1",
+    eventId: randomUUID(),
+    timelineId: turn.turnId,
+    sequence: 0,
+    at: "2026-08-12T11:00:00Z",
+    type: "delegate.batch-prepared",
+    data: {
+      batchId: effectId,
+      checkpointDigest: "f".repeat(64),
+      checkpoint: {},
+      children: [{ callId: "call-1", key: "focus", timelineId: "child-1" }],
+    },
+  })}\n`, { flag: "a" });
+  const resultTimeline = {
+    readResult: async () => ({
+      receipt: { projection: "full" },
+      semantic: { output: {
+        status: "completed",
+        focusSources: ["README.md"],
+        rationale: "Begin with the declared purpose.",
+        remainingUncertainty: "Architecture remains source-bound.",
+      } },
+    }),
+  } as unknown as FileMissionTimeline;
+  const run = {
+    batches: [{
+      id: effectId,
+      outcomes: [{
+        key: "project-lens-focus-selection",
+        cellId,
+        status: "completed",
+        runId,
+      }],
+    }],
+  } as never;
+
+  await materializeFinishedRun(
+    resultTimeline,
+    fixture.home,
+    "project-lens-dogfood",
+    turn,
+    task,
+    run,
+    fixture.worktree,
+  );
+  await timeline.settleTurn("project-lens-dogfood", turn.turnId, {
+    kind: "finished",
+    runStatus: "returned",
+    text: "Project Lens candidate returned.",
+    tasks: [],
+    uncoveredObligationRefs: [],
+    resultReads: [],
+    usage: zeroUsage(),
+  });
+
+  const journal = new FileEffectJournal(
+    missionRunnerDirectory(fixture.home, "project-lens-dogfood"),
+  );
+  const effect = await journal.activity(effectId);
+  expect(effect).toMatchObject({
+    state: "settled",
+    runId,
+    prepared: {
+      missionId: "project-lens-dogfood",
+      turnId: turn.turnId,
+      cellId,
+      writerRef: PROJECT_LENS_MATERIALIZER_REF,
+      launchAuthorizationRef: turn.launchAuthorizationRef,
+      workbenchTaskContext: turn.workbenchTaskContext,
+      writePaths: [PROJECT_LENS_OUTPUT_PATH],
+      allowedCommands: [],
+      authority: "withheld",
+    },
+    settlement: {
+      changedPaths: [PROJECT_LENS_OUTPUT_PATH],
+      outsideScope: { verdict: "clear", paths: [] },
+      acceptance: {
+        mechanical: { verdict: "passed" },
+        independent: { verdict: "not-run" },
+        principal: { verdict: "withheld" },
+      },
+      materializedBundle: {
+        path: PROJECT_LENS_OUTPUT_PATH,
+        sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        tracking: "ignored",
+      },
+    },
+    independentVerification: {
+      verdict: "passed",
+      subject: {
+        gitHead: fixture.head,
+        files: [{
+          path: PROJECT_LENS_OUTPUT_PATH,
+          sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }],
+      },
+    },
+  });
+  expect(effect?.tools).toEqual([]);
+
+  const activity = await projectMissionActivity(
+    fixture.home,
+    "project-lens-dogfood",
+  );
+  expect(activity.currentTurn).toMatchObject({
+    state: "settled",
+    settlementKind: "finished",
+    runStatus: "returned",
+  });
+  expect(activity.currentEffect).toMatchObject({
+    effectId,
+    phase: "settled",
+    writer: {
+      ref: PROJECT_LENS_MATERIALIZER_REF,
+    },
+    source: {
+      cellId,
+      runId,
+    },
+    diff: {
+      added: [],
+      outsideScope: [],
+    },
+    verification: { independent: { verdict: "passed" } },
+    stale: false,
+    uncertain: false,
+  });
+  expect(CurrentEffectProjectionSchema.parse(activity.currentEffect))
+    .toEqual(activity.currentEffect);
+  expect(activity.currentVerifiedResult).toEqual({
+    standing: "verified-current",
+    selector: {
+      kind: "autonomy-effect-verification.v1",
+      effectId,
+      verificationEventId: effect!.independentVerificationEventId,
+    },
+  });
+
+  writeFileSync(
+    join(fixture.worktree, PROJECT_LENS_OUTPUT_PATH),
+    "{\"drifted\":true}\n",
+  );
+  const driftedActivity = await projectMissionActivity(
+    fixture.home,
+    "project-lens-dogfood",
+  );
+  expect(driftedActivity.currentEffect?.stale).toBe(true);
+  expect(driftedActivity.currentVerifiedResult).toBeNull();
+});
+
 function git(root: string, args: readonly string[]): void {
   const result = Bun.spawnSync(["git", "-C", root, ...args], {
     stdout: "pipe",
@@ -215,6 +500,71 @@ function git(root: string, args: readonly string[]): void {
   if (result.exitCode !== 0) {
     throw new Error(result.stderr.toString() || `git ${args.join(" ")} failed`);
   }
+}
+
+function projectLensEffectFixture() {
+  const root = mkdtempSync(join(tmpdir(), "project-lens-effect-"));
+  roots.push(root);
+  const worktree = join(root, "candidate");
+  const home = join(root, "rosso-home");
+  mkdirSync(worktree, { recursive: true });
+  mkdirSync(home, { recursive: true });
+  mkdirSync(join(worktree, "experiments/human-agent-visualization"), {
+    recursive: true,
+  });
+  writeFileSync(join(worktree, "README.md"), "# Project Lens effect fixture\n");
+  writeFileSync(join(worktree, "AGENTS.md"), "# Fixture instructions\n");
+  writeFileSync(
+    join(worktree, "experiments/human-agent-visualization/.gitignore"),
+    "generated/\n",
+  );
+  writeFileSync(
+    join(worktree, "package.json"),
+    JSON.stringify({ scripts: { test: "bun test" } }),
+  );
+  git(worktree, ["init", "-b", "main"]);
+  git(worktree, ["config", "user.email", "project-lens@example.test"]);
+  git(worktree, ["config", "user.name", "Project Lens Test"]);
+  git(worktree, ["add", "."]);
+  git(worktree, ["commit", "-m", "seed effect fixture"]);
+  return {
+    home: realpathSync(home),
+    worktree: realpathSync(worktree),
+    head: gitText(worktree, ["rev-parse", "HEAD"]),
+  };
+}
+
+function projectLensTurn(
+  turnId: string,
+  context: ReturnType<typeof taskContext>,
+  launch: {
+    readonly authorizationId: string;
+    readonly proposalDigest: string;
+  } = {
+    authorizationId: "33333333-3333-4333-8333-333333333333",
+    proposalDigest: "a".repeat(64),
+  },
+) {
+  return {
+    version: MISSION_TURN_VERSION,
+    turnId,
+    baselineWatermark: 0,
+    sourceRefs: ["mission:test"],
+    launchAuthorizationRef: {
+      ...launch,
+      claimSourceRef: `state/execution-authorization-claims/${launch.authorizationId}.json`,
+    },
+    workbenchTaskContext: workbenchTaskExecutionContextRef(context),
+  } as const;
+}
+
+function zeroUsage() {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cachedInputTokens: 0,
+  };
 }
 
 function authorizationFixture() {

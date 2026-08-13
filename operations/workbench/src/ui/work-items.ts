@@ -670,6 +670,11 @@ function runnerWorkItems(
       && typeof runner.activity === "object"
       ? runner.activity as Record<string, unknown>
       : {};
+    const currentTurn = activity.currentTurn !== null
+      && typeof activity.currentTurn === "object"
+      ? activity.currentTurn as Record<string, unknown>
+      : undefined;
+    if (currentTurn?.state === "settled") return [];
     const currentEffect = activity.currentEffect;
     const effectWorkspace = currentEffect !== null
       && typeof currentEffect === "object"

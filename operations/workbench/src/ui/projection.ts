@@ -434,10 +434,17 @@ export const CurrentEffectProjectionSchema = z.object({
   effectId: nonempty,
   launchAuthorizationRef: LaunchAuthorizationRefProjectionSchema.optional(),
   phase: nonempty,
-  writer: z.object({
+  writer: z.union([
+    z.object({
+      cellId: nonempty,
+      runId: nonempty.nullable(),
+    }).strict(),
+    z.object({ ref: nonempty }).strict(),
+  ]),
+  source: z.object({
     cellId: nonempty,
     runId: nonempty.nullable(),
-  }).strict(),
+  }).strict().optional(),
   workspace: z.object({
     root: nonempty,
     baseHead: nonempty.nullable(),

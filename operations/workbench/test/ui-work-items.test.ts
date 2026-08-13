@@ -253,6 +253,36 @@ describe("Workbench work-item shell projection", () => {
     }));
   });
 
+  test("does not present a reachable configured runner as productive work after its turn settles", () => {
+    const settled = {
+      ...snapshot,
+      attention: [],
+      runners: [{
+        ...snapshot.runners[0],
+        status: {
+          ...snapshot.runners[0]!.status,
+          runtimeMode: "configured",
+        },
+        activity: {
+          ...snapshot.runners[0]!.activity,
+          currentTurn: {
+            ...snapshot.runners[0]!.activity!.currentTurn!,
+            state: "settled",
+            settlementKind: "finished",
+            runStatus: "returned",
+          },
+        },
+      }],
+    };
+
+    const items = buildWorkItemProjection(settled as never).items;
+    expect(items.some((item) => item.kind === "agent-work")).toBeFalse();
+    expect(items).toContainEqual(expect.objectContaining({
+      kind: "mission",
+      missionId: "agent-run",
+    }));
+  });
+
   test("reports an unavailable task source instead of claiming zero", () => {
     const projection = buildWorkItemProjection(snapshot as never);
 
