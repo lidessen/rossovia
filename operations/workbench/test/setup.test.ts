@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setupAdapter } from "../src/setup-adapters";
@@ -267,5 +267,28 @@ describe("user-level setup reconciliation", () => {
     const adapter = setupAdapter("codex");
     expect(adapter.projectionPath("/tmp/codex-fixture")).toEndWith("/codex-fixture/AGENTS.md");
     expect(adapter.render(multiAgentDelegationModule).content).toContain(multiAgentDelegationModule.guidance);
+  });
+
+  test("loads the CLI in a minimal Workbench-only fixture without the sibling worker policy", () => {
+    const { source, home, codex } = fixture();
+    expect(existsSync(join(source, "operations", "autonomy"))).toBe(false);
+    const help = workbench(source, home, "--help");
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("task run <id> --worker <worker-id> [--continue]");
+    const initialized = workbench(
+      source,
+      home,
+      "init",
+      "--setup",
+      "multi-agent-delegation",
+      "--target-root",
+      codex,
+    );
+    expect(initialized.exitCode).toBe(0);
+    expect(JSON.parse(initialized.stdout).setup.modules[0]).toEqual(expect.objectContaining({
+      module: "multi-agent-delegation",
+      harness: "codex",
+      status: "current",
+    }));
   });
 });

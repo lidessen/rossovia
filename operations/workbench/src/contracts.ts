@@ -242,6 +242,8 @@ export const PrincipalTaskSchema = z.object({
   title: nonempty,
   objective: nonempty,
   acceptance: z.array(nonempty).min(1),
+  /** Ordinary work todos supplied by the Principal at creation; older tasks default to an empty list. */
+  todos: z.array(nonempty).default([]),
   origin: z.object({
     kind: z.literal("principal-explicit"),
     sourceRef: nonempty,

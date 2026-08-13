@@ -119,7 +119,9 @@ legacy-home guard above and run
 Workbench home has a task source.
 
 - Run `task list` or `task show <id>` before mutating an existing task and pass
-  the returned source and task revisions to the requested mutation.
+  the returned source and task revisions to revision-bound mutations. `task
+  run` is the exception: it rereads the current Task immediately before its
+  effect and does not expose revisions to the caller.
 - Create a task only from an explicit current request. Do not turn an inferred
   preference, observation, project history, or Agent suggestion into task
   state.
@@ -151,13 +153,17 @@ Workbench home has a task source.
   [agent-delegation](../../skills/agent-delegation/SKILL.md); Workbench retains the
   obligation and returned claim, not the sub-agent runtime or coordination
   state.
-- Run an ordinary open Agent-owned project task that already has one exact
-  isolated Worktree with `task run <id> --driver opencode-cli --model
-  <provider/model>` plus the returned task and source revisions; add
-  `--reasoning-effort` only when explicitly selected for this attempt, and
-  `--session <id>` to
-  continue only the latest observed OpenCode session retained by an attributable
-  previous attempt of the same still-open task in its current bound Worktree.
+- Run `worker list` to inspect the host-owned worker descriptions, capabilities,
+  provider/model/reasoning defaults, and availability. Run an ordinary open
+  Agent-owned project task that already has one exact isolated Worktree with
+  `task run <id> --worker <worker-id>`. Add `--continue` to continue only the
+  latest usable OpenCode session retained by an attributable previous attempt
+  of the same still-open task in its current bound Worktree. Do not ask the
+  human or calling Agent for driver, provider/model syntax, reasoning effort,
+  session ID, or Task revisions.
+  The 30-minute run ceiling is only an emergency ceiling while the OpenCode
+  adapter has no completed-step soft-budget control; it is not an approval or
+  budget mechanism.
   A fresh run remains Git-clean-only. An explicit continuation may retain a
   dirty Worktree only when every currently staged, unstaged, or non-ignored
   untracked path is present in the cumulative `workspaceDiff` union of usable,
@@ -165,8 +171,8 @@ Workbench home has a task source.
   otherwise unusable attempt contributes no paths, but a different observed
   session still terminates the prior branch. Ignored artifacts do not block,
   and path membership proves no content identity. The result returns the actual
-  OpenCode session id observed in the new attempt's final Work Cell record; a
-  requested session that is absent, not latest, or does not match the new
+  OpenCode session id observed in the new attempt's final Work Cell record; no
+  usable latest session or a continued session that does not match the new
   observation fails.
   Mission context is not required. The command creates the Work Cell input and
   append-only attempt evidence inside the Workbench home, but its settlement
@@ -179,9 +185,9 @@ Workbench home has a task source.
 - Run `task attempts <id>` to project the task's recorded attempts as a
   read-only view sorted by start time. The projection reads, never copies or
   rewrites, the existing attempt, final Work Cell record, and settlement files:
-  requested driver/model/reasoning effort/session come from the attempt record,
-  observed session/cell status/usage/workspace diff/verification come from the
-  final record, and settlement status comes from the settlement. It carries the
+  selected worker and resolved driver/model/reasoning/session come from the
+  attempt record; observed session/cell status/usage/workspace diff/verification
+  come from the final record, and settlement status comes from the settlement. It carries the
   stable source references and exposes per-source `available`, `unavailable`,
   or `invalid` standing rather than dropping attributable malformed evidence.
   It never exposes the raw Work Cell trace and changes no task or attempt state.

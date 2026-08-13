@@ -1,14 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CellInput, CellUsage } from "../src/contracts";
+import { Database } from "bun:sqlite";
+import type { CellInput, CellRunRecord, CellUsage, TraceEvent } from "../src/contracts";
 import { CellExecutionError, type DriverContext } from "../src/driver";
+import { createLiveTraceFile } from "../src/live-trace-file";
+import { runCell } from "../src/run-cell";
 import {
+  BunOpenCodeCliProcessAdapter,
   OpenCodeCliDriver,
   type OpenCodeCliProcessAdapter,
   type OpenCodeCliProcessRequest,
   type OpenCodeCliProcessResult,
+  type OpenCodeCliServerAdapter,
+  type OpenCodeCliServerHandle,
 } from "../src/opencode-cli-driver";
 
 const temporaryRoots: string[] = [];
@@ -45,9 +51,288 @@ describe("OpenCode CLI driver", () => {
       "disposable worktree", "make only the requested changes", "Run the named checks",
       "changed files, checks, and remaining uncertainty",
     ]) expect(prompt).toContain(text);
+    expect(prompt).not.toContain("ordinary todos");
+    expect(prompt).not.toContain("todowrite");
     expect(driver.descriptor).toEqual({
       adapter: "opencode-cli.v1", provider: "anthropic", model: "anthropic/fixture",
     });
+  });
+
+  test("initializes seeded tasks as native session todos and attaches the CLI run to that session", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      }
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [
+      { subject: "Adopt the todos", description: "Adopt the todos through todowrite." },
+      { subject: "Run the named checks", description: "Run the named checks." },
+    ];
+
+    await driver.run(input, context(canonicalRoot).value);
+
+    const runRequest = requests.find((candidate) => candidate.argv[0] === "run")!;
+    const seededId = runRequest.argv[runRequest.argv.indexOf("--session") + 1]!;
+    expect(seededId).toBe("ses_fixture");
+    expect(runRequest.argv).toContain("--attach");
+    expect(runRequest.argv).toContain(server.url);
+    expect(runRequest.argv.slice(-4)).toEqual(["--attach", server.url, "--dir", canonicalRoot]);
+    const prompt = runRequest.argv[1]!;
+    expect(prompt).not.toContain("ordinary todos");
+    expect(prompt).not.toContain("todowrite");
+    expect(prompt).not.toContain("already created");
+
+    const native = new Database(dbPath);
+    const rows = native.query(
+      "select session_id, content, status, priority, position from todo order by position",
+    ).all() as Array<Record<string, string | number>>;
+    native.close();
+    expect(rows.map((row) => row.content)).toEqual(["Adopt the todos", "Run the named checks"]);
+    expect(rows.map((row) => row.position)).toEqual([0, 1]);
+    for (const row of rows) {
+      expect(row.session_id).toBe("ses_fixture");
+      expect(row.status).toBe("pending");
+      expect(row.priority).toBe("high");
+    }
+    expect(server.calls).toEqual([
+      "POST /session",
+      "GET /session/ses_fixture/todo",
+      "GET /session/ses_fixture/todo",
+    ]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db", "run"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("fails visibly when the seeded todos cannot be verified and never launches the run", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, { todoResponse: () => [] });
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      }
+      return success();
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode todo initialization verification failed: expected [\"Adopt the todos\"] but the session reports []",
+    });
+    expect(server.calls).toEqual(["POST /session", "GET /session/ses_fixture/todo", "DELETE /session/ses_fixture"]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session when the native todo write fails, preserving the original failure", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = join(root, "opencode-broken.db");
+    const broken = new Database(dbPath);
+    broken.close();
+    const server = await fakeOpenCodeServer(dbPath);
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      }
+      return success();
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: expect.stringContaining("OpenCode native todo initialization failed"),
+    });
+    expect(server.calls).toEqual(["POST /session", "DELETE /session/ses_fixture"]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session when the database path lookup fails, preserving the original failure", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const requests: OpenCodeCliProcessRequest[] = [];
+    const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
+      requests.push(candidate);
+      if (candidate.argv[0] === "db") {
+        return { exitCode: 9, stdout: "", stderr: "fixture db path failure", durationMs: 1 };
+      }
+      return success();
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI db path exited with code 9: fixture db path failure",
+    });
+    expect(server.calls).toEqual(["POST /session", "DELETE /session/ses_fixture"]);
+    expect(requests.map((candidate) => candidate.argv[0])).toEqual(["db"]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session after a command failure and preserves the command error", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return {
+        exitCode: 19,
+        stdout: jsonLines(event("step_finish", { reason: "error", tokens: {} }, "ses_fixture")),
+        stderr: "fixture command failure",
+        durationMs: 3,
+      };
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI exited with code 19: fixture command failure",
+    });
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session after a timeout and preserves the timeout error", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return await new Promise<OpenCodeCliProcessResult>((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason), { once: true });
+      });
+    }), { serverAdapter: server.adapter, timeoutMs: 200 });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI execution timed out after 200ms",
+    });
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("deletes the created session when successful exit lacks final text and preserves that error", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return {
+        exitCode: 0,
+        stdout: jsonLines(event("step_start", {}, "ses_fixture")),
+        stderr: "",
+        durationMs: 3,
+      };
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI completed without final stopped-step text",
+    });
+    expect(server.calls.at(-1)).toBe("DELETE /session/ses_fixture");
+    expect(server.stopped).toBe(true);
+  });
+
+  test("fails visibly when the loopback server cannot start, without a silent prompt fallback", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    let runs = 0;
+    const driver = openCodeDriver(root, fixtureProcess(async () => { runs += 1; return success(); }), {
+      serverAdapter: {
+        async start() {
+          throw new Error("fixture serve failure");
+        },
+      },
+    });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
+      message: "OpenCode CLI todo seeding could not start the loopback server: fixture serve failure",
+    });
+    expect(runs).toBe(0);
+  });
+
+  test("projects final native todos so runCell verifies supplied task completion", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath, {
+      todoResponse(call) {
+        return [{ content: "Adopt the todos", status: call === 1 ? "pending" : "completed", priority: "high" }];
+      },
+    });
+    const executable = await fixtureExecutable(root, [
+      `if [ "$1" = "db" ]; then echo "${dbPath}"; exit 0; fi`,
+      `printf '%s\\n' '{"type":"step_start","sessionID":"ses_fixture","part":{}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"ses_fixture","part":{"text":"Todos seeded."}}'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"ses_fixture","part":{"reason":"stop","cost":0,"tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+    const driver = new OpenCodeCliDriver({
+      executable,
+      model: "anthropic/fixture",
+      workspacePolicy: { select: () => canonicalRoot },
+      processAdapter: new BunOpenCodeCliProcessAdapter(),
+      serverAdapter: server.adapter,
+    });
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Todos seeded.");
+    expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
+    expect(record.tasks).toEqual([{
+      id: "task-1",
+      subject: "Adopt the todos",
+      description: "Adopt the todos through todowrite.",
+      status: "completed",
+      owner: "opencode-fixture",
+      blockedBy: [],
+    }]);
+    expect(server.stopped).toBe(true);
+  });
+
+  test("projects nonterminal native todos so runCell rejects an unsettled seeded task", async () => {
+    const root = await fixture();
+    const canonicalRoot = await realpath(root);
+    const dbPath = await todoDatabase(root);
+    const server = await fakeOpenCodeServer(dbPath);
+    const driver = openCodeDriver(root, fixtureProcess(async (request) => {
+      if (request.argv[0] === "db") return { exitCode: 0, stdout: `${dbPath}\n`, stderr: "", durationMs: 1 };
+      return success("ses_fixture");
+    }), { serverAdapter: server.adapter });
+    const input = cellInput(root);
+    input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
+
+    const record = await runCell(input, driver);
+
+    expect(record.status).toBe("verification_failed");
+    expect(record.verification.tasks).toMatchObject({ passed: false, pending: 1 });
+    expect(record.error).toContain("task cycle is unsettled");
+    expect(server.calls).not.toContain("DELETE /session/ses_fixture");
   });
 
   test("puts resume session before dir", async () => {
@@ -56,7 +341,7 @@ describe("OpenCode CLI driver", () => {
     let request!: OpenCodeCliProcessRequest;
     const driver = openCodeDriver(root, fixtureProcess(async (candidate) => {
       request = candidate;
-      return success();
+      return success("resume-123");
     }), { sessionId: "resume-123" });
 
     await driver.run(cellInput(root), context(canonicalRoot).value);
@@ -206,10 +491,10 @@ describe("OpenCode CLI driver", () => {
   test("rejects unsupported contracts before process launch", async () => {
     const root = await fixture();
     const canonicalRoot = await realpath(root);
-    for (const field of ["terminalTools", "outputSchema", "tasks"] as const) {
+    for (const field of ["terminalTools", "outputSchema"] as const) {
       let runs = 0;
       const driver = openCodeDriver(root, fixtureProcess(async () => { runs += 1; return success(); }));
-      const input = { ...cellInput(root), [field]: field === "terminalTools" ? [] : {} } as CellInput;
+      const input = { ...cellInput(root), [field]: [] } as CellInput;
       await expect(driver.run(input, context(canonicalRoot).value)).rejects.toMatchObject({
         message: `OpenCode CLI driver does not support ${field}`,
       });
@@ -233,12 +518,211 @@ describe("OpenCode CLI driver", () => {
     await driver.run(cellInput(root), context(canonicalRoot).value);
     expect(runs).toBe(1);
   });
+
+  test("delivers structured live progress to the trace JSONL before the child exits", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"slow-1","part":{}}'`,
+      "sleep 1",
+      `printf '%s\\n' '{"type":"text","sessionID":"slow-1","part":{"text":"Complete."}}'`,
+      "sleep 1",
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"slow-1","part":{"reason":"stop","cost":0.01,"tokens":{"input":5,"output":3,"total":8,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.budget.maxDurationMs = 15_000;
+    const observed: TraceEvent[] = [];
+    const liveTrace = createLiveTraceFile(join(root, "cell-input.json"), () => {});
+    const startedAt = performance.now();
+    const run = runCell(input, realDriver(root, executable), {
+      onTrace(event) {
+        observed.push(event);
+        liveTrace.observe(event);
+      },
+    });
+
+    const first = await waitFor(
+      () => observed.find((event) => event.type === "opencode.cli.progress"),
+      2_000,
+    );
+    const elapsedBeforeFirstProgress = performance.now() - startedAt;
+    expect(elapsedBeforeFirstProgress).toBeLessThan(1_500);
+    expect(first!.data).toEqual({ type: "step_start", sessionID: "slow-1" });
+    expect(JSON.stringify(first!.data)).not.toContain("text");
+
+    const record = await run;
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Complete.");
+    expect(record.executionObservation.sessionId).toBe("slow-1");
+    expect(record.usage).toEqual({ inputTokens: 5, outputTokens: 3, totalTokens: 8, cachedInputTokens: 0 });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(3);
+    expect(observed.filter((event) => event.type === "opencode.cli.event")).toHaveLength(3);
+    expect(executionRawSteps(record).filter((step) => rawStepText(step) === "Complete.")).toHaveLength(1);
+
+    const jsonlPath = liveTrace.availablePath();
+    expect(jsonlPath).toBeDefined();
+    const jsonl = await readFile(jsonlPath!, "utf8");
+    const progressLines = jsonl.split("\n").filter((line) => line.includes('"opencode.cli.progress"'));
+    expect(progressLines.length).toBeGreaterThanOrEqual(1);
+    for (const line of progressLines) {
+      const event = JSON.parse(line) as TraceEvent;
+      const keys = Object.keys(event.data as Record<string, unknown>);
+      expect(keys.every((key) => ["type", "sessionID", "tool"].includes(key))).toBe(true);
+      expect(keys).not.toContain("part");
+      expect(keys).not.toContain("text");
+      expect(keys).not.toContain("reasoning");
+      expect(keys).not.toContain("input");
+      expect(keys).not.toContain("output");
+    }
+  });
+
+  test("buffers stdout lines spanning chunk boundaries and parses each line exactly once", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s' '{"type":"step_start","sessionID":"chunked-1","part":{"note":"ignored"'`,
+      "sleep 0.3",
+      `printf '%s\\n' '}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"chunked-1","part":{"text":"Chunked."}}'`,
+      `printf '%s' '{"type":"step_finish","sessionID":"chunked-1","part":{"reason":"stop","cost":0.02,"tokens":{"input":2,"output":4,"total":6,"cache":{"read":1}}}}'`,
+    ]);
+    const observed: TraceEvent[] = [];
+    const record = await runCell(cellInput(root), realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Chunked.");
+    expect(record.usage).toEqual({ inputTokens: 2, outputTokens: 4, totalTokens: 6, cachedInputTokens: 1 });
+    expect(observed.find((event) => event.type === "opencode.cli.progress")?.data).toEqual({
+      type: "step_start",
+      sessionID: "chunked-1",
+    });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(3);
+    expect(observed.filter((event) => event.type === "opencode.cli.event")).toHaveLength(3);
+    expect(executionRawSteps(record).filter((step) => rawStepText(step) === "Chunked.")).toHaveLength(1);
+  });
+
+  test("projects the string tool name of a real-shape tool_use event without its state", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"tool-1","part":{}}'`,
+      `printf '%s\\n' '{"type":"tool","sessionID":"tool-1","part":{"type":"tool","tool":"bash","state":{"input":{"command":"ls -la"},"output":"fixture result"}}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"tool-1","part":{"text":"Done."}}'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"tool-1","part":{"reason":"stop","cost":0,"tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const observed: TraceEvent[] = [];
+    const record = await runCell(cellInput(root), realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Done.");
+    const progressData = observed
+      .filter((event) => event.type === "opencode.cli.progress")
+      .map((event) => event.data);
+    expect(progressData).toContainEqual({
+      type: "tool",
+      sessionID: "tool-1",
+      tool: "bash",
+    });
+    for (const data of progressData) {
+      const keys = Object.keys(data as Record<string, unknown>);
+      expect(keys).not.toContain("part");
+      expect(keys).not.toContain("state");
+      expect(keys).not.toContain("input");
+      expect(keys).not.toContain("output");
+    }
+  });
+
+  test("retains bounded unparsed evidence and usage when a live child emits malformed lines", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"u-1","part":{}}'`,
+      `printf '%s\\n' '[1,2,3]'`,
+      `printf '%s\\n' 'abcdefghij'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"u-1","part":{"reason":"error","tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const input = cellInput(root);
+    input.budget.maxCommandOutputBytes = 8;
+    const observed: TraceEvent[] = [];
+    const record = await runCell(input, realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toBe("OpenCode CLI completed without final stopped-step text");
+    expect(record.usage).toEqual({ inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 });
+    const unparsedData = observed
+      .filter((event) => event.type === "opencode.cli.stdout.unparsed")
+      .map((event) => event.data);
+    expect(unparsedData).toContainEqual({ type: "opencode.cli.stdout.unparsed", line: "[1,2,3]" });
+    expect(unparsedData).toContainEqual({ type: "opencode.cli.stdout.unparsed", line: "a" });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(2);
+  });
+
+  test("bounds long live JSONL retention without losing final session or usage evidence", async () => {
+    const root = await fixture();
+    const noisyEvent = JSON.stringify(event("tool", {
+      type: "tool",
+      tool: "bash",
+      state: { output: "x".repeat(200) },
+    }, "long-1"));
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '${JSON.stringify(event("step_start", {}, "long-1"))}'`,
+      ...Array.from({ length: 200 }, () => `printf '%s\\n' '${noisyEvent}'`),
+      `printf '%s\\n' '${JSON.stringify(event("text", { text: "Complete." }, "long-1"))}'`,
+      `printf '%s\\n' '${JSON.stringify(event("step_finish", {
+        reason: "stop",
+        cost: 0.02,
+        tokens: { input: 21, output: 8, total: 29, cache: { read: 5 } },
+      }, "long-1"))}'`,
+    ]);
+    const input = cellInput(root);
+    input.budget.maxCommandOutputBytes = 128;
+
+    const record = await runCell(input, realDriver(root, executable));
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Complete.");
+    expect(record.executionObservation.sessionId).toBe("long-1");
+    expect(record.usage).toEqual({ inputTokens: 21, outputTokens: 8, totalTokens: 29, cachedInputTokens: 5 });
+    const raw = executionRawSteps(record);
+    expect(raw).toContainEqual(expect.objectContaining({
+      type: "opencode.cli.retention",
+      omittedEvents: expect.any(Number),
+      omittedProgress: expect.any(Number),
+      finalTextTruncated: false,
+    }));
+    const retention = raw.find(
+      (step) => (step as Record<string, unknown>).type === "opencode.cli.retention",
+    ) as Record<string, unknown>;
+    expect(retention.omittedEvents).toBeGreaterThan(0);
+    expect(retention.omittedProgress).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify(raw))).toBeLessThan(5_000);
+    expect(Buffer.byteLength(JSON.stringify(record.trace))).toBeLessThan(10_000);
+  });
+
+  test("nonzero exit of a live child retains observed usage", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"nz-1","part":{"reason":"error","cost":0.2,"tokens":{"input":13,"output":2,"total":15,"cache":{"read":3}}}}'`,
+      `printf '%s' 'provider rejected request' >&2`,
+    ], 19);
+    const observed: TraceEvent[] = [];
+    const record = await runCell(cellInput(root), realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("failed");
+    expect(record.error).toBe("OpenCode CLI exited with code 19: provider rejected request");
+    expect(record.usage).toEqual({ inputTokens: 13, outputTokens: 2, totalTokens: 15, cachedInputTokens: 3 });
+    expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(1);
+  });
 });
 
 function openCodeDriver(
   root: string,
   processAdapter: OpenCodeCliProcessAdapter,
-  options: { reasoningEffort?: string; sessionId?: string; timeoutMs?: number } = {},
+  options: { reasoningEffort?: string; sessionId?: string; timeoutMs?: number; serverAdapter?: OpenCodeCliServerAdapter } = {},
 ): OpenCodeCliDriver {
   return new OpenCodeCliDriver({
     executable: "/fixture/bin/opencode", model: "anthropic/fixture",
@@ -286,16 +770,79 @@ async function fixture(): Promise<string> {
   return root;
 }
 
+async function todoDatabase(root: string): Promise<string> {
+  const dbPath = join(root, "opencode.db");
+  const db = new Database(dbPath);
+  db.run(`CREATE TABLE todo (
+    session_id text NOT NULL,
+    content text NOT NULL,
+    status text NOT NULL,
+    priority text NOT NULL,
+    position integer NOT NULL,
+    time_created integer NOT NULL,
+    time_updated integer NOT NULL,
+    PRIMARY KEY (session_id, position)
+  )`);
+  db.close();
+  return dbPath;
+}
+
+async function fakeOpenCodeServer(
+  dbPath: string,
+  options: { todoResponse?: (call: number) => unknown[] } = {},
+): Promise<{ url: string; adapter: OpenCodeCliServerAdapter; calls: string[]; stopped: boolean }> {
+  const calls: string[] = [];
+  let todoCalls = 0;
+  const db = new Database(dbPath);
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      calls.push(`${request.method} ${url.pathname}`);
+      if (request.method === "POST" && url.pathname === "/session") {
+        return Response.json({ id: "ses_fixture" });
+      }
+      if (request.method === "GET" && url.pathname.startsWith("/session/") && url.pathname.endsWith("/todo")) {
+        todoCalls += 1;
+        if (options.todoResponse !== undefined) return Response.json(options.todoResponse(todoCalls));
+        const rows = db.query("select content, status, priority from todo order by position")
+          .all() as Array<{ content: string; status: string; priority: string }>;
+        return Response.json(rows);
+      }
+      if (request.method === "DELETE" && url.pathname.startsWith("/session/")) {
+        return Response.json(true);
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  const url = `http://127.0.0.1:${server.port}`;
+  let stopped = false;
+  const adapter: OpenCodeCliServerAdapter = {
+    async start(): Promise<OpenCodeCliServerHandle> {
+      return {
+        url,
+        async stop() {
+          stopped = true;
+          server.stop(true);
+          db.close();
+        },
+      };
+    },
+  };
+  return { url, adapter, calls, get stopped() { return stopped; } };
+}
+
 function event(type: string, part: Record<string, unknown>, sessionID = "session-1"): unknown {
   return { type, sessionID, part };
 }
 
-function success(): OpenCodeCliProcessResult {
+function success(sessionID = "session-1"): OpenCodeCliProcessResult {
   return {
     exitCode: 0,
     stdout: jsonLines(
-      event("step_start", {}), event("text", { text: "Complete." }),
-      event("step_finish", { reason: "stop", cost: 0, tokens: { input: 1, output: 1, total: 2, cache: { read: 0 } } }),
+      event("step_start", {}, sessionID), event("text", { text: "Complete." }, sessionID),
+      event("step_finish", { reason: "stop", cost: 0, tokens: { input: 1, output: 1, total: 2, cache: { read: 0 } } }, sessionID),
     ),
     stderr: "", durationMs: 3,
   };
@@ -303,4 +850,48 @@ function success(): OpenCodeCliProcessResult {
 
 function jsonLines(...events: unknown[]): string {
   return `${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+}
+
+function realDriver(root: string, executable: string): OpenCodeCliDriver {
+  return new OpenCodeCliDriver({
+    executable,
+    model: "anthropic/fixture",
+    workspacePolicy: { select: () => root },
+    processAdapter: new BunOpenCodeCliProcessAdapter(),
+  });
+}
+
+async function fixtureExecutable(root: string, scriptLines: string[], exitCode = 0): Promise<string> {
+  const executable = join(root, "fixture-opencode");
+  await writeFile(executable, `${["#!/bin/sh", ...scriptLines, `exit ${exitCode}`].join("\n")}\n`, {
+    mode: 0o755,
+  });
+  return executable;
+}
+
+async function waitFor<T>(probe: () => T | undefined, timeoutMs: number): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = probe();
+    if (found !== undefined) return found;
+    if (Date.now() > deadline) throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function rawStepText(step: unknown): string | undefined {
+  if (!step || typeof step !== "object") return undefined;
+  const record = step as Record<string, unknown>;
+  const part = record.part;
+  return part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string"
+    ? (part as Record<string, unknown>).text as string
+    : undefined;
+}
+
+function executionRawSteps(record: CellRunRecord): unknown[] {
+  const phase = record.rawSteps.find((entry) => (entry as Record<string, unknown>).phase === "execution");
+  const steps = phase && typeof phase === "object"
+    ? (phase as Record<string, unknown>).steps
+    : undefined;
+  return Array.isArray(steps) ? steps as unknown[] : [];
 }

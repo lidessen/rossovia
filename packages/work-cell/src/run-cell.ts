@@ -230,6 +230,9 @@ export async function runCell(
         terminalTools.map((terminal) => terminal.name),
         driverResult.terminalToolsCalled,
       );
+      // Supplied tasks are a generic Cell completion condition. A driver may
+      // also expose a task cycle that emerged during execution, but it may not
+      // make caller-supplied tasks disappear by omitting its final projection.
       taskVerification = input.tasks !== undefined || driverResult.tasks !== undefined
         ? verifyTaskCycle(driverResult.tasks)
         : undefined;

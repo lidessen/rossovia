@@ -16,6 +16,7 @@ const TaskRunAttemptSchema = z.object({
   attemptId: z.string().min(1),
   inputRef: z.string().min(1),
   finalRecordRef: z.string().min(1),
+  workerId: z.string().min(1).optional(),
   driver: z.string().min(1),
   model: z.string().min(1),
   reasoningEffort: z.string().min(1).optional(),
@@ -47,6 +48,7 @@ export interface TaskAttemptProjection {
   attemptId: string;
   taskRevision?: number;
   sourceRevision?: number;
+  workerId?: string;
   driver?: string;
   model?: string;
   reasoningEffort?: string;
@@ -215,6 +217,7 @@ function projectAttempt(
     ...(attempt.value !== undefined ? {
       taskRevision: attempt.value.taskRevision,
       sourceRevision: attempt.value.sourceRevision,
+      ...(attempt.value.workerId !== undefined ? { workerId: attempt.value.workerId } : {}),
       driver: attempt.value.driver,
       model: attempt.value.model,
       ...(attempt.value.reasoningEffort !== undefined

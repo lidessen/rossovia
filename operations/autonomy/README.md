@@ -57,10 +57,14 @@ unchanged. Current cards are host policy in `src/worker-policy.ts`; the generic
 catalog mechanism lives in Work Cell.
 
 The current host policy gives the Kimi Coding card a `vision` label and
-describes image-plus-code work, while the DeepSeek Flash card remains text/code
-only and has no `vision` label. `createCurrentWorkerCatalog` is a helper a host
-may choose to install; this contract does not claim that the Rossovia CLI wires
-it automatically. The bounded Kimi image-transport smokes, including one
+describes image-plus-code work. DeepSeek Flash remains the general text/code
+worker, while DeepSeek Pro adds an `architecture` label for design-heavy and
+consequential analysis; both DeepSeek cards default to maximum reasoning. They
+remain text-only and have no `vision` label. `createCurrentWorkerCatalog` is a helper a host
+may choose to install; its DeepSeek drivers derive the AI SDK inference policy
+from the same card execution profile, so a card-declared reasoning effort is
+applied, not only described. This contract does not claim that the Rossovia CLI
+wires it automatically. The bounded Kimi image-transport smokes, including one
 direct catalog-backed driver run, are recorded in
 [the minimal evidence record](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md).
 

@@ -42,6 +42,7 @@ export const ExecutionProfileSchema = z.object({
   version: z.literal("execution-profile.v1"),
   provider: z.string().min(1),
   model: z.string().min(1),
+  reasoningEffort: z.string().min(1).optional(),
   contextPolicy: z.string().min(1).optional(),
   toolSurface: z.string().min(1).optional(),
   parallelism: z.literal("serial").default("serial"),

@@ -20,6 +20,7 @@ import {
   rebindPrincipalTaskWorktree,
   reopenPrincipalTask,
   reviewPrincipalTaskResult,
+  showPrincipalTask,
   submitPrincipalTaskResult,
 } from "../src/tasks";
 
@@ -260,6 +261,70 @@ describe("Principal-created local task source", () => {
       expectedRevision: reviewed.task.revision,
     })).toThrow("already retains review assessment");
     expect(readFileSync(path, "utf8")).toBe(beforeDuplicate);
+  });
+
+  test("persists optional ordinary todos through create and show and defaults older tasks to an empty list", () => {
+    const taskHome = home();
+    const created = createPrincipalTask(taskHome, {
+      title: "Ship the Blog MVP",
+      objective: "Produce a verified daily-use Blog slice",
+      acceptance: ["The result is independently inspectable"],
+      todos: ["Implement the backend task loop", "Run the named checks"],
+      nextActor: "agent",
+      sourceRef: "conversation:todo-create",
+      expectedSourceRevision: 0,
+    });
+    expect(created.task.todos).toEqual([
+      "Implement the backend task loop",
+      "Run the named checks",
+    ]);
+    expect(showPrincipalTask(taskHome, created.task.id).task.todos).toEqual([
+      "Implement the backend task loop",
+      "Run the named checks",
+    ]);
+
+    const cliCreated = taskCli(
+      taskHome,
+      "create",
+      "--title",
+      "CLI todos",
+      "--objective",
+      "Pass ordinary todos through the CLI",
+      "--todo",
+      "First todo",
+      "--todo",
+      "Second todo",
+      "--accept",
+      "The todos persist in task show",
+      "--next-actor",
+      "agent",
+      "--source-ref",
+      "test:cli-todo",
+      "--expected-source-revision",
+      "1",
+    );
+    expect(cliCreated.exitCode, cliCreated.stderr).toBe(0);
+    const cliTask = JSON.parse(cliCreated.stdout).task;
+    expect(cliTask.todos).toEqual(["First todo", "Second todo"]);
+    const cliShown = taskCli(taskHome, "show", cliTask.id);
+    expect(cliShown.exitCode, cliShown.stderr).toBe(0);
+    expect(JSON.parse(cliShown.stdout).task.todos).toEqual(["First todo", "Second todo"]);
+
+    const plain = createPrincipalTask(taskHome, {
+      title: "No todos",
+      objective: "A task without supplied todos",
+      acceptance: ["The todos default to an empty list"],
+      nextActor: "agent",
+      sourceRef: "conversation:todo-less",
+      expectedSourceRevision: 2,
+    });
+    expect(plain.task.todos).toEqual([]);
+
+    const path = join(taskHome, "state", "tasks.json");
+    const source = JSON.parse(readFileSync(path, "utf8"));
+    delete source.tasks[0].todos;
+    writeFileSync(path, `${JSON.stringify(source, null, 2)}\n`);
+    expect(listPrincipalTasks(taskHome).tasks[0]!.todos).toEqual([]);
   });
 
   test("parses legacy result claims with no review array unchanged", () => {

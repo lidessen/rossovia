@@ -21,7 +21,7 @@ import {
   statusLineProjection,
 } from "./statusline";
 import { showPrincipalTaskAttempts } from "./task-attempts";
-import { runPrincipalTask } from "./task-run";
+import { listPrincipalTaskWorkers, runPrincipalTask } from "./task-run";
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -33,6 +33,8 @@ try {
     const result = listProjects(home);
     console.log(JSON.stringify(result, null, 2));
     if (!result.complete) process.exitCode = 2;
+  } else if (args[0] === "worker" && args[1] === "list" && args.length === 2) {
+    console.log(JSON.stringify(listPrincipalTaskWorkers(), null, 2));
   } else if (args[0] === "init") {
     const options = parseInit(args.slice(1));
     const initialized = initializeHome(home);
@@ -136,16 +138,17 @@ function printUsage(): void {
   console.log("  register <path> --id <stable-id> [--alias <alias>]...");
   console.log("  attach <project> <path>");
   console.log("  project list");
+  console.log("  worker list");
   console.log("  preference set <id> --statement <text> [--project <project>] [--reopen-when <condition>]");
   console.log("  preference list [--project <project>]");
   console.log("  preference retire <id> [--project <project>]");
   console.log("  execution inspect <project> <mission-id>");
   console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
-  console.log("  task create --title <text> --objective <text> --accept <criterion>... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
+  console.log("  task create --title <text> --objective <text> --accept <criterion>... [--todo <text>]... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
   console.log("  task list");
   console.log("  task show <id>");
   console.log("  task attempts <id>");
-  console.log("  task run <id> --driver opencode-cli --model <provider/model> [--reasoning-effort <effort>] [--session <id>] --expected-source-revision <n> --expected-revision <n>");
+  console.log("  task run <id> --worker <worker-id> [--continue]");
   console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
@@ -202,7 +205,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         "--worktree",
         "--mission",
       ]),
-      new Set(["--accept"]),
+      new Set(["--accept", "--todo"]),
     );
     return controlPlane.execute({
       kind: "create",
@@ -210,6 +213,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
         title: taskOption(parsed, "--title"),
         objective: taskOption(parsed, "--objective"),
         acceptance: taskOptions(parsed, "--accept"),
+        ...(parsed.values.has("--todo") ? { todos: taskOptions(parsed, "--todo") } : {}),
         nextActor: taskActor(parsed),
         sourceRef: taskOption(parsed, "--source-ref"),
         expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
@@ -223,36 +227,15 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
     const parsed = parseTaskOptions(
       raw.slice(1),
       1,
-      new Set([
-        "--driver",
-        "--model",
-        "--reasoning-effort",
-        "--session",
-        "--expected-source-revision",
-        "--expected-revision",
-      ]),
+      new Set(["--worker"]),
       new Set(),
+      new Set(["--continue"]),
     );
-    assertTaskOptions(parsed, new Set([
-      "--driver",
-      "--model",
-      "--reasoning-effort",
-      "--session",
-      "--expected-source-revision",
-      "--expected-revision",
-    ]));
-    const driver = taskOption(parsed, "--driver");
-    if (driver !== "opencode-cli") throw new Error("task run requires --driver opencode-cli");
+    assertTaskOptions(parsed, new Set(["--worker", "--continue"]));
     return runPrincipalTask(home, {
       id: parsed.positionals[0]!,
-      driver,
-      model: taskOption(parsed, "--model"),
-      ...(parsed.values.has("--reasoning-effort")
-        ? { reasoningEffort: taskOption(parsed, "--reasoning-effort") }
-        : {}),
-      ...(parsed.values.has("--session") ? { session: taskOption(parsed, "--session") } : {}),
-      expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),
-      expectedRevision: taskRevision(parsed, "--expected-revision", false),
+      workerId: taskOption(parsed, "--worker"),
+      ...(parsed.values.has("--continue") ? { continueRun: true } : {}),
     });
   }
 
@@ -473,14 +456,21 @@ function parseTaskOptions(
   positionalCount: number,
   singles: ReadonlySet<string>,
   repeated: ReadonlySet<string>,
+  booleans: ReadonlySet<string> = new Set(),
 ): ParsedTaskOptions {
   const positionals = raw.slice(0, positionalCount);
   if (positionals.length !== positionalCount || positionals.some((value) => value.startsWith("--"))) {
     throw new Error("missing required task command argument");
   }
   const values = new Map<string, string[]>();
-  for (let index = positionalCount; index < raw.length; index += 2) {
+  for (let index = positionalCount; index < raw.length;) {
     const option = raw[index];
+    if (option && booleans.has(option)) {
+      if (values.has(option)) throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
+      values.set(option, []);
+      index += 1;
+      continue;
+    }
     const value = raw[index + 1];
     if (
       !option
@@ -492,6 +482,7 @@ function parseTaskOptions(
       throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
     }
     values.set(option, [...(values.get(option) ?? []), value]);
+    index += 2;
   }
   return { positionals, values };
 }

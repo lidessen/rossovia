@@ -50,6 +50,11 @@ import {
   createLocalTaskControlPlane,
   type LocalTaskControlPlane,
 } from "../local-task-control-plane";
+import {
+  ConversationSocketPathPrefix,
+  ConversationSocketRuntime,
+  type ConversationSocketData,
+} from "../conversation/transport";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -59,6 +64,7 @@ export interface ServerOptions {
 
 export interface WorkbenchRequestHandlerDependencies {
   readonly localTaskControlPlane?: LocalTaskControlPlane;
+  readonly conversationSocket?: ConversationSocketRuntime;
 }
 
 const repositoryRoot = resolve(import.meta.dir, "../../../..");
@@ -70,13 +76,32 @@ export function createWorkbenchRequestHandler(
   options: ServerOptions,
   client: AutonomyClient,
   dependencies: WorkbenchRequestHandlerDependencies = {},
-): (request: Request) => Promise<Response> {
+): (request: Request, server?: Bun.Server<ConversationSocketData>) => Promise<Response> {
   const taskActionsInFlight = new Set<string>();
   const localTaskControlPlane = dependencies.localTaskControlPlane
     ?? createLocalTaskControlPlane(options.home);
 
-  return async (request: Request): Promise<Response> => {
+  return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname.startsWith(ConversationSocketPathPrefix)) {
+      if (dependencies.conversationSocket === undefined) {
+        return json({
+          error: "conversation-socket-unavailable",
+          message: "The conversation socket route is not installed on this server.",
+        }, 404);
+      }
+      if (server === undefined) {
+        return json({
+          error: "conversation-socket-unavailable",
+          message: "The conversation socket route requires the native Bun server instance.",
+        }, 500);
+      }
+      const outcome = await dependencies.conversationSocket.upgrade(request, server, server.port ?? options.port);
+      if (outcome !== undefined) return outcome;
+      // A successful upgrade makes Bun ignore the fetch return.
+      return undefined as unknown as Response;
+    }
 
     if (request.method === "GET" && url.pathname === "/api/snapshot") {
       try {
@@ -293,10 +318,13 @@ if (import.meta.main) {
     resolveHome(options.home),
     autonomyCli,
   );
-  const server = Bun.serve({
+  const conversationSocket = new ConversationSocketRuntime(resolveHome(options.home));
+  const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
+  const server: Bun.Server<ConversationSocketData> = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,
-    fetch: createWorkbenchRequestHandler(options, client),
+    fetch: (request, server) => requestHandler(request, server),
+    websocket: conversationSocket.websocket,
   });
   console.log(`Rossovia Principal Workbench: ${server.url}`);
   console.log(`Supervision: Codex supervises Rossovia Workbench; unsupervised operation is unavailable.`);

@@ -39,6 +39,8 @@ export interface TaskCreateArguments {
   title: string;
   objective: string;
   acceptance: string[];
+  /** Optional ordinary work todos; persisted verbatim and lowered into CellInput.tasks on task run. */
+  todos?: string[];
   nextActor: Exclude<PrincipalTask["nextActor"], "none">;
   sourceRef: string;
   expectedSourceRevision: number;
@@ -179,6 +181,7 @@ export function createPrincipalTask(
     title: nonempty(arguments_.title, "task title"),
     objective: nonempty(arguments_.objective, "task objective"),
     acceptance: nonemptyList(arguments_.acceptance, "task acceptance"),
+    todos: (arguments_.todos ?? []).map((todo) => nonempty(todo, "task todo")),
     origin: {
       kind: "principal-explicit",
       sourceRef: nonempty(arguments_.sourceRef, "task source ref"),

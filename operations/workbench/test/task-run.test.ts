@@ -27,10 +27,12 @@ import {
   submitPrincipalTaskResult,
 } from "../src/tasks";
 import {
-  runPrincipalTask,
+  runPrincipalTask as runPrincipalTaskImpl,
+  type TaskRunResult,
   type TaskRunRequest,
   type TaskRunRunner,
 } from "../src/task-run";
+import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
 import { showPrincipalTaskAttempts } from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
@@ -96,6 +98,56 @@ function agentTask(fixture_: Fixture) {
     project: "task-run",
     worktree: fixture_.worktree,
   });
+}
+
+interface LegacyTestRunArguments {
+  id: string;
+  driver: "opencode-cli";
+  model: string;
+  reasoningEffort?: string;
+  session?: string;
+  expectedSourceRevision: number;
+  expectedRevision: number;
+}
+
+function runTestTask(
+  home: string,
+  arguments_: LegacyTestRunArguments,
+  runner?: TaskRunRunner,
+  dependencies: Parameters<typeof runPrincipalTaskImpl>[3] = {},
+): TaskRunResult {
+  const workerId = "test-worker";
+  const [provider] = arguments_.model.split("/", 1);
+  const card: WorkerCard = {
+    version: "work-cell.worker-card.v1",
+    id: workerId,
+    labels: ["coding", "text", "write", "commands"],
+    description: "Deterministic task-run test worker.",
+    executionProfile: {
+      id: workerId,
+      version: "execution-profile.v1",
+      provider: provider!,
+      model: arguments_.model,
+      ...(arguments_.reasoningEffort
+        ? { reasoningEffort: arguments_.reasoningEffort }
+        : {}),
+      parallelism: "serial",
+    },
+    availability: { status: "available" },
+  };
+  return runPrincipalTaskImpl(
+    home,
+    {
+      id: arguments_.id,
+      workerId,
+      ...(arguments_.session ? { continueRun: true } : {}),
+    },
+    runner,
+    {
+      ...dependencies,
+      resolveWorkerCard: () => card,
+    },
+  );
 }
 
 class FakeRunner implements TaskRunRunner {
@@ -168,6 +220,58 @@ function validWorkCellRecord(
 }
 
 describe("task run public boundary", () => {
+  test("selects the available Kimi worker and lowers its exact OpenCode carrier identity", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const originalOpenCodeKey = process.env.OPENCODE_API_KEY;
+    const originalKimiKey = process.env.KIMI_CODE_API_KEY;
+    process.env.OPENCODE_API_KEY = "configured-for-test";
+    delete process.env.KIMI_CODE_API_KEY;
+
+    try {
+      const result = runPrincipalTaskImpl(current.home, {
+        id: created.task.id,
+        workerId: "kimi-coding",
+      }, runner);
+      const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+      expect(input.executionProfile).toMatchObject({
+        provider: "opencode-go",
+        model: "kimi-k2.7-code",
+      });
+      expect(runner.requests).toEqual([
+        expect.objectContaining({
+          driver: "opencode-cli",
+          model: "opencode-go/kimi-k2.7-code",
+        }),
+      ]);
+    } finally {
+      restoreEnvironment("OPENCODE_API_KEY", originalOpenCodeKey);
+      restoreEnvironment("KIMI_CODE_API_KEY", originalKimiKey);
+    }
+  });
+
+  test("rejects the Kimi worker when only its obsolete provider credential is configured", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const originalOpenCodeKey = process.env.OPENCODE_API_KEY;
+    const originalKimiKey = process.env.KIMI_CODE_API_KEY;
+    delete process.env.OPENCODE_API_KEY;
+    process.env.KIMI_CODE_API_KEY = "configured-for-test";
+
+    try {
+      expect(() => runPrincipalTaskImpl(current.home, {
+        id: created.task.id,
+        workerId: "kimi-coding",
+      }, runner)).toThrow("worker kimi-coding is unavailable: OPENCODE_API_KEY is not configured");
+      expect(runner.requests).toHaveLength(0);
+    } finally {
+      restoreEnvironment("OPENCODE_API_KEY", originalOpenCodeKey);
+      restoreEnvironment("KIMI_CODE_API_KEY", originalKimiKey);
+    }
+  });
+
   test("lowers exact current task guidance without Mission and appends immutable attempts", () => {
     const current = fixture();
     const created = agentTask(current);
@@ -188,7 +292,7 @@ describe("task run public boundary", () => {
       expectedRevision: firstCorrection.task.revision,
     });
     const runner = new FakeRunner();
-    const run = () => runPrincipalTask(current.home, {
+    const run = () => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -225,7 +329,15 @@ describe("task run public boundary", () => {
         ],
       },
     });
-    expect(input).not.toHaveProperty("budget");
+    expect(input).toMatchObject({
+      workerId: "test-worker",
+      executionProfile: {
+        provider: "opencode",
+        model: "opencode/go",
+        reasoningEffort: "high",
+      },
+      budget: { maxDurationMs: 1_800_000 },
+    });
     expect(corrected.task.binding).not.toHaveProperty("missionId");
     expect(first.attemptId).not.toBe(second.attemptId);
     expect(first.inputRef).not.toBe(second.inputRef);
@@ -265,12 +377,68 @@ describe("task run public boundary", () => {
     });
   });
 
+  test("lowers ordinary todos into the immutable CellInput.tasks seeds only when non-empty", () => {
+    const current = fixture();
+    const created = createPrincipalTask(current.home, {
+      title: "Run one todo-backed task",
+      objective: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable"],
+      todos: ["Implement the backend task loop", "Run the named checks"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-todos",
+      expectedSourceRevision: 0,
+      project: "task-run",
+      worktree: current.worktree,
+    });
+    const runner = new FakeRunner();
+    const withTodos = runTestTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    const seededInput = JSON.parse(
+      readFileSync(join(current.home, withTodos.inputRef), "utf8"),
+    );
+    expect(seededInput.tasks).toEqual([
+      { subject: "Implement the backend task loop", description: "Implement the backend task loop" },
+      { subject: "Run the named checks", description: "Run the named checks" },
+    ]);
+
+    const plain = createPrincipalTask(current.home, {
+      title: "Run one todo-less task",
+      objective: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-without-todos",
+      expectedSourceRevision: 1,
+      project: "task-run",
+      worktree: current.worktree,
+    });
+    const withoutTodos = runTestTask(current.home, {
+      id: plain.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 2,
+      expectedRevision: 1,
+    }, runner);
+    const plainInput = JSON.parse(
+      readFileSync(join(current.home, withoutTodos.inputRef), "utf8"),
+    );
+    expect(plainInput).not.toHaveProperty("tasks");
+    expect(plainInput).toMatchObject({
+      intent: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable"],
+    });
+  });
+
   test("returns the observed OpenCode session and continues the same active task by session", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner();
 
-    const fresh = runPrincipalTask(current.home, {
+    const fresh = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -279,7 +447,7 @@ describe("task run public boundary", () => {
     }, runner);
     expect(fresh.sessionId).toBe("fresh-session-1");
 
-    const resumed = runPrincipalTask(current.home, {
+    const resumed = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -310,7 +478,7 @@ describe("task run public boundary", () => {
       }
       return record;
     });
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -318,7 +486,7 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     }, runner);
 
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -365,14 +533,14 @@ describe("task run public boundary", () => {
       }
       return record;
     });
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner);
-    runPrincipalTask(current.home, {
+    runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -381,7 +549,7 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     }, runner);
 
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -406,7 +574,7 @@ describe("task run public boundary", () => {
         }
         return record;
       });
-      const first = runPrincipalTask(current.home, {
+      const first = runTestTask(current.home, {
         id: created.task.id,
         driver: "opencode-cli",
         model: "opencode/go",
@@ -414,7 +582,7 @@ describe("task run public boundary", () => {
         expectedRevision: 1,
       }, runner);
 
-      expect(() => runPrincipalTask(current.home, {
+      expect(() => runTestTask(current.home, {
         id: created.task.id,
         driver: "opencode-cli",
         model: "opencode/go",
@@ -448,7 +616,7 @@ describe("task run public boundary", () => {
       }
       return record;
     }, ["session-prior", "session-current"]);
-    runPrincipalTask(current.home, {
+    runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -456,7 +624,7 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     }, runner);
     rmSync(join(current.worktree, priorPath));
-    const currentSession = runPrincipalTask(current.home, {
+    const currentSession = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -465,7 +633,7 @@ describe("task run public boundary", () => {
     }, runner);
     writeFileSync(join(current.worktree, priorPath), "unowned in current session\n");
 
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -491,7 +659,7 @@ describe("task run public boundary", () => {
           workspaceDiff: { added: [retainedPath], changed: [], removed: [] },
         };
       });
-      const first = runPrincipalTask(current.home, {
+      const first = runTestTask(current.home, {
         id: created.task.id,
         driver: "opencode-cli",
         model: "opencode/go",
@@ -501,7 +669,7 @@ describe("task run public boundary", () => {
       mkdirSync(join(current.worktree, "notes"), { recursive: true });
       writeFileSync(join(current.worktree, extra), "unowned\n");
 
-      expect(() => runPrincipalTask(current.home, {
+      expect(() => runTestTask(current.home, {
         id: created.task.id,
         driver: "opencode-cli",
         model: "opencode/go",
@@ -522,7 +690,7 @@ describe("task run public boundary", () => {
     git(current.worktree, "commit", "-m", "ignore build artifacts");
     const created = agentTask(current);
     const runner = new FakeRunner();
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -532,7 +700,7 @@ describe("task run public boundary", () => {
     mkdirSync(join(current.worktree, "build"), { recursive: true });
     writeFileSync(join(current.worktree, "build", "artifact.js"), "generated\n");
 
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -543,18 +711,18 @@ describe("task run public boundary", () => {
     expect(runner.requests).toHaveLength(2);
   });
 
-  test("requires the requested session to be the latest observation", () => {
+  test("continues the latest retained session without a caller-supplied session id", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner(undefined, ["session-old", "session-latest"]);
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner);
-    runPrincipalTask(current.home, {
+    runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -562,24 +730,23 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     }, runner);
 
-    expect(() => runPrincipalTask(current.home, {
+    const continued = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
       session: first.sessionId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow(
-      `task ${created.task.id} latest observed OpenCode session in the current Worktree is session-latest, not session-old`,
-    );
-    expect(runner.requests).toHaveLength(2);
+    }, runner);
+    expect(continued.sessionId).toBe("session-latest");
+    expect(runner.requests[2]).toMatchObject({ session: "session-latest" });
   });
 
   test("a failed mismatched observation terminates the previously passed session branch", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner(undefined, ["requested-session-1", "observed-session-9"]);
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -587,7 +754,7 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     }, runner);
     expect(first.sessionId).toBe("requested-session-1");
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -603,16 +770,14 @@ describe("task run public boundary", () => {
       readFileSync(join(attemptDirectory, attempt, "settlement.json"), "utf8"),
     ).status);
     expect(statuses).toContain("runner-failed");
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
       session: first.sessionId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow(
-      `task ${created.task.id} latest observed OpenCode session in the current Worktree is observed-session-9, not requested-session-1`,
-    );
+    }, runner)).toThrow("has no usable recorded Work Cell attempt in the current Worktree session branch");
     expect(runner.requests).toHaveLength(2);
   });
 
@@ -620,7 +785,7 @@ describe("task run public boundary", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner();
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -637,7 +802,7 @@ describe("task run public boundary", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner();
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -655,7 +820,7 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     });
 
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -712,7 +877,7 @@ describe("task run public boundary", () => {
     ];
 
     for (const candidate of cases) {
-      expect(() => runPrincipalTask(current.home, {
+      expect(() => runTestTask(current.home, {
         id: created.task.id,
         driver: "opencode-cli",
         model: "opencode/go",
@@ -720,7 +885,7 @@ describe("task run public boundary", () => {
         expectedRevision: 1,
       }, new FakeRunner(candidate.retain))).toThrow(candidate.error);
     }
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -758,7 +923,7 @@ describe("task run public boundary", () => {
     };
     const inner = new FakeRunner();
     const overlapping = new FakeRunner((record) => {
-      expect(() => runPrincipalTask(
+      expect(() => runTestTask(
         otherHome,
         { ...arguments_, id: otherTask.task.id },
         inner,
@@ -766,17 +931,17 @@ describe("task run public boundary", () => {
       return record;
     });
 
-    expect(() => runPrincipalTask(current.home, arguments_, overlapping)).not.toThrow();
+    expect(() => runTestTask(current.home, arguments_, overlapping)).not.toThrow();
     expect(inner.requests).toHaveLength(0);
     expect(existsSync(join(otherHome, "state", "task-attempts"))).toBeFalse();
-    expect(() => runPrincipalTask(current.home, arguments_, new FakeRunner())).not.toThrow();
+    expect(() => runTestTask(current.home, arguments_, new FakeRunner())).not.toThrow();
   });
 
   test("rechecks cleanliness after lease acquisition before creating attempt evidence", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner();
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -791,7 +956,7 @@ describe("task run public boundary", () => {
     expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
 
     rmSync(join(current.worktree, "became-dirty.txt"));
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -810,7 +975,7 @@ describe("task run public boundary", () => {
       }
       const runner = new FakeRunner();
 
-      expect(() => runPrincipalTask(current.home, {
+      expect(() => runTestTask(current.home, {
         id: created.task.id,
         driver: "opencode-cli",
         model: "opencode/go",
@@ -885,7 +1050,7 @@ describe("task run public boundary", () => {
       };
     });
 
-    const result = runPrincipalTask(current.home, {
+    const result = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -899,29 +1064,46 @@ describe("task run public boundary", () => {
     expect(record.workspaceDiff.changed).toEqual([buildPath, outputPath]);
   });
 
-  test("requires explicit OpenCode driver and model at the CLI boundary", () => {
+  test("lists worker policy and accepts only worker selection plus continuation at the CLI boundary", () => {
     const current = fixture();
-    const missingDriver = taskCli(current.home, "run", "unused", "--model", "opencode/go", "--expected-source-revision", "0", "--expected-revision", "1");
-    expect(missingDriver.exitCode).toBe(2);
-    expect(missingDriver.stderr).toContain("task command requires --driver <value>");
+    const listed = workbenchCli(current.home, "worker", "list");
+    expect(listed.exitCode).toBe(0);
+    const workers = JSON.parse(listed.stdout).workers;
+    expect(workers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "deepseek-flash",
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        reasoningEffort: "max",
+      }),
+      expect.objectContaining({
+        id: "deepseek-pro",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        reasoningEffort: "max",
+      }),
+      expect.objectContaining({
+        id: "kimi-coding",
+        provider: "opencode-go",
+        model: "kimi-k2.7-code",
+        reasoningEffort: "provider-default",
+        availability: { status: "available" },
+      }),
+    ]));
 
-    const missingModel = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--expected-source-revision", "0", "--expected-revision", "1");
-    expect(missingModel.exitCode).toBe(2);
-    expect(missingModel.stderr).toContain("task command requires --model <value>");
+    const missingWorker = taskCli(current.home, "run", "unused");
+    expect(missingWorker.exitCode).toBe(2);
+    expect(missingWorker.stderr).toContain("task command requires --worker <value>");
 
-    const emptySession = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--session", "   ", "--expected-source-revision", "0", "--expected-revision", "1");
-    expect(emptySession.exitCode).toBe(2);
-    expect(emptySession.stderr).toContain("task run --session must be a non-empty string");
+    for (const legacy of ["--driver", "--model", "--reasoning-effort", "--session", "--expected-revision"]) {
+      const result = taskCli(current.home, "run", "unused", "--worker", "deepseek-flash", legacy, "legacy");
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("invalid task option sequence");
+    }
 
-    const legacyVariant = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--variant", "high", "--expected-source-revision", "0", "--expected-revision", "1");
-    expect(legacyVariant.exitCode).toBe(2);
-    expect(legacyVariant.stderr).toContain("invalid task option sequence");
-    expect(legacyVariant.stderr).toContain("--variant");
-
-    const reasoningEffort = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--reasoning-effort", "max", "--expected-source-revision", "0", "--expected-revision", "1");
-    expect(reasoningEffort.exitCode).toBe(2);
-    expect(reasoningEffort.stderr).toContain("Principal task not found");
-    expect(reasoningEffort.stderr).not.toContain("unexpected task option");
+    const continued = taskCli(current.home, "run", "unused", "--worker", "deepseek-flash", "--continue");
+    expect(continued.exitCode).toBe(2);
+    expect(continued.stderr).toContain("Principal task not found");
   });
 
   test("rejects dirty, nonexistent, unbound, and completed tasks before the runner", () => {
@@ -929,7 +1111,7 @@ describe("task run public boundary", () => {
     const dirtyTask = agentTask(dirty);
     writeFileSync(join(dirty.worktree, "dirty.txt"), "dirty\n");
     const runner = new FakeRunner();
-    expect(() => runPrincipalTask(dirty.home, {
+    expect(() => runTestTask(dirty.home, {
       id: dirtyTask.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -940,7 +1122,7 @@ describe("task run public boundary", () => {
     const nonexistent = fixture();
     const nonexistentTask = agentTask(nonexistent);
     rmSync(nonexistent.worktree, { recursive: true, force: true });
-    expect(() => runPrincipalTask(nonexistent.home, {
+    expect(() => runTestTask(nonexistent.home, {
       id: nonexistentTask.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -957,7 +1139,7 @@ describe("task run public boundary", () => {
       sourceRef: "test:unbound",
       expectedSourceRevision: 0,
     });
-    expect(() => runPrincipalTask(unbound.home, {
+    expect(() => runTestTask(unbound.home, {
       id: unboundTask.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -981,7 +1163,7 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 2,
       expectedRevision: submitted.task.revision,
     });
-    expect(() => runPrincipalTask(completed.home, {
+    expect(() => runTestTask(completed.home, {
       id: completedTask.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1003,7 +1185,7 @@ describe("task attempts projection", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner(undefined, ["session-a"]);
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1011,7 +1193,7 @@ describe("task attempts projection", () => {
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner);
-    const second = runPrincipalTask(current.home, {
+    const second = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1027,6 +1209,7 @@ describe("task attempts projection", () => {
       attemptId: first.attemptId,
       taskRevision: 1,
       sourceRevision: 1,
+      workerId: "test-worker",
       driver: "opencode-cli",
       model: "opencode/go",
       reasoningEffort: "high",
@@ -1065,14 +1248,14 @@ describe("task attempts projection", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner(undefined, ["requested-1", "observed-9"]);
-    const first = runPrincipalTask(current.home, {
+    const first = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner);
-    expect(() => runPrincipalTask(current.home, {
+    expect(() => runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1137,7 +1320,7 @@ describe("task attempts projection", () => {
   test("keeps attributable malformed evidence visible without projecting unowned facts", () => {
     const current = fixture();
     const created = agentTask(current);
-    const valid = runPrincipalTask(current.home, {
+    const valid = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1232,7 +1415,7 @@ describe("task attempts projection", () => {
   test("gives the attempt task claim exclusive ownership when settlement conflicts", () => {
     const current = fixture();
     const created = agentTask(current);
-    const run = runPrincipalTask(current.home, {
+    const run = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1269,7 +1452,7 @@ describe("task attempts projection", () => {
     const current = fixture();
     const created = agentTask(current);
     const runner = new FakeRunner();
-    runPrincipalTask(current.home, {
+    runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1293,7 +1476,7 @@ describe("task attempts projection", () => {
   test("the CLI exposes task attempts as a read-only projection", () => {
     const current = fixture();
     const created = agentTask(current);
-    const run = runPrincipalTask(current.home, {
+    const run = runTestTask(current.home, {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
@@ -1332,10 +1515,44 @@ function taskCli(home: string, ...arguments_: string[]): {
     ...arguments_,
   ], {
     cwd: repositoryRoot,
+    env: { ...process.env, DEEPSEEK_API_KEY: "configured-for-test" },
     stdout: "pipe",
     stderr: "pipe",
   });
   return { exitCode: result.exitCode, stderr: result.stderr.toString() };
+}
+
+function workbenchCli(home: string, ...arguments_: string[]): {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+} {
+  const result = Bun.spawnSync([
+    process.execPath,
+    bunCli,
+    "--home",
+    home,
+    ...arguments_,
+  ], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      DEEPSEEK_API_KEY: "configured-for-test",
+      OPENCODE_API_KEY: "configured-for-test",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+  };
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }
 
 function taskCliWithOutput(home: string, ...arguments_: string[]): {

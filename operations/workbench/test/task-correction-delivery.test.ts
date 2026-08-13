@@ -123,6 +123,7 @@ function workItems(
           title: "Task A",
           objective: "Deliver the correction",
           acceptance: ["The Mission input receipt is retained"],
+          todos: [],
           origin: {
             kind: "principal-explicit",
             sourceRef: "conversation:test",
