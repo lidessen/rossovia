@@ -1,0 +1,72 @@
+{
+  "probe": "conversation-deepseek-v4-pro-live-probe",
+  "version": 1,
+  "intent": "One authorized read-only DeepSeek Pro/max live inquiry through the frozen P3b1 ConversationTurnPort contract. The probe records requested and observed provider/model/reasoning identity, sanitized usage, and the event sequence. It does not modify any Task, Mission, or project state; the only write is this evidence file.",
+  "authorization": "P3b2 acceptance: one authorized DeepSeek Pro/max read-only live inquiry",
+  "startedAt": "2026-08-13T17:50:16.885Z",
+  "environment": {
+    "DEEPSEEK_API_KEY": "set",
+    "DEEPSEEK_BASE_URL": "unset"
+  },
+  "maxOutputTokens": 16000,
+  "finishedAt": "2026-08-13T17:50:19.242Z",
+  "status": "finished",
+  "requested": {
+    "promptRevision": "rosso.conversation-prompt.v1",
+    "promptDigest": "495662333f82934e5775d72aad7912d4a575f8d8c10978d342d1c83c4120806e",
+    "disclosedSources": [],
+    "sourceRevisionSelectors": [],
+    "provider": "deepseek",
+    "model": "deepseek-v4-pro",
+    "thinking": "enabled",
+    "reasoningEffort": "max"
+  },
+  "observed": {
+    "outcome": "finished",
+    "provider": "deepseek",
+    "model": "deepseek-v4-pro",
+    "reasoningEffort": "max",
+    "usage": {
+      "inputTokens": 289,
+      "outputTokens": 148,
+      "totalTokens": 437,
+      "cachedInputTokens": 0
+    }
+  },
+  "events": [
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "delta",
+    "finished"
+  ],
+  "text": "Provider deepseek, model deepseek-v4-pro, reasoning effort max disclosed for this turn; I confirm I took no action.",
+  "usage": {
+    "inputTokens": 289,
+    "outputTokens": 148,
+    "totalTokens": 437,
+    "cachedInputTokens": 0
+  }
+}
