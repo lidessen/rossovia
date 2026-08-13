@@ -546,7 +546,7 @@ export class DelegateLoopSession {
         const workerCall = WorkerSpawnCallSchema.parse(call);
         this.options.workerCatalog!.assertSupports(workerCall.workerId, [
           workerCall.capabilityNeed,
-          ...(workerCall.imagePaths?.length ? ["vision"] : []),
+          ...(workerCall.imagePaths?.length && workerCall.capabilityNeed !== "vision" ? ["vision"] : []),
         ]);
       }
       if (this.seenContributionKeys.has(call.key)) throw new Error(`duplicate delegate contribution key ${call.key}`);

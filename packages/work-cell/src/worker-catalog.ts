@@ -84,7 +84,7 @@ export class WorkerCatalog {
     const entry = this.requireRunnable(parsed.workerId);
     this.assertSupports(entry.card.id, [
       ...parsed.capabilitiesRequired,
-      ...(parsed.imagePaths?.length ? ["vision"] : []),
+      ...(parsed.imagePaths?.length && !parsed.capabilitiesRequired.includes("vision") ? ["vision"] : []),
     ]);
     assertExecutionProfile(entry.card, parsed.executionProfile);
     const driver = entry.createDriver();

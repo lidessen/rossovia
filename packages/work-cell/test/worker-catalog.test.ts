@@ -83,6 +83,19 @@ test("local image input requires a vision worker even when the Cell omits a visi
   expect(() => catalog.createDriver(input)).toThrow("missing required labels: vision");
 });
 
+test("a vision Cell with local image input does not duplicate its required vision label", () => {
+  const catalog = catalogWith([
+    card("vision-worker", "visual-provider", "visual-model", ["coding", "vision"], "Handles image-grounded code work. Recommended for visual engineering."),
+  ]);
+  const input = cell("/tmp", "vision-image-cell", "vision-worker", "visual-provider", "visual-model", ["vision"]);
+  input.imagePaths = ["images/probe.png"];
+
+  expect(catalog.createDriver(input).descriptor).toMatchObject({
+    provider: "visual-provider",
+    model: "visual-model",
+  });
+});
+
 function catalogWith(cards: readonly WorkerCard[]): WorkerCatalog {
   return new WorkerCatalog(cards.map((worker) => ({
     card: worker,

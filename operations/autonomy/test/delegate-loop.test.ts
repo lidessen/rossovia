@@ -157,6 +157,7 @@ test("worker_spawn preserves local image paths through host preparation and admi
         return response([namedToolCall("spawn-vision", "worker_spawn", {
           ...call("visual", "inspect-contract", "source:contract"),
           workerId: "vision-worker",
+          capabilityNeed: "vision",
           imagePaths: ["screenshots/current.png"],
         })], "tool-calls");
       }
@@ -164,7 +165,10 @@ test("worker_spawn preserves local image paths through host preparation and admi
     },
   });
 
-  const result = await runDelegateLoop(loopInput(root), {
+  const result = await runDelegateLoop({
+    ...loopInput(root),
+    whole: { ...whole(root), capabilityNeeds: ["vision"] },
+  }, {
     model,
     workerCatalog: catalog,
     prepareContribution: async (delegateCall) => {
@@ -178,6 +182,7 @@ test("worker_spawn preserves local image paths through host preparation and admi
         },
         cell: {
           ...(prepared.cell as CellInput),
+          capabilities: ["read", "vision"],
           executionProfile: {
             id: "vision-worker",
             version: "execution-profile.v1",
@@ -197,6 +202,7 @@ test("worker_spawn preserves local image paths through host preparation and admi
 
   expect(result.batches[0]?.run.kind).toBe("direct");
   if (result.batches[0]?.run.kind !== "direct") throw new Error("expected direct worker run");
+  expect(result.batches[0].run.record.status).toBe("passed");
   expect(result.batches[0].run.record.input.imagePaths).toEqual(["screenshots/current.png"]);
 });
 
