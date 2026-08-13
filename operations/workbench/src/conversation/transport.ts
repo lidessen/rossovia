@@ -5,9 +5,13 @@ import {
   ConversationEventSchema,
   ConversationIdSchema,
   type ConversationEvent,
-  type RequestedCoordinatorPolicy,
 } from "./contracts";
 import { FileConversationJournal } from "./journal";
+import type {
+  ConversationTurnOwner,
+  TurnPreparation,
+} from "./turn-owner";
+import type { ConversationTurnHandle, ConversationTurnResult } from "../../../autonomy/src/conversation-coordinator";
 
 /**
  * Strict WebSocket frame vocabulary for one Workbench conversation socket.
@@ -118,24 +122,14 @@ export interface ConversationSocketData {
   readonly cursor: number;
 }
 
-/**
- * The requested coordinator policy recorded by the fake echo runtime. It is
- * a requested fact about the fake carrier, never an observed provider; the
- * real coordinator replaces it in a later wave.
- */
-export const EchoCoordinatorPolicy: RequestedCoordinatorPolicy = {
-  provider: "fake-echo",
-  model: "echo.v1",
-  thinking: "disabled",
-  reasoningEffort: "none",
-};
-
-const EchoChunkSize = 8;
-const DefaultDeltaDelayMs = 10;
-
 export interface ConversationSocketRuntimeOptions {
-  /** Delay between provisional echo deltas of one fake turn. */
-  readonly deltaDelayMs?: number;
+  /**
+   * The injected conversation turn owner: prepares the requested-policy and
+   * prompt evidence the runtime journals durably before the first delta, then
+   * runs one coordinator turn. The production server injects the real
+   * DeepSeek Pro/max owner; tests inject a deterministic scripted owner.
+   */
+  readonly turnOwner: ConversationTurnOwner;
   /** Delay before the replay read, to make replay-phase behavior deterministic in tests. */
   readonly replayDelayMs?: number;
   /** Clock seam for the owned journal; defaults to ISO now. */
@@ -150,21 +144,32 @@ export interface ConversationSocketRuntimeOptions {
  * On upgrade it replays durable events after the cursor, then subscribes the
  * socket to live events; events appended during replay are buffered and
  * flushed without duplication. Only `journal.event` advances the cursor.
- * The fake echo turn receipts a message, records a started and settled turn,
- * streams the payload back as provisional `response.delta` text, then retains
- * the complete settled echo for reconnect; it owns no model, canonical action,
- * interruption, or projection surface.
+ *
+ * Each accepted Principal message is receipted exactly once, then run through
+ * the injected turn owner: the durable `coordinator.turn-started` (with the
+ * turn's requested policy and prompt/disclosure/source-selector evidence) is
+ * fsynced before the model call, provisional `response.delta` frames stream
+ * from real coordinator deltas, and the terminal result is journaled as a
+ * durable settled, failed, or interrupted turn. At most one turn is active
+ * per conversation; later submits are receipted immediately and their turns
+ * run in receipt order. `response.interrupt` aborts only the exact active
+ * turn of the same conversation. The runtime owns no Task/Mission/project
+ * mutation, tool call, typed action, or canonical state.
  */
 export class ConversationSocketRuntime {
   readonly journal: FileConversationJournal;
-  private readonly deltaDelayMs: number;
+  private readonly turnOwner: ConversationTurnOwner;
   private readonly replayDelayMs: number;
   private readonly sockets = new Map<Bun.ServerWebSocket<ConversationSocketData>, SocketEntry>();
   private readonly subscribers = new Map<string, Set<SocketEntry>>();
+  /** The exact currently running turn per conversation; undefined when none. */
+  private readonly activeTurns = new Map<string, ActiveTurn>();
+  /** Per-conversation FIFO chain so only one turn runs at a time. */
+  private readonly turnChains = new Map<string, Promise<void>>();
 
-  constructor(root: string, options: ConversationSocketRuntimeOptions = {}) {
+  constructor(root: string, options: ConversationSocketRuntimeOptions) {
     this.journal = new FileConversationJournal(root, options.now);
-    this.deltaDelayMs = options.deltaDelayMs ?? DefaultDeltaDelayMs;
+    this.turnOwner = options.turnOwner;
     this.replayDelayMs = options.replayDelayMs ?? 0;
   }
 
@@ -294,11 +299,13 @@ export class ConversationSocketRuntime {
         void this.submitMessage(entry, frame);
         break;
       case "response.interrupt":
+        this.interruptTurn(entry, frame);
+        break;
       case "tool.interrupt":
       case "work.control":
         this.send(entry, protocolErrorFrame(
           "unsupported-frame",
-          `${frame.type} is not owned by the echo runtime`,
+          `${frame.type} is not owned by the conversation runtime`,
         ));
         break;
     }
@@ -310,32 +317,15 @@ export class ConversationSocketRuntime {
         clientMessageId: frame.clientMessageId,
         payload: frame.payload,
       });
-      if (result.duplicate) {
-        // The retained receipt is a journal.event like any other: it goes
-        // through the replay buffer/dedup path so a replay-phase duplicate
-        // can never be delivered out of journal order.
-        this.broadcast(entry.conversationId, journalEventFrame(result.event));
-        return;
-      }
+      // The retained receipt is a journal.event like any other: it goes
+      // through the replay buffer/dedup path so a replay-phase duplicate
+      // can never be delivered out of journal order.
       this.broadcast(entry.conversationId, journalEventFrame(result.event));
+      if (result.duplicate) return;
       const turnId = randomUUID();
       const messageId = result.event.data.messageId;
-      const turn = await this.journal.startTurn(entry.conversationId, {
-        turnId,
-        messageId,
-        requestedPolicy: EchoCoordinatorPolicy,
-      });
-      this.broadcast(entry.conversationId, journalEventFrame(turn));
-      for (const text of chunkText(frame.payload, EchoChunkSize)) {
-        await Bun.sleep(this.deltaDelayMs);
-        this.broadcast(entry.conversationId, responseDeltaFrame({ turnId, messageId, text }));
-      }
-      const settled = await this.journal.settleTurn(entry.conversationId, {
-        turnId,
-        messageId,
-        response: frame.payload,
-      });
-      this.broadcast(entry.conversationId, journalEventFrame(settled));
+      this.enqueueTurn(entry.conversationId, () =>
+        this.runTurn(entry, { turnId, messageId, payload: frame.payload }));
     } catch (error: unknown) {
       if (error instanceof ConversationConflictError) {
         this.send(entry, protocolErrorFrame("conflict", error.message));
@@ -346,6 +336,184 @@ export class ConversationSocketRuntime {
         error instanceof Error ? error.message : String(error),
       ));
     }
+  }
+
+  /**
+   * Run one prepared coordinator turn after its durable start is journaled:
+   * `coordinator.turn-started` (with requested policy and prompt evidence)
+   * is fsynced before the owner starts, so no delta can precede the durable
+   * record. Deltas become provisional `response.delta` frames; the terminal
+   * result becomes one durable settled/failed/interrupted journal event.
+   */
+  private async runTurn(
+    entry: SocketEntry,
+    input: { readonly turnId: string; readonly messageId: string; readonly payload: string },
+  ): Promise<void> {
+    const { conversationId } = entry;
+    let preparation: TurnPreparation;
+    try {
+      preparation = this.turnOwner.prepare(input);
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame(
+        "journal-error",
+        `conversation turn preparation failed: ${errorMessage(error)}`,
+      ));
+      return;
+    }
+    try {
+      const started = await this.journal.startTurn(conversationId, {
+        turnId: input.turnId,
+        messageId: input.messageId,
+        requestedPolicy: preparation.requestedPolicy,
+        prompt: preparation.prompt,
+        disclosedSources: [...preparation.disclosedSources],
+        sourceRevisionSelectors: [...preparation.sourceRevisionSelectors],
+      });
+      this.broadcast(conversationId, journalEventFrame(started));
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame(
+        "journal-error",
+        error instanceof Error ? error.message : String(error),
+      ));
+      return;
+    }
+
+    const active: ActiveTurn = {
+      turnId: input.turnId,
+      messageId: input.messageId,
+      interrupting: false,
+      interruptRequested: false,
+      handle: null,
+    };
+    this.activeTurns.set(conversationId, active);
+    try {
+      let terminal: ConversationTurnResult;
+      try {
+        const handle = this.turnOwner.start(preparation, (text) => {
+          if (active.interrupting) return;
+          this.broadcast(conversationId, responseDeltaFrame({
+            turnId: input.turnId,
+            messageId: input.messageId,
+            text,
+          }));
+        });
+        active.handle = handle;
+        if (active.interruptRequested) {
+          active.interrupting = true;
+          handle.interrupt();
+        }
+        terminal = await handle.result;
+      } catch (error: unknown) {
+        const reason = `conversation turn owner failed: ${errorMessage(error)}`;
+        try {
+          const event = await this.journal.failTurn(conversationId, {
+            turnId: input.turnId,
+            messageId: input.messageId,
+            reason,
+          });
+          this.broadcast(conversationId, journalEventFrame(event));
+        } catch (journalError: unknown) {
+          this.send(entry, protocolErrorFrame("journal-error", errorMessage(journalError)));
+        }
+        return;
+      }
+      try {
+        const event = await this.settleTurnTerminal(conversationId, input, terminal);
+        this.broadcast(conversationId, journalEventFrame(event));
+      } catch (error: unknown) {
+        this.send(entry, protocolErrorFrame(
+          "journal-error",
+          error instanceof Error ? error.message : String(error),
+        ));
+      }
+    } finally {
+      this.activeTurns.delete(conversationId);
+    }
+  }
+
+  /** Map a terminal coordinator result onto the journal's minimal settlement schemas. */
+  private async settleTurnTerminal(
+    conversationId: string,
+    input: { readonly turnId: string; readonly messageId: string },
+    terminal: ConversationTurnResult,
+  ): Promise<ConversationEvent> {
+    switch (terminal.kind) {
+      case "finished":
+        return await this.journal.settleTurn(conversationId, {
+          turnId: input.turnId,
+          messageId: input.messageId,
+          response: terminal.text,
+          observedEvidence: {
+            ...(terminal.observed.provider === undefined
+              ? {}
+              : { provider: terminal.observed.provider }),
+            ...(terminal.observed.model === undefined
+              ? {}
+              : { model: terminal.observed.model }),
+            ...(terminal.observed.fingerprint === undefined
+              ? {}
+              : { fingerprint: terminal.observed.fingerprint }),
+            usage: {
+              inputTokens: terminal.usage.inputTokens,
+              outputTokens: terminal.usage.outputTokens,
+            },
+          },
+        });
+      case "failed":
+        return await this.journal.failTurn(conversationId, {
+          turnId: input.turnId,
+          messageId: input.messageId,
+          reason: terminal.error,
+        });
+      case "interrupted":
+        return await this.journal.interruptTurn(conversationId, {
+          turnId: input.turnId,
+          messageId: input.messageId,
+        });
+      default: {
+        const unreachable: never = terminal;
+        throw new Error(`unexpected terminal conversation turn outcome: ${String(unreachable)}`);
+      }
+    }
+  }
+
+  /**
+   * Abort only the exact active turn of the socket's conversation. An unknown
+   * or already ended turn is a visible protocol conflict; an interrupt that
+   * arrives between the durable turn start and handle creation is applied the
+   * moment the handle exists. Once an interrupt is requested no further
+   * delta of that turn is delivered, and the turn settles as durable
+   * `coordinator.turn-interrupted`.
+   */
+  private interruptTurn(entry: SocketEntry, frame: ClientResponseInterruptFrame): void {
+    const active = this.activeTurns.get(entry.conversationId);
+    if (active === undefined || active.turnId !== frame.turnId) {
+      this.send(entry, protocolErrorFrame(
+        "conflict",
+        `response.interrupt targets turn ${frame.turnId}, which is not the active turn `
+        + `of conversation ${entry.conversationId}`,
+      ));
+      return;
+    }
+    if (active.handle === null) {
+      active.interruptRequested = true;
+      return;
+    }
+    active.interrupting = true;
+    active.handle.interrupt();
+  }
+
+  /** Queue one turn per conversation so at most one is active at a time. */
+  private enqueueTurn(conversationId: string, run: () => Promise<void>): void {
+    const previous = this.turnChains.get(conversationId) ?? Promise.resolve();
+    const current = previous.then(run, run);
+    const tail = current.catch(() => {});
+    this.turnChains.set(conversationId, tail);
+    void tail.then(() => {
+      if (this.turnChains.get(conversationId) === tail) {
+        this.turnChains.delete(conversationId);
+      }
+    });
   }
 
   private closeSocket(ws: Bun.ServerWebSocket<ConversationSocketData>): void {
@@ -389,6 +557,14 @@ interface SocketEntry {
   closed: boolean;
 }
 
+interface ActiveTurn {
+  readonly turnId: string;
+  readonly messageId: string;
+  interrupting: boolean;
+  interruptRequested: boolean;
+  handle: ConversationTurnHandle | null;
+}
+
 function conversationSocketId(pathname: string): string | null {
   const match = /^\/api\/conversations\/([^/]+)\/socket$/u.exec(pathname);
   if (match === null) return null;
@@ -430,10 +606,8 @@ function protocolErrorFrame(code: ProtocolErrorCode, message: string): ServerPro
   return { type: "protocol.error", code, message };
 }
 
-function chunkText(text: string, size: number): string[] {
-  const chunks: string[] = [];
-  for (let index = 0; index < text.length; index += size) chunks.push(text.slice(index, index + size));
-  return chunks;
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim() !== "" ? error.message : String(error);
 }
 
 function jsonError(

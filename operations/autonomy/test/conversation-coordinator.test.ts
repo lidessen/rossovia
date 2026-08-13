@@ -8,7 +8,9 @@ import {
 import {
   ConversationTurnRequestSchema,
   ConversationTurnSafetyEventSchema,
+  prepareConversationTurn,
   startConversationTurn,
+  startPreparedConversationTurn,
   type ConversationTurnOptions,
   type ConversationTurnPort,
   type ConversationTurnPortEvent,
@@ -584,4 +586,89 @@ test("a port that ends without a terminal event is a visible failure", async () 
   assertFailed(result);
   expect(result.error).toContain("without finish");
   expect(seen.some((event) => event.kind === "error")).toBe(true);
+});
+
+test("prepareConversationTurn composes deterministically with no side effects and no port", () => {
+  const options = fullOptions();
+  const prepared = prepareConversationTurn(options);
+  const composedInput: ConversationPromptInput = {
+    message: options.message,
+    policy: options.policy,
+    ...(options.projection === undefined ? {} : { projection: options.projection }),
+    ...(options.orientation === undefined ? {} : { orientation: options.orientation }),
+    ...(options.children === undefined ? {} : { children: [...options.children] }),
+  };
+
+  expect(prepared.prompt.revision).toBe(CONVERSATION_PROMPT_REVISION);
+  expect(prepared.prompt.digest).toBe(composeConversationPrompt(composedInput).digest);
+  expect(prepared.requested.promptRevision).toBe(CONVERSATION_PROMPT_REVISION);
+  expect(prepared.requested.promptDigest).toBe(prepared.prompt.digest);
+  expect(prepared.requested.provider).toBe(CURRENT_COORDINATOR_POLICY.provider);
+  expect(prepared.requested.model).toBe(CURRENT_COORDINATOR_POLICY.model);
+  expect(prepared.requested.thinking).toBe(CURRENT_COORDINATOR_POLICY.thinking);
+  expect(prepared.requested.reasoningEffort).toBe(CURRENT_COORDINATOR_POLICY.reasoningEffort);
+  expect(prepared.requested.disclosedSources.length).toBeGreaterThan(0);
+  expect(prepared.requested.sourceRevisionSelectors.length).toBeGreaterThan(0);
+});
+
+test("preparing the same input twice yields the exact same prompt digest and evidence", () => {
+  const options = fullOptions();
+  const first = prepareConversationTurn(options);
+  const second = prepareConversationTurn(options);
+
+  expect(second).toEqual(first);
+});
+
+test("startPreparedConversationTurn runs the prepared prompt through the port without recomposing", () => {
+  let seenPrompt: unknown;
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const prepared = prepareConversationTurn(fullOptions());
+  const handle = startPreparedConversationTurn(prepared, {
+    port: {
+      async *run({ prompt }) {
+        seenPrompt = prompt;
+        yield { kind: "delta", text: "prepared " };
+        yield { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model };
+      },
+    },
+    onEvent: (event) => seen.push(event),
+  });
+
+  return handle.result.then((result) => {
+    expect(seenPrompt).toEqual(prepared.prompt);
+    assertFinished(result);
+    expect(result.text).toBe("prepared ");
+    expect(result.requested).toEqual(prepared.requested);
+    expect(seen.some((event) => event.kind === "delta")).toBe(true);
+  });
+});
+
+test("startPreparedConversationTurn interrupts the same way as the one-shot entry", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const prepared = prepareConversationTurn(fullOptions());
+  const handle = startPreparedConversationTurn(prepared, {
+    port: {
+      async *run({ signal }) {
+        yield { kind: "delta", text: "started" };
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 30_000);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            resolve();
+          }, { once: true });
+        });
+        yield { kind: "delta", text: "late" };
+        yield { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model };
+      },
+    },
+    onEvent: (event) => seen.push(event),
+  });
+
+  await until(() => seen.some((event) => event.kind === "delta"));
+  handle.interrupt();
+  const result = await handle.result;
+
+  expect(result.kind).toBe("interrupted");
+  expect(result.text).toBe("started");
+  expect(seen).toEqual([{ kind: "delta", text: "started" }]);
 });

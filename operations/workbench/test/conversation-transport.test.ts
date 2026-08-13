@@ -16,6 +16,14 @@ import type { MessageReceivedEvent } from "../src/conversation/contracts";
 import { FileConversationJournal } from "../src/conversation/journal";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
 import { createWorkbenchRequestHandler } from "../src/ui/server";
+import {
+  startPreparedConversationTurn,
+  type ConversationTurnPortEvent,
+} from "../../autonomy/src/conversation-coordinator";
+import type {
+  ConversationTurnOwner,
+  TurnPreparation,
+} from "../src/conversation/turn-owner";
 
 const temporaryRoots: string[] = [];
 
@@ -48,13 +56,141 @@ function stubServer(port = 4317, acceptUpgrade = true): {
   return { server, upgrades };
 }
 
+const FAKE_PROMPT_DIGEST = "f".repeat(64);
+const FAKE_REQUESTED_POLICY = {
+  provider: "fake-coordinator",
+  model: "fake.v1",
+  thinking: "disabled",
+  reasoningEffort: "none",
+} as const;
+
+function fakePreparation(): TurnPreparation {
+  return {
+    requestedPolicy: FAKE_REQUESTED_POLICY,
+    prompt: { revision: "fake.prompt.v1", digest: FAKE_PROMPT_DIGEST },
+    disclosedSources: [],
+    sourceRevisionSelectors: [],
+    prepared: {
+      prompt: {
+        revision: "fake.prompt.v1",
+        prompt: "fake composed prompt",
+        digest: FAKE_PROMPT_DIGEST,
+        disclosedSources: [],
+        sourceRevisionSelectors: [],
+      },
+      requested: {
+        promptRevision: "fake.prompt.v1",
+        promptDigest: FAKE_PROMPT_DIGEST,
+        disclosedSources: [],
+        sourceRevisionSelectors: [],
+        ...FAKE_REQUESTED_POLICY,
+      },
+    },
+  };
+}
+
+type PortScript = (signal: AbortSignal) => AsyncGenerator<ConversationTurnPortEvent>;
+
+/**
+ * A deterministic injected turn owner that runs the real coordinator kernel
+ * over scripted port events, so the transport/bridge mapping is exercised
+ * without any provider call.
+ */
+function scriptedOwner(scripts: readonly PortScript[]): ConversationTurnOwner {
+  let index = 0;
+  return {
+    prepare: () => fakePreparation(),
+    start(preparation, onDelta) {
+      const script = scripts[Math.min(index, scripts.length - 1)]!;
+      index += 1;
+      return startPreparedConversationTurn(preparation.prepared, {
+        port: { run: ({ signal }) => script(signal) },
+        onEvent: (event) => {
+          if (event.kind === "delta") onDelta(event.text);
+        },
+      });
+    },
+  };
+}
+
+const SETTLED_USAGE = { inputTokens: 3, outputTokens: 2, totalTokens: 5, cachedInputTokens: 0 };
+
+function chunks(text: string, size: number): string[] {
+  const result: string[] = [];
+  for (let index = 0; index < text.length; index += size) result.push(text.slice(index, index + size));
+  return result;
+}
+
+function settledScript(response: string): PortScript {
+  return async function* () {
+    for (const chunk of chunks(response, 4)) yield { kind: "delta", text: chunk };
+    yield { kind: "finish", usage: SETTLED_USAGE };
+  };
+}
+
+function observedScript(response: string): PortScript {
+  return async function* () {
+    yield { kind: "delta", text: response };
+    yield {
+      kind: "finish",
+      provider: "fake-coordinator",
+      model: "fake.v1",
+      providerFingerprint: "fp-1",
+      usage: { inputTokens: 7, outputTokens: 4, totalTokens: 11, cachedInputTokens: 0 },
+    };
+  };
+}
+
+function failingScript(reason: string, partial = "partial answer"): PortScript {
+  return async function* () {
+    yield { kind: "delta", text: partial };
+    yield { kind: "error", message: reason };
+  };
+}
+
+function slowSettledScript(response: string, stepMs = 40): PortScript {
+  return async function* () {
+    for (const chunk of chunks(response, 4)) {
+      yield { kind: "delta", text: chunk };
+      await Bun.sleep(stepMs);
+    }
+    yield { kind: "finish", usage: SETTLED_USAGE };
+  };
+}
+
+class ManualGate {
+  private releaseFn: (() => void) | null = null;
+  private readonly released = new Promise<void>((resolve) => { this.releaseFn = resolve; });
+  release(): void { this.releaseFn?.(); }
+  /** Resolves when the test releases the gate or the turn signal aborts. */
+  wait(signal: AbortSignal): Promise<void> {
+    return Promise.race([
+      this.released,
+      new Promise<void>((resolve) => {
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+    ]);
+  }
+}
+
+function gatedScript(gate: ManualGate, first: string, later: string): PortScript {
+  return async function* (signal) {
+    yield { kind: "delta", text: first };
+    await gate.wait(signal);
+    yield { kind: "delta", text: later };
+    yield { kind: "finish", usage: SETTLED_USAGE };
+  };
+}
+
 function routeFixture(): {
   runtime: ConversationSocketRuntime;
   handler: (request: Request, server?: Bun.Server<ConversationSocketData>) => Promise<Response>;
   server: Bun.Server<ConversationSocketData>;
   upgrades: ConversationSocketData[];
 } {
-  const runtime = new ConversationSocketRuntime(tempRoot());
+  const runtime = new ConversationSocketRuntime(tempRoot(), {
+    turnOwner: scriptedOwner([settledScript("fixture response")]),
+  });
   const { server, upgrades } = stubServer();
   const handler = createWorkbenchRequestHandler(
     { port: 4317, roots: [] },
@@ -73,12 +209,12 @@ async function receiptedJournal(runtime: ConversationSocketRuntime, conversation
   }
 }
 
-async function startServer(root: string, deltaDelayMs = 12, replayDelayMs = 0): Promise<{
+async function startServer(root: string, owner: ConversationTurnOwner, replayDelayMs = 0): Promise<{
   runtime: ConversationSocketRuntime;
   server: Bun.Server<ConversationSocketData>;
   socketUrl: (conversationId: string, after: number) => string;
 }> {
-  const runtime = new ConversationSocketRuntime(root, { deltaDelayMs, replayDelayMs });
+  const runtime = new ConversationSocketRuntime(root, { turnOwner: owner, replayDelayMs });
   const handler = createWorkbenchRequestHandler(
     { port: 0, roots: [] },
     {} as AutonomyClient,
@@ -134,6 +270,10 @@ function submit(client: { ws: WebSocket }, clientMessageId: string, payload: str
   client.ws.send(JSON.stringify({ type: "message.submit", clientMessageId, payload }));
 }
 
+function interrupt(client: { ws: WebSocket }, turnId: string): void {
+  client.ws.send(JSON.stringify({ type: "response.interrupt", turnId }));
+}
+
 function receiptFrames(messages: readonly ServerFrame[], clientMessageId: string): MessageReceivedEvent[] {
   return messages.flatMap((frame) =>
     frame.type === "journal.event"
@@ -142,6 +282,22 @@ function receiptFrames(messages: readonly ServerFrame[], clientMessageId: string
       ? [frame.event]
       : [],
   );
+}
+
+function deltaTexts(messages: readonly ServerFrame[], turnId: string): string[] {
+  return messages.flatMap((frame) =>
+    frame.type === "response.delta" && frame.turnId === turnId ? [frame.text] : [],
+  );
+}
+
+async function turnIdAt(runtime: ConversationSocketRuntime, conversationId: string, sequence: number): Promise<string> {
+  const events = await runtime.journal.readEvents(conversationId);
+  const started = events.find((event) =>
+    event.type === "coordinator.turn-started" && event.sequence === sequence);
+  if (started === undefined || started.type !== "coordinator.turn-started") {
+    throw new Error(`no started turn at sequence ${sequence}`);
+  }
+  return started.data.turnId;
 }
 
 describe("conversation socket route validation", () => {
@@ -260,7 +416,9 @@ describe("conversation socket route validation", () => {
 
   test("returns 400 when the native server refuses the upgrade", async () => {
     const { server } = stubServer(4317, false);
-    const runtime = new ConversationSocketRuntime(tempRoot());
+    const runtime = new ConversationSocketRuntime(tempRoot(), {
+      turnOwner: scriptedOwner([settledScript("fixture response")]),
+    });
     const response = await runtime.upgrade(
       new Request(socketPath(randomUUID(), "?after=-1")),
       server,
@@ -282,8 +440,9 @@ describe("conversation socket route validation", () => {
 
   test("one runtime owns exactly one journal instance from its construction boundary", () => {
     const root = tempRoot();
-    const runtime = new ConversationSocketRuntime(root);
-    const other = new ConversationSocketRuntime(root);
+    const owner = scriptedOwner([settledScript("fixture response")]);
+    const runtime = new ConversationSocketRuntime(root, { turnOwner: owner });
+    const other = new ConversationSocketRuntime(root, { turnOwner: owner });
 
     expect(runtime.journal).toBeInstanceOf(FileConversationJournal);
     expect(other.journal).toBeInstanceOf(FileConversationJournal);
@@ -296,7 +455,10 @@ describe("conversation socket route validation", () => {
 describe("conversation socket live delivery", () => {
   test("two simultaneous sockets receive the same ordered live durable events", async () => {
     const root = tempRoot();
-    const { server, socketUrl } = await startServer(root);
+    const { server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("settled fixture response"),
+      settledScript("later fixture response"),
+    ]));
     const conversationId = randomUUID();
     const first = await connect(socketUrl(conversationId, -1));
     const second = await connect(socketUrl(conversationId, -1));
@@ -326,102 +488,260 @@ describe("conversation socket live delivery", () => {
     }
   });
 
-  test("a connection can inbound submit a second message while the first echo is still streaming", async () => {
+  test("the durable turn start precedes the first delta and settlement follows streaming", async () => {
     const root = tempRoot();
-    const { server, socketUrl } = await startServer(root, 25);
+    const gate = new ManualGate();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      gatedScript(gate, "first chunk", "second chunk"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
-      const longPayload = "a".repeat(64);
-      submit(client, randomUUID(), longPayload);
+      submit(client, randomUUID(), "fixture intent");
       await waitFor(
         () => client.messages.some((frame) => frame.type === "response.delta"),
         "first provisional delta",
       );
-      const deltasBefore = client.messages.filter((frame) => frame.type === "response.delta").length;
-      expect(deltasBefore).toBeGreaterThan(0);
+      const startedIndex = client.messages.findIndex((frame) =>
+        frame.type === "journal.event" && frame.event.type === "coordinator.turn-started");
+      const firstDeltaIndex = client.messages.findIndex((frame) => frame.type === "response.delta");
+      expect(startedIndex).toBeGreaterThanOrEqual(0);
+      expect(firstDeltaIndex).toBeGreaterThan(startedIndex);
+      expect(await runtime.journal.lastCursor(conversationId)).toBe(1);
 
-      submit(client, randomUUID(), "second while streaming");
+      gate.release();
+      await waitFor(() => durableSequences(client.messages).length === 3, "the turn settles");
+      expect(durableSequences(client.messages)).toEqual([0, 1, 2]);
+      const turnId = await turnIdAt(runtime, conversationId, 1);
+      expect(deltaTexts(client.messages, turnId).join("")).toBe("first chunksecond chunk");
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a second submit while a turn is active is receipted once and starts only after the first settles", async () => {
+    const root = tempRoot();
+    const gate = new ManualGate();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      gatedScript(gate, "first chunk", "second chunk"),
+      settledScript("second response"),
+    ]));
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "first intent");
       await waitFor(
-        () => client.messages.filter((frame) => frame.type === "response.delta").length > deltasBefore,
-        "the second turn's provisional deltas arrive",
+        () => client.messages.some((frame) => frame.type === "response.delta"),
+        "the first turn streams",
       );
+      const firstTurnId = await turnIdAt(runtime, conversationId, 1);
+
+      submit(client, randomUUID(), "second intent");
       await waitFor(
-        () => durableSequences(client.messages).length === 6,
-        "both turns settle",
+        () => client.messages.some((frame) =>
+          frame.type === "journal.event" && frame.event.type === "message.received" && frame.event.sequence === 2),
+        "the second message is receipted while the first turn is active",
       );
+      await Bun.sleep(60);
+      const started = await runtime.journal.readEvents(conversationId);
+      expect(started.filter((event) => event.type === "coordinator.turn-started")).toHaveLength(1);
+      expect(await runtime.journal.lastCursor(conversationId)).toBe(2);
+
+      interrupt(client, randomUUID());
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "protocol.error" && frame.code === "conflict"),
+        "an interrupt for a non-active turn is a visible conflict",
+      );
+
+      gate.release();
+      await waitFor(() => durableSequences(client.messages).length === 6, "both turns settle in order");
+      expect(durableSequences(client.messages)).toEqual([0, 1, 2, 3, 4, 5]);
+      const secondTurnId = await turnIdAt(runtime, conversationId, 4);
+      expect(secondTurnId).not.toBe(firstTurnId);
+      expect(deltaTexts(client.messages, secondTurnId).join("")).toBe("second response");
       const journalFrames = client.messages.filter(
         (frame): frame is ServerJournalEventFrame => frame.type === "journal.event",
       );
       const indexOf = (sequence: number) =>
         journalFrames.findIndex((frame) => frame.event.sequence === sequence);
-      expect(durableSequences(client.messages)).toEqual([0, 1, 2, 3, 4, 5]);
-      expect(indexOf(2)).toBeGreaterThan(indexOf(1));
-      expect(indexOf(2)).toBeLessThan(indexOf(5));
-      expect(indexOf(3)).toBeLessThan(indexOf(5));
-      expect(indexOf(4)).toBeLessThan(indexOf(5));
-      const deltas = client.messages.filter((frame) => frame.type === "response.delta");
-      const echoByTurn = new Map<string, string>();
-      for (const delta of deltas) {
-        echoByTurn.set(delta.turnId, (echoByTurn.get(delta.turnId) ?? "") + delta.text);
-      }
-      const turnIdAt = (sequence: number) => {
-        const frame = journalFrames.find((candidate) =>
-          candidate.event.type === "coordinator.turn-started" && candidate.event.sequence === sequence);
-        if (frame === undefined || frame.event.type !== "coordinator.turn-started") {
-          throw new Error(`no started turn at sequence ${sequence}`);
-        }
-        return frame.event.data.turnId;
-      };
-      expect(echoByTurn.get(turnIdAt(1))).toBe(longPayload);
-      expect(echoByTurn.get(turnIdAt(3))).toBe("second while streaming");
+      expect(indexOf(2)).toBeLessThan(indexOf(4));
     } finally {
       client.ws.close();
       server.stop(true);
     }
   });
 
-  test("a cursor at the journal head still receives later live durable events", async () => {
+  test("a settled turn retains the scripted response with minimal observed evidence", async () => {
     const root = tempRoot();
-    const { server, socketUrl } = await startServer(root);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("complete response text"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
-      submit(client, randomUUID(), "first intent");
-      await waitFor(() => durableSequences(client.messages).length === 3, "first turn settles");
-      expect(durableSequences(client.messages)).toEqual([0, 1, 2]);
-      client.ws.close();
+      submit(client, randomUUID(), "fixture intent");
+      await waitFor(() => durableSequences(client.messages).length === 3, "the turn settles");
 
-      const atHead = await connect(socketUrl(conversationId, 2));
-      try {
-        await Bun.sleep(100);
-        expect(atHead.messages).toEqual([]);
-        submit(atHead, randomUUID(), "later intent");
-        await waitFor(() => durableSequences(atHead.messages).length === 3, "later live events after the head cursor");
-        expect(durableSequences(atHead.messages)).toEqual([3, 4, 5]);
-      } finally {
-        atHead.ws.close();
-      }
+      const events = await runtime.journal.readEvents(conversationId);
+      const started = events.find((event) => event.type === "coordinator.turn-started");
+      const settled = events.find((event) => event.type === "coordinator.turn-settled");
+      expect(started?.type === "coordinator.turn-started" ? started.data.requestedPolicy : undefined)
+        .toEqual(FAKE_REQUESTED_POLICY);
+      expect(started?.type === "coordinator.turn-started" ? started.data.prompt : undefined)
+        .toEqual({ revision: "fake.prompt.v1", digest: FAKE_PROMPT_DIGEST });
+      expect(started?.type === "coordinator.turn-started" ? started.data.disclosedSources : undefined).toEqual([]);
+      expect(settled?.type === "coordinator.turn-settled" ? settled.data.response : undefined)
+        .toBe("complete response text");
+      expect(settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence : undefined)
+        .toEqual({ usage: { inputTokens: 3, outputTokens: 2 } });
     } finally {
+      client.ws.close();
       server.stop(true);
     }
   });
 
-  test("rejects an upgrade with a cursor beyond the current journal head at the HTTP boundary", async () => {
+  test("observed provider, model, and fingerprint map onto the settlement only when reported", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      observedScript("observed answer"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
-      submit(client, randomUUID(), "settled turn");
-      await waitFor(() => durableSequences(client.messages).length === 3, "turn settles");
-      expect(await runtime.journal.lastCursor(conversationId)).toBe(2);
+      submit(client, randomUUID(), "fixture intent");
+      await waitFor(() => durableSequences(client.messages).length === 3, "the turn settles");
 
-      const response = await fetch(
-        `http://127.0.0.1:${server.port}/api/conversations/${conversationId}/socket?after=9`,
+      const events = await runtime.journal.readEvents(conversationId);
+      const settled = events.find((event) => event.type === "coordinator.turn-settled");
+      expect(settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence : undefined)
+        .toEqual({
+          provider: "fake-coordinator",
+          model: "fake.v1",
+          fingerprint: "fp-1",
+          usage: { inputTokens: 7, outputTokens: 4 },
+        });
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a provider failure settles as a durable coordinator.turn-failed with the port reason", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      failingScript("fixture provider failure"),
+    ]));
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "fixture intent");
+      await waitFor(() => durableSequences(client.messages).length === 3, "the turn fails durably");
+
+      const events = await runtime.journal.readEvents(conversationId);
+      expect(events.map((event) => event.type)).toEqual([
+        "message.received",
+        "coordinator.turn-started",
+        "coordinator.turn-failed",
+      ]);
+      const failed = events.find((event) => event.type === "coordinator.turn-failed");
+      expect(failed?.type === "coordinator.turn-failed" ? failed.data.reason : undefined)
+        .toBe("fixture provider failure");
+      const turnId = await turnIdAt(runtime, conversationId, 1);
+      expect(deltaTexts(client.messages, turnId)).toEqual(["partial answer"]);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("response.interrupt aborts the exact active turn with no further delta and a durable interruption", async () => {
+    const root = tempRoot();
+    const gate = new ManualGate();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      gatedScript(gate, "first chunk", "late chunk"),
+    ]));
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "fixture intent");
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "response.delta"),
+        "the turn starts streaming",
       );
-      expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ error: "cursor-beyond-head", head: 2 });
+      const turnId = await turnIdAt(runtime, conversationId, 1);
+
+      interrupt(client, turnId);
+      await waitFor(() => durableSequences(client.messages).length === 3, "the turn interrupts durably");
+
+      const events = await runtime.journal.readEvents(conversationId);
+      expect(events.map((event) => event.type)).toEqual([
+        "message.received",
+        "coordinator.turn-started",
+        "coordinator.turn-interrupted",
+      ]);
+      expect(deltaTexts(client.messages, turnId)).toEqual(["first chunk"]);
+      expect(client.messages.some((frame) => frame.type === "response.delta" && frame.text === "late chunk"))
+        .toBe(false);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("an interrupt for an unknown or already ended turn is a visible conflict", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("settled answer"),
+    ]));
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "fixture intent");
+      await waitFor(() => durableSequences(client.messages).length === 3, "the turn settles");
+      const turnId = await turnIdAt(runtime, conversationId, 1);
+
+      interrupt(client, turnId);
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "protocol.error" && frame.code === "conflict"),
+        "the ended turn conflict",
+      );
+      interrupt(client, randomUUID());
+      await waitFor(
+        () => client.messages.filter((frame) => frame.type === "protocol.error" && frame.code === "conflict").length >= 2,
+        "the unknown turn conflict",
+      );
+      expect(await runtime.journal.readEvents(conversationId)).toHaveLength(3);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("tool.interrupt and work.control frames remain explicitly unsupported", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("fixture response"),
+    ]));
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      client.ws.send(JSON.stringify({ type: "tool.interrupt", actionId: randomUUID() }));
+      client.ws.send(JSON.stringify({
+        type: "work.control",
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+        control: "stop",
+      }));
+      await waitFor(
+        () => client.messages.filter((frame) => frame.type === "protocol.error").length >= 2,
+        "all unsupported frames are rejected",
+      );
+      const errors = client.messages.filter(
+        (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
+      );
+      expect(errors.every((frame) => frame.code === "unsupported-frame")).toBe(true);
+      expect(await runtime.journal.readEvents(conversationId)).toEqual([]);
     } finally {
       client.ws.close();
       server.stop(true);
@@ -430,7 +750,9 @@ describe("conversation socket live delivery", () => {
 
   test("the same clientMessageId and digest returns the retained receipt without a second receipt or turn", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("fixture response"),
+    ]));
     const conversationId = randomUUID();
     const clientMessageId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
@@ -461,7 +783,9 @@ describe("conversation socket live delivery", () => {
 
   test("the same clientMessageId with a different digest returns a typed protocol conflict", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("fixture response"),
+    ]));
     const conversationId = randomUUID();
     const clientMessageId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
@@ -490,7 +814,9 @@ describe("conversation socket live delivery", () => {
 
   test("rejects malformed client frames with a typed protocol error and writes nothing", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("fixture response"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
@@ -515,7 +841,9 @@ describe("conversation socket live delivery", () => {
 
   test("rejects an oversized WebSocket message before receipt or turn start", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("fixture response"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
@@ -539,29 +867,52 @@ describe("conversation socket live delivery", () => {
     }
   });
 
-  test("rejects interrupt and control frames the echo runtime does not own", async () => {
+  test("a cursor at the journal head still receives later live durable events", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root);
+    const { server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("first response"),
+      settledScript("later response"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
-      client.ws.send(JSON.stringify({ type: "response.interrupt", turnId: randomUUID() }));
-      client.ws.send(JSON.stringify({ type: "tool.interrupt", actionId: randomUUID() }));
-      client.ws.send(JSON.stringify({
-        type: "work.control",
-        turnId: randomUUID(),
-        actionId: randomUUID(),
-        control: "stop",
-      }));
-      await waitFor(
-        () => client.messages.filter((frame) => frame.type === "protocol.error").length >= 3,
-        "all unsupported frames are rejected",
+      submit(client, randomUUID(), "first intent");
+      await waitFor(() => durableSequences(client.messages).length === 3, "first turn settles");
+      expect(durableSequences(client.messages)).toEqual([0, 1, 2]);
+      client.ws.close();
+
+      const atHead = await connect(socketUrl(conversationId, 2));
+      try {
+        await Bun.sleep(100);
+        expect(atHead.messages).toEqual([]);
+        submit(atHead, randomUUID(), "later intent");
+        await waitFor(() => durableSequences(atHead.messages).length === 3, "later live events after the head cursor");
+        expect(durableSequences(atHead.messages)).toEqual([3, 4, 5]);
+      } finally {
+        atHead.ws.close();
+      }
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("rejects an upgrade with a cursor beyond the current journal head at the HTTP boundary", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("fixture response"),
+    ]));
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "settled turn");
+      await waitFor(() => durableSequences(client.messages).length === 3, "turn settles");
+      expect(await runtime.journal.lastCursor(conversationId)).toBe(2);
+
+      const response = await fetch(
+        `http://127.0.0.1:${server.port}/api/conversations/${conversationId}/socket?after=9`,
       );
-      const errors = client.messages.filter(
-        (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
-      );
-      expect(errors.every((frame) => frame.code === "unsupported-frame")).toBe(true);
-      expect(await runtime.journal.readEvents(conversationId)).toEqual([]);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "cursor-beyond-head", head: 2 });
     } finally {
       client.ws.close();
       server.stop(true);
@@ -572,7 +923,9 @@ describe("conversation socket live delivery", () => {
 describe("conversation socket reconnect replay", () => {
   test("reconnect replays only later durable events from the last durable cursor and never provisional deltas", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root, 20);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      slowSettledScript("hello world"),
+    ]));
     const conversationId = randomUUID();
     const client = await connect(socketUrl(conversationId, -1));
     try {
@@ -580,7 +933,7 @@ describe("conversation socket reconnect replay", () => {
       await waitFor(() => durableSequences(client.messages).includes(1), "turn starts durably");
       await waitFor(
         () => client.messages.some((frame) => frame.type === "response.delta"),
-        "provisional echo flows",
+        "provisional deltas flow",
       );
       client.ws.close();
 
@@ -620,7 +973,10 @@ describe("conversation socket reconnect replay", () => {
 
   test("a duplicate submit during replay is buffered, ordered, and deduplicated", async () => {
     const root = tempRoot();
-    const { runtime, server, socketUrl } = await startServer(root, 12, 150);
+    const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("first response"),
+      settledScript("second response"),
+    ]), 150);
     const conversationId = randomUUID();
     const firstClientMessageId = randomUUID();
     const first = await connect(socketUrl(conversationId, -1));
@@ -655,22 +1011,24 @@ describe("conversation socket reconnect replay", () => {
     }
   });
 
-  test("a non-browser protocol client observes submit, durable receipt, provisional echo, settlement, disconnect, and ordered replay", async () => {
+  test("a non-browser protocol client observes submit, durable receipt, provisional deltas, settlement, disconnect, and ordered replay", async () => {
     const root = tempRoot();
-    const { server, socketUrl } = await startServer(root, 12);
+    const { server, socketUrl } = await startServer(root, scriptedOwner([
+      settledScript("hello protocol world"),
+    ]));
     const conversationId = randomUUID();
-    const payload = "hello protocol world";
     const client = await connect(socketUrl(conversationId, -1));
     try {
-      submit(client, randomUUID(), payload);
+      submit(client, randomUUID(), "say hello");
       await waitFor(() => durableSequences(client.messages).length === 3, "the full settled turn");
       expect(durableSequences(client.messages)).toEqual([0, 1, 2]);
-      const deltas = client.messages.filter((frame) => frame.type === "response.delta");
-      expect(deltas.map((frame) => frame.text).join("")).toBe(payload);
+      const turnId = await turnIdAtFromFrames(client.messages, 1);
+      expect(deltaTexts(client.messages, turnId).join("")).toBe("hello protocol world");
       const receipt = client.messages.find(
         (frame): frame is ServerJournalEventFrame => frame.type === "journal.event" && frame.event.sequence === 0,
       )!;
-      expect(deltas.every((frame) => frame.messageId === receipt.event.data.messageId)).toBe(true);
+      expect(client.messages.filter((frame) => frame.type === "response.delta")
+        .every((frame) => frame.messageId === receipt.event.data.messageId)).toBe(true);
       client.ws.close();
 
       const reconnected = await connect(socketUrl(conversationId, 1));
@@ -684,7 +1042,7 @@ describe("conversation socket reconnect replay", () => {
         expect(settlement?.type === "journal.event"
           && settlement.event.type === "coordinator.turn-settled"
           ? settlement.event.data.response
-          : undefined).toBe(payload);
+          : undefined).toBe("hello protocol world");
       } finally {
         reconnected.ws.close();
       }
@@ -693,3 +1051,14 @@ describe("conversation socket reconnect replay", () => {
     }
   });
 });
+
+function turnIdAtFromFrames(messages: readonly ServerFrame[], sequence: number): string {
+  const frame = messages.find((candidate): candidate is ServerJournalEventFrame =>
+    candidate.type === "journal.event"
+      && candidate.event.type === "coordinator.turn-started"
+      && candidate.event.sequence === sequence);
+  if (frame === undefined || frame.event.type !== "coordinator.turn-started") {
+    throw new Error(`no started turn at sequence ${sequence}`);
+  }
+  return frame.event.data.turnId;
+}
