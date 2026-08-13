@@ -1,0 +1,37 @@
+{
+  "version": "mission-record.v1",
+  "id": "conversation-command-entry",
+  "title": "Build the daily conversation command entry",
+  "sources": [
+    "conversation:active-goal/2026-08-13"
+  ],
+  "createdAt": "2026-08-13T09:07:57Z",
+  "updatedAt": "2026-08-13T09:08:03Z",
+  "mainline": {
+    "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
+    "acceptance": [
+      "A browser conversation entry can create a new local task, apply a requirement correction to the same active obligation, and expose attributable progress and settled output without requiring the Principal to use CLI forms.",
+      "The local coordinator runs through an explicit DeepSeek Pro reasoning=max policy whose requested and observed execution identity is retained; unavailable or incompatible provider behavior is visible rather than silently downgraded.",
+      "The coordinator remains the single synthesis owner and can form temporary evidence, execution, or review contributors through the worker catalog only when the contribution earns its coordination cost; no standing committee, voting gate, or duplicate task source is introduced.",
+      "A text-first bidirectional command/event contract accepts Principal input while output or work is in flight, distinguishes provisional deltas from durable task state, supports explicit interruption, and reconstructs after connection loss from Workbench-owned state rather than provider session memory.",
+      "Runtime and UI are separately testable, then one representative multi-project daily-use walkthrough proves task publication, requirement update, visible ongoing work, intervention, and final result through the browser entry."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "research-and-design",
+      "parent": "mainline",
+      "kind": "investigation",
+      "purpose": "Convert the completed repository, Realtime, and coordinator-team investigations into one source-linked candidate architecture; keep research, design, design review, implementation planning, production, and verification under separate contribution owners.",
+      "returnCondition": "A durable candidate design states source and authority ownership, the text-first duplex contract, coordinator and temporary-team boundary, DeepSeek Pro max policy, staged vertical slices, and disconfirming observations; a fresh non-producing reviewer either clears it or returns exact findings before implementation planning starts.",
+      "sources": [
+        "conversation:stage-separation/2026-08-13",
+        "official-openai:realtime-docs/2026-08-13",
+        "repository:23246d48b8e01792e34d8b0f4bed22f030b66bf1"
+      ],
+      "status": "open"
+    }
+  ],
+  "currentFocus": "research-and-design"
+}
