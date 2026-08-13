@@ -16,7 +16,6 @@ import type {
   CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
 import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
-import { currentWorkerCards } from "../../autonomy/src/worker-policy";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import { runCommand } from "./process";
 import { showPrincipalTaskAttempts } from "./task-attempts";
@@ -117,7 +116,7 @@ export function listPrincipalTaskWorkers(
 ): TaskWorkerListResult {
   return {
     version: "rosso.task-worker-list.v1",
-    workers: currentWorkerCards(environment).map((card) => ({
+    workers: currentWorkerPolicy().currentWorkerCards(environment).map((card) => ({
       id: card.id,
       labels: [...card.labels],
       description: card.description,
@@ -609,6 +608,14 @@ function workCellContracts(): typeof import("../../../packages/work-cell/src/con
   return requireFromHere("../../../packages/work-cell/src/contracts");
 }
 
+// The sibling worker policy is loaded only when worker list/task run actually
+// need it, so a minimal Workbench-only CLI fixture (without Autonomy) can still
+// load for setup and other local task commands. currentWorkerCards remains the
+// single worker policy source; there is no fallback or copied default here.
+function currentWorkerPolicy(): typeof import("../../autonomy/src/worker-policy") {
+  return requireFromHere("../../autonomy/src/worker-policy");
+}
+
 function isAlreadyExists(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
@@ -628,7 +635,7 @@ function resolveWorkerCard(
   dependencies: TaskRunDependencies,
 ): WorkerCard {
   if (dependencies.resolveWorkerCard) return dependencies.resolveWorkerCard(workerId);
-  const card = currentWorkerCards().find((candidate) => candidate.id === workerId);
+  const card = currentWorkerPolicy().currentWorkerCards().find((candidate) => candidate.id === workerId);
   if (card === undefined) throw new Error(`unknown worker ${workerId}; run 'rossovia worker list'`);
   if (card.availability.status === "unavailable") {
     throw new Error(`worker ${workerId} is unavailable: ${card.availability.reason}`);
