@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v1" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v3" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
-const GitObjectSchema = z.string().regex(/^[a-f0-9]{40}$/);
+export const GitObjectSchema = z.string().regex(/^[a-f0-9]{40}$/);
 
 export const RELATION_KERNEL_V1 = [
   "You are the one synthesis owner for this conversation turn with one local Principal.",
@@ -44,6 +44,8 @@ export type CorrectionProjection = z.infer<typeof CorrectionProjectionSchema>;
 export const TaskProjectionSchema = z.object({
   id: z.string().min(1),
   sourceRevision: z.string().min(1),
+  /** The task's current numeric revision; carried so the coordinator can copy it into an exact correction. */
+  revision: z.number().int().positive().optional(),
   source: DisclosedSourceSchema.optional(),
   summary: z.string().min(1).max(800),
   status: z.enum(["open", "settled", "accepted"]).optional(),
@@ -95,13 +97,26 @@ export const PrincipalMessageSchema = z.object({
 }).strict();
 export type PrincipalMessage = z.infer<typeof PrincipalMessageSchema>;
 
+/**
+ * One consequential operation tool the caller makes known to the coordinator:
+ * its name, what it means, and whether it is currently available. Unavailable
+ * tools stay named so the coordinator can report them instead of calling.
+ */
+export const PolicyToolGuidanceSchema = z.object({
+  name: z.string().min(1),
+  meaning: z.string().min(1).max(2000),
+  availability: z.enum(["available", "unavailable"]),
+}).strict();
+export type PolicyToolGuidance = z.infer<typeof PolicyToolGuidanceSchema>;
+
 export const ConversationPolicySchema = z.object({
   provider: z.string().min(1),
   model: z.string().min(1),
   thinking: z.enum(["enabled", "disabled"]),
   reasoningEffort: z.string().min(1),
   disclosureEnvelope: z.string().min(1).max(1000),
-  tools: z.array(z.string().min(1)).optional(),
+  tools: z.array(z.union([z.string().min(1), PolicyToolGuidanceSchema])).optional(),
+  abstention: z.string().min(1).max(1000).optional(),
   workspace: z.string().min(1).optional(),
   budget: z.string().min(1).optional(),
   withheldEffects: z.array(z.string().min(1)).optional(),
@@ -209,6 +224,9 @@ function renderProjection(
     } else {
       lines.push(`  source revision: ${task.sourceRevision}`);
     }
+    if (task.revision !== undefined) {
+      lines.push(`  task revision: ${task.revision}`);
+    }
     if (task.corrections !== undefined && task.corrections.length > 0) {
       lines.push(`  corrections: ${task.corrections.map((c) => `${c.id}: ${c.summary}`).join(" | ")}`);
     }
@@ -266,7 +284,16 @@ function renderPolicy(policy: ConversationPolicy): string {
     `disclosure envelope: ${policy.disclosureEnvelope}`,
   ];
   if (policy.tools !== undefined && policy.tools.length > 0) {
-    lines.push(`tools: ${policy.tools.join(", ")}`);
+    for (const tool of policy.tools) {
+      lines.push(
+        typeof tool === "string"
+          ? `tool: ${tool}`
+          : `tool ${tool.name} [${tool.availability}]: ${tool.meaning}`,
+      );
+    }
+  }
+  if (policy.abstention !== undefined) {
+    lines.push(`abstention: ${policy.abstention}`);
   }
   if (policy.workspace !== undefined) {
     lines.push(`workspace: ${policy.workspace}`);

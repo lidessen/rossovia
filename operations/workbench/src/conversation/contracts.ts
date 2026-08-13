@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
+import {
+  ConversationOperationSchema,
+  TaskContinueOperationSchema,
+  TaskCorrectOperationSchema,
+  TaskCreateOperationSchema,
+  WorkControlOperationSchema,
+} from "../../../autonomy/src/conversation-coordinator";
 
 /**
  * Strict interaction vocabulary for one Workbench conversation. The journal
@@ -109,9 +117,81 @@ export const ActionRequestedDraftSchema = z.object({
   actionId: ActionIdSchema,
   turnId: TurnIdSchema,
   messageId: MessageIdSchema,
-  kind: ActionKindSchema,
+  /**
+   * The exact typed operation the host must execute. It is fsynced with
+   * `action.requested` before any effect so crash reconciliation can re-read
+   * the intended effect from the journal and never replay a committed
+   * mutation. Validation is structural only; no prose is classified here.
+   * The caller cannot name a kind: the stored event derives `kind` from this
+   * exact operation, so a mismatch between the two is structurally
+   * impossible before any journal append or effect.
+   */
+  operation: ConversationOperationSchema,
 }).strict();
 export type ActionRequestedDraft = z.infer<typeof ActionRequestedDraftSchema>;
+
+/**
+ * Stored `action.requested` data. The durable reader pairs every `kind`
+ * literal with the exact matching operation subtype, so a persisted line
+ * whose `data.kind` differs from `data.operation.kind` is rejected at read
+ * time. This is a structural field-consistency invariant, never a semantic
+ * or phrase classification: the writer derives `kind` from the operation,
+ * and the reader refuses any line that breaks the pairing. Existing stored
+ * lines already carry a matching pair and remain readable.
+ */
+const StoredActionRequestedDataFieldsSchema = z.object({
+  actionId: ActionIdSchema,
+  turnId: TurnIdSchema,
+  messageId: MessageIdSchema,
+});
+
+export const StoredActionRequestedDataSchema = z.discriminatedUnion("kind", [
+  StoredActionRequestedDataFieldsSchema.extend({
+    kind: z.literal("task_create"),
+    operation: TaskCreateOperationSchema,
+  }).strict(),
+  StoredActionRequestedDataFieldsSchema.extend({
+    kind: z.literal("task_correct"),
+    operation: TaskCorrectOperationSchema,
+  }).strict(),
+  StoredActionRequestedDataFieldsSchema.extend({
+    kind: z.literal("task_continue"),
+    operation: TaskContinueOperationSchema,
+  }).strict(),
+  StoredActionRequestedDataFieldsSchema.extend({
+    kind: z.literal("work_control"),
+    operation: WorkControlOperationSchema,
+  }).strict(),
+]);
+
+/**
+ * The causal source reference written into the canonical Task owner for every
+ * conversation action (create origin, correction source). Reconciliation
+ * searches the Task source for this exact reference: an exact match settles
+ * the retained receipt, and provable absence under a fresh source revision is
+ * the only admissible retry.
+ */
+export function taskActionSourceRef(conversationId: string, actionId: string): string {
+  return `conversation:${conversationId}:action:${actionId}`;
+}
+
+export const TaskReceiptEvidenceRefPrefix = "workbench:state/tasks.json:task/" as const;
+
+/** Canonical receipt reference for one committed Task mutation. */
+export function taskReceiptEvidenceRef(taskId: string, sourceRevision: number): string {
+  return `${TaskReceiptEvidenceRefPrefix}${taskId}@${sourceRevision}`;
+}
+
+export function parseTaskReceiptEvidenceRef(ref: string): { taskId: string; sourceRevision: number } | null {
+  if (!ref.startsWith(TaskReceiptEvidenceRefPrefix)) return null;
+  const remainder = ref.slice(TaskReceiptEvidenceRefPrefix.length);
+  const separator = remainder.lastIndexOf("@");
+  if (separator <= 0 || separator === remainder.length - 1) return null;
+  const taskId = remainder.slice(0, separator);
+  const revision = Number(remainder.slice(separator + 1));
+  if (taskId.length === 0 || !Number.isSafeInteger(revision) || revision < 0) return null;
+  return { taskId, sourceRevision: revision };
+}
 
 export const ActionSettledDraftSchema = z.object({
   actionId: ActionIdSchema,
@@ -219,7 +299,7 @@ export const ConversationEventSchema = z.discriminatedUnion("type", [
     sequence: z.number().int().nonnegative(),
     at: z.string().datetime({ offset: true }),
     type: z.literal("action.requested"),
-    data: ActionRequestedDraftSchema,
+    data: StoredActionRequestedDataSchema,
   }).strict(),
   z.object({
     version: z.literal(CONVERSATION_EVENT_VERSION),

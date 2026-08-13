@@ -8,6 +8,7 @@ import {
 import {
   ConversationTurnRequestSchema,
   ConversationTurnSafetyEventSchema,
+  ConversationOperationSchema,
   prepareConversationTurn,
   startConversationTurn,
   startPreparedConversationTurn,
@@ -671,4 +672,181 @@ test("startPreparedConversationTurn interrupts the same way as the one-shot entr
   expect(result.kind).toBe("interrupted");
   expect(result.text).toBe("started");
   expect(seen).toEqual([{ kind: "delta", text: "started" }]);
+});
+
+test("strict operation schemas accept exactly the four typed kinds and reject everything else", () => {
+  const primaryHead = "1".repeat(40);
+  const worktreeHead = "2".repeat(40);
+  expect(ConversationOperationSchema.parse({
+    kind: "task_create",
+    title: "Add the fixture result",
+    objective: "Produce the bounded fixture result.",
+    acceptance: ["the fixture exists"],
+    projectId: "skills-dogfood",
+    expectedPrimaryHead: primaryHead,
+    worktreePath: "/tmp/skills-dogfood",
+    expectedWorktreeHead: worktreeHead,
+  })).toEqual({
+    kind: "task_create",
+    title: "Add the fixture result",
+    objective: "Produce the bounded fixture result.",
+    acceptance: ["the fixture exists"],
+    projectId: "skills-dogfood",
+    expectedPrimaryHead: primaryHead,
+    worktreePath: "/tmp/skills-dogfood",
+    expectedWorktreeHead: worktreeHead,
+  });
+  expect(ConversationOperationSchema.parse({
+    kind: "task_correct",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
+    statement: "The result must also preserve the second fixture invariant.",
+  })).toEqual({
+    kind: "task_correct",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
+    statement: "The result must also preserve the second fixture invariant.",
+  });
+  expect(ConversationOperationSchema.parse({
+    kind: "task_continue",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
+  })).toEqual({ kind: "task_continue", taskId: "task-1", expectedSourceRevision: 3, expectedRevision: 2 });
+  expect(ConversationOperationSchema.parse({
+    kind: "work_control",
+    carrierId: "attempt-1",
+    control: "stop",
+  })).toEqual({ kind: "work_control", carrierId: "attempt-1", control: "stop" });
+
+  expect(() => ConversationOperationSchema.parse({ kind: "task_create" })).toThrow();
+  expect(() => ConversationOperationSchema.parse({
+    kind: "task_create",
+    title: "t",
+    objective: "o",
+    acceptance: ["a"],
+    projectId: "p",
+    expectedPrimaryHead: primaryHead,
+    worktreePath: "w",
+    expectedWorktreeHead: worktreeHead,
+    extra: 1,
+  })).toThrow();
+  expect(() => ConversationOperationSchema.parse({
+    kind: "task_create",
+    title: "t",
+    objective: "o",
+    acceptance: ["a"],
+    projectId: "p",
+    expectedPrimaryHead: "not-a-git-object",
+    worktreePath: "w",
+    expectedWorktreeHead: worktreeHead,
+  })).toThrow();
+  expect(() => ConversationOperationSchema.parse({
+    kind: "task_correct",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
+  })).toThrow();
+  expect(() => ConversationOperationSchema.parse({ kind: "other" })).toThrow();
+  expect(() => ConversationOperationSchema.parse({
+    kind: "task_continue",
+    taskId: "task-1",
+    expectedSourceRevision: 3,
+    expectedRevision: 2,
+    statement: "not part of this kind",
+  })).toThrow();
+});
+
+test("forwards exactly one typed operation into the finished turn result", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const operation = {
+    kind: "task_create" as const,
+    title: "Add the fixture result",
+    objective: "Produce the bounded fixture result.",
+    acceptance: ["the fixture exists"],
+    projectId: "skills-dogfood",
+    expectedPrimaryHead: "1".repeat(40),
+    worktreePath: "/tmp/skills-dogfood",
+    expectedWorktreeHead: "1".repeat(40),
+  };
+  const result = await runTurn(fullOptions(), [
+    { kind: "delta", text: "Creating one task." },
+    { kind: "operation", operation },
+    {
+      kind: "finish",
+      provider: CURRENT_COORDINATOR_POLICY.provider,
+      model: CURRENT_COORDINATOR_POLICY.model,
+    },
+  ], seen);
+
+  expect(seen.some((event) => event.kind === "operation" && event.operation.kind === "task_create")).toBe(true);
+  assertFinished(result);
+  expect(result.operation).toEqual(operation);
+});
+
+test("an inquiry with no operation settles with no operation and no mutation intent", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const result = await runTurn(fullOptions(), [
+    { kind: "delta", text: "The current state is settled; I took no action." },
+    { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model },
+  ], seen);
+
+  assertFinished(result);
+  expect(result.operation).toBeUndefined();
+  expect(result.request).toBeUndefined();
+  expect(seen.some((event) => event.kind === "operation")).toBe(false);
+});
+
+test("rejects a second consequential operation in the same message as a visible error", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const create = {
+    kind: "task_create" as const,
+    title: "t",
+    objective: "o",
+    acceptance: ["a"],
+    projectId: "p",
+    expectedPrimaryHead: "1".repeat(40),
+    worktreePath: "w",
+    expectedWorktreeHead: "1".repeat(40),
+  };
+  const correct = {
+    kind: "task_correct" as const,
+    taskId: "task-1",
+    expectedSourceRevision: 1,
+    expectedRevision: 1,
+    statement: "s",
+  };
+  const result = await runTurn(fullOptions(), [
+    { kind: "operation", operation: create },
+    { kind: "operation", operation: correct },
+    { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model },
+  ], seen);
+
+  assertFailed(result);
+  expect(result.error).toContain("at most one consequential operation");
+  expect(seen.some((event) => event.kind === "error")).toBe(true);
+});
+
+test("rejects a typed request and a consequential operation in the same message", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  const result = await runTurn(fullOptions(), [
+    { kind: "request", request: { kind: "project-instruction", ref: "workbench:state/projects.json" } },
+    {
+      kind: "operation",
+      operation: {
+        kind: "task_correct",
+        taskId: "task-1",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+        statement: "s",
+      },
+    },
+    { kind: "finish", provider: CURRENT_COORDINATOR_POLICY.provider, model: CURRENT_COORDINATOR_POLICY.model },
+  ], seen);
+
+  assertFailed(result);
+  expect(result.error).toContain("at most one");
+  expect(seen.some((event) => event.kind === "error")).toBe(true);
 });

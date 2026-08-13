@@ -8,6 +8,7 @@ import {
   ConversationEventDraftSchema,
   ConversationEventSchema,
   ConversationIdSchema,
+  ActionKindSchema,
   MessageReceivedDataSchema,
   MessageReceivedDraftSchema,
   TurnStartedDraftSchema,
@@ -113,10 +114,17 @@ export class FileConversationJournal {
       { type: "coordinator.turn-started", data: TurnStartedDraftSchema.parse(unparsedDraft) }) as TurnStartedEvent;
   }
 
-  /** A typed action request is fsynced before its canonical owner is called. */
+  /**
+   * A typed action request is fsynced before its canonical owner is called.
+   * The stored `kind` is derived from the exact operation, so a request can
+   * never carry a kind that differs from its operation.
+   */
   async requestAction(conversationId: string, unparsedDraft: ActionRequestedDraft): Promise<ActionRequestedEvent> {
-    return await this.mutate(conversationId,
-      { type: "action.requested", data: ActionRequestedDraftSchema.parse(unparsedDraft) }) as ActionRequestedEvent;
+    const draft = ActionRequestedDraftSchema.parse(unparsedDraft);
+    return await this.mutate(conversationId, {
+      type: "action.requested",
+      data: { ...draft, kind: draft.operation.kind },
+    }) as ActionRequestedEvent;
   }
 
   async settleAction(conversationId: string, unparsedDraft: ActionSettledDraft): Promise<ActionSettledEvent> {
@@ -385,12 +393,19 @@ async function removeWriterLeaseDirectory(path: string): Promise<void> {
 /**
  * Drafts accepted for storage: the public draft vocabulary, except that
  * `message.received` uses its stored data form because the journal itself
- * assigns the stable message identity and payload digest at receipt.
+ * assigns the stable message identity and payload digest at receipt, and
+ * `action.requested` carries its writer-derived kind. The durable
+ * `ConversationEventSchema` still enforces the exact kind/operation pairing
+ * on every appended and every read line.
  */
+const AppendActionRequestedDataSchema = ActionRequestedDraftSchema.extend({
+  kind: ActionKindSchema,
+}).strict();
+
 const AppendEventDraftSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("message.received"), data: MessageReceivedDataSchema }).strict(),
   z.object({ type: z.literal("coordinator.turn-started"), data: TurnStartedDraftSchema }).strict(),
-  z.object({ type: z.literal("action.requested"), data: ActionRequestedDraftSchema }).strict(),
+  z.object({ type: z.literal("action.requested"), data: AppendActionRequestedDataSchema }).strict(),
   z.object({ type: z.literal("action.settled"), data: ActionSettledDraftSchema }).strict(),
   z.object({ type: z.literal("action.failed"), data: ActionFailedDraftSchema }).strict(),
   z.object({ type: z.literal("action.uncertain"), data: ActionUncertainDraftSchema }).strict(),

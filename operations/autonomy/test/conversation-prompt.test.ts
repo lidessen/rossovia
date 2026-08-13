@@ -135,7 +135,9 @@ test("is byte-identical for identical input and omits optional sections when abs
     const present = [headers[0], headers[2], headers[3]].includes(header);
     expect(first.prompt.includes(header)).toBe(present);
   }
-  expect(first.prompt).not.toContain("tools:");
+  expect(first.prompt).not.toContain("## 7");
+  expect(first.prompt).not.toContain("tool:");
+  expect(first.prompt).not.toContain("abstention:");
   expect(first.prompt).not.toContain("workspace:");
   expect(first.prompt).not.toContain("budget:");
   expect(first.prompt).not.toContain("withheld effects:");
@@ -222,4 +224,68 @@ test("rejects non-strict input", () => {
   const wrongDigest = fullInput();
   wrongDigest.projection!.task!.source = { ref: "workbench:state/tasks.json", digest: "not-a-digest" };
   expect(() => composeConversationPrompt(wrongDigest)).toThrow();
+});
+
+test("the policy section integrates available tool meaning, abstention, and unavailable tools with no seventh section", () => {
+  const input = fullInput();
+  input.policy = {
+    ...input.policy,
+    tools: [
+      {
+        name: "task_create",
+        availability: "available",
+        meaning: "Form one new local obligation; copy the exact registered project ID, primary head, Worktree path, and Worktree head from the projection.",
+      },
+      {
+        name: "task_correct",
+        availability: "available",
+        meaning: "Change a constraint of the still-active Task; copy the exact current taskId, sourceRevision, and revision.",
+      },
+      { name: "task_continue", availability: "unavailable", meaning: "Not yet available; report instead of calling." },
+      { name: "work_control", availability: "unavailable", meaning: "Not yet available; report instead of calling." },
+    ],
+    abstention: "At most one operation per message; on ambiguity, abstain and ask. Never route by keyword or fixed phrase.",
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).not.toContain("## 7");
+  const policySection = composed.prompt.split("## 5. Project orientation and skills")[0]!;
+  expect(policySection).toContain("## 4. Current execution policy");
+  expect(policySection).toContain("tool task_create [available]:");
+  expect(policySection).toContain("exact registered project ID");
+  expect(policySection).toContain("tool task_correct [available]:");
+  expect(policySection).toContain("exact current taskId, sourceRevision, and revision");
+  expect(policySection).toContain("tool task_continue [unavailable]:");
+  expect(policySection).toContain("tool work_control [unavailable]:");
+  expect(policySection).toContain("abstention: At most one operation per message");
+  expect(policySection).toContain("Never route by keyword or fixed phrase");
+});
+
+test("plain tool capability names remain valid policy tools", () => {
+  const input = fullInput();
+  input.policy = { ...input.policy, tools: ["project.read", "task.read"] };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain("tool: project.read");
+  expect(composed.prompt).toContain("tool: task.read");
+  expect(composed.prompt).not.toContain("## 7");
+});
+
+test("the task projection renders the exact numeric revision a correction must copy", () => {
+  const composed = composeConversationPrompt({
+    ...fullInput(),
+    projection: {
+      task: {
+        id: "task-1",
+        sourceRevision: "3",
+        revision: 2,
+        summary: "Publish the bounded fixture result.",
+        status: "open",
+      },
+    },
+  });
+
+  expect(composed.prompt).toContain("task revision: 2");
+  expect(composed.prompt).toContain("source revision: 3");
+  expect(composed.sourceRevisionSelectors).toContainEqual({ source: "task:task-1", revision: "3" });
 });

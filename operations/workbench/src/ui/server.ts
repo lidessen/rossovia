@@ -56,6 +56,8 @@ import {
   type ConversationSocketData,
 } from "../conversation/transport";
 import { createCoordinatorTurnOwner } from "../conversation/turn-owner";
+import { createConversationContextProvider } from "../conversation/context";
+import { createConversationTaskOperationHost } from "../conversation/operations";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -319,8 +321,11 @@ if (import.meta.main) {
     resolveHome(options.home),
     autonomyCli,
   );
-  const conversationSocket = new ConversationSocketRuntime(resolveHome(options.home), {
+  const home = resolveHome(options.home);
+  const conversationSocket = new ConversationSocketRuntime(home, {
     turnOwner: createCoordinatorTurnOwner(),
+    projectionProvider: createConversationContextProvider(home),
+    operationHost: createConversationTaskOperationHost(home),
   });
   const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
   const server: Bun.Server<ConversationSocketData> = Bun.serve({

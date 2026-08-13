@@ -4,6 +4,7 @@ import {
   ConversationConflictError,
   ConversationEventSchema,
   ConversationIdSchema,
+  type ActionRequestedEvent,
   type ConversationEvent,
 } from "./contracts";
 import { FileConversationJournal } from "./journal";
@@ -12,6 +13,12 @@ import type {
   TurnPreparation,
 } from "./turn-owner";
 import type { ConversationTurnHandle, ConversationTurnResult } from "../../../autonomy/src/conversation-coordinator";
+import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
+import type { ConversationContextProvider } from "./context";
+import {
+  ConversationOperationHostError,
+  type ConversationOperationHost,
+} from "./operations";
 
 /**
  * Strict WebSocket frame vocabulary for one Workbench conversation socket.
@@ -130,6 +137,20 @@ export interface ConversationSocketRuntimeOptions {
    * DeepSeek Pro/max owner; tests inject a deterministic scripted owner.
    */
   readonly turnOwner: ConversationTurnOwner;
+  /**
+   * Builds the compact current projection handed to the turn owner before
+   * each turn. Absent when the caller wires no projection source; the
+   * production server always provides it.
+   */
+  readonly projectionProvider?: ConversationContextProvider;
+  /**
+   * Executes one typed coordinator operation against the canonical owners.
+   * The runtime journals `action.requested` with the exact operation before
+   * calling the host, so a crash can never repeat a committed mutation
+   * without the journal retaining the intended effect. Absent when no
+   * operation execution is installed; such a turn fails its action visibly.
+   */
+  readonly operationHost?: ConversationOperationHost;
   /** Delay before the replay read, to make replay-phase behavior deterministic in tests. */
   readonly replayDelayMs?: number;
   /** Clock seam for the owned journal; defaults to ISO now. */
@@ -154,11 +175,24 @@ export interface ConversationSocketRuntimeOptions {
  * per conversation; later submits are receipted immediately and their turns
  * run in receipt order. `response.interrupt` aborts only the exact active
  * turn of the same conversation. The runtime owns no Task/Mission/project
- * mutation, tool call, typed action, or canonical state.
+ * canonical state and classifies no prose.
+ *
+ * A finished turn that carried at most one typed coordinator operation runs
+ * through the injected operation host: `action.requested` with the exact
+ * operation is fsynced before the effect, then the host's canonical receipt,
+ * visible failure, or uncertainty is journaled as the action terminal event.
+ * If the `action.requested` append itself fails, the turn fails visibly and
+ * the host is never called. A failure to append the action's terminal event
+ * leaves the action unresolved: it is reconciled (canonical receipt search,
+ * single guarded retry, or uncertainty) before the next turn and on
+ * reconnect, so a crash after the effect can never repeat a committed
+ * mutation and a committed effect is never mislabeled as failed.
  */
 export class ConversationSocketRuntime {
   readonly journal: FileConversationJournal;
   private readonly turnOwner: ConversationTurnOwner;
+  private readonly projectionProvider: ConversationContextProvider | undefined;
+  private readonly operationHost: ConversationOperationHost | undefined;
   private readonly replayDelayMs: number;
   private readonly sockets = new Map<Bun.ServerWebSocket<ConversationSocketData>, SocketEntry>();
   private readonly subscribers = new Map<string, Set<SocketEntry>>();
@@ -170,6 +204,8 @@ export class ConversationSocketRuntime {
   constructor(root: string, options: ConversationSocketRuntimeOptions) {
     this.journal = new FileConversationJournal(root, options.now);
     this.turnOwner = options.turnOwner;
+    this.projectionProvider = options.projectionProvider;
+    this.operationHost = options.operationHost;
     this.replayDelayMs = options.replayDelayMs ?? 0;
   }
 
@@ -244,6 +280,12 @@ export class ConversationSocketRuntime {
       this.subscribers.set(entry.conversationId, subscribers);
     }
     subscribers.add(entry);
+    // Reconnect reconciliation runs in the same serialized chain as turns:
+    // any unsettled action is settled against the canonical owner before
+    // replay or a new turn observes it, and it can never interleave with an
+    // active turn's action execution.
+    this.runExclusive(entry.conversationId, () =>
+      this.reconcileConversation(entry.conversationId));
     void this.replay(entry);
   }
 
@@ -324,8 +366,10 @@ export class ConversationSocketRuntime {
       if (result.duplicate) return;
       const turnId = randomUUID();
       const messageId = result.event.data.messageId;
-      this.enqueueTurn(entry.conversationId, () =>
-        this.runTurn(entry, { turnId, messageId, payload: frame.payload }));
+      this.runExclusive(entry.conversationId, async () => {
+        await this.reconcileConversation(entry.conversationId);
+        await this.runTurn(entry, { turnId, messageId, payload: frame.payload });
+      });
     } catch (error: unknown) {
       if (error instanceof ConversationConflictError) {
         this.send(entry, protocolErrorFrame("conflict", error.message));
@@ -342,8 +386,12 @@ export class ConversationSocketRuntime {
    * Run one prepared coordinator turn after its durable start is journaled:
    * `coordinator.turn-started` (with requested policy and prompt evidence)
    * is fsynced before the owner starts, so no delta can precede the durable
-   * record. Deltas become provisional `response.delta` frames; the terminal
-   * result becomes one durable settled/failed/interrupted journal event.
+   * record. The compact current projection is rebuilt from the canonical
+   * sources immediately before preparation. Deltas become provisional
+   * `response.delta` frames; a finished turn's at most one typed operation
+   * runs through the injected host with its `action.requested` fsynced
+   * before the effect; the terminal result becomes one durable
+   * settled/failed/interrupted journal event.
    */
   private async runTurn(
     entry: SocketEntry,
@@ -352,7 +400,13 @@ export class ConversationSocketRuntime {
     const { conversationId } = entry;
     let preparation: TurnPreparation;
     try {
-      preparation = this.turnOwner.prepare(input);
+      const projection = this.projectionProvider === undefined
+        ? undefined
+        : await this.projectionProvider.buildProjection(conversationId);
+      preparation = this.turnOwner.prepare({
+        ...input,
+        ...(projection === undefined ? {} : { projection }),
+      });
     } catch (error: unknown) {
       this.send(entry, protocolErrorFrame(
         "journal-error",
@@ -417,6 +471,26 @@ export class ConversationSocketRuntime {
         }
         return;
       }
+      if (terminal.kind === "finished" && terminal.operation !== undefined) {
+        try {
+          await this.runAction(conversationId, input, terminal.operation);
+        } catch (error: unknown) {
+          if (!(error instanceof ActionRequestJournalError)) throw error;
+          // The intended effect was never journaled durably, so no effect is
+          // applied; the turn fails visibly instead of settling normally.
+          try {
+            const event = await this.journal.failTurn(conversationId, {
+              turnId: input.turnId,
+              messageId: input.messageId,
+              reason: error.message,
+            });
+            this.broadcast(conversationId, journalEventFrame(event));
+          } catch (journalError: unknown) {
+            this.send(entry, protocolErrorFrame("journal-error", errorMessage(journalError)));
+          }
+          return;
+        }
+      }
       try {
         const event = await this.settleTurnTerminal(conversationId, input, terminal);
         this.broadcast(conversationId, journalEventFrame(event));
@@ -478,6 +552,184 @@ export class ConversationSocketRuntime {
   }
 
   /**
+   * Execute one typed coordinator operation through the injected host. The
+   * durable `action.requested` record — carrying the exact operation — is
+   * fsynced before the effect; only then is the host called. If that durable
+   * request append fails, `ActionRequestJournalError` is thrown so the
+   * calling turn fails visibly instead of settling, and the host is never
+   * called. The host's canonical receipt becomes `action.settled`, a visible
+   * refusal or failure becomes `action.failed`, and an uninspectable effect
+   * becomes `action.uncertain`.
+   */
+  private async runAction(
+    conversationId: string,
+    input: { readonly turnId: string; readonly messageId: string },
+    operation: ConversationOperation,
+  ): Promise<void> {
+    const actionId = randomUUID();
+    let requested: ActionRequestedEvent;
+    try {
+      requested = await this.journal.requestAction(conversationId, {
+        actionId,
+        turnId: input.turnId,
+        messageId: input.messageId,
+        operation,
+      });
+    } catch (error: unknown) {
+      throw new ActionRequestJournalError(
+        `action.requested could not be journaled before the effect: ${errorMessage(error)}`,
+      );
+    }
+    this.broadcast(conversationId, journalEventFrame(requested));
+    await this.settleActionEffect(conversationId, requested, operation);
+  }
+
+  /** Reconcile every unsettled `action.requested` of one conversation. */
+  private async reconcileConversation(conversationId: string): Promise<void> {
+    let events: readonly ConversationEvent[];
+    try {
+      events = await this.journal.readEvents(conversationId);
+    } catch (error: unknown) {
+      return;
+    }
+    for (const event of events) {
+      if (event.type !== "action.requested") continue;
+      if (events.some((candidate) =>
+        isActionTerminalEvent(candidate) && candidate.data.actionId === event.data.actionId)) continue;
+      await this.reconcileAction(conversationId, event);
+    }
+  }
+
+  /**
+   * Reconcile one unsettled action after a crash between the durable request
+   * and its journal terminal. The canonical owner is searched for the
+   * action's causal reference: an exact match settles the retained receipt;
+   * an uninspectable owner is `action.uncertain`; a provable absence under
+   * the current source is retried exactly once through the same guarded
+   * effect, so a committed mutation is never repeated and an absent one is
+   * never claimed.
+   */
+  private async reconcileAction(
+    conversationId: string,
+    requested: ActionRequestedEvent,
+  ): Promise<void> {
+    if (this.operationHost === undefined) {
+      await this.journalActionTerminal(conversationId, requested, {
+        kind: "failed",
+        reason: "operation execution is not installed for this conversation runtime",
+      });
+      return;
+    }
+    const lookup = this.operationHost.findCanonicalReceipt({
+      conversationId,
+      actionId: requested.data.actionId,
+      operation: requested.data.operation,
+    });
+    if (lookup.standing === "settled") {
+      await this.journalActionTerminal(conversationId, requested, {
+        kind: "settled",
+        evidenceRefs: [...lookup.receipt.evidenceRefs],
+      });
+      return;
+    }
+    if (lookup.standing === "uninspectable") {
+      await this.journalActionTerminal(conversationId, requested, {
+        kind: "uncertain",
+        reason: lookup.reason,
+      });
+      return;
+    }
+    await this.settleActionEffect(conversationId, requested, requested.data.operation);
+  }
+
+  /**
+   * Run one requested action's effect, then journal its terminal event.
+   * The canonical effect and the terminal journal write are kept separate: a
+   * canonical failure becomes `action.failed` (or `action.uncertain` when the
+   * owner is uninspectable), while a failure to append the terminal event
+   * leaves the action unresolved in the journal. Reconciliation on the next
+   * turn or reconnect then searches the canonical owner for the causal
+   * reference: a committed effect is settled without repeating the mutation,
+   * and a provably absent one is retried through the same guarded effect. A
+   * committed effect is never converted into `action.failed` by a journal
+   * write failure.
+   */
+  private async settleActionEffect(
+    conversationId: string,
+    requested: ActionRequestedEvent,
+    operation: ConversationOperation,
+  ): Promise<void> {
+    const { actionId } = requested.data;
+    let terminal:
+      | { readonly kind: "settled"; readonly evidenceRefs: readonly string[] }
+      | { readonly kind: "failed" | "uncertain"; readonly reason: string };
+    if (this.operationHost === undefined) {
+      terminal = {
+        kind: "failed",
+        reason: "operation execution is not installed for this conversation runtime",
+      };
+    } else {
+      try {
+        const receipt = this.operationHost.executeOperation({ conversationId, actionId, operation });
+        terminal = { kind: "settled", evidenceRefs: [...receipt.evidenceRefs] };
+      } catch (error: unknown) {
+        if (error instanceof ConversationOperationHostError && error.code === "source-unavailable") {
+          terminal = {
+            kind: "uncertain",
+            reason: `the canonical effect cannot be reconciled: ${error.message}`,
+          };
+        } else {
+          terminal = { kind: "failed", reason: errorMessage(error) };
+        }
+      }
+    }
+    try {
+      await this.journalActionTerminal(conversationId, requested, terminal);
+    } catch {
+      // The action stays unresolved in the journal and remains reconcilable;
+      // the canonical owner keeps the only record of what really happened.
+      return;
+    }
+    this.broadcast(conversationId, { type: "projection.changed" });
+  }
+
+  /** Journal one terminal event for a requested action and deliver it. */
+  private async journalActionTerminal(
+    conversationId: string,
+    requested: ActionRequestedEvent,
+    terminal: {
+      readonly kind: "settled";
+      readonly evidenceRefs: readonly string[];
+    } | {
+      readonly kind: "failed" | "uncertain";
+      readonly reason: string;
+    },
+  ): Promise<void> {
+    const { actionId, turnId, messageId } = requested.data;
+    const event = terminal.kind === "settled"
+      ? await this.journal.settleAction(conversationId, {
+        actionId,
+        turnId,
+        messageId,
+        evidenceRefs: [...terminal.evidenceRefs],
+      })
+      : terminal.kind === "failed"
+        ? await this.journal.failAction(conversationId, {
+          actionId,
+          turnId,
+          messageId,
+          reason: terminal.reason,
+        })
+        : await this.journal.uncertainAction(conversationId, {
+          actionId,
+          turnId,
+          messageId,
+          reason: terminal.reason,
+        });
+    this.broadcast(conversationId, journalEventFrame(event));
+  }
+
+  /**
    * Abort only the exact active turn of the socket's conversation. An unknown
    * or already ended turn is a visible protocol conflict; an interrupt that
    * arrives between the durable turn start and handle creation is applied the
@@ -503,8 +755,8 @@ export class ConversationSocketRuntime {
     active.handle.interrupt();
   }
 
-  /** Queue one turn per conversation so at most one is active at a time. */
-  private enqueueTurn(conversationId: string, run: () => Promise<void>): void {
+  /** Queue one task per conversation so at most one runs at a time. */
+  private runExclusive(conversationId: string, run: () => Promise<void>): void {
     const previous = this.turnChains.get(conversationId) ?? Promise.resolve();
     const current = previous.then(run, run);
     const tail = current.catch(() => {});
@@ -588,6 +840,25 @@ function parseAfterCursor(value: string | null): number | null {
   const cursor = Number(value);
   if (!Number.isSafeInteger(cursor) || cursor < -1) return null;
   return cursor;
+}
+
+/**
+ * Raised when the durable `action.requested` append fails before any effect.
+ * The calling turn must fail visibly instead of settling normally, because
+ * the intended operation can no longer be reconciled from the journal and
+ * therefore must not run.
+ */
+export class ActionRequestJournalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ActionRequestJournalError";
+  }
+}
+
+function isActionTerminalEvent(
+  event: ConversationEvent,
+): event is Extract<ConversationEvent, { type: "action.settled" | "action.failed" | "action.uncertain" }> {
+  return event.type === "action.settled" || event.type === "action.failed" || event.type === "action.uncertain";
 }
 
 function journalEventFrame(event: ConversationEvent): ServerJournalEventFrame {
