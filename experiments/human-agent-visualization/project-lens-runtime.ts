@@ -381,7 +381,7 @@ export function projectLensCell(
       maxCommandOutputBytes: 8_000,
     },
     executionProfile: {
-      id: PROFILE_ID,
+      id: PROJECT_LENS_EXECUTION_IDENTITY.referenceProfile.id,
       version: "execution-profile.v1",
       provider: "deepseek",
       model: "deepseek-v4-flash",

@@ -22,6 +22,7 @@ import {
   missionRuntimeRecoveryCapabilities,
   projectLensAuthorizationContract,
   projectLensCall,
+  projectLensCell,
   projectLensExecutionProposal,
   projectLensProviderWorkspace,
   materializeFinishedRun,
@@ -114,7 +115,7 @@ test("the Mission proposal is semantically bound to the loaded runtime bytes", (
   expect(mission.executionProposal.runtimeDigest)
     .toBe(currentProjectLensRuntimeDigest());
   expect(missionExecutionProposalDigest(mission.executionProposal))
-    .toBe("13aec09be5a718e7c99696a5918fe302d55e22fc8f1a4710b250c87afee4f532");
+    .toBe("a8c56bfad8f361e27434cf5ef5adfd8f928e3e9cd75871d2203dd3de8adae208");
 });
 
 test("the provider call consumes the exact task objective, correction, and acceptance", () => {
@@ -148,6 +149,17 @@ test("the provider call consumes the exact task objective, correction, and accep
   expect(call.sourceRefs).toContain(
     `workbench-task:${context.taskId}@${context.taskRevision}`,
   );
+});
+
+test("the prepared Project Lens Cell uses the accepted execution reference profile", () => {
+  const context = taskContext(
+    "33333333-3333-4333-8333-333333333333",
+    "a".repeat(64),
+  );
+  const cell = projectLensCell("/candidate", projectLensCall(context));
+
+  expect(cell.executionProfile.id)
+    .toBe(PROJECT_LENS_EXECUTION_IDENTITY.referenceProfile.id);
 });
 
 test("the runtime waits for a reconciled anchor and then consumes the task-bound authorization once", async () => {
