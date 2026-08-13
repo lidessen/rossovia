@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   CONVERSATION_EVENT_VERSION,
   ConversationConflictError,
+  digest,
   type ConversationEvent,
   type RequestedCoordinatorPolicy,
 } from "../src/conversation/contracts";
@@ -509,5 +510,147 @@ describe("FileConversationJournal durable vocabulary boundary", () => {
     })).rejects.toThrow();
     expect((await journal.readEvents(conversation)).some((event) => event.type === "coordinator.turn-settled"))
       .toBe(false);
+  });
+});
+
+describe("FileConversationJournal review corrections M1-M3", () => {
+  test("writes and replays legal prompt/source evidence and sanitized usage", async () => {
+    const journal = createJournal();
+    const conversation = conversationId();
+    const message = await receiptedMessage(journal, conversation);
+    const promptDigest = digest("composed prompt v3");
+    const sourceDigest = digest("task source payload");
+    const turn = await journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+      prompt: { revision: "prompt-v3", digest: promptDigest },
+      disclosedSources: [{ ref: "task-source:v1:task-1", digest: sourceDigest }],
+      sourceRevisionSelectors: [{ source: "state/tasks.json", revision: "42" }],
+    });
+    const action = await journal.requestAction(conversation, {
+      actionId: randomUUID(),
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      kind: "task_create",
+    });
+    const settled = await journal.settleAction(conversation, {
+      actionId: action.data.actionId,
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      evidenceRefs: [],
+    });
+    const settledTurn = await journal.settleTurn(conversation, {
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      observedEvidence: {
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        fingerprint: "fp-1",
+        usage: { inputTokens: 1234, outputTokens: 56 },
+      },
+    });
+
+    expect(turn.data.prompt).toEqual({ revision: "prompt-v3", digest: promptDigest });
+    expect(turn.data.disclosedSources).toEqual([{ ref: "task-source:v1:task-1", digest: sourceDigest }]);
+    expect(turn.data.sourceRevisionSelectors).toEqual([{ source: "state/tasks.json", revision: "42" }]);
+    expect(settled.data.evidenceRefs).toEqual([]);
+    expect(settledTurn.data.observedEvidence).toEqual({
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      fingerprint: "fp-1",
+      usage: { inputTokens: 1234, outputTokens: 56 },
+    });
+
+    const replay = await journal.readEventsAfter(conversation, -1);
+    expect(replay[1]?.data).toEqual(turn.data);
+    expect(replay[3]?.data).toEqual(settled.data);
+    expect(replay[4]?.data).toEqual(settledTurn.data);
+  });
+
+  test("still strict-rejects raw content and malformed evidence in the new fields", async () => {
+    const journal = createJournal();
+    const conversation = conversationId();
+    const message = await receiptedMessage(journal, conversation);
+    const turnId = randomUUID();
+    await journal.startTurn(conversation, {
+      turnId,
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+    });
+
+    await expect(journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+      prompt: { revision: "prompt-v3", digest: "the full prompt text" },
+    })).rejects.toThrow();
+
+    await expect(journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+      prompt: { revision: "prompt-v3" } as never,
+    })).rejects.toThrow();
+
+    await expect(journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+      disclosedSources: [{ ref: "task-source:v1:task-1", digest: "raw source content" }],
+    })).rejects.toThrow();
+
+    await expect(journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+      disclosedSources: [{ ref: "task-source:v1:task-1", digest: digest("ok"), smuggledText: "raw" }] as never,
+    })).rejects.toThrow();
+
+    await expect(journal.settleTurn(conversation, {
+      turnId,
+      messageId: message.event.data.messageId,
+      observedEvidence: { usage: { inputTokens: -1, outputTokens: 0 } },
+    })).rejects.toThrow();
+
+    await expect(journal.settleTurn(conversation, {
+      turnId,
+      messageId: message.event.data.messageId,
+      observedEvidence: { usage: { inputTokens: 1.5, outputTokens: 0 } },
+    })).rejects.toThrow();
+
+    expect((await journal.readEvents(conversation)).length).toBe(2);
+  });
+
+  test("action.uncertain accepts any non-empty reason the producer supplies", async () => {
+    const journal = createJournal();
+    const conversation = conversationId();
+    const message = await receiptedMessage(journal, conversation);
+    const turn = await journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+    });
+    const action = await journal.requestAction(conversation, {
+      actionId: randomUUID(),
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      kind: "task_create",
+    });
+    const reason = "provider disconnected mid-flight with an uninspectable write";
+    const uncertain = await journal.uncertainAction(conversation, {
+      actionId: action.data.actionId,
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      reason,
+    });
+    expect(uncertain.data.reason).toBe(reason);
+
+    await expect(journal.uncertainAction(conversation, {
+      actionId: randomUUID(),
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      reason: "",
+    })).rejects.toThrow();
   });
 });

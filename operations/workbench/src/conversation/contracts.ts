@@ -16,7 +16,8 @@ export const MessageIdSchema = z.string().uuid();
 export const TurnIdSchema = z.string().uuid();
 export const ActionIdSchema = z.string().uuid();
 export const EventIdSchema = z.string().min(1);
-export const PayloadDigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const PayloadDigestSchema = DigestSchema;
 export const EvidenceRefSchema = z.string().min(1);
 
 export const ActionKindSchema = z.enum([
@@ -27,11 +28,7 @@ export const ActionKindSchema = z.enum([
 ]);
 export type ActionKind = z.infer<typeof ActionKindSchema>;
 
-export const ActionUncertainReasonSchema = z.enum([
-  "process-crash",
-  "drift",
-  "uninspectable-effect",
-]);
+export const ActionUncertainReasonSchema = z.string().min(1);
 export type ActionUncertainReason = z.infer<typeof ActionUncertainReasonSchema>;
 
 /**
@@ -48,13 +45,46 @@ export const RequestedCoordinatorPolicySchema = z.object({
 export type RequestedCoordinatorPolicy = z.infer<typeof RequestedCoordinatorPolicySchema>;
 
 /**
- * Optional metadata the provider actually reported for a settled turn. No raw
- * provider content or usage dump is retained here.
+ * The versioned prompt actually used for a turn, when the caller can name it.
+ * `revision` is the prompt builder's stable version and `digest` the exact
+ * composed prompt digest; the prompt text itself is never retained.
+ */
+export const PromptEvidenceSchema = z.object({
+  revision: z.string().min(1),
+  digest: DigestSchema,
+}).strict();
+export type PromptEvidence = z.infer<typeof PromptEvidenceSchema>;
+
+/** One canonical source disclosed to the coordinator, by ref and content digest. */
+export const DisclosedSourceSchema = z.object({
+  ref: EvidenceRefSchema,
+  digest: DigestSchema,
+}).strict();
+export type DisclosedSource = z.infer<typeof DisclosedSourceSchema>;
+
+/**
+ * One exact current source revision the coordinator reads against, for
+ * example the Task source revision or the observed primary head.
+ */
+export const SourceRevisionSelectorSchema = z.object({
+  source: z.string().min(1),
+  revision: z.string().min(1),
+}).strict();
+export type SourceRevisionSelector = z.infer<typeof SourceRevisionSelectorSchema>;
+
+/**
+ * Optional metadata the provider actually reported for a settled turn.
+ * Evidence only: identity and fingerprint, plus sanitized numeric usage. No
+ * raw provider text, reasoning, content, or trace is retained here.
  */
 export const ObservedProviderEvidenceSchema = z.object({
   provider: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
   fingerprint: z.string().min(1).optional(),
+  usage: z.object({
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+  }).strict().optional(),
 }).strict();
 export type ObservedProviderEvidence = z.infer<typeof ObservedProviderEvidenceSchema>;
 
@@ -68,6 +98,9 @@ export const TurnStartedDraftSchema = z.object({
   turnId: TurnIdSchema,
   messageId: MessageIdSchema,
   requestedPolicy: RequestedCoordinatorPolicySchema,
+  prompt: PromptEvidenceSchema.optional(),
+  disclosedSources: z.array(DisclosedSourceSchema).optional(),
+  sourceRevisionSelectors: z.array(SourceRevisionSelectorSchema).optional(),
 }).strict();
 export type TurnStartedDraft = z.infer<typeof TurnStartedDraftSchema>;
 
@@ -83,7 +116,7 @@ export const ActionSettledDraftSchema = z.object({
   actionId: ActionIdSchema,
   turnId: TurnIdSchema,
   messageId: MessageIdSchema,
-  evidenceRefs: z.array(EvidenceRefSchema).min(1),
+  evidenceRefs: z.array(EvidenceRefSchema),
 }).strict();
 export type ActionSettledDraft = z.infer<typeof ActionSettledDraftSchema>;
 
