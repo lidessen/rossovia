@@ -55,6 +55,7 @@ import {
   ConversationSocketRuntime,
   type ConversationSocketData,
 } from "../conversation/transport";
+import { createCoordinatorTurnOwner } from "../conversation/turn-owner";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -318,7 +319,9 @@ if (import.meta.main) {
     resolveHome(options.home),
     autonomyCli,
   );
-  const conversationSocket = new ConversationSocketRuntime(resolveHome(options.home));
+  const conversationSocket = new ConversationSocketRuntime(resolveHome(options.home), {
+    turnOwner: createCoordinatorTurnOwner(),
+  });
   const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
   const server: Bun.Server<ConversationSocketData> = Bun.serve({
     hostname: "127.0.0.1",

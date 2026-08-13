@@ -1,0 +1,66 @@
+{
+  "probe": "conversation-socket-deepseek-live-probe",
+  "version": 1,
+  "intent": "One authorized read-only local loopback Workbench conversation socket inquiry through the real production path: the socket runtime runs the production DeepSeek Pro/max coordinator turn owner. The probe records the durable journal events, the provisional delta stream, and the retained settlement. It does not modify any Task, Mission, or project state; the only writes are this evidence file and a disposable OS temp home.",
+  "authorization": "P3c acceptance: one authorized local loopback socket-to-DeepSeek read-only live probe",
+  "startedAt": "2026-08-13T20:04:26.523Z",
+  "environment": {
+    "DEEPSEEK_API_KEY": "set",
+    "DEEPSEEK_BASE_URL": "unset"
+  },
+  "loopback": {
+    "hostname": "127.0.0.1",
+    "port": 56517
+  },
+  "finishedAt": "2026-08-13T20:04:29.094Z",
+  "status": "finished",
+  "journalEvents": [
+    {
+      "sequence": 0,
+      "type": "message.received",
+      "at": "2026-08-13T20:04:26.532Z"
+    },
+    {
+      "sequence": 1,
+      "type": "coordinator.turn-started",
+      "at": "2026-08-13T20:04:26.536Z"
+    },
+    {
+      "sequence": 2,
+      "type": "coordinator.turn-settled",
+      "at": "2026-08-13T20:04:29.072Z"
+    }
+  ],
+  "turnStarted": {
+    "turnId": "66523621-3af3-4652-ae52-6220726956ee",
+    "messageId": "23936212-11eb-47ff-944d-c9088d83338c",
+    "requestedPolicy": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "thinking": "enabled",
+      "reasoningEffort": "max"
+    },
+    "prompt": {
+      "revision": "rosso.conversation-prompt.v1",
+      "digest": "3bdf05b10a4945d0e04fb16b7ab659dcea178e09e4d11619b4bcabbc2a3b79cf"
+    },
+    "disclosedSources": [],
+    "sourceRevisionSelectors": []
+  },
+  "settlement": {
+    "response": "Provider DeepSeek, model deepseek-v4-pro, reasoning effort max; I took no action.",
+    "observedEvidence": {
+      "fingerprint": "a307abda487cd1b463329ccb945ce396",
+      "usage": {
+        "inputTokens": 330,
+        "outputTokens": 138
+      }
+    }
+  },
+  "provisionalDeltas": {
+    "count": 21,
+    "text": "Provider DeepSeek, model deepseek-v4-pro, reasoning effort max; I took no action."
+  },
+  "conversationId": "9a9abe1e-72f0-46e2-8c87-9e298086f661",
+  "clientMessageId": "9d5cdb21-d04c-497b-a83d-99ae77521a2d"
+}

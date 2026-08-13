@@ -141,6 +141,64 @@ export interface ConversationTurnHandle {
   interrupt(): void;
 }
 
+/**
+ * The subset of a turn the prompt composition actually reads. A caller that
+ * must journal the requested evidence before the model call prepares with
+ * this input alone; `port` and `onEvent` are run-time concerns only.
+ */
+export interface ConversationTurnPrepareInput {
+  readonly message: PrincipalMessage;
+  readonly policy: ConversationPolicy;
+  readonly projection?: CompactProjection;
+  readonly orientation?: ProjectOrientation;
+  readonly children?: readonly ChildSummary[];
+}
+
+/**
+ * A composed but not yet running turn: the exact prompt handed to the port
+ * plus the requested evidence derived from the same composition. Pure and
+ * side-effect free, so the caller can durably record `coordinator.turn-started`
+ * before any port event is observed.
+ */
+export interface PreparedConversationTurn {
+  readonly prompt: ComposedConversationPrompt;
+  readonly requested: RequestedTurnEvidence;
+}
+
+export function prepareConversationTurn(input: ConversationTurnPrepareInput): PreparedConversationTurn {
+  const composed = composeConversationPrompt(promptInput(input));
+  const requested = RequestedTurnEvidenceSchema.parse({
+    promptRevision: composed.revision,
+    promptDigest: composed.digest,
+    disclosedSources: composed.disclosedSources,
+    sourceRevisionSelectors: composed.sourceRevisionSelectors,
+    provider: input.policy.provider,
+    model: input.policy.model,
+    thinking: input.policy.thinking,
+    reasoningEffort: input.policy.reasoningEffort,
+  });
+  return { prompt: composed, requested };
+}
+
+/**
+ * Run an already prepared turn. The caller owns when this begins relative to
+ * any durable journal record; the kernel itself composes nothing and emits
+ * nothing before the port's first event.
+ */
+export function startPreparedConversationTurn(
+  prepared: PreparedConversationTurn,
+  options: {
+    readonly port: ConversationTurnPort;
+    readonly onEvent: (event: ConversationTurnSafetyEvent) => void;
+  },
+): ConversationTurnHandle {
+  const controller = new AbortController();
+  return {
+    interrupt: () => controller.abort(),
+    result: executeTurn(prepared, options.port, options.onEvent, controller.signal),
+  };
+}
+
 interface ObservedFacts {
   readonly provider?: string;
   readonly model?: string;
@@ -163,28 +221,19 @@ export function sanitizeUsage(raw: unknown): SanitizedUsage {
 }
 
 export function startConversationTurn(options: ConversationTurnOptions): ConversationTurnHandle {
-  const controller = new AbortController();
-  return {
-    interrupt: () => controller.abort(),
-    result: executeTurn(options, controller.signal),
-  };
+  return startPreparedConversationTurn(
+    prepareConversationTurn(options),
+    { port: options.port, onEvent: options.onEvent },
+  );
 }
 
 async function executeTurn(
-  options: ConversationTurnOptions,
+  prepared: PreparedConversationTurn,
+  port: ConversationTurnPort,
+  onEvent: (event: ConversationTurnSafetyEvent) => void,
   signal: AbortSignal,
 ): Promise<ConversationTurnResult> {
-  const composed = composeConversationPrompt(promptInput(options));
-  const requested = RequestedTurnEvidenceSchema.parse({
-    promptRevision: composed.revision,
-    promptDigest: composed.digest,
-    disclosedSources: composed.disclosedSources,
-    sourceRevisionSelectors: composed.sourceRevisionSelectors,
-    provider: options.policy.provider,
-    model: options.policy.model,
-    thinking: options.policy.thinking,
-    reasoningEffort: options.policy.reasoningEffort,
-  });
+  const requested = prepared.requested;
 
   let text = "";
   let request: ConversationTurnRequest | undefined;
@@ -193,7 +242,7 @@ async function executeTurn(
 
   const emit = (event: ConversationTurnSafetyEvent): void => {
     if (signal.aborted) return;
-    options.onEvent(ConversationTurnSafetyEventSchema.parse(event));
+    onEvent(ConversationTurnSafetyEventSchema.parse(event));
   };
   const failed = (error: string): ConversationTurnResult => ConversationTurnResultSchema.parse({
     kind: "failed",
@@ -210,7 +259,7 @@ async function executeTurn(
   });
 
   try {
-    for await (const rawEvent of options.port.run({ prompt: composed, signal })) {
+    for await (const rawEvent of port.run({ prompt: prepared.prompt, signal })) {
       if (signal.aborted) break;
       let event: ConversationTurnPortEvent;
       try {
@@ -274,13 +323,13 @@ async function executeTurn(
   return failed("turn port ended without finish, error, or interruption");
 }
 
-function promptInput(options: ConversationTurnOptions): ConversationPromptInput {
+function promptInput(input: ConversationTurnPrepareInput): ConversationPromptInput {
   return {
-    message: options.message,
-    policy: options.policy,
-    ...(options.projection === undefined ? {} : { projection: options.projection }),
-    ...(options.orientation === undefined ? {} : { orientation: options.orientation }),
-    ...(options.children === undefined || options.children.length === 0 ? {} : { children: [...options.children] }),
+    message: input.message,
+    policy: input.policy,
+    ...(input.projection === undefined ? {} : { projection: input.projection }),
+    ...(input.orientation === undefined ? {} : { orientation: input.orientation }),
+    ...(input.children === undefined || input.children.length === 0 ? {} : { children: [...input.children] }),
   };
 }
 
