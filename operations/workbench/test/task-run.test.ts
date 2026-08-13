@@ -192,7 +192,7 @@ describe("task run public boundary", () => {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
-      variant: "high",
+      reasoningEffort: "high",
       expectedSourceRevision: 3,
       expectedRevision: corrected.task.revision,
     }, runner);
@@ -231,9 +231,23 @@ describe("task run public boundary", () => {
     expect(first.inputRef).not.toBe(second.inputRef);
     expect(first.finalRecordRef).not.toBe(second.finalRecordRef);
     expect(runner.requests).toEqual([
-      expect.objectContaining({ driver: "opencode-cli", model: "opencode/go", variant: "high" }),
-      expect.objectContaining({ driver: "opencode-cli", model: "opencode/go", variant: "high" }),
+      expect.objectContaining({
+        driver: "opencode-cli",
+        model: "opencode/go",
+        reasoningEffort: "high",
+      }),
+      expect.objectContaining({
+        driver: "opencode-cli",
+        model: "opencode/go",
+        reasoningEffort: "high",
+      }),
     ]);
+
+    const attemptRecord = JSON.parse(
+      readFileSync(join(current.home, first.attemptRef), "utf8"),
+    );
+    expect(attemptRecord).toMatchObject({ reasoningEffort: "high" });
+    expect(attemptRecord).not.toHaveProperty("variant");
 
     const settlement = JSON.parse(readFileSync(join(current.home, first.settlementRef), "utf8"));
     expect(settlement).toMatchObject({
@@ -898,6 +912,16 @@ describe("task run public boundary", () => {
     const emptySession = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--session", "   ", "--expected-source-revision", "0", "--expected-revision", "1");
     expect(emptySession.exitCode).toBe(2);
     expect(emptySession.stderr).toContain("task run --session must be a non-empty string");
+
+    const legacyVariant = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--variant", "high", "--expected-source-revision", "0", "--expected-revision", "1");
+    expect(legacyVariant.exitCode).toBe(2);
+    expect(legacyVariant.stderr).toContain("invalid task option sequence");
+    expect(legacyVariant.stderr).toContain("--variant");
+
+    const reasoningEffort = taskCli(current.home, "run", "unused", "--driver", "opencode-cli", "--model", "opencode/go", "--reasoning-effort", "max", "--expected-source-revision", "0", "--expected-revision", "1");
+    expect(reasoningEffort.exitCode).toBe(2);
+    expect(reasoningEffort.stderr).toContain("Principal task not found");
+    expect(reasoningEffort.stderr).not.toContain("unexpected task option");
   });
 
   test("rejects dirty, nonexistent, unbound, and completed tasks before the runner", () => {
@@ -983,7 +1007,7 @@ describe("task attempts projection", () => {
       id: created.task.id,
       driver: "opencode-cli",
       model: "opencode/go",
-      variant: "high",
+      reasoningEffort: "high",
       expectedSourceRevision: 1,
       expectedRevision: 1,
     }, runner);
@@ -1005,7 +1029,7 @@ describe("task attempts projection", () => {
       sourceRevision: 1,
       driver: "opencode-cli",
       model: "opencode/go",
-      variant: "high",
+      reasoningEffort: "high",
       observedSession: "session-a",
       cellStatus: "passed",
       status: "recorded",

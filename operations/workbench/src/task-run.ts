@@ -48,7 +48,7 @@ export interface TaskRunArguments {
   expectedRevision: number;
   driver: "opencode-cli";
   model: string;
-  variant?: string;
+  reasoningEffort?: string;
   /** OpenCode session id retained by a previous attempt of the same active task. */
   session?: string;
 }
@@ -58,7 +58,7 @@ export interface TaskRunRequest {
   finalRecordPath: string;
   driver: "opencode-cli";
   model: string;
-  variant?: string;
+  reasoningEffort?: string;
   session?: string;
 }
 
@@ -105,7 +105,9 @@ export class WorkCellCliRunner implements TaskRunRunner {
       request.driver,
       "--model",
       request.model,
-      ...(request.variant ? ["--variant", request.variant] : []),
+      ...(request.reasoningEffort
+        ? ["--reasoning-effort", request.reasoningEffort]
+        : []),
       ...(request.session ? ["--session", request.session] : []),
     ], {
       cwd: repositoryRoot,
@@ -186,7 +188,9 @@ export function runPrincipalTask(
       finalRecordPath: attempt.finalRecordPath,
       driver: arguments_.driver,
       model: arguments_.model,
-      ...(arguments_.variant ? { variant: arguments_.variant } : {}),
+      ...(arguments_.reasoningEffort
+        ? { reasoningEffort: arguments_.reasoningEffort }
+        : {}),
       ...(arguments_.session ? { session: arguments_.session } : {}),
     });
     const finalRecord = validateFinalRecord(
@@ -458,7 +462,9 @@ function createAttempt(
     finalRecordRef: attempt.finalRecordRef,
     driver: arguments_.driver,
     model: arguments_.model,
-    ...(arguments_.variant ? { variant: arguments_.variant } : {}),
+    ...(arguments_.reasoningEffort
+      ? { reasoningEffort: arguments_.reasoningEffort }
+      : {}),
     ...(arguments_.session ? { session: arguments_.session } : {}),
     status: "started",
     startedAt: new Date().toISOString(),
@@ -566,8 +572,8 @@ function validatePolicy(arguments_: TaskRunArguments): void {
   if (!/^[^/\s]+\/[^/\s]+$/u.test(arguments_.model)) {
     throw new Error("task run requires --model PROVIDER/MODEL");
   }
-  if (arguments_.variant !== undefined && !arguments_.variant.trim()) {
-    throw new Error("task run --variant must be a non-empty string");
+  if (arguments_.reasoningEffort !== undefined && !arguments_.reasoningEffort.trim()) {
+    throw new Error("task run --reasoning-effort must be a non-empty string");
   }
   if (arguments_.session !== undefined && !arguments_.session.trim()) {
     throw new Error("task run --session must be a non-empty string");

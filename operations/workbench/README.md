@@ -170,7 +170,7 @@ task list
 task show <id>
 task attempts <id>
 task run <id> --driver opencode-cli --model <provider/model>
-  [--variant <variant>] [--session <id>]
+  [--reasoning-effort <effort>] [--session <id>]
   --expected-source-revision <n> --expected-revision <n>
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
@@ -208,8 +208,9 @@ fresh run without `--session` still requires that Worktree to be Git-clean. It
 rereads the exact Task revisions, lowers the objective, acceptance conditions,
 and all current corrections into an immutable attempt-specific Work Cell input,
 then invokes the existing OpenCode CLI driver. The caller must select
-`--driver opencode-cli` and `--model` for every attempt; `--variant` is optional
-per-run policy. To continue the same still-open task, explicitly pass the
+`--driver opencode-cli` and `--model` for every attempt; `--reasoning-effort` is
+optional explicit per-run policy. Workbench does not supply a default effort.
+To continue the same still-open task, explicitly pass the
 latest session observed by an attributable attempt in the current bound
 Worktree with `--session <id>`. Workbench reads that owner-backed Work Cell
 history before forwarding the session to the Work Cell CLI. The Worktree
@@ -249,13 +250,14 @@ appear earlier and is not a live execution claim.
 
 `task attempts <id>` is a read-only view over that same append-only evidence.
 It projects every recorded attempt of the task, sorted by start time, without
-copying Work Cell facts: the requested driver, model, variant, and session come
-from the immutable attempt record; the observed session, cell status, usage,
-workspace diff, and verification come from the retained Work Cell final record;
-settlement status and time come from the append-only settlement. An attempt
-without a settlement (a crash-retained in-flight run) projects as `started`
-without observed facts; a `runner-failed` attempt keeps its settlement status
-and any final record the runner had already retained. Each projection carries
+copying Work Cell facts: the requested driver, model, reasoning effort, and
+session come from the immutable attempt record; the observed session, cell
+status, usage, workspace diff, and verification come from the retained Work
+Cell final record; settlement status and time come from the append-only
+settlement. An attempt without a settlement (a crash-retained in-flight run)
+projects as `started` without observed facts; a `runner-failed` attempt keeps
+its settlement status and any final record the runner had already retained.
+Each projection carries
 the stable `inputRef`, `attemptRef`, `finalRecordRef`, and `settlementRef`
 source references so the caller can read the originals. Per-source `evidence`
 standing distinguishes `available`, `unavailable`, and `invalid`; malformed

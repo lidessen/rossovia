@@ -35,7 +35,7 @@ export interface OpenCodeCliProcessAdapter {
 export interface OpenCodeCliDriverOptions {
   executable: string;
   model: string;
-  variant?: string;
+  reasoningEffort?: string;
   sessionId?: string;
   workspacePolicy: OpenCodeCliWorkspacePolicy;
   timeoutMs?: number;
@@ -79,14 +79,14 @@ export class BunOpenCodeCliProcessAdapter implements OpenCodeCliProcessAdapter {
 export class OpenCodeCliDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
   private readonly executable: string;
-  private readonly variant: string | undefined;
+  private readonly reasoningEffort: string | undefined;
   private readonly sessionId: string | undefined;
   private readonly processAdapter: OpenCodeCliProcessAdapter;
 
   constructor(private readonly options: OpenCodeCliDriverOptions) {
     this.executable = required(options.executable, "OpenCode CLI executable");
     const model = required(options.model, "OpenCode CLI model");
-    this.variant = optional(options.variant, "OpenCode CLI variant");
+    this.reasoningEffort = optional(options.reasoningEffort, "OpenCode CLI reasoning effort");
     this.sessionId = optional(options.sessionId, "OpenCode CLI sessionId");
     if (options.timeoutMs !== undefined && (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0)) {
       throw new Error("OpenCode CLI timeoutMs must be a positive integer");
@@ -121,7 +121,8 @@ export class OpenCodeCliDriver implements CellDriver {
     const argv = [
       "run", prompt,
       "--pure", "--auto", "--format", "json", "--model", this.descriptor.model,
-      ...(this.variant ? ["--variant", this.variant] : []),
+      // OpenCode names its provider-specific reasoning-effort option `--variant`.
+      ...(this.reasoningEffort ? ["--variant", this.reasoningEffort] : []),
       ...(this.sessionId ? ["--session", this.sessionId] : []),
       "--dir", workspace,
     ];
