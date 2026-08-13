@@ -161,8 +161,8 @@ healthy file without parsing a partial final record.
 
 The OpenCode CLI driver consumes its child's stdout line by line while the
 worker is still running. Each complete JSONL line is parsed exactly once, and a
-safe structural projection (`opencode.cli.progress`: event type, session and
-step identity, tool name) reaches the live trace before the child exits. Text
+safe structural projection (`opencode.cli.progress`: event type, session
+identity, tool name) reaches the live trace before the child exits. Text
 parts, reasoning, and tool input/output are never projected into live progress;
 the full events, usage, session, final text, and raw evidence are still emitted
 only after the process settles, so the final record and its semantics are

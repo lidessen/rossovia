@@ -284,7 +284,7 @@ describe("OpenCode CLI driver", () => {
     for (const line of progressLines) {
       const event = JSON.parse(line) as TraceEvent;
       const keys = Object.keys(event.data as Record<string, unknown>);
-      expect(keys.every((key) => ["type", "sessionID", "stepId", "tool"].includes(key))).toBe(true);
+      expect(keys.every((key) => ["type", "sessionID", "tool"].includes(key))).toBe(true);
       expect(keys).not.toContain("part");
       expect(keys).not.toContain("text");
       expect(keys).not.toContain("reasoning");
@@ -317,6 +317,38 @@ describe("OpenCode CLI driver", () => {
     expect(observed.filter((event) => event.type === "opencode.cli.progress")).toHaveLength(3);
     expect(observed.filter((event) => event.type === "opencode.cli.event")).toHaveLength(3);
     expect(executionRawSteps(record).filter((step) => rawStepText(step) === "Chunked.")).toHaveLength(1);
+  });
+
+  test("projects the string tool name of a real-shape tool_use event without its state", async () => {
+    const root = await fixture();
+    const executable = await fixtureExecutable(root, [
+      `printf '%s\\n' '{"type":"step_start","sessionID":"tool-1","part":{}}'`,
+      `printf '%s\\n' '{"type":"tool","sessionID":"tool-1","part":{"type":"tool","tool":"bash","state":{"input":{"command":"ls -la"},"output":"fixture result"}}}'`,
+      `printf '%s\\n' '{"type":"text","sessionID":"tool-1","part":{"text":"Done."}}'`,
+      `printf '%s\\n' '{"type":"step_finish","sessionID":"tool-1","part":{"reason":"stop","cost":0,"tokens":{"input":1,"output":1,"total":2,"cache":{"read":0}}}}'`,
+    ]);
+    const observed: TraceEvent[] = [];
+    const record = await runCell(cellInput(root), realDriver(root, executable), {
+      onTrace: (event) => observed.push(event),
+    });
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("Done.");
+    const progressData = observed
+      .filter((event) => event.type === "opencode.cli.progress")
+      .map((event) => event.data);
+    expect(progressData).toContainEqual({
+      type: "tool",
+      sessionID: "tool-1",
+      tool: "bash",
+    });
+    for (const data of progressData) {
+      const keys = Object.keys(data as Record<string, unknown>);
+      expect(keys).not.toContain("part");
+      expect(keys).not.toContain("state");
+      expect(keys).not.toContain("input");
+      expect(keys).not.toContain("output");
+    }
   });
 
   test("retains bounded unparsed evidence and usage when a live child emits malformed lines", async () => {

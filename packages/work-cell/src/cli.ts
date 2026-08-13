@@ -300,8 +300,8 @@ function renderLiveEvent(event: TraceEvent): string {
     return `[work-cell] response finished${data.phase ? ` phase=${data.phase}` : ""} characters=${data.characters ?? 0}`;
   }
   if (event.type === "opencode.cli.progress") {
-    const data = event.data as { type?: string; sessionID?: string; stepId?: string; tool?: string };
-    return `[work-cell] opencode ${data.type ?? "event"}${data.tool ? ` tool=${data.tool}` : ""}${data.stepId ? ` step=${data.stepId}` : ""}`;
+    const data = event.data as { type?: string; sessionID?: string; tool?: string };
+    return `[work-cell] opencode ${data.type ?? "event"}${data.tool ? ` tool=${data.tool}` : ""}`;
   }
   if (event.type === "cell.finished") {
     const data = event.data as { status?: string; usage?: { totalTokens?: number } };

@@ -388,21 +388,17 @@ class OpenCodeStdoutAccumulator {
 /**
  * Project a parsed event onto the safe machine fields that may be shown to
  * an operator while the worker is still running: the event type (which names
- * the phase), session and step identity, and the tool name. Text parts,
- * reasoning, and tool input/output are never projected.
+ * the phase), the session identity, and the tool name carried as a string by
+ * tool_use events. Text parts, reasoning, and tool input/output are never
+ * projected.
  */
 function liveProgress(event: Record<string, unknown>): Record<string, unknown> | undefined {
   if (typeof event.type !== "string" || event.type.trim() === "") return undefined;
   const part = isRecord(event.part) ? event.part : undefined;
-  const tool = isRecord(part?.tool) && typeof part.tool.name === "string" && part.tool.name.trim() !== ""
-    ? part.tool.name
-    : undefined;
+  const tool = typeof part?.tool === "string" && part.tool.trim() !== "" ? part.tool : undefined;
   const progress: Record<string, unknown> = { type: event.type };
   if (typeof event.sessionID === "string" && event.sessionID.trim() !== "") {
     progress.sessionID = event.sessionID;
-  }
-  if (typeof event.stepId === "string" && event.stepId.trim() !== "") {
-    progress.stepId = event.stepId;
   }
   if (tool !== undefined) progress.tool = tool;
   return progress;
