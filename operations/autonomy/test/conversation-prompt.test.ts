@@ -176,7 +176,9 @@ test("child summaries are included first and full child evidence stays a keyed r
   const composed = composeConversationPrompt(fullInput());
 
   expect(composed.prompt).toContain("child child-1 (evidence): The second fixture invariant is already preserved in the current source.");
-  expect(composed.prompt).toContain("evidence: read on demand via keyed result-read: turn-result-read:batch:1/evidence:child-1/result");
+  expect(composed.prompt).toContain(
+    'evidence: read on demand via keyed result-read: {"batchId":"turn-result-read:batch:1","key":"evidence:child-1/result"}',
+  );
   expect(composed.prompt).not.toContain("full child evidence");
   expect(composed.prompt).not.toContain("raw trace");
 });

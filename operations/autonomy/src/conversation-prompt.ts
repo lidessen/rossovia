@@ -312,7 +312,7 @@ function renderChildren(children: ChildSummary[]): string {
       lines.push(`  uncertainty: ${child.uncertainty}`);
     }
     if (child.evidenceRefs !== undefined && child.evidenceRefs.length > 0) {
-      const locators = child.evidenceRefs.map((ref) => `${ref.batchId}/${ref.key}`);
+      const locators = child.evidenceRefs.map((ref) => JSON.stringify(ref));
       lines.push(`  evidence: read on demand via keyed result-read: ${locators.join(", ")}`);
     }
   }
