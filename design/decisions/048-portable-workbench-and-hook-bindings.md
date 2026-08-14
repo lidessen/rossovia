@@ -34,10 +34,10 @@ it before tests so source and projection drift is visible.
 Own portable hook behavior in Workbench and keep vendor files as thin
 projections:
 
-| Host | Intervention assist | Artifact observation | Stop continuation |
+| Host | Intervention assist | Artifact observation | Stop notification |
 |---|---|---|---|
-| Codex | `UserPromptSubmit` observation and context injection | canonical `apply_patch` input | bounded block with reason |
-| Claude Code | `UserPromptSubmit` observation and context injection | `Write`, `Edit`, and `NotebookEdit` inputs | bounded block with reason |
+| Codex | `UserPromptSubmit` observation and context injection | canonical `apply_patch` input | one-shot non-blocking `systemMessage` |
+| Claude Code | `UserPromptSubmit` observation and context injection | `Write`, `Edit`, and `NotebookEdit` inputs | one-shot non-blocking `systemMessage` |
 | Cursor | no installed prompt adapter because current `beforeSubmitPrompt` cannot inject context | `afterFileEdit` path | bounded `followup_message` |
 
 Capability absence lowers the guarantee. It does not authorize transcript
@@ -75,6 +75,17 @@ The host capability claims are bound to the
 [Codex Hooks guide](https://learn.chatgpt.com/docs/hooks),
 [Claude Code hooks reference](https://code.claude.com/docs/en/hooks), and
 [Cursor hooks reference](https://cursor.com/docs/hooks), checked on 2026-07-23.
+On 2026-08-14 the host guides were re-checked. Codex `Stop` supports both the
+shared top-level `systemMessage` output field, surfaced as a warning in the UI
+or event stream, and `decision: block` with a reason, which continues the agent
+loop. Claude's `Stop` hook supports `decision: block` as well and additionally
+supports an `additionalContext` continuation. Rossovia deliberately returns
+only the one-shot non-blocking `systemMessage` notification and never uses a
+block or continuation: a non-blocking `systemMessage` only prompts the user,
+while `decision: block` and `additionalContext` both extend the agent loop.
+Installing a binding is not a behavioral-benefit claim: mechanical trigger does
+not equal behavior improvement, and the Codex/Claude notification cannot make
+an Agent fix anything.
 
 ## Reconsideration
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -68,6 +69,14 @@ function postPayload(sessionId: string, command: string): Record<string, unknown
   };
 }
 
+function sessionStatePath(temporary: string, platform: string, sessionId: string): string {
+  const identity = createHash("sha256")
+    .update(`${repositoryRoot}\0${platform}\0${sessionId}`)
+    .digest("hex")
+    .slice(0, 40);
+  return join(temporary, "rossovia-hooks", "artifact-consistency", `${identity}.jsonl`);
+}
+
 describe("Codex artifact-consistency hook", () => {
   test("records only relevant repository-relative artifacts and reminds once at stop", () => {
     const temporary = mkdtempSync(join(tmpdir(), "rossovia-artifact-hook-"));
@@ -111,22 +120,25 @@ describe("Codex artifact-consistency hook", () => {
     expect(stop.exitCode).toBe(0);
     const stopOutput = JSON.parse(stop.stdout);
     expect(stopOutput).toEqual(expect.objectContaining({
-      decision: "block",
-      reason: expect.stringContaining("skills/visual-design/SKILL.md"),
+      systemMessage: expect.stringContaining("skills/visual-design/SKILL.md"),
     }));
-    expect(stopOutput.reason).toContain("AGENTS.md");
-    expect(stopOutput.reason).toContain("Skill entries:");
-    expect(stopOutput.reason).toContain("Agent guidance:");
-    expect(stopOutput.reason).not.toContain("assets/preview.png");
-    expect(stopOutput.reason).not.toContain("operations/workbench/src/home.ts");
-    expect(stopOutput.reason).not.toContain("skills-other");
+    expect(stopOutput.systemMessage).toContain("AGENTS.md");
+    expect(stopOutput.systemMessage).toContain("Skill entries:");
+    expect(stopOutput.systemMessage).toContain("Agent guidance:");
+    expect(stopOutput.systemMessage).not.toContain("assets/preview.png");
+    expect(stopOutput.systemMessage).not.toContain("operations/workbench/src/home.ts");
+    expect(stopOutput.systemMessage).not.toContain("skills-other");
+    expect(stopOutput).not.toHaveProperty("decision");
+    expect(stopOutput).not.toHaveProperty("additionalContext");
+    expect(stopOutput).not.toHaveProperty("continue");
+    expect(existsSync(sessionStatePath(temporary, "codex", "session-a"))).toBe(false);
 
-    const continuation = runHook(temporary, "codex", "stop", {
+    const repeatedStop = runHook(temporary, "codex", "stop", {
       hook_event_name: "Stop",
       session_id: "session-a",
       stop_hook_active: true,
     });
-    expect(continuation.stdout).toBe("");
+    expect(repeatedStop.stdout).toBe("");
     const settled = runHook(temporary, "codex", "stop", {
       hook_event_name: "Stop",
       session_id: "session-a",
@@ -164,9 +176,10 @@ describe("Codex artifact-consistency hook", () => {
       stop_hook_active: false,
     });
     expect(stop.exitCode).toBe(0);
-    const reason = JSON.parse(stop.stdout).reason as string;
-    expect(reason).toContain("24 artifact(s)");
-    expect(reason).toContain("(+4 more)");
+    const systemMessage = JSON.parse(stop.stdout).systemMessage as string;
+    expect(systemMessage).toContain("24 artifact(s)");
+    expect(systemMessage).toContain("(+4 more)");
+    expect(existsSync(sessionStatePath(temporary, "codex", "shared-parent-session"))).toBe(false);
   });
 
   test("normalizes Claude edits and Cursor file events without pretending output parity", () => {
@@ -186,9 +199,9 @@ describe("Codex artifact-consistency hook", () => {
       stop_hook_active: false,
     });
     expect(JSON.parse(claudeStop.stdout)).toEqual(expect.objectContaining({
-      decision: "block",
-      reason: expect.stringContaining("Skill entries:"),
+      systemMessage: expect.stringContaining("Skill entries:"),
     }));
+    expect(existsSync(sessionStatePath(temporary, "claude", "claude-session"))).toBe(false);
 
     const cursor = runHook(temporary, "cursor", "after-file-edit", {
       conversation_id: "cursor-conversation",

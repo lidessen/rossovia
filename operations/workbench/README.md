@@ -742,17 +742,27 @@ observations without claiming identical host capabilities.
 | Capability | Codex | Claude Code | Cursor |
 |---|---|---|---|
 | Principal-message observation | yes | yes | no useful binding |
-| Reconciliation context injection | yes | yes | unavailable on `beforeSubmitPrompt` |
+| Reconciliation context injection | short conditional prompt | short conditional prompt | unavailable on `beforeSubmitPrompt` |
 | Changed-artifact observation | `PostToolUse` | `PostToolUse` | `afterFileEdit` |
-| One bounded stop continuation | `decision: block` | `decision: block` | `followup_message` |
+| Stop notification | one-shot non-blocking `systemMessage` | one-shot non-blocking `systemMessage` | `followup_message` |
 
 Cursor's prompt hook can currently validate or deny a submission but cannot add
 context to it, so Rossovia does not install a pretend intervention adapter.
 The active Agent still receives Principal corrections through ordinary
 conversation. All three artifact bindings retain only relevant repository
-paths in operating-system temporary state and clear them after the continuation.
+paths in operating-system temporary state, isolated by repository and session
+identity. On Codex and Claude, the first `Stop` after relevant changes emits a
+host-supported top-level `systemMessage` notification and removes that exact
+session path set, so repeated stops do not re-notify and the hook never returns
+`decision` or `additionalContext`; Cursor keeps its bounded `followup_message`
+continuation unchanged.
 
-The binding shapes were checked on 2026-07-23 against the
+A binding being installed is not a behavioral-benefit claim: the Codex/Claude
+notification is user-visible but cannot make an Agent fix anything, and
+mechanical trigger does not equal behavior improvement. Verify in the real
+host before treating a projection as a consistency guarantee.
+
+The binding shapes were checked on 2026-08-14 against the
 [Codex Hooks guide](https://learn.chatgpt.com/docs/hooks),
 [Claude Code hooks reference](https://code.claude.com/docs/en/hooks), and
 [Cursor hooks reference](https://cursor.com/docs/hooks). Recheck the owning
