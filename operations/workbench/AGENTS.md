@@ -177,25 +177,30 @@ Workbench home has a task source.
   Mission context is not required. The command creates the Work Cell input and
   append-only attempt evidence inside the Workbench home, but its settlement
   neither submits nor accepts the task. An atomic lease in the exact Worktree Git metadata rejects
-  overlapping writers across Workbench homes; a crash-retained lease requires
-  exact Worktree/process inspection, exact-file removal, and retry rather than
-  stale-lock inference or Task reopening. Git-tracked paths always remain in
+  overlapping writers across Workbench homes; a crash-retained lease is
+  recovered only through `task reconcile-attempt` — never by manual lease
+  deletion or stale-lock inference. Git-tracked paths always remain in
   Work Cell evidence even when one of their path segments is usually generated. A
   settled task is viewable history and cannot run.
-- Run `task reconcile-attempt <id> --attempt <attempt-id>` to recover one
-  crash-retained `started` attempt whose lease owner process is verifiably dead
-  and that retained no final Work Cell record or settlement. The command
-  re-reads the immutable attempt record and CellInput, the exact
-  task/attempt/worktree lease bytes, and the recorded owner PID, and fails
-  closed on a live or unknown owner, mismatched identity, a changed or missing
-  lease, or any terminal evidence. On success it writes only the existing
-  append-only `runner-failed` settlement with a truthful interrupted/no-final
-  reason and releases the still-exact lease; it never forges a Work Cell final
-  status, usage, diff, verification, or session identity from partial trace or
-  database evidence and moves no Task lifecycle. This enables a fresh clean run
-  only; `--continue` stays unavailable without an attributable owner final
-  record. Do not reconcile a live run, guess an owner, or remove a lease whose
-  recorded PID cannot be confirmed dead.
+- Run `task reconcile-attempt <id> --attempt <attempt-id>` as the only normal
+  dead-runner recovery for one crash-retained attempt whose lease owner
+  process is verifiably dead. The command re-reads the strict attempt
+  evidence family (immutable attempt record, CellInput, final record, and
+  settlement), the exact task/attempt/worktree lease bytes, and the recorded
+  owner PID, and fails closed on a live or unknown owner, mismatched
+  identity, a changed or missing lease, or invalid evidence. It finalizes
+  exactly one of three shapes: an existing exact settlement plus a
+  still-exact dead-owner lease retries only the lease release; a real owner
+  final record without a settlement is validated against the immutable input
+  and derives the shared normal settlement from it; otherwise it writes only
+  the existing append-only `runner-failed` settlement with a truthful
+  interrupted/no-final reason. The lease is released only after a durable
+  settlement exists, and no Work Cell final status, usage, diff,
+  verification, or session identity is ever forged from partial trace or
+  database evidence; no Task lifecycle moves. This enables a fresh clean run,
+  or — once an owner-backed final record exists — normal continuation. Do not
+  reconcile a live run, guess an owner, or delete a lease file whose recorded
+  PID cannot be confirmed dead.
 - Run `task attempts <id>` to project the task's recorded attempts as a
   read-only view sorted by start time. The projection reads, never copies or
   rewrites, the existing attempt, final Work Cell record, and settlement files:

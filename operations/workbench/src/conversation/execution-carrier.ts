@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import type { CellInput, CellRunRecord, TraceEvent } from "../../../../packages/work-cell/src/contracts";
 import { runCell } from "../../../../packages/work-cell/src/run-cell";
 import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
@@ -9,6 +10,7 @@ import {
   attemptEvidence,
   createAttempt,
   evidenceRef,
+  finalRecordSettlementInput,
   preparePrincipalTaskRun,
   releaseWorktreeLease,
   writeImmutableJson,
@@ -18,9 +20,12 @@ import {
   type TaskRunExecution,
   type TaskRunLease,
 } from "../task-run";
+import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { PrincipalTaskError } from "../tasks";
 import type { PrincipalTask } from "../contracts";
-import { resolveHome } from "../home";
+import { loadHome, resolveHome, workspaceFor } from "../home";
+import { expandPath } from "../paths";
+import { observeWorkspace, requiredGit } from "../workspace";
 import { taskActionSourceRef } from "./contracts";
 
 const requireFromHere = createRequire(import.meta.url);
@@ -55,7 +60,7 @@ export class ConversationCarrierError extends Error {
 export type CarrierSettlementStatus = "recorded" | "runner-failed" | "control-stopped";
 
 export interface CarrierSettlement {
-  readonly status: CarrierSettlementStatus;
+  readonly status: CarrierSettlementStatus | "unresolved";
   readonly evidenceRefs: readonly string[];
   readonly cellStatus?: CellRunRecord["status"];
   readonly error?: string;
@@ -64,7 +69,7 @@ export interface CarrierSettlement {
 export type CarrierLiveness =
   | { readonly state: "live"; readonly runId?: string }
   | { readonly state: "settled"; readonly settlement: CarrierSettlement }
-  | { readonly state: "unknown" };
+  | { readonly state: "unresolved"; readonly settlement: CarrierSettlement };
 
 export interface ConversationCarrierIdentity {
   /** The exact retained carrier identity; equals the Task attempt id. */
@@ -105,6 +110,13 @@ export interface ConversationCarrierHandle {
     readonly turnId: string;
     readonly actionId: string;
   }): CarrierControlReceipt;
+  /**
+   * Bounded-retention diagnostic: after terminal settlement the carrier drops
+   * its listener sets and its retained CellInput/Task/lease payloads, so a
+   * settled handle keeps only its identity, terminal settlement, and evidence
+   * refs. Tests assert repeated settle stays bounded through this surface.
+   */
+  retention(): { activityListeners: number; settledListeners: number; retainedPayloads: number };
 }
 
 export interface CarrierStartReceipt {
@@ -202,6 +214,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     const attemptId = prepared.attemptId;
     try {
       verifyExpectedRevisions(prepared, input.operation);
+      verifyContinueSelectors(this.home, prepared, input.operation);
       const correlation: AttemptCorrelation = {
         conversationId: input.conversationId,
         turnId: input.turnId,
@@ -368,6 +381,86 @@ function verifyExpectedRevisions(
   }
 }
 
+/**
+ * Compare the operation's exact execution selection against fresh owner reads
+ * performed after the Worktree lease is held and immediately before attempt
+ * creation: the registered project identity, its current primary head, the
+ * exact bound Worktree path, and its current head. Any X→Y drift between the
+ * projection the coordinator copied and the current canonical owners fails
+ * stale with no effect; the carrier never executes the drifted current
+ * selection.
+ */
+function verifyContinueSelectors(
+  home: string,
+  prepared: PreparedPrincipalTaskRun,
+  operation: TaskContinueOperation,
+): void {
+  const binding = prepared.task.binding;
+  if (binding.kind !== "project-context" || binding.projectId !== operation.projectId) {
+    throw new ConversationCarrierError(
+      "stale-context",
+      `task ${prepared.task.id} is not bound to the operation's exact registered project ${operation.projectId}; the action is refused`,
+    );
+  }
+  let observedWorktreePath: string;
+  try {
+    observedWorktreePath = realpathSync(expandPath(operation.worktreePath));
+  } catch {
+    throw new ConversationCarrierError(
+      "worktree-unobserved",
+      `the operation's bound Worktree path cannot be resolved: ${operation.worktreePath}`,
+    );
+  }
+  if (observedWorktreePath !== prepared.worktree) {
+    throw new ConversationCarrierError(
+      "stale-context",
+      `the operation's bound Worktree ${observedWorktreePath} does not match the task's current bound Worktree ${prepared.worktree}; the action is refused`,
+    );
+  }
+  let primaryHead: string;
+  try {
+    const current = loadHome(home);
+    const project = current.projects.projects.find(
+      (candidate) => candidate.id === operation.projectId,
+    );
+    if (project === undefined) {
+      throw new Error(`project ${operation.projectId} is not a registered current project`);
+    }
+    const workspace = workspaceFor(current.workspaces, operation.projectId);
+    const observation = observeWorkspace(project, workspace);
+    if (observation.head === null) {
+      throw new Error(`project ${operation.projectId} has no readable current primary head`);
+    }
+    primaryHead = observation.head;
+  } catch (error) {
+    throw new ConversationCarrierError(
+      "project-unresolved",
+      `the operation's registered project cannot be re-observed: ${errorMessage(error)}`,
+    );
+  }
+  if (primaryHead !== operation.expectedPrimaryHead) {
+    throw new ConversationCarrierError(
+      "stale-context",
+      `the registered project's current primary head ${primaryHead} does not match the expected head ${operation.expectedPrimaryHead}; the action is refused`,
+    );
+  }
+  let worktreeHead: string;
+  try {
+    worktreeHead = requiredGit(["rev-parse", "HEAD"], prepared.worktree);
+  } catch (error) {
+    throw new ConversationCarrierError(
+      "worktree-unobserved",
+      `the bound Worktree's current head cannot be re-read: ${errorMessage(error)}`,
+    );
+  }
+  if (!/^[0-9a-f]{40}$/u.test(worktreeHead) || worktreeHead !== operation.expectedWorktreeHead) {
+    throw new ConversationCarrierError(
+      "stale-context",
+      `the bound Worktree's current head ${worktreeHead} does not match the expected head ${operation.expectedWorktreeHead}; the action is refused`,
+    );
+  }
+}
+
 /** The in-process AI SDK execution form a conversation carrier actually runs. */
 function carrierExecutionRequest(card: WorkerCard): TaskRunExecution {
   return {
@@ -394,10 +487,10 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
   readonly settled: Promise<CarrierSettlement>;
   private readonly home: string;
   private readonly catalog: WorkerCatalog;
-  private readonly cellInput: CellInput;
   private readonly attempt: ReturnType<typeof attemptEvidence>;
-  private readonly lease: TaskRunLease;
-  private readonly task: PrincipalTask;
+  private cellInput: CellInput | undefined;
+  private lease: TaskRunLease | undefined;
+  private task: PrincipalTask | undefined;
   private readonly controller = new AbortController();
   private readonly activityListeners = new Set<(activity: CarrierActivityDelta) => void>();
   private readonly settledListeners = new Set<(settlement: CarrierSettlement) => void>();
@@ -422,21 +515,37 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
 
   liveness(): CarrierLiveness {
     if (this.settlement !== undefined) {
-      return { state: "settled", settlement: this.settlement };
+      return this.settlement.status === "unresolved"
+        ? { state: "unresolved", settlement: this.settlement }
+        : { state: "settled", settlement: this.settlement };
     }
     return this.runId === undefined
       ? { state: "live" }
       : { state: "live", runId: this.runId };
   }
 
+  retention(): { activityListeners: number; settledListeners: number; retainedPayloads: number } {
+    return {
+      activityListeners: this.activityListeners.size,
+      settledListeners: this.settledListeners.size,
+      retainedPayloads: Number(this.cellInput !== undefined)
+        + Number(this.task !== undefined)
+        + Number(this.lease !== undefined),
+    };
+  }
+
   onActivity(listener: (activity: CarrierActivityDelta) => void): () => void {
+    if (this.settlement !== undefined) return () => {};
     this.activityListeners.add(listener);
     return () => this.activityListeners.delete(listener);
   }
 
   onSettled(listener: (settlement: CarrierSettlement) => void): () => void {
-    if (this.settlement !== undefined) listener(this.settlement);
-    else this.settledListeners.add(listener);
+    if (this.settlement !== undefined) {
+      listener(this.settlement);
+      return () => {};
+    }
+    this.settledListeners.add(listener);
     return () => this.settledListeners.delete(listener);
   }
 
@@ -463,12 +572,26 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     return controlReceipt(this.identity.carrierId, [this.controlReceiptPath!, this.attempt.settlementRef]);
   }
 
-  /** The asynchronous continuation launched by the registry after the durable attempt start. */
+  /**
+   * The asynchronous continuation launched by the registry after the durable
+   * attempt start. Terminal evidence retention and the exact lease release
+   * are the only finalization steps: a failure to retain the final record or
+   * the durable settlement never invents a runner-failed receipt, and a
+   * failed lease release never marks the carrier settled — both surface a
+   * visible `unresolved` standing instead, so reconcile-attempt can retry the
+   * exact finalization. The lease is released only after a durable settlement
+   * exists. At terminal the carrier drops its listener sets and its retained
+   * CellInput/Task/lease payloads so settled handles stay bounded.
+   */
   async run(): Promise<void> {
     let record: CellRunRecord | undefined;
     let failure: string | undefined;
     try {
-      record = await runCell(this.cellInput, this.catalog.createDriver(this.cellInput), {
+      const cellInput = this.cellInput;
+      if (cellInput === undefined) {
+        throw new Error("the carrier lost its immutable CellInput before the run");
+      }
+      record = await runCell(cellInput, this.catalog.createDriver(cellInput), {
         signal: this.controller.signal,
         onTrace: (event) => this.observeTrace(event),
       });
@@ -476,6 +599,7 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
       failure = errorMessage(error);
     }
     let settlement: CarrierSettlement;
+    let durableSettlement = false;
     try {
       if (record !== undefined) {
         writeImmutableJson(this.attempt.finalRecordPath, record);
@@ -484,27 +608,53 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
         ? this.settleControlStopped(record)
         : record === undefined
           ? this.settleRunnerFailed(failure ?? "the Work Cell run failed without a retained final record")
-          : record.status === "passed"
-            ? this.settleRecorded(record)
-            : this.settleRunnerFailed(record.error ?? `the Work Cell run settled with status ${record.status}`, record);
+          : this.settleFromFinalRecord(record);
+      durableSettlement = true;
     } catch (error) {
-      // The attempt stays reconcilable as `started` in its durable owner; the
-      // in-memory handle must still terminate so a stop can never hang.
+      // Durable settlement absence stays unresolved: never an invented
+      // runner-failed receipt. The lease is retained so reconcile-attempt can
+      // retry the exact finalization after the owner process is verifiably
+      // dead.
       settlement = {
-        status: "runner-failed",
+        status: "unresolved",
         evidenceRefs: [this.attempt.settlementRef],
         error: `terminal evidence retention failed: ${errorMessage(error)}`,
       };
     }
-    try {
-      releaseWorktreeLease(this.lease);
-    } catch (error) {
-      console.error(`task-run lease release failed for carrier ${this.identity.carrierId}: ${errorMessage(error)}`);
+    if (durableSettlement) {
+      const lease = this.lease;
+      if (lease !== undefined) {
+        try {
+          releaseWorktreeLease(lease);
+        } catch (error) {
+          // The durable settlement exists but the exact lease finalization
+          // did not complete; the carrier is not marked settled.
+          settlement = {
+            status: "unresolved",
+            evidenceRefs: [this.attempt.settlementRef],
+            error:
+              `the durable settlement was retained but the task-run lease could not be released: `
+              + `${errorMessage(error)}; task reconcile-attempt can retry the exact finalization`,
+          };
+        }
+      }
     }
+    this.finishTerminal(settlement);
+  }
+
+  private finishTerminal(settlement: CarrierSettlement): void {
     this.settlement = settlement;
-    this.resolveSettled(settlement);
-    for (const listener of this.settledListeners) listener(settlement);
+    const settledListeners = [...this.settledListeners];
     this.settledListeners.clear();
+    this.activityListeners.clear();
+    // Bounded runtime retention: a terminal handle keeps only its identity,
+    // terminal settlement, and evidence refs; the large CellInput/Task/lease
+    // payloads and all listener closures are dropped.
+    this.cellInput = undefined;
+    this.task = undefined;
+    this.lease = undefined;
+    this.resolveSettled(settlement);
+    for (const listener of settledListeners) listener(settlement);
   }
 
   private settleControlStopped(record?: CellRunRecord): CarrierSettlement {
@@ -512,9 +662,10 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     if (controlRef === undefined) {
       throw new Error(`carrier ${this.identity.carrierId} was stopped without a durable control receipt`);
     }
+    const task = this.requiredTask();
     writeTaskRunSettlement(this.attempt, {
-      taskId: this.task.id,
-      taskRevision: this.task.revision,
+      taskId: task.id,
+      taskRevision: task.revision,
       attemptId: this.identity.attemptId,
       status: "control-stopped",
       controlRef,
@@ -527,26 +678,24 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     };
   }
 
-  private settleRecorded(record: CellRunRecord): CarrierSettlement {
-    writeTaskRunSettlement(this.attempt, {
-      taskId: this.task.id,
-      taskRevision: this.task.revision,
-      attemptId: this.identity.attemptId,
-      status: "recorded",
-      workCellRunId: record.runId,
-      cellStatus: record.status,
-    });
+  /** The shared normal settlement derivation from one validated owner-backed final record. */
+  private settleFromFinalRecord(record: CellRunRecord): CarrierSettlement {
+    const task = this.requiredTask();
+    const input = finalRecordSettlementInput(task.id, task.revision, this.identity.attemptId, record);
+    writeTaskRunSettlement(this.attempt, input);
     return {
-      status: "recorded",
+      status: input.status,
       evidenceRefs: [this.attempt.settlementRef, this.attempt.finalRecordRef],
       cellStatus: record.status,
+      ...(input.error === undefined ? {} : { error: input.error }),
     };
   }
 
   private settleRunnerFailed(error: string, record?: CellRunRecord): CarrierSettlement {
+    const task = this.requiredTask();
     writeTaskRunSettlement(this.attempt, {
-      taskId: this.task.id,
-      taskRevision: this.task.revision,
+      taskId: task.id,
+      taskRevision: task.revision,
       attemptId: this.identity.attemptId,
       status: "runner-failed",
       ...(record === undefined ? {} : { workCellRunId: record.runId, cellStatus: record.status }),
@@ -558,6 +707,13 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
       ...(record === undefined ? {} : { cellStatus: record.status }),
       error,
     };
+  }
+
+  private requiredTask(): PrincipalTask {
+    if (this.task === undefined) {
+      throw new Error(`carrier ${this.identity.carrierId} lost its retained Task before settlement`);
+    }
+    return this.task;
   }
 
   private observeTrace(event: TraceEvent): void {
@@ -578,6 +734,30 @@ function committedActionKey(conversationId: string, actionId: string): string {
 function controlReceipt(carrierId: string, evidenceRefs: readonly string[]): CarrierControlReceipt {
   return { carrierId, control: "stop", outcome: "settled", evidenceRefs };
 }
+
+/**
+ * The strict durable control receipt shape written before an abort. A
+ * reconciliation read that does not parse as this exact shape is never
+ * settled as a control receipt.
+ */
+export const TaskRunControlReceiptSchema = z.object({
+  version: z.literal("rosso.task-run-control-receipt.v1"),
+  control: z.literal("stop"),
+  carrierId: z.string().min(1),
+  taskId: z.string().min(1),
+  attemptId: z.string().min(1),
+  workerId: z.string().min(1),
+  worktree: z.string().min(1),
+  sourceRef: z.string().min(1),
+  requestedBy: z.object({
+    conversationId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    actionId: z.string().uuid(),
+  }).strict(),
+  requestedAt: z.string().min(1),
+  attemptRef: z.string().min(1),
+  settlementRef: z.string().min(1),
+}).strict();
 
 /**
  * Durable control receipt written before the abort so a crash can never leave
@@ -626,80 +806,16 @@ export function carrierStandingWithoutHandle(
   home: string,
   carrierId: string,
 ): { kind: "missing" } | { kind: "settled"; status: CarrierSettlementStatus } | { kind: "unknown" } {
-  const directory = join(home, "state", "task-attempts", carrierId);
-  if (!existsSync(directory)) return { kind: "missing" };
-  const settlementPath = join(directory, "settlement.json");
-  if (existsSync(settlementPath)) {
-    try {
-      const value = JSON.parse(readFileSync(settlementPath, "utf8")) as { status?: unknown };
-      if (value.status === "recorded" || value.status === "runner-failed" || value.status === "control-stopped") {
-        return { kind: "settled", status: value.status };
-      }
-    } catch {
-      // An unreadable settlement is not terminal evidence.
-    }
+  const evidence = readStrictTaskAttemptEvidence(home, carrierId);
+  if (evidence.standing === "unavailable") return { kind: "missing" };
+  if (evidence.standing === "invalid") {
+    // Invalid or mismatched evidence projects unknown/uninspectable, never settled.
     return { kind: "unknown" };
   }
+  if (evidence.settlement !== undefined) {
+    return { kind: "settled", status: evidence.settlement.status };
+  }
   return { kind: "unknown" };
-}
-
-/** Readable one-line evidence for one carrier attempt, ignoring malformed content. */
-export function attemptCorrelationEvidence(
-  home: string,
-  attemptId: string,
-): {
-  correlation?: AttemptCorrelation;
-  attemptRef?: string;
-  inputRef?: string;
-  finalRecordRef?: string;
-  settlementRef?: string;
-  taskId?: string;
-  sourceRevision?: number;
-  taskRevision?: number;
-} {
-  const attempt = attemptEvidence(home, attemptId);
-  if (!existsSync(attempt.attemptPath)) return {};
-  let value: Record<string, unknown>;
-  try {
-    value = JSON.parse(readFileSync(attempt.attemptPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-  const correlation = asRecord(value.correlation);
-  const sourceRef = typeof correlation.sourceRef === "string" ? correlation.sourceRef : undefined;
-  const conversationId = typeof correlation.conversationId === "string" ? correlation.conversationId : undefined;
-  const turnId = typeof correlation.turnId === "string" ? correlation.turnId : undefined;
-  const actionId = typeof correlation.actionId === "string" ? correlation.actionId : undefined;
-  const taskId = typeof value.taskId === "string" && value.taskId.length > 0 ? value.taskId : undefined;
-  const sourceRevision = typeof value.sourceRevision === "number" ? value.sourceRevision : undefined;
-  const taskRevision = typeof value.taskRevision === "number" ? value.taskRevision : undefined;
-  const result: {
-    correlation?: AttemptCorrelation;
-    attemptRef?: string;
-    inputRef?: string;
-    finalRecordRef?: string;
-    settlementRef?: string;
-    taskId?: string;
-    sourceRevision?: number;
-    taskRevision?: number;
-  } = {
-    attemptRef: attempt.attemptRef,
-    inputRef: attempt.inputRef,
-    finalRecordRef: attempt.finalRecordRef,
-    settlementRef: attempt.settlementRef,
-  };
-  if (taskId !== undefined) result.taskId = taskId;
-  if (sourceRevision !== undefined) result.sourceRevision = sourceRevision;
-  if (taskRevision !== undefined) result.taskRevision = taskRevision;
-  if (
-    sourceRef !== undefined
-    && conversationId !== undefined
-    && turnId !== undefined
-    && actionId !== undefined
-  ) {
-    result.correlation = { sourceRef, conversationId, turnId, actionId };
-  }
-  return result;
 }
 
 /** All attempt directories with readable attempt evidence, newest first by name order. */

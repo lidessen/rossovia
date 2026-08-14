@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative } from "node:path";
 import { z } from "zod";
-import type { CellRunRecord } from "../../../packages/work-cell/src/contracts";
+import type { CellInput, CellRunRecord } from "../../../packages/work-cell/src/contracts";
 import { resolveHome } from "./home";
 import { showPrincipalTask } from "./tasks";
 
@@ -48,7 +48,14 @@ const TaskRunSettlementSchema = z.object({
   settledAt: z.iso.datetime(),
   /** Durable control receipt reference retained when a work_control stop settled this attempt. */
   controlRef: z.string().min(1).optional(),
+  workCellRunId: z.string().min(1).optional(),
+  cellStatus: z.string().min(1).optional(),
+  error: z.string().min(1).optional(),
 }).passthrough();
+
+export type ParsedTaskRunAttempt = z.infer<typeof TaskRunAttemptSchema>;
+export type ParsedTaskRunSettlement = z.infer<typeof TaskRunSettlementSchema>;
+export type TaskRunSettlementStatus = ParsedTaskRunSettlement["status"];
 
 export type TaskAttemptStatus = "started" | "recorded" | "runner-failed" | "control-stopped" | "invalid";
 
@@ -315,6 +322,144 @@ function evidenceRef(home: string, path: string): string {
     throw new Error(`task attempt path escapes Rossovia home: ${path}`);
   }
   return ref;
+}
+
+/**
+ * One strict read of an attempt directory's whole evidence family: the
+ * immutable attempt record (including its optional conversation correlation),
+ * the immutable CellInput, the retained Work Cell final record, and the
+ * append-only settlement, each validated against its exact schema and the
+ * stable directory refs. The standing is `available` only when every present
+ * source parses and matches its owner; `invalid` when any present source is
+ * malformed or mismatched (such evidence can never settle anything);
+ * `unavailable` when the attempt record itself is missing. Callers that need
+ * terminal status must require standing `available` plus a validated
+ * settlement; an invalid or absent settlement projects unknown, never
+ * settled. This is the single strict owner-backed reader for carrier
+ * standing, projections, and receipt reconciliation.
+ */
+export interface StrictTaskAttemptEvidence {
+  readonly standing: "available" | "unavailable" | "invalid";
+  readonly error?: string;
+  readonly attempt?: ParsedTaskRunAttempt;
+  readonly input?: CellInput;
+  readonly finalRecord?: CellRunRecord;
+  readonly settlement?: ParsedTaskRunSettlement;
+  readonly refs: {
+    inputRef: string;
+    attemptRef: string;
+    finalRecordRef: string;
+    settlementRef: string;
+  };
+}
+
+export function readStrictTaskAttemptEvidence(
+  homeArgument: string | undefined,
+  attemptId: string,
+): StrictTaskAttemptEvidence {
+  const home = resolveHome(homeArgument);
+  const refs = attemptRefs(home, attemptId);
+  const attemptJson = readJson(join(home, refs.attemptRef));
+  if (attemptJson.standing === "unavailable") {
+    return { standing: "unavailable", refs };
+  }
+  const attempt = parseEvidence(attemptJson, TaskRunAttemptSchema, (candidate) => {
+    if (candidate.attemptId !== attemptId) return "attempt id does not match its evidence directory";
+    if (candidate.inputRef !== refs.inputRef) return "attempt input ref does not match its stable evidence ref";
+    if (candidate.finalRecordRef !== refs.finalRecordRef) {
+      return "attempt final record ref does not match its stable evidence ref";
+    }
+    return undefined;
+  });
+  if (attempt.value === undefined) {
+    return {
+      standing: "invalid",
+      error: attempt.standing.standing === "invalid" ? attempt.standing.error : "attempt evidence is unavailable",
+      refs,
+    };
+  }
+  const attemptRecord = attempt.value;
+
+  const invalid: string[] = [];
+  const inputJson = readJson(join(home, refs.inputRef));
+  let input: CellInput | undefined;
+  if (inputJson.standing === "invalid") {
+    invalid.push(`immutable CellInput is malformed: ${inputJson.error ?? "invalid JSON"}`);
+  } else if (inputJson.standing === "available") {
+    const parsed = parseEvidence(inputJson, workCellContracts().CellInputSchema.transform(
+      (value) => value as CellInput,
+    ), (candidate) => {
+      const expectedId = `workbench-task-${attemptRecord.taskId}-attempt-${attemptId}`;
+      return candidate.id === expectedId ? undefined : "CellInput id does not match its exact task/attempt owner";
+    });
+    if (parsed.value === undefined) {
+      invalid.push(`immutable CellInput is invalid: ${parsed.standing.standing === "invalid" ? parsed.standing.error : "unavailable"}`);
+    } else {
+      input = parsed.value;
+    }
+  }
+
+  const finalJson = readJson(join(home, refs.finalRecordRef));
+  let finalRecord: CellRunRecord | undefined;
+  if (finalJson.standing === "invalid") {
+    invalid.push(`Work Cell final record is malformed: ${finalJson.error ?? "invalid JSON"}`);
+  } else if (finalJson.standing === "available") {
+    const parsed = parseEvidence(finalJson, workCellContracts().CellRunRecordSchema.transform(
+      (value) => value as CellRunRecord,
+    ), (candidate) => {
+      const expectedCellId = `workbench-task-${attemptRecord.taskId}-attempt-${attemptId}`;
+      if (candidate.cellId !== expectedCellId || candidate.input.id !== expectedCellId) {
+        return "Work Cell final record does not belong to this task attempt";
+      }
+      if (candidate.driver.model !== attemptRecord.model) {
+        return "Work Cell final record model does not match the attempt record";
+      }
+      return undefined;
+    });
+    if (parsed.value === undefined) {
+      invalid.push(`Work Cell final record is invalid: ${parsed.standing.standing === "invalid" ? parsed.standing.error : "unavailable"}`);
+    } else {
+      finalRecord = parsed.value;
+    }
+  }
+
+  const settlementJson = readJson(join(home, refs.settlementRef));
+  let settlement: ParsedTaskRunSettlement | undefined;
+  if (settlementJson.standing === "invalid") {
+    invalid.push(`settlement is malformed: ${settlementJson.error ?? "invalid JSON"}`);
+  } else if (settlementJson.standing === "available") {
+    const parsed = parseEvidence(settlementJson, TaskRunSettlementSchema, (candidate) => {
+      if (candidate.taskId !== attemptRecord.taskId) return "settlement task id does not match the attempt record";
+      if (candidate.attemptId !== attemptId) return "settlement attempt id does not match its evidence directory";
+      if (candidate.inputRef !== refs.inputRef) return "settlement input ref does not match its stable evidence ref";
+      if (candidate.finalRecordRef !== refs.finalRecordRef) {
+        return "settlement final record ref does not match its stable evidence ref";
+      }
+      if (candidate.taskRevision !== attemptRecord.taskRevision) {
+        return "settlement task revision does not match the attempt record";
+      }
+      return undefined;
+    });
+    if (parsed.value === undefined) {
+      invalid.push(`settlement is invalid: ${parsed.standing.standing === "invalid" ? parsed.standing.error : "unavailable"}`);
+    } else {
+      settlement = parsed.value;
+    }
+  }
+
+  if (invalid.length > 0) {
+    // The valid attempt record stays attributable so callers can project the
+    // carrier as unknown/uninspectable; the standing still never settles.
+    return { standing: "invalid", error: invalid.join("; "), attempt: attemptRecord, refs };
+  }
+  return {
+    standing: "available",
+    attempt: attemptRecord,
+    ...(input === undefined ? {} : { input }),
+    ...(finalRecord === undefined ? {} : { finalRecord }),
+    ...(settlement === undefined ? {} : { settlement }),
+    refs,
+  };
 }
 
 function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {

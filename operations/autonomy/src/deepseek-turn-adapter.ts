@@ -82,8 +82,11 @@ export const conversationOperationTools: Record<
     inputSchema: TaskCorrectOperationSchema.omit({ kind: true }),
   }),
   task_continue: tool({
-    description:
-      "Not yet available: the execution carrier wave does not own continuation. Do not call this tool; report that continuation is unavailable instead.",
+    description: [
+      "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier.",
+      "Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description.",
+      "Never invent, guess, or route a worker by phrase; the host refuses stale, unregistered, or mismatched selectors with no effect.",
+    ].join(" "),
     inputSchema: TaskContinueOperationSchema.omit({ kind: true }),
   }),
   work_control: tool({

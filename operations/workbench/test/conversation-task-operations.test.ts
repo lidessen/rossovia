@@ -383,7 +383,17 @@ describe("ConversationTaskOperationHost deferred operations", () => {
   test("task_continue and work_control stay strict typed but unavailable without an installed carrier runtime", () => {
     const { host } = fixture();
     for (const operation of [
-      { kind: "task_continue" as const, taskId: "task-1", expectedSourceRevision: 0, expectedRevision: 1, workerId: "deepseek-flash" },
+      {
+        kind: "task_continue" as const,
+        taskId: "task-1",
+        expectedSourceRevision: 0,
+        expectedRevision: 1,
+        workerId: "deepseek-flash",
+        projectId: "repository:task-1",
+        expectedPrimaryHead: "1".repeat(40),
+        worktreePath: "/tmp/task-1-worktree",
+        expectedWorktreeHead: "1".repeat(40),
+      },
       { kind: "work_control" as const, carrierId: "carrier-1", control: "stop" as const },
     ]) {
       const attempt = input(host, operation);

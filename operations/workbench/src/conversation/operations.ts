@@ -11,13 +11,14 @@ import {
   PrincipalTaskError,
 } from "../tasks";
 import { evidenceRef } from "../task-run";
+import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { optionalGit, requiredGit } from "../workspace";
 import { taskActionSourceRef, taskReceiptEvidenceRef } from "./contracts";
 import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
 import {
   ConversationCarrierError,
-  attemptCorrelationEvidence,
   listAttemptDirectories,
+  TaskRunControlReceiptSchema,
   type CarrierControlReceipt,
   type ConversationExecutionCarrierRegistry,
 } from "./execution-carrier";
@@ -284,48 +285,75 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
       if (error instanceof ConversationCarrierError) throw mapCarrierError(error);
       throw mapOperationError(error);
     }
-    const attempt = attemptCorrelationEvidence(this.home, operation.carrierId);
+    const evidence = readStrictTaskAttemptEvidence(this.home, operation.carrierId);
+    const taskId = evidence.attempt?.taskId ?? operation.carrierId;
     return {
-      taskId: attempt.taskId ?? operation.carrierId,
-      ...(attempt.sourceRevision === undefined ? {} : { sourceRevision: attempt.sourceRevision }),
-      ...(attempt.taskRevision === undefined ? {} : { taskRevision: attempt.taskRevision }),
+      taskId,
+      ...(evidence.attempt?.sourceRevision === undefined
+        ? {}
+        : { sourceRevision: evidence.attempt.sourceRevision }),
+      ...(evidence.attempt?.taskRevision === undefined
+        ? {}
+        : { taskRevision: evidence.attempt.taskRevision }),
       evidenceRefs: [...receipt.evidenceRefs],
     };
   }
 
-  /** The canonical continue receipt: the retained attempt carrying this action's causal source reference. */
+  /**
+   * The canonical continue receipt: the retained attempt carrying this
+   * action's causal source reference, read through the strict evidence
+   * reader. A matching correlation under invalid or mismatched evidence is
+   * uninspectable, never settled.
+   */
   private findContinueReceipt(sourceRef: string): CanonicalReceiptLookup {
     for (const attemptId of listAttemptDirectories(this.home)) {
-      const evidence = attemptCorrelationEvidence(this.home, attemptId);
-      if (evidence.correlation?.sourceRef !== sourceRef) continue;
-      if (evidence.taskId === undefined) break;
+      const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
+      const correlation = evidence.attempt?.correlation;
+      if (correlation?.sourceRef !== sourceRef) continue;
+      if (evidence.standing !== "available") {
+        return {
+          standing: "uninspectable",
+          reason: `attempt ${attemptId} retains invalid evidence for this action: ${evidence.error ?? "unavailable"}`,
+        };
+      }
       return {
         standing: "settled",
         receipt: {
-          taskId: evidence.taskId,
-          ...(evidence.sourceRevision === undefined ? {} : { sourceRevision: evidence.sourceRevision }),
-          ...(evidence.taskRevision === undefined ? {} : { taskRevision: evidence.taskRevision }),
+          taskId: evidence.attempt!.taskId,
+          sourceRevision: evidence.attempt!.sourceRevision,
+          taskRevision: evidence.attempt!.taskRevision,
           evidenceRefs: [
-            evidence.attemptRef,
-            evidence.inputRef,
-            evidence.finalRecordRef,
-            evidence.settlementRef,
-          ].filter((ref): ref is string => ref !== undefined),
+            evidence.refs.attemptRef,
+            evidence.refs.inputRef,
+            evidence.refs.finalRecordRef,
+            evidence.refs.settlementRef,
+          ],
         },
       };
     }
     return { standing: "absent" };
   }
 
-  /** The canonical control receipt: the retained control record for this action's causal source reference. */
+  /**
+   * The canonical control receipt: the retained control record for this
+   * action's causal source reference, validated against the strict evidence
+   * reader so invalid or mismatched attempt evidence is never settled.
+   */
   private findControlReceipt(sourceRef: string): CanonicalReceiptLookup {
     for (const attemptId of listAttemptDirectories(this.home)) {
+      const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
       const controlRef = controlReceiptEvidence(this.home, attemptId, sourceRef);
       if (controlRef === undefined) continue;
+      if (evidence.standing !== "available") {
+        return {
+          standing: "uninspectable",
+          reason: `attempt ${attemptId} retains invalid evidence for this control: ${evidence.error ?? "unavailable"}`,
+        };
+      }
       return {
         standing: "settled",
         receipt: {
-          taskId: attemptId,
+          taskId: evidence.attempt?.taskId ?? attemptId,
           evidenceRefs: [...controlRef],
         },
       };
@@ -543,27 +571,30 @@ function mapCarrierError(error: ConversationCarrierError): ConversationOperation
 
 /**
  * The retained durable control receipt of one attempt for one causal action
- * source reference, when it exists: the control record plus any terminal
- * settlement evidence of the same attempt.
+ * source reference, when it exists: the strict control record plus any
+ * strictly validated terminal settlement evidence of the same attempt. A
+ * control record that does not parse as the exact receipt shape is never
+ * settled.
  */
 function controlReceiptEvidence(
   home: string,
   attemptId: string,
   sourceRef: string,
 ): string[] | undefined {
-  const evidence = attemptCorrelationEvidence(home, attemptId);
+  const evidence = readStrictTaskAttemptEvidence(home, attemptId);
   const controlPath = join(home, "state", "task-attempts", attemptId, "control.json");
   if (!existsSync(controlPath)) return undefined;
+  let value: unknown;
   try {
-    const value = JSON.parse(readFileSync(controlPath, "utf8")) as { sourceRef?: unknown };
-    if (value.sourceRef !== sourceRef) return undefined;
+    value = JSON.parse(readFileSync(controlPath, "utf8"));
   } catch {
     return undefined;
   }
+  const parsed = TaskRunControlReceiptSchema.safeParse(value);
+  if (!parsed.success || parsed.data.sourceRef !== sourceRef) return undefined;
   const refs = [evidenceRef(home, controlPath)];
-  const settlementPath = join(home, "state", "task-attempts", attemptId, "settlement.json");
-  if (evidence.settlementRef !== undefined && existsSync(settlementPath)) {
-    refs.push(evidence.settlementRef);
+  if (evidence.settlement !== undefined) {
+    refs.push(evidence.refs.settlementRef);
   }
   return refs;
 }

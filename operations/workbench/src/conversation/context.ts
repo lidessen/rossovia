@@ -1,6 +1,5 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
 import {
   ProjectProjectionSchema,
   TaskProjectionSchema,
@@ -11,11 +10,12 @@ import {
 import { loadHome, resolveHome, workspaceFor } from "../home";
 import { expandPath } from "../paths";
 import { loadPrincipalTasks } from "../tasks";
+import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { observeWorkspace, requiredGit } from "../workspace";
 import { digest, parseTaskReceiptEvidenceRef, type ConversationEvent } from "./contracts";
 import { FileConversationJournal } from "./journal";
+import type { PrincipalTask } from "../contracts";
 import {
-  attemptCorrelationEvidence,
   listAttemptDirectories,
   type ConversationExecutionCarrierRegistry,
 } from "./execution-carrier";
@@ -82,17 +82,20 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
   /**
    * Carriers attributable to this conversation, rebuilt from the retained
    * attempt evidence plus the exact runtime registry: a retained handle that
-   * is still running claims live; a retained handle with terminal settlement
-   * claims that settlement; a retained started attempt without a matching
-   * runtime handle — for example after a server restart — is liveness
-   * unknown. Attempt records are never guessed into running state.
+   * is still running claims live; a retained handle with durable terminal
+   * settlement claims that settlement; a handle whose terminal evidence
+   * retention failed claims a visible unresolved standing; a retained
+   * started attempt without a matching runtime handle — for example after a
+   * server restart — is liveness unknown. Attempt records are never guessed
+   * into running state, and invalid or mismatched evidence is never guessed
+   * into a settlement.
    */
   private carrierProjections(conversationId: string): CarrierActivityProjection[] {
     const seen = new Set<string>();
     const projections: CarrierActivityProjection[] = [];
     for (const attemptId of listAttemptDirectories(this.home)) {
-      const evidence = attemptCorrelationEvidence(this.home, attemptId);
-      if (evidence.correlation?.conversationId !== conversationId) continue;
+      const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
+      if (evidence.attempt?.correlation?.conversationId !== conversationId) continue;
       seen.add(attemptId);
       projections.push(this.projectCarrier(attemptId, evidence));
     }
@@ -107,7 +110,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
 
   private projectCarrier(
     attemptId: string,
-    evidence: ReturnType<typeof attemptCorrelationEvidence>,
+    evidence: ReturnType<typeof readStrictTaskAttemptEvidence>,
   ): CarrierActivityProjection {
     const handle = this.carrierRegistry?.carrier(attemptId);
     if (handle !== undefined) {
@@ -116,23 +119,16 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
         return projectLiveCarrier(handle);
       }
       if (liveness.state === "settled") {
-        return { id: attemptId, state: carrierSettlementState(liveness.settlement?.status ?? "runner-failed") };
+        return { id: attemptId, state: liveness.settlement.status };
       }
+      return { id: attemptId, state: "unresolved" };
     }
-    const settlementPath = join(this.home, "state", "task-attempts", attemptId, "settlement.json");
-    if (existsSync(settlementPath)) {
-      try {
-        const value = JSON.parse(readFileSync(settlementPath, "utf8")) as { status?: unknown };
-        if (
-          value.status === "recorded"
-          || value.status === "runner-failed"
-          || value.status === "control-stopped"
-        ) {
-          return { id: attemptId, state: carrierSettlementState(value.status) };
-        }
-      } catch {
-        // An unreadable settlement is not terminal evidence.
-      }
+    if (evidence.standing !== "available") {
+      // Invalid or mismatched evidence projects unknown, never settled.
+      return { id: attemptId, state: "unknown" };
+    }
+    if (evidence.settlement !== undefined) {
+      return { id: attemptId, state: evidence.settlement.status };
     }
     return { id: attemptId, state: "unknown" };
   }
@@ -180,7 +176,58 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
       summary: `${task.title}: ${task.objective}`.slice(0, 800),
       status: task.lifecycle === "settled" ? "settled" : "open",
       ...(corrections.length === 0 ? {} : { corrections }),
+      ...this.taskExecutionSelectors(task),
     });
+  }
+
+  /**
+   * The exact execution selection a bound task exposes to the coordinator:
+   * the registered project identity, its current primary head, the exact
+   * observed Worktree path, and its current head. Selectors appear only when
+   * every fact can be re-read from the canonical owners; a partial or
+   * unreadable selection is omitted so the coordinator can never copy a
+   * guessed route.
+   */
+  private taskExecutionSelectors(task: PrincipalTask): {
+    projectId?: string;
+    primaryHead?: string;
+    worktreePath?: string;
+    worktreeHead?: string;
+  } {
+    if (task.binding.kind !== "project-context") {
+      return {};
+    }
+    const binding = task.binding;
+    const configuredWorktree = binding.worktreePath;
+    if (configuredWorktree === undefined) return {};
+    let current;
+    try {
+      current = loadHome(this.home);
+    } catch {
+      return {};
+    }
+    const project = current.projects.projects.find(
+      (candidate) => candidate.id === binding.projectId,
+    );
+    if (project === undefined) return {};
+    try {
+      const workspace = workspaceFor(current.workspaces, project.id);
+      const observation = observeWorkspace(project, workspace);
+      if (observation.head === null) return {};
+      const worktrees = observedWorktrees(observation.path);
+      const bound = worktrees.find(
+        (candidate) => candidate.path === realpathSync(expandPath(configuredWorktree)),
+      );
+      if (bound === undefined) return {};
+      return {
+        projectId: project.id,
+        primaryHead: observation.head,
+        worktreePath: bound.path,
+        worktreeHead: bound.head,
+      };
+    } catch {
+      return {};
+    }
   }
 
   private registeredProjectProjections(): NonNullable<CompactProjection["projects"]> {
@@ -274,10 +321,6 @@ function projectLiveCarrier(handle: {
     state: "live",
     ...(liveness.runId === undefined ? {} : { runId: liveness.runId }),
   };
-}
-
-function carrierSettlementState(status: "recorded" | "runner-failed" | "control-stopped"): string {
-  return status;
 }
 
 /** Current worker policy cards, loaded only when a projection needs them. */

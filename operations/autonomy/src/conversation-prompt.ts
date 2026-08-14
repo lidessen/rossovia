@@ -50,6 +50,17 @@ export const TaskProjectionSchema = z.object({
   summary: z.string().min(1).max(800),
   status: z.enum(["open", "settled", "accepted"]).optional(),
   corrections: z.array(CorrectionProjectionSchema).optional(),
+  /**
+   * The task's exact execution selection, present only when the task is bound
+   * to an existing project Worktree: the registered project identity, its
+   * current primary head, the exact bound Worktree path, and its current
+   * head. A task_continue must copy these selectors verbatim; the host
+   * re-reads them immediately before any start effect.
+   */
+  projectId: z.string().min(1).optional(),
+  primaryHead: GitObjectSchema.optional(),
+  worktreePath: z.string().min(1).optional(),
+  worktreeHead: GitObjectSchema.optional(),
 }).strict();
 export type TaskProjection = z.infer<typeof TaskProjectionSchema>;
 
@@ -248,10 +259,24 @@ function renderProjection(
     if (task.revision !== undefined) {
       lines.push(`  task revision: ${task.revision}`);
     }
+    if (task.projectId !== undefined) {
+      lines.push(
+        `  execution selection: registered project ${task.projectId}`
+        + ` @ primary ${task.primaryHead ?? "unavailable"}`
+        + ` in bound worktree ${task.worktreePath ?? "unavailable"}`
+        + ` @ ${task.worktreeHead ?? "unavailable"}`,
+      );
+    }
     if (task.corrections !== undefined && task.corrections.length > 0) {
       lines.push(`  corrections: ${task.corrections.map((c) => `${c.id}: ${c.summary}`).join(" | ")}`);
     }
     sourceRevisionSelectors.push({ source: `task:${task.id}`, revision: task.sourceRevision });
+    if (task.projectId !== undefined && task.primaryHead !== undefined) {
+      sourceRevisionSelectors.push({ source: `task-project:${task.id}`, revision: task.primaryHead });
+    }
+    if (task.worktreePath !== undefined && task.worktreeHead !== undefined) {
+      sourceRevisionSelectors.push({ source: `task-worktree:${task.id}`, revision: task.worktreeHead });
+    }
   }
 
   for (const project of projection.projects ?? []) {

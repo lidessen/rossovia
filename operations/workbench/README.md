@@ -319,19 +319,22 @@ and settlement;
 ordinary failures release it in `finally`. A process crash can leave
 `rossovia-task-run.lock` beside a retained `started` attempt without a final
 record or settlement. `task reconcile-attempt <id> --attempt <attempt-id>`
-recovers exactly that shape: it re-reads the immutable attempt record and
-CellInput, the exact task/attempt/worktree lease bytes, and the recorded owner
-PID, and fails closed on a live or unknown owner process, mismatched identity,
-a changed or missing lease, or any retained final record or settlement. On
-success it writes only the append-only `runner-failed` settlement with a
-truthful interrupted/no-final reason through the shared settlement writer and
-releases the still-exact lease; it never forges a Work Cell final status,
-usage, diff, verification, or session identity and moves no Task lifecycle.
-This enables a fresh clean run only; `--continue` stays unavailable without an
-owner-backed final record. After inspecting that Worktree and process and
-confirming no execution remains, remove only that exact lease file, then retry.
-This is operational cleanup, not Task reopening. There is no timeout,
-stale-lock inference, queue, or automatic recovery.
+is the only normal dead-runner recovery: it re-reads the strict attempt
+evidence family (immutable attempt record, CellInput, final record, and
+settlement), the exact task/attempt/worktree lease bytes, and the recorded
+owner PID, and fails closed on a live or unknown owner process, mismatched
+identity, a changed or missing lease, or invalid evidence. It finalizes
+exactly one of three shapes: an existing exact settlement plus a still-exact
+dead-owner lease retries only the lease release; a real owner final record
+without a settlement is validated against the immutable input and derives the
+shared normal settlement from it; otherwise it writes only the append-only
+`runner-failed` settlement with a truthful interrupted/no-final reason. The
+lease is released only after a durable settlement exists, and no Work Cell
+final status, usage, diff, verification, or session identity is ever forged;
+no Task lifecycle moves. This enables a fresh clean run, or — once an
+owner-backed final record exists — normal continuation. There is no manual
+lease file deletion, timeout, stale-lock inference, queue, or automatic
+recovery.
 
 Every mutation uses the latest returned source revision and, for an existing
 task, its task revision. This detects state that was already stale when the

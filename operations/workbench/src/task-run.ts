@@ -19,6 +19,12 @@ import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog"
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import { runCommand } from "./process";
 import { showPrincipalTaskAttempts } from "./task-attempts";
+import {
+  readStrictTaskAttemptEvidence,
+  type ParsedTaskRunAttempt,
+  type ParsedTaskRunSettlement,
+  type TaskRunSettlementStatus,
+} from "./task-attempts";
 import { showPrincipalTask } from "./tasks";
 import { requiredGit } from "./workspace";
 
@@ -122,8 +128,10 @@ export interface TaskAttemptReconcileResult {
   taskRevision: number;
   attemptId: string;
   settlementRef: string;
-  status: "runner-failed";
-  error: string;
+  status: TaskRunSettlementStatus;
+  workCellRunId?: string;
+  cellStatus?: string;
+  error?: string;
 }
 
 const TASK_RUN_LEASE_VERSION = "rosso.task-run-worktree-lease.v1" as const;
@@ -137,31 +145,59 @@ const TaskRunWorktreeLeaseSchema = z.object({
   acquiredAt: z.string().min(1),
 });
 
-const ReconcileAttemptRecordSchema = z.object({
-  version: z.literal("rosso.task-run-attempt.v1"),
-  taskId: z.string().min(1),
-  taskRevision: z.number().int().positive(),
-  attemptId: z.string().min(1),
-  inputRef: z.string().min(1),
-  finalRecordRef: z.string().min(1),
-  status: z.literal("started"),
-});
-
 const ATTEMPT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 /**
+ * The shared normal settlement derivation for one validated owner-backed
+ * Work Cell final record: a passed run records normally, any other terminal
+ * status settles runner-failed with the retained run/status evidence. The
+ * synchronous CLI path, a conversation-owned carrier, and crash
+ * reconcile-attempt finalization all derive the same append-only settlement
+ * from the same owner evidence; nothing is forged or copied.
+ */
+export function finalRecordSettlementInput(
+  taskId: string,
+  taskRevision: number,
+  attemptId: string,
+  record: CellRunRecord,
+): TaskRunSettlementInput {
+  const base = {
+    taskId,
+    taskRevision,
+    attemptId,
+    workCellRunId: record.runId,
+    cellStatus: record.status,
+  };
+  return record.status === "passed"
+    ? { ...base, status: "recorded" }
+    : {
+        ...base,
+        status: "runner-failed",
+        error: record.error ?? `the Work Cell run settled with status ${record.status}`,
+      };
+}
+
+/**
  * Reconcile one crash-retained ordinary task attempt whose owner process is
- * verifiably dead and that retained no terminal Work Cell or settlement
- * evidence. The command re-reads the immutable attempt record and CellInput,
- * the exact task/attempt/worktree lease bytes in the bound Worktree's Git
- * metadata, and the recorded owner PID; it fails closed on a live or unknown
- * owner, mismatched identity, changed or missing lease, or any terminal
- * evidence. On success it writes only the shared append-only `runner-failed`
- * settlement with a truthful interrupted/no-final reason and releases the
- * still-exact lease through the existing release owner. It never forges a
- * Work Cell final status, usage, diff, verification, or session identity and
- * moves no Task lifecycle; it enables only a fresh clean run, while
- * `--continue` stays unavailable without an owner-backed final record.
+ * verifiably dead. The command re-reads the strict attempt evidence family
+ * (immutable attempt record, CellInput, final record, settlement) and the
+ * exact task/attempt/worktree lease bytes in the bound Worktree's Git
+ * metadata, and fails closed on a live or unknown owner, mismatched identity,
+ * changed or missing lease, or invalid evidence. Three exact finalizations
+ * exist, and each releases the still-exact lease only after a durable
+ * settlement exists:
+ * - an existing exact settlement plus a still-exact dead-owner lease retries
+ *   only the lease release (idempotent finalization of a crash between
+ *   settlement write and release);
+ * - a real owner final record without a settlement validates the final
+ *   record against the immutable input and derives the shared normal
+ *   settlement from it;
+ * - neither retained terminal evidence settles `runner-failed` with a
+ *   truthful interrupted/no-final reason.
+ * It never forges a Work Cell final status, usage, diff, verification, or
+ * session identity and moves no Task lifecycle; it enables only a fresh clean
+ * run (or, once an owner-backed final record exists, normal continuation),
+ * never an automatic retry.
  */
 export function reconcilePrincipalTaskAttempt(
   homeArgument: string | undefined,
@@ -182,114 +218,124 @@ export function reconcilePrincipalTaskAttempt(
     task.binding.worktreePath,
   );
   const attempt = attemptEvidence(home, arguments_.attemptId);
-
-  const attemptRecord = readReconcileAttemptRecord(attempt, task.id, arguments_.attemptId);
-  verifyReconcileCellInput(attempt, task.id, arguments_.attemptId, worktree);
-
-  if (existsSync(attempt.finalRecordPath)) {
-    throw new Error(
-      `attempt ${arguments_.attemptId} already retained a Work Cell final record; `
-      + "terminal evidence cannot be reconciled as interrupted",
-    );
+  const evidence = readStrictTaskAttemptEvidence(home, arguments_.attemptId);
+  if (evidence.standing === "unavailable") {
+    throw new Error(`attempt ${arguments_.attemptId} has no retained attempt evidence: ${attempt.attemptPath}`);
   }
-  if (existsSync(attempt.settlementPath)) {
-    throw new Error(`attempt ${arguments_.attemptId} already has a settlement; it cannot be reconciled again`);
+  if (evidence.standing === "invalid") {
+    throw new Error(`attempt ${arguments_.attemptId} retains invalid evidence and cannot be reconciled: ${evidence.error}`);
   }
+  const attemptRecord = evidence.attempt!;
+  if (attemptRecord.taskId !== task.id) {
+    throw new Error(`attempt ${arguments_.attemptId} belongs to task ${attemptRecord.taskId}, not the requested task ${task.id}`);
+  }
+  const input = evidence.input;
+  if (input === undefined) {
+    throw new Error(`attempt ${arguments_.attemptId} has no readable immutable CellInput: ${attempt.inputPath}`);
+  }
+  verifyReconcileCellInputWorkspace(input, arguments_.attemptId, worktree);
 
   const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
-  const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
 
-  if (!isProcessDefinitelyAbsent(retained.pid)) {
-    throw new Error(
-      `the task-run lease owner process ${retained.pid} for attempt ${arguments_.attemptId} `
-      + "is still alive or owned elsewhere; reconciliation fails closed",
-    );
+  if (evidence.settlement !== undefined) {
+    // Exact retry finalization: the durable settlement was already produced
+    // for this attempt; only the still-exact dead-owner lease remains.
+    const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
+    assertReconcileOwnerDead(retained.pid, arguments_.attemptId);
+    releaseWorktreeLease({ path: leasePath, content: retained.raw });
+    return reconcileResult(attempt, attemptRecord, evidence.settlement);
   }
 
-  const error = "interrupted before a final Work Cell record was retained; reconciled by task reconcile-attempt";
-  writeTaskRunSettlement(attempt, {
-    taskId: task.id,
-    taskRevision: attemptRecord.taskRevision,
-    attemptId: arguments_.attemptId,
-    status: "runner-failed",
-    error,
-  });
+  let settlementInput: TaskRunSettlementInput;
+  if (evidence.finalRecord !== undefined) {
+    verifyReconcileFinalRecord(evidence.finalRecord, input, attemptRecord);
+    settlementInput = finalRecordSettlementInput(
+      task.id,
+      attemptRecord.taskRevision,
+      arguments_.attemptId,
+      evidence.finalRecord,
+    );
+  } else {
+    settlementInput = {
+      taskId: task.id,
+      taskRevision: attemptRecord.taskRevision,
+      attemptId: arguments_.attemptId,
+      status: "runner-failed",
+      error: "interrupted before a final Work Cell record was retained; reconciled by task reconcile-attempt",
+    };
+  }
 
+  const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
+  assertReconcileOwnerDead(retained.pid, arguments_.attemptId);
+  writeTaskRunSettlement(attempt, settlementInput);
   releaseWorktreeLease({ path: leasePath, content: retained.raw });
+  return reconcileResult(attempt, attemptRecord, {
+    status: settlementInput.status,
+    ...(settlementInput.workCellRunId === undefined ? {} : { workCellRunId: settlementInput.workCellRunId }),
+    ...(settlementInput.cellStatus === undefined ? {} : { cellStatus: settlementInput.cellStatus }),
+    ...(settlementInput.error === undefined ? {} : { error: settlementInput.error }),
+  });
+}
 
+function reconcileResult(
+  attempt: AttemptEvidence,
+  attemptRecord: ParsedTaskRunAttempt,
+  settlement: ParsedTaskRunSettlement | {
+    readonly status: TaskRunSettlementStatus;
+    readonly workCellRunId?: string | undefined;
+    readonly cellStatus?: string | undefined;
+    readonly error?: string | undefined;
+  },
+): TaskAttemptReconcileResult {
   return {
     version: "rosso.task-attempt-reconcile.v1",
-    taskId: task.id,
+    taskId: attemptRecord.taskId,
     taskRevision: attemptRecord.taskRevision,
-    attemptId: arguments_.attemptId,
+    attemptId: attemptRecord.attemptId,
     settlementRef: attempt.settlementRef,
-    status: "runner-failed",
-    error,
+    status: settlement.status,
+    ...(settlement.workCellRunId === undefined ? {} : { workCellRunId: settlement.workCellRunId }),
+    ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
+    ...(settlement.error === undefined ? {} : { error: settlement.error }),
   };
 }
 
-function readReconcileAttemptRecord(
-  attempt: AttemptEvidence,
-  taskId: string,
-  attemptId: string,
-): z.infer<typeof ReconcileAttemptRecordSchema> {
-  let raw: string;
-  try {
-    raw = readFileSync(attempt.attemptPath, "utf8");
-  } catch (cause) {
-    throw new Error(`attempt ${attemptId} has no readable immutable attempt record: ${attempt.attemptPath}`, { cause });
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch (cause) {
-    throw new Error(`attempt ${attemptId} retains an unreadable attempt record: ${attempt.attemptPath}`, { cause });
-  }
-  const parsed = ReconcileAttemptRecordSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(`attempt ${attemptId} attempt record does not match the exact task-run shape: ${parsed.error.message}`);
-  }
-  const record = parsed.data;
-  if (record.taskId !== taskId) {
-    throw new Error(`attempt ${attemptId} belongs to task ${record.taskId}, not the requested task ${taskId}`);
-  }
-  if (record.attemptId !== attemptId) {
-    throw new Error(`attempt record identity does not match the requested attempt ${attemptId}`);
-  }
-  if (record.inputRef !== attempt.inputRef || record.finalRecordRef !== attempt.finalRecordRef) {
-    throw new Error(`attempt ${attemptId} evidence refs do not match its stable attempt directory`);
-  }
-  return record;
-}
-
-function verifyReconcileCellInput(
-  attempt: AttemptEvidence,
-  taskId: string,
+function verifyReconcileCellInputWorkspace(
+  input: CellInput,
   attemptId: string,
   worktree: string,
 ): void {
-  let value: unknown;
-  try {
-    value = JSON.parse(readFileSync(attempt.inputPath, "utf8"));
-  } catch (cause) {
-    throw new Error(`attempt ${attemptId} has no readable immutable CellInput: ${attempt.inputPath}`, { cause });
-  }
-  const parsed = workCellContracts().CellInputSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(`attempt ${attemptId} CellInput does not match the exact Work Cell input shape: ${parsed.error.message}`);
-  }
-  const expectedId = `workbench-task-${taskId}-attempt-${attemptId}`;
-  if (parsed.data.id !== expectedId) {
-    throw new Error(`attempt ${attemptId} CellInput id does not match its exact task/attempt owner: ${parsed.data.id}`);
-  }
   let observedRoot: string;
   try {
-    observedRoot = realpathSync(parsed.data.workspace.root);
+    observedRoot = realpathSync(input.workspace.root);
   } catch {
     throw new Error(`attempt ${attemptId} CellInput workspace does not match the task's current bound Worktree`);
   }
   if (observedRoot !== worktree) {
     throw new Error(`attempt ${attemptId} CellInput workspace does not match the task's current bound Worktree`);
+  }
+}
+
+/**
+ * Validate a real owner-backed final record that retained no settlement:
+ * its input must be byte-identical to the immutable CellInput and it must
+ * retain the observed session. Shape, cell identity, and model identity were
+ * already validated by the strict evidence reader.
+ */
+function verifyReconcileFinalRecord(
+  record: CellRunRecord,
+  input: CellInput,
+  attemptRecord: ParsedTaskRunAttempt,
+): void {
+  if (!isDeepStrictEqual(record.input, input)) {
+    throw new Error(
+      `attempt ${attemptRecord.attemptId} final record input does not match its immutable CellInput; the settlement is not derived`,
+    );
+  }
+  if (!record.executionObservation.sessionId) {
+    throw new Error(
+      `attempt ${attemptRecord.attemptId} final record did not retain the observed session id; the settlement is not derived`,
+    );
   }
 }
 
@@ -336,6 +382,15 @@ function readRetainedTaskRunLease(
     throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
   }
   return { pid: lease.pid, raw };
+}
+
+function assertReconcileOwnerDead(pid: number, attemptId: string): void {
+  if (!isProcessDefinitelyAbsent(pid)) {
+    throw new Error(
+      `the task-run lease owner process ${pid} for attempt ${attemptId} `
+      + "is still alive or owned elsewhere; reconciliation fails closed",
+    );
+  }
 }
 
 function isProcessDefinitelyAbsent(pid: number): boolean {

@@ -605,8 +605,10 @@ export class ConversationSocketRuntime {
    * After a task_continue action settles, subscribe the runtime to the exact
    * carrier the action started: owner-backed trace activity becomes
    * attributable `activity.delta` frames and the terminal settlement
-   * broadcasts `projection.changed`. The subscription is runtime-only; the
-   * durable Task/attempt/settlement evidence stays in its canonical owners.
+   * broadcasts `projection.changed`. The subscriptions are runtime-only and
+   * are disposed at terminal settlement so neither the carrier nor the
+   * runtime retains per-run listener closures; the durable
+   * Task/attempt/settlement evidence stays in its canonical owners.
    */
   private attachCarrier(conversationId: string, requested: ActionRequestedEvent): void {
     if (this.carrierRegistry === undefined) return;
@@ -615,7 +617,7 @@ export class ConversationSocketRuntime {
     if (carrier === undefined) return;
     const { turnId, messageId, actionId } = requested.data;
     const { taskId, attemptId, carrierId } = carrier.identity;
-    carrier.onActivity((activity) => {
+    const disposeActivity = carrier.onActivity((activity) => {
       this.broadcast(conversationId, activityDeltaFrame({
         turnId,
         messageId,
@@ -626,7 +628,10 @@ export class ConversationSocketRuntime {
         text: activity.text,
       }));
     });
-    carrier.onSettled(() => {
+    let disposeSettled: (() => void) | undefined;
+    disposeSettled = carrier.onSettled(() => {
+      disposeActivity();
+      disposeSettled?.();
       this.broadcast(conversationId, { type: "projection.changed" });
     });
   }

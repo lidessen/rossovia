@@ -90,6 +90,17 @@ export const TaskContinueOperationSchema = z.object({
    * card identity and never infers a worker from prose or role.
    */
   workerId: z.string().min(1),
+  /**
+   * The exact execution selection the coordinator observed in the projection:
+   * the registered project identity, its expected current-primary head, the
+   * exact bound Worktree path, and its expected head. The host re-reads and
+   * compares every selector again after lease acquisition and immediately
+   * before attempt creation; X→Y drift fails stale with no effect.
+   */
+  projectId: z.string().min(1),
+  expectedPrimaryHead: GitObjectSchema,
+  worktreePath: z.string().min(1),
+  expectedWorktreeHead: GitObjectSchema,
 }).strict();
 export type TaskContinueOperation = z.infer<typeof TaskContinueOperationSchema>;
 

@@ -88,7 +88,7 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
       name: "task_continue",
       availability: "available",
       meaning:
-        "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier. Copy the exact current taskId, sourceRevision, and revision from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description; never invent, guess, or route a worker by phrase. The host re-reads the exact Task/source revisions, registered project identity, current primary observation, bound Worktree path and head, and the exact Worktree lease immediately before starting, and refuses stale or guessed selectors with no effect.",
+        "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier. Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description; never invent, guess, or route a worker by phrase. The host re-reads the exact Task/source revisions, registered project identity, current primary observation, bound Worktree path and head, and the exact Worktree lease immediately before starting, and refuses stale or mismatched selectors with no effect.",
     },
     {
       name: "work_control",
