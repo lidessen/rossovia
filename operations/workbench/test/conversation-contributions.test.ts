@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -1159,6 +1160,85 @@ describe("conversation temporary contributions", () => {
       operation,
     }).standing).toBe("uninspectable");
     expect(receipt.batchId).toBeString();
+  });
+
+  test("a started-marker publication whose temporary removal fails surfaces the cleanup failure and commits no success", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "unlink-failure" });
+
+    const loserRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    let loserSpawn: Promise<unknown> | undefined;
+    const failingRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      atomicPublish: {
+        removeTemporary: (path) => {
+          if (!path.includes(`started-${actor.actionId}.json`)) return;
+          // The started marker is already durably hard-linked and the
+          // directory fsynced: a concurrent reader must observe the marker
+          // with its unremoved temporary as an uncommitted publication —
+          // unknown, never success.
+          loserSpawn = loserRegistry.spawn(spawnInput(actor, operation)).catch((value: unknown) => value);
+          throw new Error("simulated publication temporary removal failure");
+        },
+      },
+    });
+
+    // The winner's marker publication is durably committed but its cleanup
+    // fails: the spawn must fail visibly with the cleanup error and return
+    // no success, never swallow the unconfirmed cleanup.
+    const winnerError = await failingRegistry.spawn(spawnInput(actor, operation))
+      .catch((value: unknown) => value);
+    expect(winnerError).toBeInstanceOf(ContributionError);
+    if (winnerError instanceof ContributionError) {
+      expect(winnerError.message).toContain("temporary");
+      expect(winnerError.message).toContain("could not be removed");
+    }
+
+    // The loser observed the marker link with its unremoved temporary and
+    // yielded unknown, never a started receipt.
+    const loserError = await loserSpawn!;
+    expect(loserError).toBeInstanceOf(ContributionError);
+    if (loserError instanceof ContributionError) {
+      expect(loserError.code).toBe("contribution-unknown");
+    }
+
+    // Let the winner's canceled delegate reach its terminal settlement so
+    // the two timeline writers cannot interleave before the re-claim.
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    const winnerBatchId = await firstPreparedBatchId(timeline, conversationId);
+    if (winnerBatchId !== undefined) {
+      await waitForBatchSettled(timeline, conversationId, winnerBatchId);
+    }
+
+    // The winner retracted the marker, the reservation, and every leftover
+    // publication temporary: no committed started record and no unconfirmed
+    // litter remain, and the action is unclaimed, never settled.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
+    expect(readdirSync(directory).filter((entry) => entry.includes(".tmp-"))).toHaveLength(0);
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: loserRegistry,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("absent");
+
+    // The failed publication poisoned nothing: the same action re-claims,
+    // starts, and settles normally.
+    const receipt = await loserRegistry.spawn(spawnInput(actor, operation));
+    expect(receipt.key).toBe("unlink-failure");
+    await waitFor(async () => {
+      const projections = await loserRegistry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "the re-claimed contribution settles");
   });
 
   test("a reservation durability failure publishes no claim and returns no success", async () => {

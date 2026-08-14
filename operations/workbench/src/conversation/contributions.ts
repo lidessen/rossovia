@@ -12,7 +12,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import type {
   CellInput,
@@ -316,10 +316,14 @@ export interface ConversationContributionRegistryOptions {
    * publication: fsync the fully written temporary file, publish via the
    * no-clobber hard link, then fsync the parent directory. A throwing seam
    * fails the publish before any successful started evidence is returned.
+   * `removeTemporary` replaces the post-publication temporary removal; a
+   * throwing seam fails the spawn visibly with no returned success, because
+   * an unconfirmed publication cleanup must never be swallowed.
    */
   readonly atomicPublish?: {
     readonly syncFile?: (path: string) => void;
     readonly syncDirectory?: (path: string) => void;
+    readonly removeTemporary?: (path: string) => void;
   };
   /**
    * Test-only crash barrier invoked synchronously after a successful
@@ -489,6 +493,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   private readonly keysByConversation = new Map<string, Set<string>>();
   private readonly syncFile: (path: string) => void;
   private readonly syncDirectory: (path: string) => void;
+  private readonly removeTemporary: (path: string) => void;
   private readonly onReservationPublished: (() => void) | undefined;
   private readonly onHandleRegistered: (() => void) | undefined;
   private readonly onDelegateStarted: (() => void) | undefined;
@@ -515,6 +520,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     this.now = options.now ?? (() => new Date().toISOString());
     this.syncFile = options.atomicPublish?.syncFile ?? fsyncFileDurability;
     this.syncDirectory = options.atomicPublish?.syncDirectory ?? fsyncFileDurability;
+    this.removeTemporary = options.atomicPublish?.removeTemporary ?? unlinkSync;
     this.onReservationPublished = options.onReservationPublished;
     this.onHandleRegistered = options.onHandleRegistered;
     this.onDelegateStarted = options.onDelegateStarted;
@@ -1668,6 +1674,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     publishAtomically(path, value, {
       syncFile: this.syncFile,
       syncDirectory: this.syncDirectory,
+      removeTemporary: this.removeTemporary,
     });
     return evidenceRef(this.home, path);
   }
@@ -1721,6 +1728,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     publishAtomically(path, value, {
       syncFile: this.syncFile,
       syncDirectory: this.syncDirectory,
+      removeTemporary: this.removeTemporary,
     });
     return evidenceRef(this.home, path);
   }
@@ -1733,22 +1741,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    */
   private retractSpawnReservation(conversationId: string, actionId: string): string | undefined {
     const path = join(this.conversationDirectory(conversationId), `spawn-${actionId}.json`);
-    let existed = false;
-    try {
-      unlinkSync(path);
-      existed = true;
-    } catch (error) {
-      if (isMissing(error)) return undefined;
-      return `the reservation ${path} could not be retracted: ${errorMessage(error)}`;
-    }
-    if (existed) {
-      try {
-        this.syncDirectory(dirname(path));
-      } catch (error) {
-        return `the reservation retraction at ${dirname(path)} cannot be durably confirmed: ${errorMessage(error)}`;
-      }
-    }
-    return undefined;
+    return retractPublishedClaim(path, this.syncDirectory);
   }
 
   /**
@@ -1757,22 +1750,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    */
   private retractStartedReceipt(conversationId: string, actionId: string): string | undefined {
     const path = join(this.conversationDirectory(conversationId), `started-${actionId}.json`);
-    let existed = false;
-    try {
-      unlinkSync(path);
-      existed = true;
-    } catch (error) {
-      if (isMissing(error)) return undefined;
-      return `the started marker ${path} could not be retracted: ${errorMessage(error)}`;
-    }
-    if (existed) {
-      try {
-        this.syncDirectory(dirname(path));
-      } catch (error) {
-        return `the started-marker retraction at ${dirname(path)} cannot be durably confirmed: ${errorMessage(error)}`;
-      }
-    }
-    return undefined;
+    return retractPublishedClaim(path, this.syncDirectory);
   }
 
   private readSpawnReceipts(conversationId: string): SpawnReceipt[] {
@@ -2109,6 +2087,14 @@ export function verifyContributionStartedMarker(
     readonly syncDirectory: (path: string) => void;
   },
 ): string | undefined {
+  // Join the publication durability boundary BEFORE inspecting the
+  // directory: a temporary whose removal is not durably confirmed must
+  // still count as an unconfirmed publication, never as committed cleanup.
+  try {
+    joins.syncDirectory(directory);
+  } catch (error) {
+    return `the started marker's publication durability boundary cannot be joined: ${errorMessage(error)}`;
+  }
   const markerFile = `started-${started.actionId}.json`;
   if (hasUnconfirmedPublishTemporary(directory, markerFile)) {
     return `the started marker ${markerFile} still has an unremoved publication temporary; the publish is not confirmed`;
@@ -2127,7 +2113,6 @@ export function verifyContributionStartedMarker(
   }
   let link: { checkpointDigest: string; childTimelineId: string } | undefined;
   try {
-    joins.syncDirectory(directory);
     const timeline = new FileMissionTimeline(join(home, "state", "conversation-contributions"));
     link = timeline.durableStartLinkSync(started.conversationId, started.start.preparedBatchId);
   } catch (error) {
@@ -2194,7 +2179,10 @@ function winnerReceipt(receipt: StartedReceipt, home: string): ContributionStart
  * Durably publish one claim: fully write the unique temporary file, fsync
  * it, publish via the no-clobber hard link, fsync the parent directory, then
  * remove the temporary. Any durability step failure throws before any
- * successful started evidence can be returned.
+ * successful started evidence can be returned. A temporary-removal failure
+ * after a durable publication throws a visible cleanup error too: an
+ * unconfirmed cleanup is never swallowed, because canonical readers treat
+ * an unremoved temporary as an uncommitted publication.
  */
 function publishAtomically(
   path: string,
@@ -2202,22 +2190,70 @@ function publishAtomically(
   seams: {
     readonly syncFile: (path: string) => void;
     readonly syncDirectory: (path: string) => void;
+    readonly removeTemporary: (path: string) => void;
   },
 ): void {
   const temporary = `${path}.tmp-${randomUUID()}`;
+  let published = false;
   try {
     writeImmutableJson(temporary, value);
     seams.syncFile(temporary);
     linkSync(temporary, path);
     seams.syncDirectory(dirname(path));
+    published = true;
   } finally {
     try {
-      unlinkSync(temporary);
-    } catch {
-      // The temporary is best-effort cleanup only; the durably published
-      // claim or the surfacing durability/EEXIST error decides the outcome.
+      seams.removeTemporary(temporary);
+    } catch (error) {
+      // An unremovable temporary after a durable publication is a visible
+      // cleanup failure, never a swallowed best-effort: the spawn must fail
+      // rather than return success over a claim its canonical readers will
+      // refuse as unconfirmed. When the publication itself did not succeed,
+      // the primary durability/EEXIST error stays the deciding failure.
+      if (published && !isMissing(error)) {
+        throw new Error(
+          `the publication temporary ${temporary} could not be removed after a durable publication: ${errorMessage(error)}`,
+        );
+      }
     }
   }
+}
+
+/**
+ * Retract one published claim after a refused or unproven publish: remove
+ * the exact claim file AND any leftover publication temporaries of the same
+ * claim, then join the parent directory durability boundary. Returns a
+ * visible cleanup-failure description when any removal or durability
+ * confirmation fails; callers never swallow it. Removing the leftover
+ * temporaries keeps a failed publication from permanently poisoning every
+ * later read of the same claim.
+ */
+function retractPublishedClaim(path: string, syncDirectory: (path: string) => void): string | undefined {
+  const failures: string[] = [];
+  const remove = (candidate: string, label: string): void => {
+    try {
+      unlinkSync(candidate);
+    } catch (error) {
+      if (!isMissing(error)) failures.push(`${label} ${candidate} could not be retracted: ${errorMessage(error)}`);
+    }
+  };
+  remove(path, "the claim");
+  try {
+    const directory = dirname(path);
+    const entries = readdirSync(directory);
+    const prefix = `${basename(path)}.tmp-`;
+    for (const entry of entries) {
+      if (entry.startsWith(prefix)) remove(join(directory, entry), "the publication temporary");
+    }
+  } catch (error) {
+    failures.push(`the claim temporaries at ${dirname(path)} could not be inspected: ${errorMessage(error)}`);
+  }
+  try {
+    syncDirectory(dirname(path));
+  } catch (error) {
+    failures.push(`the claim retraction at ${dirname(path)} cannot be durably confirmed: ${errorMessage(error)}`);
+  }
+  return failures.length === 0 ? undefined : failures.join("; ");
 }
 
 /** The exact fsync-based durability step shared by the atomic publication and canonical reads. */
