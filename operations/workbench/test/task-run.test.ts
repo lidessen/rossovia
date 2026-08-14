@@ -27,7 +27,10 @@ import {
   submitPrincipalTaskResult,
 } from "../src/tasks";
 import {
+  acquireWorktreeLease,
+  attemptLeaseStanding,
   reconcilePrincipalTaskAttempt,
+  releaseWorktreeLease,
   runPrincipalTask as runPrincipalTaskImpl,
   type TaskRunResult,
   type TaskRunRequest,
@@ -272,6 +275,13 @@ function interruptedAttempt(
     capabilitiesRequired: [],
     acceptance: ["The requested behavior is observable"],
     budget: { maxDurationMs: 1_800_000 },
+    executionProfile: {
+      id: "test-worker",
+      version: "execution-profile.v1",
+      provider: "opencode",
+      model: "opencode/go",
+      parallelism: "serial",
+    },
   }, null, 2)}\n`;
   writeFileSync(join(directory, "attempt.json"), attemptBytes);
   writeFileSync(join(directory, "cell-input.json"), inputBytes);
@@ -483,7 +493,7 @@ describe("task attempt reconciliation", () => {
     expect(() => reconcilePrincipalTaskAttempt(current.home, {
       id: unbound.task.id,
       attemptId: attempt.attemptId,
-    })).toThrow("must be bound to an existing project Worktree");
+    })).toThrow(`belongs to task ${created.task.id}, not the requested task ${unbound.task.id}`);
     expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
   });
 
@@ -673,6 +683,87 @@ describe("task attempt reconciliation", () => {
     })).toThrow("does not match its immutable CellInput");
     expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
     expect(existsSync(attempt.leasePath)).toBeTrue();
+  });
+
+  test("a legal Task rebind neither hides nor redirects a retained attempt lease in the old Worktree", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+
+    const replacement = join(current.root, "replacement-worktree");
+    git(current.primary, "worktree", "add", "-b", "task/replacement", replacement);
+    rebindPrincipalTaskWorktree(current.home, {
+      id: created.task.id,
+      expectedWorktreePath: realpathSync(current.worktree),
+      worktree: replacement,
+      sourceRef: "test:rebind-after-retained-lease",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+
+    // Standing inspects the immutable CellInput workspace, never the rebound task path.
+    expect(attemptLeaseStanding(current.home, created.task.id, attempt.attemptId)).toBe("retained");
+
+    // Reconcile locates the exact lease in the old Worktree and releases it.
+    const result = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(result).toMatchObject({ taskId: created.task.id, status: "runner-failed" });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    expect(attemptLeaseStanding(current.home, created.task.id, attempt.attemptId)).toBe("released");
+  });
+
+  test("rebind-after-release-failure keeps the settlement reconcile-releasable in the old Worktree", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+    reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    // The crash-after-settlement-before-release shape: the exact settlement
+    // exists and the still-exact dead-owner lease remains.
+    writeFileSync(attempt.leasePath, attempt.leaseContent, { flag: "wx" });
+
+    const replacement = join(current.root, "replacement-worktree");
+    git(current.primary, "worktree", "add", "-b", "task/replacement-2", replacement);
+    rebindPrincipalTaskWorktree(current.home, {
+      id: created.task.id,
+      expectedWorktreePath: realpathSync(current.worktree),
+      worktree: replacement,
+      sourceRef: "test:rebind-release-failure",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+
+    expect(attemptLeaseStanding(current.home, created.task.id, attempt.attemptId)).toBe("retained");
+    const retried = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(retried.status).toBe("runner-failed");
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    expect(attemptLeaseStanding(current.home, created.task.id, attempt.attemptId)).toBe("released");
+  });
+
+  test("a successor lease in the same Worktree leaves the earlier attempt released", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+    reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(attemptLeaseStanding(current.home, created.task.id, attempt.attemptId)).toBe("released");
+
+    const successor = acquireWorktreeLease(
+      realpathSync(current.worktree),
+      created.task.id,
+      randomUUID(),
+    );
+    expect(attemptLeaseStanding(current.home, created.task.id, attempt.attemptId)).toBe("released");
+    releaseWorktreeLease(successor);
   });
 
   test("the CLI exposes task reconcile-attempt with the exact attempt selector", () => {

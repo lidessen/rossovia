@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import type { PrincipalTask, PrincipalTasks } from "../contracts";
 import { resolveHome } from "../home";
 import { expandPath } from "../paths";
@@ -343,8 +344,10 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
    * this action's causal source reference, cross-linked against the owning
    * attempt evidence and the requested operation — carrierId, attemptId,
    * taskId, worker, Worktree, actor identity, and stable refs must all
-   * match. A receipt that fails any cross-link cannot settle and cannot
-   * suppress the guarded retry: it reports provable absence.
+   * match. No matching sourceRef is provable absence and remains retryable;
+   * a matching sourceRef whose record is unreadable or fails any cross-link
+   * is uninspectable — visible uncertainty that cannot settle and cannot be
+   * retried as if absent.
    */
   private findControlReceipt(input: {
     readonly conversationId: string;
@@ -353,20 +356,53 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }): CanonicalReceiptLookup {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
     const carrierId = input.operation.carrierId;
+    const controlPath = join(this.home, "state", "task-attempts", carrierId, "control.json");
+    if (!existsSync(controlPath)) return { standing: "absent" };
+    let value: unknown;
+    try {
+      value = JSON.parse(readFileSync(controlPath, "utf8"));
+    } catch (error) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} cannot be read: ${errorMessage(error)}`,
+      };
+    }
+    const parsed = TaskRunControlReceiptSchema.safeParse(value);
+    if (!parsed.success) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} does not match the exact receipt shape`,
+      };
+    }
+    const receipt = parsed.data;
+    if (receipt.sourceRef !== sourceRef) {
+      // A different committed action's receipt: provable absence for this one.
+      return { standing: "absent" };
+    }
     const evidence = readStrictTaskAttemptEvidence(this.home, carrierId);
-    const controlRef = controlReceiptEvidence(
-      this.home,
-      carrierId,
-      sourceRef,
-      { conversationId: input.conversationId, actionId: input.actionId },
-      evidence,
-    );
-    if (controlRef === undefined) return { standing: "absent" };
+    if (evidence.standing !== "available" || evidence.attempt === undefined) {
+      return {
+        standing: "uninspectable",
+        reason:
+          `carrier ${carrierId} retains invalid evidence for this control: ${evidence.error ?? "unavailable"}`,
+      };
+    }
+    const mismatch = controlReceiptCrossLinkError(receipt, carrierId, evidence, input);
+    if (mismatch !== undefined) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} fails its exact identity: ${mismatch}`,
+      };
+    }
+    const refs = [evidenceRef(this.home, controlPath)];
+    if (evidence.settlement !== undefined) {
+      refs.push(evidence.refs.settlementRef);
+    }
     return {
       standing: "settled",
       receipt: {
-        taskId: evidence.attempt?.taskId ?? carrierId,
-        evidenceRefs: [...controlRef],
+        taskId: evidence.attempt.taskId,
+        evidenceRefs: refs,
       },
     };
   }
@@ -580,60 +616,56 @@ function mapCarrierError(error: ConversationCarrierError): ConversationOperation
 }
 
 /**
- * The retained durable control receipt of one attempt for one causal action
- * source reference, when it exists and every cross-link matches the owning
- * attempt evidence and the requested operation: the strict control record
- * must carry the requested action/sourceRef, the requested carrierId and its
- * attemptId, the attempt's taskId and workerId, the immutable CellInput's
- * exact Worktree, the actor conversation/action identity, and the stable
- * attempt/settlement refs. A receipt that parses but fails any cross-link is
- * not usable: it can neither settle nor suppress a guarded retry. Validated
- * terminal settlement evidence of the same attempt is appended when present.
+ * Cross-link one strict control receipt against its owning attempt evidence
+ * and the requested operation. Returns a mismatch reason, or undefined when
+ * every identity link matches: the requested actor conversation/action, the
+ * exact carrier/attempt identity, the attempt's taskId and workerId, the
+ * stable attempt/settlement refs, and the immutable CellInput's exact
+ * Worktree.
  */
-function controlReceiptEvidence(
-  home: string,
+function controlReceiptCrossLinkError(
+  receipt: z.infer<typeof TaskRunControlReceiptSchema>,
   attemptId: string,
-  sourceRef: string,
-  actor: { readonly conversationId: string; readonly actionId: string },
   evidence: ReturnType<typeof readStrictTaskAttemptEvidence>,
-): string[] | undefined {
-  const controlPath = join(home, "state", "task-attempts", attemptId, "control.json");
-  if (!existsSync(controlPath)) return undefined;
-  let value: unknown;
-  try {
-    value = JSON.parse(readFileSync(controlPath, "utf8"));
-  } catch {
-    return undefined;
+  input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+  },
+): string | undefined {
+  if (receipt.requestedBy.conversationId !== input.conversationId
+    || receipt.requestedBy.actionId !== input.actionId) {
+    return "the requested actor identity does not match the reconciled action";
   }
-  const parsed = TaskRunControlReceiptSchema.safeParse(value);
-  if (!parsed.success) return undefined;
-  const receipt = parsed.data;
-  if (receipt.sourceRef !== sourceRef) return undefined;
-  if (receipt.requestedBy.conversationId !== actor.conversationId
-    || receipt.requestedBy.actionId !== actor.actionId) return undefined;
-  if (receipt.carrierId !== attemptId || receipt.attemptId !== attemptId) return undefined;
-  if (evidence.standing !== "available" || evidence.attempt === undefined) return undefined;
-  const attempt = evidence.attempt;
-  if (receipt.taskId !== attempt.taskId) return undefined;
-  if (attempt.workerId === undefined || receipt.workerId !== attempt.workerId) return undefined;
+  if (receipt.carrierId !== attemptId || receipt.attemptId !== attemptId) {
+    return "the receipt does not belong to its carrier attempt";
+  }
+  const attempt = evidence.attempt!;
+  if (receipt.taskId !== attempt.taskId) {
+    return "the receipt task identity does not match its owning attempt";
+  }
+  if (attempt.workerId === undefined || receipt.workerId !== attempt.workerId) {
+    return "the receipt worker identity does not match its owning attempt";
+  }
   if (receipt.attemptRef !== evidence.refs.attemptRef
-    || receipt.settlementRef !== evidence.refs.settlementRef) return undefined;
+    || receipt.settlementRef !== evidence.refs.settlementRef) {
+    return "the receipt stable refs do not match its owning attempt evidence";
+  }
   const cellInput = evidence.input;
-  if (cellInput === undefined) return undefined;
+  if (cellInput === undefined) {
+    return "the owning attempt's immutable CellInput is unavailable";
+  }
   let inputWorktree: string;
   let receiptWorktree: string;
   try {
     inputWorktree = realpathSync(cellInput.workspace.root);
     receiptWorktree = realpathSync(receipt.worktree);
   } catch {
-    return undefined;
+    return "the receipt Worktree cannot be related to the immutable CellInput workspace";
   }
-  if (inputWorktree !== receiptWorktree) return undefined;
-  const refs = [evidenceRef(home, controlPath)];
-  if (evidence.settlement !== undefined) {
-    refs.push(evidence.refs.settlementRef);
+  if (inputWorktree !== receiptWorktree) {
+    return "the receipt Worktree does not match the immutable CellInput workspace";
   }
-  return refs;
+  return undefined;
 }
 
 function errorMessage(error: unknown): string {

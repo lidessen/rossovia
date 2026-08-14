@@ -209,14 +209,6 @@ export function reconcilePrincipalTaskAttempt(
   const home = resolveHome(homeArgument);
   const observed = showPrincipalTask(home, arguments_.id);
   const task = observed.task;
-  if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
-    throw new Error(`task ${task.id} must be bound to an existing project Worktree before its attempts can be reconciled`);
-  }
-  const worktree = resolveBoundWorktree(
-    home,
-    task.binding.projectId,
-    task.binding.worktreePath,
-  );
   const attempt = attemptEvidence(home, arguments_.attemptId);
   const evidence = readStrictTaskAttemptEvidence(home, arguments_.attemptId);
   if (evidence.standing === "unavailable") {
@@ -233,7 +225,10 @@ export function reconcilePrincipalTaskAttempt(
   if (input === undefined) {
     throw new Error(`attempt ${arguments_.attemptId} has no readable immutable CellInput: ${attempt.inputPath}`);
   }
-  verifyReconcileCellInputWorkspace(input, arguments_.attemptId, worktree);
+  // The exact lease location is the strict immutable CellInput's workspace
+  // root, never the Task's current rebindable worktreePath: a legal X→Y Task
+  // rebind neither hides nor redirects attempt A's retained exact lease in X.
+  const worktree = reconcileCellInputWorkspace(input, arguments_.attemptId);
 
   const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
 
@@ -300,20 +295,14 @@ function reconcileResult(
   };
 }
 
-function verifyReconcileCellInputWorkspace(
-  input: CellInput,
-  attemptId: string,
-  worktree: string,
-): void {
+function reconcileCellInputWorkspace(input: CellInput, attemptId: string): string {
   let observedRoot: string;
   try {
     observedRoot = realpathSync(input.workspace.root);
   } catch {
-    throw new Error(`attempt ${attemptId} CellInput workspace does not match the task's current bound Worktree`);
+    throw new Error(`attempt ${attemptId} CellInput workspace root cannot be resolved: ${input.workspace.root}`);
   }
-  if (observedRoot !== worktree) {
-    throw new Error(`attempt ${attemptId} CellInput workspace does not match the task's current bound Worktree`);
-  }
+  return observedRoot;
 }
 
 /**
@@ -399,14 +388,16 @@ function isProcessDefinitelyAbsent(pid: number): boolean {
 
 /**
  * The shared owner-backed relation between one attempt and the exact
- * retained task-run lease in its Task's currently bound Worktree Git
- * metadata. `retained` means the exact lease file still exists for this
- * attempt's owner identity (or exists but cannot be proven to belong to a
- * different attempt); `released` means the lease file is absent or provably
- * belongs to another attempt; `uninspectable` means the Task/Worktree
- * relation itself cannot be re-read. A valid settlement plus a retained
- * lease for the same attempt is reconcile-required — never terminal — until
- * the exact release succeeds.
+ * retained task-run lease, located from the strict immutable attempt
+ * CellInput's workspace root — never from the Task's current rebindable
+ * worktreePath, so a legal X→Y Task rebind neither hides nor redirects
+ * attempt A's retained exact lease in X. `retained` means the exact lease
+ * file still exists for this attempt's owner identity (or exists but cannot
+ * be proven to belong to a different attempt); `released` means the lease
+ * file is absent or provably belongs to another attempt; `uninspectable`
+ * means the immutable attempt evidence relation itself cannot be re-read. A
+ * valid settlement plus a retained lease for the same attempt is
+ * reconcile-required — never terminal — until the exact release succeeds.
  */
 export type AttemptLeaseStanding = "released" | "retained" | "uninspectable";
 
@@ -415,23 +406,15 @@ export function attemptLeaseStanding(
   taskId: string,
   attemptId: string,
 ): AttemptLeaseStanding {
-  let observed: ReturnType<typeof showPrincipalTask>;
-  try {
-    observed = showPrincipalTask(homeArgument, taskId);
-  } catch {
-    return "uninspectable";
-  }
-  const task = observed.task;
-  if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
-    return "uninspectable";
-  }
+  const evidence = readStrictTaskAttemptEvidence(homeArgument, attemptId);
+  if (evidence.standing !== "available") return "uninspectable";
+  const attempt = evidence.attempt;
+  const input = evidence.input;
+  if (attempt === undefined || input === undefined) return "uninspectable";
+  if (attempt.taskId !== taskId) return "uninspectable";
   let worktree: string;
   try {
-    worktree = resolveBoundWorktree(
-      resolveHome(homeArgument),
-      task.binding.projectId,
-      task.binding.worktreePath,
-    );
+    worktree = realpathSync(input.workspace.root);
   } catch {
     return "uninspectable";
   }

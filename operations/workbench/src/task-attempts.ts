@@ -391,7 +391,21 @@ export function readStrictTaskAttemptEvidence(
       (value) => value as CellInput,
     ), (candidate) => {
       const expectedId = `workbench-task-${attemptRecord.taskId}-attempt-${attemptId}`;
-      return candidate.id === expectedId ? undefined : "CellInput id does not match its exact task/attempt owner";
+      if (candidate.id !== expectedId) return "CellInput id does not match its exact task/attempt owner";
+      const attemptWorker = attemptRecord.workerId;
+      if (attemptWorker !== undefined) {
+        if (candidate.workerId !== attemptWorker) return "CellInput workerId does not match the attempt record";
+        if (candidate.executionProfile?.id !== attemptWorker) {
+          return "CellInput execution profile id does not match the attempt record";
+        }
+      } else if (
+        candidate.workerId !== undefined
+        && candidate.executionProfile !== undefined
+        && candidate.workerId !== candidate.executionProfile.id
+      ) {
+        return "CellInput workerId does not match its execution profile identity";
+      }
+      return undefined;
     });
     if (parsed.value === undefined) {
       invalid.push(`immutable CellInput is invalid: ${parsed.standing.standing === "invalid" ? parsed.standing.error : "unavailable"}`);
@@ -449,6 +463,8 @@ export function readStrictTaskAttemptEvidence(
       if (candidate.taskRevision !== attemptRecord.taskRevision) {
         return "settlement task revision does not match the attempt record";
       }
+      const relation = settlementFinalRelationError(candidate, finalRecord);
+      if (relation !== undefined) return relation;
       return undefined;
     });
     if (parsed.value === undefined) {
@@ -481,5 +497,73 @@ function workCellContracts(): typeof import("../../../packages/work-cell/src/con
 function adapterForAttemptDriver(driver: string): string | undefined {
   if (driver === "opencode-cli") return "opencode-cli.v1";
   if (driver === "ai-sdk-v7") return "ai-sdk-v7";
+  return undefined;
+}
+
+/**
+ * The exact settlement↔final relation: terminal claims must match the
+ * retained owner final, and each status admits only its permitted shape.
+ * `recorded` requires the exact passed final; `runner-failed` admits a
+ * non-passed final (with matching run/cell evidence and error) or no final
+ * (with no terminal claims); `control-stopped` requires its durable control
+ * receipt and, when the final exists, matching claims. Contradictions are
+ * invalid/uninspectable evidence.
+ */
+function settlementFinalRelationError(
+  settlement: ParsedTaskRunSettlement,
+  final: CellRunRecord | undefined,
+): string | undefined {
+  const runId = settlement.workCellRunId;
+  const cellStatus = settlement.cellStatus;
+  if (runId === undefined && cellStatus !== undefined) {
+    return "settlement carries a cell status without its Work Cell run id";
+  }
+  if (final === undefined) {
+    if (runId !== undefined || cellStatus !== undefined) {
+      return "settlement claims a Work Cell final that was not retained";
+    }
+    if (settlement.status === "recorded") {
+      return "recorded settlement requires the exact passed Work Cell final";
+    }
+    if (settlement.status === "control-stopped" && settlement.controlRef === undefined) {
+      return "control-stopped settlement requires its durable control receipt";
+    }
+    return undefined;
+  }
+  if (runId !== undefined) {
+    if (runId !== final.runId) {
+      return "settlement Work Cell run id does not match the retained final record";
+    }
+    if (cellStatus !== final.status) {
+      return "settlement cell status does not match the retained final record";
+    }
+  }
+  if (settlement.status === "recorded") {
+    if (final.status !== "passed") {
+      return "recorded settlement requires the exact passed Work Cell final";
+    }
+    if (runId === undefined) {
+      return "recorded settlement does not carry the exact retained final evidence";
+    }
+    return undefined;
+  }
+  if (settlement.status === "runner-failed") {
+    if (final.status === "passed") {
+      return "runner-failed settlement contradicts a passed Work Cell final";
+    }
+    if (runId === undefined) {
+      return "runner-failed settlement does not carry the exact retained final evidence";
+    }
+    if (settlement.error !== (final.error ?? `the Work Cell run settled with status ${final.status}`)) {
+      return "runner-failed settlement error does not match the retained final record";
+    }
+    return undefined;
+  }
+  if (settlement.status === "control-stopped") {
+    if (settlement.controlRef === undefined) {
+      return "control-stopped settlement requires its durable control receipt";
+    }
+    return undefined;
+  }
   return undefined;
 }

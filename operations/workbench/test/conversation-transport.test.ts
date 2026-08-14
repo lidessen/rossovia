@@ -1433,6 +1433,71 @@ test("an unsettled action whose effect is provably absent is retried exactly onc
   server.stop(true);
 });
 
+test("an unsettled control action whose matching receipt is uninspectable reconciles as uncertain without retry", async () => {
+  const root = tempRoot();
+  const conversationId = randomUUID();
+  const controlOperation: ConversationOperation = {
+    kind: "work_control",
+    carrierId: randomUUID(),
+    control: "stop",
+  };
+  const staging = new ConversationSocketRuntime(root, {
+    turnOwner: scriptedOwner([operationScript("Stopping the carrier.", controlOperation)]),
+  });
+  const message = await staging.journal.submitMessage(conversationId, {
+    clientMessageId: randomUUID(),
+    payload: "stop the carrier",
+  });
+  const turn = await staging.journal.startTurn(conversationId, {
+    turnId: randomUUID(),
+    messageId: message.event.data.messageId,
+    requestedPolicy: FAKE_REQUESTED_POLICY,
+  });
+  const requested = await staging.journal.requestAction(conversationId, {
+    actionId: randomUUID(),
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    operation: controlOperation,
+  });
+
+  let executed = 0;
+  const host: ConversationOperationHost = {
+    home: root,
+    executeOperation() {
+      executed += 1;
+      throw new Error("the retried control must never execute");
+    },
+    findCanonicalReceipt(input) {
+      // The causal sourceRef matches but the retained receipt fails its
+      // exact identity: uninspectable, never retried as if absent.
+      const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+      if (sourceRef === taskActionSourceRef(conversationId, requested.data.actionId)) {
+        return {
+          standing: "uninspectable",
+          reason: "the retained control record fails its exact cross-linked identity",
+        };
+      }
+      return { standing: "absent" };
+    },
+  };
+
+  const { runtime, server, socketUrl } = await startOperationServer(
+    root,
+    scriptedOwner([settledScript("fixture response")]),
+    host,
+  );
+  const client = await connect(socketUrl(conversationId, -1));
+  await waitFor(() => client.messages.some((frame) =>
+    frame.type === "journal.event" && frame.event.type === "action.uncertain"), "uncertain settlement");
+
+  const events = await runtime.journal.readEvents(conversationId);
+  expect(events.some((event) => event.type === "action.uncertain")).toBe(true);
+  expect(events.some((event) => event.type === "action.settled")).toBe(false);
+  expect(events.some((event) => event.type === "action.failed")).toBe(false);
+  expect(executed).toBe(0);
+  server.stop(true);
+});
+
 test("a failed action.requested journal append fails the turn visibly and never calls the operation host", async () => {
   const root = tempRoot();
   const host = scriptedOperationHost();

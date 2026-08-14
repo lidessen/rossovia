@@ -967,7 +967,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     expect(after.carriers).toEqual([{ id: carrierId, state: "recorded" }]);
   });
 
-  test("a control receipt that fails a cross-link against its owning attempt cannot settle", async () => {
+  test("a control receipt that fails a cross-link against its owning attempt is uninspectable, never settled", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
     const receipt = host.executeOperation({
@@ -1003,7 +1003,7 @@ describe("conversation execution carrier strict evidence standing", () => {
         actionId: control.actionId,
         operation: control.operation,
       });
-      expect(found.standing).toBe("absent");
+      expect(found.standing).toBe("uninspectable");
     }
     writeFileSync(controlPath, `${JSON.stringify(original, null, 2)}\n`);
     const found = host.findCanonicalReceipt({
@@ -1012,6 +1012,74 @@ describe("conversation execution carrier strict evidence standing", () => {
       operation: control.operation,
     });
     expect(found.standing).toBe("settled");
+  });
+
+  test("control reconciliation distinguishes provable absence from uninspectable evidence", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    const control = {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control" as const, carrierId, control: "stop" as const },
+    };
+    host.executeOperation(control);
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+
+    // No control record at all: provable absence, retryable.
+    const otherCarrierId = randomUUID();
+    const missing = host.findCanonicalReceipt({
+      conversationId,
+      actionId: randomUUID(),
+      operation: { kind: "work_control", carrierId: otherCarrierId, control: "stop" },
+    });
+    expect(missing.standing).toBe("absent");
+
+    // A different committed action's receipt: provable absence for this one.
+    const controlPath = join(attemptDirectory(current, carrierId), "control.json");
+    const original = JSON.parse(readFileSync(controlPath, "utf8"));
+    const otherSourceRef = taskActionSourceRef(conversationId, randomUUID());
+    writeFileSync(
+      controlPath,
+      `${JSON.stringify({
+        ...original,
+        sourceRef: otherSourceRef,
+        requestedBy: { ...original.requestedBy, actionId: randomUUID() },
+      }, null, 2)}\n`,
+    );
+    const differentAction = host.findCanonicalReceipt({
+      conversationId: control.conversationId,
+      actionId: control.actionId,
+      operation: control.operation,
+    });
+    expect(differentAction.standing).toBe("absent");
+    writeFileSync(controlPath, `${JSON.stringify(original, null, 2)}\n`);
+
+    // Matching sourceRef but unreadable record: uninspectable, not retryable.
+    writeFileSync(controlPath, "{not-json\n");
+    const garbage = host.findCanonicalReceipt({
+      conversationId: control.conversationId,
+      actionId: control.actionId,
+      operation: control.operation,
+    });
+    expect(garbage.standing).toBe("uninspectable");
+    writeFileSync(controlPath, `${JSON.stringify(original, null, 2)}\n`);
+
+    // Matching sourceRef with invalid owning-attempt evidence: uninspectable.
+    writeFileSync(join(attemptDirectory(current, carrierId), "settlement.json"), "{not-json\n");
+    const invalidEvidence = host.findCanonicalReceipt({
+      conversationId: control.conversationId,
+      actionId: control.actionId,
+      operation: control.operation,
+    });
+    expect(invalidEvidence.standing).toBe("uninspectable");
   });
 
   test("a final record whose embedded input differs from the immutable CellInput makes standing unknown, never settled", async () => {
