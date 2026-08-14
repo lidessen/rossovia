@@ -298,7 +298,7 @@ const catalog = new WorkerCatalog([{
 }]);
 
 const registry = createConversationContributionRegistry(home, { catalog });
-const receipt = registry.spawn({
+const receipt = await registry.spawn({
   conversationId,
   turnId,
   actionId,
@@ -420,6 +420,31 @@ async function waitFor(condition: () => boolean | Promise<boolean>, label: strin
   }
 }
 
+/** Wait until one prepared delegate batch has a durable terminal settlement. */
+async function waitForBatchSettled(
+  timeline: FileMissionTimeline,
+  conversationId: string,
+  batchId: string,
+): Promise<void> {
+  await waitFor(async () => {
+    try {
+      return (await timeline.recoverBatch(conversationId, batchId)).ready;
+    } catch {
+      return false;
+    }
+  }, `delegate batch ${batchId} settles`);
+}
+
+/** The first prepared delegate batch id of one conversation, by journal order. */
+async function firstPreparedBatchId(
+  timeline: FileMissionTimeline,
+  conversationId: string,
+): Promise<string | undefined> {
+  const events = await timeline.readEvents(conversationId);
+  const prepared = events.find((event) => event.type === "delegate.batch-prepared");
+  return prepared === undefined ? undefined : String(prepared.data.batchId);
+}
+
 const FAKE_REQUESTED_POLICY = {
   provider: "fake-coordinator",
   model: "fake.v1",
@@ -467,8 +492,8 @@ describe("conversation temporary contributions", () => {
     // No settled task_create/task_correct action: the host cannot derive a
     // Task and refuses visibly instead of guessing one.
     const unseeded = identity();
-    expect(() => registry.spawn(spawnInput(unseeded, spawnOperation())))
-      .toThrowError(ContributionError);
+    await expect(registry.spawn(spawnInput(unseeded, spawnOperation())))
+      .rejects.toThrowError(ContributionError);
 
     // A conversation whose journal names a Task that no longer exists in the
     // canonical source is refused the same way.
@@ -477,13 +502,13 @@ describe("conversation temporary contributions", () => {
       ...fixture_,
       taskId: "task-that-no-longer-exists",
     });
-    expect(() => registry.spawn(spawnInput(staleJournalActor, spawnOperation())))
-      .toThrowError(ContributionError);
+    await expect(registry.spawn(spawnInput(staleJournalActor, spawnOperation())))
+      .rejects.toThrowError(ContributionError);
 
     // The seeded conversation derives the exact fixture Task; the receipt and
     // the durable spawn record carry the host-derived Task identity.
     const actor = await seededActor(fixture_);
-    const receipt = registry.spawn(spawnInput(actor, spawnOperation({ key: "derived-task" })));
+    const receipt = await registry.spawn(spawnInput(actor, spawnOperation({ key: "derived-task" })));
     expect(receipt.taskId).toBe(fixture_.taskId);
     expect(receipt.taskRevision).toBe(fixture_.taskRevision);
     const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${actor.actionId}.json`);
@@ -502,39 +527,40 @@ describe("conversation temporary contributions", () => {
     const registry = createConversationContributionRegistry(fixture_.home, { catalog });
     const actor = await seededActor(fixture_);
 
-    expect(() => registry.spawn(spawnInput(actor, spawnOperation({ workerId: "not-a-worker" }))))
-      .toThrowError(ContributionError);
+    await expect(registry.spawn(spawnInput(actor, spawnOperation({ workerId: "not-a-worker" }))))
+      .rejects.toThrowError(ContributionError);
 
     const unavailableRegistry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(fastContributionDriver, fakeCard({
         availability: { status: "unavailable", reason: "no credential" },
       })),
     });
-    expect(() => unavailableRegistry.spawn(spawnInput(actor, spawnOperation())))
-      .toThrowError(ContributionError);
+    await expect(unavailableRegistry.spawn(spawnInput(actor, spawnOperation())))
+      .rejects.toThrowError(ContributionError);
 
     const unsupported = spawnOperation({ capabilityNeed: "vision" });
-    expect(() => registry.spawn(spawnInput(actor, unsupported)))
-      .toThrowError(ContributionError);
+    await expect(registry.spawn(spawnInput(actor, unsupported)))
+      .rejects.toThrowError(ContributionError);
   });
 
   test("bounded read-only contributions run in parallel and settle with separate keyed results", async () => {
     const fixture_ = fixture();
+    const gated = gatedContributionDriver();
     const registry = createConversationContributionRegistry(fixture_.home, {
-      catalog: fakeCatalog(),
+      catalog: fakeCatalog(() => gated.driver),
       maxLiveContributions: 2,
     });
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
     const first = spawnOperation({ key: "evidence-one", intent: "First bounded read." });
     const second = spawnOperation({ key: "evidence-two", intent: "Second bounded read." });
-    const firstReceipt = registry.spawn({
+    const firstReceipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
       operation: first as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     });
-    const secondReceipt = registry.spawn({
+    const secondReceipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
@@ -542,14 +568,16 @@ describe("conversation temporary contributions", () => {
     });
     expect(firstReceipt.batchId).not.toBe(secondReceipt.batchId);
 
-    // The live bound refuses a third read-only contribution.
+    // The live bound refuses a third read-only contribution while the first
+    // two are still live behind the shared gate.
     const third = spawnOperation({ key: "evidence-three" });
-    expect(() => registry.spawn({
+    await expect(registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
       operation: third as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
-    })).toThrowError(ContributionError);
+    })).rejects.toThrowError(ContributionError);
+    gated.release();
 
     await waitFor(async () => {
       const projections = await registry.listContributions(conversationId);
@@ -586,7 +614,7 @@ describe("conversation temporary contributions", () => {
       effectKind: "effectful",
       intent: "Write the bounded fixture result.",
     });
-    const receipt = registry.spawn({
+    const receipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
@@ -596,12 +624,12 @@ describe("conversation temporary contributions", () => {
 
     // A second effectful contribution on the same Worktree is refused.
     const overlapping = spawnOperation({ key: "writer-two", effectKind: "effectful" });
-    expect(() => registry.spawn({
+    await expect(registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
       operation: overlapping as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
-    })).toThrowError(ContributionError);
+    })).rejects.toThrowError(ContributionError);
 
     // A task_continue carrier on the same Worktree is refused by the same lease.
     const carrierRegistry = createConversationExecutionCarrierRegistry(fixture_.home, {
@@ -627,7 +655,7 @@ describe("conversation temporary contributions", () => {
 
     // A read-only contribution may still overlap the effectful writer.
     const readOnly = spawnOperation({ key: "reader-one", effectKind: "read-only" });
-    const readOnlyReceipt = registry.spawn({
+    const readOnlyReceipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
@@ -647,12 +675,26 @@ describe("conversation temporary contributions", () => {
     });
     await waitFor(() => handle!.liveness().state !== "live", "effectful contribution settles");
     const replacement = spawnOperation({ key: "writer-three", effectKind: "effectful" });
-    expect(() => registry.spawn({
+    const replacementReceipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
       operation: replacement as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
-    })).not.toThrow();
+    });
+    expect(replacementReceipt.effectKind).toBe("effectful");
+
+    // Settle the replacement writer so its terminal work completes before
+    // the fixture teardown.
+    registry.control({
+      batchId: replacementReceipt.batchId,
+      key: "writer-three",
+      control: "stop",
+      actor: { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+    });
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.find((entry) => entry.batchId === replacementReceipt.batchId)?.state !== "live";
+    }, "the replacement writer settles");
   });
 
   test("a lease-refused effectful spawn retracts its reservation and leaves no claimed contribution", async () => {
@@ -664,7 +706,7 @@ describe("conversation temporary contributions", () => {
     await seedTaskAction(fixture_.home, conversationId, fixture_);
 
     // The first effectful contribution holds the exact Worktree lease.
-    const holder = registry.spawn(spawnInput(
+    const holder = await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "lease-holder", effectKind: "effectful" }),
     ));
@@ -674,8 +716,8 @@ describe("conversation temporary contributions", () => {
     // refused action leaves no claimed contribution behind.
     const refusedActor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
     const refused = spawnOperation({ key: "refused-writer", effectKind: "effectful" });
-    expect(() => registry.spawn(spawnInput(refusedActor, refused)))
-      .toThrowError(ContributionError);
+    await expect(registry.spawn(spawnInput(refusedActor, refused)))
+      .rejects.toThrowError(ContributionError);
     expect(readContributionSpawnReceipts(fixture_.home, conversationId))
       .toHaveLength(1);
 
@@ -691,7 +733,7 @@ describe("conversation temporary contributions", () => {
       const projections = await registry.listContributions(conversationId);
       return projections.find((entry) => entry.batchId === holder.batchId)?.state !== "live";
     }, "the lease holder settles");
-    const admitted = registry.spawn(spawnInput(refusedActor, refused));
+    const admitted = await registry.spawn(spawnInput(refusedActor, refused));
     expect(admitted.effectKind).toBe("effectful");
     expect(readContributionSpawnReceipts(fixture_.home, conversationId)).toHaveLength(2);
     registry.control({
@@ -722,8 +764,8 @@ describe("conversation temporary contributions", () => {
     const second = createConversationContributionRegistry(fixture_.home, { catalog: sharedCatalog });
 
     const operation = spawnOperation({ key: "shared-reservation" });
-    const firstReceipt = first.spawn(spawnInput(actor, operation));
-    const secondReceipt = second.spawn(spawnInput(actor, operation));
+    const firstReceipt = await first.spawn(spawnInput(actor, operation));
+    const secondReceipt = await second.spawn(spawnInput(actor, operation));
 
     // The loser converges on the winner's strict matching receipt and starts
     // no duplicate worker: exactly one durable reservation exists and only
@@ -751,7 +793,7 @@ describe("conversation temporary contributions", () => {
     const holderRegistry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(slowContributionDriver),
     });
-    const holder = holderRegistry.spawn(spawnInput(
+    const holder = await holderRegistry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "lease-holder", effectKind: "effectful" }),
     ));
@@ -761,26 +803,26 @@ describe("conversation temporary contributions", () => {
     const loserRegistry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(),
     });
-    let loserObserved: ContributionError | undefined;
+    let loserSpawn: Promise<unknown> | undefined;
     const winnerRegistry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(),
       onReservationPublished: () => {
         // The winner is paused between reservation publication and lease
         // acquisition: a concurrent loser observes reservation-only and can
         // yield only unknown, never a started receipt.
-        try {
-          loserRegistry.spawn(spawnInput(actor, operation));
-        } catch (error) {
-          loserObserved = error instanceof ContributionError ? error : undefined;
-        }
+        loserSpawn = loserRegistry.spawn(spawnInput(actor, operation)).catch((value: unknown) => value);
       },
     });
 
     // The winner's lease acquisition then fails against the retained holder
     // lease; the reservation is retracted with no started marker.
-    expect(() => winnerRegistry.spawn(spawnInput(actor, operation)))
-      .toThrowError(ContributionError);
-    expect(loserObserved?.code).toBe("contribution-unknown");
+    await expect(winnerRegistry.spawn(spawnInput(actor, operation)))
+      .rejects.toThrowError(ContributionError);
+    const loserError = await loserSpawn!;
+    expect(loserError).toBeInstanceOf(ContributionError);
+    if (loserError instanceof ContributionError) {
+      expect(loserError.code).toBe("contribution-unknown");
+    }
     expect(loserRegistry.startedContribution(conversationId, actor.actionId)).toBeUndefined();
     expect(winnerRegistry.startedContribution(conversationId, actor.actionId)).toBeUndefined();
     expect(readContributionStartedReceipts(fixture_.home, conversationId)
@@ -799,13 +841,18 @@ describe("conversation temporary contributions", () => {
       operation,
     }).standing).toBe("absent");
 
-    // Cleanup: stop the holder so the fixture root stays removable.
+    // Cleanup: stop the holder and settle it so the fixture root stays
+    // removable and its terminal work completes before teardown.
     holderRegistry.control({
       batchId: holder.batchId,
       key: "lease-holder",
       control: "stop",
       actor: { conversationId, turnId: randomUUID(), actionId: randomUUID() },
     });
+    await waitFor(async () => {
+      const projections = await holderRegistry.listContributions(conversationId);
+      return projections.find((entry) => entry.batchId === holder.batchId)?.state !== "live";
+    }, "the lease holder settles");
   });
 
   test("a winner crash before start leaves reservation-only evidence: no success, no handle, reconcile unknown", async () => {
@@ -821,7 +868,7 @@ describe("conversation temporary contributions", () => {
         throw new Error("simulated winner crash before start");
       },
     });
-    expect(() => crashedRegistry.spawn(spawnInput(actor, operation))).toThrow();
+    await expect(crashedRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
 
     // Only the reservation remains: no started marker, no handle, no
     // successful receipt.
@@ -837,7 +884,7 @@ describe("conversation temporary contributions", () => {
     });
     let refused: ContributionError | undefined;
     try {
-      restarted.spawn(spawnInput(actor, operation));
+      await restarted.spawn(spawnInput(actor, operation));
     } catch (error) {
       refused = error instanceof ContributionError ? error : undefined;
     }
@@ -863,6 +910,257 @@ describe("conversation temporary contributions", () => {
     expect(projections.find((entry) => entry.key === "crashed-writer")?.state).toBe("unknown");
   });
 
+  test("a winner crash between handle registration and the durable delegate start leaves no started evidence", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "registered-crash", effectKind: "effectful" });
+
+    const crashedRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      onHandleRegistered: () => {
+        throw new Error("simulated winner crash after handle registration");
+      },
+    });
+    await expect(crashedRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
+
+    // The reservation and the acquired lease remain, but no started marker
+    // and no committed success exist.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(true);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(readContributionStartedReceipts(fixture_.home, conversationId)).toHaveLength(0);
+
+    // A fresh registry has no handle and cannot claim success.
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    expect(restarted.startedContribution(conversationId, actor.actionId)).toBeUndefined();
+    const error = await restarted.spawn(spawnInput(actor, operation)).catch((value: unknown) => value);
+    expect(error).toBeInstanceOf(ContributionError);
+    if (error instanceof ContributionError) expect(error.code).toBe("contribution-unknown");
+
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: restarted,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("uninspectable");
+  });
+
+  test("a winner crash between the durable delegate start and the started marker still never settles without the marker", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "started-crash" });
+
+    const crashedRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      onDelegateStarted: () => {
+        throw new Error("simulated winner crash after the durable delegate start");
+      },
+    });
+    await expect(crashedRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
+
+    // The durable delegate start DID commit: the exact cross-link verifies.
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    const reservation = JSON.parse(readFileSync(join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `spawn-${actor.actionId}.json`,
+    ), "utf8")) as Record<string, unknown>;
+    const batchId = String(reservation.batchId);
+    const link = timeline.durableStartLinkSync(
+      conversationId,
+      contributionPreparedBatchId(conversationId, batchId),
+    );
+    expect(link?.checkpointDigest).toBeString();
+
+    // ...but without a started marker, no reader may settle the action.
+    expect(existsSync(join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `started-${actor.actionId}.json`,
+    ))).toBe(false);
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const error = await restarted.spawn(spawnInput(actor, operation)).catch((value: unknown) => value);
+    expect(error).toBeInstanceOf(ContributionError);
+    if (error instanceof ContributionError) expect(error.code).toBe("contribution-unknown");
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: restarted,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("uninspectable");
+
+    // Let the crashed winner's already-started delegate reach its terminal
+    // settlement before the fixture teardown.
+    await waitForBatchSettled(
+      timeline,
+      conversationId,
+      contributionPreparedBatchId(conversationId, batchId),
+    );
+  });
+
+  test("a winner crash after the started marker publishes: reconnect settles from the committed record", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "marker-crash" });
+
+    const crashedRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      onStartedMarkerPublished: () => {
+        throw new Error("simulated winner crash after the started marker");
+      },
+    });
+    await expect(crashedRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
+
+    // The started marker with its verified cross-links is the committed
+    // started record: a reconnect converges on the winner receipt and the
+    // host settles, without starting a second worker.
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const converged = await restarted.spawn(spawnInput(actor, operation));
+    expect(converged.key).toBe("marker-crash");
+    expect(restarted.startedContribution(conversationId, actor.actionId)).toBeUndefined();
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: restarted,
+    });
+    const lookup = reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    });
+    expect(lookup.standing).toBe("settled");
+    if (lookup.standing === "settled") {
+      expect(lookup.receipt.taskId).toBe(fixture_.taskId);
+      expect(lookup.receipt.evidenceRefs[0]).toContain(`started-${actor.actionId}.json`);
+    }
+
+    // Let the crashed winner's delegate reach its terminal settlement
+    // before the fixture teardown.
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    const winnerBatchId = await firstPreparedBatchId(timeline, conversationId);
+    expect(winnerBatchId).toBeString();
+    if (winnerBatchId !== undefined) {
+      await waitForBatchSettled(timeline, conversationId, winnerBatchId);
+    }
+  });
+
+  test("a marker link visible while the directory fsync fails yields unknown to every reader and success to none", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "publish-race" });
+
+    const loserRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    let loserSpawn: Promise<unknown> | undefined;
+    let directorySyncs = 0;
+    const failingRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      atomicPublish: {
+        syncDirectory: () => {
+          directorySyncs += 1;
+          if (directorySyncs === 2) {
+            // The started marker is already hard-linked at this point: a
+            // concurrent reader must observe the in-flight publication as
+            // unknown (the unremoved temporary marks it uncommitted), never
+            // success.
+            loserSpawn = loserRegistry.spawn(spawnInput(actor, operation)).catch((value: unknown) => value);
+            throw new Error("simulated directory fsync failure");
+          }
+        },
+      },
+    });
+
+    // The winner's marker publication fails after the link; the loser
+    // observes in-flight evidence and yields unknown.
+    await expect(failingRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
+    const loserError = await loserSpawn!;
+    expect(loserError).toBeInstanceOf(ContributionError);
+    if (loserError instanceof ContributionError) {
+      expect(loserError.code).toBe("contribution-unknown");
+    }
+
+    // Let the winner's canceled delegate reach its terminal settlement so
+    // the two timeline writers cannot interleave before the re-claim.
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    const winnerBatchId = await firstPreparedBatchId(timeline, conversationId);
+    if (winnerBatchId !== undefined) {
+      await waitForBatchSettled(timeline, conversationId, winnerBatchId);
+    }
+
+    // The winner retracted the marker and the reservation: no committed
+    // started record remains and the action is unclaimed, never settled.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: loserRegistry,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("absent");
+
+    // With the claim retracted, a plain spawn succeeds normally.
+    const receipt = await loserRegistry.spawn(spawnInput(actor, operation));
+    expect(receipt.key).toBe("publish-race");
+    await waitFor(async () => {
+      const projections = await loserRegistry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "the re-claimed contribution settles");
+  });
+
+  test("an unconfirmed publication cleanup keeps the started marker uncommitted for every reader", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "cleanup-pending" });
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const receipt = await registry.spawn(spawnInput(actor, operation));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "the contribution settles");
+
+    // A leftover publication temporary (an unconfirmed cleanup) makes the
+    // marker uncommitted for every reader: a fresh registry refuses success.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    writeFileSync(join(directory, `started-${actor.actionId}.json.tmp-leftover`), "partial", "utf8");
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const error = await restarted.spawn(spawnInput(actor, operation)).catch((value: unknown) => value);
+    expect(error).toBeInstanceOf(ContributionError);
+    if (error instanceof ContributionError) expect(error.code).toBe("contribution-unknown");
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: restarted,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("uninspectable");
+    expect(receipt.batchId).toBeString();
+  });
+
   test("a reservation durability failure publishes no claim and returns no success", async () => {
     const fixture_ = fixture();
     const conversationId = randomUUID();
@@ -876,7 +1174,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(),
       atomicPublish: { syncFile: () => { throw new Error("fsync seam failed"); } },
     });
-    expect(() => fileFailing.spawn(spawnInput(actor, operation))).toThrow();
+    await expect(fileFailing.spawn(spawnInput(actor, operation))).rejects.toThrow();
     const directory = contributionStateDirectory(fixture_.home, conversationId);
     expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
     expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
@@ -888,7 +1186,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(),
       atomicPublish: { syncDirectory: () => { throw new Error("directory fsync seam failed"); } },
     });
-    expect(() => dirFailing.spawn(spawnInput(actor, operation))).toThrow();
+    await expect(dirFailing.spawn(spawnInput(actor, operation))).rejects.toThrow();
     expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
     expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
 
@@ -906,7 +1204,7 @@ describe("conversation temporary contributions", () => {
         syncDirectory: () => ordered.push("directory"),
       },
     });
-    const receipt = orderedRegistry.spawn(spawnInput(actor, operation));
+    const receipt = await orderedRegistry.spawn(spawnInput(actor, operation));
     expect(receipt.batchId).toBeString();
     expect(ordered).toEqual(["file", "directory", "file", "directory"]);
     await waitFor(async () => {
@@ -923,7 +1221,7 @@ describe("conversation temporary contributions", () => {
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
     const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
-    const receipt = registry.spawn(spawnInput(
+    const receipt = await registry.spawn(spawnInput(
       actor,
       spawnOperation({ key: "cli-writer", effectKind: "effectful" }),
     ));
@@ -1032,7 +1330,7 @@ describe("conversation temporary contributions", () => {
     const replacementRegistry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(),
     });
-    const replacement = replacementRegistry.spawn(spawnInput(
+    const replacement = await replacementRegistry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "cli-replacement", effectKind: "effectful" }),
     ));
@@ -1053,20 +1351,20 @@ describe("conversation temporary contributions", () => {
     await seedTaskAction(fixture_.home, conversationId, fixture_);
 
     // A live (not terminally settled) dependency is refused.
-    registry.spawn(spawnInput(
+    await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "dep-live" }),
     ));
-    expect(() => registry.spawn(spawnInput(
+    await expect(registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "dep-on-live", dependsOn: ["dep-live"] }),
-    ))).toThrowError(ContributionError);
+    ))).rejects.toThrowError(ContributionError);
 
     // An unknown dependency with no current contribution is refused.
-    expect(() => registry.spawn(spawnInput(
+    await expect(registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "dep-on-unknown", dependsOn: ["never-formed"] }),
-    ))).toThrowError(ContributionError);
+    ))).rejects.toThrowError(ContributionError);
 
     // Once the dependency terminally settles, a dependent contribution is
     // admitted with the exact settled key in its delegate admission evidence.
@@ -1075,7 +1373,7 @@ describe("conversation temporary contributions", () => {
       const projections = await registry.listContributions(conversationId);
       return projections.every((entry) => entry.state === "settled");
     }, "dependency settles");
-    const dependentReceipt = registry.spawn(spawnInput(
+    const dependentReceipt = await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "dep-on-settled", dependsOn: ["dep-live"] }),
     ));
@@ -1103,10 +1401,10 @@ describe("conversation temporary contributions", () => {
       nextActor: "agent",
     });
     expect(corrected.task.revision).toBe(fixture_.taskRevision + 1);
-    expect(() => registry.spawn(spawnInput(
+    await expect(registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "dep-on-stale", dependsOn: ["dep-live"] }),
-    ))).toThrowError(ContributionError);
+    ))).rejects.toThrowError(ContributionError);
   });
 
   test("a dependency terminal line counts only after the timeline durability barrier is joined", async () => {
@@ -1126,7 +1424,7 @@ describe("conversation temporary contributions", () => {
     // Settle one dependency, then admit a dependent: the synchronous
     // eligibility check must join the timeline writer durability boundary on
     // every timeline file it reads before accepting the terminal line.
-    registry.spawn(spawnInput(
+    await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "barrier-dep" }),
     ));
@@ -1134,7 +1432,7 @@ describe("conversation temporary contributions", () => {
       const projections = await registry.listContributions(conversationId);
       return projections.every((entry) => entry.state === "settled");
     }, "dependency settles");
-    registry.spawn(spawnInput(
+    await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "barrier-dependent", dependsOn: ["barrier-dep"] }),
     ));
@@ -1146,10 +1444,10 @@ describe("conversation temporary contributions", () => {
     // A barrier that cannot be joined (fsync-pending equivalent) refuses the
     // dependency fail-closed instead of accepting unverified settlement.
     failBarrier = true;
-    expect(() => registry.spawn(spawnInput(
+    await expect(registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "barrier-refused", dependsOn: ["barrier-dep"] }),
-    ))).toThrowError(ContributionError);
+    ))).rejects.toThrowError(ContributionError);
   });
 
   test("two concurrent processes converging on one effectful spawn share one worker, one lease owner, and one identical receipt", async () => {
@@ -1222,7 +1520,7 @@ describe("conversation temporary contributions", () => {
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
     const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
-    const receipt = registry.spawn(spawnInput(
+    const receipt = await registry.spawn(spawnInput(
       actor,
       spawnOperation({ key: "stuck-writer", effectKind: "effectful" }),
     ));
@@ -1282,7 +1580,7 @@ describe("conversation temporary contributions", () => {
     const replacementRegistry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(),
     });
-    const replacement = replacementRegistry.spawn(spawnInput(
+    const replacement = await replacementRegistry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "replacement-writer", effectKind: "effectful" }),
     ));
@@ -1301,7 +1599,7 @@ describe("conversation temporary contributions", () => {
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
     const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
-    const receipt = registry.spawn(spawnInput(
+    const receipt = await registry.spawn(spawnInput(
       actor,
       spawnOperation({ key: "crash-writer", effectKind: "effectful" }),
     ));
@@ -1378,7 +1676,7 @@ describe("conversation temporary contributions", () => {
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
     const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
-    const receipt = first.spawn(spawnInput(
+    const receipt = await first.spawn(spawnInput(
       actor,
       spawnOperation({ key: "crash-writer", effectKind: "effectful" }),
     ));
@@ -1419,7 +1717,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(),
     });
     const actor = await seededActor(fixture_);
-    const receipt = registry.spawn(spawnInput(actor, spawnOperation()));
+    const receipt = await registry.spawn(spawnInput(actor, spawnOperation()));
     await waitFor(async () => {
       const projections = await registry.listContributions(actor.conversationId);
       return projections.every((entry) => entry.state === "settled");
@@ -1456,7 +1754,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(() => gated.driver),
     });
     const actor = await seededActor(fixture_);
-    const receipt = registry.spawn(spawnInput(actor, spawnOperation()));
+    const receipt = await registry.spawn(spawnInput(actor, spawnOperation()));
     const { conversationId } = actor;
 
     // The spawn receipt is durable immediately, but the delegate timeline
@@ -1502,7 +1800,7 @@ describe("conversation temporary contributions", () => {
     });
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
-    const receipt = registry.spawn(spawnInput(
+    const receipt = await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation(),
     ));
@@ -1532,7 +1830,7 @@ describe("conversation temporary contributions", () => {
     // fresh result is readable; the host derives the corrected revision from
     // the canonical source without the coordinator supplying one.
     const replacement = spawnOperation({ key: "replacement" });
-    const replacementReceipt = registry.spawn(spawnInput(
+    const replacementReceipt = await registry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       replacement,
     ));
@@ -1552,7 +1850,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(slowContributionDriver),
     });
     const actor = await seededActor(fixture_);
-    const receipt = registry.spawn({
+    const receipt = await registry.spawn({
       ...actor,
       operation: spawnOperation({ key: "slow-read" }) as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     });
@@ -1597,7 +1895,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(failingContributionDriver),
     });
     const actor = await seededActor(fixture_);
-    const receipt = registry.spawn(spawnInput(actor, spawnOperation({ key: "failed-read" })));
+    const receipt = await registry.spawn(spawnInput(actor, spawnOperation({ key: "failed-read" })));
     await waitFor(async () => {
       const projections = await registry.listContributions(actor.conversationId);
       return projections.every((entry) => entry.state !== "live");
@@ -1617,7 +1915,7 @@ describe("conversation temporary contributions", () => {
     });
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
-    const receipt = firstRegistry.spawn(spawnInput(
+    const receipt = await firstRegistry.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation(),
     ));
@@ -1635,7 +1933,7 @@ describe("conversation temporary contributions", () => {
     const slowFirst = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(slowContributionDriver),
     });
-    const slowReceipt = slowFirst.spawn(spawnInput(
+    const slowReceipt = await slowFirst.spawn(spawnInput(
       { conversationId, turnId: randomUUID(), actionId: randomUUID() },
       spawnOperation({ key: "restart-unknown" }),
     ));
@@ -1664,7 +1962,7 @@ describe("conversation temporary contributions", () => {
       catalog: fakeCatalog(),
     });
     const actor = await seededActor(fixture_);
-    const receipt = registry.spawn({
+    const receipt = await registry.spawn({
       ...actor,
       operation: spawnOperation() as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     });
@@ -1684,13 +1982,13 @@ describe("conversation temporary contributions", () => {
     });
     const conversationId = randomUUID();
     await seedTaskAction(fixture_.home, conversationId, fixture_);
-    const one = registry.spawn({
+    const one = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
       operation: spawnOperation({ key: "no-vote-one" }) as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     });
-    const two = registry.spawn({
+    const two = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
@@ -2013,7 +2311,7 @@ describe("conversation runtime contribution wiring", () => {
     });
     const conversationId = randomUUID();
     await seedTaskAction(runtimeFixture.home, conversationId, runtimeFixture);
-    const receipt = registry.spawn({
+    const receipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
@@ -2081,7 +2379,7 @@ describe("conversation runtime contribution wiring", () => {
     });
     const conversationId = randomUUID();
     await seedTaskAction(runtimeFixture.home, conversationId, runtimeFixture);
-    const receipt = registry.spawn({
+    const receipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),
@@ -2167,7 +2465,7 @@ describe("conversation runtime contribution wiring", () => {
     });
     const conversationId = randomUUID();
     await seedTaskAction(runtimeFixture.home, conversationId, runtimeFixture);
-    const receipt = registry.spawn({
+    const receipt = await registry.spawn({
       conversationId,
       turnId: randomUUID(),
       actionId: randomUUID(),

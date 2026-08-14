@@ -258,7 +258,7 @@ describe("conversation execution carrier start", () => {
   test("a catalog-backed task_continue starts at most one carrier with exact identity lineage", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -324,7 +324,7 @@ describe("conversation execution carrier start", () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
     const operation = continueOperation(current);
-    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
     const carrierId = receipt.carrierId!;
 
     try {
@@ -342,7 +342,7 @@ describe("conversation execution carrier start", () => {
   test("a second action for the same Task is refused by the exact Worktree lease while a carrier runs", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -450,7 +450,7 @@ describe("conversation execution carrier activity and terminal settlement", () =
   test("owner-backed trace activity is attributable to the exact Task, attempt, action, and carrier", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, () => fastDriver(20));
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -472,7 +472,7 @@ describe("conversation execution carrier activity and terminal settlement", () =
   test("a failing worker settles runner-failed with retained terminal evidence", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, () => failingDriver());
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -500,7 +500,7 @@ describe("conversation execution carrier stop", () => {
   test("work_control stop targets only the exact retained live carrier with a durable receipt and terminal settlement", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -516,7 +516,7 @@ describe("conversation execution carrier stop", () => {
       actionId: randomUUID(),
       operation: { kind: "work_control" as const, carrierId: carrierId, control: "stop" as const },
     };
-    const controlReceipt = host.executeOperation(control);
+    const controlReceipt = await host.executeOperation(control);
     expect(controlReceipt.taskId).toBe(current.taskId);
     expect(controlReceipt.evidenceRefs).toEqual([
       `state/task-attempts/${carrierId}/control.json`,
@@ -554,7 +554,7 @@ describe("conversation execution carrier stop", () => {
   test("pause, resume, and recover are not owned by an ordinary Task carrier", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -582,7 +582,7 @@ describe("conversation execution carrier stop", () => {
   test("a distinct stop action while a stop is already requested is rejected and never adopts the first receipt", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -619,7 +619,7 @@ describe("conversation execution carrier stop", () => {
     expect(controlFile.requestedBy).toMatchObject({ actionId: stopA.actionId });
 
     // Exact replay of the same stop action reuses the same durable receipt.
-    const replay = host.executeOperation(stopA);
+    const replay = await host.executeOperation(stopA);
     expect(replay.evidenceRefs).toEqual([
       `state/task-attempts/${carrierId}/control.json`,
       `state/task-attempts/${carrierId}/settlement.json`,
@@ -633,7 +633,7 @@ describe("conversation execution carrier stop", () => {
     for (const retryWith of ["same", "new"] as const) {
       const current = fixture();
       const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-      const receipt = host.executeOperation({
+      const receipt = await host.executeOperation({
         conversationId,
         turnId,
         actionId,
@@ -679,7 +679,7 @@ describe("conversation execution carrier stop", () => {
   test("stop of an already settled carrier is refused visibly", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -713,7 +713,7 @@ describe("conversation execution carrier reconnect truthfulness", () => {
   test("a retained started attempt without a retained runtime handle projects liveness unknown, never live", async () => {
     const current = fixture();
     const first = carrierParts(current, slowDriver);
-    const receipt = first.host.executeOperation({
+    const receipt = await first.host.executeOperation({
       conversationId: first.conversationId,
       turnId: first.turnId,
       actionId: first.actionId,
@@ -768,7 +768,7 @@ describe("conversation execution carrier reconciliation", () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
     const operation = continueOperation(current);
-    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
     const carrierId = receipt.carrierId!;
 
     const found = host.findCanonicalReceipt({ conversationId, actionId, operation });
@@ -794,7 +794,7 @@ describe("conversation execution carrier reconciliation", () => {
   test("finds the committed stop by its causal control receipt", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -828,7 +828,7 @@ describe("conversation execution carrier reconciliation", () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
     const operation = continueOperation(current);
-    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
     const carrierId = receipt.carrierId!;
 
     // The transport-level reconcile path: settled receipt found, then a
@@ -889,7 +889,7 @@ describe("conversation execution carrier unresolved terminal evidence", () => {
       current,
       () => spoilingSettlementDriver(current.home),
     );
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -920,7 +920,7 @@ describe("conversation execution carrier unresolved terminal evidence", () => {
       current,
       () => leaseSpoilingDriver(current),
     );
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -947,7 +947,7 @@ describe("conversation execution carrier bounded runtime retention", () => {
     const started: Array<{ carrierId: string; actionId: string }> = [];
     for (let index = 0; index < 3; index += 1) {
       const actionId = randomUUID();
-      const receipt = host.executeOperation({
+      const receipt = await host.executeOperation({
         conversationId,
         turnId,
         actionId,
@@ -986,7 +986,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
     const operation = continueOperation(current);
-    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
     const carrierId = receipt.carrierId!;
     await until(() =>
       registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
@@ -1011,7 +1011,7 @@ describe("conversation execution carrier strict evidence standing", () => {
       current,
       () => leaseSpoilingDriver(current),
     );
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1067,7 +1067,7 @@ describe("conversation execution carrier strict evidence standing", () => {
   test("a control receipt that fails a cross-link against its owning attempt is uninspectable, never settled", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1114,7 +1114,7 @@ describe("conversation execution carrier strict evidence standing", () => {
   test("control reconciliation distinguishes provable absence from uninspectable evidence", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1182,7 +1182,7 @@ describe("conversation execution carrier strict evidence standing", () => {
   test("a final record whose embedded input differs from the immutable CellInput makes standing unknown, never settled", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1211,7 +1211,7 @@ describe("conversation execution carrier strict evidence standing", () => {
   test("a final record whose driver adapter differs from the attempt execution form is invalid", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1240,7 +1240,7 @@ describe("conversation execution carrier strict evidence standing", () => {
   test("a retained attempt whose workspace root is no longer a Git Worktree projects unknown, never throwing", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1267,7 +1267,7 @@ describe("conversation execution carrier strict evidence standing", () => {
   test("a control-stopped settlement that omits the exact retained final evidence is invalid", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,
@@ -1365,7 +1365,7 @@ describe("conversation context projection", () => {
     const current = fixture();
     const { registry, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
     const host = createConversationTaskOperationHost(current.home, { carrierRegistry: registry });
-    const receipt = host.executeOperation({
+    const receipt = await host.executeOperation({
       conversationId,
       turnId,
       actionId,

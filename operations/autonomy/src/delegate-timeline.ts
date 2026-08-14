@@ -729,6 +729,34 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
   }
 
   /**
+   * The exact durable start cross-link of one prepared AND dispatched batch,
+   * joined to the durability boundary: the prepared checkpoint digest and
+   * the child timeline identity, or undefined when the batch was never
+   * prepared. A prepared batch without an exact dispatched event throws, so
+   * a caller can never treat a merely reserved batch as started.
+   */
+  durableStartLinkSync(
+    parentTimelineId: string,
+    batchId: string,
+  ): { checkpointDigest: string; childTimelineId: string } | undefined {
+    const parent = this.readTimelineSync(parentTimelineId);
+    const prepared = findPrepared(parent, batchId);
+    if (prepared === undefined) return undefined;
+    const checkpoint = parseCheckpoint(prepared.data.checkpoint);
+    const child = prepared.data.children[0];
+    if (child === undefined) {
+      throw new Error(`delegate batch ${batchId} has no child references`);
+    }
+    const events = this.readTimelineSync(child.timelineId);
+    requireOpened(events, checkpoint, child, prepared.data.checkpointDigest);
+    requireDispatched(events, checkpoint, child, prepared.data.checkpointDigest);
+    return {
+      checkpointDigest: prepared.data.checkpointDigest,
+      childTimelineId: child.timelineId,
+    };
+  }
+
+  /**
    * Synchronously verify one exact child's durable terminal settlement, for
    * an effect that must derive a canonical fact from the timeline immediately
    * before acting. Reads take no writer lock and drop an incomplete tail

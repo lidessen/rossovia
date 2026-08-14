@@ -31,6 +31,7 @@ import {
 } from "../../../autonomy/src/delegate-admission";
 import {
   startDelegateBatch,
+  type DelegateBatchHandle,
   type DelegateResultProjection,
 } from "../../../autonomy/src/delegate-loop";
 import { FileMissionTimeline } from "../../../autonomy/src/delegate-timeline";
@@ -229,12 +230,12 @@ export interface ConversationContributionRegistry {
    * derived execution selection is unregistered, unobserved, or dirty, and
    * refuses overlapping effectful writers.
    */
-  spawn(input: {
-    readonly conversationId: string;
-    readonly turnId: string;
-    readonly actionId: string;
-    readonly operation: ContributionSpawnOperation;
-  }): ContributionStartReceipt;
+    spawn(input: {
+      readonly conversationId: string;
+      readonly turnId: string;
+      readonly actionId: string;
+      readonly operation: ContributionSpawnOperation;
+    }): Promise<ContributionStartReceipt>;
   /** The exact retained live contribution for one (batchId, key), when this process started it. */
   contribution(batchId: string, key: string): ContributionHandle | undefined;
   /** All contributions this process retains live handles for. */
@@ -327,6 +328,15 @@ export interface ConversationContributionRegistryOptions {
    * intact.
    */
   readonly onReservationPublished?: () => void;
+  /**
+   * Test-only crash barriers at the exact durable-state boundaries of a
+   * started spawn: after handle registration, after the durable delegate
+   * prepare+dispatch, and after the started marker publication. A throwing
+   * seam simulates the winner exiting at that boundary without cleanup.
+   */
+  readonly onHandleRegistered?: () => void;
+  readonly onDelegateStarted?: () => void;
+  readonly onStartedMarkerPublished?: () => void;
 }
 
 export function createConversationContributionRegistry(
@@ -397,6 +407,15 @@ const StartedReceiptSchema = z.object({
   actionId: z.string().uuid(),
   sourceRef: z.string().min(1),
   startedAt: z.string().min(1),
+  /**
+   * The exact durable delegate start cross-link: the prepared batch
+   * identity and its checkpoint digest, which canonical readers re-verify
+   * against the timeline before accepting the marker as a committed start.
+   */
+  start: z.object({
+    preparedBatchId: z.string().min(1),
+    checkpointDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
 }).strict();
 type StartedReceipt = z.infer<typeof StartedReceiptSchema>;
 
@@ -471,6 +490,9 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   private readonly syncFile: (path: string) => void;
   private readonly syncDirectory: (path: string) => void;
   private readonly onReservationPublished: (() => void) | undefined;
+  private readonly onHandleRegistered: (() => void) | undefined;
+  private readonly onDelegateStarted: (() => void) | undefined;
+  private readonly onStartedMarkerPublished: (() => void) | undefined;
 
   constructor(
     home: string,
@@ -494,14 +516,17 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     this.syncFile = options.atomicPublish?.syncFile ?? fsyncFileDurability;
     this.syncDirectory = options.atomicPublish?.syncDirectory ?? fsyncFileDurability;
     this.onReservationPublished = options.onReservationPublished;
+    this.onHandleRegistered = options.onHandleRegistered;
+    this.onDelegateStarted = options.onDelegateStarted;
+    this.onStartedMarkerPublished = options.onStartedMarkerPublished;
   }
 
-  spawn(input: {
+  async spawn(input: {
     readonly conversationId: string;
     readonly turnId: string;
     readonly actionId: string;
     readonly operation: ContributionSpawnOperation;
-  }): ContributionStartReceipt {
+  }): Promise<ContributionStartReceipt> {
     const operation = input.operation;
     const actionKey = committedActionKey(input.conversationId, input.actionId);
     const existing = this.startedByCommittedAction.get(actionKey);
@@ -620,6 +645,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     });
 
     let reservationPublished = false;
+    let reservationRef = "";
     for (let attempt = 0; attempt < RESERVATION_PUBLISH_ATTEMPTS; attempt += 1) {
       try {
         // The committed-action reservation is the FIRST cross-process atomic
@@ -627,7 +653,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         // reservation — including, for effectful work, the exact lease
         // binding reserved before acquisition — is durably published so an
         // EEXIST loser always reads a fully written claim.
-        this.publishSpawnReservation({
+        reservationRef = this.publishSpawnReservation({
           conversationId: input.conversationId,
           turnId: input.turnId,
           actionId: input.actionId,
@@ -648,8 +674,15 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         if (!isAlreadyExists(error)) {
           // A durability or publication failure retracts the just-published
           // (or half-published) reservation so no claim without proven
-          // durability remains, then fails visibly.
-          this.retractSpawnReservation(input.conversationId, input.actionId);
+          // durability remains, then fails visibly; a failed retraction is
+          // surfaced, never swallowed.
+          const retractionFailure = this.retractSpawnReservation(input.conversationId, input.actionId);
+          if (retractionFailure !== undefined) {
+            throw new ContributionError(
+              "source-unavailable",
+              `${errorMessage(error)}; additionally: ${retractionFailure}`,
+            );
+          }
           throw error;
         }
         // The atomic reservation lost to another process. A fully published
@@ -691,49 +724,13 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         // The reservation lost the exact writer lock: retract the
         // just-published reservation so the refused action leaves no claimed
         // contribution and no started marker, then fail visibly with no
-        // effect.
-        this.retractSpawnReservation(input.conversationId, input.actionId);
-        throw new ContributionError("effect-conflict", errorMessage(error));
+        // effect. A failed retraction is surfaced, never swallowed.
+        const retractionFailure = this.retractSpawnReservation(input.conversationId, input.actionId);
+        throw new ContributionError(
+          "effect-conflict",
+          `${errorMessage(error)}${retractionFailure === undefined ? "" : `; additionally: ${retractionFailure}`}`,
+        );
       }
-    }
-
-    let startedRef: string;
-    try {
-      // The durable started marker is the only record that authorizes
-      // success: it is published only by the reservation winner, after lease
-      // acquisition, and only its durable publication lets the spawn return
-      // a ContributionStartReceipt.
-      startedRef = this.publishStartedReceipt({
-        conversationId: input.conversationId,
-        turnId: input.turnId,
-        actionId: input.actionId,
-        batchId,
-        key: operation.key,
-        cellId: cell.id,
-        card,
-        effectKind: operation.effectKind,
-        task,
-        sourceRevision: tasks.sourceRevision,
-      });
-    } catch (error) {
-      // A started marker that cannot be durably published is never success:
-      // release the exact lease (never swallowed), retract the reservation
-      // and any half-published marker, and fail visibly.
-      if (lease !== undefined) {
-        try {
-          releaseWorktreeLease(lease);
-        } catch (releaseError) {
-          throw new ContributionError(
-            "effect-conflict",
-            `the started marker could not be durably published (${errorMessage(error)}), and the exact task-run lease `
-            + `${lease.path} could not be released (${errorMessage(releaseError)}); the retained lease is durable `
-            + "reconcile-required evidence recoverable through reconcileLease once the owner process is verifiably absent",
-          );
-        }
-      }
-      this.retractSpawnReservation(input.conversationId, input.actionId);
-      this.retractStartedReceipt(input.conversationId, input.actionId);
-      throw error;
     }
 
     const handle = new WorkbenchContributionHandle({
@@ -752,13 +749,81 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         actionId: input.actionId,
       },
       home: this.home,
-      spawnRef: startedRef,
+      spawnRef: reservationRef,
       ...(lease === undefined ? {} : { lease }),
     });
     this.handles.set(batchId, handle);
     this.startedByCommittedAction.set(actionKey, batchId);
+
+    if (this.onHandleRegistered !== undefined) {
+      // Crash barrier: a winner that exits here leaves the reservation, the
+      // lease, and the registered handle, but no started evidence.
+      this.onHandleRegistered();
+    }
+
+    let delegate: DelegateBatchHandle;
+    try {
+      // The reservation winner durably prepares and dispatches the exact
+      // DelegateLoop batch through the shared startDelegateBatch owner
+      // BEFORE any canonical started evidence may commit.
+      delegate = await this.startContributionDelegate(handle, batch, input.conversationId);
+    } catch (error) {
+      throw this.failStartedSpawn(input, actionKey, batchId, lease, undefined, error);
+    }
+
+    let startLink: { checkpointDigest: string; childTimelineId: string } | undefined;
+    try {
+      startLink = this.timeline.durableStartLinkSync(
+        input.conversationId,
+        contributionPreparedBatchId(input.conversationId, batchId),
+      );
+    } catch (error) {
+      throw this.failStartedSpawn(input, actionKey, batchId, lease, delegate, error);
+    }
+    if (startLink === undefined) {
+      throw this.failStartedSpawn(input, actionKey, batchId, lease, delegate,
+        new Error("the delegate batch left no durable prepared start evidence"));
+    }
+
+    if (this.onDelegateStarted !== undefined) {
+      // Crash barrier: a winner that exits here leaves the reservation, the
+      // lease, and the durable delegate start, but no started marker.
+      this.onDelegateStarted();
+    }
+
+    let startedRef: string;
+    try {
+      // The durable started marker is the only record that authorizes
+      // success: it commits only after the durable delegate start, and it
+      // carries the exact start cross-link canonical readers re-verify.
+      startedRef = this.publishStartedReceipt({
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+        batchId,
+        key: operation.key,
+        cellId: cell.id,
+        card,
+        effectKind: operation.effectKind,
+        task,
+        sourceRevision: tasks.sourceRevision,
+        start: {
+          preparedBatchId: contributionPreparedBatchId(input.conversationId, batchId),
+          checkpointDigest: startLink.checkpointDigest,
+        },
+      });
+    } catch (error) {
+      throw this.failStartedSpawn(input, actionKey, batchId, lease, delegate, error);
+    }
+
+    if (this.onStartedMarkerPublished !== undefined) {
+      // Crash barrier: a winner that exits here leaves the committed started
+      // marker with its verified cross-links, which reconnect settles from.
+      this.onStartedMarkerPublished();
+    }
+
     conversationKeys.add(operation.key);
-    void this.runContribution(handle, batch, input.conversationId);
+    void this.runContribution(handle, delegate, input.conversationId);
     return {
       batchId,
       key: operation.key,
@@ -787,6 +852,56 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   }
 
   /**
+   * The durable started marker for one exact committed action, read from
+   * the action-keyed marker path with the publication commit boundary
+   * joined: the directory fsync confirms the marker link is durable before
+   * the read accepts it, and the strict reservation + durable delegate
+   * start cross-links must verify. An in-flight, unverifiable, or absent
+   * marker is never a committed started record.
+   */
+  private readStartedReceiptFor(conversationId: string, actionId: string): StartedReceipt | undefined {
+    const directory = this.conversationDirectory(conversationId);
+    const path = join(directory, `started-${actionId}.json`);
+    let raw: string;
+    try {
+      raw = readFileSync(path, "utf8");
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw new ContributionError(
+        "source-unavailable",
+        `the committed action ${actionId} holds an unreadable started marker: ${errorMessage(error)}`,
+      );
+    }
+    try {
+      this.syncDirectory(directory);
+    } catch (error) {
+      throw new ContributionError(
+        "source-unavailable",
+        `the started marker's publication durability boundary cannot be joined: ${errorMessage(error)}`,
+      );
+    }
+    let started: StartedReceipt;
+    try {
+      started = StartedReceiptSchema.parse(JSON.parse(raw));
+    } catch (error) {
+      throw new ContributionError(
+        "source-unavailable",
+        `the committed action ${actionId} holds an invalid started marker: ${errorMessage(error)}`,
+      );
+    }
+    const reason = verifyContributionStartedMarker(this.home, directory, started, {
+      syncDirectory: this.syncDirectory,
+    });
+    if (reason !== undefined) {
+      throw new ContributionError(
+        "contribution-unknown",
+        `the started marker for action ${actionId} is not a committed started record: ${reason}`,
+      );
+    }
+    return started;
+  }
+
+  /**
    * Bounded convergence on one committed action's durable records: a fully
    * published started marker converges on the winner's strict receipt; a
    * reservation without a marker may still be mid-publication by a live
@@ -801,13 +916,22 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       readonly actionId: string;
     },
     operation: ContributionSpawnOperation,
-  ): 
+  ):
     | { readonly standing: "converged"; readonly receipt: ContributionStartReceipt }
     | { readonly standing: "unclaimed" }
     | { readonly standing: "refused"; readonly error: ContributionError } {
     const directory = this.conversationDirectory(input.conversationId);
     for (let attempt = 0; attempt < CONVERGENCE_MAX_POLLS; attempt += 1) {
-      const started = readStartedReservation(directory, input.actionId);
+      let started: StartedReceipt | undefined;
+      try {
+        started = this.readStartedReceiptFor(input.conversationId, input.actionId);
+      } catch (error) {
+        if (error instanceof ContributionError && error.code === "contribution-unknown") {
+          // An in-flight or unverifiable marker: keep polling bounded.
+        } else {
+          throw error;
+        }
+      }
       if (started !== undefined) {
         const mismatch = spawnReceiptMismatch(started, input, operation);
         if (mismatch === undefined) {
@@ -1376,43 +1500,102 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     return { batch, cell };
   }
 
-  private async runContribution(
+  private async startContributionDelegate(
     handle: WorkbenchContributionHandle,
     batch: PreparedDelegateBatch,
     conversationId: string,
+  ): Promise<DelegateBatchHandle> {
+    return await startDelegateBatch(checkpointFor(batch, conversationId), {
+      timeline: this.timeline,
+      workerCatalog: this.catalog,
+      concurrency: 1,
+      signal: handle.signal,
+      executionObserver: {
+        prepare: async () => {},
+        start: async () => {},
+        rejectBeforeStart: async () => {},
+        settle: async () => {},
+        uncertain: async () => {},
+        trace: (_checkpoint, event) => handle.observeTrace(event),
+      },
+    });
+  }
+
+  /**
+   * The exact failure finalization of a spawn whose reservation and lease
+   * were already acquired but whose delegate start or started marker never
+   * committed: unregister the handle, cancel any started delegate, release
+   * the exact lease (never swallowed), retract the reservation and any
+   * half-published marker, and surface every cleanup failure visibly.
+   */
+  private failStartedSpawn(
+    input: {
+      readonly conversationId: string;
+      readonly actionId: string;
+    },
+    actionKey: string,
+    batchId: string,
+    lease: TaskRunLease | undefined,
+    delegate: DelegateBatchHandle | undefined,
+    error: unknown,
+  ): ContributionError {
+    const failures: string[] = [];
+    delegate?.cancel();
+    this.startedByCommittedAction.delete(actionKey);
+    this.handles.delete(batchId);
+    if (lease !== undefined) {
+      try {
+        releaseWorktreeLease(lease);
+      } catch (releaseError) {
+        failures.push(
+          `the exact task-run lease ${lease.path} could not be released: ${errorMessage(releaseError)}; `
+          + "the retained lease is durable reconcile-required evidence recoverable through reconcileLease "
+          + "once the owner process is verifiably absent",
+        );
+      }
+    }
+    const reservationFailure = this.retractSpawnReservation(input.conversationId, input.actionId);
+    if (reservationFailure !== undefined) failures.push(reservationFailure);
+    const markerFailure = this.retractStartedReceipt(input.conversationId, input.actionId);
+    if (markerFailure !== undefined) failures.push(markerFailure);
+    if (failures.length === 0) {
+      return error instanceof ContributionError
+        ? error
+        : new ContributionError("source-unavailable", errorMessage(error));
+    }
+    return new ContributionError(
+      "effect-conflict",
+      `${errorMessage(error)}; additionally: ${failures.join("; ")}`,
+    );
+  }
+
+  /**
+   * Consume one already-started delegate batch: the settlement mapping runs
+   * against the retained delegate handle that the spawn committed before
+   * returning success; nothing here launches a worker.
+   */
+  private async runContribution(
+    handle: WorkbenchContributionHandle,
+    delegate: DelegateBatchHandle,
+    conversationId: string,
   ): Promise<void> {
     try {
-      await startDelegateBatch(checkpointFor(batch, conversationId), {
-        timeline: this.timeline,
-        workerCatalog: this.catalog,
-        concurrency: 1,
-        signal: handle.signal,
-        executionObserver: {
-          prepare: async () => {},
-          start: async () => {},
-          rejectBeforeStart: async () => {},
-          settle: async () => {},
-          uncertain: async () => {},
-          trace: (_checkpoint, event) => handle.observeTrace(event),
-        },
-      }).then(async (delegate) => {
-        const settlement = await delegate.settled;
-        const outcome = settlement.outcomes[0];
-        // Process settlement, not verification: a settled child produced
-        // evidence; its verification standing stays in the outcome status and
-        // the keyed result receipt (a plain Cell result is unverified).
-        const status: ContributionSettlement["status"] =
-          outcome === undefined || outcome.status === "runner_error" || outcome.status === "failed" ? "failed"
-          : outcome.status === "cancelled" ? "cancelled"
-          : "completed";
-        handle.finishTerminal({
-          status,
-          ...(outcome === undefined ? {} : { outcomeStatus: outcome.status }),
-          evidenceRefs: [
-            handle.spawnRef,
-            evidenceRef(this.home, this.timeline.timelinePath(conversationId)),
-          ],
-        });
+      const settlement = await delegate.settled;
+      const outcome = settlement.outcomes[0];
+      // Process settlement, not verification: a settled child produced
+      // evidence; its verification standing stays in the outcome status and
+      // the keyed result receipt (a plain Cell result is unverified).
+      const status: ContributionSettlement["status"] =
+        outcome === undefined || outcome.status === "runner_error" || outcome.status === "failed" ? "failed"
+        : outcome.status === "cancelled" ? "cancelled"
+        : "completed";
+      handle.finishTerminal({
+        status,
+        ...(outcome === undefined ? {} : { outcomeStatus: outcome.status }),
+        evidenceRefs: [
+          handle.spawnRef,
+          evidenceRef(this.home, this.timeline.timelinePath(conversationId)),
+        ],
       });
     } catch (error) {
       if (handle.stopWasRequested() && !handle.hasTerminal()) {
@@ -1444,7 +1627,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     readonly intent: string;
     readonly timelineRef: string;
     readonly worktree: string;
-  }): void {
+  }): string {
     const directory = this.conversationDirectory(input.conversationId);
     mkdirSync(directory, { recursive: true });
     // The reservation is the cross-process claim: its path is keyed by the
@@ -1486,13 +1669,15 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       syncFile: this.syncFile,
       syncDirectory: this.syncDirectory,
     });
+    return evidenceRef(this.home, path);
   }
 
   /**
    * The durable started marker: the only record that authorizes success,
-   * published durably by the reservation winner after lease acquisition and
-   * before the handle registers. Without this marker no loser and no
-   * operation host may return a ContributionStartReceipt or action.settled.
+   * published durably by the reservation winner after the durable delegate
+   * prepare+dispatch, carrying the exact start cross-link canonical readers
+   * re-verify. Without this marker no loser and no operation host may
+   * return a ContributionStartReceipt or action.settled.
    */
   private publishStartedReceipt(input: {
     readonly conversationId: string;
@@ -1505,6 +1690,10 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     readonly effectKind: "read-only" | "effectful";
     readonly task: PrincipalTask;
     readonly sourceRevision: number;
+    readonly start: {
+      readonly preparedBatchId: string;
+      readonly checkpointDigest: string;
+    };
   }): string {
     const directory = this.conversationDirectory(input.conversationId);
     mkdirSync(directory, { recursive: true });
@@ -1524,6 +1713,10 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       actionId: input.actionId,
       sourceRef: taskActionSourceRef(input.conversationId, input.actionId),
       startedAt: this.now(),
+      start: {
+        preparedBatchId: input.start.preparedBatchId,
+        checkpointDigest: input.start.checkpointDigest,
+      },
     });
     publishAtomically(path, value, {
       syncFile: this.syncFile,
@@ -1532,26 +1725,54 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     return evidenceRef(this.home, path);
   }
 
-  /** Retract the reservation this registry just published, after a refused or unproven publish. */
-  private retractSpawnReservation(conversationId: string, actionId: string): void {
+  /**
+   * Retract the reservation this registry just published, after a refused or
+   * unproven publish. Returns a visible cleanup-failure description when the
+   * retraction or its durability confirmation fails; callers never swallow
+   * it.
+   */
+  private retractSpawnReservation(conversationId: string, actionId: string): string | undefined {
     const path = join(this.conversationDirectory(conversationId), `spawn-${actionId}.json`);
+    let existed = false;
     try {
       unlinkSync(path);
-    } catch {
-      // A leftover reservation projects liveness unknown, never live or
-      // settled; the visible failure already surfaced the refusal.
+      existed = true;
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      return `the reservation ${path} could not be retracted: ${errorMessage(error)}`;
     }
+    if (existed) {
+      try {
+        this.syncDirectory(dirname(path));
+      } catch (error) {
+        return `the reservation retraction at ${dirname(path)} cannot be durably confirmed: ${errorMessage(error)}`;
+      }
+    }
+    return undefined;
   }
 
-  /** Retract a half-published started marker after a refused publication. */
-  private retractStartedReceipt(conversationId: string, actionId: string): void {
+  /**
+   * Retract a half-published started marker after a refused publication.
+   * Returns a visible cleanup-failure description; callers never swallow it.
+   */
+  private retractStartedReceipt(conversationId: string, actionId: string): string | undefined {
     const path = join(this.conversationDirectory(conversationId), `started-${actionId}.json`);
+    let existed = false;
     try {
       unlinkSync(path);
-    } catch {
-      // The started-marker publication failure already surfaced; a leftover
-      // marker is only ever the same action's own claim.
+      existed = true;
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      return `the started marker ${path} could not be retracted: ${errorMessage(error)}`;
     }
+    if (existed) {
+      try {
+        this.syncDirectory(dirname(path));
+      } catch (error) {
+        return `the started-marker retraction at ${dirname(path)} cannot be durably confirmed: ${errorMessage(error)}`;
+      }
+    }
+    return undefined;
   }
 
   private readSpawnReceipts(conversationId: string): SpawnReceipt[] {
@@ -1880,31 +2101,49 @@ function readSpawnReservation(directory: string, actionId: string): SpawnReceipt
   }
 }
 
-/**
- * The durable started marker for one exact committed action, read from the
- * action-keyed marker path. Absent means no successful start; an unreadable
- * or invalid marker is a visible source failure, never a guess.
- */
-function readStartedReservation(directory: string, actionId: string): StartedReceipt | undefined {
-  const path = join(directory, `started-${actionId}.json`);
-  let raw: string;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (error) {
-    if (isMissing(error)) return undefined;
-    throw new ContributionError(
-      "source-unavailable",
-      `the committed action ${actionId} holds an unreadable started marker: ${errorMessage(error)}`,
-    );
+export function verifyContributionStartedMarker(
+  home: string,
+  directory: string,
+  started: StartedReceipt,
+  joins: {
+    readonly syncDirectory: (path: string) => void;
+  },
+): string | undefined {
+  const markerFile = `started-${started.actionId}.json`;
+  if (hasUnconfirmedPublishTemporary(directory, markerFile)) {
+    return `the started marker ${markerFile} still has an unremoved publication temporary; the publish is not confirmed`;
   }
-  try {
-    return StartedReceiptSchema.parse(JSON.parse(raw));
-  } catch (error) {
-    throw new ContributionError(
-      "source-unavailable",
-      `the committed action ${actionId} holds an invalid started marker: ${errorMessage(error)}`,
-    );
+  const reservation = readReceiptFiles(SpawnReceiptSchema, directory, "spawn-")
+    .find((candidate) => candidate.actionId === started.actionId);
+  if (reservation === undefined) {
+    return `the started marker for action ${started.actionId} has no matching reservation`;
   }
+  if (
+    reservation.batchId !== started.batchId
+    || reservation.key !== started.key
+    || reservation.effectKind !== started.effectKind
+  ) {
+    return `the started marker for action ${started.actionId} does not match its reservation`;
+  }
+  let link: { checkpointDigest: string; childTimelineId: string } | undefined;
+  try {
+    joins.syncDirectory(directory);
+    const timeline = new FileMissionTimeline(join(home, "state", "conversation-contributions"));
+    link = timeline.durableStartLinkSync(started.conversationId, started.start.preparedBatchId);
+  } catch (error) {
+    return `the started marker's durable start cross-link cannot be verified: ${errorMessage(error)}`;
+  }
+  if (link === undefined || link.checkpointDigest !== started.start.checkpointDigest) {
+    return `the started marker for action ${started.actionId} has no matching durable delegate start`;
+  }
+  return undefined;
+}
+
+/** True when an unremoved temporary sibling of one published claim remains. */
+export function hasUnconfirmedPublishTemporary(directory: string, fileName: string): boolean {
+  if (!existsSync(directory)) return false;
+  const prefix = `${fileName}.tmp-`;
+  return readdirSync(directory).some((entry) => entry.startsWith(prefix));
 }
 
 /** The strict identity match one reservation or started marker must satisfy to converge on it. */
@@ -1981,8 +2220,8 @@ function publishAtomically(
   }
 }
 
-/** The exact fsync-based durability step shared by the atomic publication. */
-function fsyncFileDurability(path: string): void {
+/** The exact fsync-based durability step shared by the atomic publication and canonical reads. */
+export function fsyncFileDurability(path: string): void {
   const handle = openSync(path, "r");
   try {
     fsyncSync(handle);

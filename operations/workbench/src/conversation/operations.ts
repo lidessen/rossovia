@@ -29,6 +29,8 @@ import {
   readContributionControlReceipts,
   readContributionSpawnReceipts,
   readContributionStartedReceipts,
+  verifyContributionStartedMarker,
+  fsyncFileDurability,
   type ConversationContributionRegistry,
 } from "./contributions";
 
@@ -100,13 +102,19 @@ export type CanonicalReceiptLookup =
  */
 export interface ConversationOperationHost {
   readonly home: string;
-  /** Validate against current sources and commit the canonical Task mutation or carrier/contribution effect. */
+  /**
+   * Validate against current sources and commit the canonical Task mutation
+   * or carrier/contribution effect. Only `contribution_spawn` resolves
+   * asynchronously — its started marker commits after the durable delegate
+   * start — while every other operation returns synchronously; callers that
+   * await the result are unaffected.
+   */
   executeOperation(input: {
     readonly conversationId: string;
     readonly turnId: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
-  }): TaskActionReceipt;
+  }): TaskActionReceipt | Promise<TaskActionReceipt>;
   /** Crash reconciliation: search the canonical Task owner for the action's causal reference. */
   findCanonicalReceipt(input: {
     readonly conversationId: string;
@@ -154,7 +162,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     readonly turnId: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
-  }): TaskActionReceipt {
+  }): TaskActionReceipt | Promise<TaskActionReceipt> {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
     const operation = input.operation;
     try {
@@ -178,11 +186,16 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
             operation,
           });
         case "contribution_spawn":
+          // The started marker commits only after the durable delegate
+          // start, so the canonical success resolves asynchronously; the
+          // same error mapping applies to the resolution.
           return this.executeContributionSpawn({
             conversationId: input.conversationId,
             turnId: input.turnId,
             actionId: input.actionId,
             operation,
+          }).catch((error: unknown) => {
+            throw mapOperationError(error);
           });
         case "contribution_control":
           return this.executeContributionControl({
@@ -472,21 +485,21 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
    * invented by the model. The returned receipt references the durable spawn
    * and delegate timeline evidence, not a second task or result store.
    */
-  private executeContributionSpawn(
+  private async executeContributionSpawn(
     input: {
       readonly conversationId: string;
       readonly turnId: string;
       readonly actionId: string;
       readonly operation: Extract<ConversationOperation, { kind: "contribution_spawn" }>;
     },
-  ): TaskActionReceipt {
+  ): Promise<TaskActionReceipt> {
     if (this.contributionRegistry === undefined) {
       throw new ConversationOperationHostError(
         "operation-unavailable",
         "contribution_spawn is unavailable without an installed temporary contribution runtime; no effect was applied",
       );
     }
-    const receipt = this.contributionRegistry.spawn({
+    const receipt = await this.contributionRegistry.spawn({
       conversationId: input.conversationId,
       turnId: input.turnId,
       actionId: input.actionId,
@@ -544,26 +557,37 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * The canonical spawn receipt: only the durable started marker carrying
-   * this action's causal source reference settles the action. A reservation
-   * without a started marker proves nothing about whether a worker started,
-   * so it reconciles as uninspectable (uncertain), never settled, never
-   * retried as absent.
+   * The canonical spawn receipt: only a durable started marker whose strict
+   * reservation + delegate start cross-links verify settles the action. A
+   * marker or reservation without verified start cross-links proves nothing
+   * about whether a worker started, so it reconciles as uninspectable
+   * (uncertain), never settled, never retried as absent.
    */
   private findContributionSpawnReceipt(conversationId: string, sourceRef: string): CanonicalReceiptLookup {
-    for (const started of readContributionStartedReceipts(this.home, conversationId)) {
-      if (started.sourceRef !== sourceRef) continue;
+    const directory = contributionStateDirectory(this.home, conversationId);
+    const started = readContributionStartedReceipts(this.home, conversationId)
+      .find((candidate) => candidate.sourceRef === sourceRef);
+    if (started !== undefined) {
+      const reason = verifyContributionStartedMarker(this.home, directory, started, {
+        syncDirectory: fsyncFileDurability,
+      });
+      if (reason === undefined) {
+        return {
+          standing: "settled",
+          receipt: {
+            taskId: started.taskId,
+            sourceRevision: started.sourceRevision,
+            taskRevision: started.taskRevision,
+            evidenceRefs: [evidenceRef(this.home, join(
+              directory,
+              `started-${started.actionId}.json`,
+            ))],
+          },
+        };
+      }
       return {
-        standing: "settled",
-        receipt: {
-          taskId: started.taskId,
-          sourceRevision: started.sourceRevision,
-          taskRevision: started.taskRevision,
-          evidenceRefs: [evidenceRef(this.home, join(
-            contributionStateDirectory(this.home, conversationId),
-            `started-${started.actionId}.json`,
-          ))],
-        },
+        standing: "uninspectable",
+        reason: `the committed action's started marker is not a committed started record: ${reason}`,
       };
     }
     for (const reservation of readContributionSpawnReceipts(this.home, conversationId)) {
