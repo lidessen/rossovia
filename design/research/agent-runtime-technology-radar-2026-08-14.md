@@ -163,7 +163,8 @@ probe.
 | Task class | Fit | Why |
 |---|---|---|
 | Text-only bounded tool-loop work in a disposable worktree | **Applicable once live-verified** | Text-in/text-out matches Rossovia's existing text worker shape; no vision dependency. |
-| Low-reasoning-effort reads and one native tool call | **Applicable first probe** | Cheapest falsifiable admission test; exercises the same `opencode-cli` carrier Rossovia already runs for DeepSeek. |
+| Provider-default text-only read plus one native tool call | **Applicable first probe** | Cheapest falsifiable admission test; exercises the same `opencode-cli` carrier Rossovia already runs for DeepSeek. |
+| Low/high/max reasoning-effort variants | **Unknown; deferred** | Official evidence establishes the route and model, not built-in variants; discover the actual variant set from the live catalog or a retained request before any policy selects one. |
 | Vision-capable work (screenshots, UI review) | **Not applicable now** | Current vision-capable Kimi worker already owns this; no GLM-5.3 vision evidence exists. |
 | 1M-context or forced 128K-output workloads | **Deferred** | OpenCode's pinned client cap is 32K; context claims are vendor claims until a retained run observes them. |
 | Structured-output validation routes | **Deferred** | GLM-5.3's structured output is documented upstream, but no Rossovia route has proven it; the existing OpenCode Go route already needs a `json_object` lowering ([decision 034](../../design/decisions/034-validation-model-routing.md)). |
@@ -182,16 +183,26 @@ succeeds.
 ### One low-risk real tool-loop trial
 
 The first paid probe should use a disposable clean Worktree and one native tool
-read at low reasoning effort. Admit the model only if the retained Work Cell
-record shows:
+read at provider default: omit reasoning-effort and variant flags entirely, so
+the probe exercises the route as served rather than a variant this route may
+not provide. Admit the model only if the retained Work Cell record shows:
 
 - adapter `opencode-cli.v1`;
 - provider/model exactly `opencode-go` / `opencode-go/glm-5.3`;
 - a real session and completed tool call/result;
 - the correct nonce, usage evidence, and an empty workspace diff.
 
-Do not use the first probe to test 1M context, force 128K output, change the
-current DeepSeek policy, or infer production quality from Z.ai benchmarks.
+Reasoning-effort variant availability is an open unknown: official evidence
+establishes the route and model identity, but variants are model-specific and
+the pinned OpenCode [provider transform](https://github.com/anomalyco/opencode/blob/4643e65ad6334de3e4e68dedc201d5fbb828c9fe/packages/opencode/src/provider/transform.ts#L18)
+does not prove a built-in low variant for this exact route. Before any policy
+sets low/high/max, discover the actual variant set from the live catalog or
+the retained probe request; never assume a variant exists because another
+model's route has one.
+
+Do not use the first probe to test 1M context, force 128K output, select a
+reasoning-effort variant, change the current DeepSeek policy, or infer
+production quality from Z.ai benchmarks.
 
 ## 3. Delta
 
@@ -276,7 +287,7 @@ is unresolved, and `authority` names who may move the row.
 
 | # | Candidate | Layer | Action | Evidence class | Authority |
 |---|---|---|---|---|---|
-| 1 | GLM-5.3 / OpenCode Go | Model/provider policy | Run the one low-risk tool-loop probe in §2 after explicit quota authorization | `fact`: OpenCode Go lists `glm-5.3` ([docs](https://opencode.ai/docs/go/)); `unknown`: real serving identity, cost, behavior | Principal (quota spend); agent may prepare, not run, the probe |
+| 1 | GLM-5.3 / OpenCode Go | Model/provider policy | Run the one low-risk tool-loop probe in §2 (provider default, no reasoning-effort flag) after explicit quota authorization | `fact`: OpenCode Go lists `glm-5.3` ([docs](https://opencode.ai/docs/go/)); `unknown`: real serving identity, cost, behavior, low/high/max variant availability | Principal (quota spend); agent may prepare, not run, the probe |
 | 2 | DeepSeek Harness | Execution mechanism | Design and run the §1 substitution probe with telemetry off | `fact`: plugin architecture, event-sourced session, pre-effect tool record ([architecture](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md), [session](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md)); `inference`: three of five mechanisms are already Rossovia practice; `unknown`: whether DSH adds fidelity at lower cost | Principal (bounded experiment approval); Work Cell owner (carrier change) |
 | 3 | Delta / DeltaDB | Collaboration projection | Observe only; re-evaluate on the §3 signals | `fact`: private beta, no agent permission framework or sandbox ([agentic safety](https://delta.dev/docs/privacy-and-security/agentic-safety)), hosted storage ([data-storage](https://delta.dev/docs/privacy-and-security/data-storage)); `unknown`: stable API, deletion semantics | Principal (any hosted-data use or integration) |
 | 4 | Production policy change | All layers | Keep unchanged | `fact`: no retained project-relative probe evidence exists yet | Independent review + Principal acceptance |
