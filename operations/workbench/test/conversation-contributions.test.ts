@@ -25,6 +25,7 @@ import {
   contributionStateDirectory,
   createConversationContributionRegistry,
   readContributionSpawnReceipts,
+  readContributionStartedReceipts,
   type ConversationContributionRegistry,
 } from "../src/conversation/contributions";
 import {
@@ -239,6 +240,11 @@ function gatedContributionDriver(): { driver: CellDriver; release: () => void } 
 
 function fakeCatalog(createDriver: () => CellDriver = fastContributionDriver, card = fakeCard()): WorkerCatalog {
   return new WorkerCatalog([{ card, createDriver }]);
+}
+
+/** The Workbench CLI entry exercised by the production-reachable reconcile tests. */
+function cliPath(): string {
+  return join(import.meta.dir, "../src/cli.ts");
 }
 
 /**
@@ -733,6 +739,308 @@ describe("conversation temporary contributions", () => {
       return projections.every((entry) => entry.state === "settled");
     }, "the single winner contribution settles");
     expect(starts).toBe(1);
+  });
+
+  test("an existing lease forces the winner's acquire failure while a loser observes the reservation: no started marker, no handle, no success", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+
+    // A live effectful contribution from another registry holds the exact
+    // shared Worktree lease.
+    const holderRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(slowContributionDriver),
+    });
+    const holder = holderRegistry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "lease-holder", effectKind: "effectful" }),
+    ));
+
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "barrier-writer", effectKind: "effectful" });
+    const loserRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    let loserObserved: ContributionError | undefined;
+    const winnerRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      onReservationPublished: () => {
+        // The winner is paused between reservation publication and lease
+        // acquisition: a concurrent loser observes reservation-only and can
+        // yield only unknown, never a started receipt.
+        try {
+          loserRegistry.spawn(spawnInput(actor, operation));
+        } catch (error) {
+          loserObserved = error instanceof ContributionError ? error : undefined;
+        }
+      },
+    });
+
+    // The winner's lease acquisition then fails against the retained holder
+    // lease; the reservation is retracted with no started marker.
+    expect(() => winnerRegistry.spawn(spawnInput(actor, operation)))
+      .toThrowError(ContributionError);
+    expect(loserObserved?.code).toBe("contribution-unknown");
+    expect(loserRegistry.startedContribution(conversationId, actor.actionId)).toBeUndefined();
+    expect(winnerRegistry.startedContribution(conversationId, actor.actionId)).toBeUndefined();
+    expect(readContributionStartedReceipts(fixture_.home, conversationId)
+      .filter((receipt) => receipt.actionId === actor.actionId)).toHaveLength(0);
+    expect(readContributionSpawnReceipts(fixture_.home, conversationId)
+      .filter((receipt) => receipt.actionId === actor.actionId)).toHaveLength(0);
+
+    // Reconciliation after the refused action finds no claim at all: the
+    // effect is provably absent, never settled from a reservation.
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: loserRegistry,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("absent");
+
+    // Cleanup: stop the holder so the fixture root stays removable.
+    holderRegistry.control({
+      batchId: holder.batchId,
+      key: "lease-holder",
+      control: "stop",
+      actor: { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+    });
+  });
+
+  test("a winner crash before start leaves reservation-only evidence: no success, no handle, reconcile unknown", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "crashed-writer", effectKind: "effectful" });
+
+    const crashedRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      onReservationPublished: () => {
+        throw new Error("simulated winner crash before start");
+      },
+    });
+    expect(() => crashedRegistry.spawn(spawnInput(actor, operation))).toThrow();
+
+    // Only the reservation remains: no started marker, no handle, no
+    // successful receipt.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(true);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(crashedRegistry.startedContribution(conversationId, actor.actionId)).toBeUndefined();
+    expect(readContributionStartedReceipts(fixture_.home, conversationId)).toHaveLength(0);
+
+    // A fresh registry cannot claim success from reservation-only evidence.
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    let refused: ContributionError | undefined;
+    try {
+      restarted.spawn(spawnInput(actor, operation));
+    } catch (error) {
+      refused = error instanceof ContributionError ? error : undefined;
+    }
+    expect(refused?.code).toBe("contribution-unknown");
+    expect(restarted.startedContribution(conversationId, actor.actionId)).toBeUndefined();
+
+    // Reconciliation yields uninspectable (uncertain), never settled.
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: restarted,
+    });
+    const lookup = reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    });
+    expect(lookup.standing).toBe("uninspectable");
+    if (lookup.standing === "uninspectable") {
+      expect(lookup.reason).toContain("without a started marker");
+    }
+
+    // The durable projection shows unknown liveness, never live or settled.
+    const projections = await restarted.listContributions(conversationId);
+    expect(projections.find((entry) => entry.key === "crashed-writer")?.state).toBe("unknown");
+  });
+
+  test("a reservation durability failure publishes no claim and returns no success", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "durability-refused" });
+
+    // The temp-file fsync seam fails: nothing is published and no success
+    // is returned.
+    const fileFailing = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      atomicPublish: { syncFile: () => { throw new Error("fsync seam failed"); } },
+    });
+    expect(() => fileFailing.spawn(spawnInput(actor, operation))).toThrow();
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(readContributionSpawnReceipts(fixture_.home, conversationId)).toHaveLength(0);
+
+    // The parent-directory fsync seam fails after the link: the published
+    // reservation is retracted and no success is returned.
+    const dirFailing = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      atomicPublish: { syncDirectory: () => { throw new Error("directory fsync seam failed"); } },
+    });
+    expect(() => dirFailing.spawn(spawnInput(actor, operation))).toThrow();
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+
+    // The action is unclaimed: a plain registry spawns it successfully with
+    // the ordered durability steps (file fsync, then directory fsync) for
+    // both the reservation and the started marker.
+    const ordered: Array<"file" | "directory"> = [];
+    const orderedRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      atomicPublish: {
+        syncFile: (path) => {
+          expect(path).toContain(".tmp-");
+          ordered.push("file");
+        },
+        syncDirectory: () => ordered.push("directory"),
+      },
+    });
+    const receipt = orderedRegistry.spawn(spawnInput(actor, operation));
+    expect(receipt.batchId).toBeString();
+    expect(ordered).toEqual(["file", "directory", "file", "directory"]);
+    await waitFor(async () => {
+      const projections = await orderedRegistry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "the ordered-durability contribution settles");
+  });
+
+  test("the contribution reconcile-lease CLI command is the production recovery owner", async () => {
+    const fixture_ = fixture();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "cli-writer", effectKind: "effectful" }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "contribution settles");
+
+    const reservationPath = join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `spawn-${actor.actionId}.json`,
+    );
+    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+    const binding = spawnRecord.lease as Record<string, unknown>;
+    const leasePath = String(binding.path);
+    const reconcile = (): { exitCode: number; stdout: string } => {
+      const result = Bun.spawnSync([
+        process.execPath,
+        cliPath(),
+        "--home",
+        fixture_.home,
+        "contribution",
+        "reconcile-lease",
+        conversationId,
+        receipt.batchId,
+        "cli-writer",
+      ], { stdout: "pipe", stderr: "pipe" });
+      return { exitCode: result.exitCode, stdout: result.stdout.toString() };
+    };
+
+    // A crash-retained lease with a verifiably absent owner is released by
+    // the CLI command, which re-enables a fresh effectful contribution.
+    writeFileSync(leasePath, `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    }, null, 2)}\n`, "utf8");
+    const released = reconcile();
+    expect(released.exitCode).toBe(0);
+    expect(JSON.parse(released.stdout).outcome).toBe("released");
+    expect(existsSync(leasePath)).toBe(false);
+
+    // An already-absent lease reports not-retained, never re-acquired.
+    const absent = reconcile();
+    expect(JSON.parse(absent.stdout).outcome).toBe("not-retained");
+
+    // A live owner fails closed through the CLI.
+    writeFileSync(leasePath, `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: process.pid,
+      acquiredAt: new Date().toISOString(),
+    }, null, 2)}\n`, "utf8");
+    const live = reconcile();
+    expect(live.exitCode).toBe(0);
+    expect(JSON.parse(live.stdout).outcome).toBe("refused");
+
+    // A mismatched owner identity fails closed through the CLI.
+    writeFileSync(leasePath, `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: "another-attempt",
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    }, null, 2)}\n`, "utf8");
+    const mismatch = reconcile();
+    expect(JSON.parse(mismatch.stdout).outcome).toBe("refused");
+
+    // An unreadable lease fails closed through the CLI, never guessed.
+    writeFileSync(leasePath, "not-json-bytes", "utf8");
+    const unreadable = reconcile();
+    expect(JSON.parse(unreadable.stdout).outcome).toBe("refused");
+
+    // An unknown batch/key is refused.
+    const unknown = Bun.spawnSync([
+      process.execPath,
+      cliPath(),
+      "--home",
+      fixture_.home,
+      "contribution",
+      "reconcile-lease",
+      conversationId,
+      randomUUID(),
+      "never-formed",
+    ], { stdout: "pipe", stderr: "pipe" });
+    expect(JSON.parse(unknown.stdout.toString()).outcome).toBe("refused");
+
+    // A dead exact owner release through the CLI re-enables a fresh
+    // effectful contribution on the same Task/Worktree.
+    writeFileSync(leasePath, `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    }, null, 2)}\n`, "utf8");
+    const finalRelease = reconcile();
+    expect(JSON.parse(finalRelease.stdout).outcome).toBe("released");
+    const replacementRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const replacement = replacementRegistry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "cli-replacement", effectKind: "effectful" }),
+    ));
+    expect(replacement.effectKind).toBe("effectful");
+    await waitFor(async () => {
+      const projections = await replacementRegistry.listContributions(conversationId);
+      return projections.find((entry) => entry.batchId === replacement.batchId)?.state === "settled";
+    }, "the CLI-recovered contribution settles");
   });
 
   test("dependsOn admits only durably settled dependencies at the current Task revision", async () => {

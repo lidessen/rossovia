@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
+import { createRequire } from "node:module";
 import { attachWorkspace } from "./attach";
+import type { ContributionLeaseReconcileResult } from "./conversation/contributions";
 import { authorizeExecution, inspectExecution } from "./execution-authorization";
 import { initializeHome, loadHome } from "./home";
 import { runHookCommand } from "./hooks";
@@ -103,6 +105,8 @@ try {
     console.log(JSON.stringify(inspectExecution(home, args[2]!, args[3]!), null, 2));
   } else if (args[0] === "execution" && args[1] === "authorize") {
     console.log(JSON.stringify(authorizeExecution(home, parseExecutionAuthorize(args.slice(2))), null, 2));
+  } else if (args[0] === "contribution" && args[1] === "reconcile-lease" && args.length === 5) {
+    console.log(JSON.stringify(runContributionReconcileLeaseCli(home, args[2]!, args[3]!, args[4]!), null, 2));
   } else if (args[0] === "task") {
     console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
   } else if (args[0] === "mission") {
@@ -162,6 +166,7 @@ function printUsage(): void {
   console.log("  task append-review <id> --assessment-id <id> --result-claim-id <id> [--producer-attempt-id <id>] --reviewer-ref <reference> --independence-basis <independent-review-context|unproven> --independence-source-ref <reference> --candidate-commit <40-hex> --verdict <passed|failed> --finding <text>... --evidence-ref <reference>... --expected-source-revision <n> --expected-revision <n>");
   console.log("  task accept <id> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task reopen <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
+  console.log("  contribution reconcile-lease <conversation-id> <batch-id> <key>");
   console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
   console.log("  intervention observe [--state-root <path>]");
   console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
@@ -178,6 +183,27 @@ function parseStatusLineOptions(raw: string[]): { cwd?: string } {
   if (args.length === 0) return {};
   if (args.length === 2 && args[0] === "--cwd" && args[1]?.trim()) return { cwd: args[1] };
   throw new Error("statusline accepts optional 'claude' and --cwd <path>");
+}
+
+/**
+ * The narrow contribution lease reconcile command: the production-reachable
+ * recovery owner for one exact retained contribution lease. It reuses the
+ * registry's typed reconcile and never touches Task attempt or Work Cell
+ * evidence. The contribution runtime is loaded lazily so the CLI keeps
+ * loading in a minimal Workbench-only fixture without the sibling worker
+ * policy.
+ */
+function runContributionReconcileLeaseCli(
+  homeArgument: string | undefined,
+  conversationId: string,
+  batchId: string,
+  key: string,
+): ContributionLeaseReconcileResult {
+  const requireFromHere = createRequire(import.meta.url);
+  const { createConversationContributionRegistry } = requireFromHere("./conversation/contributions") as
+    typeof import("./conversation/contributions");
+  const registry = createConversationContributionRegistry(homeArgument);
+  return registry.reconcileLease({ conversationId, batchId, key });
 }
 
 function runTaskCli(home: string | undefined, raw: string[]): unknown {

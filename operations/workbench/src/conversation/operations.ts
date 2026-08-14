@@ -28,6 +28,7 @@ import {
   contributionStateDirectory,
   readContributionControlReceipts,
   readContributionSpawnReceipts,
+  readContributionStartedReceipts,
   type ConversationContributionRegistry,
 } from "./contributions";
 
@@ -543,25 +544,35 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * The canonical spawn receipt: the durable spawn record carrying this
-   * action's causal source reference, its exact batch/key, worker, effect
-   * boundary, and retained Task revisions. An unreadable matching record is
-   * uninspectable, never settled.
+   * The canonical spawn receipt: only the durable started marker carrying
+   * this action's causal source reference settles the action. A reservation
+   * without a started marker proves nothing about whether a worker started,
+   * so it reconciles as uninspectable (uncertain), never settled, never
+   * retried as absent.
    */
   private findContributionSpawnReceipt(conversationId: string, sourceRef: string): CanonicalReceiptLookup {
-    for (const receipt of readContributionSpawnReceipts(this.home, conversationId)) {
-      if (receipt.sourceRef !== sourceRef) continue;
+    for (const started of readContributionStartedReceipts(this.home, conversationId)) {
+      if (started.sourceRef !== sourceRef) continue;
       return {
         standing: "settled",
         receipt: {
-          taskId: receipt.taskId,
-          sourceRevision: receipt.sourceRevision,
-          taskRevision: receipt.taskRevision,
+          taskId: started.taskId,
+          sourceRevision: started.sourceRevision,
+          taskRevision: started.taskRevision,
           evidenceRefs: [evidenceRef(this.home, join(
             contributionStateDirectory(this.home, conversationId),
-            `spawn-${receipt.actionId}.json`,
+            `started-${started.actionId}.json`,
           ))],
         },
+      };
+    }
+    for (const reservation of readContributionSpawnReceipts(this.home, conversationId)) {
+      if (reservation.sourceRef !== sourceRef) continue;
+      return {
+        standing: "uninspectable",
+        reason:
+          `the committed action retains a reservation without a started marker; `
+          + "whether a worker started is unknown",
       };
     }
     return { standing: "absent" };
