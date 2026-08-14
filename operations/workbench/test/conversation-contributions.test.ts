@@ -566,6 +566,34 @@ describe("conversation temporary contributions", () => {
     })).not.toThrow();
   });
 
+  test("a refused effectful spawn releases the exact Worktree lease it acquired", async () => {
+    const fixture_ = fixture();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const actor = await seededActor(fixture_);
+
+    // dependsOn names a never-formed key: the prepared delegate batch fails
+    // admission after the effectful Worktree lease was already acquired.
+    const refused = spawnOperation({
+      key: "refused-writer",
+      effectKind: "effectful",
+      dependsOn: ["never-formed"],
+    });
+    expect(() => registry.spawn(spawnInput(actor, refused))).toThrow();
+
+    // The failed spawn released its lease: the next effectful contribution
+    // on the same Task/Worktree is admitted instead of being refused as an
+    // overlapping writer.
+    const admitted = spawnOperation({ key: "admitted-writer", effectKind: "effectful" });
+    const receipt = registry.spawn(spawnInput(actor, admitted));
+    expect(receipt.effectKind).toBe("effectful");
+    await waitFor(async () => {
+      const projections = await registry.listContributions(actor.conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "admitted effectful contribution settles");
+  });
+
   test("every contribution retains its exact worker and execution profile", async () => {
     const fixture_ = fixture();
     const registry = createConversationContributionRegistry(fixture_.home, {

@@ -5,7 +5,6 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
-  writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -42,11 +41,16 @@ import {
   ORDINARY_TASK_MAX_DURATION_MS,
   releaseWorktreeLease,
   verifyCleanStatus,
+  writeImmutableJson,
   type TaskRunLease,
 } from "../task-run";
-import { digest, parseTaskReceiptEvidenceRef, taskActionSourceRef } from "./contracts";
+import { digest, taskActionSourceRef } from "./contracts";
 import { FileConversationJournal } from "./journal";
-import { renderCarrierActivity } from "./execution-carrier";
+import { latestSettledTaskAction, observedWorktrees } from "./context";
+import {
+  committedActionKey,
+  renderCarrierActivity,
+} from "./execution-carrier";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -481,52 +485,71 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       }
     }
 
-    const { batch, cell } = this.prepareContribution({
-      conversationId: input.conversationId,
-      actionId: input.actionId,
-      task,
-      sourceRevision: tasks.sourceRevision,
-      worktree,
-      card,
-      operation,
-      batchId,
-      settledKeys: [...conversationKeys].filter((key) => key !== operation.key),
-    });
-
-    const spawnRef = this.writeSpawnReceipt({
-      conversationId: input.conversationId,
-      turnId: input.turnId,
-      actionId: input.actionId,
-      batchId,
-      key: operation.key,
-      cellId: cell.id,
-      card,
-      effectKind: operation.effectKind,
-      task,
-      sourceRevision: tasks.sourceRevision,
-      intent: operation.intent,
-      timelineRef: evidenceRef(this.home, this.timeline.timelinePath(input.conversationId)),
-    });
-
-    const handle = new WorkbenchContributionHandle({
-      identity: {
-        batchId,
-        key: operation.key,
-        cellId: cell.id,
-        workerId: card.id,
-        worker: card,
-        effectKind: operation.effectKind,
-        taskId: task.id,
-        taskRevision: task.revision,
+    let handle: WorkbenchContributionHandle;
+    let spawnRef: string;
+    let batch: PreparedDelegateBatch;
+    let cell: CellInput;
+    try {
+      ({ batch, cell } = this.prepareContribution({
+        conversationId: input.conversationId,
+        actionId: input.actionId,
+        task,
         sourceRevision: tasks.sourceRevision,
+        worktree,
+        card,
+        operation,
+        batchId,
+        settledKeys: [...conversationKeys].filter((key) => key !== operation.key),
+      }));
+
+      spawnRef = this.writeSpawnReceipt({
         conversationId: input.conversationId,
         turnId: input.turnId,
         actionId: input.actionId,
-      },
-      home: this.home,
-      spawnRef,
-      ...(lease === undefined ? {} : { lease }),
-    });
+        batchId,
+        key: operation.key,
+        cellId: cell.id,
+        card,
+        effectKind: operation.effectKind,
+        task,
+        sourceRevision: tasks.sourceRevision,
+        intent: operation.intent,
+        timelineRef: evidenceRef(this.home, this.timeline.timelinePath(input.conversationId)),
+      });
+
+      handle = new WorkbenchContributionHandle({
+        identity: {
+          batchId,
+          key: operation.key,
+          cellId: cell.id,
+          workerId: card.id,
+          worker: card,
+          effectKind: operation.effectKind,
+          taskId: task.id,
+          taskRevision: task.revision,
+          sourceRevision: tasks.sourceRevision,
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          actionId: input.actionId,
+        },
+        home: this.home,
+        spawnRef,
+        ...(lease === undefined ? {} : { lease }),
+      });
+    } catch (error) {
+      // A refused preparation or an unretained spawn receipt releases the
+      // exact lease it acquired: a failed effectful spawn must never leave
+      // the Task/Worktree writer-blocked without a started contribution.
+      if (lease !== undefined) {
+        try {
+          releaseWorktreeLease(lease);
+        } catch {
+          // The just-acquired lease cannot be released; it stays retained
+          // with the visible spawn failure rather than being claimed live.
+        }
+      }
+      throw error;
+    }
     this.handles.set(batchId, handle);
     this.startedByCommittedAction.set(actionKey, batchId);
     conversationKeys.add(operation.key);
@@ -799,13 +822,13 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   }
 
   /**
-   * The conversation's current Task identity, derived exactly like the
-   * coordinator's projection: the latest settled task_create/task_correct
-   * action receipt in the durable journal. The coordinator never supplies
-   * this; the host re-derives it from the canonical sources immediately
-   * before the effect. An unreadable journal is a visible source failure;
-   * a readable journal without a settled Task action means there is no
-   * current Task and the contribution is refused without guessing one.
+   * The conversation's current Task identity, derived through the exact
+   * shared journal derivation the coordinator's projection uses: the latest
+   * settled task_create/task_correct action receipt. The coordinator never
+   * supplies this; the host re-derives it from the canonical sources
+   * immediately before the effect. An unreadable journal is a visible source
+   * failure; a readable journal without a settled Task action means there is
+   * no current Task and the contribution is refused without guessing one.
    */
   private conversationCurrentTaskAction(
     conversationId: string,
@@ -819,28 +842,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         `the conversation journal cannot be read to derive the current Task: ${errorMessage(error)}`,
       );
     }
-    const requestedKinds = new Map<string, "task_create" | "task_correct">();
-    for (const event of events) {
-      if (event.type !== "action.requested") continue;
-      if (event.data.kind === "task_create" || event.data.kind === "task_correct") {
-        requestedKinds.set(event.data.actionId, event.data.kind);
-      }
-    }
-    let latest: { taskId: string; sourceRevision: number; sequence: number } | undefined;
-    for (const event of events) {
-      if (event.type !== "action.settled") continue;
-      if (!requestedKinds.has(event.data.actionId)) continue;
-      for (const ref of event.data.evidenceRefs) {
-        const parsed = parseTaskReceiptEvidenceRef(ref);
-        if (parsed === null) continue;
-        if (latest === undefined || event.sequence > latest.sequence) {
-          latest = { ...parsed, sequence: event.sequence };
-        }
-      }
-    }
-    return latest === undefined
-      ? undefined
-      : { taskId: latest.taskId, sourceRevision: latest.sourceRevision };
+    return latestSettledTaskAction(events);
   }
 
   /**
@@ -1330,10 +1332,6 @@ function contributionTaskId(key: string): string {
   return `workbench-contribution:${key}`;
 }
 
-function committedActionKey(conversationId: string, actionId: string): string {
-  return `${conversationId}\u0000${actionId}`;
-}
-
 function contributionControlReceipt(
   identity: ContributionIdentity,
   evidenceRefs: readonly string[],
@@ -1417,7 +1415,7 @@ function verifyContributionSelection(
   }
   let observed: string[];
   try {
-    observed = observedWorktreeRecords(primaryWorkspace);
+    observed = observedWorktrees(primaryWorkspace).map((record) => record.path);
   } catch (error) {
     throw new ContributionError(
       "task-not-bound",
@@ -1445,31 +1443,6 @@ function verifyContributionSelection(
       `the bound Worktree's current head is unreadable`,
     );
   }
-}
-
-/** Exact currently observed Worktrees of one primary workspace, by resolved path. */
-function observedWorktreeRecords(primaryWorkspace: string): string[] {
-  const records = requiredGit(["worktree", "list", "--porcelain"], primaryWorkspace)
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("worktree "))
-    .map((line) => expandPath(line.slice("worktree ".length)));
-  const observed: string[] = [];
-  for (const record of records) {
-    try {
-      observed.push(realpathSync(record));
-    } catch {
-      // A worktree record that cannot be resolved is not currently observed.
-    }
-  }
-  observed.sort();
-  return observed;
-}
-
-function writeImmutableJson(path: string, value: unknown): void {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    flag: "wx",
-  });
 }
 
 function currentCatalog(environment: NodeJS.ProcessEnv): WorkerCatalog {

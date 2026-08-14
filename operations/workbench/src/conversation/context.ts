@@ -304,8 +304,13 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
   }
 }
 
-/** The most recent settled task create/correct receipt, by journal sequence. */
-function latestSettledTaskAction(
+/**
+ * The most recent settled task create/correct receipt, by journal sequence:
+ * the one journal-derived current Task identity shared by the coordinator's
+ * projection and by any effect that must derive the conversation's current
+ * Task immediately before acting.
+ */
+export function latestSettledTaskAction(
   events: readonly ConversationEvent[],
 ): { taskId: string; sourceRevision: number } | undefined {
   const requestedKinds = new Map<string, "task_create" | "task_correct">();
@@ -333,7 +338,7 @@ function latestSettledTaskAction(
 }
 
 /** Exact observed Worktrees of one primary workspace, each at its current head. */
-function observedWorktrees(primaryWorkspace: string): { path: string; head: string }[] {
+export function observedWorktrees(primaryWorkspace: string): { path: string; head: string }[] {
   const records = requiredGit(["worktree", "list", "--porcelain"], primaryWorkspace)
     .split(/\r?\n/)
     .filter((line) => line.startsWith("worktree "))

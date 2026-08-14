@@ -775,7 +775,8 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
   }
 }
 
-function committedActionKey(conversationId: string, actionId: string): string {
+/** The exact durable (conversation, action) identity key shared by every committed-action runtime mapping. */
+export function committedActionKey(conversationId: string, actionId: string): string {
   return `${conversationId}\u0000${actionId}`;
 }
 

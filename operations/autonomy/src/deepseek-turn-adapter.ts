@@ -1,6 +1,5 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { streamText, tool, type Tool } from "ai";
-import { z } from "zod";
 import {
   DEEPSEEK_PROVIDER_ID,
   DeepSeekInferencePolicySchema,
@@ -8,6 +7,7 @@ import {
   type DeepSeekInferencePolicy,
 } from "../../../packages/work-cell/src/providers/deepseek";
 import {
+  ChildResultRequestSchema,
   ContributionControlOperationSchema,
   ContributionSpawnOperationSchema,
   TaskContinueOperationSchema,
@@ -135,10 +135,7 @@ export const childResultRequestTool: Tool = tool({
     "Request the full bounded semantic result of one exact settled child contribution by its batchId and key, when synthesis needs the full evidence.",
     "Name only a batchId and key already returned for a settled contribution of this conversation; the host refuses unknown, unsettled, or stale (post-correction) results without guessing.",
   ].join(" "),
-  inputSchema: z.object({
-    batchId: z.string().min(1),
-    key: z.string().min(1),
-  }).strict(),
+  inputSchema: ChildResultRequestSchema.omit({ kind: true }),
 });
 
 /**
@@ -319,11 +316,12 @@ function operationFromToolCall(
 /** The strict keyed result-read request restored from one child_result tool call. */
 function childResultRequest(input: unknown): ConversationTurnRequest | undefined {
   const record = asRecord(input);
-  if (typeof record.batchId !== "string" || record.batchId.trim() === ""
-    || typeof record.key !== "string" || record.key.trim() === "") {
-    return undefined;
-  }
-  return { kind: "child-result", batchId: record.batchId, key: record.key };
+  const parsed = ChildResultRequestSchema.safeParse({
+    kind: "child-result",
+    batchId: record.batchId,
+    key: record.key,
+  });
+  return parsed.success ? parsed.data : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
