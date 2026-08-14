@@ -19,6 +19,7 @@ import {
   ConversationOperationHostError,
   type ConversationOperationHost,
 } from "./operations";
+import type { ConversationExecutionCarrierRegistry } from "./execution-carrier";
 
 /**
  * Strict WebSocket frame vocabulary for one Workbench conversation socket.
@@ -85,6 +86,11 @@ export const ServerActivityDeltaFrameSchema = z.object({
   type: z.literal("activity.delta"),
   turnId: z.string().uuid(),
   messageId: z.string().uuid(),
+  /** Exact attribution: the starting turn/action, Task, attempt, and carrier of the reported progress. */
+  taskId: z.string().min(1),
+  attemptId: z.string().min(1),
+  actionId: z.string().uuid(),
+  carrierId: z.string().min(1),
   text: z.string().min(1),
 }).strict();
 export type ServerActivityDeltaFrame = z.infer<typeof ServerActivityDeltaFrameSchema>;
@@ -151,6 +157,14 @@ export interface ConversationSocketRuntimeOptions {
    * operation execution is installed; such a turn fails its action visibly.
    */
   readonly operationHost?: ConversationOperationHost;
+  /**
+   * The exact retained ordinary Task carrier runtime. When present, a settled
+   * task_continue action subscribes to its started carrier: owner-backed
+   * trace activity becomes attributable `activity.delta` frames and terminal
+   * settlement broadcasts `projection.changed`. Absent, carrier operations
+   * fail visibly in the operation host.
+   */
+  readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
   /** Delay before the replay read, to make replay-phase behavior deterministic in tests. */
   readonly replayDelayMs?: number;
   /** Clock seam for the owned journal; defaults to ISO now. */
@@ -193,6 +207,7 @@ export class ConversationSocketRuntime {
   private readonly turnOwner: ConversationTurnOwner;
   private readonly projectionProvider: ConversationContextProvider | undefined;
   private readonly operationHost: ConversationOperationHost | undefined;
+  private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
   private readonly replayDelayMs: number;
   private readonly sockets = new Map<Bun.ServerWebSocket<ConversationSocketData>, SocketEntry>();
   private readonly subscribers = new Map<string, Set<SocketEntry>>();
@@ -206,6 +221,7 @@ export class ConversationSocketRuntime {
     this.turnOwner = options.turnOwner;
     this.projectionProvider = options.projectionProvider;
     this.operationHost = options.operationHost;
+    this.carrierRegistry = options.carrierRegistry;
     this.replayDelayMs = options.replayDelayMs ?? 0;
   }
 
@@ -582,6 +598,42 @@ export class ConversationSocketRuntime {
     }
     this.broadcast(conversationId, journalEventFrame(requested));
     await this.settleActionEffect(conversationId, requested, operation);
+    this.attachCarrier(conversationId, requested);
+  }
+
+  /**
+   * After a task_continue action settles, subscribe the runtime to the exact
+   * carrier the action started: owner-backed trace activity becomes
+   * attributable `activity.delta` frames and the terminal settlement
+   * broadcasts `projection.changed`. The subscriptions are runtime-only and
+   * are disposed at terminal settlement so neither the carrier nor the
+   * runtime retains per-run listener closures; the durable
+   * Task/attempt/settlement evidence stays in its canonical owners.
+   */
+  private attachCarrier(conversationId: string, requested: ActionRequestedEvent): void {
+    if (this.carrierRegistry === undefined) return;
+    if (requested.data.kind !== "task_continue") return;
+    const carrier = this.carrierRegistry.startedCarrier(conversationId, requested.data.actionId);
+    if (carrier === undefined) return;
+    const { turnId, messageId, actionId } = requested.data;
+    const { taskId, attemptId, carrierId } = carrier.identity;
+    const disposeActivity = carrier.onActivity((activity) => {
+      this.broadcast(conversationId, activityDeltaFrame({
+        turnId,
+        messageId,
+        taskId,
+        attemptId,
+        actionId,
+        carrierId,
+        text: activity.text,
+      }));
+    });
+    let disposeSettled: (() => void) | undefined;
+    disposeSettled = carrier.onSettled(() => {
+      disposeActivity();
+      disposeSettled?.();
+      this.broadcast(conversationId, { type: "projection.changed" });
+    });
   }
 
   /** Reconcile every unsettled `action.requested` of one conversation. */
@@ -670,10 +722,18 @@ export class ConversationSocketRuntime {
       };
     } else {
       try {
-        const receipt = this.operationHost.executeOperation({ conversationId, actionId, operation });
+        const receipt = await this.operationHost.executeOperation({
+          conversationId,
+          turnId: requested.data.turnId,
+          actionId,
+          operation,
+        });
         terminal = { kind: "settled", evidenceRefs: [...receipt.evidenceRefs] };
       } catch (error: unknown) {
-        if (error instanceof ConversationOperationHostError && error.code === "source-unavailable") {
+        if (
+          error instanceof ConversationOperationHostError
+          && (error.code === "source-unavailable" || error.code === "carrier-unknown")
+        ) {
           terminal = {
             kind: "uncertain",
             reason: `the canonical effect cannot be reconciled: ${error.message}`,
@@ -871,6 +931,18 @@ function responseDeltaFrame(data: {
   readonly text: string;
 }): ServerResponseDeltaFrame {
   return { type: "response.delta", ...data };
+}
+
+function activityDeltaFrame(data: {
+  readonly turnId: string;
+  readonly messageId: string;
+  readonly taskId: string;
+  readonly attemptId: string;
+  readonly actionId: string;
+  readonly carrierId: string;
+  readonly text: string;
+}): ServerActivityDeltaFrame {
+  return { type: "activity.delta", ...data };
 }
 
 function protocolErrorFrame(code: ProtocolErrorCode, message: string): ServerProtocolErrorFrame {

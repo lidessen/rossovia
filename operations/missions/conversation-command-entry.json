@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-13T22:30:11Z",
+  "updatedAt": "2026-08-13T22:52:56Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -48,7 +48,20 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "Integrated PR #103 (exact head 48bff83222e5dc85f6eb01c43bb697595c3fc363; merge commit 47da61a710206714988ec93cca942fad6e095fa9) into main: the real DeepSeek Pro/max conversation socket now supports a non-mutating inquiry or one typed canonical Task create/correct operation, with exact registered-project/current-primary/Worktree/Task revision guards and durable requested/terminal action reconciliation that does not repeat a committed mutation. P4b continuation/control, P5 execution carrier, and browser UI remain pending."
+    },
+    {
+      "id": "p4b-execution-activity",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Implement the minimum non-UI ordinary-Task execution carrier slice: one semantic catalog-selected typed task_continue starts one existing canonical Task, projects only owner-backed attributable activity, and exact work_control stop targets only its retained live carrier.",
+      "returnCondition": "Return with one clean exact implementation commit only after deterministic start/identity/activity/terminal/stop/reconnect-unknown/duplicate/stale-selector/task-run-compatibility evidence, relevant Workbench and Autonomy full tests plus typecheck and diff-check, and at most one bounded disposable slow-worker observation if mechanically necessary; otherwise suspend with the exact blocker. P5 temporary teams, browser UI, Mission acceptance, and any second task or execution store remain out of scope.",
+      "sources": [
+        "principal:2026-08-13-p4b-execution-activity",
+        "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#wave-3",
+        "system-case:design/organization/sessions/2026-08-13-conversation-command-entry-system-case.md#required-lifecycle-properties"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "p4b-execution-activity"
 }

@@ -1,4 +1,6 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+import { z } from "zod";
 import type { PrincipalTask, PrincipalTasks } from "../contracts";
 import { resolveHome } from "../home";
 import { expandPath } from "../paths";
@@ -9,19 +11,40 @@ import {
   loadPrincipalTasks,
   PrincipalTaskError,
 } from "../tasks";
+import { evidenceRef } from "../task-run";
+import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { optionalGit, requiredGit } from "../workspace";
 import { taskActionSourceRef, taskReceiptEvidenceRef } from "./contracts";
 import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
+import {
+  ConversationCarrierError,
+  listAttemptDirectories,
+  TaskRunControlReceiptSchema,
+  type CarrierControlReceipt,
+  type ConversationExecutionCarrierRegistry,
+} from "./execution-carrier";
 
 export type ConversationOperationHostErrorCode =
   | "invalid-operation"
   | "project-unresolved"
   | "worktree-unobserved"
+  | "worktree-dirty"
   | "stale-context"
   | "task-not-found"
   | "task-settled"
+  | "task-not-runnable"
+  | "task-not-bound"
   | "stale-revision"
   | "operation-unavailable"
+  | "carrier-duplicate"
+  | "carrier-not-found"
+  | "carrier-not-live"
+  | "carrier-unknown"
+  | "control-unsupported"
+  | "control-conflict"
+  | "lease-conflict"
+  | "worker-unknown"
+  | "worker-unavailable"
   | "source-unavailable";
 
 export class ConversationOperationHostError extends Error {
@@ -31,11 +54,13 @@ export class ConversationOperationHostError extends Error {
   }
 }
 
-/** The natural canonical receipt of one committed Task mutation. */
+/** The natural canonical receipt of one committed Task mutation or carrier control. */
 export interface TaskActionReceipt {
   readonly taskId: string;
-  readonly sourceRevision: number;
-  readonly taskRevision: number;
+  readonly sourceRevision?: number;
+  readonly taskRevision?: number;
+  /** The exact retained carrier started by a settled task_continue action. */
+  readonly carrierId?: string;
   readonly evidenceRefs: readonly string[];
 }
 
@@ -46,19 +71,21 @@ export type CanonicalReceiptLookup =
 
 /**
  * The Workbench adapter that binds one typed conversation operation to the
- * existing canonical Task API. It owns no Task state and no conversation
- * lifecycle: it re-reads the registered projects, exact observed Worktrees,
- * and the Task source immediately before each effect, then returns the
+ * existing canonical Task API and the exact retained execution-carrier
+ * runtime. It owns no Task state and no conversation lifecycle: it re-reads
+ * the registered projects, exact observed Worktrees, the Task source, and the
+ * exact Worktree lease immediately before each effect, then returns the
  * canonical receipt. It never inspects Principal prose; the input is already
- * a strict typed operation chosen by the coordinator. `task_continue` and
- * `work_control` remain typed but unavailable: they fail visibly without any
- * effect until the execution carrier wave owns them.
+ * a strict typed operation chosen by the coordinator. Without an installed
+ * carrier registry, `task_continue` and `work_control` remain typed but
+ * unavailable: they fail visibly without any effect.
  */
 export interface ConversationOperationHost {
   readonly home: string;
-  /** Validate against current sources and commit the canonical Task mutation. */
+  /** Validate against current sources and commit the canonical Task mutation or carrier effect. */
   executeOperation(input: {
     readonly conversationId: string;
+    readonly turnId: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
   }): TaskActionReceipt;
@@ -70,41 +97,60 @@ export interface ConversationOperationHost {
   }): CanonicalReceiptLookup;
 }
 
-export function createConversationTaskOperationHost(homeArgument?: string): ConversationOperationHost {
-  return new WorkbenchTaskOperationHost(resolveHome(homeArgument));
+export interface ConversationTaskOperationHostOptions {
+  /**
+   * The exact retained carrier runtime that starts and controls ordinary Task
+   * carriers. Absent, `task_continue` and `work_control` fail visibly.
+   */
+  readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
+}
+
+export function createConversationTaskOperationHost(
+  homeArgument?: string,
+  options: ConversationTaskOperationHostOptions = {},
+): ConversationOperationHost {
+  return new WorkbenchTaskOperationHost(resolveHome(homeArgument), options.carrierRegistry);
 }
 
 class WorkbenchTaskOperationHost implements ConversationOperationHost {
   readonly home: string;
+  private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
 
-  constructor(home: string) {
+  constructor(home: string, carrierRegistry?: ConversationExecutionCarrierRegistry) {
     this.home = home;
+    this.carrierRegistry = carrierRegistry;
   }
 
   executeOperation(input: {
     readonly conversationId: string;
+    readonly turnId: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
   }): TaskActionReceipt {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+    const operation = input.operation;
     try {
-      switch (input.operation.kind) {
+      switch (operation.kind) {
         case "task_create":
-          return this.executeCreate(input.operation, sourceRef);
+          return this.executeCreate(operation, sourceRef);
         case "task_correct":
-          return this.executeCorrect(input.operation, sourceRef);
+          return this.executeCorrect(operation, sourceRef);
         case "task_continue":
-          throw new ConversationOperationHostError(
-            "operation-unavailable",
-            "task_continue is not available until the execution carrier wave owns continuation; no effect was applied",
-          );
+          return this.executeContinue({
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            actionId: input.actionId,
+            operation,
+          });
         case "work_control":
-          throw new ConversationOperationHostError(
-            "operation-unavailable",
-            "work_control is not available without an exact execution carrier; no effect was applied",
-          );
+          return this.executeControl({
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            actionId: input.actionId,
+            operation,
+          });
         default: {
-          const unreachable: never = input.operation;
+          const unreachable: never = operation;
           throw new ConversationOperationHostError(
             "invalid-operation",
             `unknown operation kind: ${String(unreachable)}`,
@@ -122,6 +168,17 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     readonly operation: ConversationOperation;
   }): CanonicalReceiptLookup {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+    const operation = input.operation;
+    if (operation.kind === "task_continue") {
+      return this.findContinueReceipt(sourceRef);
+    }
+    if (operation.kind === "work_control") {
+      return this.findControlReceipt({
+        conversationId: input.conversationId,
+        actionId: input.actionId,
+        operation,
+      });
+    }
     let tasks: PrincipalTasks;
     try {
       tasks = loadPrincipalTasks(this.home);
@@ -131,7 +188,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
         reason: `the canonical Task source cannot be read for reconciliation: ${errorMessage(error)}`,
       };
     }
-    switch (input.operation.kind) {
+    switch (operation.kind) {
       case "task_create": {
         const task = tasks.tasks.find((candidate) => candidate.origin.sourceRef === sourceRef);
         return task === undefined
@@ -139,25 +196,216 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
           : { standing: "settled", receipt: receiptFor(tasks, task) };
       }
       case "task_correct": {
-        const task = taskById(tasks, input.operation.taskId);
+        const task = taskById(tasks, operation.taskId);
         if (task === undefined) return { standing: "absent" };
         const committed = task.corrections.some((correction) => correction.sourceRef === sourceRef);
         return committed
           ? { standing: "settled", receipt: receiptFor(tasks, task) }
           : { standing: "absent" };
       }
-      case "task_continue":
-      case "work_control":
-        // Unavailable operations never commit an effect; absence is certain.
-        return { standing: "absent" };
       default: {
-        const unreachable: never = input.operation;
+        const unreachable: never = operation;
         return {
           standing: "uninspectable",
           reason: `unknown operation kind: ${String(unreachable)}`,
         };
       }
     }
+  }
+
+  /**
+   * A typed continue starts at most one carrier for its committed action: the
+   * retained registry re-reads the exact canonical Task and source revision,
+   * the registered project identity and current primary observation, the
+   * bound Worktree path and head, and the exact Worktree lease immediately
+   * before the effect. The returned receipt references the durable attempt
+   * evidence, not a second task or execution store.
+   */
+  private executeContinue(
+    input: {
+      readonly conversationId: string;
+      readonly turnId: string;
+      readonly actionId: string;
+      readonly operation: Extract<ConversationOperation, { kind: "task_continue" }>;
+    },
+  ): TaskActionReceipt {
+    if (this.carrierRegistry === undefined) {
+      throw new ConversationOperationHostError(
+        "operation-unavailable",
+        "task_continue is unavailable without an installed execution-carrier runtime; no effect was applied",
+      );
+    }
+    const receipt = this.carrierRegistry.startCarrier({
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      actionId: input.actionId,
+      operation: input.operation,
+    });
+    return {
+      taskId: receipt.taskId,
+      sourceRevision: receipt.sourceRevision,
+      taskRevision: receipt.taskRevision,
+      carrierId: receipt.carrierId,
+      evidenceRefs: [...receipt.evidenceRefs],
+    };
+  }
+
+  /**
+   * A typed control resolves one exact retained carrier and applies only that
+   * mapped stop. A carrier without a retained runtime handle and without a
+   * terminal settlement leaves liveness unknown and the control unverified;
+   * an already settled carrier refuses visibly; pause/resume/recover are not
+   * owned by an ordinary Task carrier.
+   */
+  private executeControl(input: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+    readonly operation: Extract<ConversationOperation, { kind: "work_control" }>;
+  }): TaskActionReceipt {
+    if (this.carrierRegistry === undefined) {
+      throw new ConversationOperationHostError(
+        "operation-unavailable",
+        "work_control is unavailable without an installed execution-carrier runtime; no effect was applied",
+      );
+    }
+    const operation = input.operation;
+    if (operation.control !== "stop") {
+      throw new ConversationOperationHostError(
+        "control-unsupported",
+        `control '${operation.control}' is not owned by an ordinary Task carrier; only an exact live stop is available`,
+      );
+    }
+    let receipt: CarrierControlReceipt;
+    try {
+      receipt = this.carrierRegistry.controlCarrier({
+        carrierId: operation.carrierId,
+        control: operation.control,
+        actor: {
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          actionId: input.actionId,
+        },
+      });
+    } catch (error) {
+      if (error instanceof ConversationCarrierError) throw mapCarrierError(error);
+      throw mapOperationError(error);
+    }
+    const evidence = readStrictTaskAttemptEvidence(this.home, operation.carrierId);
+    const taskId = evidence.attempt?.taskId ?? operation.carrierId;
+    return {
+      taskId,
+      ...(evidence.attempt?.sourceRevision === undefined
+        ? {}
+        : { sourceRevision: evidence.attempt.sourceRevision }),
+      ...(evidence.attempt?.taskRevision === undefined
+        ? {}
+        : { taskRevision: evidence.attempt.taskRevision }),
+      evidenceRefs: [...receipt.evidenceRefs],
+    };
+  }
+
+  /**
+   * The canonical continue receipt: the retained attempt carrying this
+   * action's causal source reference, read through the strict evidence
+   * reader. A matching correlation under invalid or mismatched evidence is
+   * uninspectable, never settled.
+   */
+  private findContinueReceipt(sourceRef: string): CanonicalReceiptLookup {
+    for (const attemptId of listAttemptDirectories(this.home)) {
+      const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
+      const correlation = evidence.attempt?.correlation;
+      if (correlation?.sourceRef !== sourceRef) continue;
+      if (evidence.standing !== "available") {
+        return {
+          standing: "uninspectable",
+          reason: `attempt ${attemptId} retains invalid evidence for this action: ${evidence.error ?? "unavailable"}`,
+        };
+      }
+      return {
+        standing: "settled",
+        receipt: {
+          taskId: evidence.attempt!.taskId,
+          sourceRevision: evidence.attempt!.sourceRevision,
+          taskRevision: evidence.attempt!.taskRevision,
+          evidenceRefs: [
+            evidence.refs.attemptRef,
+            evidence.refs.inputRef,
+            evidence.refs.finalRecordRef,
+            evidence.refs.settlementRef,
+          ],
+        },
+      };
+    }
+    return { standing: "absent" };
+  }
+
+  /**
+   * The canonical control receipt: the strict retained control record for
+   * this action's causal source reference, cross-linked against the owning
+   * attempt evidence and the requested operation — carrierId, attemptId,
+   * taskId, worker, Worktree, actor identity, and stable refs must all
+   * match. No matching sourceRef is provable absence and remains retryable;
+   * a matching sourceRef whose record is unreadable or fails any cross-link
+   * is uninspectable — visible uncertainty that cannot settle and cannot be
+   * retried as if absent.
+   */
+  private findControlReceipt(input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+    readonly operation: Extract<ConversationOperation, { kind: "work_control" }>;
+  }): CanonicalReceiptLookup {
+    const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+    const carrierId = input.operation.carrierId;
+    const controlPath = join(this.home, "state", "task-attempts", carrierId, "control.json");
+    if (!existsSync(controlPath)) return { standing: "absent" };
+    let value: unknown;
+    try {
+      value = JSON.parse(readFileSync(controlPath, "utf8"));
+    } catch (error) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} cannot be read: ${errorMessage(error)}`,
+      };
+    }
+    const parsed = TaskRunControlReceiptSchema.safeParse(value);
+    if (!parsed.success) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} does not match the exact receipt shape`,
+      };
+    }
+    const receipt = parsed.data;
+    if (receipt.sourceRef !== sourceRef) {
+      // A different committed action's receipt: provable absence for this one.
+      return { standing: "absent" };
+    }
+    const evidence = readStrictTaskAttemptEvidence(this.home, carrierId);
+    if (evidence.standing !== "available" || evidence.attempt === undefined) {
+      return {
+        standing: "uninspectable",
+        reason:
+          `carrier ${carrierId} retains invalid evidence for this control: ${evidence.error ?? "unavailable"}`,
+      };
+    }
+    const mismatch = controlReceiptCrossLinkError(receipt, carrierId, evidence, input);
+    if (mismatch !== undefined) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} fails its exact identity: ${mismatch}`,
+      };
+    }
+    const refs = [evidenceRef(this.home, controlPath)];
+    if (evidence.settlement !== undefined) {
+      refs.push(evidence.refs.settlementRef);
+    }
+    return {
+      standing: "settled",
+      receipt: {
+        taskId: evidence.attempt.taskId,
+        evidenceRefs: refs,
+      },
+    };
   }
 
   private executeCreate(
@@ -328,6 +576,7 @@ function observedWorktreePath(
 
 function mapOperationError(error: unknown): Error {
   if (error instanceof ConversationOperationHostError) return error;
+  if (error instanceof ConversationCarrierError) return mapCarrierError(error);
   if (error instanceof PrincipalTaskError) {
     const code: ConversationOperationHostErrorCode =
       error.code === "task-drift" ? "stale-revision"
@@ -341,6 +590,84 @@ function mapOperationError(error: unknown): Error {
     "invalid-operation",
     `the operation cannot be applied through the canonical Task API: ${message}`,
   );
+}
+
+function mapCarrierError(error: ConversationCarrierError): ConversationOperationHostError {
+  const code: ConversationOperationHostErrorCode =
+    error.code === "carrier-duplicate" ? "carrier-duplicate"
+    : error.code === "carrier-not-found" ? "carrier-not-found"
+    : error.code === "carrier-not-live" ? "carrier-not-live"
+    : error.code === "carrier-unknown" ? "carrier-unknown"
+    : error.code === "control-unsupported" ? "control-unsupported"
+    : error.code === "control-conflict" ? "control-conflict"
+    : error.code === "lease-conflict" ? "lease-conflict"
+    : error.code === "task-not-found" ? "task-not-found"
+    : error.code === "task-settled" ? "task-settled"
+    : error.code === "task-not-runnable" ? "task-not-runnable"
+    : error.code === "task-not-bound" ? "task-not-bound"
+    : error.code === "stale-revision" ? "stale-revision"
+    : error.code === "stale-context" ? "stale-context"
+    : error.code === "worktree-dirty" ? "worktree-dirty"
+    : error.code === "project-unresolved" ? "project-unresolved"
+    : error.code === "worktree-unobserved" ? "worktree-unobserved"
+    : error.code === "worker-unknown" ? "worker-unknown"
+    : error.code === "worker-unavailable" ? "worker-unavailable"
+    : error.code === "source-unavailable" ? "source-unavailable"
+    : "operation-unavailable";
+  return new ConversationOperationHostError(code, error.message);
+}
+
+/**
+ * Cross-link one strict control receipt against its owning attempt evidence
+ * and the requested operation. Returns a mismatch reason, or undefined when
+ * every identity link matches: the requested actor conversation/action, the
+ * exact carrier/attempt identity, the attempt's taskId and workerId, the
+ * stable attempt/settlement refs, and the immutable CellInput's exact
+ * Worktree.
+ */
+function controlReceiptCrossLinkError(
+  receipt: z.infer<typeof TaskRunControlReceiptSchema>,
+  attemptId: string,
+  evidence: ReturnType<typeof readStrictTaskAttemptEvidence>,
+  input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+  },
+): string | undefined {
+  if (receipt.requestedBy.conversationId !== input.conversationId
+    || receipt.requestedBy.actionId !== input.actionId) {
+    return "the requested actor identity does not match the reconciled action";
+  }
+  if (receipt.carrierId !== attemptId || receipt.attemptId !== attemptId) {
+    return "the receipt does not belong to its carrier attempt";
+  }
+  const attempt = evidence.attempt!;
+  if (receipt.taskId !== attempt.taskId) {
+    return "the receipt task identity does not match its owning attempt";
+  }
+  if (attempt.workerId === undefined || receipt.workerId !== attempt.workerId) {
+    return "the receipt worker identity does not match its owning attempt";
+  }
+  if (receipt.attemptRef !== evidence.refs.attemptRef
+    || receipt.settlementRef !== evidence.refs.settlementRef) {
+    return "the receipt stable refs do not match its owning attempt evidence";
+  }
+  const cellInput = evidence.input;
+  if (cellInput === undefined) {
+    return "the owning attempt's immutable CellInput is unavailable";
+  }
+  let inputWorktree: string;
+  let receiptWorktree: string;
+  try {
+    inputWorktree = realpathSync(cellInput.workspace.root);
+    receiptWorktree = realpathSync(receipt.worktree);
+  } catch {
+    return "the receipt Worktree cannot be related to the immutable CellInput workspace";
+  }
+  if (inputWorktree !== receiptWorktree) {
+    return "the receipt Worktree does not match the immutable CellInput workspace";
+  }
+  return undefined;
 }
 
 function errorMessage(error: unknown): string {

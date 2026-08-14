@@ -21,7 +21,11 @@ import {
   statusLineProjection,
 } from "./statusline";
 import { showPrincipalTaskAttempts } from "./task-attempts";
-import { listPrincipalTaskWorkers, runPrincipalTask } from "./task-run";
+import {
+  listPrincipalTaskWorkers,
+  reconcilePrincipalTaskAttempt,
+  runPrincipalTask,
+} from "./task-run";
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
@@ -148,6 +152,7 @@ function printUsage(): void {
   console.log("  task list");
   console.log("  task show <id>");
   console.log("  task attempts <id>");
+  console.log("  task reconcile-attempt <id> --attempt <attempt-id>");
   console.log("  task run <id> --worker <worker-id> [--continue]");
   console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
   console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
@@ -190,6 +195,19 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
   if (command === "attempts") {
     if (raw.length !== 2) throw new Error("task attempts requires exactly one task id");
     return showPrincipalTaskAttempts(home, raw[1]!);
+  }
+  if (command === "reconcile-attempt") {
+    const parsed = parseTaskOptions(
+      raw.slice(1),
+      1,
+      new Set(["--attempt"]),
+      new Set(),
+    );
+    assertTaskOptions(parsed, new Set(["--attempt"]));
+    return reconcilePrincipalTaskAttempt(home, {
+      id: parsed.positionals[0]!,
+      attemptId: taskOption(parsed, "--attempt"),
+    });
   }
   if (command === "create") {
     const parsed = parseTaskOptions(

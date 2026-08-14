@@ -67,6 +67,11 @@ function operationFor(kind: "task_create" | "task_correct" | "task_continue" | "
         taskId: "fixture-task-id",
         expectedSourceRevision: 1,
         expectedRevision: 1,
+        workerId: "deepseek-flash",
+        projectId: "fixture-project",
+        expectedPrimaryHead: "1".repeat(40),
+        worktreePath: "/tmp/fixture-worktree",
+        expectedWorktreeHead: "1".repeat(40),
       };
     case "work_control":
       return {

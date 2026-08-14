@@ -1,15 +1,27 @@
 import { realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import {
   ProjectProjectionSchema,
   TaskProjectionSchema,
+  type CarrierActivityProjection,
   type CompactProjection,
+  type WorkerCardProjection,
 } from "../../../autonomy/src/conversation-prompt";
 import { loadHome, resolveHome, workspaceFor } from "../home";
 import { expandPath } from "../paths";
 import { loadPrincipalTasks } from "../tasks";
+import { attemptLeaseStanding } from "../task-run";
+import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { observeWorkspace, requiredGit } from "../workspace";
 import { digest, parseTaskReceiptEvidenceRef, type ConversationEvent } from "./contracts";
 import { FileConversationJournal } from "./journal";
+import type { PrincipalTask } from "../contracts";
+import {
+  listAttemptDirectories,
+  type ConversationExecutionCarrierRegistry,
+} from "./execution-carrier";
+
+const requireFromHere = createRequire(import.meta.url);
 
 const TASK_SOURCE_REF = "workbench:state/tasks.json";
 const PROJECTS_SOURCE_REF = "workbench:config/projects.json";
@@ -18,7 +30,10 @@ const PROJECTS_SOURCE_REF = "workbench:config/projects.json";
  * Builds the compact projection the coordinator reads against: the
  * conversation's current Task (from the latest settled task action receipt
  * re-read through the canonical Task source), the registered projects'
- * current primary heads, and their exact observed Worktrees. Every fact is
+ * current primary heads, their exact observed Worktrees, the bounded current
+ * worker catalog cards, and the conversation's carriers (live only through an
+ * exact retained runtime handle; a retained started attempt without that
+ * observation is liveness unknown, never guessed running). Every fact is
  * re-read from its canonical owner at projection time; nothing here is Task
  * state, conversation lifecycle, or semantic intent. The provider never
  * reads Principal message prose.
@@ -27,28 +42,124 @@ export interface ConversationContextProvider {
   buildProjection(conversationId: string): Promise<CompactProjection>;
 }
 
-export function createConversationContextProvider(homeArgument?: string): ConversationContextProvider {
+export interface ConversationContextProviderOptions {
+  /** The exact retained carrier runtime; liveness is claimed only through it. */
+  readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
+}
+
+export function createConversationContextProvider(
+  homeArgument?: string,
+  options: ConversationContextProviderOptions = {},
+): ConversationContextProvider {
   const home = resolveHome(homeArgument);
-  return new WorkbenchConversationContextProvider(home);
+  return new WorkbenchConversationContextProvider(home, options.carrierRegistry);
 }
 
 class WorkbenchConversationContextProvider implements ConversationContextProvider {
   private readonly home: string;
   private readonly journal: FileConversationJournal;
+  private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
 
-  constructor(home: string) {
+  constructor(home: string, carrierRegistry?: ConversationExecutionCarrierRegistry) {
     this.home = home;
     this.journal = new FileConversationJournal(home);
+    this.carrierRegistry = carrierRegistry;
   }
 
   async buildProjection(conversationId: string): Promise<CompactProjection> {
     const events = await this.journal.readEvents(conversationId);
     const task = this.currentTaskProjection(events);
     const projects = this.registeredProjectProjections();
+    const carriers = this.carrierProjections(conversationId);
+    const workers = this.workerCardProjections();
     return {
       ...(task === undefined ? {} : { task }),
       ...(projects.length === 0 ? {} : { projects }),
+      ...(carriers.length === 0 ? {} : { carriers }),
+      ...(workers.length === 0 ? {} : { workers }),
     };
+  }
+
+  /**
+   * Carriers attributable to this conversation, rebuilt from the retained
+   * attempt evidence plus the exact runtime registry: a retained handle that
+   * is still running claims live; a retained handle with durable terminal
+   * settlement claims that settlement; a handle whose terminal evidence
+   * retention failed claims a visible unresolved standing; a retained
+   * started attempt without a matching runtime handle — for example after a
+   * server restart — is liveness unknown. Attempt records are never guessed
+   * into running state, and invalid or mismatched evidence is never guessed
+   * into a settlement.
+   */
+  private carrierProjections(conversationId: string): CarrierActivityProjection[] {
+    const seen = new Set<string>();
+    const projections: CarrierActivityProjection[] = [];
+    for (const attemptId of listAttemptDirectories(this.home)) {
+      const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
+      if (evidence.attempt?.correlation?.conversationId !== conversationId) continue;
+      seen.add(attemptId);
+      projections.push(this.projectCarrier(attemptId, evidence));
+    }
+    for (const handle of this.carrierRegistry?.carriers() ?? []) {
+      if (seen.has(handle.identity.carrierId)) continue;
+      if (handle.identity.conversationId !== conversationId) continue;
+      projections.push(projectLiveCarrier(handle));
+    }
+    projections.sort((left, right) => left.id.localeCompare(right.id));
+    return projections;
+  }
+
+  private projectCarrier(
+    attemptId: string,
+    evidence: ReturnType<typeof readStrictTaskAttemptEvidence>,
+  ): CarrierActivityProjection {
+    const handle = this.carrierRegistry?.carrier(attemptId);
+    if (handle !== undefined) {
+      const liveness = handle.liveness();
+      if (liveness.state === "live") {
+        return projectLiveCarrier(handle);
+      }
+      if (liveness.state === "settled") {
+        return { id: attemptId, state: liveness.settlement.status };
+      }
+      return { id: attemptId, state: "unresolved" };
+    }
+    if (evidence.standing !== "available") {
+      // Invalid or mismatched evidence projects unknown, never settled.
+      return { id: attemptId, state: "unknown" };
+    }
+    const attempt = evidence.attempt;
+    if (attempt === undefined) {
+      return { id: attemptId, state: "unknown" };
+    }
+    if (evidence.settlement !== undefined) {
+      // A valid settlement is terminal only after the exact lease release
+      // succeeded; a still-retained exact lease is reconcile-required.
+      const lease = attemptLeaseStanding(this.home, attempt.taskId, attemptId);
+      return { id: attemptId, state: lease === "released" ? evidence.settlement.status : "unknown" };
+    }
+    return { id: attemptId, state: "unknown" };
+  }
+
+  /** Bounded current worker catalog cards; availability is copied, never guessed. */
+  private workerCardProjections(): WorkerCardProjection[] {
+    let cards;
+    try {
+      cards = currentWorkerCards();
+    } catch {
+      return [];
+    }
+    return cards.map((card) => ({
+      id: card.id,
+      description: card.description,
+      labels: [...card.labels],
+      provider: card.executionProfile.provider,
+      model: card.executionProfile.model,
+      ...(card.executionProfile.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: card.executionProfile.reasoningEffort }),
+      availability: card.availability.status,
+    }));
   }
 
   private currentTaskProjection(events: readonly ConversationEvent[]): CompactProjection["task"] {
@@ -73,7 +184,58 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
       summary: `${task.title}: ${task.objective}`.slice(0, 800),
       status: task.lifecycle === "settled" ? "settled" : "open",
       ...(corrections.length === 0 ? {} : { corrections }),
+      ...this.taskExecutionSelectors(task),
     });
+  }
+
+  /**
+   * The exact execution selection a bound task exposes to the coordinator:
+   * the registered project identity, its current primary head, the exact
+   * observed Worktree path, and its current head. Selectors appear only when
+   * every fact can be re-read from the canonical owners; a partial or
+   * unreadable selection is omitted so the coordinator can never copy a
+   * guessed route.
+   */
+  private taskExecutionSelectors(task: PrincipalTask): {
+    projectId?: string;
+    primaryHead?: string;
+    worktreePath?: string;
+    worktreeHead?: string;
+  } {
+    if (task.binding.kind !== "project-context") {
+      return {};
+    }
+    const binding = task.binding;
+    const configuredWorktree = binding.worktreePath;
+    if (configuredWorktree === undefined) return {};
+    let current;
+    try {
+      current = loadHome(this.home);
+    } catch {
+      return {};
+    }
+    const project = current.projects.projects.find(
+      (candidate) => candidate.id === binding.projectId,
+    );
+    if (project === undefined) return {};
+    try {
+      const workspace = workspaceFor(current.workspaces, project.id);
+      const observation = observeWorkspace(project, workspace);
+      if (observation.head === null) return {};
+      const worktrees = observedWorktrees(observation.path);
+      const bound = worktrees.find(
+        (candidate) => candidate.path === realpathSync(expandPath(configuredWorktree)),
+      );
+      if (bound === undefined) return {};
+      return {
+        projectId: project.id,
+        primaryHead: observation.head,
+        worktreePath: bound.path,
+        worktreeHead: bound.head,
+      };
+    } catch {
+      return {};
+    }
   }
 
   private registeredProjectProjections(): NonNullable<CompactProjection["projects"]> {
@@ -155,4 +317,27 @@ function observedWorktrees(primaryWorkspace: string): { path: string; head: stri
   }
   worktrees.sort((left, right) => left.path.localeCompare(right.path));
   return worktrees;
+}
+
+function projectLiveCarrier(handle: {
+  identity: { carrierId: string };
+  liveness(): { state: string; runId?: string };
+}): CarrierActivityProjection {
+  const liveness = handle.liveness();
+  return {
+    id: handle.identity.carrierId,
+    state: "live",
+    ...(liveness.runId === undefined ? {} : { runId: liveness.runId }),
+  };
+}
+
+/** Current worker policy cards, loaded only when a projection needs them. */
+function currentWorkerCards(): Array<{
+  id: string;
+  labels: readonly string[];
+  description: string;
+  executionProfile: { provider: string; model: string; reasoningEffort?: string };
+  availability: { status: "available" | "unavailable"; reason?: string };
+}> {
+  return requireFromHere("../../../autonomy/src/worker-policy").currentWorkerCards();
 }

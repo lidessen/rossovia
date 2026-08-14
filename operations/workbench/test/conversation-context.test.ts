@@ -140,6 +140,32 @@ describe("ConversationContextProvider", () => {
     expect(projection.task!.status).toBe("open");
   });
 
+  test("exposes the exact execution selection of a bound Task for an exact task_continue", async () => {
+    const { home, provider, journal, projectId, worktree, primary } = fixture();
+    const conversationId = randomUUID();
+    const created = createPrincipalTask(home, {
+      title: "Continue the fixture task",
+      objective: "Produce the bounded fixture result.",
+      acceptance: ["the fixture exists"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+      project: "context-fixture",
+      worktree,
+    });
+    await journalSettledCreate(journal, conversationId, created.task.id, created.sourceRevision);
+
+    const projection = await provider.buildProjection(conversationId);
+
+    expect(projection.task).toMatchObject({
+      id: created.task.id,
+      projectId,
+      primaryHead: git(primary, "rev-parse", "HEAD"),
+      worktreePath: realpathSync(worktree),
+      worktreeHead: git(worktree, "rev-parse", "HEAD"),
+    });
+  });
+
   test("reflects a correction on the same Task and the updated source revision", async () => {
     const { home, provider, journal } = fixture();
     const conversationId = randomUUID();
@@ -208,7 +234,9 @@ describe("ConversationContextProvider", () => {
 
     const projection = await provider.buildProjection(randomUUID());
 
-    expect(projection).toEqual({});
+    expect(projection).not.toHaveProperty("task");
+    expect(projection).not.toHaveProperty("projects");
+    expect(projection.workers?.length).toBeGreaterThan(0);
   });
 
   test("the causal task action source ref retains the conversation and action identity", () => {

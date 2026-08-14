@@ -97,19 +97,20 @@ function currentCreateOperation(parts: {
 
 function input(host: ReturnType<typeof createConversationTaskOperationHost>, operation: ConversationOperation) {
   const conversationId = randomUUID();
+  const turnId = randomUUID();
   const actionId = randomUUID();
-  return { host, conversationId, actionId, operation };
+  return { host, conversationId, turnId, actionId, operation };
 }
 
 describe("ConversationTaskOperationHost task_create", () => {
   test("creates one project-bound Task with the causal action source ref and a canonical receipt", () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
-    const { conversationId, actionId, operation } = input(
+    const { conversationId, turnId, actionId, operation } = input(
       host,
       currentCreateOperation({ worktree, primaryHead, worktreeHead }),
     );
 
-    const receipt = host.executeOperation({ conversationId, actionId, operation });
+    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
 
     const tasks = loadPrincipalTasks(host.home);
     expect(tasks.tasks).toHaveLength(1);
@@ -379,10 +380,20 @@ describe("ConversationTaskOperationHost task_correct", () => {
 });
 
 describe("ConversationTaskOperationHost deferred operations", () => {
-  test("task_continue and work_control stay strict typed but unavailable with no effect", () => {
+  test("task_continue and work_control stay strict typed but unavailable without an installed carrier runtime", () => {
     const { host } = fixture();
     for (const operation of [
-      { kind: "task_continue" as const, taskId: "task-1", expectedSourceRevision: 0, expectedRevision: 1 },
+      {
+        kind: "task_continue" as const,
+        taskId: "task-1",
+        expectedSourceRevision: 0,
+        expectedRevision: 1,
+        workerId: "deepseek-flash",
+        projectId: "repository:task-1",
+        expectedPrimaryHead: "1".repeat(40),
+        worktreePath: "/tmp/task-1-worktree",
+        expectedWorktreeHead: "1".repeat(40),
+      },
       { kind: "work_control" as const, carrierId: "carrier-1", control: "stop" as const },
     ]) {
       const attempt = input(host, operation);

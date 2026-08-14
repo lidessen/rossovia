@@ -50,6 +50,17 @@ export const TaskProjectionSchema = z.object({
   summary: z.string().min(1).max(800),
   status: z.enum(["open", "settled", "accepted"]).optional(),
   corrections: z.array(CorrectionProjectionSchema).optional(),
+  /**
+   * The task's exact execution selection, present only when the task is bound
+   * to an existing project Worktree: the registered project identity, its
+   * current primary head, the exact bound Worktree path, and its current
+   * head. A task_continue must copy these selectors verbatim; the host
+   * re-reads them immediately before any start effect.
+   */
+  projectId: z.string().min(1).optional(),
+  primaryHead: GitObjectSchema.optional(),
+  worktreePath: z.string().min(1).optional(),
+  worktreeHead: GitObjectSchema.optional(),
 }).strict();
 export type TaskProjection = z.infer<typeof TaskProjectionSchema>;
 
@@ -76,10 +87,31 @@ export const CarrierActivityProjectionSchema = z.object({
 }).strict();
 export type CarrierActivityProjection = z.infer<typeof CarrierActivityProjectionSchema>;
 
+/**
+ * One bounded worker capability card disclosed to the coordinator. The
+ * coordinator judges descriptions semantically; the host only validates an
+ * exact card identity copied from this projection. It is a read-only fact,
+ * never a routing or ranking policy.
+ */
+export const WorkerCardProjectionSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().min(1),
+  labels: z.array(z.string().min(1)),
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  reasoningEffort: z.string().min(1).optional(),
+  availability: z.union([
+    z.literal("available"),
+    z.literal("unavailable"),
+  ]),
+}).strict();
+export type WorkerCardProjection = z.infer<typeof WorkerCardProjectionSchema>;
+
 export const CompactProjectionSchema = z.object({
   task: TaskProjectionSchema.optional(),
   projects: z.array(ProjectProjectionSchema).optional(),
   carriers: z.array(CarrierActivityProjectionSchema).optional(),
+  workers: z.array(WorkerCardProjectionSchema).optional(),
 }).strict();
 export type CompactProjection = z.infer<typeof CompactProjectionSchema>;
 
@@ -227,10 +259,24 @@ function renderProjection(
     if (task.revision !== undefined) {
       lines.push(`  task revision: ${task.revision}`);
     }
+    if (task.projectId !== undefined) {
+      lines.push(
+        `  execution selection: registered project ${task.projectId}`
+        + ` @ primary ${task.primaryHead ?? "unavailable"}`
+        + ` in bound worktree ${task.worktreePath ?? "unavailable"}`
+        + ` @ ${task.worktreeHead ?? "unavailable"}`,
+      );
+    }
     if (task.corrections !== undefined && task.corrections.length > 0) {
       lines.push(`  corrections: ${task.corrections.map((c) => `${c.id}: ${c.summary}`).join(" | ")}`);
     }
     sourceRevisionSelectors.push({ source: `task:${task.id}`, revision: task.sourceRevision });
+    if (task.projectId !== undefined && task.primaryHead !== undefined) {
+      sourceRevisionSelectors.push({ source: `task-project:${task.id}`, revision: task.primaryHead });
+    }
+    if (task.worktreePath !== undefined && task.worktreeHead !== undefined) {
+      sourceRevisionSelectors.push({ source: `task-worktree:${task.id}`, revision: task.worktreeHead });
+    }
   }
 
   for (const project of projection.projects ?? []) {
@@ -258,6 +304,14 @@ function renderProjection(
     if (carrier.runId !== undefined) {
       sourceRevisionSelectors.push({ source: `carrier:${carrier.id}`, revision: carrier.runId });
     }
+  }
+
+  for (const worker of projection.workers ?? []) {
+    lines.push(
+      `worker ${worker.id} [${worker.availability}] ${worker.provider}/${worker.model}`
+      + `${worker.reasoningEffort === undefined ? "" : ` reasoning=${worker.reasoningEffort}`}`
+      + ` labels=${worker.labels.join(",")}: ${worker.description}`,
+    );
   }
 
   return `## 2. Current compact projection\n\n${lines.join("\n")}`;

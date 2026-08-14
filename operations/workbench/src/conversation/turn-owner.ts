@@ -86,15 +86,15 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
     },
     {
       name: "task_continue",
-      availability: "unavailable",
+      availability: "available",
       meaning:
-        "Continuation is not yet available: the execution carrier wave does not own it. Do not call this tool; report that continuation is unavailable instead.",
+        "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier. Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description; never invent, guess, or route a worker by phrase. The host re-reads the exact Task/source revisions, registered project identity, current primary observation, bound Worktree path and head, and the exact Worktree lease immediately before starting, and refuses stale or mismatched selectors with no effect.",
     },
     {
       name: "work_control",
-      availability: "unavailable",
+      availability: "available",
       meaning:
-        "Persistent-work control requires an exact execution carrier and is not yet available. Do not call this tool; report that control is unavailable instead.",
+        "Apply one explicit control to one exact retained carrier. Copy the exact carrierId from the current projection's carriers and choose the control that fits the message. An ordinary Task carrier owns only stop; pause/resume/recover are refused visibly. A carrier without a live retained handle reports liveness unknown and the control cannot be verified. Response interruption is a different control and never stops persistent work.",
     },
   ],
   abstention:

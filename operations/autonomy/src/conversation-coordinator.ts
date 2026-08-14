@@ -49,8 +49,9 @@ export type ConversationTurnRequest = z.infer<typeof ConversationTurnRequestSche
  * most one operation per Principal message, enforced by the kernel; the host
  * re-validates every field against current sources immediately before any
  * effect. The schema is structure only: it never classifies prose by regex,
- * keyword, or fixed phrase. `task_continue` and `work_control` remain typed
- * but unavailable until the execution carrier wave owns them.
+ * keyword, or fixed phrase. `task_continue` selects an exact catalog worker
+ * identity; `work_control` targets one exact retained carrier identity. Both
+ * are refused visibly when their owning execution-carrier runtime is absent.
  */
 export const TaskCreateOperationSchema = z.object({
   kind: z.literal("task_create"),
@@ -83,6 +84,23 @@ export const TaskContinueOperationSchema = z.object({
   taskId: z.string().min(1),
   expectedSourceRevision: z.number().int().nonnegative(),
   expectedRevision: z.number().int().positive(),
+  /**
+   * Exact catalog identity copied from the current projection's worker cards.
+   * The coordinator chooses semantic suitability; the host validates the exact
+   * card identity and never infers a worker from prose or role.
+   */
+  workerId: z.string().min(1),
+  /**
+   * The exact execution selection the coordinator observed in the projection:
+   * the registered project identity, its expected current-primary head, the
+   * exact bound Worktree path, and its expected head. The host re-reads and
+   * compares every selector again after lease acquisition and immediately
+   * before attempt creation; X→Y drift fails stale with no effect.
+   */
+  projectId: z.string().min(1),
+  expectedPrimaryHead: GitObjectSchema,
+  worktreePath: z.string().min(1),
+  expectedWorktreeHead: GitObjectSchema,
 }).strict();
 export type TaskContinueOperation = z.infer<typeof TaskContinueOperationSchema>;
 
