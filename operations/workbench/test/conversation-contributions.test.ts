@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -23,6 +24,7 @@ import {
   contributionPreparedBatchId,
   contributionStateDirectory,
   createConversationContributionRegistry,
+  readContributionSpawnReceipts,
   type ConversationContributionRegistry,
 } from "../src/conversation/contributions";
 import {
@@ -397,7 +399,7 @@ describe("conversation temporary contributions", () => {
     const receipt = registry.spawn(spawnInput(actor, spawnOperation({ key: "derived-task" })));
     expect(receipt.taskId).toBe(fixture_.taskId);
     expect(receipt.taskRevision).toBe(fixture_.taskRevision);
-    const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${receipt.batchId}.json`);
+    const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${actor.actionId}.json`);
     const spawnRecord = JSON.parse(readFileSync(spawnPath, "utf8")) as Record<string, unknown>;
     expect(spawnRecord.taskId).toBe(fixture_.taskId);
     expect(spawnRecord.taskRevision).toBe(fixture_.taskRevision);
@@ -566,21 +568,27 @@ describe("conversation temporary contributions", () => {
     })).not.toThrow();
   });
 
-  test("a refused effectful spawn releases the exact Worktree lease it acquired", async () => {
+  test.skipIf(typeof process.getuid === "function" && process.getuid() === 0)("a refused effectful spawn releases the exact Worktree lease it acquired", async () => {
     const fixture_ = fixture();
     const registry = createConversationContributionRegistry(fixture_.home, {
       catalog: fakeCatalog(),
     });
     const actor = await seededActor(fixture_);
 
-    // dependsOn names a never-formed key: the prepared delegate batch fails
-    // admission after the effectful Worktree lease was already acquired.
-    const refused = spawnOperation({
-      key: "refused-writer",
-      effectKind: "effectful",
-      dependsOn: ["never-formed"],
-    });
-    expect(() => registry.spawn(spawnInput(actor, refused))).toThrow();
+    // A read-only receipt directory makes the atomic receipt write fail
+    // after the effectful Worktree lease was already acquired; the refused
+    // spawn must release that exact lease instead of leaving a hidden
+    // writer-blocked lock. Root bypasses directory permissions, so this
+    // fixture skips under root.
+    const directory = contributionStateDirectory(fixture_.home, actor.conversationId);
+    mkdirSync(directory, { recursive: true });
+    chmodSync(directory, 0o555);
+    try {
+      const refused = spawnOperation({ key: "refused-writer", effectKind: "effectful" });
+      expect(() => registry.spawn(spawnInput(actor, refused))).toThrow();
+    } finally {
+      chmodSync(directory, 0o755);
+    }
 
     // The failed spawn released its lease: the next effectful contribution
     // on the same Task/Worktree is admitted instead of being refused as an
@@ -592,6 +600,203 @@ describe("conversation temporary contributions", () => {
       const projections = await registry.listContributions(actor.conversationId);
       return projections.every((entry) => entry.state === "settled");
     }, "admitted effectful contribution settles");
+  });
+
+  test("two registries converging on the same committed action share one strict receipt and start exactly one worker", async () => {
+    const fixture_ = fixture();
+    const actor = await seededActor(fixture_);
+    let starts = 0;
+    const countingDriver = (): CellDriver => ({
+      descriptor: fakeDescriptor(),
+      async run(input, context) {
+        starts += 1;
+        return await fastContributionDriver().run(input, context);
+      },
+    });
+    const sharedCatalog = fakeCatalog(countingDriver);
+    const first = createConversationContributionRegistry(fixture_.home, { catalog: sharedCatalog });
+    const second = createConversationContributionRegistry(fixture_.home, { catalog: sharedCatalog });
+
+    const operation = spawnOperation({ key: "shared-reservation" });
+    const firstReceipt = first.spawn(spawnInput(actor, operation));
+    const secondReceipt = second.spawn(spawnInput(actor, operation));
+
+    // The loser converges on the winner's strict matching receipt and starts
+    // no duplicate worker: exactly one durable reservation exists and only
+    // the winner's registry retains the started contribution.
+    expect(secondReceipt.batchId).toBe(firstReceipt.batchId);
+    expect(secondReceipt.key).toBe(firstReceipt.key);
+    expect(first.contribution(firstReceipt.batchId, firstReceipt.key)).toBeDefined();
+    expect(second.contribution(firstReceipt.batchId, firstReceipt.key)).toBeUndefined();
+    expect(readContributionSpawnReceipts(fixture_.home, actor.conversationId)).toHaveLength(1);
+
+    await waitFor(async () => {
+      const projections = await first.listContributions(actor.conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "the single winner contribution settles");
+    expect(starts).toBe(1);
+  });
+
+  test("dependsOn admits only durably settled dependencies at the current Task revision", async () => {
+    const fixture_ = fixture();
+    const gated = gatedContributionDriver();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(() => gated.driver),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+
+    // A live (not terminally settled) dependency is refused.
+    registry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "dep-live" }),
+    ));
+    expect(() => registry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "dep-on-live", dependsOn: ["dep-live"] }),
+    ))).toThrowError(ContributionError);
+
+    // An unknown dependency with no current contribution is refused.
+    expect(() => registry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "dep-on-unknown", dependsOn: ["never-formed"] }),
+    ))).toThrowError(ContributionError);
+
+    // Once the dependency terminally settles, a dependent contribution is
+    // admitted with the exact settled key in its delegate admission evidence.
+    gated.release();
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "dependency settles");
+    const dependentReceipt = registry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "dep-on-settled", dependsOn: ["dep-live"] }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.find((entry) => entry.batchId === dependentReceipt.batchId)?.state === "settled";
+    }, "dependent settles");
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    const recovered = await timeline.recoverBatch(
+      conversationId,
+      contributionPreparedBatchId(conversationId, dependentReceipt.batchId),
+    );
+    expect(recovered.ready).toBe(true);
+    expect(recovered.checkpoint.admission.whole.settledContributionKeys).toEqual(["dep-live"]);
+
+    // A Task correction moves the revision: the previously settled
+    // dependency is stale and refused for the corrected Task.
+    const source = loadPrincipalTasks(fixture_.home);
+    const corrected = correctPrincipalTask(fixture_.home, {
+      id: fixture_.taskId,
+      expectedSourceRevision: source.sourceRevision,
+      expectedRevision: source.tasks[0]!.revision,
+      statement: "The corrected fixture objective.",
+      sourceRef: "test:correction",
+      nextActor: "agent",
+    });
+    expect(corrected.task.revision).toBe(fixture_.taskRevision + 1);
+    expect(() => registry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "dep-on-stale", dependsOn: ["dep-live"] }),
+    ))).toThrowError(ContributionError);
+  });
+
+  test("a failed terminal lease release marks the contribution unresolved and reconcile-required with visible owner evidence", async () => {
+    const fixture_ = fixture();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(slowContributionDriver),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "stuck-writer", effectKind: "effectful" }),
+    ));
+
+    // The spawn receipt retains the exact lease ownership evidence.
+    const reservationPath = join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `spawn-${actor.actionId}.json`,
+    );
+    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+    const leaseRecord = spawnRecord.lease as Record<string, unknown>;
+    expect(leaseRecord.taskId).toBe(fixture_.taskId);
+    expect(leaseRecord.attemptId).toBe(receipt.batchId);
+    expect(leaseRecord.path).toBeString();
+
+    // The exact lease is externally removed before the stop, so the exact
+    // release cannot verify its ownership identity and must fail closed.
+    rmSync(String(leaseRecord.path));
+    const handle = registry.contribution(receipt.batchId, "stuck-writer");
+    registry.control({ batchId: receipt.batchId, key: "stuck-writer", control: "stop", actor });
+    await waitFor(() => handle!.liveness().state !== "live", "the stopped contribution reaches terminal liveness");
+    const liveness = handle!.liveness();
+    expect(liveness.state).toBe("unresolved");
+    if (liveness.state === "unresolved") {
+      expect(liveness.settlement.error).toContain("reconcile-required");
+      expect(liveness.settlement.error).toContain(String(leaseRecord.path));
+    }
+
+    // Recoverability: with the retained lease gone, a fresh effectful
+    // contribution on the same Task/Worktree is admitted again.
+    const replacementRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const replacement = replacementRegistry.spawn(spawnInput(
+      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
+      spawnOperation({ key: "replacement-writer", effectKind: "effectful" }),
+    ));
+    expect(replacement.effectKind).toBe("effectful");
+    await waitFor(async () => {
+      const projections = await replacementRegistry.listContributions(conversationId);
+      return projections.find((entry) => entry.batchId === replacement.batchId)?.state === "settled";
+    }, "the replacement settles");
+  });
+
+  test("a restarted registry projects a timeline-settled contribution with a retained lease as unresolved reconcile-required", async () => {
+    const fixture_ = fixture();
+    const first = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = first.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "crash-writer", effectKind: "effectful" }),
+    ));
+    await waitFor(async () => {
+      const projections = await first.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "contribution settles");
+    const reservationPath = join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `spawn-${actor.actionId}.json`,
+    );
+    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+    const leaseRecord = spawnRecord.lease as Record<string, unknown>;
+
+    // Simulate the crash-retained lease: the exact owner fields stay matched
+    // while the recorded pid is verifiably absent.
+    writeFileSync(String(leaseRecord.path), `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: leaseRecord.worktree,
+      taskId: leaseRecord.taskId,
+      attemptId: leaseRecord.attemptId,
+      pid: 999_999_999,
+      acquiredAt: leaseRecord.acquiredAt,
+    }, null, 2)}\n`, "utf8");
+
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const projections = await restarted.listContributions(conversationId);
+    const projection = projections.find((entry) => entry.batchId === receipt.batchId);
+    expect(projection?.state).toBe("unresolved");
+    expect(projection?.status).toContain("reconcile-required");
   });
 
   test("every contribution retains its exact worker and execution profile", async () => {
@@ -606,7 +811,7 @@ describe("conversation temporary contributions", () => {
       return projections.every((entry) => entry.state === "settled");
     }, "contribution settles");
 
-    const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${receipt.batchId}.json`);
+    const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${actor.actionId}.json`);
     expect(existsSync(spawnPath)).toBe(true);
     const spawnRecord = JSON.parse(readFileSync(spawnPath, "utf8")) as Record<string, unknown>;
     expect(spawnRecord.workerId).toBe(FAKE_WORKER_ID);
@@ -849,7 +1054,7 @@ describe("conversation temporary contributions", () => {
       ...actor,
       operation: spawnOperation() as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     });
-    const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${receipt.batchId}.json`);
+    const spawnPath = join(contributionStateDirectory(fixture_.home, actor.conversationId), `spawn-${actor.actionId}.json`);
     const spawnRecord = JSON.parse(readFileSync(spawnPath, "utf8")) as Record<string, unknown>;
     const sourceRef = String(spawnRecord.sourceRef);
     expect(sourceRef).not.toContain("conversation-events");

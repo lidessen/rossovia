@@ -96,6 +96,7 @@ export type ContributionErrorCode =
   | "contribution-unknown"
   | "control-unsupported"
   | "control-conflict"
+  | "dependency-unsettled"
   | "source-unavailable";
 
 export class ContributionError extends Error {
@@ -297,6 +298,20 @@ const SpawnReceiptSchema = z.object({
   intent: z.string().min(1),
   timelineRef: z.string().min(1),
   startedAt: z.string().min(1),
+  /**
+   * The exact task-run Worktree lease ownership identity an effectful spawn
+   * acquired: the durable exact contribution/lease evidence retained until
+   * the exact release succeeds, so a retained or crash-abandoned lease can
+   * be projected as reconcile-required instead of hidden.
+   */
+  lease: z.object({
+    path: z.string().min(1),
+    worktree: z.string().min(1),
+    taskId: z.string().min(1),
+    attemptId: z.string().min(1),
+    pid: z.number().int().positive(),
+    acquiredAt: z.string().min(1),
+  }).strict().optional(),
 }).strict();
 type SpawnReceipt = z.infer<typeof SpawnReceiptSchema>;
 
@@ -395,6 +410,21 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         `a contribution for turn ${input.turnId} action ${input.actionId} was already started: ${existing}`,
       );
     }
+
+    // Cross-process at-most-once: the durable spawn receipt is reserved
+    // atomically by committed conversation/action identity before any worker
+    // starts. A receipt already retained for this exact action converges on
+    // the winner's strict matching receipt and starts no duplicate worker.
+    const reserved = readSpawnReservation(this.conversationDirectory(input.conversationId), input.actionId);
+    if (reserved !== undefined) {
+      const mismatch = spawnReceiptMismatch(reserved, input, operation);
+      if (mismatch === undefined) return winnerReceipt(reserved, this.home);
+      throw new ContributionError(
+        "contribution-duplicate",
+        `the committed action ${input.actionId} already retains a contribution spawn that does not match this operation: ${mismatch}`,
+      );
+    }
+
     const conversationKeys = this.conversationKeys(input.conversationId);
     if (conversationKeys.has(operation.key)) {
       throw new ContributionError(
@@ -472,6 +502,25 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
 
     const batchId = randomUUID();
+    // dependsOn eligibility derives only from durable terminal contribution
+    // timeline evidence at the current Task revision: live, unknown, stale,
+    // or receipt-only keys are refused before any preparation or effect.
+    const settledKeys = this.eligibleSettledKeys(input.conversationId, operation.dependsOn);
+
+    // Fallible preparation happens before the shared Worktree lease is
+    // acquired: a refused admission never touches the writer lock.
+    const { batch, cell } = this.prepareContribution({
+      conversationId: input.conversationId,
+      actionId: input.actionId,
+      task,
+      sourceRevision: tasks.sourceRevision,
+      worktree,
+      card,
+      operation,
+      batchId,
+      settledKeys,
+    });
+
     let lease: TaskRunLease | undefined;
     if (operation.effectKind === "effectful") {
       try {
@@ -487,21 +536,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
 
     let handle: WorkbenchContributionHandle;
     let spawnRef: string;
-    let batch: PreparedDelegateBatch;
-    let cell: CellInput;
     try {
-      ({ batch, cell } = this.prepareContribution({
-        conversationId: input.conversationId,
-        actionId: input.actionId,
-        task,
-        sourceRevision: tasks.sourceRevision,
-        worktree,
-        card,
-        operation,
-        batchId,
-        settledKeys: [...conversationKeys].filter((key) => key !== operation.key),
-      }));
-
       spawnRef = this.writeSpawnReceipt({
         conversationId: input.conversationId,
         turnId: input.turnId,
@@ -515,6 +550,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         sourceRevision: tasks.sourceRevision,
         intent: operation.intent,
         timelineRef: evidenceRef(this.home, this.timeline.timelinePath(input.conversationId)),
+        ...(lease === undefined ? {} : { lease }),
       });
 
       handle = new WorkbenchContributionHandle({
@@ -537,17 +573,35 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         ...(lease === undefined ? {} : { lease }),
       });
     } catch (error) {
-      // A refused preparation or an unretained spawn receipt releases the
-      // exact lease it acquired: a failed effectful spawn must never leave
-      // the Task/Worktree writer-blocked without a started contribution.
-      if (lease !== undefined) {
+      if (isAlreadyExists(error)) {
+        // The atomic reservation lost to another process: converge on the
+        // winner's strict matching receipt and start no duplicate worker.
+        let winner: SpawnReceipt | undefined;
         try {
-          releaseWorktreeLease(lease);
-        } catch {
-          // The just-acquired lease cannot be released; it stays retained
-          // with the visible spawn failure rather than being claimed live.
+          winner = readSpawnReservation(this.conversationDirectory(input.conversationId), input.actionId);
+        } catch (readError) {
+          releaseAcquiredLeaseOrThrow(lease, "the committed action's spawn reservation could not be read");
+          throw readError;
         }
+        if (winner === undefined) {
+          releaseAcquiredLeaseOrThrow(lease, "the committed action's spawn reservation could not be read");
+          throw new ContributionError(
+            "source-unavailable",
+            `the committed action ${input.actionId} holds no readable spawn reservation; the spawn is refused without guessing`,
+          );
+        }
+        const mismatch = spawnReceiptMismatch(winner, input, operation);
+        if (mismatch === undefined) {
+          releaseAcquiredLeaseOrThrow(lease, "converging on the committed action's retained spawn receipt");
+          return winnerReceipt(winner, this.home);
+        }
+        releaseAcquiredLeaseOrThrow(lease, "the committed action's spawn reservation does not match this operation");
+        throw new ContributionError(
+          "contribution-duplicate",
+          `the committed action ${input.actionId} already retains a contribution spawn that does not match this operation: ${mismatch}`,
+        );
       }
+      releaseAcquiredLeaseOrThrow(lease, "the spawn receipt could not be retained");
       throw error;
     }
     this.handles.set(batchId, handle);
@@ -638,15 +692,30 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         ? recovered.outcomes.find((candidate) => candidate.key === receipt.key)
         : undefined;
       if (recovered.ready && outcome !== undefined) {
-        projections.push({
-          batchId: receipt.batchId,
-          key: receipt.key,
-          workerId: receipt.workerId,
-          effectKind: receipt.effectKind,
-          taskId: receipt.taskId,
-          state: "settled",
-          status: outcome.status,
-        });
+        // A terminal timeline settlement with a still-retained exact lease is
+        // unresolved and reconcile-required, never settled: the retained
+        // writer lock must stay visible until the exact release succeeds.
+        if (receipt.lease !== undefined && contributionLeaseStanding(receipt.lease) === "retained") {
+          projections.push({
+            batchId: receipt.batchId,
+            key: receipt.key,
+            workerId: receipt.workerId,
+            effectKind: receipt.effectKind,
+            taskId: receipt.taskId,
+            state: "unresolved",
+            status: "reconcile-required: the retained task-run Worktree lease still blocks effectful writers",
+          });
+        } else {
+          projections.push({
+            batchId: receipt.batchId,
+            key: receipt.key,
+            workerId: receipt.workerId,
+            effectKind: receipt.effectKind,
+            taskId: receipt.taskId,
+            state: "settled",
+            status: outcome.status,
+          });
+        }
       } else {
         projections.push({
           batchId: receipt.batchId,
@@ -846,6 +915,52 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   }
 
   /**
+   * dependsOn eligibility derives only from durable terminal contribution
+   * timeline evidence at the current Task revision: a dependency must name a
+   * still-current spawn receipt whose exact child has a terminal settlement
+   * on its delegate timeline. Receipt existence alone, live or unknown
+   * contributions, post-correction stale receipts, and unprovable timelines
+   * are all refused visibly before any preparation or effect.
+   */
+  private eligibleSettledKeys(conversationId: string, dependsOn: readonly string[]): string[] {
+    if (dependsOn.length === 0) return [];
+    const current = this.readSpawnReceipts(conversationId).filter((receipt) => this.isStillCurrent(receipt));
+    const byKey = new Map(current.map((receipt) => [receipt.key, receipt] as const));
+    const eligible: string[] = [];
+    for (const dependency of dependsOn) {
+      const receipt = byKey.get(dependency);
+      if (receipt === undefined) {
+        throw new ContributionError(
+          "dependency-unsettled",
+          `dependency '${dependency}' has no still-current contribution of conversation ${conversationId}; `
+          + "a dependency must derive from durable terminal contribution evidence at the current Task revision",
+        );
+      }
+      let settled: boolean;
+      try {
+        settled = this.timeline.hasTerminalSettlementSync(
+          conversationId,
+          contributionPreparedBatchId(conversationId, receipt.batchId),
+          dependency,
+        );
+      } catch (error) {
+        throw new ContributionError(
+          "dependency-unsettled",
+          `dependency '${dependency}' cannot be proven terminally settled: ${errorMessage(error)}`,
+        );
+      }
+      if (!settled) {
+        throw new ContributionError(
+          "dependency-unsettled",
+          `dependency '${dependency}' has not terminally settled; a live or unknown dependency cannot be admitted`,
+        );
+      }
+      eligible.push(dependency);
+    }
+    return eligible;
+  }
+
+  /**
    * Derive the complete internal delegate admission envelope from the current
    * Task and runtime sources. The coordinator's spawn shape contributed only
    * intent plus non-derivable constraints; every evidence field here — source
@@ -1034,10 +1149,14 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     readonly sourceRevision: number;
     readonly intent: string;
     readonly timelineRef: string;
+    readonly lease?: TaskRunLease;
   }): string {
     const directory = this.conversationDirectory(input.conversationId);
     mkdirSync(directory, { recursive: true });
-    const path = join(directory, `spawn-${input.batchId}.json`);
+    // The receipt is the cross-process reservation: its path is keyed by the
+    // committed action identity and written atomically, so two processes
+    // reconciling the same action converge on one strict matching receipt.
+    const path = join(directory, `spawn-${input.actionId}.json`);
     writeImmutableJson(path, SpawnReceiptSchema.parse({
       version: CONTRIBUTION_SPAWN_VERSION,
       batchId: input.batchId,
@@ -1056,6 +1175,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       intent: input.intent,
       timelineRef: input.timelineRef,
       startedAt: this.now(),
+      ...(input.lease === undefined ? {} : { lease: contributionLeaseIdentity(input.lease) }),
     }));
     return evidenceRef(this.home, path);
   }
@@ -1233,25 +1353,31 @@ class WorkbenchContributionHandle implements ContributionHandle {
   /**
    * Terminal settlement retention: the lease is released only after the
    * durable timeline settlement exists, and the handle drops its listener
-   * sets and its retained lease payload so settled handles stay bounded.
+   * sets and its retained lease payload so settled handles stay bounded. A
+   * failed exact release never swallows: the lease stays retained with the
+   * handle, the settlement becomes unresolved and reconcile-required, and
+   * the error names the exact lease and owner evidence.
    */
   finishTerminal(settlement: ContributionSettlement): void {
     if (this.settlement !== undefined) return;
     this.settlement = settlement;
     if (this.lease !== undefined) {
+      const retainedLease = this.lease;
       try {
-        releaseWorktreeLease(this.lease);
+        releaseWorktreeLease(retainedLease);
+        this.lease = undefined;
       } catch (error) {
+        const pid = leaseOwnerPid(retainedLease);
         this.settlement = {
           status: "unresolved",
           evidenceRefs: settlement.evidenceRefs,
           error:
-            `the durable settlement exists but the contribution lease could not be released: `
-            + `${errorMessage(error)}`,
+            `the durable contribution settlement exists but the exact task-run Worktree lease ${retainedLease.path}`
+            + ` (owner pid ${pid === undefined ? "unknown" : pid}, retained in the durable spawn receipt) could not be released: ${errorMessage(error)};`
+            + " the contribution is unresolved and reconcile-required: the retained lease must be released through the exact task-run lease release only after its owner process is verifiably absent",
         };
       }
     }
-    this.lease = undefined;
     const settledListeners = [...this.settledListeners];
     this.settledListeners.clear();
     this.activityListeners.clear();
@@ -1351,6 +1477,159 @@ function taskById(tasks: ReturnType<typeof loadPrincipalTasks>, idArgument: stri
   if (folded.length === 0) return undefined;
   const matches = tasks.tasks.filter((task) => task.id.toLowerCase() === folded);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * The durable spawn reservation for one exact committed action, read from the
+ * action-keyed receipt path. Absent means no reservation; an unreadable or
+ * invalid reservation is a visible source failure, never a guess.
+ */
+function readSpawnReservation(directory: string, actionId: string): SpawnReceipt | undefined {
+  const path = join(directory, `spawn-${actionId}.json`);
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw new ContributionError(
+      "source-unavailable",
+      `the committed action ${actionId} holds an unreadable spawn reservation: ${errorMessage(error)}`,
+    );
+  }
+  try {
+    return SpawnReceiptSchema.parse(JSON.parse(raw));
+  } catch (error) {
+    throw new ContributionError(
+      "source-unavailable",
+      `the committed action ${actionId} holds an invalid spawn reservation: ${errorMessage(error)}`,
+    );
+  }
+}
+
+/** The strict identity match one reservation must satisfy to converge on it. */
+function spawnReceiptMismatch(
+  receipt: SpawnReceipt,
+  input: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+  },
+  operation: ContributionSpawnOperation,
+): string | undefined {
+  return receipt.conversationId !== input.conversationId ? "the reservation belongs to another conversation"
+    : receipt.turnId !== input.turnId ? "the reservation was started by another turn"
+    : receipt.actionId !== input.actionId ? "the reservation was started by another action"
+    : receipt.key !== operation.key ? `the reservation retains key ${receipt.key}, not ${operation.key}`
+    : receipt.workerId !== operation.workerId ? `the reservation retains worker ${receipt.workerId}, not ${operation.workerId}`
+    : receipt.effectKind !== operation.effectKind ? `the reservation is ${receipt.effectKind}, not ${operation.effectKind}`
+    : undefined;
+}
+
+/** The winner's strict receipt projected for a converging loser; no worker starts. */
+function winnerReceipt(receipt: SpawnReceipt, home: string): ContributionStartReceipt {
+  return {
+    batchId: receipt.batchId,
+    key: receipt.key,
+    cellId: receipt.cellId,
+    workerId: receipt.workerId,
+    effectKind: receipt.effectKind,
+    taskId: receipt.taskId,
+    sourceRevision: receipt.sourceRevision,
+    taskRevision: receipt.taskRevision,
+    evidenceRefs: [evidenceRef(home, join(
+      contributionStateDirectory(home, receipt.conversationId),
+      `spawn-${receipt.actionId}.json`,
+    ))],
+  };
+}
+
+/**
+ * Release a just-acquired lease on a refused pre-start path. The release
+ * failure is never swallowed: it surfaces as its own visible contribution
+ * error naming the exact retained lease and its owner, so a writer-blocked
+ * lock can never be hidden by the original refusal.
+ */
+function releaseAcquiredLeaseOrThrow(lease: TaskRunLease | undefined, context: string): void {
+  if (lease === undefined) return;
+  try {
+    releaseWorktreeLease(lease);
+  } catch (error) {
+    const pid = leaseOwnerPid(lease);
+    throw new ContributionError(
+      "effect-conflict",
+      `${context}, and the exact task-run Worktree lease ${lease.path}`
+      + ` (owner pid ${pid === undefined ? "unknown" : pid}) could not be released: ${errorMessage(error)};`
+      + " the retained lease is durable reconcile-required evidence and must be released only after its owner process is verifiably absent",
+    );
+  }
+}
+
+/** The exact durable lease ownership identity one spawn receipt retains. */
+function contributionLeaseIdentity(lease: TaskRunLease): {
+  path: string;
+  worktree: string;
+  taskId: string;
+  attemptId: string;
+  pid: number;
+  acquiredAt: string;
+} {
+  const record = asRecord(JSON.parse(lease.content));
+  return {
+    path: lease.path,
+    worktree: String(record.worktree),
+    taskId: String(record.taskId),
+    attemptId: String(record.attemptId),
+    pid: Number(record.pid),
+    acquiredAt: String(record.acquiredAt),
+  };
+}
+
+/**
+ * The standing of one spawn-receipt-retained exact lease: retained when the
+ * lease file still exists and provably belongs to the same owner identity
+ * (an unreadable file fails closed as retained), released when it is absent
+ * or provably belongs to another owner.
+ */
+function contributionLeaseStanding(lease: {
+  readonly path: string;
+  readonly taskId: string;
+  readonly attemptId: string;
+}): "retained" | "released" {
+  if (!existsSync(lease.path)) return "released";
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(lease.path, "utf8"));
+  } catch {
+    return "retained";
+  }
+  const record = asRecord(value);
+  return record.taskId === lease.taskId && record.attemptId === lease.attemptId
+    ? "retained"
+    : "released";
+}
+
+/** The owner pid of one exact lease, when its content parses. */
+function leaseOwnerPid(lease: TaskRunLease): number | undefined {
+  try {
+    const pid = asRecord(JSON.parse(lease.content)).pid;
+    return typeof pid === "number" ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isMissing(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT";
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error &&
+    (error as { code?: unknown }).code === "EEXIST";
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
 }
 
 /**

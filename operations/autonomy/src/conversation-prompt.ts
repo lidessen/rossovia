@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v5" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v6" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -257,20 +257,18 @@ export function composeConversationPrompt(input: ConversationPromptInput): Compo
   const sourceRevisionSelectors: SourceRevisionSelector[] = [];
   const sections: string[] = [];
 
+  // The composed prompt always renders the exact six fixed-order section
+  // headers. Optional sections that carry no content render a bounded
+  // "none" body so the coordinator sees an explicit not-loaded standing
+  // instead of a missing or reordered section.
   sections.push(renderRelationKernel());
-  if (parsed.projection !== undefined) {
-    sections.push(renderProjection(parsed.projection, disclosedSources, sourceRevisionSelectors));
-  }
+  sections.push(renderProjection(parsed.projection, disclosedSources, sourceRevisionSelectors));
   sections.push(renderMessage(parsed.message));
   sections.push(renderPolicy(parsed.policy));
-  if (parsed.orientation !== undefined) {
-    sections.push(renderOrientation(parsed.orientation, disclosedSources));
-  }
+  sections.push(renderOrientation(parsed.orientation, disclosedSources));
   const children = parsed.children ?? [];
   const fullChildResults = parsed.fullChildResults ?? [];
-  if (children.length > 0 || fullChildResults.length > 0) {
-    sections.push(renderChildResults(children, fullChildResults));
-  }
+  sections.push(renderChildResults(children, fullChildResults));
 
   const prompt = `${sections.join("\n\n")}\n`;
   return {
@@ -287,13 +285,13 @@ function renderRelationKernel(): string {
 }
 
 function renderProjection(
-  projection: CompactProjection,
+  projection: CompactProjection | undefined,
   disclosedSources: DisclosedSource[],
   sourceRevisionSelectors: SourceRevisionSelector[],
 ): string {
   const lines: string[] = [];
 
-  if (projection.task !== undefined) {
+  if (projection?.task !== undefined) {
     const task = projection.task;
     lines.push(`task ${task.id} [${task.status ?? "open"}]: ${task.summary}`);
     if (task.source !== undefined) {
@@ -325,7 +323,7 @@ function renderProjection(
     }
   }
 
-  for (const project of projection.projects ?? []) {
+  for (const project of projection?.projects ?? []) {
     lines.push(`project ${project.name} [${project.status}]${project.id !== undefined ? ` (${project.id})` : ""}`);
     if (project.primaryHead !== undefined) {
       lines.push(`  primary head: ${project.primaryHead}`);
@@ -345,14 +343,14 @@ function renderProjection(
     }
   }
 
-  for (const carrier of projection.carriers ?? []) {
+  for (const carrier of projection?.carriers ?? []) {
     lines.push(`carrier ${carrier.id}: ${carrier.state}${carrier.runId !== undefined ? ` (run ${carrier.runId})` : ""}`);
     if (carrier.runId !== undefined) {
       sourceRevisionSelectors.push({ source: `carrier:${carrier.id}`, revision: carrier.runId });
     }
   }
 
-  for (const worker of projection.workers ?? []) {
+  for (const worker of projection?.workers ?? []) {
     lines.push(
       `worker ${worker.id} [${worker.availability}] ${worker.provider}/${worker.model}`
       + `${worker.reasoningEffort === undefined ? "" : ` reasoning=${worker.reasoningEffort}`}`
@@ -360,7 +358,7 @@ function renderProjection(
     );
   }
 
-  for (const contribution of projection.contributions ?? []) {
+  for (const contribution of projection?.contributions ?? []) {
     lines.push(
       `contribution ${contribution.batchId}/${contribution.key}`
       + ` worker=${contribution.workerId} effect=${contribution.effectKind} state=${contribution.state}`
@@ -368,7 +366,7 @@ function renderProjection(
     );
   }
 
-  return `## 2. Current compact projection\n\n${lines.join("\n")}`;
+  return `## 2. Current compact projection\n\n${lines.length === 0 ? "none" : lines.join("\n")}`;
 }
 
 function renderMessage(message: PrincipalMessage): string {
@@ -415,10 +413,12 @@ function renderPolicy(policy: ConversationPolicy): string {
   return `## 4. Current execution policy\n\n${lines.join("\n")}`;
 }
 
-function renderOrientation(orientation: ProjectOrientation, disclosedSources: DisclosedSource[]): string {
-  const lines: string[] = [
-    `basis: ${orientation.basis}`,
-  ];
+function renderOrientation(orientation: ProjectOrientation | undefined, disclosedSources: DisclosedSource[]): string {
+  const lines: string[] = [];
+  if (orientation === undefined || orientation.sources.length === 0) {
+    return `## 5. Project orientation and skills\n\nnone`;
+  }
+  lines.push(`basis: ${orientation.basis}`);
   if (orientation.projectId !== undefined) {
     lines.push(`project: ${orientation.projectId}`);
   }
@@ -478,7 +478,7 @@ function renderChildResults(children: ChildSummary[], fullChildResults: FullChil
       lines.push(`  omitted (${result.omission.reason}, max ${result.omission.maxBytes} bytes): do not guess the content`);
     }
   }
-  return `## 6. Child result summaries\n\n${lines.join("\n")}`;
+  return `## 6. Child result summaries\n\n${lines.length === 0 ? "none" : lines.join("\n")}`;
 }
 
 function pushDisclosed(disclosedSources: DisclosedSource[], source: DisclosedSource): void {

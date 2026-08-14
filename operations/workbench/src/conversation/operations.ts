@@ -59,6 +59,7 @@ export type ConversationOperationHostErrorCode =
   | "contribution-unknown"
   | "capability-unsupported"
   | "effect-conflict"
+  | "dependency-unsettled"
   | "source-unavailable";
 
 export class ConversationOperationHostError extends Error {
@@ -558,7 +559,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
           taskRevision: receipt.taskRevision,
           evidenceRefs: [evidenceRef(this.home, join(
             contributionStateDirectory(this.home, conversationId),
-            `spawn-${receipt.batchId}.json`,
+            `spawn-${receipt.actionId}.json`,
           ))],
         },
       };
@@ -811,6 +812,7 @@ function mapContributionError(error: ContributionError): ConversationOperationHo
     : error.code === "contribution-unknown" ? "contribution-unknown"
     : error.code === "control-unsupported" ? "control-unsupported"
     : error.code === "control-conflict" ? "control-conflict"
+    : error.code === "dependency-unsettled" ? "dependency-unsettled"
     : error.code === "source-unavailable" ? "source-unavailable"
     : "operation-unavailable";
   return new ConversationOperationHostError(code, error.message);
