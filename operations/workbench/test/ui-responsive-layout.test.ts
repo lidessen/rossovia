@@ -46,16 +46,17 @@ describe("Workbench responsive layout", () => {
     expect(html).toContain('id="peek-close"');
   });
 
-  test("exposes exactly three mobile primary destinations", () => {
+  test("exposes exactly four mobile primary destinations with conversation as the daily entry", () => {
     const mobileButtons = html.match(/data-mobile-view="[^"]+"/g) ?? [];
     expect(mobileButtons).toEqual([
+      'data-mobile-view="conversation"',
       'data-mobile-view="overview"',
       'data-mobile-view="tasks"',
       'data-mobile-view="projects"',
     ]);
     const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
     expect(mobile).toMatch(
-      /\.mobile-tab-bar\s*\{[^}]*bottom:\s*0;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(3,\s*1fr\);[^}]*position:\s*fixed;/s,
+      /\.mobile-tab-bar\s*\{[^}]*bottom:\s*0;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(4,\s*1fr\);[^}]*position:\s*fixed;/s,
     );
     expect(mobile).toMatch(/\.principal-rail\s*\{[^}]*display:\s*none;/s);
   });
@@ -201,7 +202,34 @@ describe("Workbench responsive layout", () => {
     expect(app).toContain('if (view === "agent-pending") return isPendingAgentWork(item)');
     expect(app).toContain('classifyAgentResponsibility(items)');
     const mobileButtons = html.match(/data-mobile-view="[^"]+"/g) ?? [];
-    expect(mobileButtons).toHaveLength(3);
+    expect(mobileButtons).toHaveLength(4);
+  });
+
+  test("keeps the conversation destination usable at 390px without covering the composer", () => {
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+
+    expect(html).toContain('id="conversation-surface"');
+    expect(html).toContain('id="conversation-feed"');
+    expect(html).toContain('id="conversation-composer-form"');
+    expect(html).toContain('id="conversation-composer-text"');
+    expect(html).toContain('id="conversation-composer-submit"');
+    expect(html).toContain('id="conversation-tool-interrupt"');
+    expect(html).toContain("工具中断 · 运行时不支持");
+    expect(mobile).toMatch(
+      /\.conversation-surface\s*\{[^}]*height:\s*calc\(100dvh - 62px\);[^}]*padding-bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom\)\);[^}]*position:\s*fixed;[^}]*top:\s*62px;/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-composer\s*\{[^}]*padding:\s*0\.55rem 0\.85rem/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-composer \.primary-action\s*\{[^}]*min-height:\s*44px;/s,
+    );
+    expect(mobile).toMatch(
+      /\.turn-policy > div,\s*\.action-facts > div\s*\{[^}]*grid-template-columns:\s*1fr;/s,
+    );
+    expect(app).toContain("renderConversationSurface()");
+    expect(app).toContain('state.activeView === "conversation"');
+    expect(html).toContain("Enter 发送，Shift+Enter 换行");
   });
 
   test("keeps full worktree identities inside the mobile viewport", () => {
