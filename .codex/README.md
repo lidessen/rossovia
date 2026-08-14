@@ -83,10 +83,10 @@ updates.
 The current lifecycle names, command-handler limitation, and project-hook
 trust model come from the [Codex Hooks guide](https://learn.chatgpt.com/docs/hooks)
 and [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference),
-checked on 2026-07-23. The configuration reference also documents
+checked on 2026-08-14. The configuration reference also documents
 `sandbox_workspace_write.writable_roots`; re-check these sources before changing
-the user-level capability grant, adding a mutation gate, or adding stop
-continuation.
+the user-level capability grant, adding a mutation gate, or changing the Stop
+notification shape.
 
 ## Artifact-consistency assist
 
@@ -98,9 +98,20 @@ checks applicable to Skill entries, Skill support, agent guidance, or README
 files. Scripts, assets, and unrelated files do not trigger the reminder. The
 adapter does not parse the transcript: Codex documents that format as unstable.
 
+On the first `Stop` after relevant changes, the hook returns only the host
+protocol's top-level `systemMessage`, surfaced as a user-visible, non-blocking
+notification; it never returns `decision`, `additionalContext`, or a
+continuation, so it cannot extend the agent loop. The exact session-local path
+set is removed when that notification is emitted, so repeated `Stop` events do
+not repeat the reminder; only newly observed paths can trigger it again.
+
 This reminder is project-local and advisory. Its per-session path set is
 ephemeral under the operating system temporary directory, isolated by
-repository and session identity, and removed after the stop continuation. It
+repository and session identity, and removed after the first notification. It
 contains no file content and is not a Workbench source, receipt, or acceptance
 record. An invalid runtime payload degrades to a visible warning without
 blocking an already-completed tool action.
+
+A binding being installed is not a behavioral-benefit claim: the notification
+reaches the user, not the agent's repair loop. Verify actual host behavior
+before treating this projection as a consistency guarantee.

@@ -287,17 +287,18 @@ describe("intervention reconciliation", () => {
       });
       expect(result.exitCode).toBe(0);
       const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext as string;
-      expect(context).toContain("compare it with the active task");
       expect(context).toContain("revises an assumption or constraint of a still-active task");
-      expect(context).toContain("Starting a new task after the prior task was completed, paused, or handed off is not a correction");
-      expect(context).toContain("advisory, not a mutation or authorization gate");
+      expect(context).toContain("Otherwise proceed without ceremony");
+      expect(context).toContain("not a mutation or authorization gate");
       expect(context).toContain("do not request broader filesystem permission");
       expect(context).toContain(`'${process.execPath}' '${cli}' 'correct'`);
       expect(context).not.toContain("dist/rossovia.mjs");
+      expect(context).not.toContain("compare it with the active task");
 
       const marker = "session-local `correct` command prefix `";
       const endpoint = context.split(marker, 2)[1]?.split("`", 1)[0];
       expect(endpoint).toBeDefined();
+      expect(context.length - endpoint!.length).toBeLessThan(500);
       const statePath = endpoint!.match(/'--state-file' '([^']+)'$/)?.[1];
       expect(statePath).toBeDefined();
       const endpointResult = command([

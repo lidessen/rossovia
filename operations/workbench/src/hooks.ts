@@ -107,16 +107,11 @@ function interventionOutput(
     hookSpecificOutput: {
       hookEventName: "UserPromptSubmit",
       additionalContext: (
-        "A Principal message has arrived. Before acting on it, compare it with the active task. " +
-        "Only if it revises an assumption or constraint of a still-active task—including its target, " +
-        "hard boundary, concept relation, authority, or acceptance condition—" +
-        "run practice-cycle continue and record one correction with the session-local `correct` command prefix " +
-        "`" + receiptEndpoint + "`. Starting a new task after the prior task was completed, paused, or handed off " +
-        "is not a correction. Otherwise proceed without ceremony. `correct` requires " +
-        "--rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. " +
-        "This binding is advisory, not a mutation or authorization gate. If the endpoint is unavailable " +
-        "or denied, do not request broader filesystem permission and do not block already-authorized work; " +
-        "retain the correction in the active task and report the receipt as unresolved."
+        "A Principal message has arrived. If it revises an assumption or constraint of a still-active task, " +
+        "record one correction with the session-local `correct` command prefix `" + receiptEndpoint + "`; " +
+        "`correct` requires --rejected-assumption, --new-invariant, one or more --affected-surface, and --next-probe. " +
+        "Otherwise proceed without ceremony. Advisory only, not a mutation or authorization gate: do not request " +
+        "broader filesystem permission and do not block already-authorized work."
       ),
     },
   };
@@ -265,22 +260,27 @@ function stopOutput(
   payload: HookPayload,
   path: string,
 ): unknown {
-  const continuing = platform === "cursor"
-    ? typeof payload.loop_count === "number" && payload.loop_count > 0
-    : payload.stop_hook_active === true;
-  if (continuing) {
-    rmSync(path, { force: true });
-    return undefined;
+  if (platform === "cursor") {
+    const continuing = typeof payload.loop_count === "number" && payload.loop_count > 0;
+    if (continuing) {
+      rmSync(path, { force: true });
+      return undefined;
+    }
+    const paths = readPaths(path);
+    if (paths.length === 0) return undefined;
+    return { followup_message: artifactReminder(paths) };
   }
   const paths = readPaths(path);
   if (paths.length === 0) return undefined;
-  const reminder = (
+  rmSync(path, { force: true });
+  return { systemMessage: artifactReminder(paths) };
+}
+
+function artifactReminder(paths: string[]): string {
+  return (
     `Before finishing, verify reference and structure consistency for ${paths.length} artifact(s) changed in this session: ` +
     `${summarizePaths(paths, 20)}. ` +
     `${consistencyChecks(paths)}. Check only the applicable groups; do not expand into unrelated consistency work. ` +
     "Record only information that must survive this session in its owning source."
   );
-  return platform === "cursor"
-    ? { followup_message: reminder }
-    : { decision: "block", reason: reminder };
 }
