@@ -241,6 +241,17 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("requestedPolicyLabel");
     expect(app).toContain("unknown · 尚未报告");
     expect(app).toContain("未报告 · unknown");
+    expect(app).toContain('first(raw, ["provider"], "unknown")');
+    expect(app).toContain('first(raw, ["model"], "unknown")');
+    expect(app).toContain(
+      'raw = policy !== null && typeof policy === "object" ? policy : {}',
+    );
+    expect(app).toContain(
+      'raw = evidence !== null && typeof evidence === "object" ? evidence : {}',
+    );
+    expect(app).not.toContain("first(policy, [], {})");
+    expect(app).not.toContain("first(evidence, [], {})");
+    expect(app).not.toContain("first(entry.requestedPolicy, [], {})");
   });
 
   test("renders task, project, activity, and result evidence references", () => {

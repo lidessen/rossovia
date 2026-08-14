@@ -4701,16 +4701,17 @@ export function taskEvidenceLinkTarget(ref, workItems) {
   }
 
   function requestedPolicyLabel(policy) {
-    const raw = first(policy, [], {});
+    const raw = policy !== null && typeof policy === "object" ? policy : {};
     return [
-      text(first(raw, ["provider", "model"], "unknown"), "unknown"),
+      text(first(raw, ["provider"], "unknown"), "unknown"),
+      text(first(raw, ["model"], "unknown"), "unknown"),
       first(raw, ["thinking"]) === "enabled" ? "thinking" : "",
       first(raw, ["reasoningEffort"]) ? `effort ${first(raw, ["reasoningEffort"])}` : "",
     ].filter(Boolean).join(" · ");
   }
 
   function observedEvidenceLabel(evidence) {
-    const raw = first(evidence, [], {});
+    const raw = evidence !== null && typeof evidence === "object" ? evidence : {};
     const provider = text(first(raw, ["provider"]), "unknown");
     const model = text(first(raw, ["model"]), "unknown");
     const usage = first(raw, ["usage"]);
@@ -4833,7 +4834,9 @@ export function taskEvidenceLinkTarget(ref, workItems) {
   }
 
   function renderConversationTurn(entry) {
-    const policy = first(entry.requestedPolicy, [], {});
+    const policy = entry.requestedPolicy !== null && typeof entry.requestedPolicy === "object"
+      ? entry.requestedPolicy
+      : {};
     const observed = entry.terminal
       ? (entry.observedEvidence === null || entry.observedEvidence === undefined
         ? "未报告 · unknown"
