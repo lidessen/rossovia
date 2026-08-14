@@ -584,18 +584,22 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
         + `of conversation ${retained.conversationId}; a distinct stop action cannot be applied`,
       );
     }
+    // The durable control receipt is written before any handle state commits:
+    // a failed write changes nothing, so an exact or a new legal stop can
+    // retry, and exactly one durable receipt is ever produced.
+    const receiptPath = writeControlReceipt(this.home, this.attempt, this.identity, {
+      control: "stop",
+      actor,
+    });
     this.stopRequested = true;
     this.stopRequest = {
       conversationId: actor.conversationId,
       turnId: actor.turnId,
       actionId: actor.actionId,
     };
-    this.controlReceiptPath = writeControlReceipt(this.home, this.attempt, this.identity, {
-      control: "stop",
-      actor,
-    });
+    this.controlReceiptPath = receiptPath;
     this.controller.abort(new DOMException("work_control stop", "AbortError"));
-    return controlReceipt(this.identity.carrierId, [this.controlReceiptPath!, this.attempt.settlementRef]);
+    return controlReceipt(this.identity.carrierId, [receiptPath, this.attempt.settlementRef]);
   }
 
   /**

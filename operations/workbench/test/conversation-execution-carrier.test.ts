@@ -629,6 +629,53 @@ describe("conversation execution carrier stop", () => {
     expect(settlement.status).toBe("control-stopped");
   });
 
+  test("a failed control receipt write changes no handle state and an exact or new stop can retry with exactly one durable receipt", async () => {
+    for (const retryWith of ["same", "new"] as const) {
+      const current = fixture();
+      const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+      const receipt = host.executeOperation({
+        conversationId,
+        turnId,
+        actionId,
+        operation: continueOperation(current),
+      });
+      const carrierId = receipt.carrierId!;
+      const carrier = registry.startedCarrier(conversationId, actionId)!;
+      await until(() => carrier.liveness().state === "live", "live carrier");
+
+      const stopA = {
+        conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+        operation: { kind: "work_control" as const, carrierId, control: "stop" as const },
+      };
+      // Spoiling the exact receipt path makes the first durable write fail.
+      const controlPath = join(attemptDirectory(current, carrierId), "control.json");
+      writeFileSync(controlPath, "{spoiled\n");
+      expect(() => host.executeOperation(stopA)).toThrow();
+      // The failed write changed nothing: the carrier stays live and controllable.
+      expect(carrier.liveness().state).toBe("live");
+      rmSync(controlPath);
+
+      const retry = retryWith === "same"
+        ? stopA
+        : { ...stopA, turnId: randomUUID(), actionId: randomUUID() };
+      host.executeOperation(retry);
+
+      const controlFile = readJson(controlPath) as Record<string, unknown>;
+      expect(controlFile.requestedBy).toMatchObject({ actionId: retry.actionId });
+      expect(controlFile.sourceRef).toBe(taskActionSourceRef(retry.conversationId, retry.actionId));
+      expect(
+        readdirSync(attemptDirectory(current, carrierId)).filter((entry) => entry === "control.json"),
+      ).toHaveLength(1);
+
+      await until(() => carrier.liveness().state === "settled", "settlement");
+      const settlement = readJson(join(attemptDirectory(current, carrierId), "settlement.json")) as Record<string, unknown>;
+      expect(settlement.status).toBe("control-stopped");
+      expect(settlement.controlRef).toBe(`state/task-attempts/${carrierId}/control.json`);
+    }
+  });
+
   test("stop of an already settled carrier is refused visibly", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
