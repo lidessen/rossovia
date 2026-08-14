@@ -1476,6 +1476,112 @@ describe("conversation temporary contributions", () => {
     }).standing).toBe("uninspectable");
   });
 
+  test("a lease-release failure after delegate settlement retains the exact reservation and recovers only through the contribution reconcile CLI", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "release-failure-writer", effectKind: "effectful" });
+
+    // Force the started-marker publication failure AND corrupt the exact
+    // retained lease so the later exact-byte release fails after the
+    // cancelled delegate settles.
+    let directorySyncs = 0;
+    const failingRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(slowContributionDriver),
+      atomicPublish: {
+        syncDirectory: () => {
+          directorySyncs += 1;
+          if (directorySyncs === 2) {
+            const reservation = JSON.parse(readFileSync(join(
+              contributionStateDirectory(fixture_.home, conversationId),
+              `spawn-${actor.actionId}.json`,
+            ), "utf8")) as { lease?: { path: string; worktree: string; taskId: string; attemptId: string } };
+            const binding = reservation.lease;
+            expect(binding).toBeDefined();
+            if (binding !== undefined) {
+              writeFileSync(binding.path, `${JSON.stringify({
+                version: "rosso.task-run-worktree-lease.v1",
+                worktree: binding.worktree,
+                taskId: binding.taskId,
+                attemptId: binding.attemptId,
+                pid: process.pid,
+                acquiredAt: new Date().toISOString(),
+              }, null, 2)}\n`, "utf8");
+            }
+            throw new Error("simulated started-marker publication failure");
+          }
+        },
+      },
+    });
+
+    const winnerError = await failingRegistry.spawn(spawnInput(actor, operation))
+      .catch((value: unknown) => value);
+    expect(winnerError).toBeInstanceOf(ContributionError);
+    if (winnerError instanceof ContributionError) {
+      expect(winnerError.code).toBe("effect-conflict");
+      expect(winnerError.message).toContain("reconcile-required");
+      expect(winnerError.message).toContain("simulated started-marker publication failure");
+      expect(winnerError.message).toContain("could not be released");
+    }
+
+    // The exact lease and the matching durable reservation remain: the
+    // reservation is the exact recoverable lease binding and is deleted only
+    // after a confirmed release. Only the uncommitted started marker (and
+    // its temporaries) was retracted.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    const reservationPath = join(directory, `spawn-${actor.actionId}.json`);
+    expect(existsSync(reservationPath)).toBe(true);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(readdirSync(directory).filter((entry) => entry.includes(".tmp-"))).toHaveLength(0);
+    const reservation = JSON.parse(readFileSync(reservationPath, "utf8")) as {
+      batchId: string;
+      lease?: { path: string; worktree: string; taskId: string; attemptId: string };
+    };
+    const binding = reservation.lease;
+    expect(binding).toBeDefined();
+    if (binding === undefined) return;
+    expect(existsSync(binding.path)).toBe(true);
+    const leaseRecord = JSON.parse(readFileSync(binding.path, "utf8")) as Record<string, unknown>;
+    expect(leaseRecord.worktree).toBe(binding.worktree);
+    expect(leaseRecord.taskId).toBe(binding.taskId);
+    expect(leaseRecord.attemptId).toBe(binding.attemptId);
+
+    const reconcile = (batchId: string, key: string): { outcome: string; reason: string } => {
+      const result = Bun.spawnSync([
+        process.execPath,
+        cliPath(),
+        "--home",
+        fixture_.home,
+        "contribution",
+        "reconcile-lease",
+        conversationId,
+        batchId,
+        key,
+      ], { stdout: "pipe", stderr: "pipe" });
+      return JSON.parse(result.stdout.toString()) as { outcome: string; reason: string };
+    };
+
+    // Mismatched key and unknown batch fail closed through the real CLI.
+    expect(reconcile(reservation.batchId, "wrong-key").outcome).toBe("refused");
+    expect(reconcile(randomUUID(), "release-failure-writer").outcome).toBe("refused");
+
+    // With the owner PID made provably absent, the real production CLI
+    // releases the exact lease; nothing else was touched.
+    writeFileSync(binding.path, `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    }, null, 2)}\n`, "utf8");
+    const released = reconcile(reservation.batchId, "release-failure-writer");
+    expect(released.outcome).toBe("released");
+    expect(existsSync(binding.path)).toBe(false);
+    expect(existsSync(reservationPath)).toBe(true);
+  });
+
   test("a started marker with any mutated shared identity is unknown for convergence and uninspectable for canonical lookup", async () => {
     const mutations: ReadonlyArray<{
       readonly label: string;

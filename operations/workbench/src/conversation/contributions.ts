@@ -1552,7 +1552,10 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    * reservation is retracted, or any writer may proceed: a new effectful
    * writer must never overlap a delegate that has not actually settled. A
    * delegate whose terminal settlement cannot be confirmed retains the
-   * exact lease and durable spawn evidence and fails closed. Every cleanup
+   * exact lease and durable spawn evidence and fails closed. A lease whose
+   * exact release fails after a confirmed settlement keeps the spawn
+   * reservation — the durable lease binding — retained as reconcile-required
+   * evidence, retracting only the uncommitted started marker. Every cleanup
    * failure is surfaced visibly, never swallowed.
    */
   private async failStartedSpawn(
@@ -1590,20 +1593,31 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         );
       }
     }
-    const failures: string[] = [];
     this.startedByCommittedAction.delete(actionKey);
     this.handles.delete(batchId);
     if (lease !== undefined) {
       try {
         releaseWorktreeLease(lease);
       } catch (releaseError) {
-        failures.push(
-          `the exact task-run lease ${lease.path} could not be released: ${errorMessage(releaseError)}; `
-          + "the retained lease is durable reconcile-required evidence recoverable through reconcileLease "
-          + "once the owner process is verifiably absent",
+        // The exact lease release failed AFTER the delegate settled: the
+        // spawn reservation — the durable exact lease binding published
+        // before acquisition — stays retained as reconcile-required
+        // evidence. Retract only the uncommitted started marker (and its
+        // publication temporaries); the reservation is deleted only after
+        // a confirmed exact lease release, never while the writer block is
+        // still up.
+        const markerFailure = this.retractStartedReceipt(input.conversationId, input.actionId);
+        return new ContributionError(
+          "effect-conflict",
+          `reconcile-required: ${errorMessage(error)}; additionally: the exact task-run lease ${lease.path} `
+          + `(owner pid ${leaseOwnerPid(lease) ?? "unknown"}) could not be released after the delegate settled: ${errorMessage(releaseError)}; `
+          + `the durable spawn reservation for action ${input.actionId} and the retained lease stay as exact recoverable evidence; `
+          + "recover them through the contribution reconcileLease operation only after the owner process is verifiably absent"
+          + (markerFailure === undefined ? "" : `; additionally: ${markerFailure}`),
         );
       }
     }
+    const failures: string[] = [];
     const reservationFailure = this.retractSpawnReservation(input.conversationId, input.actionId);
     if (reservationFailure !== undefined) failures.push(reservationFailure);
     const markerFailure = this.retractStartedReceipt(input.conversationId, input.actionId);
