@@ -118,12 +118,15 @@ export const ContributionKeySchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/);
 /**
  * The caller-facing spawn shape: the semantic contribution intent plus only
  * the non-derivable constraints — the exact catalog worker choice, the
- * capability the work needs, the coordinator's effect-boundary judgment, and
- * optional workspace-relative images for a vision worker. Every internal
- * field — source refs, obligation refs, acceptance, Task Shape admission,
- * workspace, exact execution profile, withheld authority — is derived by the
- * host from the current Task and runtime sources immediately before the
- * effect; the coordinator never restates the internal DelegateCall envelope.
+ * capability the work needs, the coordinator's effect-boundary judgment,
+ * optional settled-key dependencies, and optional workspace-relative images
+ * for a vision worker. The model supplies no Task ID or revision, project
+ * ID/primary head, Worktree path/head, source ref, obligation ref,
+ * acceptance, execution profile, or withheld authority: the host derives the
+ * conversation's current Task from the canonical Task/journal sources and
+ * revalidates the exact execution selection from current project/Worktree
+ * observations immediately before the effect, so the coordinator can never
+ * restate or invent the internal DelegateCall envelope.
  */
 export const ContributionSpawnOperationSchema = z.object({
   kind: z.literal("contribution_spawn"),
@@ -141,13 +144,6 @@ export const ContributionSpawnOperationSchema = z.object({
   effectKind: z.enum(["read-only", "effectful"]),
   /** Exact catalog identity copied from the current projection's worker cards. */
   workerId: z.string().min(1),
-  taskId: z.string().min(1),
-  expectedSourceRevision: z.number().int().nonnegative(),
-  expectedRevision: z.number().int().positive(),
-  projectId: z.string().min(1),
-  expectedPrimaryHead: GitObjectSchema,
-  worktreePath: z.string().min(1),
-  expectedWorktreeHead: GitObjectSchema,
   /** Keys of already settled contributions this one depends on. */
   dependsOn: z.array(ContributionKeySchema).default([]),
   /** Workspace-relative local images supplied to a vision-capable worker. */

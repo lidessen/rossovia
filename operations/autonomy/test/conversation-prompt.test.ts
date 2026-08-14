@@ -185,6 +185,42 @@ test("child summaries are included first and full child evidence stays a keyed r
   expect(composed.prompt).not.toContain("raw trace");
 });
 
+test("full child result evidence renders inside section 6 and never becomes a seventh section", () => {
+  const input = fullInput();
+  input.fullChildResults = [
+    {
+      batchId: "batch-1",
+      key: "child-1",
+      cellId: "cell-1",
+      status: "completed",
+      projection: "full",
+      semantic: { finalText: "The exact bounded child conclusion." },
+    },
+    {
+      batchId: "batch-2",
+      key: "child-2",
+      cellId: "cell-2",
+      status: "completed",
+      projection: "metadata-only",
+      omission: { reason: "semantic payload exceeds the bounded read", maxBytes: 64_000 },
+    },
+  ];
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).not.toContain("## 7");
+  expect(composed.prompt).toContain("## 6. Child result summaries");
+  expect(composed.prompt).toContain(
+    "full child result batch-1/child-1 (cell cell-1, status completed, projection full)",
+  );
+  expect(composed.prompt).toContain("final text: The exact bounded child conclusion.");
+  expect(composed.prompt).toContain("omitted (semantic payload exceeds the bounded read, max 64000 bytes): do not guess the content");
+  // The keyed full evidence stays inside section 6 and nothing renders after it.
+  const sectionSix = composed.prompt.indexOf("## 6. Child result summaries");
+  const firstFull = composed.prompt.indexOf("full child result batch-1/child-1");
+  expect(firstFull).toBeGreaterThan(sectionSix);
+  expect(composed.prompt.lastIndexOf("## ")).toBe(sectionSix);
+});
+
 test("withheld effects are rendered in the policy section", () => {
   const composed = composeConversationPrompt(fullInput());
 

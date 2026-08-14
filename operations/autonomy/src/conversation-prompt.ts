@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v4" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v5" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -266,11 +266,10 @@ export function composeConversationPrompt(input: ConversationPromptInput): Compo
   if (parsed.orientation !== undefined) {
     sections.push(renderOrientation(parsed.orientation, disclosedSources));
   }
-  if (parsed.children !== undefined && parsed.children.length > 0) {
-    sections.push(renderChildren(parsed.children));
-  }
-  if (parsed.fullChildResults !== undefined && parsed.fullChildResults.length > 0) {
-    sections.push(renderFullChildResults(parsed.fullChildResults));
+  const children = parsed.children ?? [];
+  const fullChildResults = parsed.fullChildResults ?? [];
+  if (children.length > 0 || fullChildResults.length > 0) {
+    sections.push(renderChildResults(children, fullChildResults));
   }
 
   const prompt = `${sections.join("\n\n")}\n`;
@@ -434,7 +433,14 @@ function renderOrientation(orientation: ProjectOrientation, disclosedSources: Di
   return `## 5. Project orientation and skills\n\n${lines.join("\n")}`;
 }
 
-function renderChildren(children: ChildSummary[]): string {
+/**
+ * Section 6 holds every child result the turn may read: the bounded settled
+ * summaries plus, when an exact keyed result-read was serviced, the full
+ * bounded semantic projections. Both stay inside this one section so the
+ * prompt keeps its exactly six fixed-order sections; full evidence is never a
+ * seventh section.
+ */
+function renderChildResults(children: ChildSummary[], fullChildResults: FullChildResult[]): string {
   const lines: string[] = [];
   for (const child of children) {
     lines.push(`child ${child.id} (${child.contribution}): ${child.conclusion}`);
@@ -452,12 +458,7 @@ function renderChildren(children: ChildSummary[]): string {
       lines.push(`  evidence: read on demand via keyed result-read: ${locators.join(", ")}`);
     }
   }
-  return `## 6. Child result summaries\n\n${lines.join("\n")}`;
-}
-
-function renderFullChildResults(results: FullChildResult[]): string {
-  const lines: string[] = [];
-  for (const result of results) {
+  for (const result of fullChildResults) {
     lines.push(
       `full child result ${result.batchId}/${result.key} (cell ${result.cellId}, status ${result.status}, projection ${result.projection})`,
     );
@@ -477,7 +478,7 @@ function renderFullChildResults(results: FullChildResult[]): string {
       lines.push(`  omitted (${result.omission.reason}, max ${result.omission.maxBytes} bytes): do not guess the content`);
     }
   }
-  return `## 7. Full child result evidence\n\n${lines.join("\n")}`;
+  return `## 6. Child result summaries\n\n${lines.join("\n")}`;
 }
 
 function pushDisclosed(disclosedSources: DisclosedSource[], source: DisclosedSource): void {

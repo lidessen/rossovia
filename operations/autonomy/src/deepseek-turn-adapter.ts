@@ -108,8 +108,8 @@ export const conversationOperationTools: Record<
   contribution_spawn: tool({
     description: [
       "Form one bounded temporary contribution only when it earns its coordination cost: a bounded evidence, execution, or review child you then synthesize yourself; you remain the one synthesis owner and never vote or concatenate.",
-      "Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description.",
-      "State the bounded semantic intent, one capabilityNeed taken from that worker's labels, and the exact effectKind: read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree. The host derives every internal field from the current Task and runtime sources, refuses stale selectors and overlapping writers, and never spawns automatically or retries.",
+      "Supply only the semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description.",
+      "Never supply a Task ID or revision, project ID/head, Worktree path/head, source or obligation ref, acceptance, or execution profile: the host derives the conversation's current Task from the canonical sources and revalidates the exact execution selection immediately before the effect, refuses stale or unbound contexts and overlapping writers, and never spawns automatically or retries.",
       "Never review your own streamed response: contribution evidence comes from the Task and its Worktree only.",
     ].join(" "),
     inputSchema: ContributionSpawnOperationSchema.omit({ kind: true }),

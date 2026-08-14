@@ -54,7 +54,6 @@ export type ConversationOperationHostErrorCode =
   | "worker-unavailable"
   | "contribution-duplicate"
   | "contribution-limit"
-  | "contribution-stale"
   | "contribution-not-found"
   | "contribution-not-live"
   | "contribution-unknown"
@@ -461,12 +460,15 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
 
   /**
    * A typed spawn starts at most one bounded contribution for its committed
-   * action: the retained registry re-reads the exact canonical Task and
-   * source revision, the registered project identity and current primary
-   * observation, the bound Worktree path and head, and — for an effectful
+   * action: the retained registry derives the conversation's current Task
+   * from the durable journal, re-reads the exact canonical Task source, and
+   * re-validates the Task's bound registered project, current primary
+   * observation, bound Worktree path and head, and — for an effectful
    * contribution — the exact shared task-run Worktree lease immediately
-   * before the effect. The returned receipt references the durable spawn and
-   * delegate timeline evidence, not a second task or result store.
+   * before the effect. The coordinator's spawn shape supplied only intent
+   * plus non-derivable constraints, so none of those selectors can be
+   * invented by the model. The returned receipt references the durable spawn
+   * and delegate timeline evidence, not a second task or result store.
    */
   private executeContributionSpawn(
     input: {
@@ -796,7 +798,6 @@ function mapContributionError(error: ContributionError): ConversationOperationHo
   const code: ConversationOperationHostErrorCode =
     error.code === "contribution-duplicate" ? "contribution-duplicate"
     : error.code === "contribution-limit" ? "contribution-limit"
-    : error.code === "contribution-stale" ? "contribution-stale"
     : error.code === "task-missing" ? "task-not-found"
     : error.code === "task-settled" ? "task-settled"
     : error.code === "task-not-bound" ? "task-not-bound"

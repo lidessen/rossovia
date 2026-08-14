@@ -32,8 +32,9 @@ import {
 import { FileMissionTimeline } from "../../../autonomy/src/delegate-timeline";
 import type { PrincipalTask } from "../contracts";
 import { loadPrincipalTasks } from "../tasks";
-import { resolveHome } from "../home";
+import { loadHome, resolveHome, workspaceFor } from "../home";
 import { expandPath } from "../paths";
+import { observeWorkspace, requiredGit } from "../workspace";
 import {
   acquireWorktreeLease,
   evidenceRef,
@@ -43,11 +44,9 @@ import {
   verifyCleanStatus,
   type TaskRunLease,
 } from "../task-run";
-import { digest, taskActionSourceRef } from "./contracts";
-import {
-  renderCarrierActivity,
-  verifyExecutionSelectors,
-} from "./execution-carrier";
+import { digest, parseTaskReceiptEvidenceRef, taskActionSourceRef } from "./contracts";
+import { FileConversationJournal } from "./journal";
+import { renderCarrierActivity } from "./execution-carrier";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -63,6 +62,15 @@ export const CONTRIBUTION_TASK_SHAPE_REVISION = "rosso.conversation-contribution
 /** The one synthesis owner every conversation contribution names. */
 export const CONTRIBUTION_RECONSTRUCTION_OWNER = "workbench-conversation-coordinator" as const;
 
+/**
+ * The exact prepared delegate-batch identity one conversation contribution
+ * stores under in the delegate timeline: the durable (batchId, key) pair the
+ * coordinator reads results by, expanded to the timeline's prepared-batch id.
+ */
+export function contributionPreparedBatchId(conversationId: string, batchId: string): string {
+  return `conversation-contribution:${conversationId}:${batchId}`;
+}
+
 /** The canonical Task source every contribution derives its evidence from. */
 export const CONTRIBUTION_TASK_SOURCE_REF = "workbench:state/tasks.json" as const;
 
@@ -71,7 +79,6 @@ const CONTRIBUTION_OBLIGATION_REF_PREFIX = "workbench:task:" as const;
 export type ContributionErrorCode =
   | "contribution-duplicate"
   | "contribution-limit"
-  | "contribution-stale"
   | "task-missing"
   | "task-settled"
   | "task-not-bound"
@@ -187,11 +194,16 @@ export interface ConversationContributionRegistry {
    * Synchronously derive the full host-owned admission envelope from the
    * current canonical Task and runtime sources and start at most one bounded
    * delegate contribution for one committed `contribution_spawn` action. The
-   * exact durable (turnId, actionId) mapping refuses a second contribution
-   * for the same committed action, and the caller's spawn shape carries only
-   * intent plus non-derivable constraints. Throws `ContributionError` with no
-   * effect on any stale, unregistered, guessed, dirty, or mismatched
-   * selector, and refuses overlapping effectful writers.
+   * caller's spawn shape carries only intent plus non-derivable constraints;
+   * the host derives the conversation's current Task from the durable
+   * journal and re-validates its exact bound project/Worktree selection
+   * against the current registered-project and Worktree observations
+   * immediately before the effect. The exact durable (turnId, actionId)
+   * mapping refuses a second contribution for the same committed action.
+   * Throws `ContributionError` with no effect when the conversation has no
+   * current Task, when the Task is missing, settled, or unbound, or when the
+   * derived execution selection is unregistered, unobserved, or dirty, and
+   * refuses overlapping effectful writers.
    */
   spawn(input: {
     readonly conversationId: string;
@@ -340,6 +352,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   readonly home: string;
   private readonly catalog: WorkerCatalog;
   private readonly timeline: FileMissionTimeline;
+  private readonly journal: FileConversationJournal;
   private readonly maxLiveContributions: number;
   private readonly now: () => string;
   private readonly handles = new Map<string, WorkbenchContributionHandle>();
@@ -354,6 +367,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     this.home = home;
     this.catalog = catalog;
     this.timeline = new FileMissionTimeline(join(home, "state", "conversation-contributions"));
+    this.journal = new FileConversationJournal(home);
     const max = options.maxLiveContributions ?? 8;
     if (!Number.isInteger(max) || max < 1) {
       throw new Error("maxLiveContributions must be a positive integer");
@@ -392,23 +406,19 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
 
     const tasks = this.currentTasks();
-    if (tasks.sourceRevision !== operation.expectedSourceRevision) {
+    const currentTaskAction = this.conversationCurrentTaskAction(input.conversationId);
+    if (currentTaskAction === undefined) {
       throw new ContributionError(
-        "contribution-stale",
-        `task source revision is stale for the contribution: expected ${operation.expectedSourceRevision}, current ${tasks.sourceRevision}`,
+        "task-missing",
+        `conversation ${input.conversationId} has no current settled Task action; `
+        + "the contribution cannot derive a Task to contribute against",
       );
     }
-    const task = taskById(tasks, operation.taskId);
+    const task = taskById(tasks, currentTaskAction.taskId);
     if (task === undefined) {
       throw new ContributionError(
         "task-missing",
-        `task ${operation.taskId} does not exist in the canonical Task source`,
-      );
-    }
-    if (task.revision !== operation.expectedRevision) {
-      throw new ContributionError(
-        "contribution-stale",
-        `task revision is stale for the contribution: expected ${operation.expectedRevision}, current ${task.revision}`,
+        `the conversation's current task ${currentTaskAction.taskId} does not exist in the canonical Task source`,
       );
     }
     if (task.lifecycle === "settled") {
@@ -447,14 +457,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         `task ${task.id} bound Worktree does not exist: ${task.binding.worktreePath}`,
       );
     }
-    try {
-      verifyExecutionSelectors(this.home, { task, worktree }, operation);
-    } catch (error) {
-      throw new ContributionError(
-        "contribution-stale",
-        `the contribution's exact execution selection is stale: ${errorMessage(error)}`,
-      );
-    }
+    verifyContributionSelection(this.home, task, worktree);
 
     if (operation.effectKind === "effectful") {
       try {
@@ -596,7 +599,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       // exist, and an unsettled spawn receipt is liveness unknown, never live.
       let recovered;
       try {
-        recovered = await this.timeline.recoverBatch(conversationId, receipt.batchId);
+        recovered = await this.timeline.recoverBatch(conversationId, contributionPreparedBatchId(conversationId, receipt.batchId));
       } catch {
         projections.push({
           batchId: receipt.batchId,
@@ -641,7 +644,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       if (!this.isStillCurrent(receipt)) continue;
       let result: DelegateResultProjection;
       try {
-        result = await this.timeline.readResult(conversationId, receipt.batchId, receipt.key);
+        result = await this.timeline.readResult(conversationId, contributionPreparedBatchId(conversationId, receipt.batchId), receipt.key);
       } catch {
         continue;
       }
@@ -688,7 +691,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
     let recovered;
     try {
-      recovered = await this.timeline.recoverBatch(input.conversationId, input.batchId);
+      recovered = await this.timeline.recoverBatch(input.conversationId, contributionPreparedBatchId(input.conversationId, input.batchId));
     } catch (error) {
       return {
         standing: "refused",
@@ -704,8 +707,17 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       };
     }
     try {
-      const result = await this.timeline.readResult(input.conversationId, input.batchId, input.key);
-      return { standing: "read", result };
+      const result = await this.timeline.readResult(
+        input.conversationId,
+        contributionPreparedBatchId(input.conversationId, input.batchId),
+        input.key,
+      );
+      // The coordinator-facing identity is the exact raw (batchId, key) pair
+      // the projection exposes; the prepared-batch id is host-internal.
+      return {
+        standing: "read",
+        result: { ...result, receipt: { ...result.receipt, batchId: input.batchId } },
+      };
     } catch (error) {
       return {
         standing: "refused",
@@ -739,13 +751,9 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
     const handle = this.contribution(input.batchId, input.key);
     if (handle !== undefined) {
-      const liveness = handle.liveness();
-      if (liveness.state !== "live") {
-        throw new ContributionError(
-          "contribution-not-live",
-          `contribution ${input.batchId}/${input.key} is not live; stop has no effect`,
-        );
-      }
+      // The retained handle owns stop semantics: an exact same-actor replay
+      // returns the retained receipt even after settlement, a distinct stop
+      // action is refused, and an unsettled live contribution is stopped.
       return handle.cancel(input.actor);
     }
     const receipt = this.readSpawnReceipts(input.actor.conversationId)
@@ -791,6 +799,51 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   }
 
   /**
+   * The conversation's current Task identity, derived exactly like the
+   * coordinator's projection: the latest settled task_create/task_correct
+   * action receipt in the durable journal. The coordinator never supplies
+   * this; the host re-derives it from the canonical sources immediately
+   * before the effect. An unreadable journal is a visible source failure;
+   * a readable journal without a settled Task action means there is no
+   * current Task and the contribution is refused without guessing one.
+   */
+  private conversationCurrentTaskAction(
+    conversationId: string,
+  ): { taskId: string; sourceRevision: number } | undefined {
+    let events: ReturnType<FileConversationJournal["readEventsSync"]>;
+    try {
+      events = this.journal.readEventsSync(conversationId);
+    } catch (error) {
+      throw new ContributionError(
+        "source-unavailable",
+        `the conversation journal cannot be read to derive the current Task: ${errorMessage(error)}`,
+      );
+    }
+    const requestedKinds = new Map<string, "task_create" | "task_correct">();
+    for (const event of events) {
+      if (event.type !== "action.requested") continue;
+      if (event.data.kind === "task_create" || event.data.kind === "task_correct") {
+        requestedKinds.set(event.data.actionId, event.data.kind);
+      }
+    }
+    let latest: { taskId: string; sourceRevision: number; sequence: number } | undefined;
+    for (const event of events) {
+      if (event.type !== "action.settled") continue;
+      if (!requestedKinds.has(event.data.actionId)) continue;
+      for (const ref of event.data.evidenceRefs) {
+        const parsed = parseTaskReceiptEvidenceRef(ref);
+        if (parsed === null) continue;
+        if (latest === undefined || event.sequence > latest.sequence) {
+          latest = { ...parsed, sequence: event.sequence };
+        }
+      }
+    }
+    return latest === undefined
+      ? undefined
+      : { taskId: latest.taskId, sourceRevision: latest.sourceRevision };
+  }
+
+  /**
    * Derive the complete internal delegate admission envelope from the current
    * Task and runtime sources. The coordinator's spawn shape contributed only
    * intent plus non-derivable constraints; every evidence field here — source
@@ -831,7 +884,9 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         "Complete one bounded temporary contribution. Report only evidence read from the workspace and the declared sources; do not claim semantic acceptance.",
         operation.intent,
       ],
-      capabilities: [],
+      // The exact retained worker card's hard capability labels, host-derived
+      // so the declared capabilityNeed/vision requirement is provably covered.
+      capabilities: [...card.labels],
       context: [],
       capabilitiesRequired: [
         operation.capabilityNeed,
@@ -868,7 +923,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       overloadDisposition: "escalate",
     };
     const batch: PreparedDelegateBatch = {
-      id: `conversation-contribution:${input.conversationId}:${input.batchId}`,
+      id: contributionPreparedBatchId(input.conversationId, input.batchId),
       whole: {
         revision: digest({
           taskId: task.id,
@@ -936,7 +991,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         // evidence; its verification standing stays in the outcome status and
         // the keyed result receipt (a plain Cell result is unverified).
         const status: ContributionSettlement["status"] =
-          outcome === undefined || outcome.status === "runner_error" ? "failed"
+          outcome === undefined || outcome.status === "runner_error" || outcome.status === "failed" ? "failed"
           : outcome.status === "cancelled" ? "cancelled"
           : "completed";
         handle.finishTerminal({
@@ -1134,13 +1189,10 @@ class WorkbenchContributionHandle implements ContributionHandle {
     readonly turnId: string;
     readonly actionId: string;
   }): ContributionControlReceipt {
-    if (this.settlement !== undefined) {
-      throw new ContributionError(
-        "contribution-not-live",
-        `contribution ${this.identity.batchId}/${this.identity.key} already settled with status ${this.settlement.status}; stop has no effect`,
-      );
-    }
     if (this.stopRequest !== undefined) {
+      // Exact replay may reuse the durable receipt only for the same action
+      // identity, even after settlement; a distinct stop action must never
+      // adopt the first receipt.
       const retained = this.stopRequest;
       if (retained.conversationId === actor.conversationId && retained.actionId === actor.actionId) {
         return contributionControlReceipt(this.identity, [this.controlReceiptRef!, this.spawnRef]);
@@ -1149,6 +1201,12 @@ class WorkbenchContributionHandle implements ContributionHandle {
         "control-conflict",
         `contribution ${this.identity.batchId} already has a requested stop from action ${retained.actionId} `
         + `of conversation ${retained.conversationId}; a distinct stop action cannot be applied`,
+      );
+    }
+    if (this.settlement !== undefined) {
+      throw new ContributionError(
+        "contribution-not-live",
+        `contribution ${this.identity.batchId}/${this.identity.key} already settled with status ${this.settlement.status}; stop has no effect`,
       );
     }
     // The durable control receipt is written before any handle state commits
@@ -1295,6 +1353,116 @@ function taskById(tasks: ReturnType<typeof loadPrincipalTasks>, idArgument: stri
   if (folded.length === 0) return undefined;
   const matches = tasks.tasks.filter((task) => task.id.toLowerCase() === folded);
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * Revalidate one conversation-derived Task binding against the current
+ * canonical owners immediately before a contribution effect: the bound
+ * project must still be a registered current project with a readable primary
+ * head, the bound Worktree must still exist and be an exact currently
+ * observed Worktree of that project's primary workspace, and its current
+ * head must be readable. The coordinator supplied none of these selectors;
+ * the host derives and re-validates every one of them itself, and any
+ * unreadable, unregistered, or unobserved selection is refused with no
+ * effect.
+ */
+function verifyContributionSelection(
+  home: string,
+  task: PrincipalTask,
+  worktree: string,
+): void {
+  const binding = task.binding;
+  if (binding.kind !== "project-context") {
+    throw new ContributionError(
+      "task-not-bound",
+      `task ${task.id} has no project binding to re-validate`,
+    );
+  }
+  let current;
+  try {
+    current = loadHome(home);
+  } catch (error) {
+    throw new ContributionError(
+      "task-not-bound",
+      `task ${task.id}'s binding cannot be re-validated: the current home cannot be read: ${errorMessage(error)}`,
+    );
+  }
+  const project = current.projects.projects.find(
+    (candidate) => candidate.id === binding.projectId,
+  );
+  if (project === undefined) {
+    throw new ContributionError(
+      "task-not-bound",
+      `task ${task.id} is bound to project '${binding.projectId}', which is not a registered current project; the action is refused`,
+    );
+  }
+  let primaryWorkspace: string;
+  let primaryHead: string | null;
+  try {
+    const workspace = workspaceFor(current.workspaces, binding.projectId);
+    const observation = observeWorkspace(project, workspace);
+    primaryWorkspace = observation.path;
+    primaryHead = observation.head;
+  } catch (error) {
+    throw new ContributionError(
+      "task-not-bound",
+      `the bound project's primary workspace cannot be re-observed: ${errorMessage(error)}`,
+    );
+  }
+  if (primaryHead === null) {
+    throw new ContributionError(
+      "task-not-bound",
+      `the bound project '${binding.projectId}' has no readable current primary head`,
+    );
+  }
+  let observed: string[];
+  try {
+    observed = observedWorktreeRecords(primaryWorkspace);
+  } catch (error) {
+    throw new ContributionError(
+      "task-not-bound",
+      `the registered project's Worktrees cannot be observed: ${errorMessage(error)}`,
+    );
+  }
+  if (!observed.includes(worktree)) {
+    throw new ContributionError(
+      "task-not-bound",
+      `task ${task.id}'s bound Worktree ${worktree} is not a currently observed Worktree of the registered project '${binding.projectId}'; the action is refused`,
+    );
+  }
+  let worktreeHead: string;
+  try {
+    worktreeHead = requiredGit(["rev-parse", "HEAD"], worktree);
+  } catch (error) {
+    throw new ContributionError(
+      "task-not-bound",
+      `the bound Worktree's current head cannot be re-read: ${errorMessage(error)}`,
+    );
+  }
+  if (!/^[0-9a-f]{40}$/u.test(worktreeHead)) {
+    throw new ContributionError(
+      "task-not-bound",
+      `the bound Worktree's current head is unreadable`,
+    );
+  }
+}
+
+/** Exact currently observed Worktrees of one primary workspace, by resolved path. */
+function observedWorktreeRecords(primaryWorkspace: string): string[] {
+  const records = requiredGit(["worktree", "list", "--porcelain"], primaryWorkspace)
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => expandPath(line.slice("worktree ".length)));
+  const observed: string[] = [];
+  for (const record of records) {
+    try {
+      observed.push(realpathSync(record));
+    } catch {
+      // A worktree record that cannot be resolved is not currently observed.
+    }
+  }
+  observed.sort();
+  return observed;
 }
 
 function writeImmutableJson(path: string, value: unknown): void {
