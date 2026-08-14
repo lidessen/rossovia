@@ -52,10 +52,17 @@ export const ClientToolInterruptFrameSchema = z.object({
 }).strict();
 export type ClientToolInterruptFrame = z.infer<typeof ClientToolInterruptFrameSchema>;
 
+/**
+ * One browser control frame targets one exact retained ordinary Task carrier:
+ * the committed same-conversation `task_continue` turn/action tuple that
+ * started it plus the exact retained `carrierId`. The transport never guesses
+ * a carrier from a partial tuple and never routes a control by phrase.
+ */
 export const ClientWorkControlFrameSchema = z.object({
   type: z.literal("work.control"),
   turnId: z.string().uuid(),
   actionId: z.string().uuid(),
+  carrierId: z.string().min(1),
   control: z.enum(["pause", "resume", "stop", "recover"]),
 }).strict();
 export type ClientWorkControlFrame = z.infer<typeof ClientWorkControlFrameSchema>;
@@ -201,6 +208,14 @@ export interface ConversationSocketRuntimeOptions {
  * single guarded retry, or uncertainty) before the next turn and on
  * reconnect, so a crash after the effect can never repeat a committed
  * mutation and a committed effect is never mislabeled as failed.
+ *
+ * A browser `work.control` frame runs through the same durable action path
+ * but only when its exact target tuple matches: the committed
+ * `task_continue` turn/action of this conversation and the retained carrier
+ * whose identity equals the frame's carrierId. `tool.interrupt` stays
+ * unsupported; a mismatched or stale target or a missing carrier runtime is
+ * a visible rejection with zero effect, and the transport never aborts a
+ * carrier directly.
  */
 export class ConversationSocketRuntime {
   readonly journal: FileConversationJournal;
@@ -360,11 +375,13 @@ export class ConversationSocketRuntime {
         this.interruptTurn(entry, frame);
         break;
       case "tool.interrupt":
-      case "work.control":
         this.send(entry, protocolErrorFrame(
           "unsupported-frame",
           `${frame.type} is not owned by the conversation runtime`,
         ));
+        break;
+      case "work.control":
+        void this.submitWorkControl(entry, frame);
         break;
     }
   }
@@ -396,6 +413,103 @@ export class ConversationSocketRuntime {
         error instanceof Error ? error.message : String(error),
       ));
     }
+  }
+
+  /**
+   * Run one browser work.control frame through the exact durable action path.
+   * The frame enters the effect path only when its target tuple matches
+   * exactly: the same conversation's committed `task_continue` turn/action in
+   * the journal and the retained carrier whose identity equals the frame's
+   * carrierId. A mismatched or stale target, or a runtime without an installed
+   * carrier registry, is a visible rejection with zero effect. An exact
+   * target becomes one typed `work_control` operation journaled through
+   * `runAction`: the durable `action.requested` precedes the effect, the
+   * installed operation host applies the control through the canonical
+   * carrier owner, and the terminal settlement stays reconnect-reconcilable.
+   * The transport never aborts a carrier directly and never routes a control
+   * by phrase; pause/resume/recover fail visibly in the owning host.
+   */
+  private submitWorkControl(entry: SocketEntry, frame: ClientWorkControlFrame): void {
+    this.runExclusive(entry.conversationId, async () => {
+      await this.reconcileConversation(entry.conversationId);
+      const target = await this.workControlTarget(entry, frame);
+      if (target === undefined) return;
+      const operation: ConversationOperation = {
+        kind: "work_control",
+        carrierId: frame.carrierId,
+        control: frame.control,
+      };
+      try {
+        await this.runAction(entry.conversationId, target, operation);
+      } catch (error: unknown) {
+        this.send(entry, protocolErrorFrame(
+          "journal-error",
+          `work.control could not be journaled before the effect: ${errorMessage(error)}`,
+        ));
+      }
+    });
+  }
+
+  /**
+   * Validate the exact control target tuple, or reject visibly with zero
+   * effect. The frame must reference a committed `task_continue`
+   * `action.requested` of this conversation with matching turnId/actionId,
+   * and the registry must retain a carrier for that exact action whose
+   * identity equals the frame's carrierId. No fallback, carrier guess, or
+   * prose interpretation is performed.
+   */
+  private async workControlTarget(
+    entry: SocketEntry,
+    frame: ClientWorkControlFrame,
+  ): Promise<{ readonly turnId: string; readonly messageId: string } | undefined> {
+    const { conversationId } = entry;
+    if (this.carrierRegistry === undefined) {
+      this.send(entry, protocolErrorFrame(
+        "unsupported-frame",
+        "work.control is unavailable without an installed execution-carrier runtime",
+      ));
+      return undefined;
+    }
+    let events: readonly ConversationEvent[];
+    try {
+      events = await this.journal.readEvents(conversationId);
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame(
+        "journal-error",
+        `conversation journal read failed: ${errorMessage(error)}`,
+      ));
+      return undefined;
+    }
+    const target = events.find((event): event is ActionRequestedEvent =>
+      event.type === "action.requested"
+        && event.data.kind === "task_continue"
+        && event.data.turnId === frame.turnId
+        && event.data.actionId === frame.actionId);
+    if (target === undefined) {
+      this.send(entry, protocolErrorFrame(
+        "conflict",
+        `work.control targets turn ${frame.turnId} action ${frame.actionId}, `
+        + `which is not a committed task_continue action of conversation ${conversationId}`,
+      ));
+      return undefined;
+    }
+    const carrier = this.carrierRegistry.startedCarrier(conversationId, frame.actionId);
+    if (carrier === undefined) {
+      this.send(entry, protocolErrorFrame(
+        "conflict",
+        `work.control action ${frame.actionId} has no retained execution carrier in conversation ${conversationId}`,
+      ));
+      return undefined;
+    }
+    if (carrier.identity.carrierId !== frame.carrierId) {
+      this.send(entry, protocolErrorFrame(
+        "conflict",
+        `work.control carrierId ${frame.carrierId} does not match the retained carrier `
+        + `${carrier.identity.carrierId} of action ${frame.actionId}`,
+      ));
+      return undefined;
+    }
+    return { turnId: target.data.turnId, messageId: target.data.messageId };
   }
 
   /**

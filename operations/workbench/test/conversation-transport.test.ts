@@ -718,7 +718,7 @@ describe("conversation socket live delivery", () => {
     }
   });
 
-  test("tool.interrupt and work.control frames remain explicitly unsupported", async () => {
+  test("tool.interrupt remains explicitly unsupported and writes nothing", async () => {
     const root = tempRoot();
     const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
       settledScript("fixture response"),
@@ -727,20 +727,15 @@ describe("conversation socket live delivery", () => {
     const client = await connect(socketUrl(conversationId, -1));
     try {
       client.ws.send(JSON.stringify({ type: "tool.interrupt", actionId: randomUUID() }));
-      client.ws.send(JSON.stringify({
-        type: "work.control",
-        turnId: randomUUID(),
-        actionId: randomUUID(),
-        control: "stop",
-      }));
       await waitFor(
-        () => client.messages.filter((frame) => frame.type === "protocol.error").length >= 2,
-        "all unsupported frames are rejected",
+        () => client.messages.some((frame) => frame.type === "protocol.error"),
+        "the tool.interrupt frame is rejected",
       );
       const errors = client.messages.filter(
         (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
       );
-      expect(errors.every((frame) => frame.code === "unsupported-frame")).toBe(true);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.code).toBe("unsupported-frame");
       expect(await runtime.journal.readEvents(conversationId)).toEqual([]);
     } finally {
       client.ws.close();
@@ -824,8 +819,14 @@ describe("conversation socket live delivery", () => {
       client.ws.send(JSON.stringify({ type: "message.submit", clientMessageId: "not-a-uuid", payload: "text" }));
       client.ws.send(JSON.stringify({ type: "message.submit", clientMessageId: randomUUID(), payload: "" }));
       client.ws.send(JSON.stringify({ type: "unknown.type" }));
+      client.ws.send(JSON.stringify({
+        type: "work.control",
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+        control: "stop",
+      }));
       await waitFor(
-        () => client.messages.filter((frame) => frame.type === "protocol.error").length >= 4,
+        () => client.messages.filter((frame) => frame.type === "protocol.error").length >= 5,
         "all malformed frames are rejected",
       );
       const errors = client.messages.filter(
@@ -1073,6 +1074,13 @@ import {
   type ConversationOperationHost,
 } from "../src/conversation/operations";
 import type { ConversationContextProvider } from "../src/conversation/context";
+import {
+  ConversationCarrierError,
+  type CarrierSettlement,
+  type ConversationCarrierHandle,
+  type ConversationCarrierIdentity,
+  type ConversationExecutionCarrierRegistry,
+} from "../src/conversation/execution-carrier";
 
 const CREATE_OPERATION: ConversationOperation = {
   kind: "task_create",
@@ -1140,6 +1148,7 @@ async function startOperationServer(
   owner: ConversationTurnOwner,
   operationHost?: ConversationOperationHost,
   projectionProvider?: ConversationContextProvider,
+  carrierRegistry?: ConversationExecutionCarrierRegistry,
 ): Promise<{
   runtime: ConversationSocketRuntime;
   server: Bun.Server<ConversationSocketData>;
@@ -1149,6 +1158,7 @@ async function startOperationServer(
     turnOwner: owner,
     ...(operationHost === undefined ? {} : { operationHost }),
     ...(projectionProvider === undefined ? {} : { projectionProvider }),
+    ...(carrierRegistry === undefined ? {} : { carrierRegistry }),
   });
   const handler = createWorkbenchRequestHandler(
     { port: 0, roots: [] },
@@ -1617,4 +1627,553 @@ test("the projection provider result flows into the turn owner preparation", asy
   expect(captured[0]?.projects?.[0]?.id).toBe("fixture-project");
   expect(captured[0]?.projects?.[0]?.worktrees?.[0]?.head).toBe("1".repeat(40));
   server.stop(true);
+});
+
+const CONTINUE_OPERATION: ConversationOperation = {
+  kind: "task_continue",
+  taskId: "fixture-task",
+  expectedSourceRevision: 0,
+  expectedRevision: 1,
+  workerId: "fixture-worker",
+  projectId: "fixture-project",
+  expectedPrimaryHead: "1".repeat(40),
+  worktreePath: "/tmp/fixture-worktree",
+  expectedWorktreeHead: "1".repeat(40),
+};
+
+type FakeCarrierHandle = ConversationCarrierHandle & {
+  stops: Array<{ conversationId: string; turnId: string; actionId: string }>;
+};
+
+function fakeCarrierHandle(identity: ConversationCarrierIdentity): FakeCarrierHandle {
+  const stops: Array<{ conversationId: string; turnId: string; actionId: string }> = [];
+  return {
+    identity,
+    liveness: () => ({ state: "live" }),
+    onActivity: () => () => {},
+    onSettled: () => () => {},
+    settled: new Promise<CarrierSettlement>(() => {}),
+    stop(actor) {
+      stops.push(actor);
+      return {
+        carrierId: identity.carrierId,
+        control: "stop",
+        outcome: "settled",
+        evidenceRefs: [`workbench:state/task-attempts/${identity.carrierId}/control.json`],
+      };
+    },
+    retention: () => ({ activityListeners: 0, settledListeners: 0, retainedPayloads: 0 }),
+    stops,
+  };
+}
+
+type FakeCarrierRegistry = ConversationExecutionCarrierRegistry & {
+  handles: Map<string, FakeCarrierHandle>;
+  started: Map<string, string>;
+  controls: Array<{
+    carrierId: string;
+    control: "stop";
+    actor: { conversationId: string; turnId: string; actionId: string };
+  }>;
+};
+
+function fakeCarrierRegistry(): FakeCarrierRegistry {
+  const handles = new Map<string, FakeCarrierHandle>();
+  const started = new Map<string, string>();
+  const controls: FakeCarrierRegistry["controls"] = [];
+  return {
+    home: "/tmp/fake-carrier-registry",
+    startCarrier() {
+      throw new ConversationCarrierError(
+        "carrier-duplicate",
+        "startCarrier is not used by transport control tests",
+      );
+    },
+    carrier: (carrierId) => handles.get(carrierId),
+    carriers: () => [...handles.values()],
+    startedCarrier: (conversationId, actionId) => {
+      const carrierId = started.get(`${conversationId}\u0000${actionId}`);
+      return carrierId === undefined ? undefined : handles.get(carrierId);
+    },
+    controlCarrier(input) {
+      controls.push(input);
+      const carrier = handles.get(input.carrierId);
+      if (carrier === undefined) {
+        throw new ConversationCarrierError(
+          "carrier-not-found",
+          `carrier ${input.carrierId} is not a retained ordinary Task carrier`,
+        );
+      }
+      return carrier.stop(input.actor);
+    },
+    handles,
+    started,
+    controls,
+  };
+}
+
+type FakeControlHost = ConversationOperationHost & {
+  effects: Array<{ conversationId: string; turnId: string; actionId: string; operation: ConversationOperation }>;
+};
+
+function controlOperationHost(
+  registry: FakeCarrierRegistry,
+  options: { trace?: string[]; canonical?: Map<string, FakeHostReceipt> } = {},
+): FakeControlHost {
+  const effects: FakeControlHost["effects"] = [];
+  const canonical = options.canonical ?? new Map<string, FakeHostReceipt>();
+  return {
+    home: "/tmp/fake-control-host",
+    effects,
+    executeOperation(input) {
+      options.trace?.push("effect");
+      effects.push(input);
+      const operation = input.operation;
+      if (operation.kind !== "work_control") {
+        throw new ConversationOperationHostError(
+          "invalid-operation",
+          `unsupported operation kind ${operation.kind} for the control host`,
+        );
+      }
+      if (operation.control !== "stop") {
+        throw new ConversationOperationHostError(
+          "control-unsupported",
+          `control '${operation.control}' is not owned by an ordinary Task carrier; only an exact live stop is available`,
+        );
+      }
+      const receipt = registry.controlCarrier({
+        carrierId: operation.carrierId,
+        control: operation.control,
+        actor: {
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          actionId: input.actionId,
+        },
+      });
+      return { taskId: operation.carrierId, evidenceRefs: [...receipt.evidenceRefs] };
+    },
+    findCanonicalReceipt(input) {
+      const receipt = canonical.get(taskActionSourceRef(input.conversationId, input.actionId));
+      return receipt === undefined
+        ? { standing: "absent" }
+        : { standing: "settled", receipt };
+    },
+  };
+}
+
+async function stageCommittedContinue(
+  runtime: ConversationSocketRuntime,
+  conversationId: string,
+): Promise<{ turnId: string; messageId: string; actionId: string }> {
+  const message = await runtime.journal.submitMessage(conversationId, {
+    clientMessageId: randomUUID(),
+    payload: "continue the fixture task",
+  });
+  const turnId = randomUUID();
+  await runtime.journal.startTurn(conversationId, {
+    turnId,
+    messageId: message.event.data.messageId,
+    requestedPolicy: FAKE_REQUESTED_POLICY,
+  });
+  const actionId = randomUUID();
+  await runtime.journal.requestAction(conversationId, {
+    actionId,
+    turnId,
+    messageId: message.event.data.messageId,
+    operation: CONTINUE_OPERATION,
+  });
+  await runtime.journal.settleAction(conversationId, {
+    actionId,
+    turnId,
+    messageId: message.event.data.messageId,
+    evidenceRefs: ["workbench:state/task-attempts/fixture-attempt/attempt.json"],
+  });
+  return { turnId, messageId: message.event.data.messageId, actionId };
+}
+
+function retainCarrier(
+  registry: FakeCarrierRegistry,
+  conversationId: string,
+  target: { turnId: string; actionId: string },
+): { carrierId: string; handle: FakeCarrierHandle } {
+  const carrierId = randomUUID();
+  const handle = fakeCarrierHandle({
+    carrierId,
+    conversationId,
+    turnId: target.turnId,
+    actionId: target.actionId,
+    taskId: "fixture-task",
+    attemptId: carrierId,
+    workerId: "fixture-worker",
+    worktree: "/tmp/fixture-worktree",
+  });
+  registry.handles.set(carrierId, handle);
+  registry.started.set(`${conversationId}\u0000${target.actionId}`, carrierId);
+  return { carrierId, handle };
+}
+
+function workControlFrame(client: { ws: WebSocket }, frame: {
+  turnId: string;
+  actionId: string;
+  carrierId: string;
+  control: "pause" | "resume" | "stop" | "recover";
+}): void {
+  client.ws.send(JSON.stringify({ type: "work.control", ...frame }));
+}
+
+describe("conversation socket work.control frames", () => {
+  test("an exact work.control tuple journals action.requested before the effect and stops only the retained carrier", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry();
+    const trace: string[] = [];
+    const host = controlOperationHost(registry, { trace });
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const retained = retainCarrier(registry, conversationId, target);
+    const originalRequestAction = runtime.journal.requestAction.bind(runtime.journal);
+    runtime.journal.requestAction = (id, draft) => {
+      if (draft.operation.kind === "work_control") trace.push("requested");
+      return originalRequestAction(id, draft);
+    };
+    try {
+      const client = await connect(socketUrl(conversationId, -1));
+      try {
+        workControlFrame(client, {
+          turnId: target.turnId,
+          actionId: target.actionId,
+          carrierId: retained.carrierId,
+          control: "stop",
+        });
+        await waitFor(() => client.messages.some((frame) =>
+          frame.type === "journal.event" && frame.event.type === "action.settled"
+            && frame.event.data.actionId !== target.actionId), "the control action settles");
+
+        expect(trace).toEqual(["requested", "effect"]);
+        const events = await runtime.journal.readEvents(conversationId);
+        expect(events.map((event) => event.type)).toEqual([
+          "message.received",
+          "coordinator.turn-started",
+          "action.requested",
+          "action.settled",
+          "action.requested",
+          "action.settled",
+        ]);
+        const requested = events[4]!;
+        if (requested.type !== "action.requested") throw new Error("expected action.requested");
+        expect(requested.data.kind).toBe("work_control");
+        expect(requested.data.operation).toEqual({
+          kind: "work_control",
+          carrierId: retained.carrierId,
+          control: "stop",
+        });
+        expect(requested.data.turnId).toBe(target.turnId);
+        expect(requested.data.messageId).toBe(target.messageId);
+
+        expect(registry.controls).toHaveLength(1);
+        expect(registry.controls[0]).toMatchObject({ carrierId: retained.carrierId, control: "stop" });
+        expect(registry.controls[0]!.actor).toEqual({
+          conversationId,
+          turnId: target.turnId,
+          actionId: requested.data.actionId,
+        });
+        expect(retained.handle.stops).toEqual([registry.controls[0]!.actor]);
+        expect(client.messages.some((frame) => frame.type === "projection.changed")).toBe(true);
+        expect(client.messages.some((frame) => frame.type === "protocol.error")).toBe(false);
+      } finally {
+        client.ws.close();
+      }
+    } finally {
+      runtime.journal.requestAction = originalRequestAction;
+      server.stop(true);
+    }
+  });
+
+  test("a work.control frame that fails the exact committed task_continue tuple is a visible conflict with zero effect", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry();
+    const host = controlOperationHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const retained = retainCarrier(registry, conversationId, target);
+    // A committed task_create action in the same conversation: a valid action
+    // identity but never a task_continue target.
+    const createActionId = randomUUID();
+    await runtime.journal.requestAction(conversationId, {
+      actionId: createActionId,
+      turnId: target.turnId,
+      messageId: target.messageId,
+      operation: CREATE_OPERATION,
+    });
+    await runtime.journal.settleAction(conversationId, {
+      actionId: createActionId,
+      turnId: target.turnId,
+      messageId: target.messageId,
+      evidenceRefs: ["workbench:state/tasks.json:task/fixture@0"],
+    });
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      const before = await runtime.journal.readEvents(conversationId);
+      workControlFrame(client, {
+        turnId: randomUUID(),
+        actionId: target.actionId,
+        carrierId: retained.carrierId,
+        control: "stop",
+      });
+      workControlFrame(client, {
+        turnId: target.turnId,
+        actionId: randomUUID(),
+        carrierId: retained.carrierId,
+        control: "stop",
+      });
+      workControlFrame(client, {
+        turnId: target.turnId,
+        actionId: createActionId,
+        carrierId: retained.carrierId,
+        control: "stop",
+      });
+      workControlFrame(client, {
+        turnId: target.turnId,
+        actionId: target.actionId,
+        carrierId: randomUUID(),
+        control: "stop",
+      });
+      await waitFor(
+        () => client.messages.filter((frame) => frame.type === "protocol.error").length >= 4,
+        "all mismatched tuples are rejected",
+      );
+      await Bun.sleep(50);
+
+      const errors = client.messages.filter(
+        (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
+      );
+      expect(errors).toHaveLength(4);
+      expect(errors.every((frame) => frame.code === "conflict")).toBe(true);
+      expect(await runtime.journal.readEvents(conversationId)).toHaveLength(before.length);
+      expect(host.effects).toHaveLength(0);
+      expect(registry.controls).toHaveLength(0);
+      expect(retained.handle.stops).toHaveLength(0);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a work.control frame without an installed carrier runtime is a visible unsupported rejection with zero effect", async () => {
+    const root = tempRoot();
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      const before = await runtime.journal.readEvents(conversationId);
+      workControlFrame(client, {
+        turnId: target.turnId,
+        actionId: target.actionId,
+        carrierId: randomUUID(),
+        control: "stop",
+      });
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "protocol.error"),
+        "the work.control frame is rejected",
+      );
+      const errors = client.messages.filter(
+        (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.code).toBe("unsupported-frame");
+      expect(await runtime.journal.readEvents(conversationId)).toHaveLength(before.length);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("pause, resume, and recover controls fail visibly through the owner with no carrier effect", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry();
+    const host = controlOperationHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const retained = retainCarrier(registry, conversationId, target);
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      for (const control of ["pause", "resume", "recover"] as const) {
+        workControlFrame(client, {
+          turnId: target.turnId,
+          actionId: target.actionId,
+          carrierId: retained.carrierId,
+          control,
+        });
+      }
+      await waitFor(
+        () => client.messages.filter((frame) =>
+          frame.type === "journal.event" && frame.event.type === "action.failed").length >= 3,
+        "each unsupported control fails durably",
+      );
+
+      const events = await runtime.journal.readEvents(conversationId);
+      const requestedControls = events.filter((event) =>
+        event.type === "action.requested" && event.data.kind === "work_control");
+      const failures = events.filter((event) => event.type === "action.failed");
+      expect(requestedControls).toHaveLength(3);
+      expect(failures).toHaveLength(3);
+      expect(failures.every((event) =>
+        event.type === "action.failed"
+          && /not owned by an ordinary Task carrier/u.test(event.data.reason))).toBe(true);
+      expect(host.effects).toHaveLength(3);
+      expect(registry.controls).toHaveLength(0);
+      expect(retained.handle.stops).toHaveLength(0);
+      expect(requestedControls.every((event) =>
+        event.type === "action.requested"
+          && event.data.kind === "work_control"
+          && event.data.operation.control !== "stop")).toBe(true);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a committed control whose terminal journal was lost reconciles on reconnect without re-execution", async () => {
+    const root = tempRoot();
+    const conversationId = randomUUID();
+    const registry = fakeCarrierRegistry();
+    const canonical = new Map<string, FakeHostReceipt>();
+    const host = controlOperationHost(registry, { canonical });
+    const staging = new ConversationSocketRuntime(root, {
+      turnOwner: scriptedOwner([settledScript("fixture response")]),
+    });
+    const target = await stageCommittedContinue(staging, conversationId);
+    const carrierId = randomUUID();
+    const controlActionId = randomUUID();
+    const committed: FakeHostReceipt = {
+      taskId: "fixture-task",
+      sourceRevision: 0,
+      taskRevision: 1,
+      evidenceRefs: [`workbench:state/task-attempts/${carrierId}/control.json`],
+    };
+    canonical.set(taskActionSourceRef(conversationId, controlActionId), committed);
+    await staging.journal.requestAction(conversationId, {
+      actionId: controlActionId,
+      turnId: target.turnId,
+      messageId: target.messageId,
+      operation: { kind: "work_control", carrierId, control: "stop" },
+    });
+
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+      host,
+      undefined,
+      registry,
+    );
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      await waitFor(() => client.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"
+          && frame.event.data.actionId === controlActionId), "the reconciled control settlement");
+
+      expect(host.effects).toHaveLength(0);
+      expect(registry.controls).toHaveLength(0);
+      const events = await runtime.journal.readEvents(conversationId);
+      const settled = events.find((event) =>
+        event.type === "action.settled" && event.data.actionId === controlActionId);
+      expect(settled).toBeDefined();
+      if (settled?.type !== "action.settled") throw new Error("expected action.settled");
+      expect([...settled.data.evidenceRefs]).toEqual([...committed.evidenceRefs]);
+
+      const replayedRequested = client.messages.filter((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.requested"
+          && frame.event.data.actionId === controlActionId);
+      const replayedSettled = client.messages.filter((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"
+          && frame.event.data.actionId === controlActionId);
+      expect(replayedRequested).toHaveLength(1);
+      expect(replayedSettled).toHaveLength(1);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a reconnecting browser replays a committed control exactly once and never re-enters the effect path", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry();
+    const host = controlOperationHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const retained = retainCarrier(registry, conversationId, target);
+    const first = await connect(socketUrl(conversationId, -1));
+    try {
+      workControlFrame(first, {
+        turnId: target.turnId,
+        actionId: target.actionId,
+        carrierId: retained.carrierId,
+        control: "stop",
+      });
+      await waitFor(() => first.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"
+          && frame.event.data.actionId !== target.actionId), "the control action settles");
+      expect(host.effects).toHaveLength(1);
+      expect(registry.controls).toHaveLength(1);
+      expect(retained.handle.stops).toHaveLength(1);
+      first.ws.close();
+    } finally {
+      first.ws.close();
+    }
+
+    const reconnected = await connect(socketUrl(conversationId, -1));
+    try {
+      await waitFor(() => reconnected.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"
+          && frame.event.data.actionId !== target.actionId), "the committed control replays");
+      await Bun.sleep(50);
+
+      const controlRequested = reconnected.messages.filter((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.requested"
+          && frame.event.data.kind === "work_control");
+      const controlSettled = reconnected.messages.filter((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"
+          && frame.event.data.actionId !== target.actionId);
+      expect(controlRequested).toHaveLength(1);
+      expect(controlSettled).toHaveLength(1);
+      expect(reconnected.messages.filter((frame) => frame.type === "protocol.error")).toEqual([]);
+      expect(host.effects).toHaveLength(1);
+      expect(registry.controls).toHaveLength(1);
+      expect(retained.handle.stops).toHaveLength(1);
+    } finally {
+      reconnected.ws.close();
+      server.stop(true);
+    }
+  });
 });
