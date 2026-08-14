@@ -1613,6 +1613,7 @@ test("the projection provider result flows into the turn owner preparation", asy
         worktrees: [{ path: "/tmp/fixture-worktree", head: "1".repeat(40) }],
       }],
     }),
+    buildChildren: async () => [],
   };
   const { runtime, server, socketUrl } = await startOperationServer(root, owner, undefined, provider);
   const conversationId = randomUUID();

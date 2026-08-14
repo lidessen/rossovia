@@ -44,7 +44,7 @@ const ORDINARY_OPENCODE_EXCLUDES = [
 // Ordinary project work must not inherit Work Cell's five-minute probe default.
 // OpenCode has no completed-step budget-control adapter yet, so this is a broad
 // emergency ceiling rather than a user-facing approval mechanism.
-const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
+export const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -984,7 +984,7 @@ function canonicalGitDirectory(worktree: string): string {
   return realpathSync(isAbsolute(raw) ? raw : resolve(worktree, raw));
 }
 
-function ordinaryOpenCodeExcludes(worktree: string): string[] {
+export function ordinaryOpenCodeExcludes(worktree: string): string[] {
   const tracked = (requiredGit(["ls-files", "-z"], worktree) ?? "")
     .split("\0")
     .filter(Boolean);

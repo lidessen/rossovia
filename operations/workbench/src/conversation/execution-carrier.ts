@@ -216,7 +216,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     const attemptId = prepared.attemptId;
     try {
       verifyExpectedRevisions(prepared, input.operation);
-      verifyContinueSelectors(this.home, prepared, input.operation);
+      verifyExecutionSelectors(this.home, { task: prepared.task, worktree: prepared.worktree }, input.operation);
       const correlation: AttemptCorrelation = {
         conversationId: input.conversationId,
         turnId: input.turnId,
@@ -384,24 +384,42 @@ function verifyExpectedRevisions(
 }
 
 /**
- * Compare the operation's exact execution selection against fresh owner reads
- * performed after the Worktree lease is held and immediately before attempt
- * creation: the registered project identity, its current primary head, the
- * exact bound Worktree path, and its current head. Any X→Y drift between the
- * projection the coordinator copied and the current canonical owners fails
- * stale with no effect; the carrier never executes the drifted current
- * selection.
+ * The exact execution selection any bound-work effect must re-verify: the
+ * registered project identity, its expected current primary head, the exact
+ * bound Worktree path, and its expected head. A `task_continue` carrier and a
+ * temporary contribution both copy these selectors from the projection, and
+ * the host re-reads every one of them immediately before the effect.
  */
-function verifyContinueSelectors(
+export interface ExecutionSelection {
+  readonly projectId: string;
+  readonly expectedPrimaryHead: string;
+  readonly worktreePath: string;
+  readonly expectedWorktreeHead: string;
+}
+
+/**
+ * Compare one operation's exact execution selection against fresh owner reads
+ * performed immediately before attempt/contribution creation: the registered
+ * project identity, its current primary head, the exact bound Worktree path,
+ * and its current head. Any X→Y drift between the projection the coordinator
+ * copied and the current canonical owners fails stale with no effect; the
+ * carrier never executes the drifted current selection.
+ */
+export function verifyExecutionSelectors(
   home: string,
-  prepared: PreparedPrincipalTaskRun,
-  operation: TaskContinueOperation,
+  input: {
+    /** The freshly re-read Task whose current binding owns the work. */
+    readonly task: PrincipalTask;
+    /** The exact bound Worktree path resolved from the Task's current binding. */
+    readonly worktree: string;
+  },
+  operation: ExecutionSelection,
 ): void {
-  const binding = prepared.task.binding;
+  const binding = input.task.binding;
   if (binding.kind !== "project-context" || binding.projectId !== operation.projectId) {
     throw new ConversationCarrierError(
       "stale-context",
-      `task ${prepared.task.id} is not bound to the operation's exact registered project ${operation.projectId}; the action is refused`,
+      `task ${input.task.id} is not bound to the operation's exact registered project ${operation.projectId}; the action is refused`,
     );
   }
   let observedWorktreePath: string;
@@ -413,10 +431,10 @@ function verifyContinueSelectors(
       `the operation's bound Worktree path cannot be resolved: ${operation.worktreePath}`,
     );
   }
-  if (observedWorktreePath !== prepared.worktree) {
+  if (observedWorktreePath !== input.worktree) {
     throw new ConversationCarrierError(
       "stale-context",
-      `the operation's bound Worktree ${observedWorktreePath} does not match the task's current bound Worktree ${prepared.worktree}; the action is refused`,
+      `the operation's bound Worktree ${observedWorktreePath} does not match the task's current bound Worktree ${input.worktree}; the action is refused`,
     );
   }
   let primaryHead: string;
@@ -448,7 +466,7 @@ function verifyContinueSelectors(
   }
   let worktreeHead: string;
   try {
-    worktreeHead = requiredGit(["rev-parse", "HEAD"], prepared.worktree);
+    worktreeHead = requiredGit(["rev-parse", "HEAD"], input.worktree);
   } catch (error) {
     throw new ConversationCarrierError(
       "worktree-unobserved",
@@ -875,7 +893,7 @@ export function listAttemptDirectories(home: string): string[] {
  * file contents, reasoning text, command arguments, and raw traces never
  * enter a conversation delta.
  */
-function renderCarrierActivity(event: TraceEvent): string | undefined {
+export function renderCarrierActivity(event: TraceEvent): string | undefined {
   switch (event.type) {
     case "cell.started": {
       const data = asRecord(event.data);

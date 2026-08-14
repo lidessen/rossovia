@@ -59,6 +59,7 @@ import { createCoordinatorTurnOwner } from "../conversation/turn-owner";
 import { createConversationContextProvider } from "../conversation/context";
 import { createConversationTaskOperationHost } from "../conversation/operations";
 import { createConversationExecutionCarrierRegistry } from "../conversation/execution-carrier";
+import { createConversationContributionRegistry } from "../conversation/contributions";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -324,11 +325,13 @@ if (import.meta.main) {
   );
   const home = resolveHome(options.home);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
+  const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
     turnOwner: createCoordinatorTurnOwner(),
-    projectionProvider: createConversationContextProvider(home, { carrierRegistry }),
-    operationHost: createConversationTaskOperationHost(home, { carrierRegistry }),
+    projectionProvider: createConversationContextProvider(home, { carrierRegistry, contributionRegistry }),
+    operationHost: createConversationTaskOperationHost(home, { carrierRegistry, contributionRegistry }),
     carrierRegistry,
+    contributionRegistry,
   });
   const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
   const server: Bun.Server<ConversationSocketData> = Bun.serve({

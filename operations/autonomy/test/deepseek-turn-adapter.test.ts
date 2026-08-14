@@ -499,7 +499,7 @@ test("an interrupt through the injected real adapter settles as interrupted with
   expect(seen).toEqual([{ kind: "delta", text: "started" }]);
 });
 
-test("exposes the four strict typed operation tools to the model call", async () => {
+test("exposes the strict typed operation and request tools to the model call", async () => {
   const seenCalls: Array<{ tools?: ReadonlyArray<{ name?: string }> }> = [];
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
@@ -522,6 +522,9 @@ test("exposes the four strict typed operation tools to the model call", async ()
   expect(seenCalls).toHaveLength(1);
   const names = (seenCalls[0]?.tools ?? []).map((entry) => entry.name);
   expect([...names].sort()).toEqual([
+    "child_result",
+    "contribution_control",
+    "contribution_spawn",
     "task_continue",
     "task_correct",
     "task_create",

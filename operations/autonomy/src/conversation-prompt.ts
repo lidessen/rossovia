@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v3" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v4" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -107,11 +107,29 @@ export const WorkerCardProjectionSchema = z.object({
 }).strict();
 export type WorkerCardProjection = z.infer<typeof WorkerCardProjectionSchema>;
 
+/**
+ * One bounded temporary contribution the coordinator formed in this
+ * conversation. It is liveness/identity evidence only: the exact batch/key,
+ * worker, effect boundary, and current standing. It never ranks prose or
+ * roles, and it is not a standing team.
+ */
+export const ContributionProjectionSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+  workerId: z.string().min(1),
+  effectKind: z.enum(["read-only", "effectful"]),
+  state: z.enum(["live", "settled", "unknown", "unresolved"]),
+  /** Terminal outcome standing when the contribution has settled. */
+  status: z.string().min(1).optional(),
+}).strict();
+export type ContributionProjection = z.infer<typeof ContributionProjectionSchema>;
+
 export const CompactProjectionSchema = z.object({
   task: TaskProjectionSchema.optional(),
   projects: z.array(ProjectProjectionSchema).optional(),
   carriers: z.array(CarrierActivityProjectionSchema).optional(),
   workers: z.array(WorkerCardProjectionSchema).optional(),
+  contributions: z.array(ContributionProjectionSchema).optional(),
 }).strict();
 export type CompactProjection = z.infer<typeof CompactProjectionSchema>;
 
@@ -190,12 +208,38 @@ export const ChildSummarySchema = z.object({
 }).strict();
 export type ChildSummary = z.infer<typeof ChildSummarySchema>;
 
+/**
+ * The bounded full semantic projection of one exact settled child result,
+ * loaded only through the keyed result-read operation when synthesis needs
+ * it. `projection: "metadata-only"` means the semantic payload was too large
+ * or unavailable and must never be guessed.
+ */
+export const FullChildResultSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+  cellId: z.string().min(1),
+  status: z.string().min(1),
+  projection: z.enum(["full", "metadata-only"]),
+  semantic: z.object({
+    finalText: z.string(),
+    output: z.unknown().optional(),
+    artifacts: z.array(z.unknown()).optional(),
+    verification: z.unknown().optional(),
+  }).strict().optional(),
+  omission: z.object({
+    reason: z.string().min(1),
+    maxBytes: z.number().int().positive(),
+  }).strict().optional(),
+}).strict();
+export type FullChildResult = z.infer<typeof FullChildResultSchema>;
+
 export const ConversationPromptInputSchema = z.object({
   projection: CompactProjectionSchema.optional(),
   message: PrincipalMessageSchema,
   policy: ConversationPolicySchema,
   orientation: ProjectOrientationSchema.optional(),
   children: z.array(ChildSummarySchema).optional(),
+  fullChildResults: z.array(FullChildResultSchema).optional(),
 }).strict();
 export type ConversationPromptInput = z.infer<typeof ConversationPromptInputSchema>;
 
@@ -224,6 +268,9 @@ export function composeConversationPrompt(input: ConversationPromptInput): Compo
   }
   if (parsed.children !== undefined && parsed.children.length > 0) {
     sections.push(renderChildren(parsed.children));
+  }
+  if (parsed.fullChildResults !== undefined && parsed.fullChildResults.length > 0) {
+    sections.push(renderFullChildResults(parsed.fullChildResults));
   }
 
   const prompt = `${sections.join("\n\n")}\n`;
@@ -314,6 +361,14 @@ function renderProjection(
     );
   }
 
+  for (const contribution of projection.contributions ?? []) {
+    lines.push(
+      `contribution ${contribution.batchId}/${contribution.key}`
+      + ` worker=${contribution.workerId} effect=${contribution.effectKind} state=${contribution.state}`
+      + `${contribution.status === undefined ? "" : ` status=${contribution.status}`}`,
+    );
+  }
+
   return `## 2. Current compact projection\n\n${lines.join("\n")}`;
 }
 
@@ -398,6 +453,31 @@ function renderChildren(children: ChildSummary[]): string {
     }
   }
   return `## 6. Child result summaries\n\n${lines.join("\n")}`;
+}
+
+function renderFullChildResults(results: FullChildResult[]): string {
+  const lines: string[] = [];
+  for (const result of results) {
+    lines.push(
+      `full child result ${result.batchId}/${result.key} (cell ${result.cellId}, status ${result.status}, projection ${result.projection})`,
+    );
+    if (result.semantic !== undefined) {
+      lines.push(`  final text: ${result.semantic.finalText}`);
+      if (result.semantic.output !== undefined) {
+        lines.push(`  structured output: ${JSON.stringify(result.semantic.output)}`);
+      }
+      if (result.semantic.artifacts !== undefined && result.semantic.artifacts.length > 0) {
+        lines.push(`  artifacts: ${JSON.stringify(result.semantic.artifacts)}`);
+      }
+      if (result.semantic.verification !== undefined) {
+        lines.push(`  verification: ${JSON.stringify(result.semantic.verification)}`);
+      }
+    }
+    if (result.omission !== undefined) {
+      lines.push(`  omitted (${result.omission.reason}, max ${result.omission.maxBytes} bytes): do not guess the content`);
+    }
+  }
+  return `## 7. Full child result evidence\n\n${lines.join("\n")}`;
 }
 
 function pushDisclosed(disclosedSources: DisclosedSource[], source: DisclosedSource): void {

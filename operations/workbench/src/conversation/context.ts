@@ -1,12 +1,16 @@
 import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import {
+  ContributionProjectionSchema,
   ProjectProjectionSchema,
   TaskProjectionSchema,
   type CarrierActivityProjection,
+  type ChildSummary,
   type CompactProjection,
+  type ContributionProjection,
   type WorkerCardProjection,
 } from "../../../autonomy/src/conversation-prompt";
+import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
 import { loadHome, resolveHome, workspaceFor } from "../home";
 import { expandPath } from "../paths";
 import { loadPrincipalTasks } from "../tasks";
@@ -20,6 +24,7 @@ import {
   listAttemptDirectories,
   type ConversationExecutionCarrierRegistry,
 } from "./execution-carrier";
+import type { ConversationContributionRegistry } from "./contributions";
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -40,11 +45,21 @@ const PROJECTS_SOURCE_REF = "workbench:config/projects.json";
  */
 export interface ConversationContextProvider {
   buildProjection(conversationId: string): Promise<CompactProjection>;
+  /**
+   * Bounded summaries of the conversation's settled, still-current child
+   * contributions. Full child evidence enters a turn only through an exact
+   * keyed result-read.
+   */
+  buildChildren(conversationId: string): Promise<readonly ChildSummary[]>;
 }
 
 export interface ConversationContextProviderOptions {
   /** The exact retained carrier runtime; liveness is claimed only through it. */
   readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
+  /** The exact retained temporary contribution runtime. */
+  readonly contributionRegistry?: ConversationContributionRegistry;
+  /** Test seam: the exact catalog whose cards the projection discloses. */
+  readonly catalog?: WorkerCatalog;
 }
 
 export function createConversationContextProvider(
@@ -52,18 +67,22 @@ export function createConversationContextProvider(
   options: ConversationContextProviderOptions = {},
 ): ConversationContextProvider {
   const home = resolveHome(homeArgument);
-  return new WorkbenchConversationContextProvider(home, options.carrierRegistry);
+  return new WorkbenchConversationContextProvider(home, options);
 }
 
 class WorkbenchConversationContextProvider implements ConversationContextProvider {
   private readonly home: string;
   private readonly journal: FileConversationJournal;
   private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
+  private readonly contributionRegistry: ConversationContributionRegistry | undefined;
+  private readonly catalog: WorkerCatalog | undefined;
 
-  constructor(home: string, carrierRegistry?: ConversationExecutionCarrierRegistry) {
+  constructor(home: string, options: ConversationContextProviderOptions) {
     this.home = home;
     this.journal = new FileConversationJournal(home);
-    this.carrierRegistry = carrierRegistry;
+    this.carrierRegistry = options.carrierRegistry;
+    this.contributionRegistry = options.contributionRegistry;
+    this.catalog = options.catalog;
   }
 
   async buildProjection(conversationId: string): Promise<CompactProjection> {
@@ -72,12 +91,33 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
     const projects = this.registeredProjectProjections();
     const carriers = this.carrierProjections(conversationId);
     const workers = this.workerCardProjections();
+    const contributions = await this.contributionProjections(conversationId);
     return {
       ...(task === undefined ? {} : { task }),
       ...(projects.length === 0 ? {} : { projects }),
       ...(carriers.length === 0 ? {} : { carriers }),
       ...(workers.length === 0 ? {} : { workers }),
+      ...(contributions.length === 0 ? {} : { contributions }),
     };
+  }
+
+  buildChildren(conversationId: string): Promise<readonly ChildSummary[]> {
+    if (this.contributionRegistry === undefined) return Promise.resolve([]);
+    return this.contributionRegistry.listSettledChildSummaries(conversationId);
+  }
+
+  /** Durable contribution liveness re-read through the exact contribution runtime. */
+  private async contributionProjections(conversationId: string): Promise<ContributionProjection[]> {
+    if (this.contributionRegistry === undefined) return [];
+    const contributions = await this.contributionRegistry.listContributions(conversationId);
+    return contributions.map((contribution) => ContributionProjectionSchema.parse({
+      batchId: contribution.batchId,
+      key: contribution.key,
+      workerId: contribution.workerId,
+      effectKind: contribution.effectKind,
+      state: contribution.state,
+      ...(contribution.status === undefined ? {} : { status: contribution.status }),
+    }));
   }
 
   /**
@@ -143,23 +183,16 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
 
   /** Bounded current worker catalog cards; availability is copied, never guessed. */
   private workerCardProjections(): WorkerCardProjection[] {
+    if (this.catalog !== undefined) {
+      return this.catalog.list([]).map((card) => cardProjection(card));
+    }
     let cards;
     try {
       cards = currentWorkerCards();
     } catch {
       return [];
     }
-    return cards.map((card) => ({
-      id: card.id,
-      description: card.description,
-      labels: [...card.labels],
-      provider: card.executionProfile.provider,
-      model: card.executionProfile.model,
-      ...(card.executionProfile.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: card.executionProfile.reasoningEffort }),
-      availability: card.availability.status,
-    }));
+    return cards.map(cardProjection);
   }
 
   private currentTaskProjection(events: readonly ConversationEvent[]): CompactProjection["task"] {
@@ -340,4 +373,24 @@ function currentWorkerCards(): Array<{
   availability: { status: "available" | "unavailable"; reason?: string };
 }> {
   return requireFromHere("../../../autonomy/src/worker-policy").currentWorkerCards();
+}
+
+function cardProjection(card: {
+  id: string;
+  labels: readonly string[];
+  description: string;
+  executionProfile: { provider: string; model: string; reasoningEffort?: string | undefined };
+  availability: { status: "available" | "unavailable"; reason?: string | undefined };
+}): WorkerCardProjection {
+  return {
+    id: card.id,
+    description: card.description,
+    labels: [...card.labels],
+    provider: card.executionProfile.provider,
+    model: card.executionProfile.model,
+    ...(card.executionProfile.reasoningEffort === undefined
+      ? {}
+      : { reasoningEffort: card.executionProfile.reasoningEffort }),
+    availability: card.availability.status,
+  };
 }
