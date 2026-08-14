@@ -49,6 +49,7 @@ export type ConversationCarrierErrorCode =
   | "carrier-not-live"
   | "carrier-unknown"
   | "control-unsupported"
+  | "control-conflict"
   | "source-unavailable";
 
 export class ConversationCarrierError extends Error {
@@ -500,6 +501,12 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
   private settlement?: CarrierSettlement;
   private stopRequested = false;
   private controlReceiptPath?: string;
+  /** The exact controlling action identity of the requested stop, for exact-replay-only reuse. */
+  private stopRequest?: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+  };
 
   constructor(input: TaskRunCellCarrierInput) {
     this.home = input.home;
@@ -562,9 +569,27 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
       );
     }
     if (this.stopRequested) {
-      return controlReceipt(this.identity.carrierId, [this.controlReceiptPath!, this.attempt.settlementRef]);
+      // Exact replay may reuse the durable receipt only for the same action
+      // identity; a distinct stop action must never adopt the first receipt.
+      const retained = this.stopRequest!;
+      if (
+        retained.conversationId === actor.conversationId
+        && retained.actionId === actor.actionId
+      ) {
+        return controlReceipt(this.identity.carrierId, [this.controlReceiptPath!, this.attempt.settlementRef]);
+      }
+      throw new ConversationCarrierError(
+        "control-conflict",
+        `carrier ${this.identity.carrierId} already has a requested stop from action ${retained.actionId} `
+        + `of conversation ${retained.conversationId}; a distinct stop action cannot be applied`,
+      );
     }
     this.stopRequested = true;
+    this.stopRequest = {
+      conversationId: actor.conversationId,
+      turnId: actor.turnId,
+      actionId: actor.actionId,
+    };
     this.controlReceiptPath = writeControlReceipt(this.home, this.attempt, this.identity, {
       control: "stop",
       actor,

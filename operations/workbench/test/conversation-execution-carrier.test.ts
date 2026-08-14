@@ -18,7 +18,7 @@ import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
 import { createPrincipalTask, loadPrincipalTasks } from "../src/tasks";
 import { showPrincipalTaskAttempts } from "../src/task-attempts";
-import { reconcilePrincipalTaskAttempt } from "../src/task-run";
+import { attemptLeaseStanding, reconcilePrincipalTaskAttempt } from "../src/task-run";
 import {
   carrierStandingWithoutHandle,
   createConversationExecutionCarrierRegistry,
@@ -579,6 +579,56 @@ describe("conversation execution carrier stop", () => {
     await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
   });
 
+  test("a distinct stop action while a stop is already requested is rejected and never adopts the first receipt", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    const carrier = registry.startedCarrier(conversationId, actionId)!;
+    await until(() => carrier.liveness().state === "live", "live carrier");
+
+    const stopA = {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control" as const, carrierId, control: "stop" as const },
+    };
+    host.executeOperation(stopA);
+
+    // A distinct stop action arriving before terminal must not adopt action A's receipt.
+    const stopB = {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control" as const, carrierId, control: "stop" as const },
+    };
+    try {
+      host.executeOperation(stopB);
+      throw new Error("expected the distinct stop action to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConversationOperationHostError);
+      expect((error as ConversationOperationHostError).code).toBe("control-conflict");
+    }
+    const controlFile = readJson(join(attemptDirectory(current, carrierId), "control.json")) as Record<string, unknown>;
+    expect(controlFile.sourceRef).toBe(taskActionSourceRef(stopA.conversationId, stopA.actionId));
+    expect(controlFile.requestedBy).toMatchObject({ actionId: stopA.actionId });
+
+    // Exact replay of the same stop action reuses the same durable receipt.
+    const replay = host.executeOperation(stopA);
+    expect(replay.evidenceRefs).toEqual([
+      `state/task-attempts/${carrierId}/control.json`,
+      `state/task-attempts/${carrierId}/settlement.json`,
+    ]);
+    await until(() => carrier.liveness().state === "settled", "settlement after stop A");
+    const settlement = readJson(join(attemptDirectory(current, carrierId), "settlement.json")) as Record<string, unknown>;
+    expect(settlement.status).toBe("control-stopped");
+  });
+
   test("stop of an already settled carrier is refused visibly", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
@@ -1129,6 +1179,68 @@ describe("conversation execution carrier strict evidence standing", () => {
       finalPath,
       `${JSON.stringify({ ...record, driver: { ...record.driver, adapter: "opencode-cli.v1" } }, null, 2)}\n`,
     );
+
+    expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({ kind: "unknown" });
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(),
+    });
+    const projection = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+  });
+
+  test("a retained attempt whose workspace root is no longer a Git Worktree projects unknown, never throwing", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+
+    // The CellInput workspace root still exists but is no longer a Git Worktree.
+    rmSync(current.worktree, { recursive: true, force: true });
+    mkdirSync(current.worktree, { recursive: true });
+
+    expect(attemptLeaseStanding(current.home, current.taskId, carrierId)).toBe("uninspectable");
+    expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({ kind: "unknown" });
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(),
+    });
+    const projection = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+  });
+
+  test("a control-stopped settlement that omits the exact retained final evidence is invalid", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    host.executeOperation({
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control", carrierId, control: "stop" },
+    });
+    await until(() =>
+      registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+
+    const settlementPath = join(attemptDirectory(current, carrierId), "settlement.json");
+    const settlement = JSON.parse(readFileSync(settlementPath, "utf8"));
+    delete settlement.workCellRunId;
+    delete settlement.cellStatus;
+    writeFileSync(settlementPath, `${JSON.stringify(settlement, null, 2)}\n`);
 
     expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({ kind: "unknown" });
     const restarted = createConversationExecutionCarrierRegistry(current.home, {

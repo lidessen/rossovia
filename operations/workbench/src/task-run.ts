@@ -412,13 +412,16 @@ export function attemptLeaseStanding(
   const input = evidence.input;
   if (attempt === undefined || input === undefined) return "uninspectable";
   if (attempt.taskId !== taskId) return "uninspectable";
-  let worktree: string;
+  // The entire immutable-root inspection — realpath, the exact Git metadata
+  // directory, and the lease read — is guarded: a root that still exists but
+  // is no longer a Git Worktree projects uninspectable, never a throw.
+  let leasePath: string;
   try {
-    worktree = realpathSync(input.workspace.root);
+    const worktree = realpathSync(input.workspace.root);
+    leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
   } catch {
     return "uninspectable";
   }
-  const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
   if (!existsSync(leasePath)) return "released";
   let value: unknown;
   try {

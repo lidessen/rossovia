@@ -530,29 +530,26 @@ function settlementFinalRelationError(
     }
     return undefined;
   }
-  if (runId !== undefined) {
-    if (runId !== final.runId) {
-      return "settlement Work Cell run id does not match the retained final record";
-    }
-    if (cellStatus !== final.status) {
-      return "settlement cell status does not match the retained final record";
-    }
+  // Whenever a final record exists, every settlement kind — including
+  // control-stopped — must carry the exact run/cell evidence and match it.
+  if (runId === undefined || cellStatus === undefined) {
+    return "settlement does not carry the exact retained final evidence";
+  }
+  if (runId !== final.runId) {
+    return "settlement Work Cell run id does not match the retained final record";
+  }
+  if (cellStatus !== final.status) {
+    return "settlement cell status does not match the retained final record";
   }
   if (settlement.status === "recorded") {
     if (final.status !== "passed") {
       return "recorded settlement requires the exact passed Work Cell final";
-    }
-    if (runId === undefined) {
-      return "recorded settlement does not carry the exact retained final evidence";
     }
     return undefined;
   }
   if (settlement.status === "runner-failed") {
     if (final.status === "passed") {
       return "runner-failed settlement contradicts a passed Work Cell final";
-    }
-    if (runId === undefined) {
-      return "runner-failed settlement does not carry the exact retained final evidence";
     }
     if (settlement.error !== (final.error ?? `the Work Cell run settled with status ${final.status}`)) {
       return "runner-failed settlement error does not match the retained final record";
