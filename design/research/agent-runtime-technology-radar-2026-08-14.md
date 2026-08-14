@@ -11,6 +11,14 @@ near-term model, execution-harness, or collaboration experiments?
 does not adopt a provider, spend subscription quota, replace Rossovia state,
 change model-routing policy, or accept a Task or Mission result.
 
+Each development section below answers four questions explicitly: which
+designs are worth absorbing, which Rossovia layer owns them, which minimal
+falsifiable experiment settles the question, and what must not be adopted
+today. The closing adoption backlog separates what is officially established
+(`fact`), what Rossovia infers from its own boundaries (`inference`), what is
+still unverified (`unknown`), and who may turn a row into a decision
+(`authority`).
+
 ## Current disposition
 
 | Development | Layer it belongs to | Current disposition | Why |
@@ -64,18 +72,36 @@ Two boundaries matter before any experiment:
   can export captured session material when enabled. A probe should keep it
   disabled or local-only unless its exact payload and destination are approved.
 
-### Rossovia interpretation
+### Absorbable designs, mapped to a Rossovia owner
+
+| Absorbable design | Official basis | Rossovia owner | Minimal comparison experiment |
+|---|---|---|---|
+| Event-sourced, model-visible session logging | [session subsystem](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md): append-only events derive context, replay, fork, transcript | [conversation journal](../../operations/workbench/src/conversation/contracts.ts) + Work Cell trace (`packages/work-cell`) | Reconstruct one Work Cell run's model-visible sequence from retained events alone, then diff against DSH's event set for the same task; a gap means the log misses what the model saw. |
+| Plugin substitution without core change | [architecture](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md): Cordis-composed model, tools, sandbox, persistence, telemetry | Work Cell driver boundary (AI SDK 7, `opencode-cli.v1` adapters) + provider profile ([decision 032](../../design/decisions/032-ai-sdk-7-work-cell-driver.md), [decision 034](../../design/decisions/034-validation-model-routing.md)) | Swap one Work Cell driver or provider target in place and show the Cell contract, terminal verification, and run record schema stay unchanged. |
+| Pre-effect durable tool record | [tool execution pipeline](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/tool-execution-pipeline.md): call recorded before execution, result retained after | conversation journal `action.requested` (fsynced before any effect, per [`contracts.ts`](../../operations/workbench/src/conversation/contracts.ts)) | Compare crash-recovery behavior: can the durable pre-effect record reconstruct the intended effect after a kill at the same point, without replaying a committed mutation? |
+| Provider and subagent neutrality | [architecture](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md): subagent providers, provider-neutral + DeepSeek-specific adapters | provider-profile / model-route + worker catalog (`packages/work-cell`) | Replace the harness's model adapter identity and one subagent provider with neutral stand-ins and show the loop mechanism and evidence shape do not change. |
+| Explicit session transformation | [session subsystem](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md): replay, resume/fork, context compaction | conversation coordinator context management (`operations/autonomy`) | Fork or compact a session and verify the transform is a retained, replayable event — not an in-place mutation that loses the pre-transform evidence. |
+
+Three of the five are already Rossovia practice (event-sourced journal, durable
+pre-effect action record, provider-neutral driver boundary), so the real
+question is whether DSH adds evidence fidelity or integration cost on top, not
+whether Rossovia should move to DSH.
+
+### What not to adopt now
 
 DeepSeek Harness overlaps with the lower execution-carrier responsibilities of
 [Work Cell](../../packages/work-cell/README.md) and the conversation execution
 runtime. It does **not** replace Workbench project identity, Tasks, Missions,
 effect receipts, independent review, or Principal acceptance. Its local
 goal/plan/todo/workflow plugins are runtime state, not an alternate canonical
-control plane.
+control plane. Its developer-preview status, unpinned plugin compatibility, and
+filesystem-only sandbox mean the whole harness is not a production carrier
+candidate today.
 
-The interesting question is therefore not “should Rossovia move to DSH?” but
-“can DSH implement one Work Cell driver boundary with equal or better evidence
-and lower integration cost?” A useful substitution probe would:
+### Minimal falsifiable experiment: the substitution probe
+
+The question is “can DSH implement one Work Cell driver boundary with equal or
+better evidence and lower integration cost?” A useful probe would:
 
 1. run the same bounded task through the current carrier and DSH headless mode
    with matched model, tools, permissions, and budget;
@@ -90,7 +116,7 @@ effect and acceptance evidence.
 
 ## 2. GLM-5.3 and OpenCode Go
 
-### Direct answer
+### Officially established
 
 **Yes: as of 2026-08-14, OpenCode Go officially lists GLM-5.3.** The exact
 native OpenCode selection is:
@@ -132,13 +158,28 @@ defaults model output to a 32K client cap. Raising the experimental override is
 a separate policy experiment and is unnecessary for an initial compatibility
 probe.
 
-### Rossovia interpretation
+### Task fit: applicable, deferred, and not applicable
 
-Rossovia's current OpenCode CLI mechanism can already express a
-provider/model pair and retain the observed identity. The smallest likely
-integration is therefore a new **text-only trial worker card**, not a new
-runtime adapter and not a replacement for the current vision-capable Kimi
-worker. That inference remains unverified until a real run succeeds.
+| Task class | Fit | Why |
+|---|---|---|
+| Text-only bounded tool-loop work in a disposable worktree | **Applicable once live-verified** | Text-in/text-out matches Rossovia's existing text worker shape; no vision dependency. |
+| Low-reasoning-effort reads and one native tool call | **Applicable first probe** | Cheapest falsifiable admission test; exercises the same `opencode-cli` carrier Rossovia already runs for DeepSeek. |
+| Vision-capable work (screenshots, UI review) | **Not applicable now** | Current vision-capable Kimi worker already owns this; no GLM-5.3 vision evidence exists. |
+| 1M-context or forced 128K-output workloads | **Deferred** | OpenCode's pinned client cap is 32K; context claims are vendor claims until a retained run observes them. |
+| Structured-output validation routes | **Deferred** | GLM-5.3's structured output is documented upstream, but no Rossovia route has proven it; the existing OpenCode Go route already needs a `json_object` lowering ([decision 034](../../design/decisions/034-validation-model-routing.md)). |
+| Production worker replacement | **Not applicable now** | No live Rossovia tool-loop evidence exists yet. |
+
+### Complementary relation with DeepSeek and Kimi
+
+GLM-5.3 does not displace the current workers. DeepSeek remains the text
+default and pay-as-you-go fallback; Kimi remains the vision-capable Coding Plan
+route; GLM-5.3 would be a third, text-only trial route on a separate
+subscription. A new **text-only trial worker card** is the smallest likely
+integration — not a new runtime adapter and not a replacement for the current
+vision-capable Kimi worker. That inference remains unverified until a real run
+succeeds.
+
+### One low-risk real tool-loop trial
 
 The first paid probe should use a disposable clean Worktree and one native tool
 read at low reasoning effort. Admit the model only if the retained Work Cell
@@ -183,9 +224,21 @@ the changes back into the thread. Comments attach to a conversation or code and
 remain related as the code evolves. Its initial third-party Agent sync includes
 Claude Code, and its review flow can move a managed checkout back through Git.
 
-### Material limitations
+### Absorbable collaboration designs
 
-Delta is still a private-beta product. More importantly, its own
+| Absorbable design | Official basis | Rossovia owner today | Absorb as |
+|---|---|---|---|
+| Between-commit stable identity | [delta-and-git](https://delta.dev/docs/concepts/delta-and-git): each operation has a stable identity; copies synchronize | conversation journal event IDs + Task/Mission source revisions | Design validation: Rossovia already gives conversation events, actions, and Task revisions stable identity. |
+| Conversation–code lineage | [Delta announcement](https://zed.dev/blog/introducing-delta): shared threads keep conversation and code changes in context | conversation journal + Git effect observer (`operations/autonomy`) | Design validation of Rossovia's conversation-as-entry direction, not a copied mechanism. |
+| Real-worktree compatibility | [delta-and-git](https://delta.dev/docs/concepts/delta-and-git): checkout remains a real directory for terminals and tools | disposable bound Worktrees (`task run`, Work Cell `workspace.root`) | Rossovia's disposable-worktree discipline already preserves this; no Delta dependency needed. |
+| Git integration boundary | [delta-and-git](https://delta.dev/docs/concepts/delta-and-git): Git owns commits and external integration | Git-tracked Mission/Task records and commits | Keep Git canonical; treat any future Delta surface as a projection only. |
+
+These four confirm Rossovia's existing product direction; none of them
+requires adopting DeltaDB to be true.
+
+### Rejection boundary: do not integrate DeltaDB now
+
+Delta is still a private-beta product. Its own
 [agentic safety documentation](https://delta.dev/docs/privacy-and-security/agentic-safety)
 says there is currently no Agent permission framework and no Agent sandbox;
 the Agent has unrestricted access to the device. Worktree trust is also not an
@@ -199,20 +252,37 @@ alongside local copies. Deleting a thread does not retract already shared or
 local copies, and the documented server-deletion semantics require careful
 review before confidential repository use.
 
-### Rossovia interpretation
+Adding DeltaDB now would create a second state canon before a public
+interoperability boundary and acceptable safety model exist. **Decision: do
+not integrate DeltaDB; keep observing.**
 
-Delta strongly validates the product direction of conversation as the daily
-work entry and of stable causal links between discussion, code, and review. It
-does not supply Rossovia's Task/Mission authority, effect admission, worker
-permissions, or semantic acceptance. Adding DeltaDB now would create a second
-state canon before a public interoperability boundary and acceptable safety
-model exist.
+### Observation signals for reopening
 
-The useful next action is observation, not integration. Reopen the question
-when Delta publishes a stable API/export contract and materially stronger
-permission/sandbox guarantees. Then test whether one Rossovia conversation
-journal, Task attempt, and Git diff can project into a Delta thread while
-Rossovia retains lifecycle and acceptance ownership.
+Reopen the question when Delta publishes:
+
+- a stable API/export contract or general availability; and
+- a materially stronger permission/sandbox guarantee than the current
+  [agentic safety](https://delta.dev/docs/privacy-and-security/agentic-safety) position.
+
+Then test whether one Rossovia conversation journal, Task attempt, and Git
+diff can project into a Delta thread while Rossovia retains lifecycle and
+acceptance ownership.
+
+## Adoption backlog
+
+Sorted by priority; nothing here is an adoption decision. `fact` is
+source-linked official evidence, `inference` is Rossovia's reading, `unknown`
+is unresolved, and `authority` names who may move the row.
+
+| # | Candidate | Layer | Action | Evidence class | Authority |
+|---|---|---|---|---|---|
+| 1 | GLM-5.3 / OpenCode Go | Model/provider policy | Run the one low-risk tool-loop probe in §2 after explicit quota authorization | `fact`: OpenCode Go lists `glm-5.3` ([docs](https://opencode.ai/docs/go/)); `unknown`: real serving identity, cost, behavior | Principal (quota spend); agent may prepare, not run, the probe |
+| 2 | DeepSeek Harness | Execution mechanism | Design and run the §1 substitution probe with telemetry off | `fact`: plugin architecture, event-sourced session, pre-effect tool record ([architecture](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md), [session](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md)); `inference`: three of five mechanisms are already Rossovia practice; `unknown`: whether DSH adds fidelity at lower cost | Principal (bounded experiment approval); Work Cell owner (carrier change) |
+| 3 | Delta / DeltaDB | Collaboration projection | Observe only; re-evaluate on the §3 signals | `fact`: private beta, no agent permission framework or sandbox ([agentic safety](https://delta.dev/docs/privacy-and-security/agentic-safety)), hosted storage ([data-storage](https://delta.dev/docs/privacy-and-security/data-storage)); `unknown`: stable API, deletion semantics | Principal (any hosted-data use or integration) |
+| 4 | Production policy change | All layers | Keep unchanged | `fact`: no retained project-relative probe evidence exists yet | Independent review + Principal acceptance |
+
+Until a row's probe has retained project-relative evidence and independent
+review, production model, carrier, and collaboration policy stay as they are.
 
 ## Cross-cutting consequence
 
