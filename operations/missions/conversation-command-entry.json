@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T03:39:07Z",
+  "updatedAt": "2026-08-14T04:32:57Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -89,8 +89,10 @@
         "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#p6-browser-projection-owner",
         "runtime:operations/workbench/src/conversation/transport.ts"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Integrated PR #109 (exact head 17b2156a0858deb165ff3ad36daee9d253369b85; merge commit bc8d6dff412fe719746f0ba6fd8b50c2aaaedb26) into main: one browser work.control frame now requires a carrierId and resolves the exact same-conversation task_continue turn/action/carrier tuple before any effect; work.control executes through the existing runAction and installed operation host so action.requested precedes the effect and terminal settlement remains reconnect-reconcilable; tool.interrupt stays unsupported. P6 browser UI, P5 temporary agent teams, and Principal Task acceptance remain pending."
     }
   ],
-  "currentFocus": "p4d-browser-work-control"
+  "currentFocus": "mainline"
 }
