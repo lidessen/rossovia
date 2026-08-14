@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { closeSync, fsyncSync, openSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CellRunRecord } from "../../../packages/work-cell/src/contracts";
@@ -98,6 +99,13 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
   constructor(
     private readonly root: string,
     private readonly now: () => string = () => new Date().toISOString(),
+    /**
+     * The durability boundary the synchronous read path joins before
+     * accepting any observed event: defaults to fsyncing the read file so a
+     * terminal line counts only after the writer's durability barrier is
+     * joined. A throwing seam fails the synchronous read visibly.
+     */
+    private readonly syncDurability: (path: string) => void = fsyncFileDurability,
   ) {}
 
   async appendInput(missionId: string, unparsedInput: MissionInputDraft): Promise<MissionInputReceipt> {
@@ -720,6 +728,84 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     return join(this.root, "timelines", `${digest(timelineId)}.jsonl`);
   }
 
+  /**
+   * The exact durable start cross-link of one prepared AND dispatched batch,
+   * joined to the durability boundary: the prepared checkpoint digest, the
+   * child timeline identity, and the child's exact invocation/contribution
+   * identity (callId, key, admitted Cell id, workerId), or undefined when
+   * the batch was never prepared. A prepared batch without an exact
+   * dispatched event or without a matching admitted contribution throws, so
+   * a caller can never treat a merely reserved batch as started and can
+   * always verify that the started child corresponds to the recorded
+   * cell/key/worker identity.
+   */
+  durableStartLinkSync(
+    parentTimelineId: string,
+    batchId: string,
+  ): {
+    checkpointDigest: string;
+    childTimelineId: string;
+    callId: string;
+    key: string;
+    cellId: string;
+    workerId: string | undefined;
+  } | undefined {
+    const parent = this.readTimelineSync(parentTimelineId);
+    const prepared = findPrepared(parent, batchId);
+    if (prepared === undefined) return undefined;
+    const checkpoint = parseCheckpoint(prepared.data.checkpoint);
+    const child = prepared.data.children[0];
+    if (child === undefined) {
+      throw new Error(`delegate batch ${batchId} has no child references`);
+    }
+    const events = this.readTimelineSync(child.timelineId);
+    requireOpened(events, checkpoint, child, prepared.data.checkpointDigest);
+    requireDispatched(events, checkpoint, child, prepared.data.checkpointDigest);
+    const invocation = checkpoint.invocations.find((candidate) => candidate.toolCallId === child.callId);
+    if (invocation === undefined) {
+      throw new Error(`delegate batch ${batchId} child ${child.callId} has no matching invocation`);
+    }
+    const contribution = checkpoint.admission.contributions
+      .find((candidate) => candidate.key === invocation.call.key);
+    if (contribution === undefined) {
+      throw new Error(`delegate batch ${batchId} child ${child.callId} has no matching admitted contribution`);
+    }
+    return {
+      checkpointDigest: prepared.data.checkpointDigest,
+      childTimelineId: child.timelineId,
+      callId: child.callId,
+      key: child.key,
+      cellId: contribution.cell.id,
+      workerId: contribution.workerId
+        ?? ("workerId" in invocation.call ? invocation.call.workerId : undefined),
+    };
+  }
+
+  /**
+   * Synchronously verify one exact child's durable terminal settlement, for
+   * an effect that must derive a canonical fact from the timeline immediately
+   * before acting. Reads take no writer lock and drop an incomplete tail
+   * exactly like the async read. An absent batch or child, an opening that
+   * fails exact validation, or an unreadable timeline throws; a child that
+   * has not settled returns false. This is evidence read, never settlement
+   * fabrication.
+   */
+  hasTerminalSettlementSync(parentTimelineId: string, batchId: string, key: string): boolean {
+    const parent = this.readTimelineSync(parentTimelineId);
+    const prepared = findPrepared(parent, batchId);
+    if (prepared === undefined) {
+      throw new Error(`delegate batch ${batchId} is not present in parent timeline ${parentTimelineId}`);
+    }
+    const checkpoint = parseCheckpoint(prepared.data.checkpoint);
+    const child = prepared.data.children.find((candidate) => candidate.key === key);
+    if (child === undefined) {
+      throw new Error(`delegate batch ${batchId} has no child result for ${key}`);
+    }
+    const events = this.readTimelineSync(child.timelineId);
+    requireOpened(events, checkpoint, child, prepared.data.checkpointDigest);
+    return findSettlement(events, checkpoint, child, prepared.data.checkpointDigest) !== undefined;
+  }
+
   /** Read the validated append-only source for a bounded external projection. */
   async readEvents(timelineId: string): Promise<readonly TimelineEvent[]> {
     return await this.readTimeline(timelineId);
@@ -776,22 +862,26 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       if (isMissing(error)) return [];
       throw error;
     }
-    const completeContent = content.endsWith("\n")
-      ? content
-      : content.slice(0, content.lastIndexOf("\n") + 1);
-    const events = completeContent.split("\n").filter((line) => line.trim().length > 0).map((line, index) => {
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch (error) {
-        throw new Error(`timeline ${timelineId} contains invalid JSON at line ${index + 1}`, { cause: error });
-      }
-      const event = TimelineEventSchema.parse(value);
-      if (event.timelineId !== timelineId) throw new Error(`timeline ${timelineId} contains event for ${event.timelineId}`);
-      if (event.sequence !== index) throw new Error(`timeline ${timelineId} has invalid sequence ${event.sequence} at line ${index + 1}`);
-      return event;
-    });
-    return events;
+    return parseTimelineContent(timelineId, content);
+  }
+
+  /** The synchronous dual of `readTimeline`, for immediate-before-effect checks. */
+  private readTimelineSync(timelineId: string): TimelineEvent[] {
+    const path = this.timelinePath(timelineId);
+    let content: string;
+    try {
+      content = readFileSync(path, "utf8");
+    } catch (error) {
+      if (isMissing(error)) return [];
+      throw error;
+    }
+    // Durability barrier: every event this read observed — including a
+    // writer-appended terminal line that may still be fsync-pending — is
+    // joined to the device before the caller may accept it. A failing
+    // barrier fails the read visibly rather than accepting unverified
+    // settlement.
+    this.syncDurability(path);
+    return parseTimelineContent(timelineId, content);
   }
 
   private async withLock(timelineId: string, action: () => Promise<void>): Promise<void> {
@@ -808,6 +898,35 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       if (this.locks.get(timelineId) === tail) this.locks.delete(timelineId);
     }
   }
+}
+
+/** The exact durability join: fsync the read file so observed appends are device-durable. */
+function fsyncFileDurability(path: string): void {
+  const handle = openSync(path, "r");
+  try {
+    fsyncSync(handle);
+  } finally {
+    closeSync(handle);
+  }
+}
+
+/** Shared strict parse of one timeline file used by both read paths. */
+function parseTimelineContent(timelineId: string, content: string): TimelineEvent[] {
+  const completeContent = content.endsWith("\n")
+    ? content
+    : content.slice(0, content.lastIndexOf("\n") + 1);
+  return completeContent.split("\n").filter((line) => line.trim().length > 0).map((line, index) => {
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch (error) {
+      throw new Error(`timeline ${timelineId} contains invalid JSON at line ${index + 1}`, { cause: error });
+    }
+    const event = TimelineEventSchema.parse(value);
+    if (event.timelineId !== timelineId) throw new Error(`timeline ${timelineId} contains event for ${event.timelineId}`);
+    if (event.sequence !== index) throw new Error(`timeline ${timelineId} has invalid sequence ${event.sequence} at line ${index + 1}`);
+    return event;
+  });
 }
 
 async function repairIncompleteTail(path: string): Promise<void> {

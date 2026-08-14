@@ -9,6 +9,7 @@ import {
   type ConversationPromptInput,
 } from "../src/conversation-prompt";
 import {
+  ContributionSpawnOperationSchema,
   startConversationTurn,
   type ConversationTurnOptions,
   type ConversationTurnResult,
@@ -499,7 +500,7 @@ test("an interrupt through the injected real adapter settles as interrupted with
   expect(seen).toEqual([{ kind: "delta", text: "started" }]);
 });
 
-test("exposes the four strict typed operation tools to the model call", async () => {
+test("exposes the strict typed operation and request tools to the model call", async () => {
   const seenCalls: Array<{ tools?: ReadonlyArray<{ name?: string }> }> = [];
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
@@ -522,11 +523,49 @@ test("exposes the four strict typed operation tools to the model call", async ()
   expect(seenCalls).toHaveLength(1);
   const names = (seenCalls[0]?.tools ?? []).map((entry) => entry.name);
   expect([...names].sort()).toEqual([
+    "child_result",
+    "contribution_control",
+    "contribution_spawn",
     "task_continue",
     "task_correct",
     "task_create",
     "work_control",
   ]);
+});
+
+test("the contribution_spawn tool surface stays minimal: intent plus non-derivable constraints only", () => {
+  const shape = ContributionSpawnOperationSchema.shape;
+  expect(Object.keys(shape).sort()).toEqual([
+    "capabilityNeed",
+    "dependsOn",
+    "effectKind",
+    "imagePaths",
+    "intent",
+    "key",
+    "kind",
+    "workerId",
+  ].sort());
+  // The model supplies no Task identity, revision, project/primary head,
+  // Worktree path/head, source or obligation ref, acceptance, or execution
+  // profile: the host derives and revalidates those before the effect.
+  for (const forbidden of [
+    "taskId",
+    "expectedSourceRevision",
+    "expectedRevision",
+    "projectId",
+    "expectedPrimaryHead",
+    "worktreePath",
+    "expectedWorktreeHead",
+    "sourceRef",
+    "obligationRefs",
+    "acceptance",
+    "executionProfile",
+  ]) {
+    expect(shape).not.toHaveProperty(forbidden);
+  }
+  const description = conversationOperationTools.contribution_spawn.description;
+  expect(description).toContain("host derives");
+  expect(description).not.toContain("Copy the exact current taskId");
 });
 
 test("the work_control tool advertises exact live-carrier stop-only semantics, not unavailability", () => {

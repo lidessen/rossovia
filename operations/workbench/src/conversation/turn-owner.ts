@@ -9,8 +9,10 @@ import {
 } from "../../../autonomy/src/conversation-coordinator";
 import {
   CURRENT_COORDINATOR_POLICY,
+  type ChildSummary,
   type CompactProjection,
   type ConversationPolicy,
+  type FullChildResult,
 } from "../../../autonomy/src/conversation-prompt";
 import { createDeepSeekTurnAdapter } from "../../../autonomy/src/deepseek-turn-adapter";
 import type {
@@ -48,6 +50,14 @@ export interface TurnPrepareInput {
    * preparation. Omission composes a projection-less turn.
    */
   readonly projection?: CompactProjection;
+  /**
+   * Bounded summaries of this conversation's settled, still-current child
+   * contributions. Full child evidence enters a turn only through the
+   * `fullChildResults` of an explicit keyed result-read synthesis.
+   */
+  readonly children?: readonly ChildSummary[];
+  /** Full bounded child result projections of one exact keyed result-read. */
+  readonly fullChildResults?: readonly FullChildResult[];
 }
 
 export interface TurnPreparation {
@@ -96,9 +106,27 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
       meaning:
         "Apply one explicit control to one exact retained carrier. Copy the exact carrierId from the current projection's carriers and choose the control that fits the message. An ordinary Task carrier owns only stop; pause/resume/recover are refused visibly. A carrier without a live retained handle reports liveness unknown and the control cannot be verified. Response interruption is a different control and never stops persistent work.",
     },
+    {
+      name: "contribution_spawn",
+      availability: "available",
+      meaning:
+        "Form one bounded temporary catalog-backed evidence, execution, or review contribution only when it earns its coordination cost, then reconstruct one response yourself as the one synthesis owner; never vote or concatenate. Supply only the bounded semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description. Never supply a Task ID or revision, project ID/head, Worktree path/head, source or obligation ref, acceptance, or execution profile: the host derives the conversation's current Task from the canonical sources, revalidates the exact execution selection, and permits at most one effectful writer per Task/Worktree. Never review your own streamed response; contribution evidence comes from the Task and its Worktree only. Never call it when the projection has no current Task.",
+    },
+    {
+      name: "contribution_control",
+      availability: "available",
+      meaning:
+        "Stop one exact retained temporary contribution. Copy the exact batchId and key from the current projection's contributions. A bounded contribution owns only stop; a contribution without a live retained handle reports liveness unknown and the control cannot be verified; replacement is a new contribution_spawn from the latest Task revision, never an automatic retry.",
+    },
+    {
+      name: "child_result",
+      availability: "available",
+      meaning:
+        "A request, not an operation: ask the host for the full bounded semantic result of one exact settled child contribution by its batchId and key, only when synthesis needs the full evidence. Settled child summaries are already present in the prompt. The host refuses unknown, unsettled, or stale post-correction results without guessing; at most one request or operation is allowed per Principal message.",
+    },
   ],
   abstention:
-    "At most one operation is allowed per Principal message; a second is a visible failure. On ambiguity, abstain: answer with what you know and ask for the missing judgment. Never route a message by keyword or fixed phrase.",
+    "At most one operation or request is allowed per Principal message; a second is a visible failure. On ambiguity, abstain: answer with what you know and ask for the missing judgment. Never route a message by keyword or fixed phrase, and never form a contribution unless it earns its cost.",
 };
 
 export interface CoordinatorTurnOwnerOptions {
@@ -128,6 +156,12 @@ export function createCoordinatorTurnOwner(
         },
         policy: COORDINATOR_CONVERSATION_POLICY,
         ...(input.projection === undefined ? {} : { projection: input.projection }),
+        ...(input.children === undefined || input.children.length === 0
+          ? {}
+          : { children: [...input.children] }),
+        ...(input.fullChildResults === undefined || input.fullChildResults.length === 0
+          ? {}
+          : { fullChildResults: [...input.fullChildResults] }),
       });
       return {
         requestedPolicy: {

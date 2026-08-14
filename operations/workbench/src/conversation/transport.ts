@@ -14,12 +14,15 @@ import type {
 } from "./turn-owner";
 import type { ConversationTurnHandle, ConversationTurnResult } from "../../../autonomy/src/conversation-coordinator";
 import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
+import type { FullChildResult } from "../../../autonomy/src/conversation-prompt";
 import type { ConversationContextProvider } from "./context";
 import {
   ConversationOperationHostError,
   type ConversationOperationHost,
 } from "./operations";
 import type { ConversationExecutionCarrierRegistry } from "./execution-carrier";
+import type { ConversationContributionRegistry } from "./contributions";
+import type { DelegateResultProjection } from "../../../autonomy/src/delegate-loop";
 
 /**
  * Strict WebSocket frame vocabulary for one Workbench conversation socket.
@@ -172,6 +175,14 @@ export interface ConversationSocketRuntimeOptions {
    * fail visibly in the operation host.
    */
   readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
+  /**
+   * The exact retained temporary contribution runtime. When present, a
+   * settled contribution_spawn action subscribes to its started
+   * contribution, the keyed child-result request is serviced through it, and
+   * contribution_control targets exact retained contributions. Absent,
+   * contribution operations and child-result requests fail visibly.
+   */
+  readonly contributionRegistry?: ConversationContributionRegistry;
   /** Delay before the replay read, to make replay-phase behavior deterministic in tests. */
   readonly replayDelayMs?: number;
   /** Clock seam for the owned journal; defaults to ISO now. */
@@ -225,6 +236,7 @@ export class ConversationSocketRuntime {
   private readonly projectionProvider: ConversationContextProvider | undefined;
   private readonly operationHost: ConversationOperationHost | undefined;
   private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
+  private readonly contributionRegistry: ConversationContributionRegistry | undefined;
   private readonly replayDelayMs: number;
   private readonly sockets = new Map<Bun.ServerWebSocket<ConversationSocketData>, SocketEntry>();
   private readonly subscribers = new Map<string, Set<SocketEntry>>();
@@ -239,6 +251,7 @@ export class ConversationSocketRuntime {
     this.projectionProvider = options.projectionProvider;
     this.operationHost = options.operationHost;
     this.carrierRegistry = options.carrierRegistry;
+    this.contributionRegistry = options.contributionRegistry;
     this.replayDelayMs = options.replayDelayMs ?? 0;
   }
 
@@ -523,12 +536,14 @@ export class ConversationSocketRuntime {
    * Run one prepared coordinator turn after its durable start is journaled:
    * `coordinator.turn-started` (with requested policy and prompt evidence)
    * is fsynced before the owner starts, so no delta can precede the durable
-   * record. The compact current projection is rebuilt from the canonical
-   * sources immediately before preparation. Deltas become provisional
-   * `response.delta` frames; a finished turn's at most one typed operation
-   * runs through the injected host with its `action.requested` fsynced
-   * before the effect; the terminal result becomes one durable
-   * settled/failed/interrupted journal event.
+   * record. The compact current projection and the settled child summaries
+   * are rebuilt from the canonical sources immediately before preparation.
+   * Deltas become provisional `response.delta` frames; a finished turn's at
+   * most one typed operation runs through the injected host with its
+   * `action.requested` fsynced before the effect; a finished turn's at most
+   * one request is serviced through the exact contribution runtime (the
+   * keyed child-result read, then one synthesis turn); the terminal result
+   * becomes one durable settled/failed/interrupted journal event.
    */
   private async runTurn(
     entry: SocketEntry,
@@ -540,9 +555,13 @@ export class ConversationSocketRuntime {
       const projection = this.projectionProvider === undefined
         ? undefined
         : await this.projectionProvider.buildProjection(conversationId);
+      const children = this.projectionProvider === undefined
+        ? undefined
+        : await this.projectionProvider.buildChildren(conversationId);
       preparation = this.turnOwner.prepare({
         ...input,
         ...(projection === undefined ? {} : { projection }),
+        ...(children === undefined || children.length === 0 ? {} : { children: [...children] }),
       });
     } catch (error: unknown) {
       this.send(entry, protocolErrorFrame(
@@ -551,6 +570,24 @@ export class ConversationSocketRuntime {
       ));
       return;
     }
+    await this.executeTurnBody(entry, input, preparation, { allowFollowUp: true });
+  }
+
+  /**
+   * Run one already prepared turn body: durable start, active-turn
+   * registration, owner execution with response interruption, consequential
+   * operation execution, request servicing, and the durable terminal
+   * settlement. A follow-up synthesis turn forbids further requests and
+   * operations so one Principal message never yields more than one
+   * consequential effect or keyed read.
+   */
+  private async executeTurnBody(
+    entry: SocketEntry,
+    input: { readonly turnId: string; readonly messageId: string; readonly payload: string },
+    preparation: TurnPreparation,
+    options: { readonly allowFollowUp: boolean },
+  ): Promise<void> {
+    const { conversationId } = entry;
     try {
       const started = await this.journal.startTurn(conversationId, {
         turnId: input.turnId,
@@ -609,6 +646,10 @@ export class ConversationSocketRuntime {
         return;
       }
       if (terminal.kind === "finished" && terminal.operation !== undefined) {
+        if (!options.allowFollowUp) {
+          await this.failTurnUnsupported(entry, input, "a keyed-result synthesis turn cannot perform a second consequential operation");
+          return;
+        }
         try {
           await this.runAction(conversationId, input, terminal.operation);
         } catch (error: unknown) {
@@ -627,6 +668,14 @@ export class ConversationSocketRuntime {
           }
           return;
         }
+      } else if (terminal.kind === "finished" && terminal.request !== undefined) {
+        if (!options.allowFollowUp) {
+          await this.failTurnUnsupported(entry, input, "a keyed-result synthesis turn cannot perform a second request");
+          return;
+        }
+        // The request path settles or fails the requesting turn itself.
+        await this.serviceTurnRequest(entry, input, terminal);
+        return;
       }
       try {
         const event = await this.settleTurnTerminal(conversationId, input, terminal);
@@ -639,6 +688,127 @@ export class ConversationSocketRuntime {
       }
     } finally {
       this.activeTurns.delete(conversationId);
+    }
+  }
+
+  /**
+   * Service one finished turn's at most one request. The keyed child-result
+   * read is the only request this runtime owns: the exact settled result is
+   * read through the contribution runtime — a stale post-correction result,
+   * an unsettled result, or an unknown batch/key is refused visibly without
+   * guessing — and then one synthesis turn reconstructs the single response
+   * with the full bounded child evidence. Returns true when the requesting
+   * turn was settled and the synthesis ran; false when the turn failed
+   * visibly. No retry or automatic recovery is performed.
+   */
+  private async serviceTurnRequest(
+    entry: SocketEntry,
+    input: { readonly turnId: string; readonly messageId: string; readonly payload: string },
+    terminal: Extract<ConversationTurnResult, { kind: "finished" }>,
+  ): Promise<boolean> {
+    const { conversationId } = entry;
+    const request = terminal.request!;
+    if (request.kind !== "child-result") {
+      await this.failTurnUnsupported(
+        entry,
+        input,
+        `request kind '${request.kind}' is not supported by this conversation runtime`,
+      );
+      return false;
+    }
+    if (this.contributionRegistry === undefined) {
+      await this.failTurnUnsupported(
+        entry,
+        input,
+        "the temporary contribution runtime is not installed; the keyed child-result read cannot be serviced",
+      );
+      return false;
+    }
+    const read = await this.contributionRegistry.readChildResult({
+      conversationId,
+      batchId: request.batchId,
+      key: request.key,
+    });
+    if (read.standing === "refused") {
+      await this.failTurnUnsupported(
+        entry,
+        input,
+        `child result ${request.batchId}/${request.key} cannot be read (${read.code}): ${read.reason}`,
+      );
+      return false;
+    }
+    try {
+      const event = await this.settleTurnTerminal(conversationId, input, terminal);
+      this.broadcast(conversationId, journalEventFrame(event));
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame(
+        "journal-error",
+        error instanceof Error ? error.message : String(error),
+      ));
+      return false;
+    }
+    await this.runSynthesisTurn(entry, input, [fullChildResultOf(read.result)]);
+    return true;
+  }
+
+  /**
+   * The one synthesis continuation of a keyed child-result read: a fresh
+   * prepared turn for the same Principal message whose prompt carries the
+   * full bounded child evidence, and which may perform no further request or
+   * consequential operation. The coordinator reconstructs one response here
+   * rather than concatenating or voting.
+   */
+  private async runSynthesisTurn(
+    entry: SocketEntry,
+    input: { readonly messageId: string; readonly payload: string },
+    fullChildResults: readonly FullChildResult[],
+  ): Promise<void> {
+    const { conversationId } = entry;
+    const turnId = randomUUID();
+    let preparation: TurnPreparation;
+    try {
+      const projection = this.projectionProvider === undefined
+        ? undefined
+        : await this.projectionProvider.buildProjection(conversationId);
+      const children = this.projectionProvider === undefined
+        ? undefined
+        : await this.projectionProvider.buildChildren(conversationId);
+      preparation = this.turnOwner.prepare({
+        turnId,
+        messageId: input.messageId,
+        payload: input.payload,
+        ...(projection === undefined ? {} : { projection }),
+        ...(children === undefined || children.length === 0 ? {} : { children: [...children] }),
+        fullChildResults,
+      });
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame(
+        "journal-error",
+        `conversation synthesis turn preparation failed: ${errorMessage(error)}`,
+      ));
+      return;
+    }
+    await this.executeTurnBody(entry, {
+      turnId,
+      messageId: input.messageId,
+      payload: input.payload,
+    }, preparation, { allowFollowUp: false });
+  }
+
+  private async failTurnUnsupported(
+    entry: SocketEntry,
+    input: { readonly turnId: string; readonly messageId: string },
+    reason: string,
+  ): Promise<void> {
+    try {
+      const event = await this.journal.failTurn(entry.conversationId, {
+        turnId: input.turnId,
+        messageId: input.messageId,
+        reason,
+      });
+      this.broadcast(entry.conversationId, journalEventFrame(event));
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame("journal-error", errorMessage(error)));
     }
   }
 
@@ -720,6 +890,7 @@ export class ConversationSocketRuntime {
     this.broadcast(conversationId, journalEventFrame(requested));
     await this.settleActionEffect(conversationId, requested, operation);
     this.attachCarrier(conversationId, requested);
+    this.attachContribution(conversationId, requested);
   }
 
   /**
@@ -751,6 +922,43 @@ export class ConversationSocketRuntime {
     });
     let disposeSettled: (() => void) | undefined;
     disposeSettled = carrier.onSettled(() => {
+      disposeActivity();
+      disposeSettled?.();
+      this.broadcast(conversationId, { type: "projection.changed" });
+    });
+  }
+
+  /**
+   * After a contribution_spawn action settles, subscribe the runtime to the
+   * exact contribution the action started: owner-backed trace activity
+   * becomes attributable `activity.delta` frames and the terminal settlement
+   * broadcasts `projection.changed`. The subscriptions are runtime-only and
+   * are disposed at terminal settlement; the durable spawn receipt, delegate
+   * timeline, and settlement stay in their canonical owners.
+   */
+  private attachContribution(conversationId: string, requested: ActionRequestedEvent): void {
+    if (this.contributionRegistry === undefined) return;
+    if (requested.data.kind !== "contribution_spawn") return;
+    const contribution = this.contributionRegistry.startedContribution(
+      conversationId,
+      requested.data.actionId,
+    );
+    if (contribution === undefined) return;
+    const { turnId, messageId, actionId } = requested.data;
+    const { taskId, batchId } = contribution.identity;
+    const disposeActivity = contribution.onActivity((activity) => {
+      this.broadcast(conversationId, activityDeltaFrame({
+        turnId,
+        messageId,
+        taskId,
+        attemptId: batchId,
+        actionId,
+        carrierId: batchId,
+        text: activity.text,
+      }));
+    });
+    let disposeSettled: (() => void) | undefined;
+    disposeSettled = contribution.onSettled(() => {
       disposeActivity();
       disposeSettled?.();
       this.broadcast(conversationId, { type: "projection.changed" });
@@ -853,7 +1061,11 @@ export class ConversationSocketRuntime {
       } catch (error: unknown) {
         if (
           error instanceof ConversationOperationHostError
-          && (error.code === "source-unavailable" || error.code === "carrier-unknown")
+          && (
+            error.code === "source-unavailable"
+            || error.code === "carrier-unknown"
+            || error.code === "contribution-unknown"
+          )
         ) {
           terminal = {
             kind: "uncertain",
@@ -1064,6 +1276,31 @@ function activityDeltaFrame(data: {
   readonly text: string;
 }): ServerActivityDeltaFrame {
   return { type: "activity.delta", ...data };
+}
+
+/** The bounded full child evidence shape one keyed read feeds a synthesis turn. */
+function fullChildResultOf(result: DelegateResultProjection): FullChildResult {
+  const semantic = result.semantic;
+  return {
+    batchId: result.receipt.batchId,
+    key: result.receipt.key,
+    cellId: result.receipt.cellId,
+    status: result.receipt.status,
+    projection: result.receipt.projection,
+    ...(semantic === undefined
+      ? {}
+      : {
+          semantic: {
+            finalText: semantic.finalText,
+            ...(semantic.output === undefined ? {} : { output: semantic.output }),
+            ...(semantic.artifacts === undefined || semantic.artifacts.length === 0
+              ? {}
+              : { artifacts: [...semantic.artifacts] }),
+            ...(semantic.verification === undefined ? {} : { verification: semantic.verification }),
+          },
+        }),
+    ...(result.omission === undefined ? {} : { omission: result.omission }),
+  };
 }
 
 function protocolErrorFrame(code: ProtocolErrorCode, message: string): ServerProtocolErrorFrame {

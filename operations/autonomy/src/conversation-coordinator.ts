@@ -9,6 +9,7 @@ import {
   type ComposedConversationPrompt,
   type ConversationPolicy,
   type ConversationPromptInput,
+  type FullChildResult,
   type PrincipalMessage,
   type ProjectOrientation,
 } from "./conversation-prompt";
@@ -111,11 +112,61 @@ export const WorkControlOperationSchema = z.object({
 }).strict();
 export type WorkControlOperation = z.infer<typeof WorkControlOperationSchema>;
 
+/** A stable per-conversation contribution key: an identifier, never routed prose. */
+export const ContributionKeySchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/);
+
+/**
+ * The caller-facing spawn shape: the semantic contribution intent plus only
+ * the non-derivable constraints — the exact catalog worker choice, the
+ * capability the work needs, the coordinator's effect-boundary judgment,
+ * optional settled-key dependencies, and optional workspace-relative images
+ * for a vision worker. The model supplies no Task ID or revision, project
+ * ID/primary head, Worktree path/head, source ref, obligation ref,
+ * acceptance, execution profile, or withheld authority: the host derives the
+ * conversation's current Task from the canonical Task/journal sources and
+ * revalidates the exact execution selection from current project/Worktree
+ * observations immediately before the effect, so the coordinator can never
+ * restate or invent the internal DelegateCall envelope.
+ */
+export const ContributionSpawnOperationSchema = z.object({
+  kind: z.literal("contribution_spawn"),
+  key: ContributionKeySchema,
+  /** The bounded semantic contribution; host-owned evidence fields are never restated here. */
+  intent: z.string().min(1).max(4_000),
+  /** One bounded capability the contribution needs; validated against the exact worker's hard labels. */
+  capabilityNeed: z.string().regex(/^[a-z][a-z0-9-]*$/),
+  /**
+   * The coordinator's semantic judgment of the effect boundary. The host
+   * enforces the exact boundary: read-only contributions may run bounded in
+   * parallel, while one Task/Worktree permits at most one effectful
+   * execution owner and overlapping writers are refused.
+   */
+  effectKind: z.enum(["read-only", "effectful"]),
+  /** Exact catalog identity copied from the current projection's worker cards. */
+  workerId: z.string().min(1),
+  /** Keys of already settled contributions this one depends on. */
+  dependsOn: z.array(ContributionKeySchema).default([]),
+  /** Workspace-relative local images supplied to a vision-capable worker. */
+  imagePaths: z.array(z.string().min(1)).min(1).optional(),
+}).strict();
+export type ContributionSpawnOperation = z.infer<typeof ContributionSpawnOperationSchema>;
+
+export const ContributionControlOperationSchema = z.object({
+  kind: z.literal("contribution_control"),
+  batchId: z.string().min(1),
+  key: ContributionKeySchema,
+  /** A bounded contribution owns only stop; replacement is a new spawn from the latest Task revision. */
+  control: z.literal("stop"),
+}).strict();
+export type ContributionControlOperation = z.infer<typeof ContributionControlOperationSchema>;
+
 export const ConversationOperationSchema = z.discriminatedUnion("kind", [
   TaskCreateOperationSchema,
   TaskCorrectOperationSchema,
   TaskContinueOperationSchema,
   WorkControlOperationSchema,
+  ContributionSpawnOperationSchema,
+  ContributionControlOperationSchema,
 ]);
 export type ConversationOperation = z.infer<typeof ConversationOperationSchema>;
 
@@ -211,6 +262,7 @@ export interface ConversationTurnOptions {
   readonly projection?: CompactProjection;
   readonly orientation?: ProjectOrientation;
   readonly children?: readonly ChildSummary[];
+  readonly fullChildResults?: readonly FullChildResult[];
   readonly port: ConversationTurnPort;
   readonly onEvent: (event: ConversationTurnSafetyEvent) => void;
 }
@@ -231,6 +283,7 @@ export interface ConversationTurnPrepareInput {
   readonly projection?: CompactProjection;
   readonly orientation?: ProjectOrientation;
   readonly children?: readonly ChildSummary[];
+  readonly fullChildResults?: readonly FullChildResult[];
 }
 
 /**
@@ -425,6 +478,9 @@ function promptInput(input: ConversationTurnPrepareInput): ConversationPromptInp
     ...(input.projection === undefined ? {} : { projection: input.projection }),
     ...(input.orientation === undefined ? {} : { orientation: input.orientation }),
     ...(input.children === undefined || input.children.length === 0 ? {} : { children: [...input.children] }),
+    ...(input.fullChildResults === undefined || input.fullChildResults.length === 0
+      ? {}
+      : { fullChildResults: [...input.fullChildResults] }),
   };
 }
 

@@ -7,6 +7,9 @@ import {
   type DeepSeekInferencePolicy,
 } from "../../../packages/work-cell/src/providers/deepseek";
 import {
+  ChildResultRequestSchema,
+  ContributionControlOperationSchema,
+  ContributionSpawnOperationSchema,
   TaskContinueOperationSchema,
   TaskCorrectOperationSchema,
   TaskCreateOperationSchema,
@@ -14,6 +17,7 @@ import {
   type ConversationOperation,
   type ConversationTurnPort,
   type ConversationTurnPortEvent,
+  type ConversationTurnRequest,
 } from "./conversation-coordinator";
 
 export const DEEPSEEK_TURN_MAX_OUTPUT_TOKENS = 16_000;
@@ -49,7 +53,7 @@ type InferencePolicyDecision =
   | { ok: false; reason: string };
 
 /**
- * The four strict typed operation tools exposed to the DeepSeek coordinator.
+ * The strict typed operation tools exposed to the DeepSeek coordinator.
  * The tool name is the operation kind, so each input schema omits `kind`; the
  * adapter restores it when forwarding the tool call as a typed operation port
  * event. Tools carry structure and descriptions only: they never execute, and
@@ -61,6 +65,8 @@ export const CONVERSATION_OPERATION_TOOL_NAMES = [
   "task_correct",
   "task_continue",
   "work_control",
+  "contribution_spawn",
+  "contribution_control",
 ] as const;
 
 export const conversationOperationTools: Record<
@@ -99,7 +105,38 @@ export const conversationOperationTools: Record<
     ].join(" "),
     inputSchema: WorkControlOperationSchema.omit({ kind: true }),
   }),
+  contribution_spawn: tool({
+    description: [
+      "Form one bounded temporary contribution only when it earns its coordination cost: a bounded evidence, execution, or review child you then synthesize yourself; you remain the one synthesis owner and never vote or concatenate.",
+      "Supply only the semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description.",
+      "Never supply a Task ID or revision, project ID/head, Worktree path/head, source or obligation ref, acceptance, or execution profile: the host derives the conversation's current Task from the canonical sources and revalidates the exact execution selection immediately before the effect, refuses stale or unbound contexts and overlapping writers, and never spawns automatically or retries.",
+      "Never review your own streamed response: contribution evidence comes from the Task and its Worktree only.",
+    ].join(" "),
+    inputSchema: ContributionSpawnOperationSchema.omit({ kind: true }),
+  }),
+  contribution_control: tool({
+    description: [
+      "Stop one exact retained temporary contribution.",
+      "Copy the exact batchId and key from the current projection's contributions; a bounded contribution owns only stop.",
+      "A contribution without a live retained handle reports liveness unknown and the control cannot be verified; replacement is a new spawn from the latest Task revision, never an automatic retry.",
+    ].join(" "),
+    inputSchema: ContributionControlOperationSchema.omit({ kind: true }),
+  }),
 };
+
+/**
+ * The keyed child-result read request tool: the model asks the host to load
+ * the bounded full semantic projection of one exact settled child result
+ * when synthesis needs it. Child summaries are already in the prompt; this
+ * tool only names a batchId and key the host already exposed.
+ */
+export const childResultRequestTool: Tool = tool({
+  description: [
+    "Request the full bounded semantic result of one exact settled child contribution by its batchId and key, when synthesis needs the full evidence.",
+    "Name only a batchId and key already returned for a settled contribution of this conversation; the host refuses unknown, unsettled, or stale (post-correction) results without guessing.",
+  ].join(" "),
+  inputSchema: ChildResultRequestSchema.omit({ kind: true }),
+});
 
 /**
  * A real DeepSeek turn adapter for the frozen P3b1 ConversationTurnPort
@@ -154,12 +191,17 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
       try {
         let observedModel: string | undefined;
         let providerFingerprint: string | undefined;
+        let requestEmitted = false;
+        let stashedUsage: unknown;
         const result = streamText({
           model,
           prompt: prompt.prompt,
           abortSignal: signal,
           maxOutputTokens: DEEPSEEK_TURN_MAX_OUTPUT_TOKENS,
-          tools: conversationOperationTools,
+          tools: {
+            ...conversationOperationTools,
+            child_result: childResultRequestTool,
+          },
         });
         for await (const part of result.stream) {
           if (signal.aborted) return;
@@ -168,6 +210,19 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
             continue;
           }
           if (part.type === "tool-call") {
+            if (part.toolName === "child_result") {
+              const request = childResultRequest(part.input);
+              if (request === undefined) {
+                yield {
+                  kind: "error",
+                  message: `the model called child_result with an invalid keyed read selector; the turn is not interpreted`,
+                };
+                return;
+              }
+              requestEmitted = true;
+              yield { kind: "request", request };
+              continue;
+            }
             const operation = operationFromToolCall(part.toolName, part.input);
             if (operation === undefined) {
               yield {
@@ -192,6 +247,7 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
               observedModel = responseModel;
             }
             providerFingerprint ??= observedDeepSeekMetadata(part.providerMetadata).providerFingerprint;
+            stashedUsage ??= part.usage;
             continue;
           }
           if (part.type === "finish") {
@@ -208,6 +264,19 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
             return;
           }
           if (part.type === "abort") return;
+        }
+        if (requestEmitted && !signal.aborted) {
+          // The provider ends the stream after a request tool call; there is
+          // no tool result to feed back. The request itself is the terminal
+          // turn outcome, so the adapter emits the finish with the best
+          // observed step usage rather than failing the turn.
+          yield {
+            kind: "finish",
+            ...(observedModel === undefined ? {} : { model: observedModel }),
+            ...(providerFingerprint === undefined ? {} : { providerFingerprint }),
+            ...(stashedUsage === undefined ? {} : { usage: stashedUsage }),
+          };
+          return;
         }
       } catch (error) {
         if (signal.aborted) return;
@@ -235,9 +304,24 @@ function operationFromToolCall(
       return TaskContinueOperationSchema.parse({ kind: "task_continue", ...asRecord(input) });
     case "work_control":
       return WorkControlOperationSchema.parse({ kind: "work_control", ...asRecord(input) });
+    case "contribution_spawn":
+      return ContributionSpawnOperationSchema.parse({ kind: "contribution_spawn", ...asRecord(input) });
+    case "contribution_control":
+      return ContributionControlOperationSchema.parse({ kind: "contribution_control", ...asRecord(input) });
     default:
       return undefined;
   }
+}
+
+/** The strict keyed result-read request restored from one child_result tool call. */
+function childResultRequest(input: unknown): ConversationTurnRequest | undefined {
+  const record = asRecord(input);
+  const parsed = ChildResultRequestSchema.safeParse({
+    kind: "child-result",
+    batchId: record.batchId,
+    key: record.key,
+  });
+  return parsed.success ? parsed.data : undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

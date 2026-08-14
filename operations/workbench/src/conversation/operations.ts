@@ -23,6 +23,16 @@ import {
   type CarrierControlReceipt,
   type ConversationExecutionCarrierRegistry,
 } from "./execution-carrier";
+import {
+  ContributionError,
+  contributionStateDirectory,
+  readContributionControlReceipts,
+  readContributionSpawnReceipts,
+  readContributionStartedReceipts,
+  verifyContributionStartedMarker,
+  fsyncFileDurability,
+  type ConversationContributionRegistry,
+} from "./contributions";
 
 export type ConversationOperationHostErrorCode =
   | "invalid-operation"
@@ -45,6 +55,14 @@ export type ConversationOperationHostErrorCode =
   | "lease-conflict"
   | "worker-unknown"
   | "worker-unavailable"
+  | "contribution-duplicate"
+  | "contribution-limit"
+  | "contribution-not-found"
+  | "contribution-not-live"
+  | "contribution-unknown"
+  | "capability-unsupported"
+  | "effect-conflict"
+  | "dependency-unsettled"
   | "source-unavailable";
 
 export class ConversationOperationHostError extends Error {
@@ -78,17 +96,25 @@ export type CanonicalReceiptLookup =
  * canonical receipt. It never inspects Principal prose; the input is already
  * a strict typed operation chosen by the coordinator. Without an installed
  * carrier registry, `task_continue` and `work_control` remain typed but
- * unavailable: they fail visibly without any effect.
+ * unavailable; without an installed contribution registry, `contribution_spawn`
+ * and `contribution_control` remain typed but unavailable: all fail visibly
+ * without any effect.
  */
 export interface ConversationOperationHost {
   readonly home: string;
-  /** Validate against current sources and commit the canonical Task mutation or carrier effect. */
+  /**
+   * Validate against current sources and commit the canonical Task mutation
+   * or carrier/contribution effect. Only `contribution_spawn` resolves
+   * asynchronously — its started marker commits after the durable delegate
+   * start — while every other operation returns synchronously; callers that
+   * await the result are unaffected.
+   */
   executeOperation(input: {
     readonly conversationId: string;
     readonly turnId: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
-  }): TaskActionReceipt;
+  }): TaskActionReceipt | Promise<TaskActionReceipt>;
   /** Crash reconciliation: search the canonical Task owner for the action's causal reference. */
   findCanonicalReceipt(input: {
     readonly conversationId: string;
@@ -103,22 +129,32 @@ export interface ConversationTaskOperationHostOptions {
    * carriers. Absent, `task_continue` and `work_control` fail visibly.
    */
   readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
+  /**
+   * The exact retained temporary contribution runtime. Absent,
+   * `contribution_spawn` and `contribution_control` fail visibly.
+   */
+  readonly contributionRegistry?: ConversationContributionRegistry;
 }
 
 export function createConversationTaskOperationHost(
   homeArgument?: string,
   options: ConversationTaskOperationHostOptions = {},
 ): ConversationOperationHost {
-  return new WorkbenchTaskOperationHost(resolveHome(homeArgument), options.carrierRegistry);
+  return new WorkbenchTaskOperationHost(resolveHome(homeArgument), options);
 }
 
 class WorkbenchTaskOperationHost implements ConversationOperationHost {
   readonly home: string;
   private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
+  private readonly contributionRegistry: ConversationContributionRegistry | undefined;
 
-  constructor(home: string, carrierRegistry?: ConversationExecutionCarrierRegistry) {
+  constructor(
+    home: string,
+    options: ConversationTaskOperationHostOptions,
+  ) {
     this.home = home;
-    this.carrierRegistry = carrierRegistry;
+    this.carrierRegistry = options.carrierRegistry;
+    this.contributionRegistry = options.contributionRegistry;
   }
 
   executeOperation(input: {
@@ -126,7 +162,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     readonly turnId: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
-  }): TaskActionReceipt {
+  }): TaskActionReceipt | Promise<TaskActionReceipt> {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
     const operation = input.operation;
     try {
@@ -144,6 +180,25 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
           });
         case "work_control":
           return this.executeControl({
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            actionId: input.actionId,
+            operation,
+          });
+        case "contribution_spawn":
+          // The started marker commits only after the durable delegate
+          // start, so the canonical success resolves asynchronously; the
+          // same error mapping applies to the resolution.
+          return this.executeContributionSpawn({
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            actionId: input.actionId,
+            operation,
+          }).catch((error: unknown) => {
+            throw mapOperationError(error);
+          });
+        case "contribution_control":
+          return this.executeContributionControl({
             conversationId: input.conversationId,
             turnId: input.turnId,
             actionId: input.actionId,
@@ -174,6 +229,16 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     }
     if (operation.kind === "work_control") {
       return this.findControlReceipt({
+        conversationId: input.conversationId,
+        actionId: input.actionId,
+        operation,
+      });
+    }
+    if (operation.kind === "contribution_spawn") {
+      return this.findContributionSpawnReceipt(input.conversationId, sourceRef);
+    }
+    if (operation.kind === "contribution_control") {
+      return this.findContributionControlReceipt({
         conversationId: input.conversationId,
         actionId: input.actionId,
         operation,
@@ -408,6 +473,178 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     };
   }
 
+  /**
+   * A typed spawn starts at most one bounded contribution for its committed
+   * action: the retained registry derives the conversation's current Task
+   * from the durable journal, re-reads the exact canonical Task source, and
+   * re-validates the Task's bound registered project, current primary
+   * observation, bound Worktree path and head, and — for an effectful
+   * contribution — the exact shared task-run Worktree lease immediately
+   * before the effect. The coordinator's spawn shape supplied only intent
+   * plus non-derivable constraints, so none of those selectors can be
+   * invented by the model. The returned receipt references the durable spawn
+   * and delegate timeline evidence, not a second task or result store.
+   */
+  private async executeContributionSpawn(
+    input: {
+      readonly conversationId: string;
+      readonly turnId: string;
+      readonly actionId: string;
+      readonly operation: Extract<ConversationOperation, { kind: "contribution_spawn" }>;
+    },
+  ): Promise<TaskActionReceipt> {
+    if (this.contributionRegistry === undefined) {
+      throw new ConversationOperationHostError(
+        "operation-unavailable",
+        "contribution_spawn is unavailable without an installed temporary contribution runtime; no effect was applied",
+      );
+    }
+    const receipt = await this.contributionRegistry.spawn({
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      actionId: input.actionId,
+      operation: input.operation,
+    });
+    return {
+      taskId: receipt.taskId,
+      sourceRevision: receipt.sourceRevision,
+      taskRevision: receipt.taskRevision,
+      evidenceRefs: [...receipt.evidenceRefs],
+    };
+  }
+
+  /**
+   * A typed control resolves one exact retained contribution and applies only
+   * that mapped stop. A contribution without a retained runtime handle and
+   * without a durable settlement leaves liveness unknown and the control
+   * unverified; an already settled contribution refuses visibly.
+   */
+  private executeContributionControl(
+    input: {
+      readonly conversationId: string;
+      readonly turnId: string;
+      readonly actionId: string;
+      readonly operation: Extract<ConversationOperation, { kind: "contribution_control" }>;
+    },
+  ): TaskActionReceipt {
+    if (this.contributionRegistry === undefined) {
+      throw new ConversationOperationHostError(
+        "operation-unavailable",
+        "contribution_control is unavailable without an installed temporary contribution runtime; no effect was applied",
+      );
+    }
+    const operation = input.operation;
+    let receipt: ReturnType<ConversationContributionRegistry["control"]>;
+    try {
+      receipt = this.contributionRegistry.control({
+        batchId: operation.batchId,
+        key: operation.key,
+        control: operation.control,
+        actor: {
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          actionId: input.actionId,
+        },
+      });
+    } catch (error) {
+      if (error instanceof ContributionError) throw mapContributionError(error);
+      throw mapOperationError(error);
+    }
+    return {
+      taskId: receipt.taskId,
+      evidenceRefs: [...receipt.evidenceRefs],
+    };
+  }
+
+  /**
+   * The canonical spawn receipt: only a durable started marker whose strict
+   * reservation + delegate start cross-links verify settles the action. A
+   * marker or reservation without verified start cross-links proves nothing
+   * about whether a worker started, so it reconciles as uninspectable
+   * (uncertain), never settled, never retried as absent.
+   */
+  private findContributionSpawnReceipt(conversationId: string, sourceRef: string): CanonicalReceiptLookup {
+    const directory = contributionStateDirectory(this.home, conversationId);
+    const started = readContributionStartedReceipts(this.home, conversationId)
+      .find((candidate) => candidate.sourceRef === sourceRef);
+    if (started !== undefined) {
+      const reason = verifyContributionStartedMarker(this.home, directory, started, {
+        syncDirectory: fsyncFileDurability,
+      });
+      if (reason === undefined) {
+        return {
+          standing: "settled",
+          receipt: {
+            taskId: started.taskId,
+            sourceRevision: started.sourceRevision,
+            taskRevision: started.taskRevision,
+            evidenceRefs: [evidenceRef(this.home, join(
+              directory,
+              `started-${started.actionId}.json`,
+            ))],
+          },
+        };
+      }
+      return {
+        standing: "uninspectable",
+        reason: `the committed action's started marker is not a committed started record: ${reason}`,
+      };
+    }
+    for (const reservation of readContributionSpawnReceipts(this.home, conversationId)) {
+      if (reservation.sourceRef !== sourceRef) continue;
+      return {
+        standing: "uninspectable",
+        reason:
+          `the committed action retains a reservation without a started marker; `
+          + "whether a worker started is unknown",
+      };
+    }
+    return { standing: "absent" };
+  }
+
+  /**
+   * The canonical contribution control receipt: the durable control record
+   * for this action's causal source reference, cross-linked against the
+   * requested operation — batchId, key, and the actor's conversation/action
+   * must all match. No matching sourceRef is provable absence and remains
+   * retryable; a matching sourceRef whose record is unreadable or fails any
+   * cross-link is uninspectable.
+   */
+  private findContributionControlReceipt(input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+    readonly operation: Extract<ConversationOperation, { kind: "contribution_control" }>;
+  }): CanonicalReceiptLookup {
+    const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+    const receipts = readContributionControlReceipts(this.home, input.conversationId);
+    const matching = receipts.filter((receipt) => receipt.sourceRef === sourceRef);
+    if (matching.length === 0) return { standing: "absent" };
+    const receipt = matching[0]!;
+    const mismatch =
+      receipt.requestedBy.conversationId !== input.conversationId
+        || receipt.requestedBy.actionId !== input.actionId
+        ? "the receipt actor identity does not match the reconciled action"
+        : receipt.batchId !== input.operation.batchId || receipt.key !== input.operation.key
+          ? "the receipt target does not match the reconciled contribution control"
+          : undefined;
+    if (mismatch !== undefined) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained contribution control record fails its exact identity: ${mismatch}`,
+      };
+    }
+    return {
+      standing: "settled",
+      receipt: {
+        taskId: receipt.taskId,
+        evidenceRefs: [evidenceRef(this.home, join(
+          contributionStateDirectory(this.home, input.conversationId),
+          `control-${receipt.batchId}.json`,
+        ))],
+      },
+    };
+  }
+
   private executeCreate(
     operation: Extract<ConversationOperation, { kind: "task_create" }>,
     sourceRef: string,
@@ -577,6 +814,7 @@ function observedWorktreePath(
 function mapOperationError(error: unknown): Error {
   if (error instanceof ConversationOperationHostError) return error;
   if (error instanceof ConversationCarrierError) return mapCarrierError(error);
+  if (error instanceof ContributionError) return mapContributionError(error);
   if (error instanceof PrincipalTaskError) {
     const code: ConversationOperationHostErrorCode =
       error.code === "task-drift" ? "stale-revision"
@@ -590,6 +828,29 @@ function mapOperationError(error: unknown): Error {
     "invalid-operation",
     `the operation cannot be applied through the canonical Task API: ${message}`,
   );
+}
+
+function mapContributionError(error: ContributionError): ConversationOperationHostError {
+  const code: ConversationOperationHostErrorCode =
+    error.code === "contribution-duplicate" ? "contribution-duplicate"
+    : error.code === "contribution-limit" ? "contribution-limit"
+    : error.code === "task-missing" ? "task-not-found"
+    : error.code === "task-settled" ? "task-settled"
+    : error.code === "task-not-bound" ? "task-not-bound"
+    : error.code === "worker-unknown" ? "worker-unknown"
+    : error.code === "worker-unavailable" ? "worker-unavailable"
+    : error.code === "capability-unsupported" ? "capability-unsupported"
+    : error.code === "effect-conflict" ? "effect-conflict"
+    : error.code === "worktree-dirty" ? "worktree-dirty"
+    : error.code === "contribution-not-found" ? "contribution-not-found"
+    : error.code === "contribution-not-live" ? "contribution-not-live"
+    : error.code === "contribution-unknown" ? "contribution-unknown"
+    : error.code === "control-unsupported" ? "control-unsupported"
+    : error.code === "control-conflict" ? "control-conflict"
+    : error.code === "dependency-unsettled" ? "dependency-unsettled"
+    : error.code === "source-unavailable" ? "source-unavailable"
+    : "operation-unavailable";
+  return new ConversationOperationHostError(code, error.message);
 }
 
 function mapCarrierError(error: ConversationCarrierError): ConversationOperationHostError {

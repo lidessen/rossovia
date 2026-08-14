@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
 import {
+  ContributionControlOperationSchema,
+  ContributionSpawnOperationSchema,
   ConversationOperationSchema,
   TaskContinueOperationSchema,
   TaskCorrectOperationSchema,
@@ -33,6 +35,8 @@ export const ActionKindSchema = z.enum([
   "task_correct",
   "task_continue",
   "work_control",
+  "contribution_spawn",
+  "contribution_control",
 ]);
 export type ActionKind = z.infer<typeof ActionKindSchema>;
 
@@ -161,6 +165,14 @@ export const StoredActionRequestedDataSchema = z.discriminatedUnion("kind", [
   StoredActionRequestedDataFieldsSchema.extend({
     kind: z.literal("work_control"),
     operation: WorkControlOperationSchema,
+  }).strict(),
+  StoredActionRequestedDataFieldsSchema.extend({
+    kind: z.literal("contribution_spawn"),
+    operation: ContributionSpawnOperationSchema,
+  }).strict(),
+  StoredActionRequestedDataFieldsSchema.extend({
+    kind: z.literal("contribution_control"),
+    operation: ContributionControlOperationSchema,
   }).strict(),
 ]);
 

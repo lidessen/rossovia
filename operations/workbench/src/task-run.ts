@@ -44,7 +44,7 @@ const ORDINARY_OPENCODE_EXCLUDES = [
 // Ordinary project work must not inherit Work Cell's five-minute probe default.
 // OpenCode has no completed-step budget-control adapter yet, so this is a broad
 // emergency ceiling rather than a user-facing approval mechanism.
-const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
+export const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -376,7 +376,8 @@ function assertReconcileOwnerDead(pid: number, attemptId: string): void {
   }
 }
 
-function isProcessDefinitelyAbsent(pid: number): boolean {
+/** One lease owner process is provably absent only when its pid no longer resolves. */
+export function isProcessDefinitelyAbsent(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return false;
@@ -979,12 +980,13 @@ export function writeTaskRunSettlement(
   });
 }
 
-function canonicalGitDirectory(worktree: string): string {
+/** The exact resolved Git metadata directory one Worktree lease binds to. */
+export function canonicalGitDirectory(worktree: string): string {
   const raw = requiredGit(["rev-parse", "--git-dir"], worktree);
   return realpathSync(isAbsolute(raw) ? raw : resolve(worktree, raw));
 }
 
-function ordinaryOpenCodeExcludes(worktree: string): string[] {
+export function ordinaryOpenCodeExcludes(worktree: string): string[] {
   const tracked = (requiredGit(["ls-files", "-z"], worktree) ?? "")
     .split("\0")
     .filter(Boolean);

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v3" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v6" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -107,11 +107,29 @@ export const WorkerCardProjectionSchema = z.object({
 }).strict();
 export type WorkerCardProjection = z.infer<typeof WorkerCardProjectionSchema>;
 
+/**
+ * One bounded temporary contribution the coordinator formed in this
+ * conversation. It is liveness/identity evidence only: the exact batch/key,
+ * worker, effect boundary, and current standing. It never ranks prose or
+ * roles, and it is not a standing team.
+ */
+export const ContributionProjectionSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+  workerId: z.string().min(1),
+  effectKind: z.enum(["read-only", "effectful"]),
+  state: z.enum(["live", "settled", "unknown", "unresolved"]),
+  /** Terminal outcome standing when the contribution has settled. */
+  status: z.string().min(1).optional(),
+}).strict();
+export type ContributionProjection = z.infer<typeof ContributionProjectionSchema>;
+
 export const CompactProjectionSchema = z.object({
   task: TaskProjectionSchema.optional(),
   projects: z.array(ProjectProjectionSchema).optional(),
   carriers: z.array(CarrierActivityProjectionSchema).optional(),
   workers: z.array(WorkerCardProjectionSchema).optional(),
+  contributions: z.array(ContributionProjectionSchema).optional(),
 }).strict();
 export type CompactProjection = z.infer<typeof CompactProjectionSchema>;
 
@@ -190,12 +208,38 @@ export const ChildSummarySchema = z.object({
 }).strict();
 export type ChildSummary = z.infer<typeof ChildSummarySchema>;
 
+/**
+ * The bounded full semantic projection of one exact settled child result,
+ * loaded only through the keyed result-read operation when synthesis needs
+ * it. `projection: "metadata-only"` means the semantic payload was too large
+ * or unavailable and must never be guessed.
+ */
+export const FullChildResultSchema = z.object({
+  batchId: z.string().min(1),
+  key: z.string().min(1),
+  cellId: z.string().min(1),
+  status: z.string().min(1),
+  projection: z.enum(["full", "metadata-only"]),
+  semantic: z.object({
+    finalText: z.string(),
+    output: z.unknown().optional(),
+    artifacts: z.array(z.unknown()).optional(),
+    verification: z.unknown().optional(),
+  }).strict().optional(),
+  omission: z.object({
+    reason: z.string().min(1),
+    maxBytes: z.number().int().positive(),
+  }).strict().optional(),
+}).strict();
+export type FullChildResult = z.infer<typeof FullChildResultSchema>;
+
 export const ConversationPromptInputSchema = z.object({
   projection: CompactProjectionSchema.optional(),
   message: PrincipalMessageSchema,
   policy: ConversationPolicySchema,
   orientation: ProjectOrientationSchema.optional(),
   children: z.array(ChildSummarySchema).optional(),
+  fullChildResults: z.array(FullChildResultSchema).optional(),
 }).strict();
 export type ConversationPromptInput = z.infer<typeof ConversationPromptInputSchema>;
 
@@ -213,18 +257,18 @@ export function composeConversationPrompt(input: ConversationPromptInput): Compo
   const sourceRevisionSelectors: SourceRevisionSelector[] = [];
   const sections: string[] = [];
 
+  // The composed prompt always renders the exact six fixed-order section
+  // headers. Optional sections that carry no content render a bounded
+  // "none" body so the coordinator sees an explicit not-loaded standing
+  // instead of a missing or reordered section.
   sections.push(renderRelationKernel());
-  if (parsed.projection !== undefined) {
-    sections.push(renderProjection(parsed.projection, disclosedSources, sourceRevisionSelectors));
-  }
+  sections.push(renderProjection(parsed.projection, disclosedSources, sourceRevisionSelectors));
   sections.push(renderMessage(parsed.message));
   sections.push(renderPolicy(parsed.policy));
-  if (parsed.orientation !== undefined) {
-    sections.push(renderOrientation(parsed.orientation, disclosedSources));
-  }
-  if (parsed.children !== undefined && parsed.children.length > 0) {
-    sections.push(renderChildren(parsed.children));
-  }
+  sections.push(renderOrientation(parsed.orientation, disclosedSources));
+  const children = parsed.children ?? [];
+  const fullChildResults = parsed.fullChildResults ?? [];
+  sections.push(renderChildResults(children, fullChildResults));
 
   const prompt = `${sections.join("\n\n")}\n`;
   return {
@@ -241,13 +285,13 @@ function renderRelationKernel(): string {
 }
 
 function renderProjection(
-  projection: CompactProjection,
+  projection: CompactProjection | undefined,
   disclosedSources: DisclosedSource[],
   sourceRevisionSelectors: SourceRevisionSelector[],
 ): string {
   const lines: string[] = [];
 
-  if (projection.task !== undefined) {
+  if (projection?.task !== undefined) {
     const task = projection.task;
     lines.push(`task ${task.id} [${task.status ?? "open"}]: ${task.summary}`);
     if (task.source !== undefined) {
@@ -279,7 +323,7 @@ function renderProjection(
     }
   }
 
-  for (const project of projection.projects ?? []) {
+  for (const project of projection?.projects ?? []) {
     lines.push(`project ${project.name} [${project.status}]${project.id !== undefined ? ` (${project.id})` : ""}`);
     if (project.primaryHead !== undefined) {
       lines.push(`  primary head: ${project.primaryHead}`);
@@ -299,14 +343,14 @@ function renderProjection(
     }
   }
 
-  for (const carrier of projection.carriers ?? []) {
+  for (const carrier of projection?.carriers ?? []) {
     lines.push(`carrier ${carrier.id}: ${carrier.state}${carrier.runId !== undefined ? ` (run ${carrier.runId})` : ""}`);
     if (carrier.runId !== undefined) {
       sourceRevisionSelectors.push({ source: `carrier:${carrier.id}`, revision: carrier.runId });
     }
   }
 
-  for (const worker of projection.workers ?? []) {
+  for (const worker of projection?.workers ?? []) {
     lines.push(
       `worker ${worker.id} [${worker.availability}] ${worker.provider}/${worker.model}`
       + `${worker.reasoningEffort === undefined ? "" : ` reasoning=${worker.reasoningEffort}`}`
@@ -314,7 +358,15 @@ function renderProjection(
     );
   }
 
-  return `## 2. Current compact projection\n\n${lines.join("\n")}`;
+  for (const contribution of projection?.contributions ?? []) {
+    lines.push(
+      `contribution ${contribution.batchId}/${contribution.key}`
+      + ` worker=${contribution.workerId} effect=${contribution.effectKind} state=${contribution.state}`
+      + `${contribution.status === undefined ? "" : ` status=${contribution.status}`}`,
+    );
+  }
+
+  return `## 2. Current compact projection\n\n${lines.length === 0 ? "none" : lines.join("\n")}`;
 }
 
 function renderMessage(message: PrincipalMessage): string {
@@ -361,10 +413,12 @@ function renderPolicy(policy: ConversationPolicy): string {
   return `## 4. Current execution policy\n\n${lines.join("\n")}`;
 }
 
-function renderOrientation(orientation: ProjectOrientation, disclosedSources: DisclosedSource[]): string {
-  const lines: string[] = [
-    `basis: ${orientation.basis}`,
-  ];
+function renderOrientation(orientation: ProjectOrientation | undefined, disclosedSources: DisclosedSource[]): string {
+  const lines: string[] = [];
+  if (orientation === undefined || orientation.sources.length === 0) {
+    return `## 5. Project orientation and skills\n\nnone`;
+  }
+  lines.push(`basis: ${orientation.basis}`);
   if (orientation.projectId !== undefined) {
     lines.push(`project: ${orientation.projectId}`);
   }
@@ -379,7 +433,14 @@ function renderOrientation(orientation: ProjectOrientation, disclosedSources: Di
   return `## 5. Project orientation and skills\n\n${lines.join("\n")}`;
 }
 
-function renderChildren(children: ChildSummary[]): string {
+/**
+ * Section 6 holds every child result the turn may read: the bounded settled
+ * summaries plus, when an exact keyed result-read was serviced, the full
+ * bounded semantic projections. Both stay inside this one section so the
+ * prompt keeps its exactly six fixed-order sections; full evidence is never a
+ * seventh section.
+ */
+function renderChildResults(children: ChildSummary[], fullChildResults: FullChildResult[]): string {
   const lines: string[] = [];
   for (const child of children) {
     lines.push(`child ${child.id} (${child.contribution}): ${child.conclusion}`);
@@ -397,7 +458,27 @@ function renderChildren(children: ChildSummary[]): string {
       lines.push(`  evidence: read on demand via keyed result-read: ${locators.join(", ")}`);
     }
   }
-  return `## 6. Child result summaries\n\n${lines.join("\n")}`;
+  for (const result of fullChildResults) {
+    lines.push(
+      `full child result ${result.batchId}/${result.key} (cell ${result.cellId}, status ${result.status}, projection ${result.projection})`,
+    );
+    if (result.semantic !== undefined) {
+      lines.push(`  final text: ${result.semantic.finalText}`);
+      if (result.semantic.output !== undefined) {
+        lines.push(`  structured output: ${JSON.stringify(result.semantic.output)}`);
+      }
+      if (result.semantic.artifacts !== undefined && result.semantic.artifacts.length > 0) {
+        lines.push(`  artifacts: ${JSON.stringify(result.semantic.artifacts)}`);
+      }
+      if (result.semantic.verification !== undefined) {
+        lines.push(`  verification: ${JSON.stringify(result.semantic.verification)}`);
+      }
+    }
+    if (result.omission !== undefined) {
+      lines.push(`  omitted (${result.omission.reason}, max ${result.omission.maxBytes} bytes): do not guess the content`);
+    }
+  }
+  return `## 6. Child result summaries\n\n${lines.length === 0 ? "none" : lines.join("\n")}`;
 }
 
 function pushDisclosed(disclosedSources: DisclosedSource[], source: DisclosedSource): void {
