@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T13:34:28Z",
+  "updatedAt": "2026-08-14T18:32:39Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -106,7 +106,19 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "PR #111 integrated exact P6 candidate c52876f7d5439bb563024dc18dd0086273a089b9 as merge 9f2cfa33dca618ad5b218062ebf10c5529c9283b: Workbench now opens a desktop/mobile browser conversation workspace over the frozen runtime, with durable/provisional feed, multiline composer, reconnect cursor, exact response/worker controls, canonical evidence and model identity, and separate Principal Task acceptance. GitHub verify succeeded and the named exact-head code and Kimi visual reviews passed with retained residual risk. P7 hooks, P5 temporary agent-team capability, final Mission acceptance, and Principal acceptance of Task 2dc655bf-7e85-49a3-9ed7-e63f0d7ee580 remain pending."
+    },
+    {
+      "id": "p5-temporary-contributions",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Install the missing conversation-runtime temporary contribution path: the DeepSeek coordinator may select bounded catalog workers only when a contribution earns its cost, while one coordinator remains synthesis owner and existing Task, attempt, Work Cell, and Mission sources remain authoritative.",
+      "returnCondition": "Return only with one clean non-UI implementation candidate after deterministic zero-worker, catalog list/selection, bounded read-only parallel contribution, single effectful owner, keyed child-result, correction/stale-result, cancellation, liveness, no-self-review, and no-majority-settlement evidence; relevant Workbench, Autonomy, and Work Cell tests/typechecks plus diff-check must pass. Do not add a team store, standing roles, semantic host ranking, phrase routing, UI changes, automatic retries, Task acceptance, or Mission completion.",
+      "sources": [
+        "principal:2026-08-14-continue-p5-temporary-contributions",
+        "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#wave-3"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "p5-temporary-contributions"
 }
