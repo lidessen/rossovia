@@ -98,13 +98,14 @@ therefore **unverified** beyond this audit's own probes.
    and mutating mission verbs (silent success, no stdout).
 6. **Error and recovery — partial.** All failures exit 2 with one stderr line
    prefixed `rosso:` (binary is `rossovia` — naming mismatch). No usage-error
-   vs state-error distinction. Stale-revision errors do report the first
-   failed guard's current value (`expected 0, current 1` above; the source
-   guard [tasks.ts:943](src/tasks.ts) runs before the Task guard
-   [tasks.ts:653](src/tasks.ts)), but one stale failure returns neither a
-   fresh Task snapshot nor both current guard values, so when both changed an
-   agent still needs `task show` and another retry. No partial-state
-   reporting beyond message text.
+   vs state-error distinction. Stale-revision errors do report the failed
+   guard's current value (`expected 0, current 1` above; the source guard
+   [tasks.ts:943](src/tasks.ts) runs before the Task guard
+   [tasks.ts:653](src/tasks.ts) in existing-Task mutations, while
+   `task create` has only the source guard), but one stale failure returns
+   neither a fresh Task snapshot nor both current guard values, so when both
+   drifted on an existing Task an agent still needs `task show` and another
+   retry. No partial-state reporting beyond message text.
 7. **Idempotency and retry — fails closed, retry needs a read.** `init` is
    idempotent (probe above). `task create` retry fails safely but only after
    the state advanced; recovery requires the revision loop. `preference retire`
@@ -122,14 +123,14 @@ therefore **unverified** beyond this audit's own probes.
 
 ## Principal contradiction
 
-**No subcommand-level help exists.** Every one of the 17 command families
-fails its own `--help` with exit 2 and an unrelated error, and `--version`
-does not exist. Because agents form first invocations from the CLI surface,
-every fresh activation (worker, Work Cell, hook consumer) pays a full
-governing-prose re-read or source inspection before its first correct call,
-and every typo lands in an undifferentiated exit-2 parse error. This is the
-single mismatch whose repair most changes downstream invocation cost, and it is
-fully backward-compatible to fix.
+**No subcommand-level help exists.** Every one of the 19 command families
+below the top level fails its own `--help` with exit 2 and an unrelated
+error, and `--version` does not exist. Because agents form first invocations
+from the CLI surface, every fresh activation (worker, Work Cell, hook
+consumer) pays a full governing-prose re-read or source inspection before
+its first correct call, and every typo lands in an undifferentiated exit-2
+parse error. This is the single mismatch whose repair most changes downstream
+invocation cost, and it is fully backward-compatible to fix.
 
 - **Owner of the contradiction:** the Workbench CLI contract in
   [`src/cli.ts`](src/cli.ts) and its dispatch table — not the skill, not
@@ -162,13 +163,15 @@ Workbench browser UI validates task results before acceptance — the CLI
   `--version` are absent across all families. Repair removes the largest
   recurring discovery cost and gives failure output a first-class escape
   hatch.
-- **T2.** Revision loop transparency and retry cost: every task mutation needs
-  both the `--expected-source-revision` and `--expected-revision` guards
-  fetched first, and one stale failure reports only the first failed guard
-  with its current value — no fresh Task snapshot, no second current guard —
-  so when both drifted, recovery costs another `task show` plus one more
-  retry. Repair: return the fresh Task snapshot and both current guard values
-  with the stale failure; state the revision grammar in each subcommand's new
+- **T2.** Revision loop transparency and retry cost: every existing-Task
+  mutation needs both the `--expected-source-revision` and
+  `--expected-revision` guards fetched first (`task create` accepts only
+  `--expected-source-revision`; a new Task has no prior Task revision to
+  guard), and one stale failure reports only the first failed guard with its
+  current value — no fresh Task snapshot, no second current guard — so when
+  both drifted, recovery costs another `task show` plus one more retry.
+  Repair: return the fresh Task snapshot and both current guard values with
+  the stale failure; state the revision grammar in each subcommand's new
   help.
 - **T3.** Undifferentiated error surface: one exit code (2) for usage and
   state failures; `rosso:` prefix vs `rossovia` binary name; no error
