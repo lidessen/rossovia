@@ -103,14 +103,14 @@ function input(host: ReturnType<typeof createConversationTaskOperationHost>, ope
 }
 
 describe("ConversationTaskOperationHost task_create", () => {
-  test("creates one project-bound Task with the causal action source ref and a canonical receipt", () => {
+  test("creates one project-bound Task with the causal action source ref and a canonical receipt", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
     const { conversationId, turnId, actionId, operation } = input(
       host,
       currentCreateOperation({ worktree, primaryHead, worktreeHead }),
     );
 
-    const receipt = host.executeOperation({ conversationId, turnId, actionId, operation });
+    const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
 
     const tasks = loadPrincipalTasks(host.home);
     expect(tasks.tasks).toHaveLength(1);
@@ -241,9 +241,9 @@ describe("ConversationTaskOperationHost task_create", () => {
 });
 
 describe("ConversationTaskOperationHost task_correct", () => {
-  test("appends the correction to the same active Task ID with exact re-read revisions", () => {
+  test("appends the correction to the same active Task ID with exact re-read revisions", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
-    const created = host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
+    const created = await host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
     const tasks = loadPrincipalTasks(host.home);
     const task = tasks.tasks[0]!;
 
@@ -254,7 +254,7 @@ describe("ConversationTaskOperationHost task_correct", () => {
       expectedRevision: task.revision,
       statement: "The result must also preserve the second fixture invariant.",
     });
-    const receipt = host.executeOperation(correction);
+    const receipt = await host.executeOperation(correction);
 
     expect(receipt.taskId).toBe(created.taskId);
     const after = loadPrincipalTasks(host.home);
@@ -265,9 +265,9 @@ describe("ConversationTaskOperationHost task_correct", () => {
     expect(after.tasks[0]!.corrections[0]!.sourceRef).toBe(actionRef(correction.conversationId, correction.actionId));
   });
 
-  test("fails visibly on a stale task revision instead of correcting newer state", () => {
+  test("fails visibly on a stale task revision instead of correcting newer state", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
-    const created = host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
+    const created = await host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
     const tasks = loadPrincipalTasks(host.home);
     const task = tasks.tasks[0]!;
     correctPrincipalTask(host.home, {
@@ -296,9 +296,9 @@ describe("ConversationTaskOperationHost task_correct", () => {
     expect(loadPrincipalTasks(host.home).tasks[0]!.corrections).toHaveLength(1);
   });
 
-  test("fails visibly on a stale source revision", () => {
+  test("fails visibly on a stale source revision", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
-    const created = host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
+    const created = await host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
     const before = loadPrincipalTasks(host.home);
     createPrincipalTask(host.home, {
       title: "unrelated task",
@@ -341,9 +341,9 @@ describe("ConversationTaskOperationHost task_correct", () => {
     }
   });
 
-  test("fails visibly for a settled Task without erasing history", () => {
+  test("fails visibly for a settled Task without erasing history", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
-    const created = host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
+    const created = await host.executeOperation(input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead })));
     const tasks = loadPrincipalTasks(host.home);
     const task = tasks.tasks[0]!;
     submitPrincipalTaskResult(host.home, {
@@ -410,10 +410,10 @@ describe("ConversationTaskOperationHost deferred operations", () => {
 });
 
 describe("ConversationTaskOperationHost reconciliation", () => {
-  test("finds the committed create by its causal source ref", () => {
+  test("finds the committed create by its causal source ref", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
     const attempt = input(host, currentCreateOperation({ worktree, primaryHead, worktreeHead }));
-    const receipt = host.executeOperation(attempt);
+    const receipt = await host.executeOperation(attempt);
 
     const found = host.findCanonicalReceipt(attempt);
 

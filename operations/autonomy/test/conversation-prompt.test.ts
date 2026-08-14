@@ -111,7 +111,7 @@ test("composes the six sections in fixed order and returns audit evidence", () =
   ]);
 });
 
-test("is byte-identical for identical input and omits optional sections when absent", () => {
+test("is byte-identical for identical input and always renders the six fixed-order sections with bounded none bodies", () => {
   const input: ConversationPromptInput = {
     message: {
       text: "What is the current state?",
@@ -131,10 +131,15 @@ test("is byte-identical for identical input and omits optional sections when abs
   expect(second.disclosedSources).toEqual([]);
   expect(second.sourceRevisionSelectors).toEqual([]);
 
-  for (const header of headers) {
-    const present = [headers[0], headers[2], headers[3]].includes(header);
-    expect(first.prompt.includes(header)).toBe(present);
-  }
+  // Every optional section renders its exact header in fixed order with a
+  // bounded none standing; no header is ever omitted or reordered.
+  const positions = headers.map((header) => first.prompt.indexOf(header));
+  expect(positions.every((position) => position >= 0)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  expect(first.prompt).toContain("## 2. Current compact projection\n\nnone");
+  expect(first.prompt).toContain("## 5. Project orientation and skills\n\nnone");
+  expect(first.prompt).toContain("## 6. Child result summaries\n\nnone");
+  expect(first.prompt.lastIndexOf("## ")).toBe(first.prompt.indexOf("## 6. Child result summaries"));
   expect(first.prompt).not.toContain("## 7");
   expect(first.prompt).not.toContain("tool:");
   expect(first.prompt).not.toContain("abstention:");
@@ -185,6 +190,42 @@ test("child summaries are included first and full child evidence stays a keyed r
   expect(composed.prompt).not.toContain("raw trace");
 });
 
+test("full child result evidence renders inside section 6 and never becomes a seventh section", () => {
+  const input = fullInput();
+  input.fullChildResults = [
+    {
+      batchId: "batch-1",
+      key: "child-1",
+      cellId: "cell-1",
+      status: "completed",
+      projection: "full",
+      semantic: { finalText: "The exact bounded child conclusion." },
+    },
+    {
+      batchId: "batch-2",
+      key: "child-2",
+      cellId: "cell-2",
+      status: "completed",
+      projection: "metadata-only",
+      omission: { reason: "semantic payload exceeds the bounded read", maxBytes: 64_000 },
+    },
+  ];
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).not.toContain("## 7");
+  expect(composed.prompt).toContain("## 6. Child result summaries");
+  expect(composed.prompt).toContain(
+    "full child result batch-1/child-1 (cell cell-1, status completed, projection full)",
+  );
+  expect(composed.prompt).toContain("final text: The exact bounded child conclusion.");
+  expect(composed.prompt).toContain("omitted (semantic payload exceeds the bounded read, max 64000 bytes): do not guess the content");
+  // The keyed full evidence stays inside section 6 and nothing renders after it.
+  const sectionSix = composed.prompt.indexOf("## 6. Child result summaries");
+  const firstFull = composed.prompt.indexOf("full child result batch-1/child-1");
+  expect(firstFull).toBeGreaterThan(sectionSix);
+  expect(composed.prompt.lastIndexOf("## ")).toBe(sectionSix);
+});
+
 test("withheld effects are rendered in the policy section", () => {
   const composed = composeConversationPrompt(fullInput());
 
@@ -193,12 +234,12 @@ test("withheld effects are rendered in the policy section", () => {
   expect(policySection).toContain("requested coordinator: deepseek / deepseek-v4-pro, thinking enabled, reasoning effort max");
 });
 
-test("project orientation and skills are omitted entirely without a verified route or judgment basis", () => {
+test("a missing orientation renders the fixed section with a bounded none standing", () => {
   const withoutOrientation = fullInput();
   delete withoutOrientation.orientation;
   const composed = composeConversationPrompt(withoutOrientation);
 
-  expect(composed.prompt).not.toContain("## 5. Project orientation and skills");
+  expect(composed.prompt).toContain("## 5. Project orientation and skills\n\nnone");
   expect(composed.prompt).not.toContain("skill:agent-delegation");
   expect(composed.disclosedSources).toEqual([
     { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },

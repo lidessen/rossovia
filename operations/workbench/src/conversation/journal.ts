@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { readFileSync } from "node:fs";
 import { mkdir, open, readFile, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
@@ -163,6 +164,27 @@ export class FileConversationJournal {
   }
 
   /**
+   * All validated settled events read synchronously from the durable file,
+   * in journal order, for an effect that must derive a canonical fact from
+   * the conversation immediately before acting. Reading takes no writer
+   * lease: the append path never rewrites a complete line, and an incomplete
+   * tail from a concurrent append is dropped exactly like the async read. A
+   * missing file is an empty conversation; any unreadable or invalid line
+   * fails the read visibly rather than projecting a guessed event.
+   */
+  readEventsSync(conversationId: string): readonly ConversationEvent[] {
+    const parsedId = ConversationIdSchema.parse(conversationId);
+    let content: string;
+    try {
+      content = readFileSync(this.conversationPath(parsedId), "utf8");
+    } catch (error) {
+      if (isMissing(error)) return [];
+      throw error;
+    }
+    return parseJournalContent(parsedId, content);
+  }
+
+  /**
    * Settled events after the given cursor, in journal order, without
    * duplicates. The cursor is the last applied durable sequence; `-1` replays
    * the whole conversation.
@@ -225,25 +247,7 @@ export class FileConversationJournal {
       if (isMissing(error)) return [];
       throw error;
     }
-    const completeContent = content.endsWith("\n")
-      ? content
-      : content.slice(0, content.lastIndexOf("\n") + 1);
-    return completeContent.split("\n").filter((line) => line.trim().length > 0).map((line, index) => {
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch (error) {
-        throw new Error(`conversation ${parsedId} contains invalid JSON at line ${index + 1}`, { cause: error });
-      }
-      const event = ConversationEventSchema.parse(value);
-      if (event.conversationId !== parsedId) {
-        throw new Error(`conversation ${parsedId} contains event for ${event.conversationId}`);
-      }
-      if (event.sequence !== index) {
-        throw new Error(`conversation ${parsedId} has invalid sequence ${event.sequence} at line ${index + 1}`);
-      }
-      return event;
-    });
+    return parseJournalContent(parsedId, content);
   }
 
   private async withLock(conversationId: string, action: () => Promise<void>): Promise<void> {
@@ -268,6 +272,29 @@ export class FileConversationJournal {
  * path. The filesystem lease below covers an independent Workbench process.
  */
 const writerQueues = new Map<string, Promise<void>>();
+
+/** Shared strict parse of one conversation file used by both read paths. */
+function parseJournalContent(parsedId: string, content: string): ConversationEvent[] {
+  const completeContent = content.endsWith("\n")
+    ? content
+    : content.slice(0, content.lastIndexOf("\n") + 1);
+  return completeContent.split("\n").filter((line) => line.trim().length > 0).map((line, index) => {
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch (error) {
+      throw new Error(`conversation ${parsedId} contains invalid JSON at line ${index + 1}`, { cause: error });
+    }
+    const event = ConversationEventSchema.parse(value);
+    if (event.conversationId !== parsedId) {
+      throw new Error(`conversation ${parsedId} contains event for ${event.conversationId}`);
+    }
+    if (event.sequence !== index) {
+      throw new Error(`conversation ${parsedId} has invalid sequence ${event.sequence} at line ${index + 1}`);
+    }
+    return event;
+  });
+}
 
 export class ConversationJournalWriterConflictError extends Error {
   readonly lockPath: string;
