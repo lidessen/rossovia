@@ -17,6 +17,7 @@ import {
 } from "./operational-semantics.js";
 
 const principalLocusViews = new Set([
+  "conversation",
   "overview",
   "tasks",
   "principal",
@@ -275,6 +276,181 @@ export function restoredPrincipalLocusState(resolved) {
   };
 }
 
+/**
+ * Conversation projection surface. The browser owns only the conversation
+ * identity, the last applied durable cursor, the composer draft, and the
+ * presentation focus. It never owns canonical Task/Mission/effect state:
+ * every canonical fact is re-read from the server projection, every durable
+ * event is applied from the server journal, and no client frame is ever
+ * resent automatically. The frame vocabulary mirrors the frozen transport
+ * contract in src/conversation/transport.ts.
+ */
+
+export const CONVERSATION_ID_STORAGE_KEY = "rosso.conversation.id";
+export function conversationDraftStorageKey(conversationId) {
+  return `rosso.conversation.draft.${conversationId}`;
+}
+
+export const CONVERSATION_TURN_TERMINAL_EVENTS = new Set([
+  "coordinator.turn-settled",
+  "coordinator.turn-failed",
+  "coordinator.turn-interrupted",
+]);
+
+export const CONVERSATION_ACTION_TERMINAL_EVENTS = new Set([
+  "action.settled",
+  "action.failed",
+  "action.uncertain",
+]);
+
+export function isConversationUuid(value) {
+  return typeof value === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
+}
+
+/**
+ * The reconnect route of the frozen runtime. `after` is the last durable
+ * journal sequence the client has already applied; `-1` requests a full
+ * replay. Only `journal.event` may advance that cursor.
+ */
+export function buildConversationSocketUrl(pageHref, conversationId, cursor) {
+  const url = new URL(pageHref, "http://rossovia.local/");
+  const scheme = url.protocol === "https:" ? "wss" : "ws";
+  const after = Number.isSafeInteger(cursor) && cursor >= -1 ? cursor : -1;
+  return `${scheme}://${url.host}/api/conversations/${encodeURIComponent(conversationId)}/socket?after=${after}`;
+}
+
+/**
+ * Strictly ordered, deduplicated durable application. An event at or below
+ * the applied cursor is a duplicate; an event above the next sequence is
+ * buffered until its gap fills. Returns the newly applicable events in
+ * journal order. Nothing here advances for a provisional frame.
+ */
+export function reduceDurableEvents(state, event) {
+  let cursor = Number.isSafeInteger(state?.cursor) ? state.cursor : -1;
+  const buffered = Array.isArray(state?.buffered) ? [...state.buffered] : [];
+  const applied = [];
+  let duplicates = 0;
+  const sequence = event && typeof event === "object" ? event.sequence : undefined;
+  if (!Number.isSafeInteger(sequence) || sequence <= cursor) {
+    return { cursor, buffered, applied, duplicates: duplicates + 1 };
+  }
+  buffered.push(event);
+  buffered.sort((left, right) => left.sequence - right.sequence);
+  while (buffered.length > 0 && buffered[0].sequence <= cursor) {
+    buffered.shift();
+    duplicates += 1;
+  }
+  while (buffered.length > 0 && buffered[0].sequence === cursor + 1) {
+    applied.push(buffered.shift());
+    cursor += 1;
+  }
+  return { cursor, buffered, applied, duplicates };
+}
+
+/** One presentation classification per durable event family. */
+export function classifyConversationEvent(event) {
+  switch (event && typeof event === "object" ? event.type : undefined) {
+    case "message.received": return "received";
+    case "coordinator.turn-started": return "turn-started";
+    case "action.requested": return "action-requested";
+    case "action.settled": return "action-settled";
+    case "action.failed": return "action-failed";
+    case "action.uncertain": return "action-uncertain";
+    case "coordinator.turn-settled": return "settled";
+    case "coordinator.turn-failed": return "failed";
+    case "coordinator.turn-interrupted": return "interrupted";
+    default: return "unknown";
+  }
+}
+
+/**
+ * The exact client frames of the frozen vocabulary. Builders return `null`
+ * for a frame that would be rejected by the transport schema instead of
+ * sending something the runtime could not accept.
+ */
+export function conversationMessageSubmitFrame(clientMessageId, payload) {
+  if (!isConversationUuid(clientMessageId)) return null;
+  if (typeof payload !== "string" || payload.trim() === "") return null;
+  return { type: "message.submit", clientMessageId, payload };
+}
+
+export function conversationResponseInterruptFrame(turnId) {
+  if (!isConversationUuid(turnId)) return null;
+  return { type: "response.interrupt", turnId };
+}
+
+export function conversationWorkControlFrame(target, control = "stop") {
+  if (!target || typeof target !== "object") return null;
+  const { turnId, actionId, carrierId } = target;
+  if (!isConversationUuid(turnId) || !isConversationUuid(actionId)) return null;
+  if (typeof carrierId !== "string" || carrierId.length === 0) return null;
+  if (control !== "stop") return null;
+  return { type: "work.control", turnId, actionId, carrierId, control };
+}
+
+/** Server frames are validated enough to render without trusting the wire. */
+export function parseConversationServerFrame(raw) {
+  if (typeof raw !== "string") return null;
+  let frame;
+  try {
+    frame = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (frame === null || typeof frame !== "object" || typeof frame.type !== "string") return null;
+  if (frame.type === "journal.event") {
+    const event = frame.event;
+    if (
+      event === null
+      || typeof event !== "object"
+      || !Number.isSafeInteger(event.sequence)
+      || typeof event.type !== "string"
+    ) return null;
+    return frame;
+  }
+  if (frame.type === "response.delta") {
+    if (typeof frame.turnId !== "string" || typeof frame.text !== "string") return null;
+    return frame;
+  }
+  if (frame.type === "activity.delta") {
+    if (
+      typeof frame.turnId !== "string"
+      || typeof frame.actionId !== "string"
+      || typeof frame.carrierId !== "string"
+      || typeof frame.taskId !== "string"
+      || typeof frame.attemptId !== "string"
+      || typeof frame.text !== "string"
+    ) return null;
+    return frame;
+  }
+  if (frame.type === "projection.changed") return frame;
+  if (frame.type === "protocol.error") {
+    if (typeof frame.code !== "string" || typeof frame.message !== "string") return null;
+    return frame;
+  }
+  return null;
+}
+
+const TASK_RECEIPT_EVIDENCE_PATTERN =
+  /^workbench:state\/tasks\.json:task\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})@\d+$/iu;
+
+/**
+ * Map one canonical task receipt evidence reference to a work item id only
+ * when the exact id is present in the current server projection. The browser
+ * never links to canonical evidence it cannot re-read from the snapshot.
+ */
+export function taskEvidenceLinkTarget(ref, workItems) {
+  if (typeof ref !== "string") return null;
+  const match = TASK_RECEIPT_EVIDENCE_PATTERN.exec(ref);
+  if (match === null) return null;
+  const candidate = `principal-task:${match[1]}`;
+  if (!Array.isArray(workItems)) return null;
+  return workItems.some((item) => item && typeof item === "object" && item.id === candidate)
+    ? candidate
+    : null;
+}
+
 (() => {
   "use strict";
 
@@ -290,7 +466,7 @@ export function restoredPrincipalLocusState(resolved) {
     selectedMissionId: null,
     selectedWorktreeId: null,
     selectedWorkItemId: null,
-    activeView: "overview",
+    activeView: "conversation",
     taskFilter: "all",
     peekOpen: false,
     taskCreateOpen: false,
@@ -312,6 +488,31 @@ export function restoredPrincipalLocusState(resolved) {
     locusRequest: initialLocusRequest,
     locusRestorePending: initialLocusRequested,
     unavailableLocus: null,
+  };
+
+  /**
+   * Browser-local conversation state. Exactly the retained surface named by
+   * the plan: conversation identity, the last applied durable cursor, the
+   * composer draft, and presentation focus (scroll stickiness and which
+   * cards are open). The feed is rebuilt from the durable journal; canonical
+   * facts are re-read from the snapshot. Nothing here is a canonical source,
+   * and no frame is ever resent automatically.
+   */
+  const conversationState = {
+    conversationId: null,
+    cursor: -1,
+    buffered: [],
+    socket: null,
+    connection: "unavailable",
+    reconnectAttempt: 0,
+    reconnectTimer: null,
+    closedDeliberately: false,
+    feed: [],
+    protocolNotices: [],
+    draft: "",
+    carriers: new Map(),
+    stickToBottom: true,
+    lastSubmittedClientMessageId: null,
   };
 
   const demoSnapshot = {
@@ -1362,11 +1563,13 @@ export function restoredPrincipalLocusState(resolved) {
     });
     $$("[data-mobile-view]").forEach((button) => {
       const mobileView = button.dataset.mobileView;
-      const active = mobileView === "overview"
-        ? state.activeView === "overview"
-        : mobileView === "tasks"
-          ? ["tasks", "principal", "agent", "agent-pending", "independent", "completed"].includes(state.activeView)
-          : state.activeView === "projects" || state.activeView === "project";
+      const active = mobileView === "conversation"
+        ? state.activeView === "conversation"
+        : mobileView === "overview"
+          ? state.activeView === "overview"
+          : mobileView === "tasks"
+            ? ["tasks", "principal", "agent", "agent-pending", "independent", "completed"].includes(state.activeView)
+            : state.activeView === "projects" || state.activeView === "project";
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-current", active ? "page" : "false");
     });
@@ -3974,6 +4177,876 @@ export function restoredPrincipalLocusState(resolved) {
     }
   }
 
+  function restoreConversationIdentity() {
+    let stored = null;
+    try {
+      stored = window.localStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
+    } catch {
+      stored = null;
+    }
+    if (!isConversationUuid(stored)) {
+      stored = crypto.randomUUID();
+      try {
+        window.localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, stored);
+      } catch {
+        // Session-only identity when storage is unavailable.
+      }
+    }
+    conversationState.conversationId = stored;
+    try {
+      const draft = window.localStorage.getItem(
+        conversationDraftStorageKey(stored),
+      );
+      if (typeof draft === "string") conversationState.draft = draft;
+    } catch {
+      // Draft stays in memory when storage is unavailable.
+    }
+  }
+
+  function persistConversationDraft() {
+    if (conversationState.conversationId === null) return;
+    try {
+      if (conversationState.draft === "") {
+        window.localStorage.removeItem(
+          conversationDraftStorageKey(conversationState.conversationId),
+        );
+      } else {
+        window.localStorage.setItem(
+          conversationDraftStorageKey(conversationState.conversationId),
+          conversationState.draft,
+        );
+      }
+    } catch {
+      // Storage failures never block the composer.
+    }
+  }
+
+  function connectConversation() {
+    if (conversationState.closedDeliberately) return;
+    const id = conversationState.conversationId;
+    if (id === null) return;
+    window.clearTimeout(conversationState.reconnectTimer);
+    const current = conversationState.socket;
+    if (current !== null && current.readyState === WebSocket.OPEN) return;
+    conversationState.connection = "connecting";
+    renderConversationSurface();
+    let socket;
+    try {
+      socket = new WebSocket(
+        buildConversationSocketUrl(window.location.href, id, conversationState.cursor),
+      );
+    } catch {
+      conversationState.connection = "unavailable";
+      renderConversationSurface();
+      scheduleConversationReconnect();
+      return;
+    }
+    conversationState.socket = socket;
+    socket.addEventListener("open", () => {
+      conversationState.connection = "live";
+      conversationState.reconnectAttempt = 0;
+      conversationState.protocolNotices = [];
+      // Provisional deltas are never replayed: whatever was streaming is
+      // dropped and only settled journal events may reconstruct the feed.
+      clearConversationProvisional();
+      renderConversationSurface();
+    });
+    socket.addEventListener("message", (messageEvent) => {
+      handleConversationMessage(messageEvent.data);
+    });
+    socket.addEventListener("close", () => {
+      if (conversationState.socket !== socket) return;
+      conversationState.socket = null;
+      clearConversationProvisional();
+      for (const entry of conversationState.feed) {
+        if (entry.kind === "message" && entry.status === "pending") {
+          entry.status = "failed";
+        }
+      }
+      if (conversationState.closedDeliberately) {
+        conversationState.connection = "unavailable";
+        renderConversationSurface();
+        return;
+      }
+      conversationState.connection = "disconnected";
+      renderConversationSurface();
+      scheduleConversationReconnect();
+    });
+  }
+
+  function scheduleConversationReconnect() {
+    if (conversationState.closedDeliberately) return;
+    window.clearTimeout(conversationState.reconnectTimer);
+    const delay = Math.min(
+      15_000,
+      500 * 2 ** Math.min(conversationState.reconnectAttempt, 4),
+    );
+    conversationState.reconnectAttempt += 1;
+    conversationState.reconnectTimer = window.setTimeout(() => {
+      connectConversation();
+    }, delay);
+  }
+
+  function clearConversationProvisional() {
+    for (const entry of conversationState.feed) {
+      if (entry.kind === "turn" && !entry.terminal) {
+        entry.provisional = "";
+      }
+    }
+    conversationState.carriers.clear();
+  }
+
+  function findConversationTurn(turnId) {
+    return conversationState.feed.find(
+      (entry) => entry.kind === "turn" && entry.turnId === turnId,
+    ) ?? null;
+  }
+
+  function findConversationAction(actionId) {
+    for (const entry of conversationState.feed) {
+      if (entry.kind !== "turn") continue;
+      const action = entry.actions.find(
+        (candidate) => candidate.actionId === actionId,
+      );
+      if (action) return action;
+    }
+    return null;
+  }
+
+  function findConversationMessage(clientMessageId) {
+    return conversationState.feed.find(
+      (entry) => entry.kind === "message"
+        && entry.clientMessageId === clientMessageId,
+    ) ?? null;
+  }
+
+  function activeConversationTurn() {
+    for (let index = conversationState.feed.length - 1; index >= 0; index -= 1) {
+      const entry = conversationState.feed[index];
+      if (entry.kind === "turn" && !entry.terminal) return entry;
+    }
+    return null;
+  }
+
+  function appendConversationEventToFeed(event) {
+    switch (event.type) {
+      case "message.received": {
+        const { clientMessageId, messageId, payload } = event.data;
+        if (
+          clientMessageId === conversationState.lastSubmittedClientMessageId
+        ) {
+          conversationState.lastSubmittedClientMessageId = null;
+          $("#conversation-composer-status").textContent =
+            "已送达 · 已结算为 durable journal 事件。";
+        }
+        const existing = findConversationMessage(clientMessageId);
+        if (existing) {
+          existing.status = "delivered";
+          existing.messageId = messageId;
+          existing.sequence = event.sequence;
+          return;
+        }
+        conversationState.feed.push({
+          kind: "message",
+          sequence: event.sequence,
+          clientMessageId,
+          messageId,
+          payload,
+          status: "delivered",
+        });
+        return;
+      }
+      case "coordinator.turn-started": {
+        const data = event.data;
+        if (findConversationTurn(data.turnId)) return;
+        conversationState.feed.push({
+          kind: "turn",
+          sequence: event.sequence,
+          turnId: data.turnId,
+          messageId: data.messageId,
+          requestedPolicy: data.requestedPolicy,
+          prompt: data.prompt ?? null,
+          disclosedSources: list(data.disclosedSources),
+          sourceRevisionSelectors: list(data.sourceRevisionSelectors),
+          status: "started",
+          terminal: false,
+          provisional: "",
+          response: "",
+          reason: null,
+          observedEvidence: null,
+          interruptRequested: false,
+          actions: [],
+        });
+        return;
+      }
+      case "action.requested": {
+        const data = event.data;
+        const turn = findConversationTurn(data.turnId);
+        if (!turn) return;
+        if (turn.actions.some((action) => action.actionId === data.actionId)) return;
+        turn.actions.push({
+          kind: "action",
+          sequence: event.sequence,
+          actionId: data.actionId,
+          actionKind: data.kind,
+          operation: data.operation,
+          status: "requested",
+          evidenceRefs: [],
+          reason: null,
+        });
+        return;
+      }
+      case "action.settled":
+      case "action.failed":
+      case "action.uncertain": {
+        const data = event.data;
+        const action = findConversationAction(data.actionId);
+        if (!action) return;
+        action.status = event.type === "action.settled"
+          ? "settled"
+          : event.type === "action.failed"
+            ? "failed"
+            : "uncertain";
+        action.evidenceRefs = list(data.evidenceRefs);
+        action.reason = typeof data.reason === "string" ? data.reason : null;
+        action.sequence = event.sequence;
+        return;
+      }
+      case "coordinator.turn-settled": {
+        const data = event.data;
+        const turn = findConversationTurn(data.turnId);
+        if (!turn) return;
+        turn.status = "settled";
+        turn.terminal = true;
+        turn.response = typeof data.response === "string" ? data.response : "";
+        turn.observedEvidence = data.observedEvidence ?? null;
+        turn.provisional = "";
+        turn.sequence = event.sequence;
+        return;
+      }
+      case "coordinator.turn-failed": {
+        const data = event.data;
+        const turn = findConversationTurn(data.turnId);
+        if (!turn) return;
+        turn.status = "failed";
+        turn.terminal = true;
+        turn.reason = data.reason;
+        turn.provisional = "";
+        turn.sequence = event.sequence;
+        return;
+      }
+      case "coordinator.turn-interrupted": {
+        const data = event.data;
+        const turn = findConversationTurn(data.turnId);
+        if (!turn) return;
+        turn.status = "interrupted";
+        turn.terminal = true;
+        turn.provisional = "";
+        turn.sequence = event.sequence;
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  function applyConversationJournalEvent(event) {
+    const reduced = reduceDurableEvents(
+      { cursor: conversationState.cursor, buffered: conversationState.buffered },
+      event,
+    );
+    conversationState.cursor = reduced.cursor;
+    conversationState.buffered = reduced.buffered;
+    for (const applied of reduced.applied) {
+      appendConversationEventToFeed(applied);
+    }
+    if (reduced.applied.length > 0) renderConversationSurface();
+  }
+
+  function handleConversationMessage(data) {
+    const frame = parseConversationServerFrame(data);
+    if (frame === null) return;
+    switch (frame.type) {
+      case "journal.event":
+        applyConversationJournalEvent(frame.event);
+        return;
+      case "response.delta": {
+        const turn = findConversationTurn(frame.turnId);
+        if (!turn || turn.terminal) return;
+        turn.provisional += frame.text;
+        renderConversationSurface();
+        return;
+      }
+      case "activity.delta": {
+        let carrier = conversationState.carriers.get(frame.actionId);
+        if (carrier === undefined) {
+          carrier = {
+            turnId: frame.turnId,
+            messageId: frame.messageId,
+            actionId: frame.actionId,
+            carrierId: frame.carrierId,
+            taskId: frame.taskId,
+            attemptId: frame.attemptId,
+            activity: [],
+            control: "idle",
+          };
+          conversationState.carriers.set(frame.actionId, carrier);
+        }
+        carrier.activity.push({ text: frame.text, at: new Date().toISOString() });
+        renderConversationSurface();
+        return;
+      }
+      case "projection.changed":
+        loadSnapshot({ manual: true, ensure: true });
+        return;
+      case "protocol.error": {
+        conversationState.protocolNotices.push({
+          code: frame.code,
+          message: frame.message,
+          at: new Date().toISOString(),
+        });
+        // A rejected or unsupported control never reaches the durable action
+        // path; re-enable the exact control for an explicit second attempt
+        // rather than guessing which target the runtime refused.
+        for (const carrier of conversationState.carriers.values()) {
+          if (carrier.control === "requested") carrier.control = "idle";
+        }
+        renderConversationSurface();
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  function pushProtocolNotice(code, message) {
+    conversationState.protocolNotices.push({
+      code,
+      message,
+      at: new Date().toISOString(),
+    });
+    renderConversationSurface();
+  }
+
+  function submitConversationMessage() {
+    const textarea = $("#conversation-composer-text");
+    const status = $("#conversation-composer-status");
+    const payload = textarea.value;
+    if (payload.trim() === "") {
+      textarea.focus();
+      status.textContent = "空消息不会发送。";
+      return;
+    }
+    if (conversationState.connection !== "live") {
+      textarea.focus();
+      status.textContent =
+        "对话连接不可用：消息未发送，草稿保留；不会自动重发。";
+      return;
+    }
+    const clientMessageId = crypto.randomUUID();
+    const frame = conversationMessageSubmitFrame(clientMessageId, payload);
+    if (frame === null) {
+      status.textContent = "消息无法通过协议校验，未发送。";
+      return;
+    }
+    let sent = false;
+    try {
+      conversationState.socket.send(JSON.stringify(frame));
+      sent = true;
+    } catch {
+      sent = false;
+    }
+    if (!sent) {
+      textarea.focus();
+      status.textContent = "发送失败：消息未发送，草稿保留；不会自动重发。";
+      return;
+    }
+    conversationState.feed.push({
+      kind: "message",
+      sequence: null,
+      clientMessageId,
+      messageId: null,
+      payload,
+      status: "pending",
+    });
+    conversationState.lastSubmittedClientMessageId = clientMessageId;
+    textarea.value = "";
+    conversationState.draft = "";
+    persistConversationDraft();
+    status.textContent = "已发送，等待送达回执。";
+    conversationState.stickToBottom = true;
+    textarea.focus();
+    renderConversationSurface();
+  }
+
+  function retryConversationMessage(clientMessageId) {
+    const entry = findConversationMessage(clientMessageId);
+    if (!entry || entry.kind !== "message") return;
+    if (conversationState.connection !== "live") {
+      pushProtocolNotice(
+        "not-sent",
+        "连接不可用：手动重试未发送；不会自动重发。",
+      );
+      return;
+    }
+    const frame = conversationMessageSubmitFrame(clientMessageId, entry.payload);
+    if (frame === null) {
+      pushProtocolNotice("invalid-frame", "重试消息无法通过协议校验，未发送。");
+      return;
+    }
+    try {
+      conversationState.socket.send(JSON.stringify(frame));
+      entry.status = "pending";
+      conversationState.lastSubmittedClientMessageId = clientMessageId;
+    } catch {
+      pushProtocolNotice("not-sent", "重试发送失败；不会自动重发。");
+      return;
+    }
+    renderConversationSurface();
+  }
+
+  function sendConversationResponseInterrupt(turnId) {
+    if (conversationState.connection !== "live") {
+      pushProtocolNotice(
+        "not-sent",
+        "连接不可用：回复中断未发送；不会自动重发。",
+      );
+      return;
+    }
+    const frame = conversationResponseInterruptFrame(turnId);
+    if (frame === null) {
+      pushProtocolNotice("invalid-frame", "回复中断目标无效，未发送。");
+      return;
+    }
+    try {
+      conversationState.socket.send(JSON.stringify(frame));
+    } catch {
+      pushProtocolNotice("not-sent", "回复中断发送失败；不会自动重发。");
+      return;
+    }
+    const turn = findConversationTurn(turnId);
+    if (turn) {
+      turn.interruptRequested = true;
+      turn.provisional = "";
+    }
+    renderConversationSurface();
+  }
+
+  function sendConversationWorkStop(actionId) {
+    const carrier = conversationState.carriers.get(actionId);
+    if (carrier === undefined) {
+      pushProtocolNotice(
+        "not-sent",
+        "该动作没有当前观察到的精确执行载体；停止未发送。",
+      );
+      return;
+    }
+    if (conversationState.connection !== "live") {
+      pushProtocolNotice(
+        "not-sent",
+        "连接不可用：工作停止未发送；不会自动重发。",
+      );
+      return;
+    }
+    const frame = conversationWorkControlFrame(
+      {
+        turnId: carrier.turnId,
+        actionId: carrier.actionId,
+        carrierId: carrier.carrierId,
+      },
+      "stop",
+    );
+    if (frame === null) {
+      pushProtocolNotice("invalid-frame", "工作控制目标无效，未发送。");
+      return;
+    }
+    try {
+      conversationState.socket.send(JSON.stringify(frame));
+    } catch {
+      pushProtocolNotice("not-sent", "工作停止发送失败；不会自动重发。");
+      return;
+    }
+    carrier.control = "requested";
+    renderConversationSurface();
+  }
+
+  const conversationActionKindCopy = {
+    task_create: "创建任务",
+    task_correct: "纠正任务",
+    task_continue: "继续任务执行",
+    work_control: "工作控制",
+  };
+  const conversationActionStatusCopy = {
+    requested: "requested · 等待权威回执",
+    settled: "settled · 已结算",
+    failed: "failed · 失败",
+    uncertain: "uncertain · 效果无法确认",
+  };
+  const conversationTurnStatusCopy = {
+    started: "turn-started · 进行中",
+    settled: "settled · 已结算",
+    failed: "failed · 失败",
+    interrupted: "interrupted · 已中断",
+  };
+  const conversationMessageStatusCopy = {
+    pending: "pending · 发送中",
+    delivered: "received · 已送达",
+    failed: "failed · 送达未确认",
+  };
+
+  function shortConversationId(value) {
+    return typeof value === "string" && value.length > 12
+      ? `${value.slice(0, 8)}…`
+      : text(value, "—");
+  }
+
+  function requestedPolicyLabel(policy) {
+    const raw = policy !== null && typeof policy === "object" ? policy : {};
+    return [
+      text(first(raw, ["provider"], "unknown"), "unknown"),
+      text(first(raw, ["model"], "unknown"), "unknown"),
+      first(raw, ["thinking"]) === "enabled" ? "thinking" : "",
+      first(raw, ["reasoningEffort"]) ? `effort ${first(raw, ["reasoningEffort"])}` : "",
+    ].filter(Boolean).join(" · ");
+  }
+
+  function observedEvidenceLabel(evidence) {
+    const raw = evidence !== null && typeof evidence === "object" ? evidence : {};
+    const provider = text(first(raw, ["provider"]), "unknown");
+    const model = text(first(raw, ["model"]), "unknown");
+    const usage = first(raw, ["usage"]);
+    const usageLabel = usage && typeof usage === "object"
+      ? ` · ${text(first(usage, ["inputTokens"]), "—")}/${text(first(usage, ["outputTokens"]), "—")} tokens`
+      : "";
+    const fingerprint = first(raw, ["fingerprint"]);
+    const fingerprintLabel = fingerprint
+      ? ` · fingerprint ${shortConversationId(fingerprint)}`
+      : "";
+    return `${provider}/${model}${usageLabel}${fingerprintLabel}`;
+  }
+
+  function conversationOperationFacts(action) {
+    const operation = first(action, ["operation"], {});
+    const facts = [];
+    if (action.actionKind === "task_create") {
+      facts.push(["标题", text(first(operation, ["title"]))]);
+      facts.push(["项目 ID", text(first(operation, ["projectId"]))]);
+      facts.push(["Worktree", text(first(operation, ["worktreePath"]))]);
+    } else if (action.actionKind === "task_correct") {
+      facts.push(["任务 ID", text(first(operation, ["taskId"]))]);
+      facts.push(["期望修订", `source ${text(first(operation, ["expectedSourceRevision"]))} · task ${text(first(operation, ["expectedRevision"]))}`]);
+      facts.push(["纠正", text(first(operation, ["statement"]))]);
+    } else if (action.actionKind === "task_continue") {
+      facts.push(["任务 ID", text(first(operation, ["taskId"]))]);
+      facts.push(["Worker", text(first(operation, ["workerId"]))]);
+      facts.push(["项目 ID", text(first(operation, ["projectId"]))]);
+      facts.push(["Worktree", text(first(operation, ["worktreePath"]))]);
+    } else if (action.actionKind === "work_control") {
+      facts.push(["载体 ID", text(first(operation, ["carrierId"]))]);
+      facts.push(["控制", text(first(operation, ["control"]))]);
+    }
+    return facts;
+  }
+
+  function renderConversationEvidenceRefs(refs) {
+    const items = workItems();
+    return refs.map((ref) => {
+      const target = taskEvidenceLinkTarget(ref, items);
+      return target === null
+        ? `<code class="evidence-ref">${escapeHtml(ref)}</code>`
+        : `<button class="evidence-ref-link" type="button" data-evidence-task="${escapeHtml(target)}">
+             <code>${escapeHtml(ref)}</code> <span>查看任务</span>
+           </button>`;
+    }).join("");
+  }
+
+  function renderConversationCarrier(actionId) {
+    const carrier = conversationState.carriers.get(actionId);
+    if (carrier === undefined) return "";
+    const recent = carrier.activity.slice(-3).map((line) => {
+      return `<li><span>${formatTime(line.at)}</span>${escapeHtml(line.text)}</li>`;
+    }).join("");
+    const controlBusy = carrier.control === "requested";
+    const live = conversationState.connection === "live";
+    return `
+      <div class="conversation-carrier" data-carrier-control="${carrier.control}">
+        <header>
+          <span>执行载体 · owner-backed 活动</span>
+          <b>${controlBusy ? "停止已请求 · 等待权威回执" : "活动已观察"}</b>
+        </header>
+        <p class="carrier-identity">
+          task <code>${escapeHtml(carrier.taskId)}</code> ·
+          attempt <code>${escapeHtml(carrier.attemptId)}</code> ·
+          carrier <code>${escapeHtml(carrier.carrierId)}</code>
+        </p>
+        ${
+          recent
+            ? `<ul class="carrier-activity">${recent}</ul>`
+            : '<p class="carrier-activity empty">暂无实时活动文本。</p>'
+        }
+        <footer>
+          <button
+            class="conversation-control is-danger"
+            type="button"
+            data-conversation-work-stop="${escapeHtml(actionId)}"
+            ${controlBusy || !live ? "disabled" : ""}
+          >
+            停止该工作
+          </button>
+          <small>
+            只发送精确 turn/action/carrier 目标；过期的目标会被运行时以零效果拒绝。
+            暂停/续接/恢复不在此 UI 提供，因为它们不属于当前普通 Task 载体的控制面。
+          </small>
+        </footer>
+      </div>
+    `;
+  }
+
+  function renderConversationAction(action) {
+    const facts = conversationOperationFacts(action);
+    const refs = action.evidenceRefs;
+    return `
+      <div class="conversation-action" data-action-status="${action.status}">
+        <header>
+          <span>${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)}</span>
+          <code>${escapeHtml(shortConversationId(action.actionId))}</code>
+          <b>${escapeHtml(conversationActionStatusCopy[action.status] || action.status)}</b>
+        </header>
+        <dl class="action-facts">
+          ${facts.map(([label, value]) => `
+            <div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>
+          `).join("")}
+        </dl>
+        ${
+          action.status === "settled"
+            ? `<div class="action-evidence">
+                 <span>canonical 证据引用</span>
+                 ${refs.length ? renderConversationEvidenceRefs(refs) : '<code>无引用</code>'}
+                 <small>点击任务引用打开任务详情；本地验收只在任务详情中显式执行，conversation 不代替 Principal 验收。</small>
+               </div>`
+            : action.status === "failed" || action.status === "uncertain"
+              ? `<p class="action-reason">${escapeHtml(action.reason || "原因未说明")}</p>`
+              : '<p class="action-waiting">等待 canonical 所有者的权威回执…</p>'
+        }
+        ${renderConversationCarrier(action.actionId)}
+      </div>
+    `;
+  }
+
+  function renderConversationTurn(entry) {
+    const policy = entry.requestedPolicy !== null && typeof entry.requestedPolicy === "object"
+      ? entry.requestedPolicy
+      : {};
+    const observed = entry.terminal
+      ? (entry.observedEvidence === null || entry.observedEvidence === undefined
+        ? "未报告 · unknown"
+        : observedEvidenceLabel(entry.observedEvidence))
+      : "unknown · 尚未报告";
+    const interruptable = entry.kind === "turn"
+      && !entry.terminal
+      && activeConversationTurn()?.turnId === entry.turnId;
+    const interruptSent = entry.interruptRequested === true;
+    const sources = entry.disclosedSources.length
+      ? `<details class="turn-sources">
+           <summary>披露来源 ${entry.disclosedSources.length} · 版本选择 ${entry.sourceRevisionSelectors.length}</summary>
+           <ul>
+             ${entry.disclosedSources.map((source) =>
+               `<li><code>${escapeHtml(text(first(source, ["ref"]), "—"))}</code></li>`).join("")}
+             ${entry.sourceRevisionSelectors.map((selector) =>
+               `<li><span>selector</span> <code>${escapeHtml(text(first(selector, ["source"]), "—"))}@${escapeHtml(text(first(selector, ["revision"]), "—"))}</code></li>`).join("")}
+           </ul>
+         </details>`
+      : "";
+    return `
+      <article class="conversation-item turn-item" data-turn-status="${entry.status}" data-turn-id="${escapeHtml(entry.turnId)}">
+        <header>
+          <span class="item-role">Coordinator</span>
+          <code>turn ${escapeHtml(shortConversationId(entry.turnId))}</code>
+          <b>${escapeHtml(conversationTurnStatusCopy[entry.status] || entry.status)}</b>
+          ${
+            interruptable
+              ? `<button class="conversation-control" type="button" data-conversation-interrupt="${escapeHtml(entry.turnId)}" ${interruptSent ? "disabled" : ""}>
+                   ${interruptSent ? "中断已请求" : "中断这条回复"}
+                 </button>`
+              : ""
+          }
+        </header>
+        <dl class="turn-policy">
+          <div><dt>请求 provider/model</dt><dd>${escapeHtml(requestedPolicyLabel(policy))}</dd></div>
+          <div><dt>实际 provider/model</dt><dd data-observed="${entry.terminal ? "settled" : "started"}">${escapeHtml(observed)}</dd></div>
+        </dl>
+        ${sources}
+        <div class="turn-actions">
+          ${entry.actions.map(renderConversationAction).join("")}
+        </div>
+        ${
+          entry.status === "settled"
+            ? `<p class="turn-response">${escapeHtml(entry.response)}</p>`
+            : entry.status === "failed"
+              ? `<p class="turn-failure">${escapeHtml(entry.reason || "原因未说明")}</p>`
+              : entry.status === "interrupted"
+                ? '<p class="turn-failure">此回复已按请求中断；工作控制不受其影响。</p>'
+                : entry.provisional
+                  ? `<p class="turn-provisional" data-provisional="true">${escapeHtml(entry.provisional)}</p>`
+                  : '<p class="turn-waiting">正在生成回复…（流式内容为临时状态，不会伪装成 durable）</p>'
+        }
+      </article>
+    `;
+  }
+
+  function renderConversationMessage(entry) {
+    return `
+      <article class="conversation-item message-item" data-message-status="${entry.status}" data-message-client-id="${escapeHtml(entry.clientMessageId)}">
+        <header>
+          <span class="item-role">你</span>
+          <code>${escapeHtml(shortConversationId(entry.clientMessageId))}</code>
+          <b>${escapeHtml(conversationMessageStatusCopy[entry.status] || entry.status)}</b>
+        </header>
+        <p class="message-text">${escapeHtml(entry.payload)}</p>
+        ${
+          entry.status === "failed"
+            ? `<div class="message-retry">
+                 <button class="conversation-control" type="button" data-conversation-retry="${escapeHtml(entry.clientMessageId)}">
+                   手动重试（相同消息标识）
+                 </button>
+                 <small>送达未确认；不会自动重发。重试复用同一消息标识，不会产生重复效果。</small>
+               </div>`
+            : ""
+        }
+      </article>
+    `;
+  }
+
+  function renderConversationFeed() {
+    const feed = $("#conversation-feed");
+    const wasStuck = conversationState.stickToBottom;
+    const previousScroll = feed.scrollTop;
+    feed.innerHTML = conversationState.feed.length
+      ? conversationState.feed.map((entry) =>
+        entry.kind === "turn"
+          ? renderConversationTurn(entry)
+          : renderConversationMessage(entry),
+      ).join("")
+      : '<div class="surface-empty"><span>—</span><p>还没有消息。发送第一条消息开始；断线重连后，这里只按 journal 顺序恢复已结算事件。</p></div>';
+    if (wasStuck) {
+      feed.scrollTop = feed.scrollHeight;
+    } else {
+      feed.scrollTop = previousScroll;
+    }
+  }
+
+  function bindConversationFeedActions() {
+    $$("[data-conversation-interrupt]").forEach((button) => {
+      button.addEventListener("click", () => {
+        sendConversationResponseInterrupt(button.dataset.conversationInterrupt);
+      });
+    });
+    $$("[data-conversation-work-stop]").forEach((button) => {
+      button.addEventListener("click", () => {
+        sendConversationWorkStop(button.dataset.conversationWorkStop);
+      });
+    });
+    $$("[data-conversation-retry]").forEach((button) => {
+      button.addEventListener("click", () => {
+        retryConversationMessage(button.dataset.conversationRetry);
+      });
+    });
+    $$("[data-evidence-task]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const workItem = workItems().find(
+          (item) => item.id === button.dataset.evidenceTask,
+        );
+        if (!workItem) return;
+        clearActionReceipt();
+        state.taskCreateOpen = false;
+        state.taskActionReceipt = null;
+        state.unavailableLocus = null;
+        selectWorkItemContext(workItem);
+        render();
+        writePrincipalLocus();
+      });
+    });
+  }
+
+  function renderConversationConnection() {
+    const label = $("#conversation-connection-label");
+    const mark = $("#conversation-connection-mark");
+    const id = $("#conversation-id");
+    id.textContent = shortConversationId(conversationState.conversationId);
+    const copy = {
+      connecting: "正在连接",
+      live: "已连接 · 实时",
+      disconnected: "已断开 · 正在重连",
+      unavailable: "不可用",
+    };
+    label.textContent = copy[conversationState.connection] || "未连接";
+    mark.dataset.connection = conversationState.connection;
+    const reconnect = $("#conversation-reconnect");
+    reconnect.hidden = conversationState.connection !== "disconnected";
+    if (!reconnect.hidden) {
+      $("#conversation-reconnect-attempt").textContent =
+        `第 ${conversationState.reconnectAttempt} 次重连 · 临时流式内容已丢弃，只恢复已结算事件`;
+    }
+    const notices = $("#conversation-notices");
+    const recent = conversationState.protocolNotices.slice(-4);
+    notices.innerHTML = recent.map((notice) => `
+      <p class="protocol-notice" data-code="${escapeHtml(notice.code)}">
+        <code>${escapeHtml(notice.code)}</code>
+        <span>${escapeHtml(notice.message)}</span>
+      </p>
+    `).join("");
+  }
+
+  function renderConversationComposer() {
+    const textarea = $("#conversation-composer-text");
+    const submit = $("#conversation-composer-submit");
+    const live = conversationState.connection === "live";
+    submit.disabled = !live;
+    if (
+      document.activeElement !== textarea
+      && textarea.value !== conversationState.draft
+    ) {
+      textarea.value = conversationState.draft;
+    }
+  }
+
+  function renderConversationSurface() {
+    const surface = $("#conversation-surface");
+    const active = state.activeView === "conversation";
+    surface.hidden = !active;
+    $("#project-surface").hidden = active;
+    if (!active) return;
+    renderConversationConnection();
+    renderConversationFeed();
+    bindConversationFeedActions();
+    renderConversationComposer();
+  }
+
+  function bindConversationEvents() {
+    const textarea = $("#conversation-composer-text");
+    textarea.addEventListener("input", () => {
+      conversationState.draft = textarea.value;
+      persistConversationDraft();
+      renderConversationComposer();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        submitConversationMessage();
+      }
+    });
+    $("#conversation-composer-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitConversationMessage();
+    });
+    const feed = $("#conversation-feed");
+    feed.addEventListener("scroll", () => {
+      const nearBottom =
+        feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+      conversationState.stickToBottom = nearBottom;
+    });
+  }
+
   function render() {
     ensureSelections();
     renderConnection();
@@ -3983,6 +5056,7 @@ export function restoredPrincipalLocusState(resolved) {
     renderViewNavigation();
     renderUnifiedSurface();
     renderProjectSurface();
+    renderConversationSurface();
     renderTarget();
     renderOperation();
     renderIntentLineageGate();
@@ -4631,12 +5705,16 @@ export function restoredPrincipalLocusState(resolved) {
         state.taskCreateOpen = false;
         render();
         writePrincipalLocus();
+        if (state.activeView === "conversation") {
+          $("#conversation-composer-text").focus({ preventScroll: true });
+        }
       });
     });
 
     $$("[data-mobile-view]").forEach((button) => {
       button.addEventListener("click", () => {
         state.unavailableLocus = null;
+        if (button.dataset.mobileView === "conversation") state.activeView = "conversation";
         if (button.dataset.mobileView === "overview") state.activeView = "overview";
         if (button.dataset.mobileView === "tasks") state.activeView = "tasks";
         if (button.dataset.mobileView === "projects") state.activeView = "projects";
@@ -4730,12 +5808,25 @@ export function restoredPrincipalLocusState(resolved) {
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") loadSnapshot();
-      else window.clearTimeout(state.pollTimer);
+      if (document.visibilityState === "visible") {
+        loadSnapshot();
+        if (
+          conversationState.socket === null
+          && !conversationState.closedDeliberately
+        ) {
+          connectConversation();
+        }
+      } else {
+        window.clearTimeout(state.pollTimer);
+      }
     });
+
+    bindConversationEvents();
   }
 
+  restoreConversationIdentity();
   bindEvents();
   render();
   loadSnapshot();
+  connectConversation();
 })();

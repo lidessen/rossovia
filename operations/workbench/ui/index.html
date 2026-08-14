@@ -89,7 +89,11 @@
     <main class="workbench-shell">
       <aside class="principal-rail" aria-labelledby="principal-attention-heading">
         <nav class="rail-section workbench-view-nav" aria-label="工作台视图">
-          <button class="view-button is-active" type="button" data-view="overview">
+          <button class="view-button is-active" type="button" data-view="conversation">
+            <span>对话</span>
+            <small>日常入口 · 发布与监督</small>
+          </button>
+          <button class="view-button" type="button" data-view="overview">
             <span>总览</span>
             <small>项目与当前工作</small>
           </button>
@@ -177,6 +181,65 @@
           <span id="snapshot-version">版本 —</span>
         </footer>
       </aside>
+
+      <section class="conversation-surface" id="conversation-surface" aria-labelledby="conversation-heading" hidden>
+        <header class="conversation-header">
+          <div>
+            <p class="eyebrow">Conversation entry</p>
+            <h2 id="conversation-heading">对话</h2>
+            <p id="conversation-summary">
+              用自然语言发布与纠正任务、观察执行；从这里精确中断一条回复或停止一个已观察的执行载体。
+            </p>
+          </div>
+          <div class="conversation-standing">
+            <span class="connection-mark" id="conversation-connection-mark" aria-hidden="true"></span>
+            <div>
+              <span>对话连接</span>
+              <strong id="conversation-connection-label">未连接</strong>
+              <code id="conversation-id">—</code>
+            </div>
+          </div>
+        </header>
+
+        <div class="conversation-reconnect" id="conversation-reconnect" role="status" hidden>
+          <strong>连接已断开</strong>
+          <span id="conversation-reconnect-attempt">正在重连</span>
+        </div>
+
+        <div class="conversation-notices" id="conversation-notices" aria-live="polite"></div>
+
+        <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流"></div>
+
+        <form class="conversation-composer" id="conversation-composer-form">
+          <label for="conversation-composer-text">发给 Agent 系统</label>
+          <textarea
+            id="conversation-composer-text"
+            rows="3"
+            placeholder="说你想完成或纠正的事。Enter 发送，Shift+Enter 换行。"
+          ></textarea>
+          <div class="composer-bar">
+            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+            <button
+              class="conversation-control"
+              id="conversation-tool-interrupt"
+              type="button"
+              disabled
+              title="工具中断不属于当前 conversation 运行时；它不会伪装成可用控制。"
+            >
+              工具中断 · 运行时不支持
+            </button>
+            <button class="primary-action" id="conversation-composer-submit" type="submit">
+              发送
+            </button>
+          </div>
+          <p class="conversation-composer-status" id="conversation-composer-status" role="status" aria-live="polite"></p>
+        </form>
+
+        <p class="conversation-boundary">
+          浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
+          canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+        </p>
+      </section>
 
       <section class="project-surface" id="project-surface" aria-labelledby="project-title" tabindex="-1">
         <section class="unified-surface" id="unified-surface" aria-labelledby="view-title">
@@ -1306,7 +1369,8 @@
     </main>
 
     <nav class="mobile-tab-bar" aria-label="移动端主导航">
-      <button class="mobile-tab is-active" type="button" data-mobile-view="overview">总览</button>
+      <button class="mobile-tab is-active" type="button" data-mobile-view="conversation">对话</button>
+      <button class="mobile-tab" type="button" data-mobile-view="overview">总览</button>
       <button class="mobile-tab" type="button" data-mobile-view="tasks">任务</button>
       <button class="mobile-tab" type="button" data-mobile-view="projects">项目</button>
     </nav>
