@@ -111,6 +111,243 @@ export interface TaskRunResult {
   semanticAcceptance: "not-evaluated";
 }
 
+export interface TaskAttemptReconcileArguments {
+  id: string;
+  attemptId: string;
+}
+
+export interface TaskAttemptReconcileResult {
+  version: "rosso.task-attempt-reconcile.v1";
+  taskId: string;
+  taskRevision: number;
+  attemptId: string;
+  settlementRef: string;
+  status: "runner-failed";
+  error: string;
+}
+
+const TASK_RUN_LEASE_VERSION = "rosso.task-run-worktree-lease.v1" as const;
+
+const TaskRunWorktreeLeaseSchema = z.object({
+  version: z.literal(TASK_RUN_LEASE_VERSION),
+  worktree: z.string().min(1),
+  taskId: z.string().min(1),
+  attemptId: z.string().min(1),
+  pid: z.number().int().positive(),
+  acquiredAt: z.string().min(1),
+});
+
+const ReconcileAttemptRecordSchema = z.object({
+  version: z.literal("rosso.task-run-attempt.v1"),
+  taskId: z.string().min(1),
+  taskRevision: z.number().int().positive(),
+  attemptId: z.string().min(1),
+  inputRef: z.string().min(1),
+  finalRecordRef: z.string().min(1),
+  status: z.literal("started"),
+});
+
+const ATTEMPT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+
+/**
+ * Reconcile one crash-retained ordinary task attempt whose owner process is
+ * verifiably dead and that retained no terminal Work Cell or settlement
+ * evidence. The command re-reads the immutable attempt record and CellInput,
+ * the exact task/attempt/worktree lease bytes in the bound Worktree's Git
+ * metadata, and the recorded owner PID; it fails closed on a live or unknown
+ * owner, mismatched identity, changed or missing lease, or any terminal
+ * evidence. On success it writes only the shared append-only `runner-failed`
+ * settlement with a truthful interrupted/no-final reason and releases the
+ * still-exact lease through the existing release owner. It never forges a
+ * Work Cell final status, usage, diff, verification, or session identity and
+ * moves no Task lifecycle; it enables only a fresh clean run, while
+ * `--continue` stays unavailable without an owner-backed final record.
+ */
+export function reconcilePrincipalTaskAttempt(
+  homeArgument: string | undefined,
+  arguments_: TaskAttemptReconcileArguments,
+): TaskAttemptReconcileResult {
+  if (!ATTEMPT_ID_PATTERN.test(arguments_.attemptId)) {
+    throw new Error("task reconcile-attempt --attempt must be a valid attempt id");
+  }
+  const home = resolveHome(homeArgument);
+  const observed = showPrincipalTask(home, arguments_.id);
+  const task = observed.task;
+  if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
+    throw new Error(`task ${task.id} must be bound to an existing project Worktree before its attempts can be reconciled`);
+  }
+  const worktree = resolveBoundWorktree(
+    home,
+    task.binding.projectId,
+    task.binding.worktreePath,
+  );
+  const attempt = attemptEvidence(home, arguments_.attemptId);
+
+  const attemptRecord = readReconcileAttemptRecord(attempt, task.id, arguments_.attemptId);
+  verifyReconcileCellInput(attempt, task.id, arguments_.attemptId, worktree);
+
+  if (existsSync(attempt.finalRecordPath)) {
+    throw new Error(
+      `attempt ${arguments_.attemptId} already retained a Work Cell final record; `
+      + "terminal evidence cannot be reconciled as interrupted",
+    );
+  }
+  if (existsSync(attempt.settlementPath)) {
+    throw new Error(`attempt ${arguments_.attemptId} already has a settlement; it cannot be reconciled again`);
+  }
+
+  const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
+  const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
+
+  if (!isProcessDefinitelyAbsent(retained.pid)) {
+    throw new Error(
+      `the task-run lease owner process ${retained.pid} for attempt ${arguments_.attemptId} `
+      + "is still alive or owned elsewhere; reconciliation fails closed",
+    );
+  }
+
+  const error = "interrupted before a final Work Cell record was retained; reconciled by task reconcile-attempt";
+  writeTaskRunSettlement(attempt, {
+    taskId: task.id,
+    taskRevision: attemptRecord.taskRevision,
+    attemptId: arguments_.attemptId,
+    status: "runner-failed",
+    error,
+  });
+
+  releaseWorktreeLease({ path: leasePath, content: retained.raw });
+
+  return {
+    version: "rosso.task-attempt-reconcile.v1",
+    taskId: task.id,
+    taskRevision: attemptRecord.taskRevision,
+    attemptId: arguments_.attemptId,
+    settlementRef: attempt.settlementRef,
+    status: "runner-failed",
+    error,
+  };
+}
+
+function readReconcileAttemptRecord(
+  attempt: AttemptEvidence,
+  taskId: string,
+  attemptId: string,
+): z.infer<typeof ReconcileAttemptRecordSchema> {
+  let raw: string;
+  try {
+    raw = readFileSync(attempt.attemptPath, "utf8");
+  } catch (cause) {
+    throw new Error(`attempt ${attemptId} has no readable immutable attempt record: ${attempt.attemptPath}`, { cause });
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch (cause) {
+    throw new Error(`attempt ${attemptId} retains an unreadable attempt record: ${attempt.attemptPath}`, { cause });
+  }
+  const parsed = ReconcileAttemptRecordSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(`attempt ${attemptId} attempt record does not match the exact task-run shape: ${parsed.error.message}`);
+  }
+  const record = parsed.data;
+  if (record.taskId !== taskId) {
+    throw new Error(`attempt ${attemptId} belongs to task ${record.taskId}, not the requested task ${taskId}`);
+  }
+  if (record.attemptId !== attemptId) {
+    throw new Error(`attempt record identity does not match the requested attempt ${attemptId}`);
+  }
+  if (record.inputRef !== attempt.inputRef || record.finalRecordRef !== attempt.finalRecordRef) {
+    throw new Error(`attempt ${attemptId} evidence refs do not match its stable attempt directory`);
+  }
+  return record;
+}
+
+function verifyReconcileCellInput(
+  attempt: AttemptEvidence,
+  taskId: string,
+  attemptId: string,
+  worktree: string,
+): void {
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(attempt.inputPath, "utf8"));
+  } catch (cause) {
+    throw new Error(`attempt ${attemptId} has no readable immutable CellInput: ${attempt.inputPath}`, { cause });
+  }
+  const parsed = workCellContracts().CellInputSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(`attempt ${attemptId} CellInput does not match the exact Work Cell input shape: ${parsed.error.message}`);
+  }
+  const expectedId = `workbench-task-${taskId}-attempt-${attemptId}`;
+  if (parsed.data.id !== expectedId) {
+    throw new Error(`attempt ${attemptId} CellInput id does not match its exact task/attempt owner: ${parsed.data.id}`);
+  }
+  let observedRoot: string;
+  try {
+    observedRoot = realpathSync(parsed.data.workspace.root);
+  } catch {
+    throw new Error(`attempt ${attemptId} CellInput workspace does not match the task's current bound Worktree`);
+  }
+  if (observedRoot !== worktree) {
+    throw new Error(`attempt ${attemptId} CellInput workspace does not match the task's current bound Worktree`);
+  }
+}
+
+function readRetainedTaskRunLease(
+  leasePath: string,
+  taskId: string,
+  attemptId: string,
+  worktree: string,
+): { pid: number; raw: string } {
+  let raw: string;
+  try {
+    raw = readFileSync(leasePath, "utf8");
+  } catch {
+    throw new Error(`attempt ${attemptId} has no retained task-run lease in the bound Worktree: ${leasePath}`);
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `the retained task-run lease for attempt ${attemptId} does not carry the exact expected identity bytes: ${leasePath}`,
+    );
+  }
+  const parsed = TaskRunWorktreeLeaseSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `the retained task-run lease for attempt ${attemptId} does not carry the exact expected identity bytes: ${leasePath}`,
+    );
+  }
+  const lease = parsed.data;
+  if (lease.taskId !== taskId) {
+    throw new Error(`the retained task-run lease belongs to task ${lease.taskId}, not the requested task ${taskId}`);
+  }
+  if (lease.attemptId !== attemptId) {
+    throw new Error(`the retained task-run lease belongs to attempt ${lease.attemptId}, not the requested attempt ${attemptId}`);
+  }
+  let observedWorktree: string;
+  try {
+    observedWorktree = realpathSync(lease.worktree);
+  } catch {
+    throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
+  }
+  if (observedWorktree !== worktree) {
+    throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
+  }
+  return { pid: lease.pid, raw };
+}
+
+function isProcessDefinitelyAbsent(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return typeof error === "object" && error !== null && "code" in error
+      && (error as { code?: unknown }).code === "ESRCH";
+  }
+}
+
 export interface TaskWorkerListResult {
   version: "rosso.task-worker-list.v1";
   workers: Array<{

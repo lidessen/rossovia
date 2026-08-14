@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   CellInputSchema,
   CellRunRecordSchema,
@@ -27,6 +27,7 @@ import {
   submitPrincipalTaskResult,
 } from "../src/tasks";
 import {
+  reconcilePrincipalTaskAttempt,
   runPrincipalTask as runPrincipalTaskImpl,
   type TaskRunResult,
   type TaskRunRequest,
@@ -218,6 +219,345 @@ function validWorkCellRecord(
     rawSteps: [],
   });
 }
+
+interface InterruptedAttemptFixture {
+  attemptId: string;
+  directory: string;
+  attemptBytes: string;
+  inputBytes: string;
+  leasePath: string;
+  leaseContent: string;
+}
+
+function interruptedAttempt(
+  fixture_: Fixture,
+  taskId: string,
+  pid: number,
+): InterruptedAttemptFixture {
+  const attemptId = randomUUID();
+  const directory = join(fixture_.home, "state", "task-attempts", attemptId);
+  mkdirSync(directory, { recursive: true });
+  const inputRef = `state/task-attempts/${attemptId}/cell-input.json`;
+  const finalRecordRef = `state/task-attempts/${attemptId}/cell-input.run.json`;
+  const attemptBytes = `${JSON.stringify({
+    version: "rosso.task-run-attempt.v1",
+    taskId,
+    taskRevision: 1,
+    sourceRevision: 1,
+    attemptId,
+    inputRef,
+    finalRecordRef,
+    workerId: "test-worker",
+    driver: "opencode-cli",
+    model: "opencode/go",
+    status: "started",
+    startedAt: "2026-08-12T12:00:00.000Z",
+  }, null, 2)}\n`;
+  const inputBytes = `${JSON.stringify({
+    id: `workbench-task-${taskId}-attempt-${attemptId}`,
+    workerId: "test-worker",
+    intent: "Implement the exact bounded change",
+    workspace: {
+      root: realpathSync(fixture_.worktree),
+      readPaths: ["."],
+      writePaths: ["."],
+      excludePaths: [],
+      allowedCommands: [],
+    },
+    instructions: [
+      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["The requested behavior is observable"],
+    budget: { maxDurationMs: 1_800_000 },
+  }, null, 2)}\n`;
+  writeFileSync(join(directory, "attempt.json"), attemptBytes);
+  writeFileSync(join(directory, "cell-input.json"), inputBytes);
+  const gitDirectoryRaw = git(fixture_.worktree, "rev-parse", "--git-dir");
+  const gitDirectory = realpathSync(
+    isAbsolute(gitDirectoryRaw) ? gitDirectoryRaw : join(fixture_.worktree, gitDirectoryRaw),
+  );
+  const leasePath = join(gitDirectory, "rossovia-task-run.lock");
+  const leaseContent = `${JSON.stringify({
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree: realpathSync(fixture_.worktree),
+    taskId,
+    attemptId,
+    pid,
+    acquiredAt: "2026-08-12T12:00:00.000Z",
+  }, null, 2)}\n`;
+  writeFileSync(leasePath, leaseContent, { flag: "wx" });
+  return { attemptId, directory, attemptBytes, inputBytes, leasePath, leaseContent };
+}
+
+function deadPid(): number {
+  const result = Bun.spawnSync(["sh", "-c", "exit 0"]);
+  if (result.exitCode !== 0) throw new Error("dead pid fixture failed");
+  return result.pid;
+}
+
+describe("task attempt reconciliation", () => {
+  test("reconciles an interrupted attempt with a dead owner, preserving evidence and enabling a fresh run", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+
+    const result = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(result).toMatchObject({
+      version: "rosso.task-attempt-reconcile.v1",
+      taskId: created.task.id,
+      taskRevision: 1,
+      attemptId: attempt.attemptId,
+      settlementRef: `state/task-attempts/${attempt.attemptId}/settlement.json`,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
+
+    const settlement = JSON.parse(
+      readFileSync(join(current.home, result.settlementRef), "utf8"),
+    );
+    expect(settlement).toMatchObject({
+      version: "rosso.task-run-settlement.v1",
+      taskId: created.task.id,
+      taskRevision: 1,
+      attemptId: attempt.attemptId,
+      inputRef: `state/task-attempts/${attempt.attemptId}/cell-input.json`,
+      finalRecordRef: `state/task-attempts/${attempt.attemptId}/cell-input.run.json`,
+      status: "runner-failed",
+      semanticAcceptance: "not-evaluated",
+      error: expect.stringContaining("interrupted before a final Work Cell record"),
+    });
+    expect(settlement).not.toHaveProperty("workCellRunId");
+    expect(settlement).not.toHaveProperty("cellStatus");
+    expect(settlement).not.toHaveProperty("sessionId");
+
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    expect(existsSync(join(attempt.directory, "cell-input.run.json"))).toBeFalse();
+    expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
+
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(1);
+    expect(projections[0]).toMatchObject({ attemptId: attempt.attemptId, status: "runner-failed" });
+    expect(projections[0]).not.toHaveProperty("observedSession");
+    expect(projections[0]).not.toHaveProperty("cellStatus");
+    expect(projections[0]).not.toHaveProperty("usage");
+    expect(projections[0]).not.toHaveProperty("workspaceDiff");
+    expect(projections[0]).not.toHaveProperty("verification");
+
+    expect(() => runTestTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      session: "retained-session",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeRunner())).toThrow("has no usable recorded Work Cell attempt");
+
+    const runner = new FakeRunner();
+    expect(() => runTestTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner)).not.toThrow();
+    expect(runner.requests).toHaveLength(1);
+  });
+
+  test("refuses to reconcile while the recorded lease owner process is still alive", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, process.pid);
+
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow(`still alive or owned elsewhere`);
+    expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+    expect(readFileSync(attempt.leasePath, "utf8")).toBe(attempt.leaseContent);
+  });
+
+  test("fails closed on mismatched attempt, task, and lease identities", () => {
+    const cases: Array<{
+      mutate: (value: InterruptedAttemptFixture) => void;
+      error: RegExp;
+    }> = [
+      {
+        mutate: (value) => {
+          writeFileSync(join(value.directory, "attempt.json"), `${JSON.stringify({
+            version: "rosso.task-run-attempt.v1",
+            taskId: randomUUID(),
+            taskRevision: 1,
+            attemptId: value.attemptId,
+            inputRef: `state/task-attempts/${value.attemptId}/cell-input.json`,
+            finalRecordRef: `state/task-attempts/${value.attemptId}/cell-input.run.json`,
+            status: "started",
+          }, null, 2)}\n`);
+        },
+        error: /belongs to task .*, not the requested task/,
+      },
+      {
+        mutate: (value) => {
+          const record = JSON.parse(readFileSync(join(value.directory, "attempt.json"), "utf8"));
+          record.attemptId = randomUUID();
+          writeFileSync(join(value.directory, "attempt.json"), `${JSON.stringify(record, null, 2)}\n`);
+        },
+        error: /attempt record identity does not match/,
+      },
+      {
+        mutate: (value) => {
+          const bytes = JSON.parse(readFileSync(value.leasePath, "utf8"));
+          bytes.attemptId = randomUUID();
+          writeFileSync(value.leasePath, `${JSON.stringify(bytes, null, 2)}\n`);
+        },
+        error: /the retained task-run lease belongs to attempt .*, not the requested attempt/,
+      },
+      {
+        mutate: (value) => {
+          const bytes = JSON.parse(readFileSync(value.leasePath, "utf8"));
+          bytes.taskId = randomUUID();
+          writeFileSync(value.leasePath, `${JSON.stringify(bytes, null, 2)}\n`);
+        },
+        error: /the retained task-run lease belongs to task .*, not the requested task/,
+      },
+      {
+        mutate: (value) => {
+          const bytes = JSON.parse(readFileSync(value.leasePath, "utf8"));
+          bytes.worktree = join(value.directory, "another-worktree");
+          writeFileSync(value.leasePath, `${JSON.stringify(bytes, null, 2)}\n`);
+        },
+        error: /lease Worktree does not match the task's current bound Worktree/,
+      },
+      {
+        mutate: (value) => {
+          rmSync(value.leasePath);
+        },
+        error: /has no retained task-run lease/,
+      },
+    ];
+    for (const candidate of cases) {
+      const current = fixture();
+      const created = agentTask(current);
+      const attempt = interruptedAttempt(current, created.task.id, deadPid());
+      candidate.mutate(attempt);
+      expect(() => reconcilePrincipalTaskAttempt(current.home, {
+        id: created.task.id,
+        attemptId: attempt.attemptId,
+      })).toThrow(candidate.error);
+      expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+    }
+  });
+
+  test("fails closed on unknown task, missing attempt evidence, invalid ids, and unbound tasks", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: "missing-task",
+      attemptId: attempt.attemptId,
+    })).toThrow("Principal task not found");
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: randomUUID(),
+    })).toThrow("no readable immutable attempt record");
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: "../escape",
+    })).toThrow("must be a valid attempt id");
+
+    const unbound = createPrincipalTask(current.home, {
+      title: "Unbound task",
+      objective: "Remain unbound",
+      acceptance: ["Reconciliation is refused"],
+      nextActor: "agent",
+      sourceRef: "test:unbound",
+      expectedSourceRevision: 1,
+    });
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: unbound.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("must be bound to an existing project Worktree");
+    expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+  });
+
+  test("fails closed on terminal evidence and on a changed lease byte shape", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+    writeFileSync(join(attempt.directory, "cell-input.run.json"), "{}\n");
+
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("terminal evidence cannot be reconciled as interrupted");
+    rmSync(join(attempt.directory, "cell-input.run.json"));
+
+    writeFileSync(join(attempt.directory, "settlement.json"), "{}\n");
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("already has a settlement");
+    rmSync(join(attempt.directory, "settlement.json"));
+
+    writeFileSync(attempt.leasePath, "not-json\n");
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("does not carry the exact expected identity bytes");
+    expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+  });
+
+  test("a second reconciliation after success refuses without touching retained evidence", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+    const first = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    const settlementBytes = readFileSync(join(current.home, first.settlementRef), "utf8");
+
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("already has a settlement; it cannot be reconciled again");
+    expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
+    expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
+  });
+
+  test("the CLI exposes task reconcile-attempt with the exact attempt selector", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+
+    const missing = taskCli(current.home, "reconcile-attempt", created.task.id);
+    expect(missing.exitCode).toBe(2);
+    expect(missing.stderr).toContain("task command requires --attempt <value>");
+
+    const result = taskCliWithOutput(
+      current.home,
+      "reconcile-attempt",
+      created.task.id,
+      "--attempt",
+      attempt.attemptId,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+    });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+  });
+});
 
 describe("task run public boundary", () => {
   test("selects the available Kimi worker and lowers its exact OpenCode carrier identity", () => {

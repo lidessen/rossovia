@@ -182,6 +182,20 @@ Workbench home has a task source.
   stale-lock inference or Task reopening. Git-tracked paths always remain in
   Work Cell evidence even when one of their path segments is usually generated. A
   settled task is viewable history and cannot run.
+- Run `task reconcile-attempt <id> --attempt <attempt-id>` to recover one
+  crash-retained `started` attempt whose lease owner process is verifiably dead
+  and that retained no final Work Cell record or settlement. The command
+  re-reads the immutable attempt record and CellInput, the exact
+  task/attempt/worktree lease bytes, and the recorded owner PID, and fails
+  closed on a live or unknown owner, mismatched identity, a changed or missing
+  lease, or any terminal evidence. On success it writes only the existing
+  append-only `runner-failed` settlement with a truthful interrupted/no-final
+  reason and releases the still-exact lease; it never forges a Work Cell final
+  status, usage, diff, verification, or session identity from partial trace or
+  database evidence and moves no Task lifecycle. This enables a fresh clean run
+  only; `--continue` stays unavailable without an attributable owner final
+  record. Do not reconcile a live run, guess an owner, or remove a lease whose
+  recorded PID cannot be confirmed dead.
 - Run `task attempts <id>` to project the task's recorded attempts as a
   read-only view sorted by start time. The projection reads, never copies or
   rewrites, the existing attempt, final Work Cell record, and settlement files:

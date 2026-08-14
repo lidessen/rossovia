@@ -170,6 +170,7 @@ task create --title <text> --objective <text> --accept <criterion>...
 task list
 task show <id>
 task attempts <id>
+task reconcile-attempt <id> --attempt <attempt-id>
 worker list
 task run <id> --worker <worker-id> [--continue]
 task assign <id> --next-actor <principal|agent|external>
@@ -316,11 +317,21 @@ homes. The lease is acquired before the authoritative binding and Worktree
 admissibility checks, and remains through execution, final-record validation,
 and settlement;
 ordinary failures release it in `finally`. A process crash can leave
-`rossovia-task-run.lock`. A later run fails closed and reports the exact path.
-After inspecting that Worktree and process and confirming no execution remains,
-remove only that exact lease file, then retry. This is operational cleanup, not
-Task reopening. There is no timeout, stale-lock inference, queue, or automatic
-recovery.
+`rossovia-task-run.lock` beside a retained `started` attempt without a final
+record or settlement. `task reconcile-attempt <id> --attempt <attempt-id>`
+recovers exactly that shape: it re-reads the immutable attempt record and
+CellInput, the exact task/attempt/worktree lease bytes, and the recorded owner
+PID, and fails closed on a live or unknown owner process, mismatched identity,
+a changed or missing lease, or any retained final record or settlement. On
+success it writes only the append-only `runner-failed` settlement with a
+truthful interrupted/no-final reason through the shared settlement writer and
+releases the still-exact lease; it never forges a Work Cell final status,
+usage, diff, verification, or session identity and moves no Task lifecycle.
+This enables a fresh clean run only; `--continue` stays unavailable without an
+owner-backed final record. After inspecting that Worktree and process and
+confirming no execution remains, remove only that exact lease file, then retry.
+This is operational cleanup, not Task reopening. There is no timeout,
+stale-lock inference, queue, or automatic recovery.
 
 Every mutation uses the latest returned source revision and, for an existing
 task, its task revision. This detects state that was already stale when the
