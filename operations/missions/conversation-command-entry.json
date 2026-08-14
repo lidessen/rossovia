@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T03:20:38Z",
+  "updatedAt": "2026-08-14T03:39:07Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -77,7 +77,20 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "Integrated PR #107 (exact head 1c9480b1b4207a2cf7f394af4e7867d6c367f23c; merge commit e89d146c408fbb759aa75374e89f618ac0593145) into main: corrected the owner-relative worker-policy resolution so the production Workbench UI composes its current WorkerCatalog, serves /api/snapshot on a disposable port, and stops cleanly; deterministic production-startup and live-child cleanup smoke coverage is retained. P6 browser conversation UI, P5 temporary agent teams, and Principal Task acceptance remain pending."
+    },
+    {
+      "id": "p4d-browser-work-control",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Restore the frozen non-UI runtime boundary required by P6 so one browser work.control frame can target an exact ordinary task_continue carrier through the existing durable action path.",
+      "returnCondition": "Return with one clean exact two-file correction in operations/workbench/src/conversation/transport.ts and operations/workbench/test/conversation-transport.test.ts: ClientWorkControlFrame requires carrierId; the transport validates the exact same-conversation task_continue turn/action/carrier tuple; work.control reuses runAction and the installed operation host so action.requested precedes effect and terminal settlement remains reconnect-reconcilable; tool.interrupt remains unsupported; deterministic exact-target, mismatch, unsupported-runtime/control, and reconnect evidence plus focused carrier tests, Workbench full/typecheck, and diff-check pass. Do not modify P6 UI paths, P5/team formation, Task/Mission state beyond this branch, add a store or gate, or route by phrase.",
+      "sources": [
+        "principal:2026-08-14-p4d-browser-work-control",
+        "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#p6-browser-projection-owner",
+        "runtime:operations/workbench/src/conversation/transport.ts"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "p4d-browser-work-control"
 }
