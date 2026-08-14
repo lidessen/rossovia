@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T02:04:26Z",
+  "updatedAt": "2026-08-14T02:21:50Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -63,7 +63,19 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "Integrated PR #105 (exact head f6617232599d9aae1079db3279b03673c0cfe82e; merge commit 8a4074fdb7fd0dbf3a2f03f46386be16102708df) into main: one catalog-selected typed task_continue can start an existing canonical Task through the reused task-run, task-attempt, Worktree lease, and Work Cell path; only an owner-backed retained carrier projects attributable live activity, exact work_control stop targets only that carrier, and task reconcile-attempt provides fail-closed dead-owner recovery. P5 temporary agent teams, browser UI, and Principal Task acceptance remain pending."
+    },
+    {
+      "id": "p4c-ui-startup-repair",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Repair the production Workbench UI startup composition so the real server can construct its execution-carrier WorkerCatalog and expose snapshot plus conversation transport without a module-resolution failure.",
+      "returnCondition": "Return with the smallest owner-correct import/composition repair and deterministic production-composition regression, one disposable-port production UI start with a successful /api/snapshot read and clean stop, Workbench full suite and typecheck, relevant Autonomy typecheck, and diff-check. Do not add the browser conversation shell, P5 temporary teams, a new store, gate, Task acceptance, publication, or merge.",
+      "sources": [
+        "principal:2026-08-14-p4c-ui-startup-repair",
+        "regression:production-workbench-ui-worker-policy-module-resolution"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "p4c-ui-startup-repair"
 }

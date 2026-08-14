@@ -939,7 +939,7 @@ function renderCarrierActivity(event: TraceEvent): string | undefined {
 }
 
 function currentCatalog(environment: NodeJS.ProcessEnv): WorkerCatalog {
-  return requireFromHere("../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
+  return requireFromHere("../../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
 }
 
 /** One preparation/creation failure becomes a carrier-code-visible refusal. */
