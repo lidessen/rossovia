@@ -1546,6 +1546,89 @@ describe("task run public boundary", () => {
     expect(record.workspaceDiff.changed).toEqual([buildPath, outputPath]);
   });
 
+  test("a valid non-passed owner final settles runner-failed and the run fails after settlement", () => {
+    for (const terminal of ["failed", "cancelled"] as const) {
+      const perCase = fixture();
+      const task = agentTask(perCase);
+      class TerminalRunner implements TaskRunRunner {
+        run(request: TaskRunRequest) {
+          const result = { runId: `terminal-${terminal}`, status: terminal };
+          const record = validWorkCellRecord(
+            request,
+            { runId: result.runId, status: "passed" },
+            `session-terminal-${terminal}`,
+          );
+          writeFileSync(
+            request.finalRecordPath,
+            `${JSON.stringify({
+              ...record,
+              status: terminal,
+              ...(terminal === "failed" ? { error: "the final failed" } : {}),
+            }, null, 2)}\n`,
+            { flag: "wx" },
+          );
+          return result;
+        }
+      }
+
+      expect(() => runTestTask(perCase.home, {
+        id: task.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, new TerminalRunner())).toThrow(`settled with status ${terminal}`);
+
+      const projections = showPrincipalTaskAttempts(perCase.home, task.task.id);
+      expect(projections).toHaveLength(1);
+      expect(projections[0]).toMatchObject({
+        status: "runner-failed",
+        cellStatus: terminal,
+        observedSession: `session-terminal-${terminal}`,
+      });
+      const settlement = JSON.parse(readFileSync(join(perCase.home, projections[0]!.settlementRef), "utf8"));
+      expect(settlement).toMatchObject({
+        status: "runner-failed",
+        workCellRunId: `terminal-${terminal}`,
+        cellStatus: terminal,
+        semanticAcceptance: "not-evaluated",
+        ...(terminal === "failed" ? { error: "the final failed" } : {}),
+      });
+      expect(settlement).not.toHaveProperty("sessionId");
+
+      // The durable settlement exists; the lease released; a later run works.
+      expect(() => runTestTask(perCase.home, {
+        id: task.task.id,
+        driver: "opencode-cli",
+        model: "opencode/go",
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      }, new FakeRunner())).not.toThrow();
+    }
+  });
+
+  test("a passed owner final keeps the recorded settlement and the successful result", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const runner = new FakeRunner();
+    const result = runTestTask(current.home, {
+      id: created.task.id,
+      driver: "opencode-cli",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, runner);
+    expect(result.cellStatus).toBe("passed");
+    const settlement = JSON.parse(readFileSync(join(current.home, result.settlementRef), "utf8"));
+    expect(settlement).toMatchObject({
+      status: "recorded",
+      workCellRunId: "fake-run-1",
+      cellStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    });
+    expect(settlement).not.toHaveProperty("error");
+  });
+
   test("lists worker policy and accepts only worker selection plus continuation at the CLI boundary", () => {
     const current = fixture();
     const listed = workbenchCli(current.home, "worker", "list");

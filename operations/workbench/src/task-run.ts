@@ -248,7 +248,7 @@ export function reconcilePrincipalTaskAttempt(
 
   let settlementInput: TaskRunSettlementInput;
   if (evidence.finalRecord !== undefined) {
-    verifyReconcileFinalRecord(evidence.finalRecord, input, attemptRecord);
+    verifyReconcileFinalRecord(evidence.finalRecord, attemptRecord);
     settlementInput = finalRecordSettlementInput(
       task.id,
       attemptRecord.taskRevision,
@@ -317,21 +317,15 @@ function verifyReconcileCellInputWorkspace(
 }
 
 /**
- * Validate a real owner-backed final record that retained no settlement:
- * its input must be byte-identical to the immutable CellInput and it must
- * retain the observed session. Shape, cell identity, and model identity were
- * already validated by the strict evidence reader.
+ * Validate a real owner-backed final record that retained no settlement: it
+ * must retain the observed session. Shape, cell/input identity, driver/model
+ * form, and the embedded immutable CellInput identity were already validated
+ * by the strict evidence reader; nothing here copies or forges evidence.
  */
 function verifyReconcileFinalRecord(
   record: CellRunRecord,
-  input: CellInput,
   attemptRecord: ParsedTaskRunAttempt,
 ): void {
-  if (!isDeepStrictEqual(record.input, input)) {
-    throw new Error(
-      `attempt ${attemptRecord.attemptId} final record input does not match its immutable CellInput; the settlement is not derived`,
-    );
-  }
   if (!record.executionObservation.sessionId) {
     throw new Error(
       `attempt ${attemptRecord.attemptId} final record did not retain the observed session id; the settlement is not derived`,
@@ -401,6 +395,60 @@ function isProcessDefinitelyAbsent(pid: number): boolean {
     return typeof error === "object" && error !== null && "code" in error
       && (error as { code?: unknown }).code === "ESRCH";
   }
+}
+
+/**
+ * The shared owner-backed relation between one attempt and the exact
+ * retained task-run lease in its Task's currently bound Worktree Git
+ * metadata. `retained` means the exact lease file still exists for this
+ * attempt's owner identity (or exists but cannot be proven to belong to a
+ * different attempt); `released` means the lease file is absent or provably
+ * belongs to another attempt; `uninspectable` means the Task/Worktree
+ * relation itself cannot be re-read. A valid settlement plus a retained
+ * lease for the same attempt is reconcile-required — never terminal — until
+ * the exact release succeeds.
+ */
+export type AttemptLeaseStanding = "released" | "retained" | "uninspectable";
+
+export function attemptLeaseStanding(
+  homeArgument: string | undefined,
+  taskId: string,
+  attemptId: string,
+): AttemptLeaseStanding {
+  let observed: ReturnType<typeof showPrincipalTask>;
+  try {
+    observed = showPrincipalTask(homeArgument, taskId);
+  } catch {
+    return "uninspectable";
+  }
+  const task = observed.task;
+  if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
+    return "uninspectable";
+  }
+  let worktree: string;
+  try {
+    worktree = resolveBoundWorktree(
+      resolveHome(homeArgument),
+      task.binding.projectId,
+      task.binding.worktreePath,
+    );
+  } catch {
+    return "uninspectable";
+  }
+  const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
+  if (!existsSync(leasePath)) return "released";
+  let value: unknown;
+  try {
+    value = JSON.parse(readFileSync(leasePath, "utf8"));
+  } catch {
+    return "retained";
+  }
+  const parsed = TaskRunWorktreeLeaseSchema.safeParse(value);
+  if (!parsed.success) return "retained";
+  if (parsed.data.taskId !== taskId || parsed.data.attemptId !== attemptId) {
+    return "released";
+  }
+  return "retained";
 }
 
 export interface TaskWorkerListResult {
@@ -504,14 +552,19 @@ export function runPrincipalTask(
       execution.model,
       continuation?.session,
     );
-    writeTaskRunSettlement(attempt, {
-      taskId: task.id,
-      taskRevision: task.revision,
-      attemptId,
-      status: "recorded",
-      workCellRunId: finalRecord.runId,
-      cellStatus: finalRecord.status,
-    });
+    // The same shared normal derivation as the asynchronous carrier and
+    // reconcile-attempt: a passed owner final records; any other terminal
+    // status settles runner-failed with the retained evidence. The CLI call
+    // then fails after the durable settlement — a failed or cancelled final
+    // record is never hard-coded as `recorded`.
+    const settlementInput = finalRecordSettlementInput(task.id, task.revision, attemptId, finalRecord);
+    writeTaskRunSettlement(attempt, settlementInput);
+    if (settlementInput.status !== "recorded") {
+      throw new Error(
+        `the Work Cell run settled with status ${finalRecord.status}; `
+        + `the attempt settlement is ${settlementInput.status}`,
+      );
+    }
     return {
       version: "rosso.task-run-result.v1",
       taskId: task.id,

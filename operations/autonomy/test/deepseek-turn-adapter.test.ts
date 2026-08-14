@@ -15,6 +15,7 @@ import {
   type ConversationTurnSafetyEvent,
 } from "../src/conversation-coordinator";
 import {
+  conversationOperationTools,
   createDeepSeekTurnAdapter,
   DEEPSEEK_SDK_PROVIDER_ID,
   DEEPSEEK_TURN_MAX_OUTPUT_TOKENS,
@@ -526,6 +527,15 @@ test("exposes the four strict typed operation tools to the model call", async ()
     "task_create",
     "work_control",
   ]);
+});
+
+test("the work_control tool advertises exact live-carrier stop-only semantics, not unavailability", () => {
+  const description = conversationOperationTools.work_control.description;
+  expect(description).toContain("exact retained carrier");
+  expect(description).toContain("owns only stop");
+  expect(description).toContain("liveness unknown");
+  expect(description).toContain("never stops persistent work");
+  expect(description).not.toMatch(/not yet available|do not call|unavailable/i);
 });
 
 test("forwards a model tool call as one typed operation port event with the kind restored", async () => {

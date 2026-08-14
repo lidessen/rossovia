@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { CellInput, CellRunRecord } from "../../../packages/work-cell/src/contracts";
 import { resolveHome } from "./home";
@@ -414,6 +415,16 @@ export function readStrictTaskAttemptEvidence(
       if (candidate.driver.model !== attemptRecord.model) {
         return "Work Cell final record model does not match the attempt record";
       }
+      const expectedAdapter = adapterForAttemptDriver(attemptRecord.driver);
+      if (expectedAdapter !== undefined && candidate.driver.adapter !== expectedAdapter) {
+        return "Work Cell final record driver adapter does not match the attempt execution form";
+      }
+      if (input === undefined) {
+        return "Work Cell final record cannot be verified without its immutable CellInput";
+      }
+      if (!isDeepStrictEqual(candidate.input, input)) {
+        return "Work Cell final record embedded input does not match its immutable CellInput";
+      }
       return undefined;
     });
     if (parsed.value === undefined) {
@@ -464,4 +475,11 @@ export function readStrictTaskAttemptEvidence(
 
 function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {
   return requireFromHere("../../../packages/work-cell/src/contracts");
+}
+
+/** The exact Work Cell adapter a retained attempt execution form produces. */
+function adapterForAttemptDriver(driver: string): string | undefined {
+  if (driver === "opencode-cli") return "opencode-cli.v1";
+  if (driver === "ai-sdk-v7") return "ai-sdk-v7";
+  return undefined;
 }

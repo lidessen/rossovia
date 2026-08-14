@@ -8,6 +8,7 @@ import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/s
 import type { TaskContinueOperation } from "../../../autonomy/src/conversation-coordinator";
 import {
   attemptEvidence,
+  attemptLeaseStanding,
   createAttempt,
   evidenceRef,
   finalRecordSettlementInput,
@@ -799,8 +800,10 @@ function writeControlReceipt(
 
 /**
  * Standing of one carrierId for which this process retains no runtime handle:
- * missing attempt evidence, terminal settlement, or an unsettled retained
- * attempt whose liveness cannot be claimed.
+ * missing attempt evidence, terminal settlement whose exact lease release
+ * succeeded, or an unsettled/reconcile-required retained attempt whose
+ * liveness cannot be claimed. A valid settlement beside a still-retained
+ * exact lease for the same attempt is unknown, never terminal.
  */
 export function carrierStandingWithoutHandle(
   home: string,
@@ -813,7 +816,16 @@ export function carrierStandingWithoutHandle(
     return { kind: "unknown" };
   }
   if (evidence.settlement !== undefined) {
-    return { kind: "settled", status: evidence.settlement.status };
+    // A valid settlement is terminal only once the exact lease release
+    // succeeded: a still-retained exact lease for the same attempt is
+    // reconcile-required, never recorded/terminal.
+    const attempt = evidence.attempt;
+    if (attempt === undefined) return { kind: "unknown" };
+    const lease = attemptLeaseStanding(home, attempt.taskId, carrierId);
+    if (lease === "released") {
+      return { kind: "settled", status: evidence.settlement.status };
+    }
+    return { kind: "unknown" };
   }
   return { kind: "unknown" };
 }

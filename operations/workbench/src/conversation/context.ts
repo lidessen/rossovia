@@ -10,6 +10,7 @@ import {
 import { loadHome, resolveHome, workspaceFor } from "../home";
 import { expandPath } from "../paths";
 import { loadPrincipalTasks } from "../tasks";
+import { attemptLeaseStanding } from "../task-run";
 import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { observeWorkspace, requiredGit } from "../workspace";
 import { digest, parseTaskReceiptEvidenceRef, type ConversationEvent } from "./contracts";
@@ -127,8 +128,15 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
       // Invalid or mismatched evidence projects unknown, never settled.
       return { id: attemptId, state: "unknown" };
     }
+    const attempt = evidence.attempt;
+    if (attempt === undefined) {
+      return { id: attemptId, state: "unknown" };
+    }
     if (evidence.settlement !== undefined) {
-      return { id: attemptId, state: evidence.settlement.status };
+      // A valid settlement is terminal only after the exact lease release
+      // succeeded; a still-retained exact lease is reconcile-required.
+      const lease = attemptLeaseStanding(this.home, attempt.taskId, attemptId);
+      return { id: attemptId, state: lease === "released" ? evidence.settlement.status : "unknown" };
     }
     return { id: attemptId, state: "unknown" };
   }

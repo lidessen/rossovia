@@ -171,7 +171,11 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
       return this.findContinueReceipt(sourceRef);
     }
     if (operation.kind === "work_control") {
-      return this.findControlReceipt(sourceRef);
+      return this.findControlReceipt({
+        conversationId: input.conversationId,
+        actionId: input.actionId,
+        operation,
+      });
     }
     let tasks: PrincipalTasks;
     try {
@@ -335,30 +339,36 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * The canonical control receipt: the retained control record for this
-   * action's causal source reference, validated against the strict evidence
-   * reader so invalid or mismatched attempt evidence is never settled.
+   * The canonical control receipt: the strict retained control record for
+   * this action's causal source reference, cross-linked against the owning
+   * attempt evidence and the requested operation — carrierId, attemptId,
+   * taskId, worker, Worktree, actor identity, and stable refs must all
+   * match. A receipt that fails any cross-link cannot settle and cannot
+   * suppress the guarded retry: it reports provable absence.
    */
-  private findControlReceipt(sourceRef: string): CanonicalReceiptLookup {
-    for (const attemptId of listAttemptDirectories(this.home)) {
-      const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
-      const controlRef = controlReceiptEvidence(this.home, attemptId, sourceRef);
-      if (controlRef === undefined) continue;
-      if (evidence.standing !== "available") {
-        return {
-          standing: "uninspectable",
-          reason: `attempt ${attemptId} retains invalid evidence for this control: ${evidence.error ?? "unavailable"}`,
-        };
-      }
-      return {
-        standing: "settled",
-        receipt: {
-          taskId: evidence.attempt?.taskId ?? attemptId,
-          evidenceRefs: [...controlRef],
-        },
-      };
-    }
-    return { standing: "absent" };
+  private findControlReceipt(input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+    readonly operation: Extract<ConversationOperation, { kind: "work_control" }>;
+  }): CanonicalReceiptLookup {
+    const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+    const carrierId = input.operation.carrierId;
+    const evidence = readStrictTaskAttemptEvidence(this.home, carrierId);
+    const controlRef = controlReceiptEvidence(
+      this.home,
+      carrierId,
+      sourceRef,
+      { conversationId: input.conversationId, actionId: input.actionId },
+      evidence,
+    );
+    if (controlRef === undefined) return { standing: "absent" };
+    return {
+      standing: "settled",
+      receipt: {
+        taskId: evidence.attempt?.taskId ?? carrierId,
+        evidenceRefs: [...controlRef],
+      },
+    };
   }
 
   private executeCreate(
@@ -571,17 +581,22 @@ function mapCarrierError(error: ConversationCarrierError): ConversationOperation
 
 /**
  * The retained durable control receipt of one attempt for one causal action
- * source reference, when it exists: the strict control record plus any
- * strictly validated terminal settlement evidence of the same attempt. A
- * control record that does not parse as the exact receipt shape is never
- * settled.
+ * source reference, when it exists and every cross-link matches the owning
+ * attempt evidence and the requested operation: the strict control record
+ * must carry the requested action/sourceRef, the requested carrierId and its
+ * attemptId, the attempt's taskId and workerId, the immutable CellInput's
+ * exact Worktree, the actor conversation/action identity, and the stable
+ * attempt/settlement refs. A receipt that parses but fails any cross-link is
+ * not usable: it can neither settle nor suppress a guarded retry. Validated
+ * terminal settlement evidence of the same attempt is appended when present.
  */
 function controlReceiptEvidence(
   home: string,
   attemptId: string,
   sourceRef: string,
+  actor: { readonly conversationId: string; readonly actionId: string },
+  evidence: ReturnType<typeof readStrictTaskAttemptEvidence>,
 ): string[] | undefined {
-  const evidence = readStrictTaskAttemptEvidence(home, attemptId);
   const controlPath = join(home, "state", "task-attempts", attemptId, "control.json");
   if (!existsSync(controlPath)) return undefined;
   let value: unknown;
@@ -591,7 +606,29 @@ function controlReceiptEvidence(
     return undefined;
   }
   const parsed = TaskRunControlReceiptSchema.safeParse(value);
-  if (!parsed.success || parsed.data.sourceRef !== sourceRef) return undefined;
+  if (!parsed.success) return undefined;
+  const receipt = parsed.data;
+  if (receipt.sourceRef !== sourceRef) return undefined;
+  if (receipt.requestedBy.conversationId !== actor.conversationId
+    || receipt.requestedBy.actionId !== actor.actionId) return undefined;
+  if (receipt.carrierId !== attemptId || receipt.attemptId !== attemptId) return undefined;
+  if (evidence.standing !== "available" || evidence.attempt === undefined) return undefined;
+  const attempt = evidence.attempt;
+  if (receipt.taskId !== attempt.taskId) return undefined;
+  if (attempt.workerId === undefined || receipt.workerId !== attempt.workerId) return undefined;
+  if (receipt.attemptRef !== evidence.refs.attemptRef
+    || receipt.settlementRef !== evidence.refs.settlementRef) return undefined;
+  const cellInput = evidence.input;
+  if (cellInput === undefined) return undefined;
+  let inputWorktree: string;
+  let receiptWorktree: string;
+  try {
+    inputWorktree = realpathSync(cellInput.workspace.root);
+    receiptWorktree = realpathSync(receipt.worktree);
+  } catch {
+    return undefined;
+  }
+  if (inputWorktree !== receiptWorktree) return undefined;
   const refs = [evidenceRef(home, controlPath)];
   if (evidence.settlement !== undefined) {
     refs.push(evidence.refs.settlementRef);

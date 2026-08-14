@@ -90,8 +90,13 @@ export const conversationOperationTools: Record<
     inputSchema: TaskContinueOperationSchema.omit({ kind: true }),
   }),
   work_control: tool({
-    description:
-      "Not yet available: persistent-work control requires an exact execution carrier. Do not call this tool; report that control is unavailable instead.",
+    description: [
+      "Apply one explicit control to one exact retained carrier.",
+      "Copy the exact carrierId from the current projection's carriers and choose the control that fits the message.",
+      "An ordinary Task carrier owns only stop; pause/resume/recover are refused visibly.",
+      "A carrier without a live retained handle reports liveness unknown and the control cannot be verified.",
+      "Response interruption is a different control and never stops persistent work.",
+    ].join(" "),
     inputSchema: WorkControlOperationSchema.omit({ kind: true }),
   }),
 };

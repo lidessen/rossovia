@@ -18,6 +18,7 @@ import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
 import { createPrincipalTask, loadPrincipalTasks } from "../src/tasks";
 import { showPrincipalTaskAttempts } from "../src/task-attempts";
+import { reconcilePrincipalTaskAttempt } from "../src/task-run";
 import {
   carrierStandingWithoutHandle,
   createConversationExecutionCarrierRegistry,
@@ -906,6 +907,170 @@ describe("conversation execution carrier strict evidence standing", () => {
     const found = host.findCanonicalReceipt({ conversationId, actionId, operation });
     expect(found.standing).toBe("uninspectable");
   });
+
+  test("a restart after a failed lease release keeps a valid settlement reconcile-required until exact release", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(
+      current,
+      () => leaseSpoilingDriver(current),
+    );
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    await until(() => registry.carrier(carrierId)!.liveness().state !== "live", "release failure");
+
+    // The valid settlement exists but the still-present exact lease means the
+    // restart can never claim terminal standing.
+    expect(readJson(join(attemptDirectory(current, carrierId), "settlement.json")))
+      .toMatchObject({ status: "recorded" });
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(),
+    });
+    expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({ kind: "unknown" });
+    const projection = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+
+    const hostAfterRestart = createConversationTaskOperationHost(current.home, { carrierRegistry: restarted });
+    try {
+      hostAfterRestart.executeOperation({
+        conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+        operation: { kind: "work_control", carrierId, control: "stop" },
+      });
+      throw new Error("expected the unretained reconcile-required carrier to be unknown");
+    } catch (error) {
+      expect((error as ConversationOperationHostError).code).toBe("carrier-unknown");
+    }
+
+    // Once the exact dead-owner lease is reconciled, the same restart
+    // projects the terminal settlement.
+    writeExactLeaseBytes(current, current.taskId, carrierId, deadPid());
+    const reconciled = reconcilePrincipalTaskAttempt(current.home, {
+      id: current.taskId,
+      attemptId: carrierId,
+    });
+    expect(reconciled.status).toBe("recorded");
+    expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({
+      kind: "settled",
+      status: "recorded",
+    });
+    const after = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(after.carriers).toEqual([{ id: carrierId, state: "recorded" }]);
+  });
+
+  test("a control receipt that fails a cross-link against its owning attempt cannot settle", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    const control = {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control" as const, carrierId, control: "stop" as const },
+    };
+    host.executeOperation(control);
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+
+    const controlPath = join(attemptDirectory(current, carrierId), "control.json");
+    const original = JSON.parse(readFileSync(controlPath, "utf8"));
+    for (const tamper of [
+      { workerId: "another-worker" },
+      { taskId: randomUUID() },
+      { carrierId: randomUUID() },
+      { attemptRef: "state/task-attempts/another/attempt.json" },
+      { settlementRef: "state/task-attempts/another/settlement.json" },
+      { worktree: join(current.root, "another-worktree") },
+      { requestedBy: { conversationId: randomUUID(), turnId: control.turnId, actionId: control.actionId } },
+    ]) {
+      writeFileSync(controlPath, `${JSON.stringify({ ...original, ...tamper }, null, 2)}\n`);
+      const found = host.findCanonicalReceipt({
+        conversationId: control.conversationId,
+        actionId: control.actionId,
+        operation: control.operation,
+      });
+      expect(found.standing).toBe("absent");
+    }
+    writeFileSync(controlPath, `${JSON.stringify(original, null, 2)}\n`);
+    const found = host.findCanonicalReceipt({
+      conversationId: control.conversationId,
+      actionId: control.actionId,
+      operation: control.operation,
+    });
+    expect(found.standing).toBe("settled");
+  });
+
+  test("a final record whose embedded input differs from the immutable CellInput makes standing unknown, never settled", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+
+    const finalPath = join(attemptDirectory(current, carrierId), "cell-input.run.json");
+    const record = JSON.parse(readFileSync(finalPath, "utf8"));
+    writeFileSync(
+      finalPath,
+      `${JSON.stringify({ ...record, input: { ...record.input, intent: "forged" } }, null, 2)}\n`,
+    );
+
+    expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({ kind: "unknown" });
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(),
+    });
+    const projection = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+  });
+
+  test("a final record whose driver adapter differs from the attempt execution form is invalid", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current);
+    const receipt = host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+
+    const finalPath = join(attemptDirectory(current, carrierId), "cell-input.run.json");
+    const record = JSON.parse(readFileSync(finalPath, "utf8"));
+    writeFileSync(
+      finalPath,
+      `${JSON.stringify({ ...record, driver: { ...record.driver, adapter: "opencode-cli.v1" } }, null, 2)}\n`,
+    );
+
+    expect(carrierStandingWithoutHandle(current.home, carrierId)).toEqual({ kind: "unknown" });
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(),
+    });
+    const projection = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+  });
 });
 
 /** A driver that spoils the settlement path so the carrier's settlement write fails. */
@@ -934,6 +1099,25 @@ function leaseSpoilingDriver(fixture_: Fixture, createDriver: () => CellDriver =
       return result;
     },
   };
+}
+
+function deadPid(): number {
+  const result = Bun.spawnSync(["sh", "-c", "exit 0"]);
+  if (result.exitCode !== 0) throw new Error("dead pid fixture failed");
+  return result.pid;
+}
+
+/** Write exact lease bytes for one attempt, as the acquire owner would. */
+function writeExactLeaseBytes(fixture_: Fixture, taskId: string, attemptId: string, pid: number): void {
+  const content = `${JSON.stringify({
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree: realpathSync(fixture_.worktree),
+    taskId,
+    attemptId,
+    pid,
+    acquiredAt: new Date().toISOString(),
+  }, null, 2)}\n`;
+  writeFileSync(leasePath(fixture_), content);
 }
 
 describe("conversation context projection", () => {
