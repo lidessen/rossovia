@@ -212,10 +212,12 @@ export interface ConversationSocketRuntimeOptions {
  * A browser `work.control` frame runs through the same durable action path
  * but only when its exact target tuple matches: the committed
  * `task_continue` turn/action of this conversation and the retained carrier
- * whose identity equals the frame's carrierId. `tool.interrupt` stays
- * unsupported; a mismatched or stale target or a missing carrier runtime is
- * a visible rejection with zero effect, and the transport never aborts a
- * carrier directly.
+ * whose identity equals the frame's carrierId. Validation precedes any
+ * effect or broad reconciliation, and the frame is never queued behind the
+ * provider-lifetime turn chain. `tool.interrupt` stays unsupported; a
+ * mismatched or stale target or a missing carrier runtime is a visible
+ * rejection with zero effect, and the transport never aborts a carrier
+ * directly.
  */
 export class ConversationSocketRuntime {
   readonly journal: FileConversationJournal;
@@ -417,37 +419,42 @@ export class ConversationSocketRuntime {
 
   /**
    * Run one browser work.control frame through the exact durable action path.
-   * The frame enters the effect path only when its target tuple matches
-   * exactly: the same conversation's committed `task_continue` turn/action in
-   * the journal and the retained carrier whose identity equals the frame's
-   * carrierId. A mismatched or stale target, or a runtime without an installed
-   * carrier registry, is a visible rejection with zero effect. An exact
-   * target becomes one typed `work_control` operation journaled through
-   * `runAction`: the durable `action.requested` precedes the effect, the
-   * installed operation host applies the control through the canonical
-   * carrier owner, and the terminal settlement stays reconnect-reconcilable.
-   * The transport never aborts a carrier directly and never routes a control
-   * by phrase; pause/resume/recover fail visibly in the owning host.
+   * The frame is never queued behind the provider-lifetime turn chain: the
+   * journal serializes the durable writes per conversation and the exact
+   * carrier owner guards the effect, so a stop can settle while a provider
+   * turn is still running. The exact target tuple is validated before any
+   * effect or broad reconciliation: the same conversation's committed
+   * `task_continue` turn/action in the journal and the retained carrier whose
+   * identity equals the frame's carrierId. A mismatched or stale target, or a
+   * runtime without an installed carrier registry, is a visible rejection
+   * with zero host and journal mutation. An exact target becomes one typed
+   * `work_control` operation journaled through `runAction`: the durable
+   * `action.requested` precedes the effect, the installed operation host
+   * applies the control through the canonical carrier owner, and the terminal
+   * settlement stays reconnect-reconcilable. The transport never aborts a
+   * carrier directly and never routes a control by phrase;
+   * pause/resume/recover fail visibly in the owning host.
    */
   private submitWorkControl(entry: SocketEntry, frame: ClientWorkControlFrame): void {
-    this.runExclusive(entry.conversationId, async () => {
-      await this.reconcileConversation(entry.conversationId);
-      const target = await this.workControlTarget(entry, frame);
-      if (target === undefined) return;
-      const operation: ConversationOperation = {
-        kind: "work_control",
-        carrierId: frame.carrierId,
-        control: frame.control,
-      };
-      try {
-        await this.runAction(entry.conversationId, target, operation);
-      } catch (error: unknown) {
-        this.send(entry, protocolErrorFrame(
-          "journal-error",
-          `work.control could not be journaled before the effect: ${errorMessage(error)}`,
-        ));
-      }
-    });
+    void this.runWorkControl(entry, frame);
+  }
+
+  private async runWorkControl(entry: SocketEntry, frame: ClientWorkControlFrame): Promise<void> {
+    const target = await this.workControlTarget(entry, frame);
+    if (target === undefined) return;
+    const operation: ConversationOperation = {
+      kind: "work_control",
+      carrierId: frame.carrierId,
+      control: frame.control,
+    };
+    try {
+      await this.runAction(entry.conversationId, target, operation);
+    } catch (error: unknown) {
+      this.send(entry, protocolErrorFrame(
+        "journal-error",
+        `work.control could not be journaled before the effect: ${errorMessage(error)}`,
+      ));
+    }
   }
 
   /**

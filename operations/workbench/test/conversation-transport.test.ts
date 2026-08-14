@@ -2176,4 +2176,115 @@ describe("conversation socket work.control frames", () => {
       server.stop(true);
     }
   });
+
+  test("a work.control stop settles while an active provider turn is still running", async () => {
+    const root = tempRoot();
+    const gate = new ManualGate();
+    const registry = fakeCarrierRegistry();
+    const host = controlOperationHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([gatedScript(gate, "first chunk", "later chunk")]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const retained = retainCarrier(registry, conversationId, target);
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "run a long provider turn");
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "response.delta" && frame.text === "first chunk"),
+        "the provider turn starts streaming",
+      );
+      workControlFrame(client, {
+        turnId: target.turnId,
+        actionId: target.actionId,
+        carrierId: retained.carrierId,
+        control: "stop",
+      });
+      await waitFor(() => client.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"
+          && frame.event.data.actionId !== target.actionId), "the control settles while the turn is gated");
+
+      const events = await runtime.journal.readEvents(conversationId);
+      expect(events.some((event) => event.type === "action.requested" && event.data.kind === "work_control"))
+        .toBe(true);
+      expect(events.some((event) => event.type === "coordinator.turn-settled")).toBe(false);
+      expect(registry.controls).toHaveLength(1);
+      expect(retained.handle.stops).toHaveLength(1);
+
+      gate.release();
+      await waitFor(() => durableSequences(client.messages).length === 9, "the provider turn settles after release");
+      expect(durableSequences(client.messages)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    } finally {
+      gate.release();
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a mismatched work.control frame performs no broad reconciliation and leaves an unrelated unsettled absent action untouched", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry();
+    const host = controlOperationHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([settledScript("fixture response")]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const target = await stageCommittedContinue(runtime, conversationId);
+    const retained = retainCarrier(registry, conversationId, target);
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      // The connect-time reconciliation has already run over the settled
+      // staged events. An unrelated unsettled action whose canonical receipt
+      // is provably absent appears only now: a broad reconciliation triggered
+      // by the frame would retry it through the host.
+      await Bun.sleep(50);
+      const unrelatedActionId = randomUUID();
+      await runtime.journal.requestAction(conversationId, {
+        actionId: unrelatedActionId,
+        turnId: target.turnId,
+        messageId: target.messageId,
+        operation: CREATE_OPERATION,
+      });
+      const before = await runtime.journal.readEvents(conversationId);
+      workControlFrame(client, {
+        turnId: target.turnId,
+        actionId: target.actionId,
+        carrierId: randomUUID(),
+        control: "stop",
+      });
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "protocol.error"),
+        "the mismatched frame is rejected",
+      );
+      await Bun.sleep(50);
+
+      const errors = client.messages.filter(
+        (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]!.code).toBe("conflict");
+      expect(host.effects).toHaveLength(0);
+      expect(registry.controls).toHaveLength(0);
+      expect(retained.handle.stops).toHaveLength(0);
+      const events = await runtime.journal.readEvents(conversationId);
+      expect(events).toHaveLength(before.length);
+      expect(events.some((event) =>
+        event.type === "action.requested" && event.data.actionId === unrelatedActionId)).toBe(true);
+      expect(events.some((event) =>
+        (event.type === "action.settled" || event.type === "action.failed" || event.type === "action.uncertain")
+          && event.data.actionId === unrelatedActionId)).toBe(false);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
 });
