@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { closeSync, fsyncSync, openSync, readFileSync } from "node:fs";
 import { mkdir, open, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CellRunRecord } from "../../../packages/work-cell/src/contracts";
@@ -99,6 +99,13 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
   constructor(
     private readonly root: string,
     private readonly now: () => string = () => new Date().toISOString(),
+    /**
+     * The durability boundary the synchronous read path joins before
+     * accepting any observed event: defaults to fsyncing the read file so a
+     * terminal line counts only after the writer's durability barrier is
+     * joined. A throwing seam fails the synchronous read visibly.
+     */
+    private readonly syncDurability: (path: string) => void = fsyncFileDurability,
   ) {}
 
   async appendInput(missionId: string, unparsedInput: MissionInputDraft): Promise<MissionInputReceipt> {
@@ -807,13 +814,20 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
 
   /** The synchronous dual of `readTimeline`, for immediate-before-effect checks. */
   private readTimelineSync(timelineId: string): TimelineEvent[] {
+    const path = this.timelinePath(timelineId);
     let content: string;
     try {
-      content = readFileSync(this.timelinePath(timelineId), "utf8");
+      content = readFileSync(path, "utf8");
     } catch (error) {
       if (isMissing(error)) return [];
       throw error;
     }
+    // Durability barrier: every event this read observed — including a
+    // writer-appended terminal line that may still be fsync-pending — is
+    // joined to the device before the caller may accept it. A failing
+    // barrier fails the read visibly rather than accepting unverified
+    // settlement.
+    this.syncDurability(path);
     return parseTimelineContent(timelineId, content);
   }
 
@@ -830,6 +844,16 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
       release();
       if (this.locks.get(timelineId) === tail) this.locks.delete(timelineId);
     }
+  }
+}
+
+/** The exact durability join: fsync the read file so observed appends are device-durable. */
+function fsyncFileDurability(path: string): void {
+  const handle = openSync(path, "r");
+  try {
+    fsyncSync(handle);
+  } finally {
+    closeSync(handle);
   }
 }
 

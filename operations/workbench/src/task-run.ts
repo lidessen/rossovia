@@ -376,7 +376,8 @@ function assertReconcileOwnerDead(pid: number, attemptId: string): void {
   }
 }
 
-function isProcessDefinitelyAbsent(pid: number): boolean {
+/** One lease owner process is provably absent only when its pid no longer resolves. */
+export function isProcessDefinitelyAbsent(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return false;
@@ -979,7 +980,8 @@ export function writeTaskRunSettlement(
   });
 }
 
-function canonicalGitDirectory(worktree: string): string {
+/** The exact resolved Git metadata directory one Worktree lease binds to. */
+export function canonicalGitDirectory(worktree: string): string {
   const raw = requiredGit(["rev-parse", "--git-dir"], worktree);
   return realpathSync(isAbsolute(raw) ? raw : resolve(worktree, raw));
 }

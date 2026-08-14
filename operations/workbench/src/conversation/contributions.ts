@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  unlinkSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -36,7 +38,9 @@ import { expandPath } from "../paths";
 import { observeWorkspace, requiredGit } from "../workspace";
 import {
   acquireWorktreeLease,
+  canonicalGitDirectory,
   evidenceRef,
+  isProcessDefinitelyAbsent,
   ordinaryOpenCodeExcludes,
   ORDINARY_TASK_MAX_DURATION_MS,
   releaseWorktreeLease,
@@ -193,6 +197,12 @@ export type ChildResultRead =
   | { readonly standing: "read"; readonly result: DelegateResultProjection }
   | { readonly standing: "refused"; readonly code: ChildResultRefusalCode; readonly reason: string };
 
+/** The exact recovery outcome of one contribution-owned lease reconcile. */
+export type ContributionLeaseReconcileResult =
+  | { readonly outcome: "released"; readonly leasePath: string }
+  | { readonly outcome: "not-retained"; readonly reason: string }
+  | { readonly outcome: "refused"; readonly reason: string };
+
 export interface ConversationContributionRegistry {
   readonly home: string;
   /**
@@ -260,6 +270,21 @@ export interface ConversationContributionRegistry {
       readonly actionId: string;
     };
   }): ContributionControlReceipt;
+  /**
+   * The narrowly contribution-owned recovery owner for one exact retained
+   * task-run Worktree lease: it reuses the exact lease identity, PID
+   * liveness, byte-match, and release semantics and never forges Task
+   * attempt or Work Cell evidence. It recovers both a lock-only crash
+   * (lease acquired, contribution never started) and a receipt-backed
+   * terminal release failure; a live, unknown, mismatched, or unreadable
+   * owner is refused fail-closed, and an already-absent lease is
+   * not-retained, never re-acquired.
+   */
+  reconcileLease(input: {
+    readonly conversationId: string;
+    readonly batchId: string;
+    readonly key: string;
+  }): ContributionLeaseReconcileResult;
 }
 
 export interface ConversationContributionRegistryOptions {
@@ -269,6 +294,13 @@ export interface ConversationContributionRegistryOptions {
   /** Bound on live contributions per conversation; read-only contributions may run in parallel up to it. */
   readonly maxLiveContributions?: number;
   readonly now?: () => string;
+  /**
+   * The timeline durability boundary the synchronous dependency check
+   * joins before accepting a terminal settlement; defaults to fsync. A
+   * throwing seam fails the check visibly, never accepts unverified
+   * settlement.
+   */
+  readonly timelineSyncDurability?: (path: string) => void;
 }
 
 export function createConversationContributionRegistry(
@@ -299,18 +331,19 @@ const SpawnReceiptSchema = z.object({
   timelineRef: z.string().min(1),
   startedAt: z.string().min(1),
   /**
-   * The exact task-run Worktree lease ownership identity an effectful spawn
-   * acquired: the durable exact contribution/lease evidence retained until
-   * the exact release succeeds, so a retained or crash-abandoned lease can
-   * be projected as reconcile-required instead of hidden.
+   * The exact task-run Worktree lease binding an effectful spawn reserves
+   * BEFORE the lease is acquired: the deterministic lease path and owner
+   * identity (task, batch-as-attempt, worktree). The reservation durably
+   * binds the action to its lease owner before acquisition, so a
+   * crash-retained lease is always traceable to its exact owner and
+   * reconcile-required instead of hidden. The acquired lease file itself
+   * carries the live pid and acquisition time.
    */
   lease: z.object({
     path: z.string().min(1),
     worktree: z.string().min(1),
     taskId: z.string().min(1),
     attemptId: z.string().min(1),
-    pid: z.number().int().positive(),
-    acquiredAt: z.string().min(1),
   }).strict().optional(),
 }).strict();
 type SpawnReceipt = z.infer<typeof SpawnReceiptSchema>;
@@ -385,7 +418,11 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   ) {
     this.home = home;
     this.catalog = catalog;
-    this.timeline = new FileMissionTimeline(join(home, "state", "conversation-contributions"));
+    this.timeline = new FileMissionTimeline(
+      join(home, "state", "conversation-contributions"),
+      undefined,
+      options.timelineSyncDurability,
+    );
     this.journal = new FileConversationJournal(home);
     const max = options.maxLiveContributions ?? 8;
     if (!Number.isInteger(max) || max < 1) {
@@ -521,23 +558,14 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       settledKeys,
     });
 
-    let lease: TaskRunLease | undefined;
-    if (operation.effectKind === "effectful") {
-      try {
-        // The exact shared task-run Worktree lease: one Task/Worktree permits
-        // at most one effectful execution owner, whether a task_continue
-        // carrier or a temporary contribution, and overlapping writers are
-        // refused by the same atomic owner evidence.
-        lease = acquireWorktreeLease(worktree, task.id, batchId);
-      } catch (error) {
-        throw new ContributionError("effect-conflict", errorMessage(error));
-      }
-    }
-
-    let handle: WorkbenchContributionHandle;
     let spawnRef: string;
     try {
-      spawnRef = this.writeSpawnReceipt({
+      // The committed-action reservation is the FIRST cross-process atomic
+      // owner for both read-only and effectful spawns: the full strict
+      // receipt — including, for effectful work, the exact lease binding
+      // reserved before acquisition — is published atomically so an EEXIST
+      // loser always reads a fully written receipt.
+      spawnRef = this.publishSpawnReservation({
         conversationId: input.conversationId,
         turnId: input.turnId,
         actionId: input.actionId,
@@ -550,60 +578,72 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         sourceRevision: tasks.sourceRevision,
         intent: operation.intent,
         timelineRef: evidenceRef(this.home, this.timeline.timelinePath(input.conversationId)),
-        ...(lease === undefined ? {} : { lease }),
-      });
-
-      handle = new WorkbenchContributionHandle({
-        identity: {
-          batchId,
-          key: operation.key,
-          cellId: cell.id,
-          workerId: card.id,
-          worker: card,
-          effectKind: operation.effectKind,
-          taskId: task.id,
-          taskRevision: task.revision,
-          sourceRevision: tasks.sourceRevision,
-          conversationId: input.conversationId,
-          turnId: input.turnId,
-          actionId: input.actionId,
-        },
-        home: this.home,
-        spawnRef,
-        ...(lease === undefined ? {} : { lease }),
+        worktree,
       });
     } catch (error) {
       if (isAlreadyExists(error)) {
         // The atomic reservation lost to another process: converge on the
-        // winner's strict matching receipt and start no duplicate worker.
+        // winner's fully published strict receipt and start no duplicate
+        // worker and acquire no second lease.
         let winner: SpawnReceipt | undefined;
         try {
           winner = readSpawnReservation(this.conversationDirectory(input.conversationId), input.actionId);
         } catch (readError) {
-          releaseAcquiredLeaseOrThrow(lease, "the committed action's spawn reservation could not be read");
           throw readError;
         }
         if (winner === undefined) {
-          releaseAcquiredLeaseOrThrow(lease, "the committed action's spawn reservation could not be read");
           throw new ContributionError(
             "source-unavailable",
             `the committed action ${input.actionId} holds no readable spawn reservation; the spawn is refused without guessing`,
           );
         }
         const mismatch = spawnReceiptMismatch(winner, input, operation);
-        if (mismatch === undefined) {
-          releaseAcquiredLeaseOrThrow(lease, "converging on the committed action's retained spawn receipt");
-          return winnerReceipt(winner, this.home);
-        }
-        releaseAcquiredLeaseOrThrow(lease, "the committed action's spawn reservation does not match this operation");
+        if (mismatch === undefined) return winnerReceipt(winner, this.home);
         throw new ContributionError(
           "contribution-duplicate",
           `the committed action ${input.actionId} already retains a contribution spawn that does not match this operation: ${mismatch}`,
         );
       }
-      releaseAcquiredLeaseOrThrow(lease, "the spawn receipt could not be retained");
       throw error;
     }
+
+    let lease: TaskRunLease | undefined;
+    if (operation.effectKind === "effectful") {
+      try {
+        // Only the reservation winner may acquire the shared task-run
+        // Worktree lease: one Task/Worktree permits at most one effectful
+        // execution owner, whether a task_continue carrier or a temporary
+        // contribution, and overlapping writers are refused by the same
+        // atomic owner evidence.
+        lease = acquireWorktreeLease(worktree, task.id, batchId);
+      } catch (error) {
+        // The reservation lost the exact writer lock: retract the
+        // just-published reservation so the refused action leaves no claimed
+        // contribution, then fail visibly with no effect.
+        this.retractSpawnReservation(input.conversationId, input.actionId);
+        throw new ContributionError("effect-conflict", errorMessage(error));
+      }
+    }
+
+    const handle = new WorkbenchContributionHandle({
+      identity: {
+        batchId,
+        key: operation.key,
+        cellId: cell.id,
+        workerId: card.id,
+        worker: card,
+        effectKind: operation.effectKind,
+        taskId: task.id,
+        taskRevision: task.revision,
+        sourceRevision: tasks.sourceRevision,
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+      },
+      home: this.home,
+      spawnRef,
+      ...(lease === undefined ? {} : { lease }),
+    });
     this.handles.set(batchId, handle);
     this.startedByCommittedAction.set(actionKey, batchId);
     conversationKeys.add(operation.key);
@@ -861,6 +901,100 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       `contribution ${input.batchId}/${input.key} has no retained runtime handle in this process; `
       + "whether it settled or was interrupted cannot be verified and the stop is refused as unverifiable",
     );
+  }
+
+  /**
+   * The exact retained-lease recovery owner. The lease binding is read from
+   * the durable spawn reservation (published before acquisition, so both a
+   * lock-only crash and a receipt-backed terminal release failure retain the
+   * same exact identity); the current lease bytes must still match that
+   * identity and its owner process must be verifiably absent before the
+   * exact byte-match release runs. It never touches Task attempt or Work
+   * Cell evidence and never re-acquires or guesses a lease.
+   */
+  reconcileLease(input: {
+    readonly conversationId: string;
+    readonly batchId: string;
+    readonly key: string;
+  }): ContributionLeaseReconcileResult {
+    const receipt = this.readSpawnReceipts(input.conversationId)
+      .find((candidate) => candidate.batchId === input.batchId);
+    if (receipt === undefined) {
+      return {
+        outcome: "refused",
+        reason: `conversation ${input.conversationId} has no durable contribution spawn for batch ${input.batchId}`,
+      };
+    }
+    if (receipt.key !== input.key) {
+      return {
+        outcome: "refused",
+        reason: `batch ${input.batchId} does not retain key ${input.key}; reconciliation fails closed`,
+      };
+    }
+    const binding = receipt.lease;
+    if (binding === undefined) {
+      return {
+        outcome: "not-retained",
+        reason: `contribution ${input.batchId}/${input.key} holds no effectful lease binding; nothing to recover`,
+      };
+    }
+    let raw: string;
+    try {
+      raw = readFileSync(binding.path, "utf8");
+    } catch (error) {
+      if (isMissing(error)) {
+        return {
+          outcome: "not-retained",
+          reason: `the exact lease ${binding.path} is already absent; the release already succeeded`,
+        };
+      }
+      return {
+        outcome: "refused",
+        reason: `the retained lease ${binding.path} cannot be read: ${errorMessage(error)}`,
+      };
+    }
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return {
+        outcome: "refused",
+        reason: `the retained lease ${binding.path} does not carry the exact expected identity bytes`,
+      };
+    }
+    const record = asRecord(value);
+    if (
+      record.taskId !== binding.taskId
+      || record.attemptId !== binding.attemptId
+      || record.worktree !== binding.worktree
+    ) {
+      return {
+        outcome: "refused",
+        reason:
+          `the retained lease ${binding.path} belongs to a different owner identity than `
+          + `contribution ${input.batchId}/${input.key}; reconciliation fails closed`,
+      };
+    }
+    const pid = typeof record.pid === "number" && Number.isInteger(record.pid) && record.pid > 0
+      ? record.pid
+      : undefined;
+    if (pid === undefined || !isProcessDefinitelyAbsent(pid)) {
+      return {
+        outcome: "refused",
+        reason:
+          `the retained lease owner process ${pid === undefined ? "unknown" : pid} for `
+          + `contribution ${input.batchId}/${input.key} is still alive or cannot be proven absent; reconciliation fails closed`,
+      };
+    }
+    try {
+      releaseWorktreeLease({ path: binding.path, content: raw });
+    } catch (error) {
+      return {
+        outcome: "refused",
+        reason: `the exact lease release for ${binding.path} failed: ${errorMessage(error)}`,
+      };
+    }
+    return { outcome: "released", leasePath: binding.path };
   }
 
   /** The exact catalog identity for one selector; never a policy-catalog fallback. */
@@ -1136,7 +1270,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
   }
 
-  private writeSpawnReceipt(input: {
+  private publishSpawnReservation(input: {
     readonly conversationId: string;
     readonly turnId: string;
     readonly actionId: string;
@@ -1149,15 +1283,17 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     readonly sourceRevision: number;
     readonly intent: string;
     readonly timelineRef: string;
-    readonly lease?: TaskRunLease;
+    readonly worktree: string;
   }): string {
     const directory = this.conversationDirectory(input.conversationId);
     mkdirSync(directory, { recursive: true });
     // The receipt is the cross-process reservation: its path is keyed by the
-    // committed action identity and written atomically, so two processes
-    // reconciling the same action converge on one strict matching receipt.
+    // committed action identity and published atomically (fully written to a
+    // unique temporary file, then hard-linked into place), so a concurrent
+    // EEXIST loser can never observe partial JSON and never starts a
+    // duplicate worker.
     const path = join(directory, `spawn-${input.actionId}.json`);
-    writeImmutableJson(path, SpawnReceiptSchema.parse({
+    const value = SpawnReceiptSchema.parse({
       version: CONTRIBUTION_SPAWN_VERSION,
       batchId: input.batchId,
       key: input.key,
@@ -1175,9 +1311,30 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       intent: input.intent,
       timelineRef: input.timelineRef,
       startedAt: this.now(),
-      ...(input.lease === undefined ? {} : { lease: contributionLeaseIdentity(input.lease) }),
-    }));
+      ...(input.effectKind === "effectful"
+        ? {
+            lease: {
+              path: join(canonicalGitDirectory(input.worktree), "rossovia-task-run.lock"),
+              worktree: input.worktree,
+              taskId: input.task.id,
+              attemptId: input.batchId,
+            },
+          }
+        : {}),
+    });
+    publishAtomically(path, value);
     return evidenceRef(this.home, path);
+  }
+
+  /** Retract the reservation this registry just published, after a refused lease acquisition. */
+  private retractSpawnReservation(conversationId: string, actionId: string): void {
+    const path = join(this.conversationDirectory(conversationId), `spawn-${actionId}.json`);
+    try {
+      unlinkSync(path);
+    } catch {
+      // A leftover reservation projects liveness unknown, never live or
+      // settled; the lease refusal itself is already surfaced.
+    }
   }
 
   private readSpawnReceipts(conversationId: string): SpawnReceipt[] {
@@ -1373,8 +1530,8 @@ class WorkbenchContributionHandle implements ContributionHandle {
           evidenceRefs: settlement.evidenceRefs,
           error:
             `the durable contribution settlement exists but the exact task-run Worktree lease ${retainedLease.path}`
-            + ` (owner pid ${pid === undefined ? "unknown" : pid}, retained in the durable spawn receipt) could not be released: ${errorMessage(error)};`
-            + " the contribution is unresolved and reconcile-required: the retained lease must be released through the exact task-run lease release only after its owner process is verifiably absent",
+            + ` (owner pid ${pid === undefined ? "unknown" : pid}, retained in the durable spawn reservation) could not be released: ${errorMessage(error)};`
+            + " the contribution is unresolved and reconcile-required: recover the retained lease through the contribution reconcileLease operation only after the owner process is verifiably absent",
         };
       }
     }
@@ -1543,45 +1700,20 @@ function winnerReceipt(receipt: SpawnReceipt, home: string): ContributionStartRe
   };
 }
 
-/**
- * Release a just-acquired lease on a refused pre-start path. The release
- * failure is never swallowed: it surfaces as its own visible contribution
- * error naming the exact retained lease and its owner, so a writer-blocked
- * lock can never be hidden by the original refusal.
- */
-function releaseAcquiredLeaseOrThrow(lease: TaskRunLease | undefined, context: string): void {
-  if (lease === undefined) return;
+/** Fully write one reservation, then atomically publish it with a no-clobber hard link. */
+function publishAtomically(path: string, value: unknown): void {
+  const temporary = `${path}.tmp-${randomUUID()}`;
   try {
-    releaseWorktreeLease(lease);
-  } catch (error) {
-    const pid = leaseOwnerPid(lease);
-    throw new ContributionError(
-      "effect-conflict",
-      `${context}, and the exact task-run Worktree lease ${lease.path}`
-      + ` (owner pid ${pid === undefined ? "unknown" : pid}) could not be released: ${errorMessage(error)};`
-      + " the retained lease is durable reconcile-required evidence and must be released only after its owner process is verifiably absent",
-    );
+    writeImmutableJson(temporary, value);
+    linkSync(temporary, path);
+  } finally {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // The temporary is best-effort cleanup only; the published reservation
+      // or the surfacing EEXIST/IO error decides the outcome.
+    }
   }
-}
-
-/** The exact durable lease ownership identity one spawn receipt retains. */
-function contributionLeaseIdentity(lease: TaskRunLease): {
-  path: string;
-  worktree: string;
-  taskId: string;
-  attemptId: string;
-  pid: number;
-  acquiredAt: string;
-} {
-  const record = asRecord(JSON.parse(lease.content));
-  return {
-    path: lease.path,
-    worktree: String(record.worktree),
-    taskId: String(record.taskId),
-    attemptId: String(record.attemptId),
-    pid: Number(record.pid),
-    acquiredAt: String(record.acquiredAt),
-  };
 }
 
 /**
