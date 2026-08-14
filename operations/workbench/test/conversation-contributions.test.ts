@@ -1241,6 +1241,335 @@ describe("conversation temporary contributions", () => {
     }, "the re-claimed contribution settles");
   });
 
+  test("a linked marker whose directory fsync fails retains its temporary: readers before retraction never see success", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "retained-temp" });
+
+    const readerRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    let readerSpawn: Promise<unknown> | undefined;
+    let readerStanding: ReturnType<ReturnType<typeof createConversationTaskOperationHost>["findCanonicalReceipt"]> | undefined;
+    let directorySyncs = 0;
+    const failingRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      atomicPublish: {
+        syncDirectory: () => {
+          directorySyncs += 1;
+          if (directorySyncs === 2) {
+            throw new Error("simulated directory fsync failure");
+          }
+        },
+        onRetainedTemporary: () => {
+          // The temp-removal boundary is reached: the link exists, its
+          // directory-fsync durability boundary failed, and the temporary
+          // is retained. A second registry with normal durability seams
+          // reads now, before the caller-owned retraction.
+          const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+            contributionRegistry: readerRegistry,
+          });
+          readerStanding = reconcilingHost.findCanonicalReceipt({
+            conversationId,
+            actionId: actor.actionId,
+            operation,
+          });
+          readerSpawn = readerRegistry.spawn(spawnInput(actor, operation))
+            .catch((value: unknown) => value);
+        },
+      },
+    });
+
+    // The winner's marker publication fails after the link with its
+    // durability boundary unproven: the temporary must be retained so the
+    // concurrent reader cannot mistake the linked marker for success.
+    await expect(failingRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
+    expect(readerStanding?.standing).toBe("uninspectable");
+    const readerError = await readerSpawn!;
+    expect(readerError).toBeInstanceOf(ContributionError);
+    if (readerError instanceof ContributionError) {
+      expect(readerError.code).toBe("contribution-unknown");
+    }
+
+    // The winner retracted the exact claim, every matching temporary, and
+    // the reservation: no committed started record remains.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
+    expect(readdirSync(directory).filter((entry) => entry.includes(".tmp-"))).toHaveLength(0);
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: readerRegistry,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("absent");
+
+    // The retracted claim poisoned nothing: the same action re-claims,
+    // starts, and settles normally.
+    const receipt = await readerRegistry.spawn(spawnInput(actor, operation));
+    expect(receipt.key).toBe("retained-temp");
+    await waitFor(async () => {
+      const projections = await readerRegistry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "the re-claimed contribution settles");
+  });
+
+  test("a failed-start effectful spawn waits for the cancelled delegate's settlement before releasing its lease", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "slow-cancelled-writer", effectKind: "effectful" });
+    const replacementActor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const replacementOperation = spawnOperation({ key: "replacement-writer", effectKind: "effectful" });
+
+    const replacementRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    let replacementAttempt: Promise<unknown> | undefined;
+    let notSettledInsideBoundary: boolean | undefined;
+    let reservationHeldInsideBoundary: boolean | undefined;
+    let directorySyncs = 0;
+    const failingRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(slowContributionDriver),
+      atomicPublish: {
+        syncDirectory: () => {
+          directorySyncs += 1;
+          if (directorySyncs === 2) {
+            throw new Error("simulated directory fsync failure");
+          }
+        },
+      },
+      onDelegateCancelled: () => {
+        // The boundary between cancel() and the awaited settlement: the
+        // effectful lease must still be held and the old delegate must
+        // still be unsettled, so a concurrent writer is refused.
+        const reservation = JSON.parse(readFileSync(join(
+          contributionStateDirectory(fixture_.home, conversationId),
+          `spawn-${actor.actionId}.json`,
+        ), "utf8")) as { batchId: string };
+        notSettledInsideBoundary = !timeline.hasTerminalSettlementSync(
+          conversationId,
+          contributionPreparedBatchId(conversationId, reservation.batchId),
+          "slow-cancelled-writer",
+        );
+        reservationHeldInsideBoundary = existsSync(join(
+          contributionStateDirectory(fixture_.home, conversationId),
+          `spawn-${actor.actionId}.json`,
+        ));
+        replacementAttempt = replacementRegistry.spawn(
+          spawnInput(replacementActor, replacementOperation),
+        ).catch((value: unknown) => value);
+      },
+    });
+
+    await expect(failingRegistry.spawn(spawnInput(actor, operation))).rejects.toThrow();
+
+    // Inside the boundary the old delegate had not settled and the
+    // reservation was still durable: the concurrent effectful writer was
+    // lease-refused instead of overlapping a possibly-active worker.
+    expect(notSettledInsideBoundary).toBe(true);
+    expect(reservationHeldInsideBoundary).toBe(true);
+    const refused = await replacementAttempt!;
+    expect(refused).toBeInstanceOf(ContributionError);
+    if (refused instanceof ContributionError) {
+      expect(refused.code).toBe("effect-conflict");
+    }
+
+    // The winner's cleanup ran only after the old delegate actually
+    // settled: everything is retracted and the replacement may now claim.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    expect(existsSync(join(directory, `started-${actor.actionId}.json`))).toBe(false);
+    expect(existsSync(join(directory, `spawn-${actor.actionId}.json`))).toBe(false);
+    const receipt = await replacementRegistry.spawn(spawnInput(replacementActor, replacementOperation));
+    expect(receipt.key).toBe("replacement-writer");
+    await waitFor(async () => {
+      const projections = await replacementRegistry.listContributions(conversationId);
+      return projections.find((entry) => entry.batchId === receipt.batchId)?.state !== "live";
+    }, "the replacement writer settles");
+  });
+
+  test("a failed-start delegate whose terminal settlement cannot be confirmed retains the lease and fails closed", async () => {
+    const fixture_ = fixture();
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const operation = spawnOperation({ key: "unconfirmed-writer", effectKind: "effectful" });
+    const otherActor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const otherOperation = spawnOperation({ key: "other-writer", effectKind: "effectful" });
+
+    const timeline = new FileMissionTimeline(join(fixture_.home, "state", "conversation-contributions"));
+    let childTimelineFile: string | undefined;
+    let directorySyncs = 0;
+    const failingRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(slowContributionDriver),
+      atomicPublish: {
+        syncDirectory: () => {
+          directorySyncs += 1;
+          if (directorySyncs === 2) {
+            // The cancelled delegate's terminal settlement recording will
+            // fail against the read-only child timeline file: the terminal
+            // stop cannot be confirmed.
+            const reservation = JSON.parse(readFileSync(join(
+              contributionStateDirectory(fixture_.home, conversationId),
+              `spawn-${actor.actionId}.json`,
+            ), "utf8")) as { batchId: string };
+            const link = timeline.durableStartLinkSync(
+              conversationId,
+              contributionPreparedBatchId(conversationId, reservation.batchId),
+            );
+            expect(link).toBeDefined();
+            if (link !== undefined) {
+              childTimelineFile = timeline.timelinePath(link.childTimelineId);
+              chmodSync(childTimelineFile, 0o400);
+            }
+            throw new Error("simulated directory fsync failure");
+          }
+        },
+      },
+    });
+
+    const winnerError = await failingRegistry.spawn(spawnInput(actor, operation))
+      .catch((value: unknown) => value);
+    expect(winnerError).toBeInstanceOf(ContributionError);
+    if (winnerError instanceof ContributionError) {
+      expect(winnerError.code).toBe("effect-conflict");
+      expect(winnerError.message).toContain("never reached a durable terminal settlement");
+      expect(winnerError.message).toContain("reconcileLease");
+    }
+
+    // Restore the child timeline file so later reads and the fixture
+    // teardown can proceed; the settlement failure already happened.
+    if (childTimelineFile !== undefined) chmodSync(childTimelineFile, 0o644);
+
+    // The exact lease and the durable spawn reservation stay retained as
+    // reconcile-required evidence: the writer block is provably still up.
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    const reservationPath = join(directory, `spawn-${actor.actionId}.json`);
+    expect(existsSync(reservationPath)).toBe(true);
+    const reservation = JSON.parse(readFileSync(reservationPath, "utf8")) as { lease?: { path: string } };
+    expect(reservation.lease?.path).toBeString();
+    if (reservation.lease?.path !== undefined) {
+      expect(existsSync(reservation.lease.path)).toBe(true);
+    }
+    const otherRegistry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const refused = await otherRegistry.spawn(spawnInput(otherActor, otherOperation))
+      .catch((value: unknown) => value);
+    expect(refused).toBeInstanceOf(ContributionError);
+    if (refused instanceof ContributionError) {
+      expect(refused.code).toBe("effect-conflict");
+    }
+    const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+      contributionRegistry: otherRegistry,
+    });
+    expect(reconcilingHost.findCanonicalReceipt({
+      conversationId,
+      actionId: actor.actionId,
+      operation,
+    }).standing).toBe("uninspectable");
+  });
+
+  test("a started marker with any mutated shared identity is unknown for convergence and uninspectable for canonical lookup", async () => {
+    const mutations: ReadonlyArray<{
+      readonly label: string;
+      readonly mutate: (
+        started: Record<string, unknown>,
+        reservation: Record<string, unknown>,
+        conversationId: string,
+      ) => void;
+    }> = [
+      {
+        label: "workerId",
+        mutate: (started) => {
+          started.workerId = randomUUID();
+        },
+      },
+      {
+        label: "taskRevision",
+        mutate: (started) => {
+          started.taskRevision = Number(started.taskRevision) + 1;
+        },
+      },
+      {
+        label: "sourceRef",
+        mutate: (started) => {
+          started.sourceRef = "mutated:source-ref";
+        },
+      },
+      {
+        label: "preparedBatchId",
+        mutate: (started, _reservation, conversationId) => {
+          const start = started.start as { preparedBatchId: string; checkpointDigest: string };
+          start.preparedBatchId = contributionPreparedBatchId(conversationId, randomUUID());
+        },
+      },
+      {
+        label: "child cell identity",
+        mutate: (started, reservation) => {
+          const wrongCellId = randomUUID();
+          started.cellId = wrongCellId;
+          reservation.cellId = wrongCellId;
+        },
+      },
+    ];
+    for (const mutation of mutations) {
+      const fixture_ = fixture();
+      const conversationId = randomUUID();
+      await seedTaskAction(fixture_.home, conversationId, fixture_);
+      const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+      const operation = spawnOperation({ key: `mutation-${mutation.label}` });
+
+      const registry = createConversationContributionRegistry(fixture_.home, {
+        catalog: fakeCatalog(),
+      });
+      const receipt = await registry.spawn(spawnInput(actor, operation));
+      await waitFor(async () => {
+        const projections = await registry.listContributions(conversationId);
+        return projections.every((entry) => entry.state === "settled");
+      }, `the ${mutation.label} contribution settles`);
+
+      // Mutate the durable started marker (and, for the child-identity
+      // case, the matching reservation) in place.
+      const directory = contributionStateDirectory(fixture_.home, conversationId);
+      const markerPath = join(directory, `started-${actor.actionId}.json`);
+      const reservationPath = join(directory, `spawn-${actor.actionId}.json`);
+      const started = JSON.parse(readFileSync(markerPath, "utf8")) as Record<string, unknown>;
+      const reservation = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+      mutation.mutate(started, reservation, conversationId);
+      writeFileSync(markerPath, JSON.stringify(started), "utf8");
+      writeFileSync(reservationPath, JSON.stringify(reservation), "utf8");
+
+      // Convergence never yields a started receipt for a mutated marker.
+      const restarted = createConversationContributionRegistry(fixture_.home, {
+        catalog: fakeCatalog(),
+      });
+      const error = await restarted.spawn(spawnInput(actor, operation))
+        .catch((value: unknown) => value);
+      expect(error).toBeInstanceOf(ContributionError);
+      if (error instanceof ContributionError) {
+        expect(error.code).toBe("contribution-unknown");
+      }
+
+      // Canonical lookup never settles a mutated marker.
+      const reconcilingHost = createConversationTaskOperationHost(fixture_.home, {
+        contributionRegistry: restarted,
+      });
+      expect(reconcilingHost.findCanonicalReceipt({
+        conversationId,
+        actionId: actor.actionId,
+        operation,
+      }).standing).toBe("uninspectable");
+      expect(receipt.batchId).toBeString();
+    }
+  }, 60_000);
+
   test("a reservation durability failure publishes no claim and returns no success", async () => {
     const fixture_ = fixture();
     const conversationId = randomUUID();

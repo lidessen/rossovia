@@ -319,11 +319,16 @@ export interface ConversationContributionRegistryOptions {
    * `removeTemporary` replaces the post-publication temporary removal; a
    * throwing seam fails the spawn visibly with no returned success, because
    * an unconfirmed publication cleanup must never be swallowed.
+   * `onRetainedTemporary` is a test-only barrier invoked when the claim was
+   * hard-linked but its directory-fsync durability boundary failed and the
+   * temporary is therefore retained: a reader observing this state must
+   * never return a started receipt or action.settled.
    */
   readonly atomicPublish?: {
     readonly syncFile?: (path: string) => void;
     readonly syncDirectory?: (path: string) => void;
     readonly removeTemporary?: (path: string) => void;
+    readonly onRetainedTemporary?: (temporary: string) => void;
   };
   /**
    * Test-only crash barrier invoked synchronously after a successful
@@ -341,6 +346,14 @@ export interface ConversationContributionRegistryOptions {
   readonly onHandleRegistered?: () => void;
   readonly onDelegateStarted?: () => void;
   readonly onStartedMarkerPublished?: () => void;
+  /**
+   * Test-only crash boundary invoked synchronously inside the failed-start
+   * cleanup right after the started delegate is cancelled and before its
+   * terminal settlement is awaited: the effectful lease is provably still
+   * held while the old delegate has not settled, so a concurrent writer
+   * must still be refused.
+   */
+  readonly onDelegateCancelled?: () => void;
 }
 
 export function createConversationContributionRegistry(
@@ -494,10 +507,12 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   private readonly syncFile: (path: string) => void;
   private readonly syncDirectory: (path: string) => void;
   private readonly removeTemporary: (path: string) => void;
+  private readonly onRetainedTemporary: ((temporary: string) => void) | undefined;
   private readonly onReservationPublished: (() => void) | undefined;
   private readonly onHandleRegistered: (() => void) | undefined;
   private readonly onDelegateStarted: (() => void) | undefined;
   private readonly onStartedMarkerPublished: (() => void) | undefined;
+  private readonly onDelegateCancelled: (() => void) | undefined;
 
   constructor(
     home: string,
@@ -521,10 +536,12 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     this.syncFile = options.atomicPublish?.syncFile ?? fsyncFileDurability;
     this.syncDirectory = options.atomicPublish?.syncDirectory ?? fsyncFileDurability;
     this.removeTemporary = options.atomicPublish?.removeTemporary ?? unlinkSync;
+    this.onRetainedTemporary = options.atomicPublish?.onRetainedTemporary;
     this.onReservationPublished = options.onReservationPublished;
     this.onHandleRegistered = options.onHandleRegistered;
     this.onDelegateStarted = options.onDelegateStarted;
     this.onStartedMarkerPublished = options.onStartedMarkerPublished;
+    this.onDelegateCancelled = options.onDelegateCancelled;
   }
 
   async spawn(input: {
@@ -774,7 +791,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       // BEFORE any canonical started evidence may commit.
       delegate = await this.startContributionDelegate(handle, batch, input.conversationId);
     } catch (error) {
-      throw this.failStartedSpawn(input, actionKey, batchId, lease, undefined, error);
+      throw await this.failStartedSpawn(input, actionKey, batchId, lease, undefined, error);
     }
 
     let startLink: { checkpointDigest: string; childTimelineId: string } | undefined;
@@ -784,10 +801,10 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         contributionPreparedBatchId(input.conversationId, batchId),
       );
     } catch (error) {
-      throw this.failStartedSpawn(input, actionKey, batchId, lease, delegate, error);
+      throw await this.failStartedSpawn(input, actionKey, batchId, lease, delegate, error);
     }
     if (startLink === undefined) {
-      throw this.failStartedSpawn(input, actionKey, batchId, lease, delegate,
+      throw await this.failStartedSpawn(input, actionKey, batchId, lease, delegate,
         new Error("the delegate batch left no durable prepared start evidence"));
     }
 
@@ -819,7 +836,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         },
       });
     } catch (error) {
-      throw this.failStartedSpawn(input, actionKey, batchId, lease, delegate, error);
+      throw await this.failStartedSpawn(input, actionKey, batchId, lease, delegate, error);
     }
 
     if (this.onStartedMarkerPublished !== undefined) {
@@ -1530,11 +1547,15 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   /**
    * The exact failure finalization of a spawn whose reservation and lease
    * were already acquired but whose delegate start or started marker never
-   * committed: unregister the handle, cancel any started delegate, release
-   * the exact lease (never swallowed), retract the reservation and any
-   * half-published marker, and surface every cleanup failure visibly.
+   * committed. The started delegate is cancelled first, and its exact
+   * terminal settlement is AWAITED before the lease is released, the
+   * reservation is retracted, or any writer may proceed: a new effectful
+   * writer must never overlap a delegate that has not actually settled. A
+   * delegate whose terminal settlement cannot be confirmed retains the
+   * exact lease and durable spawn evidence and fails closed. Every cleanup
+   * failure is surfaced visibly, never swallowed.
    */
-  private failStartedSpawn(
+  private async failStartedSpawn(
     input: {
       readonly conversationId: string;
       readonly actionId: string;
@@ -1544,9 +1565,32 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     lease: TaskRunLease | undefined,
     delegate: DelegateBatchHandle | undefined,
     error: unknown,
-  ): ContributionError {
+  ): Promise<ContributionError> {
+    if (delegate !== undefined) {
+      delegate.cancel();
+      this.onDelegateCancelled?.();
+      try {
+        await delegate.settled;
+      } catch (settlementError) {
+        // Terminal stop cannot be confirmed: the exact Worktree lease and
+        // the durable spawn reservation stay retained as reconcile-required
+        // evidence. A new writer must never overlap a delegate whose stop
+        // is unproven; only the production reconcileLease operation may
+        // recover the retained lease once the owner process is verifiably
+        // absent.
+        this.startedByCommittedAction.delete(actionKey);
+        this.handles.delete(batchId);
+        return new ContributionError(
+          "effect-conflict",
+          `${errorMessage(error)}; additionally: the cancelled delegate never reached a durable terminal settlement (${errorMessage(settlementError)}); `
+          + (lease === undefined
+            ? "the durable spawn reservation stays retained as reconcile-required evidence"
+            : `the exact task-run lease ${lease.path} and the durable spawn reservation stay retained; `
+              + "recover them through the contribution reconcileLease operation only after the owner process is verifiably absent"),
+        );
+      }
+    }
     const failures: string[] = [];
-    delegate?.cancel();
     this.startedByCommittedAction.delete(actionKey);
     this.handles.delete(batchId);
     if (lease !== undefined) {
@@ -1675,6 +1719,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       syncFile: this.syncFile,
       syncDirectory: this.syncDirectory,
       removeTemporary: this.removeTemporary,
+      onRetainedTemporary: this.onRetainedTemporary,
     });
     return evidenceRef(this.home, path);
   }
@@ -1729,6 +1774,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       syncFile: this.syncFile,
       syncDirectory: this.syncDirectory,
       removeTemporary: this.removeTemporary,
+      onRetainedTemporary: this.onRetainedTemporary,
     });
     return evidenceRef(this.home, path);
   }
@@ -2104,14 +2150,30 @@ export function verifyContributionStartedMarker(
   if (reservation === undefined) {
     return `the started marker for action ${started.actionId} has no matching reservation`;
   }
+  // The strict relational identity: the started marker and its reservation
+  // must agree on EVERY shared identity, not just the batch/key/effect
+  // shape. Any mismatch means the marker is not a committed started record
+  // for this action.
   if (
-    reservation.batchId !== started.batchId
+    reservation.conversationId !== started.conversationId
+    || reservation.turnId !== started.turnId
+    || reservation.actionId !== started.actionId
+    || reservation.sourceRef !== started.sourceRef
+    || reservation.batchId !== started.batchId
     || reservation.key !== started.key
+    || reservation.cellId !== started.cellId
+    || reservation.workerId !== started.workerId
     || reservation.effectKind !== started.effectKind
+    || reservation.taskId !== started.taskId
+    || reservation.taskRevision !== started.taskRevision
+    || reservation.sourceRevision !== started.sourceRevision
   ) {
     return `the started marker for action ${started.actionId} does not match its reservation`;
   }
-  let link: { checkpointDigest: string; childTimelineId: string } | undefined;
+  if (started.start.preparedBatchId !== contributionPreparedBatchId(started.conversationId, started.batchId)) {
+    return `the started marker for action ${started.actionId} does not reference its exact derived prepared batch identity`;
+  }
+  let link: ReturnType<FileMissionTimeline["durableStartLinkSync"]>;
   try {
     const timeline = new FileMissionTimeline(join(home, "state", "conversation-contributions"));
     link = timeline.durableStartLinkSync(started.conversationId, started.start.preparedBatchId);
@@ -2120,6 +2182,13 @@ export function verifyContributionStartedMarker(
   }
   if (link === undefined || link.checkpointDigest !== started.start.checkpointDigest) {
     return `the started marker for action ${started.actionId} has no matching durable delegate start`;
+  }
+  if (
+    link.cellId !== started.cellId
+    || link.key !== started.key
+    || link.workerId !== started.workerId
+  ) {
+    return `the started marker's durable start child does not correspond to its cell/key/worker identity`;
   }
   return undefined;
 }
@@ -2179,10 +2248,17 @@ function winnerReceipt(receipt: StartedReceipt, home: string): ContributionStart
  * Durably publish one claim: fully write the unique temporary file, fsync
  * it, publish via the no-clobber hard link, fsync the parent directory, then
  * remove the temporary. Any durability step failure throws before any
- * successful started evidence can be returned. A temporary-removal failure
+ * successful started evidence can be returned.
+ *
+ * Linked and durably published are distinct states: when the no-clobber
+ * link exists but the directory fsync failed, the temporary is RETAINED
+ * until the caller-owned retraction removes the exact claim, all matching
+ * temporaries, and fsyncs the directory — the unremoved temporary is the
+ * exact marker every reader uses to refuse the uncommitted link. Only an
+ * unlinked claim (pre-link failure or EEXIST) or a fully durable
+ * publication removes the temporary directly. A temporary-removal failure
  * after a durable publication throws a visible cleanup error too: an
- * unconfirmed cleanup is never swallowed, because canonical readers treat
- * an unremoved temporary as an uncommitted publication.
+ * unconfirmed cleanup is never swallowed.
  */
 function publishAtomically(
   path: string,
@@ -2191,29 +2267,40 @@ function publishAtomically(
     readonly syncFile: (path: string) => void;
     readonly syncDirectory: (path: string) => void;
     readonly removeTemporary: (path: string) => void;
+    readonly onRetainedTemporary: ((temporary: string) => void) | undefined;
   },
 ): void {
   const temporary = `${path}.tmp-${randomUUID()}`;
-  let published = false;
+  let linked = false;
+  let durablyPublished = false;
   try {
     writeImmutableJson(temporary, value);
     seams.syncFile(temporary);
     linkSync(temporary, path);
+    linked = true;
     seams.syncDirectory(dirname(path));
-    published = true;
+    durablyPublished = true;
   } finally {
-    try {
-      seams.removeTemporary(temporary);
-    } catch (error) {
-      // An unremovable temporary after a durable publication is a visible
-      // cleanup failure, never a swallowed best-effort: the spawn must fail
-      // rather than return success over a claim its canonical readers will
-      // refuse as unconfirmed. When the publication itself did not succeed,
-      // the primary durability/EEXIST error stays the deciding failure.
-      if (published && !isMissing(error)) {
-        throw new Error(
-          `the publication temporary ${temporary} could not be removed after a durable publication: ${errorMessage(error)}`,
-        );
+    if (linked && !durablyPublished) {
+      // The link exists without a proven publication durability boundary:
+      // retain the temporary so every reader refuses the uncommitted link,
+      // and let the caller-owned retraction remove claim and temporaries.
+      // The body's durability failure stays the deciding error.
+      seams.onRetainedTemporary?.(temporary);
+    } else {
+      try {
+        seams.removeTemporary(temporary);
+      } catch (error) {
+        // An unremovable temporary after a durable publication is a visible
+        // cleanup failure, never a swallowed best-effort: the spawn must fail
+        // rather than return success over a claim its canonical readers will
+        // refuse as unconfirmed. When the publication itself did not succeed,
+        // the primary durability/EEXIST error stays the deciding failure.
+        if (durablyPublished && !isMissing(error)) {
+          throw new Error(
+            `the publication temporary ${temporary} could not be removed after a durable publication: ${errorMessage(error)}`,
+          );
+        }
       }
     }
   }

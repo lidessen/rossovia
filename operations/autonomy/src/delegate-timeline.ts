@@ -730,15 +730,26 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
 
   /**
    * The exact durable start cross-link of one prepared AND dispatched batch,
-   * joined to the durability boundary: the prepared checkpoint digest and
-   * the child timeline identity, or undefined when the batch was never
-   * prepared. A prepared batch without an exact dispatched event throws, so
-   * a caller can never treat a merely reserved batch as started.
+   * joined to the durability boundary: the prepared checkpoint digest, the
+   * child timeline identity, and the child's exact invocation/contribution
+   * identity (callId, key, admitted Cell id, workerId), or undefined when
+   * the batch was never prepared. A prepared batch without an exact
+   * dispatched event or without a matching admitted contribution throws, so
+   * a caller can never treat a merely reserved batch as started and can
+   * always verify that the started child corresponds to the recorded
+   * cell/key/worker identity.
    */
   durableStartLinkSync(
     parentTimelineId: string,
     batchId: string,
-  ): { checkpointDigest: string; childTimelineId: string } | undefined {
+  ): {
+    checkpointDigest: string;
+    childTimelineId: string;
+    callId: string;
+    key: string;
+    cellId: string;
+    workerId: string | undefined;
+  } | undefined {
     const parent = this.readTimelineSync(parentTimelineId);
     const prepared = findPrepared(parent, batchId);
     if (prepared === undefined) return undefined;
@@ -750,9 +761,23 @@ export class FileMissionTimeline implements DelegateTimeline, MissionInputLog, M
     const events = this.readTimelineSync(child.timelineId);
     requireOpened(events, checkpoint, child, prepared.data.checkpointDigest);
     requireDispatched(events, checkpoint, child, prepared.data.checkpointDigest);
+    const invocation = checkpoint.invocations.find((candidate) => candidate.toolCallId === child.callId);
+    if (invocation === undefined) {
+      throw new Error(`delegate batch ${batchId} child ${child.callId} has no matching invocation`);
+    }
+    const contribution = checkpoint.admission.contributions
+      .find((candidate) => candidate.key === invocation.call.key);
+    if (contribution === undefined) {
+      throw new Error(`delegate batch ${batchId} child ${child.callId} has no matching admitted contribution`);
+    }
     return {
       checkpointDigest: prepared.data.checkpointDigest,
       childTimelineId: child.timelineId,
+      callId: child.callId,
+      key: child.key,
+      cellId: contribution.cell.id,
+      workerId: contribution.workerId
+        ?? ("workerId" in invocation.call ? invocation.call.workerId : undefined),
     };
   }
 
