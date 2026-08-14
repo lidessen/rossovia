@@ -98,8 +98,12 @@ therefore **unverified** beyond this audit's own probes.
    and mutating mission verbs (silent success, no stdout).
 6. **Error and recovery — partial.** All failures exit 2 with one stderr line
    prefixed `rosso:` (binary is `rossovia` — naming mismatch). No usage-error
-   vs state-error distinction. Stale-revision error omits the current
-   revision, forcing a re-read of `task list` to recover. No partial-state
+   vs state-error distinction. Stale-revision errors do report the first
+   failed guard's current value (`expected 0, current 1` above; the source
+   guard [tasks.ts:943](src/tasks.ts) runs before the Task guard
+   [tasks.ts:653](src/tasks.ts)), but one stale failure returns neither a
+   fresh Task snapshot nor both current guard values, so when both changed an
+   agent still needs `task show` and another retry. No partial-state
    reporting beyond message text.
 7. **Idempotency and retry — fails closed, retry needs a read.** `init` is
    idempotent (probe above). `task create` retry fails safely but only after
@@ -159,10 +163,13 @@ Workbench browser UI validates task results before acceptance — the CLI
   recurring discovery cost and gives failure output a first-class escape
   hatch.
 - **T2.** Revision loop transparency and retry cost: every task mutation needs
-  `--expected-source-revision`/`--expected-revision` fetched first; the stale
-  error omits the current value (`task create` retry evidence above). Repair:
-  include current revisions in the stale error; state the revision grammar in
-  each subcommand's new help.
+  both the `--expected-source-revision` and `--expected-revision` guards
+  fetched first, and one stale failure reports only the first failed guard
+  with its current value — no fresh Task snapshot, no second current guard —
+  so when both drifted, recovery costs another `task show` plus one more
+  retry. Repair: return the fresh Task snapshot and both current guard values
+  with the stale failure; state the revision grammar in each subcommand's new
+  help.
 - **T3.** Undifferentiated error surface: one exit code (2) for usage and
   state failures; `rosso:` prefix vs `rossovia` binary name; no error
   categories. Repair: distinguish usage errors (still exit 2, message points
