@@ -56,8 +56,9 @@ includes DeepSeek V4 Flash/Pro policy alongside generic provider routing.
 
 Two boundaries matter before any experiment:
 
-- the documented sandbox is primarily a filesystem boundary; it is not a
-  complete process/network authority model; and
+- the [documented sandbox](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/sandbox.md)
+  is primarily a filesystem boundary; it is not a complete process/network
+  authority model; and
 - telemetry is optional, but the
   [OpenTelemetry plugin](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/packages/session/session-telemetry-otel/README.md)
   can export captured session material when enabled. A probe should keep it
@@ -184,7 +185,7 @@ Claude Code, and its review flow can move a managed checkout back through Git.
 
 ### Material limitations
 
-Delta is still a private-beta/nightly product. More importantly, its own
+Delta is still a private-beta product. More importantly, its own
 [agentic safety documentation](https://delta.dev/docs/privacy-and-security/agentic-safety)
 says there is currently no Agent permission framework and no Agent sandbox;
 the Agent has unrestricted access to the device. Worktree trust is also not an
