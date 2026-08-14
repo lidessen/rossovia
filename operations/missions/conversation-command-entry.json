@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T04:49:36Z",
+  "updatedAt": "2026-08-14T13:34:28Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -103,8 +103,10 @@
         "design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#wave-4-browser-conversation-projection-last",
         "design/organization/sessions/2026-08-13-conversation-command-entry-system-case.md#4-browser-conversation-slice"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "PR #111 integrated exact P6 candidate c52876f7d5439bb563024dc18dd0086273a089b9 as merge 9f2cfa33dca618ad5b218062ebf10c5529c9283b: Workbench now opens a desktop/mobile browser conversation workspace over the frozen runtime, with durable/provisional feed, multiline composer, reconnect cursor, exact response/worker controls, canonical evidence and model identity, and separate Principal Task acceptance. GitHub verify succeeded and the named exact-head code and Kimi visual reviews passed with retained residual risk. P7 hooks, P5 temporary agent-team capability, final Mission acceptance, and Principal acceptance of Task 2dc655bf-7e85-49a3-9ed7-e63f0d7ee580 remain pending."
     }
   ],
-  "currentFocus": "p6-browser-projection"
+  "currentFocus": "mainline"
 }
