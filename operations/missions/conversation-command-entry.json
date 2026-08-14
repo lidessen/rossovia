@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-13T22:52:56Z",
+  "updatedAt": "2026-08-14T02:04:26Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -60,8 +60,10 @@
         "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#wave-3",
         "system-case:design/organization/sessions/2026-08-13-conversation-command-entry-system-case.md#required-lifecycle-properties"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Integrated PR #105 (exact head f6617232599d9aae1079db3279b03673c0cfe82e; merge commit 8a4074fdb7fd0dbf3a2f03f46386be16102708df) into main: one catalog-selected typed task_continue can start an existing canonical Task through the reused task-run, task-attempt, Worktree lease, and Work Cell path; only an owner-backed retained carrier projects attributable live activity, exact work_control stop targets only that carrier, and task reconcile-attempt provides fail-closed dead-owner recovery. P5 temporary agent teams, browser UI, and Principal Task acceptance remain pending."
     }
   ],
-  "currentFocus": "p4b-execution-activity"
+  "currentFocus": "mainline"
 }
