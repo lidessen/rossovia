@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T02:21:50Z",
+  "updatedAt": "2026-08-14T03:20:38Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -74,8 +74,10 @@
         "principal:2026-08-14-p4c-ui-startup-repair",
         "regression:production-workbench-ui-worker-policy-module-resolution"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Integrated PR #107 (exact head 1c9480b1b4207a2cf7f394af4e7867d6c367f23c; merge commit e89d146c408fbb759aa75374e89f618ac0593145) into main: corrected the owner-relative worker-policy resolution so the production Workbench UI composes its current WorkerCatalog, serves /api/snapshot on a disposable port, and stops cleanly; deterministic production-startup and live-child cleanup smoke coverage is retained. P6 browser conversation UI, P5 temporary agent teams, and Principal Task acceptance remain pending."
     }
   ],
-  "currentFocus": "p4c-ui-startup-repair"
+  "currentFocus": "mainline"
 }
