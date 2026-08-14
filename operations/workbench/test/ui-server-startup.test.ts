@@ -18,8 +18,61 @@ function disposablePort(): number {
   return port;
 }
 
-async function childStderr(child: { readonly stderr: ReadableStream<Uint8Array> }): Promise<string> {
+/** Bind the exact loopback port; returns the probe, or null when the port is taken. */
+function tryBindPort(port: number): { readonly probe: { stop(): void } } | null {
+  try {
+    return { probe: Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } }) };
+  } catch {
+    return null;
+  }
+}
+
+interface SpawnedChild {
+  readonly exited: Promise<number | null>;
+  readonly stderr: ReadableStream<Uint8Array>;
+  readonly killed: boolean;
+  kill(): void;
+}
+
+async function childStderr(child: SpawnedChild): Promise<string> {
   return await new Response(child.stderr).text();
+}
+
+/**
+ * Poll one spawned child until it serves /api/snapshot on the loopback port.
+ * Every non-success path kills and reaps the child first and only then reads
+ * or formats its complete stderr, so a failed startup never leaks the process
+ * or retains the disposable port.
+ */
+async function awaitSnapshotOrFail(
+  child: SpawnedChild,
+  port: number,
+  deadlineMs: number,
+  label: string,
+): Promise<void> {
+  const deadline = Date.now() + deadlineMs;
+  for (;;) {
+    if ((await Promise.race([child.exited.then(() => true), Bun.sleep(50).then(() => false)])) === true) {
+      child.kill();
+      const exitCode = await child.exited;
+      const stderr = await childStderr(child);
+      throw new Error(`${label} exited before serving /api/snapshot (exit ${exitCode}):\n${stderr}`);
+    }
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/snapshot`, {
+        signal: AbortSignal.timeout(500),
+      });
+      if (response.status === 200) return;
+    } catch {
+      // The process is still booting or refuses the connection; retry until the deadline.
+    }
+    if (Date.now() > deadline) {
+      child.kill();
+      await child.exited;
+      const stderr = await childStderr(child);
+      throw new Error(`${label} did not serve /api/snapshot within the deadline:\n${stderr}`);
+    }
+  }
 }
 
 /**
@@ -40,24 +93,8 @@ async function startProductionUi(
     stdout: "pipe",
     stderr: "pipe",
   });
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    if ((await Promise.race([child.exited.then(() => true), Bun.sleep(50).then(() => false)])) === true) {
-      const stderr = await childStderr(child);
-      throw new Error(`production UI exited before serving /api/snapshot (exit ${await child.exited}):\n${stderr}`);
-    }
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/snapshot`);
-      if (response.status === 200) return { child };
-    } catch {
-      // The process is still booting; retry until the deadline.
-    }
-    if (Date.now() > deadline) {
-      const stderr = await childStderr(child);
-      child.kill();
-      throw new Error(`production UI did not serve /api/snapshot within the deadline:\n${stderr}`);
-    }
-  }
+  await awaitSnapshotOrFail(child, port, 10_000, "production UI");
+  return { child };
 }
 
 test("production UI boots with the current worker policy catalog, serves /api/snapshot, and stops cleanly", async () => {
@@ -101,3 +138,55 @@ test("production UI boots with the current worker policy catalog, serves /api/sn
     expect(released).toBe(true);
   }
 }, 20_000);
+
+test("a live non-serving child is killed and reaped before stderr is read; the same port can be rebound", async () => {
+  const port = disposablePort();
+
+  // A live child that binds the loopback port but never serves HTTP.
+  const child = Bun.spawn({
+    cmd: [process.execPath, "-e", [
+      `const port = ${port};`,
+      'console.error("rossovia-ui-startup-stub-bound");',
+      'Bun.listen({ hostname: "127.0.0.1", port, socket: { data() {} } });',
+    ].join("\n")],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  try {
+    // The stub must be live and hold the port: while it runs, rebinding fails.
+    let blocked = false;
+    const blockDeadline = Date.now() + 5_000;
+    while (Date.now() < blockDeadline) {
+      const held = tryBindPort(port);
+      if (held === null) {
+        blocked = true;
+        break;
+      }
+      held.probe.stop();
+      await Bun.sleep(50);
+    }
+    expect(blocked).toBe(true);
+
+    // The failure path must kill and reap the live child first and only then
+    // report its complete stderr: the previous read-before-kill order would
+    // hang forever on this live child and leak both it and the port.
+    let failure: unknown;
+    try {
+      await awaitSnapshotOrFail(child, port, 750, "live non-serving child");
+    } catch (error: unknown) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("did not serve /api/snapshot within the deadline");
+    expect((failure as Error).message).toContain("rossovia-ui-startup-stub-bound");
+    expect(child.killed).toBe(true);
+
+    // After the reap the same disposable port can be rebound.
+    const rebound = tryBindPort(port);
+    expect(rebound).not.toBeNull();
+    rebound!.probe.stop();
+  } finally {
+    child.kill();
+    await child.exited;
+  }
+}, 10_000);
