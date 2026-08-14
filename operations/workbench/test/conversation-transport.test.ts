@@ -2242,11 +2242,22 @@ describe("conversation socket work.control frames", () => {
     const retained = retainCarrier(registry, conversationId, target);
     const client = await connect(socketUrl(conversationId, -1));
     try {
-      // The connect-time reconciliation has already run over the settled
-      // staged events. An unrelated unsettled action whose canonical receipt
-      // is provably absent appears only now: a broad reconciliation triggered
-      // by the frame would retry it through the host.
-      await Bun.sleep(50);
+      // An observable barrier: the connect-time reconciliation is queued
+      // ahead of any submitted turn in the same per-conversation chain, so a
+      // settled fixture inquiry proves it has drained. Only then does an
+      // unrelated unsettled action whose canonical receipt is provably
+      // absent appear: a broad reconciliation triggered by the frame would
+      // retry it through the host.
+      const barrierClientMessageId = randomUUID();
+      submit(client, barrierClientMessageId, "fixture barrier inquiry");
+      await waitFor(
+        () => receiptFrames(client.messages, barrierClientMessageId).length >= 1,
+        "the barrier inquiry is receipted",
+      );
+      await waitFor(
+        () => durableSequences(client.messages).length === 7,
+        "the barrier inquiry turn settles after the connect-time reconciliation",
+      );
       const unrelatedActionId = randomUUID();
       await runtime.journal.requestAction(conversationId, {
         actionId: unrelatedActionId,
@@ -2265,7 +2276,6 @@ describe("conversation socket work.control frames", () => {
         () => client.messages.some((frame) => frame.type === "protocol.error"),
         "the mismatched frame is rejected",
       );
-      await Bun.sleep(50);
 
       const errors = client.messages.filter(
         (frame): frame is ServerProtocolErrorFrame => frame.type === "protocol.error",
