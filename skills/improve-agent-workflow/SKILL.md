@@ -7,8 +7,13 @@ description: >-
   an agent repeatedly misses scope or instructions, the owning agent-facing
   surface is unclear, several surfaces interact, agent experience is costly or
   confusing, or a user asks Codex to improve how agents work in a company
-  repository. Start from observed project evidence, change the smallest owning
-  surface, and verify behavior through the ordinary agent entry path. If the
+  repository. Also use when the owning surface is a tool or CLI contract: to
+  review, audit, fix, or improve a CLI's commands, arguments, help, output, or
+  how agents invoke it from a shell. Triggers include "review this CLI", "audit
+  the command interface", "make this CLI agent-friendly", "CLI/命令/参数审查",
+  and agent invocation ergonomics. Start from observed project evidence, change
+  the smallest owning surface, and verify behavior through the ordinary agent
+  entry path. If the
   issue is already localized to a skill's trigger, prompt, context layering, or
   behavior evaluation and a dedicated skill-engineering method is available,
   use that method directly. Do not use for ordinary product features, generic
@@ -75,6 +80,10 @@ or perform the ordinary task. Do not manufacture an agent-workflow project.
 
 ## Dispatch
 
+- When the owning surface is the project's tool or CLI contract — the user asks
+  to review, audit, fix, or improve a CLI, its commands, arguments, output, or
+  how agents invoke it, whether read-only or authorized — read and follow
+  `commands/cli-surface.md`.
 - When the user asks to inspect, assess, or recommend without authorizing
   changes, read and follow `commands/audit.md`.
 - When the user asks to fix, optimize, implement, or improve the project, read
@@ -111,8 +120,9 @@ diagnostic relations, not a required project architecture or lifecycle.
 5. **Act only within authorization.** For an audit, produce evidence and a
    smallest recommendation. For an improvement, change the smallest owning
    surface and its directly required consumers. If that surface is a skill,
-   load [the skill-surface guide](references/skill-surface.md); do not load it
-   for unrelated workflow work.
+   load [the skill-surface guide](references/skill-surface.md); if it is a tool
+   or CLI contract, read `commands/cli-surface.md`; do not load either for
+   unrelated workflow work.
 6. **Verify behavior through the ordinary path.** Re-run the representative
    task or the closest safe probe from the same entry surface. Add a boundary
    case that should not trigger or overreach. State what would falsify the
@@ -132,8 +142,10 @@ diagnostic relations, not a required project architecture or lifecycle.
 - **Context path:** owns when and how named source material reaches the agent;
   copies and summaries remain projections.
 - **Tool, CLI, hook, or adapter:** owns mechanical capability and raw evidence,
-  not semantic acceptance. Check the current runtime's documentation rather
-  than embedding vendor-specific configuration as universal doctrine.
+  not semantic acceptance. When the selected surface is a CLI contract, the
+  review method in `commands/cli-surface.md` owns the concrete judgment. Check
+  the current runtime's documentation rather than embedding vendor-specific
+  configuration as universal doctrine.
 - **Verifier and human committer:** decide whether durable work is accepted.
   The actor that made the change may prepare evidence but cannot manufacture
   independent approval.
