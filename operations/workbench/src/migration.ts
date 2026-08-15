@@ -15,6 +15,7 @@ import { z } from "zod";
 import { PreferenceReceiptSchema, PreferencesSchema } from "./contracts";
 import { initializeHome, loadHome, saveJson, workspaceFor } from "./home";
 import { expandPath } from "./paths";
+import { acquireRegistrationLock, registrationLockName } from "./registration";
 import { observeWorkspace } from "./workspace";
 
 function digest(path: string): string {
@@ -166,31 +167,56 @@ const MigrationMarkerSchema = z.object({
 function clearMigrationTarget(target: string): void {
   for (const entry of readdirSync(target, { withFileTypes: true })) {
     if (entry.name === migrationMarkerName) continue;
-    rmSync(join(target, entry.name), { recursive: true, force: true });
+    const path = join(target, entry.name);
+    if (entry.name === "state") {
+      // The caller holds the registration lock inside state/: preserve it so
+      // the owner boundary stays continuous across the rewrite.
+      if (entry.isDirectory()) {
+        for (const child of readdirSync(path, { withFileTypes: true })) {
+          if (child.name === registrationLockName) continue;
+          rmSync(join(path, child.name), { recursive: true, force: true });
+        }
+      }
+      continue;
+    }
+    rmSync(path, { recursive: true, force: true });
   }
 }
 
-function prepareMigrationTarget(source: string, target: string): string {
+function prepareMigrationTarget(source: string, target: string): { marker: string; release: () => void } {
   const marker = join(target, migrationMarkerName);
+  const markerValue = {
+    version: "rosso.namespace-migration.v1",
+    sourceHome: source,
+    targetHome: target,
+  };
   if (existsSync(target)) {
     if (existsSync(marker)) {
       const interrupted = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
       if (interrupted.sourceHome !== source || interrupted.targetHome !== target) {
         throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
       }
-      clearMigrationTarget(target);
+      // Serialize the clear of the interrupted target under the registration
+      // owner boundary, so no register transition can observe or write the
+      // canonical pair while the migration rewrites it.
+      const release = acquireRegistrationLock(target);
+      try {
+        clearMigrationTarget(target);
+        saveJson(marker, markerValue);
+      } catch (error: unknown) {
+        release();
+        throw error;
+      }
+      return { marker, release };
     } else if (readdirSync(target).length > 0) {
       throw new Error(`rossovia workbench target home already exists: ${target}`);
     }
   } else {
     mkdirSync(target, { recursive: true });
   }
-  saveJson(marker, {
-    version: "rosso.namespace-migration.v1",
-    sourceHome: source,
-    targetHome: target,
-  });
-  return marker;
+  saveJson(marker, markerValue);
+  const release = acquireRegistrationLock(target);
+  return { marker, release };
 }
 
 function copyLegacyHome(source: string, target: string): void {
@@ -199,6 +225,33 @@ function copyLegacyHome(source: string, target: string): void {
   }
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     cpSync(join(source, entry.name), join(target, entry.name), { recursive: true, dereference: false });
+  }
+}
+
+const migrationTestHookDirectory = process.env.ROSSO_MIGRATION_TEST_HOOK_DIR;
+
+/**
+ * Test-only barrier instrumentation: when ROSSO_MIGRATION_TEST_HOOK_DIR is
+ * set, a migration that has just committed the target home publishes a ready
+ * marker and waits (bounded) for the matching go marker before continuing,
+ * still holding the registration lock. This lets the concurrency regression
+ * run a register transition against the same home while the migration is
+ * mid-flight. Unset in production, this is a no-op.
+ */
+function migrationTestHook(phase: string): void {
+  const directory = migrationTestHookDirectory;
+  if (!directory) return;
+  const ready = join(directory, `ready-${phase}`);
+  const proceed = join(directory, `go-${phase}`);
+  try {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(ready, "", "utf8");
+  } catch {
+    return;
+  }
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    if (existsSync(proceed)) return;
+    Bun.sleepSync(25);
   }
 }
 
@@ -226,13 +279,14 @@ export function migrateLegacyHome(homeArgument?: string, fromHomeArgument?: stri
   const sourceManifestDigest = digest(sourceManifest);
   const sourceProjectsDigest = digest(sourceProjects);
   let verifiedProjectId: string | null = null;
-  const marker = prepareMigrationTarget(source, target);
+  const { marker, release } = prepareMigrationTarget(source, target);
   try {
     copyLegacyHome(source, target);
     migrateNamespaceFiles(target);
     reconcileLegacyPreferenceReceipts(target);
     reconcileObsoleteMachinePreferences(target);
     initializeHome(target);
+    migrationTestHook("verify");
     const current = loadHome(target);
     const verificationErrors: string[] = [];
     for (const project of current.projects.projects) {
@@ -267,6 +321,8 @@ export function migrateLegacyHome(homeArgument?: string, fromHomeArgument?: stri
       // Preserve the migration failure. The marker keeps the target retryable.
     }
     throw error;
+  } finally {
+    release();
   }
   return {
     migrated: true,
