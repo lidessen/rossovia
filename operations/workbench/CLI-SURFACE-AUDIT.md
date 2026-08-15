@@ -305,6 +305,78 @@ executable verb path.
   its label reads `starts-work`; `hook intervention` remains `writes-state`,
   and the `hook` family label therefore derives `mixed`.
 
+## T6 implementation update (post-audit)
+
+T6 is implemented at a Workbench head that follows the audited revision; the
+four side-channel commands now document their full invocation contract in
+their per-command help, rendered uniformly by the shared help registry.
+
+- **Delivery surface.** The side-channel notes live in the same table as the
+  T1 usage and T5 effect labels ([`src/help.ts`](src/help.ts)) and render on
+  `help <path>`, trailing `--help`/`-h`, and the family drill-down — one
+  source, no second parser. A help query itself reads no stdin, creates no
+  `ROSSO_HOME` or `$TMPDIR` state, and calls no runtime adapter: the CLI
+  short-circuits to the registry before dispatch. The notes are help
+  rendering only — no parser, dispatch branch, runtime adapter, effect
+  classification, output shape, or state owner reads them, and no new
+  schema, store, gate, or permission exists.
+- **`hook intervention`** help states: platforms codex and claude only
+  (cursor takes the fallback path); one JSON stdin payload
+  `{session_id, turn_id?, cwd, prompt?}`; the observation write under the
+  Workbench intervention state root `<home>/state/interventions/<workspace-key>/<session-digest>.json`;
+  the `hookSpecificOutput`/`UserPromptSubmit` JSON on stdout (advisory only —
+  grants no permission, never blocks authorized work); and the exit-0
+  `systemMessage` fallback (cursor: stderr note plus `{}`).
+- **`hook artifact`** help states: the platform/event matrix
+  (`codex|claude|cursor` × `post-tool-use|after-file-edit|stop`); the stdin
+  fields per event; that state is appended **only** by a post-tool-use or
+  after-file-edit observation carrying relevant repository-relative changed
+  paths, into
+  `$TMPDIR/rossovia-hooks/artifact-consistency/<40-hex>.jsonl` — temporary
+  state, not Workbench home state — and that such an observation without
+  relevant changed paths is a silent no-op (stop never appends); the exact
+  stop lifecycle (codex/claude `systemMessage` and removal of the session
+  file, so later stops stay silent; Cursor with `loop_count` missing or 0
+  returns `followup_message` and retains the file, so another loop-0 stop
+  notifies again; Cursor with `loop_count>0` removes the file silently,
+  after which later stops are silent); that `decision`/`additionalContext`
+  are never returned; and the exit-0 fallbacks. The help also states that
+  platform validation precedes stdin parsing: a missing or invalid platform
+  is a typed usage error (exit 2) before any payload read, and only a
+  non-help invocation with a valid platform reads one JSON payload from
+  stdin. It does not claim the hook gains permission or always writes state
+  or continues a run.
+- **`intervention observe` / `status` / `correct`** help states the
+  stdin-or-flags split (`observe` reads stdin JSON with only `--state-root`;
+  `status` and `correct` are flags-only), the default state root
+  `<home>/state/interventions` with the `--state-root` override, the
+  `--state-file` / `--session-id` relationship (`--state-file` cannot
+  combine with the others; it names the path `observe` returned), the
+  write/read boundary (`observe` writes state and witnesses, `status` never
+  mutates, `correct` appends a receipt witness under
+  `<state-file>.receipts/` and requires the file to exist), the JSON output
+  shapes, and the recovery pointer — an agent can form the first legal
+  `observe` call from the help alone and recover a missing state file with
+  `rossovia intervention observe` before `correct`.
+- **`statusline`** help states the two input modes (Claude status-line JSON
+  stdin `{session_name, workspace.current_dir|cwd}`, read only when stdin is
+  not a TTY, versus direct `--cwd <path>` or the default process cwd), the
+  plain-text single-label stdout contract, and the default degradation
+  (invalid or empty JSON falls back to the cwd label; home reads fail
+  silently). It is documented as read-only — never a Workbench state
+  mutation.
+- **Regression surface.** The ordinary launcher tests in
+  [`test/help-sidechannel.test.ts`](test/help-sidechannel.test.ts) cover the
+  contract notes for all eight paths, behavioral probes of each input/state/
+  output/platform boundary against disposable roots, help short-circuit
+  zero-effect (no home, no `$TMPDIR` state, stdin ignored), T1–T5
+  compatibility (effect lines, usage-error exits 2 with pointers,
+  state-failure exit 1), and the side-channel counterexamples: an invalid
+  platform with malformed JSON still exits 2 before any stdin parse, a valid
+  platform with malformed JSON keeps the exit-0 fallback, and the Cursor
+  stop lifecycle (two loop-0 reminders with the file retained, then a
+  `loop_count>0` silent deletion, then a silent stop).
+
 ## Verification of this audit
 
 - Commands and evidence recorded above are real outputs at revision

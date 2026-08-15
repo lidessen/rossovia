@@ -30,6 +30,27 @@ gate, a `--dry-run`, or execution control. Mixed families (for example
 `task`, `mission`, and `hook`) list each subcommand's label so an Agent can
 drill down to the exact verb.
 
+The four side-channel commands document their full invocation contract in
+their per-command help (`rossovia help <path>`): `hook intervention` and
+`hook artifact` state their supported platforms/events, the JSON stdin
+payload fields, the conditional state locations (Workbench intervention
+state vs. `$TMPDIR` artifact-consistency state, appended by
+post-tool-use/after-file-edit observations only for relevant changed
+paths), and their exit-0 host-output/fallback shapes, including the exact
+stop lifecycle (codex/claude `systemMessage` then removal; Cursor
+`followup_message` retained for another loop-0 stop, or silent removal on
+`loop_count>0`);
+`intervention observe`/`status` and `correct` state the stdin-or-flags
+split, the default `<home>/state/interventions` root with the `--state-root`
+override, the `--state-file`/`--session-id` relationship, the write/read
+boundaries, and the nearest recovery command; `statusline` states its
+Claude JSON stdin and direct `--cwd`/default-cwd modes, the plain-text
+output, and the silent degradation path. The notes are source-backed help
+rendering only: they change no parser, adapter, effect classification,
+output, or state owner, and a help query itself reads no stdin and creates
+no home or temporary state. The full record is in
+[CLI-SURFACE-AUDIT.md](CLI-SURFACE-AUDIT.md#t6-implementation-update-post-audit).
+
 ## Principal Workbench MVP
 
 The human UI is the **Principal workspace** over that control plane. It is a

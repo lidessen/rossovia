@@ -40,6 +40,7 @@ export interface VerbHelp {
   description: string;
   effect: EffectClass;
   topLevel: boolean;
+  notes?: string;
 }
 
 export interface FamilyHelp {
@@ -242,34 +243,72 @@ export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: tr
     effect: "writes-state" },
   { kind: "family", path: ["intervention"], topLevel: false,
     summary: "intervention <subcommand> [arguments]",
-    subcommands: ["observe", "status"] },
+    subcommands: ["observe", "status"],
+    notes: "Intervention state lives under a state root: <home>/state/interventions by default (home = leading --home or ROSSO_HOME), overridden by --state-root. observe writes state from stdin; status only reads; the top-level correct verb appends receipts to a state file observe created." },
   { kind: "verb", path: ["intervention", "observe"], topLevel: true,
     usage: "intervention observe [--state-root <path>]",
     description: "Record one intervention observation; reads a JSON payload from stdin.",
-    effect: "writes-state" },
+    effect: "writes-state",
+    notes: [
+      "stdin: one JSON payload {session_id, turn_id?, cwd, prompt?}; session_id and cwd are required. Flags: only --state-root.",
+      "state: creates or updates <state-root>/<workspace-key>/<session-digest>.json and appends an observation witness under <file>.observations/. Default state root: <home>/state/interventions.",
+      `output: {"statePath":..., "observation":{...}} on stdout, exit 0. First call: printf '{"session_id":"s","cwd":"."}' | rossovia intervention observe`,
+      "failure: an unwritable state location exits 1 naming the exact path.",
+    ].join("\n") },
   { kind: "verb", path: ["intervention", "status"], topLevel: true,
     usage: "intervention status (--state-file <path> | --session-id <id> [--state-root <path>])",
     description: "Project the observations and receipts for one intervention state.",
-    effect: "read-only" },
+    effect: "read-only",
+    notes: [
+      "input: flags only, no stdin — exactly one of --state-file <path> (the path observe returned) or --session-id <id> searched under the state root; --state-root <path> overrides the default root <home>/state/interventions; --state-file cannot combine with --session-id or --state-root.",
+      "read boundary: never creates or mutates state; a missing, invalid, or ambiguous session exits 1.",
+      `output: {"statePath":..., "sessionId":..., "observations":<n>, "receipts":[...]} on stdout, exit 0.`,
+      "recovery: when no state exists yet, the nearest recovery is rossovia intervention observe (it creates the state); use rossovia correct --state-file <path> to append a receipt.",
+    ].join("\n") },
   { kind: "verb", path: ["correct"], topLevel: true,
     usage: "correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>",
     description: "Record a correction receipt into an intervention state file.",
-    effect: "writes-state" },
+    effect: "writes-state",
+    notes: [
+      "input: flags only, no stdin — --state-file <path> names the file observe/status returned (it must already exist); --affected-surface <name> repeats; --rejected-assumption, --new-invariant, and --next-probe are required.",
+      "state: appends one receipt witness under <state-file>.receipts/.",
+      `output: {"statePath":..., "receipt":{...}} on stdout, exit 0. A missing state file exits 1 — recover with rossovia intervention observe first.`,
+    ].join("\n") },
   { kind: "family", path: ["hook"], topLevel: true,
     summary: "hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop]",
-    subcommands: ["intervention", "artifact"] },
+    subcommands: ["intervention", "artifact"],
+    notes: "Platform validation is the usage boundary: a missing or invalid platform exits 2 with a help pointer before any payload read or state write. Only a non-help invocation with a valid platform reads one JSON payload from stdin; after that, later failures keep that platform's exit-0 fallback." },
   { kind: "verb", path: ["hook", "intervention"], topLevel: false,
     usage: "hook intervention <codex|claude>",
     description: "Run the intervention hook for codex or claude; reads a JSON payload from stdin.",
-    effect: "writes-state" },
+    effect: "writes-state",
+    notes: [
+      "platforms: codex and claude only — cursor is not supported and takes the fallback path.",
+      "stdin: one JSON payload {session_id, turn_id?, cwd, prompt?}; session_id and cwd are required.",
+      "state: appends an observation under the Workbench intervention state root <home>/state/interventions/<workspace-key>/<session-digest>.json (home = leading --home or ROSSO_HOME).",
+      `output: {"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":...}} on stdout, exit 0 — advisory only: beyond the observation write above, it grants no permission and never blocks already-authorized work.`,
+      `fallback: after platform parse, failures return {"systemMessage":...} on stdout with exit 0 (cursor: a stderr note plus {}).`,
+    ].join("\n") },
   { kind: "verb", path: ["hook", "artifact"], topLevel: false,
     usage: "hook artifact <codex|claude|cursor> <post-tool-use|after-file-edit|stop>",
     description: "Run the artifact-consistency hook; reads a JSON payload from stdin.",
-    effect: "starts-work" },
+    effect: "starts-work",
+    notes: [
+      "platforms/events: codex|claude|cursor with post-tool-use|after-file-edit|stop.",
+      "stdin: one JSON payload — session_id (codex/claude) or conversation_id (cursor) is required; post-tool-use reads tool_name/tool_input/cwd (codex apply_patch command lines, claude Write|Edit|NotebookEdit file_path), after-file-edit reads file_path (cursor), stop reads loop_count (cursor).",
+      "state: appends only repository-relative relevant paths (skills/**/SKILL.md, skills/**/commands|references/*.md, AGENTS.md, CLAUDE.md, README.md) to $TMPDIR/rossovia-hooks/artifact-consistency/<40-hex>.jsonl keyed by repository root, platform, and session. This is operating-system temporary state, not Workbench home state; a post-tool-use or after-file-edit payload without relevant changed paths is a silent no-op (stop never appends).",
+      "output: post-tool-use and after-file-edit succeed silently; a stop with recorded paths returns a reminder — codex/claude {\"systemMessage\":...} and removes that session's file so later stops stay silent, cursor with loop_count missing or 0 returns {\"followup_message\":...} and retains the file so another loop_count 0 stop notifies again — and a cursor stop with loop_count>0 removes the file silently, after which later stops are silent. decision and additionalContext are never returned.",
+      `fallback: after platform parse, failures return {"systemMessage":...} with exit 0 (cursor: a stderr note plus {}) — this hook never stops or denies a run.`,
+    ].join("\n") },
   { kind: "verb", path: ["statusline"], topLevel: true,
     usage: "statusline [claude] [--cwd <path>]",
     description: "Render the host session or registered-project label for a status line.",
-    effect: "read-only" },
+    effect: "read-only",
+    notes: [
+      "input: flags or stdin — `statusline claude` parses Claude's status-line JSON {session_name, workspace.current_dir|cwd}; direct mode uses --cwd <path> or the default process cwd. stdin is read only when it is not a TTY; --cwd also overrides the JSON directory, and invalid or empty JSON degrades to the cwd label instead of failing.",
+      "output: one plain-text label on stdout — the session name, one uniquely registered project id, or the Git-root/directory basename, never an absolute path — with empty stderr and exit 0.",
+      "read-only: it never creates project, task, session, or runtime state; the Workbench home is only read to match a registered project, and that read failure degrades silently.",
+    ].join("\n") },
   { kind: "family", path: ["root"], topLevel: false,
     summary: "root <subcommand> [arguments]",
     subcommands: ["list", "add"] },
@@ -373,6 +412,9 @@ function verbUsage(entry: VerbHelp): string {
     entry.description,
     "",
   ];
+  if (entry.notes !== undefined) {
+    lines.push(...entry.notes.split("\n"), "");
+  }
   return lines.join("\n");
 }
 
