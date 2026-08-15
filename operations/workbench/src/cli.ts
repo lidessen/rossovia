@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { attachWorkspace } from "./attach";
 import type { ContributionLeaseReconcileResult } from "./conversation/contributions";
 import { authorizeExecution, inspectExecution } from "./execution-authorization";
+import { helpForInvocation, packageVersionLabel } from "./help";
 import { initializeHome, loadHome } from "./home";
 import { runHookCommand } from "./hooks";
 import { runCorrectionCommand, runInterventionCommand } from "./interventions";
@@ -31,8 +32,11 @@ import {
 
 try {
   const { args, home } = extractHome(process.argv.slice(2));
-  if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
-    printUsage();
+  const helpText = helpForInvocation(args);
+  if (helpText !== undefined) {
+    console.log(helpText);
+  } else if (args.length === 1 && args[0] === "--version") {
+    console.log(packageVersionLabel());
   } else if (args[0] === "resolve" && args.length === 2) {
     console.log(JSON.stringify(resolveProject(home, args[1]!), null, 2));
   } else if (args[0] === "project" && args[1] === "list" && args.length === 2) {
@@ -132,50 +136,6 @@ try {
 } catch (error: unknown) {
   console.error(`rosso: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 2;
-}
-
-function printUsage(): void {
-  console.log("usage: rossovia [--home PATH] <command>");
-  console.log("");
-  console.log("commands:");
-  console.log("  init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH]");
-  console.log("  setup status [--target-root PATH]");
-  console.log("  setup apply [--target-root PATH]");
-  console.log("  migrate [--from-home PATH]");
-  console.log("  resolve <project>");
-  console.log("  register <path> --id <stable-id> [--alias <alias>]...");
-  console.log("  attach <project> <path>");
-  console.log("  project list");
-  console.log("  worker list");
-  console.log("  preference set <id> --statement <text> [--project <project>] [--reopen-when <condition>]");
-  console.log("  preference list [--project <project>]");
-  console.log("  preference retire <id> [--project <project>]");
-  console.log("  execution inspect <project> <mission-id>");
-  console.log("  execution authorize <project> <mission-id> --proposal-id <id> --proposal-digest <sha256> --choice <decision-id>=<reply-key>... --actor-ref <principal:identity> --source-ref <kind:reference>");
-  console.log("  task create --title <text> --objective <text> --accept <criterion>... [--todo <text>]... --next-actor <principal|agent|external> --source-ref <reference> --expected-source-revision <n> [--project <project> [--worktree <path>] [--mission <id>]]");
-  console.log("  task list");
-  console.log("  task show <id>");
-  console.log("  task attempts <id>");
-  console.log("  task reconcile-attempt <id> --attempt <attempt-id>");
-  console.log("  task run <id> --worker <worker-id> [--continue]");
-  console.log("  task assign <id> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task correct <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task link-execution <id> --authorization-id <uuid> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task rebind-worktree <id> --expected-worktree <path> --worktree <path> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task submit <id> --summary <text> --evidence-ref <reference>... --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task append-review <id> --assessment-id <id> --result-claim-id <id> [--producer-attempt-id <id>] --reviewer-ref <reference> --independence-basis <independent-review-context|unproven> --independence-source-ref <reference> --candidate-commit <40-hex> --verdict <passed|failed> --finding <text>... --evidence-ref <reference>... --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task accept <id> --source-ref <reference> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  task reopen <id> --statement <text> --source-ref <reference> --next-actor <principal|agent|external> --expected-source-revision <n> --expected-revision <n>");
-  console.log("  contribution reconcile-lease <conversation-id> <batch-id> <key>");
-  console.log("  mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
-  console.log("  intervention observe [--state-root <path>]");
-  console.log("  intervention status (--state-file <path> | --session-id <id> [--state-root <path>])");
-  console.log("  correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>");
-  console.log("  hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop]");
-  console.log("  statusline [claude] [--cwd <path>]");
-  console.log("  root list");
-  console.log("  root add <path>...");
-  console.log("  scan");
 }
 
 function parseStatusLineOptions(raw: string[]): { cwd?: string } {
