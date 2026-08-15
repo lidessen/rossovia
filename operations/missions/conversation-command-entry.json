@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T17:29:20Z",
+  "updatedAt": "2026-08-15T20:09:15Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -176,7 +176,42 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "PR #127 integrated exact candidate 9de404feff88ea566e7237070f389a2fe4332cfd as normal merge e82a2104d33fcd4d51da66b8816800747227fe2c: conversation task_create now commits only to an immediately revalidated exact clean linked Worktree, rejects primary, dirty, stale, or unobserved candidates with zero Task mutation, and preserves canonical receipts, the singular effect target, the shared AI SDK ordinary-Task runtime, and existing task_continue revalidation. Final two-project DeepSeek browser dogfood, GLM/Harness trials, Principal Task acceptance, and whole Mission completion remain pending."
+    },
+    {
+      "id": "f3-coordinator-observed-identity",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Close P7 F3 by retaining truthful coordinator observed provider and normalized provider-returned model identity without inferring reasoning effort or collapsing requested policy into observation.",
+      "returnCondition": "Return with a clean exact implementation commit, deterministic adapter/transport/journal/UI evidence for observed DeepSeek provider and model plus unavailable effort, relevant Autonomy and Workbench checks, and no broader provider-policy or runtime change.",
+      "sources": [
+        "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f3-high-coordinator-observed-provider-model-remains-unknown",
+        "dogfood:conversation/24b6a5f4-34b2-472b-a959-5f3bf2cab2a3/2026-08-15"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "f4-f5-terminal-result-handoff",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Close P7 F4 and F5 as one browser-to-Task handoff slice: terminal owner evidence removes the stop affordance while preserving history, and an exact ordinary-attempt result can use the existing verified-result submission authority without auto-acceptance.",
+      "returnCondition": "Return with a clean exact implementation commit, deterministic live-to-terminal carrier UI evidence, exact ordinary-attempt result-candidate and submit evidence bound to current Task and attempt/Cell records, stale/refusal/reconnect cases, focused/full Workbench checks, and no auto-submit or acceptance.",
+      "sources": [
+        "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f4-medium-terminal-carrier-still-exposes-a-stop-affordance",
+        "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f5-high-named-walkthrough-cannot-produce-its-required-result-claims"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "f6-register-serialization",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Close P7 F6 by making project and workspace registration one serialized fail-closed state transition so concurrent successful registrations cannot overwrite one another.",
+      "returnCondition": "Return with a clean exact implementation commit, deterministic truly concurrent register regressions proving both successes remain, failure/cleanup/compatibility evidence, relevant Workbench full/typecheck and diff-check, and no new project authority or store.",
+      "sources": [
+        "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f6-medium-concurrent-project-registration-loses-an-update"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "f3-coordinator-observed-identity"
 }
