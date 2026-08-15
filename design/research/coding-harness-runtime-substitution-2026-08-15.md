@@ -193,9 +193,16 @@ would duplicate the runtime transition rather than reduce it.
 
 The first candidate should be a new `CellDriver`, not a rewrite of Work Cell:
 
-1. Add pinned `@ai-sdk/harness`, `@ai-sdk/harness-pi`,
-   `@ai-sdk/sandbox-just-bash`, `just-bash`, and Pi coding-agent dependencies in
-   the Work Cell package. Record exact resolved versions and license metadata.
+1. Add the AI-SDK-7.0.28-compatible package set in the Work Cell package:
+   `@ai-sdk/harness@1.0.33`, `@ai-sdk/harness-pi@1.0.33`,
+   `@ai-sdk/sandbox-just-bash@1.0.33`, `just-bash@2.14.5`,
+   `@earendil-works/pi-coding-agent@0.79.10`, and `ws@8.21.0`. The exact
+   registry manifests were checked together: harness 1.0.33 depends on the
+   repository's existing `ai@7.0.28`, provider 4.0.3, and provider-utils
+   5.0.10. The inspected Pi 0.79.10 package already contains the unique,
+   non-overlapping batch edit and same-file mutation queue described above.
+   Do not select `latest` or silently upgrade the existing provider stack in
+   this slice. Retain the resolved lockfile and Apache-2.0/MIT license metadata.
 2. Construct `HarnessAgent` with the Pi adapter and an empty in-memory
    just-bash sandbox. Select the provider/model explicitly from the current
    worker execution profile; never accept an adapter default silently.
