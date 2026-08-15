@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T07:30:25Z",
+  "updatedAt": "2026-08-15T07:44:36Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -148,7 +148,19 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "P7 F2 correction entered main through PR #125: exact candidate eee50fefd530369acd44a3b0168f6c3f35ce9110, normal merge 1de6b884cbd30fa9f06c862b4764b379b38102af. Conversation compact context now retains bounded canonical Task cards across projects with exact lifecycle, completeness standing, strict carrier attribution, and one singular current effect target. F1, F3, F4, F5, F6, P5, the active Goal, and Principal acceptance of Task 6a953292-c8c2-440f-833e-66e27198bf17 remain pending; integration does not complete the Mission or accept the product."
+    },
+    {
+      "id": "f1-runnable-task-create",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Close P7 F1 by ensuring browser/conversation task_create can commit only a Task bound to one exact clean observed linked Worktree, so the next supported task_continue is runnable without adding a rebind operation.",
+      "returnCondition": "Return only after exact runnable-task-create implementation tests, independent exact-head review, and authorized integration evidence; keep the Goal and Principal product/Task acceptance active and pending.",
+      "sources": [
+        "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f1-high-browser-create-can-produce-an-unexecutable-task",
+        "principal:2026-08-15-f1-runnable-task-create"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "f1-runnable-task-create"
 }
