@@ -54,8 +54,22 @@ describe("mission continuity", () => {
       "design/FOUNDING-MANDATE.md",
     );
     expect(initialized.exitCode).toBe(0);
+    expect(initialized.stderr).toBe("");
     const recordPath = join(root, "founding.json");
-    expect(initialized.stdout.trim()).toBe(recordPath);
+    const receipt = JSON.parse(initialized.stdout);
+    expect(receipt).toEqual({
+      action: "init",
+      mission: "founding",
+      root,
+      path: recordPath,
+      status: {
+        id: "founding",
+        mainline: "active",
+        currentFocus: "mainline",
+        openBranches: [],
+      },
+    });
+    expect(existsSync(recordPath)).toBe(true);
 
     const listing = JSON.parse(workbench(repository, root, "list").stdout);
     expect(listing.activeMissions).toHaveLength(1);
@@ -206,7 +220,16 @@ describe("mission continuity", () => {
     git(repository, "add", "operations/missions/founding.json");
     git(repository, "commit", "-m", "ops: settle founding mission");
     expect(workbench(repository, root, "check", "founding", "--git", "--require-committed").exitCode).toBe(0);
-    expect(workbench(repository, root, "prune", "founding").exitCode).toBe(0);
+    const pruned = workbench(repository, root, "prune", "founding");
+    expect(pruned.exitCode).toBe(0);
+    expect(pruned.stderr).toBe("");
+    expect(JSON.parse(pruned.stdout)).toEqual({
+      action: "prune",
+      mission: "founding",
+      root,
+      path: recordPath,
+      removed: true,
+    });
     expect(existsSync(recordPath)).toBe(false);
 
     mkdirSync(root, { recursive: true });

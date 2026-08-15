@@ -22,9 +22,12 @@ export interface FamilyHelp {
   summary: string;
   subcommands: string[];
   topLevel: boolean;
+  notes?: string;
 }
 
 export type HelpEntry = VerbHelp | FamilyHelp;
+
+const MISSION_ROOT_NOTE = "Default mission root: <cwd>/operations/missions, resolved to an absolute path. Pass --root <path> (before the subcommand or after its arguments, at most once) to override. Mission records are Git-tracked in the target repository; the Workbench --home never relocates them.";
 
 export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: true,
     usage: "init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH]",
@@ -136,40 +139,41 @@ export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: tr
     description: "Recover one retained contribution lease with its conversation, batch, and key." },
   { kind: "family", path: ["mission"], topLevel: true,
     summary: "mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...",
-    subcommands: ["init", "list", "add-branch", "status", "check", "focus", "suspend", "resume", "settle", "close", "prune"] },
+    subcommands: ["init", "list", "add-branch", "status", "check", "focus", "suspend", "resume", "settle", "close", "prune"],
+    notes: `${MISSION_ROOT_NOTE} Every successful mission command prints one JSON object on stdout; mutating verbs print a receipt naming the action, mission, root, record path, and resulting state.` },
   { kind: "verb", path: ["mission", "init"], topLevel: false,
     usage: "mission [--root <path>] init <id> --title <text> --mainline <contradiction> --accept <criterion>... --source <reference>...",
-    description: "Create a Mission Record under the mission root." },
+    description: `Create a Mission Record under the mission root and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "list"], topLevel: false,
     usage: "mission [--root <path>] list",
-    description: "Project the active Mission Records under the mission root." },
+    description: `Project the active Mission Records under the mission root. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "add-branch"], topLevel: false,
     usage: "mission [--root <path>] add-branch <mission-id> <branch-id> [--parent <branch|mainline>] --kind <implementation|investigation|review|correction> --purpose <text> --return-condition <text> --source <reference>...",
-    description: "Add a branch to an active mission and focus it." },
+    description: `Add a branch to an active mission, focus it, and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "status"], topLevel: false,
     usage: "mission [--root <path>] status <mission-id>",
-    description: "Project one mission's focus and open branches." },
+    description: `Project one mission's focus and open branches. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "check"], topLevel: false,
     usage: "mission [--root <path>] check <mission-id> [--git] [--require-committed]",
-    description: "Validate a mission record; --git checks its Git tracking." },
+    description: `Validate a mission record; --git checks its Git tracking. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "focus"], topLevel: false,
     usage: "mission [--root <path>] focus <mission-id> <branch-id|mainline>",
-    description: "Set the mission's current focus to an open or integrating branch or to mainline." },
+    description: `Set the mission's current focus to an open or integrating branch or to mainline and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "suspend"], topLevel: false,
     usage: "mission [--root <path>] suspend <mission-id> <branch-id> --reactivation-signal <text>",
-    description: "Suspend an open branch with a reactivation signal." },
+    description: `Suspend an open branch with a reactivation signal and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "resume"], topLevel: false,
     usage: "mission [--root <path>] resume <mission-id> <branch-id>",
-    description: "Resume a suspended branch." },
+    description: `Resume a suspended branch and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "settle"], topLevel: false,
     usage: "mission [--root <path>] settle <mission-id> <branch-id> --disposition <integrate|no-change|abandon> --mainline-delta <text>",
-    description: "Close a branch with a disposition and a mainline delta." },
+    description: `Close a branch with a disposition and a mainline delta and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "close"], topLevel: false,
     usage: "mission [--root <path>] close <mission-id> --closure-source <reference>...",
-    description: "Settle the mission mainline with closure sources." },
+    description: `Settle the mission mainline with closure sources and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "verb", path: ["mission", "prune"], topLevel: false,
     usage: "mission [--root <path>] prune <mission-id>",
-    description: "Delete a settled, committed mission record." },
+    description: `Delete a settled, committed mission record and print a JSON receipt. ${MISSION_ROOT_NOTE}` },
   { kind: "family", path: ["intervention"], topLevel: false,
     summary: "intervention <subcommand> [arguments]",
     subcommands: ["observe", "status"] },
@@ -235,6 +239,7 @@ function familyUsage(entry: FamilyHelp): string {
     ...wrapped(entry.subcommands, 96).map((line) => `  ${line}`),
     "",
     `run 'rossovia help ${label} <subcommand>' for the full usage of one subcommand`,
+    ...(entry.notes === undefined ? [] : ["", entry.notes]),
     "",
   ];
   return lines.join("\n");
@@ -301,6 +306,7 @@ export function helpForInvocation(args: string[]): string | undefined {
     let target = args.slice(1);
     const tail = target[target.length - 1];
     if (tail === "--help" || tail === "-h") target = target.slice(0, -1);
+    target = stripMissionRoot(target);
     const usage = usageForPath(target);
     if (usage === undefined) {
       throw new UsageError(
@@ -312,9 +318,27 @@ export function helpForInvocation(args: string[]): string | undefined {
   }
   const last = args[args.length - 1];
   if (last === "--help" || last === "-h") {
-    return usageForPath(args.slice(0, -1));
+    return usageForPath(stripMissionRoot(args.slice(0, -1)));
   }
   return undefined;
+}
+
+/**
+ * The composable mission grammar permits `--root <path>` anywhere in the
+ * invocation, so help-path resolution ignores `--root` and its value inside
+ * a mission command path.
+ */
+function stripMissionRoot(path: string[]): string[] {
+  if (path[0] !== "mission") return path;
+  const filtered: string[] = [];
+  for (let index = 0; index < path.length; index += 1) {
+    if (path[index] === "--root") {
+      index += 1;
+      continue;
+    }
+    filtered.push(path[index]!);
+  }
+  return filtered;
 }
 
 let cachedVersion: string | undefined;

@@ -279,6 +279,22 @@ function statusProjection(record: MissionRecord) {
   };
 }
 
+/**
+ * The shared mutation receipt: every successful mutating mission command
+ * names its action, the exact mission, the resolved root, the record path,
+ * and the resulting state projection, so an agent needs no file read to
+ * know what changed.
+ */
+function receipt(action: string, root: string, path: string, record: MissionRecord) {
+  return {
+    action,
+    mission: record.id,
+    root,
+    path,
+    status: statusProjection(record),
+  };
+}
+
 function parseCommand(
   raw: string[],
   positionalCount: number,
@@ -326,21 +342,43 @@ function many(parsed: ParsedCommand, option: string): string[] {
   return values;
 }
 
+/**
+ * One composable mission grammar: `--root <path>` is a mission-family option
+ * that may precede the subcommand or follow its arguments. It may appear
+ * exactly once; a missing value or a duplicate is a typed usage error at the
+ * nearest mission help path. Without `--root`, the mission root is
+ * `<cwd>/operations/missions` resolved to an absolute path; the Workbench
+ * `--home` never relocates Git-tracked Mission records.
+ */
 export function runMissionCommand(rawArguments: string[]): unknown {
-  let raw = [...rawArguments];
-  let root = resolve("operations/missions");
-  if (raw[0] === "--root") {
-    if (!raw[1]) throw new UsageError("--root requires a path", ["mission"]);
-    root = resolve(raw[1]);
-    raw = raw.slice(2);
+  const raw = [...rawArguments];
+  let root: string | undefined;
+  const takeRoot = (value: string | undefined, helpPath: string[]): void => {
+    if (root !== undefined) throw new UsageError("duplicate option: --root", helpPath);
+    if (!value) throw new UsageError("--root requires a path", helpPath);
+    root = value;
+  };
+  while (raw[0] === "--root") {
+    takeRoot(raw[1], ["mission"]);
+    raw.splice(0, 2);
   }
   const command = raw.shift();
   if (!command) throw new UsageError("mission requires a subcommand", ["mission"]);
   if (!MISSION_SUBCOMMANDS.has(command)) {
     throw new UsageError(`unknown mission command: ${command}`, ["mission"]);
   }
+  const remainder: string[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const argument = raw[index]!;
+    if (argument === "--root") {
+      takeRoot(raw[index + 1], ["mission", command]);
+      index += 1;
+      continue;
+    }
+    remainder.push(argument);
+  }
   try {
-    return dispatchMissionCommand(command, raw, root);
+    return dispatchMissionCommand(command, remainder, resolve(root ?? "operations/missions"));
   } catch (error: unknown) {
     if (error instanceof ParseUsageError) {
       throw new UsageError(error.message, ["mission", command], { cause: error });
@@ -355,7 +393,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     const path = missionPath(root, parsed.positionals[0]!);
     if (existsSync(path)) throw new Error(`mission record already exists: ${path}`);
     const timestamp = now();
-    saveMission(path, {
+    const record: MissionRecord = {
       version: "mission-record.v1",
       id: parsed.positionals[0]!,
       title: one(parsed, "--title"),
@@ -365,8 +403,9 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
       mainline: { contradiction: one(parsed, "--mainline"), acceptance: many(parsed, "--accept"), status: "active" },
       branches: [],
       currentFocus: "mainline",
-    });
-    return path;
+    };
+    saveMission(path, record);
+    return receipt("init", root, path, record);
   }
 
   if (command === "list") {
@@ -416,7 +455,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     record.currentFocus = branchId;
     record.updatedAt = now();
     saveMission(path, record);
-    return;
+    return receipt("add-branch", root, path, record);
   }
 
   if (command === "status") {
@@ -447,7 +486,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     record.currentFocus = target;
     record.updatedAt = now();
     saveMission(path, record);
-    return;
+    return receipt("focus", root, path, record);
   }
 
   if (command === "suspend") {
@@ -461,7 +500,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     if (record.currentFocus === branch.id) record.currentFocus = returnFocus(record, branch);
     record.updatedAt = now();
     saveMission(path, record);
-    return;
+    return receipt("suspend", root, path, record);
   }
 
   if (command === "resume") {
@@ -475,7 +514,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     record.currentFocus = branch.id;
     record.updatedAt = now();
     saveMission(path, record);
-    return;
+    return receipt("resume", root, path, record);
   }
 
   if (command === "settle") {
@@ -497,7 +536,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     if (record.currentFocus === branch.id) record.currentFocus = returnFocus(record, branch);
     record.updatedAt = now();
     saveMission(path, record);
-    return;
+    return receipt("settle", root, path, record);
   }
 
   if (command === "close") {
@@ -515,7 +554,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     record.currentFocus = "mainline";
     record.updatedAt = now();
     saveMission(path, record);
-    return;
+    return receipt("close", root, path, record);
   }
 
   if (command === "prune") {
@@ -528,7 +567,7 @@ function dispatchMissionCommand(command: string, raw: string[], root: string): u
     if (record.mainline.status !== "settled") throw new Error("only a settled mission may be pruned");
     gitState(path, true);
     rmSync(path);
-    return path;
+    return { action: "prune", mission: record.id, root, path, removed: true };
   }
 
   throw new ParseUsageError(`unknown mission command: ${command}`);

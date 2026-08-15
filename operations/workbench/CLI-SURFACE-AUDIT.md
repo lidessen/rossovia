@@ -43,7 +43,7 @@ probes are labeled `[fixture]` and used `--home <disposable>`.
 | execution | `execution inspect a b` exit 2 ("no project matches 'a'") | `execution inspect --help` exits 2 | real authorized receipt flow |
 | task | `list`/`show` exit 0 JSON; `create` exit 0 JSON `[fixture]`; `show bogus` exit 2; revision-bound mutations validate revisions/actors/verdicts first (exit 2) | every `task* --help` exits 2 | `run`, `reconcile-attempt`, `link-execution` (effect-bearing) |
 | contribution | source-defined `reconcile-lease <conversation-id> <batch-id> <key>` ([cli.ts:196](src/cli.ts)) | `contribution --help` exits 2 | invocation (lease recovery) |
-| mission | `mission list` exit 0 JSON from repo root (reads `operations/missions`); cwd-dependent; `--root` must precede subcommand ([missions.ts:312](src/missions.ts)) | `mission --help`, `mission list --help` exit 2 | branch mutations |
+| mission | `mission list` exit 0 JSON from repo root (reads `operations/missions`); cwd-dependent; `--root` must precede subcommand ([missions.ts:312](src/missions.ts)) — superseded by the T4 implementation update below | `mission --help`, `mission list --help` exit 2 | branch mutations |
 | intervention | `intervention --help` exits 2 | any help | observe/status effect |
 | correct | `correct --help` exits 2 ("--help requires a value") | any help | state-file correction |
 | hook | `hook --help` exits 2 ("hook platform must be codex, claude, or cursor"); reads JSON payload from stdin; `artifact` writes consistency state to `$TMPDIR/rossovia-hooks/…` ([hooks.ts](src/hooks.ts)) | any help | executed hook payloads |
@@ -110,7 +110,8 @@ therefore **unverified** beyond this audit's own probes.
    is human text, `statusline` is plain text, `mission init`/`prune` return a
    bare path string ([missions.ts:339](src/missions.ts)), `mission
    focus`/`suspend`/`resume`/`settle`/`close` are silent success, and
-   `hook artifact` outputs conditionally (JSON or silent).
+   `hook artifact` outputs conditionally (JSON or silent). The mission
+   exceptions are repaired by the T4 implementation update below.
 6. **Error and recovery — partial.** Outer CLI parser/dispatch failures and
    the incomplete `project list` case exit 2 with one stderr line prefixed
    `rosso:` (binary is `rossovia` — naming mismatch); the launcher exits 127
@@ -201,7 +202,8 @@ Workbench browser UI validates task results before acceptance — the CLI
   `--root`-must-be-first, bare-path `init`/`prune` output, silent success on
   `focus`/`suspend`/`resume`/`settle`/`close` (`init`/`prune` are mutating
   path-returning commands, not silent), no `--home`. Repair: JSON for all
-  outputs, help text documenting root resolution.
+  outputs, help text documenting root resolution. Implemented — see the
+  update below.
 - **T5.** Read/effect boundary invisible: no `--dry-run`/`--check` forms, help
   does not mark mutating verbs. Repair: mark mutation in help; defer
   `--dry-run` to owner as a semantic addition.
@@ -234,6 +236,35 @@ Workbench browser UI validates task results before acceptance — the CLI
 - **Compatibility:** T1-only changes are backward-compatible by construction;
   T2–T6 items marked "Repair" above are proposals for the owner, not part of
   this packet.
+
+## T4 implementation update (post-audit)
+
+T4 is implemented at a Workbench head that follows the audited revision; the
+public mission invocation/output contract changed as recorded here. This
+section is the migration notice for consumers of the prior surface.
+
+- `--root <path>` follows one composable grammar instead of
+  must-precede-the-subcommand: it may precede the subcommand or follow its
+  arguments, at most once. Missing and duplicate roots are typed usage errors
+  (exit 2) pointing at the nearest mission help path
+  ([missions.ts:353](src/missions.ts)); arity and option failures keep the same
+  T3 typed usage behavior.
+- The default mission root `<cwd>/operations/missions` (resolved to an
+  absolute path) is documented in the mission family and every verb's help,
+  together with the note that Workbench `--home` never relocates Git-tracked
+  Mission records. Help resolution ignores `--root` tokens, so
+  `mission --root <path> list --help` prints the list usage.
+- Every successful mission command prints one JSON object on stdout with empty
+  stderr. `init`/`prune` receipts replace the prior bare path string;
+  `add-branch`/`focus`/`suspend`/`resume`/`settle`/`close` replace prior silent
+  success. Receipts name the action, exact mission, resolved root, record
+  path, and resulting state projection. `list`/`status`/`check` output shapes
+  and Mission domain/effect semantics (validation, Git tracking, focus rules)
+  are unchanged.
+- Migration notes for the prior bare/silent output: scripts that consumed the
+  bare `init`/`prune` path must read the receipt's `path` field instead, and
+  scripts must stop treating empty stdout as silent success for mutating
+  verbs.
 
 ## Verification of this audit
 
