@@ -5,7 +5,7 @@ import type {
 } from "@ai-sdk/harness";
 import { createPi, type PiHarnessSettings } from "@ai-sdk/harness-pi";
 import { createJustBashSandbox } from "@ai-sdk/sandbox-just-bash";
-import { tool, type ToolSet } from "ai";
+import { tool, type Tool, type ToolSet } from "ai";
 import { Sandbox } from "just-bash";
 import { z } from "zod";
 import {
@@ -69,6 +69,19 @@ export type PiHarnessDriverOptions = AiSdkDriverOptions & {
   /** Test/substitution seam at the exact `createPi` settings boundary. */
   piHarnessFactory?: (settings: PiHarnessSettings) => HarnessV1<ToolSet>;
   /**
+   * Causal event-loop handoff applied at this adapter boundary before any
+   * host tool effect or result. The pinned harness-pi adapter can deliver
+   * `tool_execution_start` to HarnessAgent before its
+   * `buildUserToolDefinition` has installed the pending tool-result
+   * registration for that call, so an immediately-resolving host tool (an
+   * in-memory task update, a small read) submits an early result that the
+   * adapter drops and the turn never completes. The default yields one
+   * macrotask before the host effect so the registration barrier settles
+   * first. Tests substitute a no-op handoff to prove the control (old
+   * adapter boundary) drops early results.
+   */
+  toolEffectHandoff?: () => Promise<void>;
+  /**
    * Sandbox provider seam. Defaults to an empty in-memory just-bash sandbox
    * that carries no repository content; model effects cross only the
    * host-executed Work Cell tools.
@@ -121,6 +134,38 @@ export async function createPiInMemorySandbox(): Promise<{
 }
 
 /**
+ * One macrotask yield at the Work Cell Pi adapter boundary. See
+ * `PiHarnessDriverOptions["toolEffectHandoff"]` for the pinned adapter race
+ * this closes.
+ */
+export function yieldEventLoopHandoff(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (typeof setImmediate === "function") setImmediate(resolve);
+    else setTimeout(resolve, 0);
+  });
+}
+
+/**
+ * Wrap one host tool so its effect and result can never outrun the pinned
+ * adapter's next-turn registration barrier. Only the execution timing is
+ * deferred; the tool's name, schema, evidence, and host ownership are exact.
+ */
+function withToolEffectHandoff<T extends Tool>(
+  definition: T,
+  handoff: () => Promise<void>,
+): T {
+  const execute = definition.execute;
+  if (execute === undefined) return definition;
+  return {
+    ...definition,
+    execute: (async (input, options) => {
+      await handoff();
+      return execute(input, options);
+    }) as typeof execute,
+  };
+}
+
+/**
  * Map the host-selected validation route into the Pi adapter's own provider
  * policy. The Pi harness serves exactly one DeepSeek route per run; any other
  * route or a multi-provider route fails closed with a visible error instead
@@ -163,7 +208,9 @@ function piHarnessTarget(options: PiHarnessDriverOptions): PiHarnessTarget {
  * create-new-only full write, allow-listed commands, host task tools, budget
  * and terminal tools). Provider/model identity, usage, tasks, and workspace
  * effects remain Work Cell evidence; the harness session identity is
- * observation only.
+ * observation only. Every host tool execution crosses one causal event-loop
+ * handoff before its effect so an immediately-resolving result cannot
+ * outrun the pinned adapter's next-turn registration barrier.
  */
 export class PiHarnessCellDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
@@ -173,6 +220,7 @@ export class PiHarnessCellDriver implements CellDriver {
   private readonly sandbox: HarnessV1SandboxProvider | undefined;
   private readonly target: PiHarnessTarget;
   private readonly taskToolSet: NonNullable<PiHarnessDriverOptions["taskToolSet"]>;
+  private readonly toolEffectHandoff: NonNullable<PiHarnessDriverOptions["toolEffectHandoff"]>;
 
   constructor(options: PiHarnessDriverOptions = {}) {
     if (options.harness !== undefined && options.piHarnessFactory !== undefined) {
@@ -182,6 +230,7 @@ export class PiHarnessCellDriver implements CellDriver {
     this.model = selection.model;
     this.target = piHarnessTarget(options);
     this.taskToolSet = options.taskToolSet ?? "manage";
+    this.toolEffectHandoff = options.toolEffectHandoff ?? yieldEventLoopHandoff;
     const createHarness = options.piHarnessFactory ?? createPi;
     this.harness = options.harness ?? createHarness({
       auth: this.target.piAuth,
@@ -265,6 +314,19 @@ export class PiHarnessCellDriver implements CellDriver {
     const defaultSandbox = this.sandbox === undefined
       ? await createPiInMemorySandbox()
       : undefined;
+    // One causal event-loop handoff before any host tool effect or result:
+    // the pinned harness-pi adapter can deliver tool_execution_start to
+    // HarnessAgent before buildUserToolDefinition has installed the pending
+    // tool-result registration for that call, and an immediately-resolving
+    // host tool would submit an early result the adapter drops. The handoff
+    // changes timing only; tool names, schemas, evidence, and host ownership
+    // are exact.
+    const harnessTools: Record<string, Tool> = Object.fromEntries(
+      Object.entries(hostTools).map(([name, definition]): [string, Tool] => [
+        name,
+        withToolEffectHandoff(definition, this.toolEffectHandoff),
+      ]),
+    );
     const agent = new HarnessAgent({
       id: input.id,
       harness: this.harness,
@@ -274,8 +336,8 @@ export class PiHarnessCellDriver implements CellDriver {
         deferStructuredOutput: outputSchema !== undefined,
         taskToolSet: this.taskToolSet,
       }),
-      tools: hostTools,
-      activeTools: Object.keys(hostTools),
+      tools: harnessTools,
+      activeTools: Object.keys(harnessTools),
       permissionMode: "allow-all",
     });
     context.emit("harness.tool_surface.projected", {

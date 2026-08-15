@@ -144,6 +144,19 @@ driver re-implements a second execution pathway. Provider/model identity,
 usage, tasks, and workspace effects remain Work Cell evidence; the harness
 session identity is observation only.
 
+Every host tool execution through the Pi adapter crosses one causal
+event-loop handoff before its effect. The pinned harness-pi adapter can
+deliver `tool_execution_start` to `HarnessAgent` before its
+`buildUserToolDefinition` has installed the pending tool-result registration
+for that call, so an immediately-resolving host tool (an in-memory task
+update, a small read) submits an early result the adapter drops and the turn
+never completes. Yielding one macrotask before the host effect lets the
+registration barrier settle first; the handoff changes timing only, never the
+tool surface, evidence, or host ownership. The deterministic regression
+models the old adapter as a barrier that drops pre-registration results: the
+control (no handoff) fails boundedly while the production boundary returns
+every immediately resolving parallel host tool result exactly once.
+
 Command policy has two explicit forms. A one-token `allowedCommands` entry is
 the legacy executable-wide capability. A multi-token entry is an exact argv
 capability and accepts no extra flags or arguments. Exact argv restricts

@@ -699,6 +699,183 @@ describe("Pi harness driver fail-closed mapping", () => {
   });
 });
 
+describe("Pi harness immediate parallel host tools (pinned adapter registration race)", () => {
+  interface RaceObserver {
+    droppedToolCallIds: string[];
+    submittedToolCallIds: string[];
+  }
+
+  /**
+   * A deterministic model of the pinned harness-pi race: the tool-call events
+   * reach the agent before the next-turn registration barrier installs the
+   * pending tool-result registration. Submissions arriving before the barrier
+   * (armed synchronously with the emitted tool calls) are dropped, exactly
+   * like the old adapter; when any result was dropped the turn then fails
+   * boundedly instead of hanging forever.
+   */
+  function racyRegistrationHarness(options: {
+    toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>;
+    observer: RaceObserver;
+  }): HarnessV1<ToolSet> {
+    return {
+      specificationVersion: "harness-v1",
+      harnessId: "racy-pi",
+      builtinTools: {},
+      supportsBuiltinToolFiltering: true,
+      doStart: async (start) => ({
+        sessionId: start.sessionId,
+        isResume: false,
+        modelId: "deepseek-v4-pro",
+        doPromptTurn: (turn: HarnessV1PromptTurnOptions) => {
+          let registered = false;
+          let resolveAllResults: (() => void) | undefined;
+          let rejectAllResults: ((error: Error) => void) | undefined;
+          const allResults = new Promise<void>((resolve, reject) => {
+            resolveAllResults = resolve;
+            rejectAllResults = reject;
+          });
+          const done = (async () => {
+            turn.emit({ type: "stream-start", warnings: [] });
+            for (const call of options.toolCalls) {
+              turn.emit({
+                type: "tool-call",
+                toolCallId: call.toolCallId,
+                toolName: call.toolName,
+                input: typeof call.input === "string" ? call.input : JSON.stringify(call.input),
+                providerExecuted: false,
+              });
+            }
+            // The next-turn registration barrier: pendingToolResults is
+            // installed only after this macrotask, as in the pinned adapter.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            registered = true;
+            if (options.observer.droppedToolCallIds.length > 0) {
+              rejectAllResults?.(new Error(
+                `pinned adapter race: ${options.observer.droppedToolCallIds.length} tool result(s) `
+                + "dropped before the next-turn registration barrier",
+              ));
+            }
+            await allResults;
+            turn.emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+            turn.emit({
+              type: "finish",
+              finishReason: STOP_REASON,
+              totalUsage: {
+                inputTokens: { total: 4, noCache: 4, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 4, text: 4, reasoning: 0 },
+              },
+            });
+          })();
+          // The turn control is consumed by HarnessAgent; keep the bounded
+          // drop rejection from surfacing as an unhandled rejection when the
+          // agent instead hangs on the missing tool result.
+          void done.catch(() => {});
+          return {
+            done,
+            submitToolResult: async (
+              result: Parameters<HarnessV1PromptControl["submitToolResult"]>[0],
+            ) => {
+              if (!registered) {
+                // Old pinned adapter behavior: an early result has no pending
+                // registration and is dropped.
+                options.observer.droppedToolCallIds.push(result.toolCallId);
+                return;
+              }
+              options.observer.submittedToolCallIds.push(result.toolCallId);
+              if (options.observer.submittedToolCallIds.length === options.toolCalls.length) {
+                resolveAllResults!();
+              }
+            },
+          };
+        },
+        doDestroy: async () => {},
+      } as never),
+    } as HarnessV1<ToolSet>;
+  }
+
+  const parallelUpdates = () => (["t00", "t01", "t02", "t03"] as const).map((toolCallId, index) => ({
+    toolCallId,
+    toolName: "task_update",
+    input: { taskId: `task-${index + 1}`, status: "completed" },
+  }));
+
+  const fourTaskSeeds = () => [
+    { subject: "First", description: "First seed" },
+    { subject: "Second", description: "Second seed" },
+    { subject: "Third", description: "Third seed" },
+    { subject: "Fourth", description: "Fourth seed" },
+  ];
+
+  test("control: without the handoff, immediately resolving parallel tool results are dropped before the registration barrier and the run hangs or fails boundedly", async () => {
+    const observer: RaceObserver = { droppedToolCallIds: [], submittedToolCallIds: [] };
+    const harness = racyRegistrationHarness({
+      toolCalls: parallelUpdates(),
+      observer,
+    });
+    const { workspace, input } = await fixture();
+    input.tasks = fourTaskSeeds();
+    const controller = new AbortController();
+    const driver = new PiHarnessCellDriver({
+      route: [{
+        provider: "deepseek",
+        credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+        model: "deepseek-v4-pro",
+      }],
+      environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+      harness,
+      // Control: the old adapter boundary without the causal handoff.
+      toolEffectHandoff: async () => {},
+    });
+    const runPromise = driver.run(input, driverContext(workspace, { signal: controller.signal }));
+    const outcome = await Promise.race([
+      runPromise.then(() => "completed" as const, () => "rejected" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 250)),
+    ]);
+    // The old boundary never completes a run whose tool results were dropped:
+    // it either surfaces the drop rejection or hangs on the missing result.
+    expect(outcome).not.toBe("completed");
+    expect([...observer.droppedToolCallIds].sort()).toEqual(["t00", "t01", "t02", "t03"]);
+    expect(observer.submittedToolCallIds).toEqual([]);
+    if (outcome === "pending") {
+      controller.abort(new Error("control regression bound reached"));
+      await expect(runPromise).rejects.toThrow();
+    } else {
+      await expect(runPromise).rejects.toThrow(/dropped before the next-turn registration barrier/);
+    }
+  });
+
+  test("the production handoff returns every immediately resolving parallel host tool result exactly once", async () => {
+    const observer: RaceObserver = { droppedToolCallIds: [], submittedToolCallIds: [] };
+    const harness = racyRegistrationHarness({
+      toolCalls: parallelUpdates(),
+      observer,
+    });
+    const { workspace, input } = await fixture();
+    input.tasks = fourTaskSeeds();
+    // Default production boundary: one causal event-loop handoff before every
+    // host tool effect, so no result can outrun the registration barrier.
+    const driver = new PiHarnessCellDriver({
+      route: [{
+        provider: "deepseek",
+        credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+        model: "deepseek-v4-pro",
+      }],
+      environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+      harness,
+    });
+    const result = await driver.run(input, driverContext(workspace));
+    expect(observer.droppedToolCallIds).toEqual([]);
+    expect([...observer.submittedToolCallIds].sort()).toEqual(["t00", "t01", "t02", "t03"]);
+    for (const toolCallId of ["t00", "t01", "t02", "t03"]) {
+      expect(observer.submittedToolCallIds.filter((id) => id === toolCallId)).toHaveLength(1);
+    }
+    expect(result.tasks).toHaveLength(4);
+    for (const task of result.tasks ?? []) {
+      expect(task.status).toBe("completed");
+    }
+  });
+});
+
 describe("workspace create/new-file evidence", () => {
   test("createText makes a new file and snapshot diff reports it as added", async () => {
     const { workspace } = await fixture();
