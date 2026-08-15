@@ -48,7 +48,12 @@ export const TaskProjectionSchema = z.object({
   revision: z.number().int().positive().optional(),
   source: DisclosedSourceSchema.optional(),
   summary: z.string().min(1).max(800),
-  status: z.enum(["open", "settled", "accepted"]).optional(),
+  /**
+   * The task's exact canonical lifecycle, copied verbatim from the current
+   * Task source: open, in-progress, waiting, verifying, or settled. It is
+   * never inferred from a bounded projection.
+   */
+  status: z.enum(["open", "in-progress", "waiting", "verifying", "settled"]).optional(),
   corrections: z.array(CorrectionProjectionSchema).optional(),
   /**
    * The task's exact execution selection, present only when the task is bound
@@ -149,7 +154,13 @@ export const TaskCardProjectionSchema = z.object({
   revision: z.number().int().positive().optional(),
   source: DisclosedSourceSchema.optional(),
   summary: z.string().min(1).max(800),
-  status: z.enum(["open", "settled", "accepted"]).optional(),
+  /**
+   * The task's exact canonical lifecycle, copied verbatim from the current
+   * Task source and required on every card so the coordinator never infers
+   * lifecycle standing from a bounded disclosure: open, in-progress,
+   * waiting, verifying, or settled.
+   */
+  status: z.enum(["open", "in-progress", "waiting", "verifying", "settled"]),
   /** The task's exact registered project identity from its canonical binding. */
   projectId: z.string().min(1).optional(),
   primaryHead: GitObjectSchema.optional(),
@@ -448,7 +459,15 @@ function renderProjection(
   }
 
   for (const carrier of projection?.carriers ?? []) {
-    lines.push(`carrier ${carrier.id}: ${carrier.state}${carrier.runId !== undefined ? ` (run ${carrier.runId})` : ""}`);
+    const identity = [
+      carrier.taskId === undefined ? "" : `task ${carrier.taskId}`,
+      carrier.projectId === undefined ? "" : `project ${carrier.projectId}`,
+    ].filter((part) => part !== "");
+    lines.push(
+      `carrier ${carrier.id}: ${carrier.state}`
+      + `${carrier.runId !== undefined ? ` (run ${carrier.runId})` : ""}`
+      + `${identity.length === 0 ? "" : ` (${identity.join(", ")})`}`,
+    );
     if (carrier.runId !== undefined) {
       sourceRevisionSelectors.push({ source: `carrier:${carrier.id}`, revision: carrier.runId });
     }

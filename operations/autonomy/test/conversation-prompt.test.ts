@@ -434,3 +434,75 @@ test("an unavailable standing states the unreadable source instead of absence", 
   expect(composed.prompt).toContain("known=3");
   expect(composed.prompt).not.toContain("no Task exists");
 });
+
+test("card lifecycle standing renders the exact canonical value and is required", () => {
+  const input = fullInput();
+  input.projection = {
+    taskCards: [
+      {
+        id: "task-v1",
+        sourceRevision: "7",
+        source: { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },
+        summary: "A Task whose result is under review.",
+        status: "verifying",
+      },
+      {
+        id: "task-w1",
+        sourceRevision: "7",
+        source: { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },
+        summary: "A Task waiting for a dependency.",
+        status: "waiting",
+      },
+      {
+        id: "task-p1",
+        sourceRevision: "7",
+        source: { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },
+        summary: "A Task whose execution is active.",
+        status: "in-progress",
+      },
+    ],
+    taskCardStanding: { state: "complete", cap: 8, disclosed: 3, known: 3 },
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain("task card task-v1 [verifying]: A Task whose result is under review.");
+  expect(composed.prompt).toContain("task card task-w1 [waiting]: A Task waiting for a dependency.");
+  expect(composed.prompt).toContain("task card task-p1 [in-progress]: A Task whose execution is active.");
+
+  // A card without an exact lifecycle standing is rejected, never defaulted.
+  const missing = fullInput();
+  missing.projection = {
+    taskCards: [
+      { id: "task-x1", sourceRevision: "7", summary: "A Task without a lifecycle disclosure." },
+    ],
+  } as unknown as typeof missing.projection;
+  expect(() => composeConversationPrompt(missing)).toThrow();
+
+  // The removed accepted value is not a projection lifecycle standing.
+  const accepted = fullInput();
+  accepted.projection = {
+    taskCards: [
+      { id: "task-a1", sourceRevision: "7", summary: "A Task mislabeled accepted.", status: "accepted" },
+    ],
+  } as unknown as typeof accepted.projection;
+  expect(() => composeConversationPrompt(accepted)).toThrow();
+});
+
+test("carrier lines render exact task/project identity only when disclosed", () => {
+  const input = fullInput();
+  input.projection!.carriers = [
+    { id: "attempt-correlated", state: "unknown", taskId: "task-c1", projectId: "proj-c1" },
+    { id: "attempt-task-only", state: "unknown", taskId: "task-c2" },
+    { id: "attempt-uncorrelated", state: "unknown" },
+  ];
+  const composed = composeConversationPrompt(input);
+
+  // Valid correlation is visible to the coordinator.
+  expect(composed.prompt).toContain("carrier attempt-correlated: unknown (task task-c1, project proj-c1)");
+  // An unreadable Task source still discloses the strict Task identity, without a guessed project.
+  expect(composed.prompt).toContain("carrier attempt-task-only: unknown (task task-c2)");
+  expect(composed.prompt).not.toContain("carrier attempt-task-only: unknown (task task-c2, project");
+  // Invalid or unavailable evidence emits neither identity nor a guessed one.
+  expect(composed.prompt).toContain("carrier attempt-uncorrelated: unknown");
+  expect(composed.prompt).not.toContain("carrier attempt-uncorrelated: unknown (task");
+});

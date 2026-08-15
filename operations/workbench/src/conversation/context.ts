@@ -268,7 +268,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
       revision: task.revision,
       source: { ref: TASK_SOURCE_REF, digest: digest(tasks) },
       summary: `${task.title}: ${task.objective}`.slice(0, 800),
-      status: task.lifecycle === "settled" ? "settled" : "open",
+      status: task.lifecycle,
       ...(corrections.length === 0 ? {} : { corrections }),
       ...this.taskExecutionSelectors(task),
     });
@@ -414,7 +414,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
       revision: task.revision,
       source: { ref: TASK_SOURCE_REF, digest: digest(tasks) },
       summary: `${task.title}: ${task.objective}`.slice(0, 800),
-      status: task.lifecycle === "settled" ? "settled" : "open",
+      status: task.lifecycle,
       ...(task.binding.kind === "project-context" ? { projectId: task.binding.projectId } : {}),
       ...this.taskExecutionSelectors(task),
     });

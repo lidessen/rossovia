@@ -3,9 +3,10 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initializeHome } from "../src/home";
+import { initializeHome, loadJson, saveJson } from "../src/home";
 import { registerProject } from "../src/register";
-import { createPrincipalTask, correctPrincipalTask, loadPrincipalTasks, principalTasksPath } from "../src/tasks";
+import { createPrincipalTask, correctPrincipalTask, loadPrincipalTasks, principalTasksPath, submitPrincipalTaskResult } from "../src/tasks";
+import { PrincipalTasksSchema } from "../src/contracts";
 import { createConversationContextProvider } from "../src/conversation/context";
 import { createConversationTaskOperationHost } from "../src/conversation/operations";
 import { taskActionSourceRef, taskReceiptEvidenceRef } from "../src/conversation/contracts";
@@ -474,6 +475,79 @@ describe("ConversationContextProvider truthful Task cards", () => {
       revision: String(current.sourceRevision),
     });
     expect(composed.prompt).not.toContain("has no Task");
+  });
+
+  test("cards and the singular current target copy the exact canonical lifecycle verbatim", async () => {
+    const { home, provider, journal } = fixture();
+    const conversationId = randomUUID();
+    const verifying = createPrincipalTask(home, {
+      title: "Verifying fixture",
+      objective: "A Task whose result is under review.",
+      acceptance: ["verifying"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+    });
+    const waiting = createPrincipalTask(home, {
+      title: "Waiting fixture",
+      objective: "A Task waiting for a dependency.",
+      acceptance: ["waiting"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: verifying.sourceRevision,
+    });
+    const active = createPrincipalTask(home, {
+      title: "In-progress fixture",
+      objective: "A Task whose execution is active.",
+      acceptance: ["in-progress"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: waiting.sourceRevision,
+    });
+    await journalSettledCreate(journal, conversationId, verifying.task.id, verifying.sourceRevision);
+    await journalSettledCreate(journal, conversationId, waiting.task.id, waiting.sourceRevision);
+    await journalSettledCreate(journal, conversationId, active.task.id, active.sourceRevision);
+
+    // The verifying lifecycle enters through the canonical submit path.
+    submitPrincipalTaskResult(home, {
+      id: verifying.task.id,
+      expectedSourceRevision: active.sourceRevision,
+      expectedRevision: verifying.task.revision,
+      summary: "the fixture result",
+      evidenceRefs: ["test:context-evidence"],
+      sourceRef: "test:context-submit",
+    });
+
+    // Set the exact remaining canonical lifecycles directly in the Task source.
+    const source = loadJson(principalTasksPath(home), PrincipalTasksSchema);
+    for (const [id, lifecycle] of [
+      [waiting.task.id, "waiting"],
+      [active.task.id, "in-progress"],
+    ] as const) {
+      const task = source.tasks.find((candidate) => candidate.id === id);
+      expect(task, `fixture task ${id}`).toBeDefined();
+      task!.lifecycle = lifecycle;
+    }
+    saveJson(principalTasksPath(home), source);
+
+    const projection = await provider.buildProjection(conversationId);
+
+    // The singular current effect target copies the latest action's lifecycle verbatim.
+    expect(projection.task).toMatchObject({ id: active.task.id, status: "in-progress" });
+    const statusById = new Map(projection.taskCards!.map((card) => [card.id, card.status]));
+    expect(statusById.get(verifying.task.id)).toBe("verifying");
+    expect(statusById.get(waiting.task.id)).toBe("waiting");
+    expect(statusById.get(active.task.id)).toBe("in-progress");
+
+    const composed = composeConversationPrompt({
+      projection,
+      message: { text: "show the exact standing", lineage: { messageId: "m", turnId: "t" } },
+      policy: { ...CURRENT_COORDINATOR_POLICY, disclosureEnvelope: "test" },
+    });
+    expect(composed.prompt).toContain(`task ${active.task.id} [in-progress]`);
+    expect(composed.prompt).toContain(`task card ${verifying.task.id} [verifying]`);
+    expect(composed.prompt).toContain(`task card ${waiting.task.id} [waiting]`);
+    expect(composed.prompt).toContain(`task card ${active.task.id} [in-progress]`);
   });
 
   test("a bounded card cap discloses a partial standing instead of silently dropping conversation Tasks", async () => {
