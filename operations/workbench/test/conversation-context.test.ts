@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
-import { createPrincipalTask, correctPrincipalTask, loadPrincipalTasks } from "../src/tasks";
+import { createPrincipalTask, correctPrincipalTask, loadPrincipalTasks, principalTasksPath } from "../src/tasks";
 import { createConversationContextProvider } from "../src/conversation/context";
 import { createConversationTaskOperationHost } from "../src/conversation/operations";
 import { taskActionSourceRef, taskReceiptEvidenceRef } from "../src/conversation/contracts";
@@ -279,5 +279,378 @@ describe("ConversationContextProvider", () => {
     if (found.standing !== "settled") throw new Error("expected settled");
     expect(found.receipt.taskId).toBe(created.task.id);
     expect(journal).toBeDefined();
+  });
+});
+
+function twoProjectFixture(): {
+  home: string;
+  provider: ReturnType<typeof createConversationContextProvider>;
+  journal: FileConversationJournal;
+  firstProject: { id: string; worktree: string; primary: string };
+  secondProject: { id: string; worktree: string; primary: string };
+} {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-conversation-context-two-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  initializeHome(home);
+  const projectRoot = (name: string, remote: string) => {
+    const primary = join(root, name);
+    mkdirSync(primary, { recursive: true });
+    git(primary, "init", "-b", "main");
+    git(primary, "config", "user.name", "Context Test");
+    git(primary, "config", "user.email", "context@example.test");
+    writeFileSync(join(primary, "README.md"), `# ${name} fixture\n`);
+    git(primary, "add", "README.md");
+    git(primary, "commit", "-m", "initial");
+    git(primary, "remote", "add", "origin", remote);
+    const worktree = join(root, `${name}-worktree`);
+    git(primary, "worktree", "add", worktree);
+    return { primary, worktree };
+  };
+  const firstPrimary = projectRoot("first", "https://example.test/lidessen/context-first.git");
+  const secondPrimary = projectRoot("second", "https://example.test/lidessen/context-second.git");
+  const firstId = "first-context-fixture";
+  const secondId = "second-context-fixture";
+  registerProject(home, { path: firstPrimary.primary, id: firstId, aliases: ["first-fixture"] });
+  registerProject(home, { path: secondPrimary.primary, id: secondId, aliases: ["second-fixture"] });
+  return {
+    home,
+    provider: createConversationContextProvider(home),
+    journal: new FileConversationJournal(home),
+    firstProject: { id: firstId, worktree: firstPrimary.worktree, primary: firstPrimary.primary },
+    secondProject: { id: secondId, worktree: secondPrimary.worktree, primary: secondPrimary.primary },
+  };
+}
+
+/** Journal one settled task_continue like the runtime does, so the provider can find it. */
+async function journalSettledContinue(
+  journal: FileConversationJournal,
+  conversationId: string,
+  actionId: string,
+  taskId: string,
+  evidenceRefs: string[],
+) {
+  const message = await journal.submitMessage(conversationId, { clientMessageId: randomUUID(), payload: "continue fixture task" });
+  const turn = await journal.startTurn(conversationId, {
+    turnId: randomUUID(),
+    messageId: message.event.data.messageId,
+    requestedPolicy: { provider: "deepseek", model: "deepseek-v4-pro", thinking: "enabled", reasoningEffort: "max" },
+  });
+  await journal.requestAction(conversationId, {
+    actionId,
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    operation: {
+      kind: "task_continue",
+      taskId,
+      expectedSourceRevision: 0,
+      expectedRevision: 1,
+      workerId: "fixture-worker",
+      projectId: "fixture-project",
+      expectedPrimaryHead: "1".repeat(40),
+      worktreePath: "/fixture/worktree",
+      expectedWorktreeHead: "1".repeat(40),
+    },
+  });
+  await journal.settleAction(conversationId, {
+    actionId,
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    evidenceRefs,
+  });
+  await journal.settleTurn(conversationId, {
+    turnId: turn.data.turnId,
+    messageId: message.event.data.messageId,
+    response: "continued",
+  });
+}
+
+function writeAttemptEvidence(
+  home: string,
+  attemptId: string,
+  taskId: string,
+  sourceRevision: number,
+  correlation: { conversationId: string; turnId: string; actionId: string; sourceRef: string },
+) {
+  const directory = join(home, "state", "task-attempts", attemptId);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "attempt.json"), JSON.stringify({
+    version: "rosso.task-run-attempt.v1",
+    taskId,
+    taskRevision: 1,
+    sourceRevision,
+    attemptId,
+    inputRef: `state/task-attempts/${attemptId}/cell-input.json`,
+    finalRecordRef: `state/task-attempts/${attemptId}/cell-input.run.json`,
+    workerId: "fixture-worker",
+    driver: "ai-sdk-v7",
+    model: "fixture-model",
+    status: "started",
+    startedAt: "2026-08-14T00:00:00Z",
+    correlation,
+  }));
+}
+
+describe("ConversationContextProvider truthful Task cards", () => {
+  test("retains every conversation-attributed current Task across projects after the latest action moved to another project", async () => {
+    const { home, provider, journal, firstProject, secondProject } = twoProjectFixture();
+    const conversationId = randomUUID();
+    const firstTask = createPrincipalTask(home, {
+      title: "Keep the first fixture invariant",
+      objective: "Preserve the first project fixture obligation.",
+      acceptance: ["first invariant"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+      project: "first-fixture",
+      worktree: firstProject.worktree,
+    });
+    const secondTask = createPrincipalTask(home, {
+      title: "Keep the second fixture invariant",
+      objective: "Preserve the second project fixture obligation.",
+      acceptance: ["second invariant"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: firstTask.sourceRevision,
+      project: "first-fixture",
+      worktree: firstProject.worktree,
+    });
+    const otherTask = createPrincipalTask(home, {
+      title: "Build the second-project fixture",
+      objective: "Produce the bounded second-project result.",
+      acceptance: ["second-project result"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: secondTask.sourceRevision,
+      project: "second-fixture",
+      worktree: secondProject.worktree,
+    });
+    await journalSettledCreate(journal, conversationId, firstTask.task.id, firstTask.sourceRevision);
+    await journalSettledCreate(journal, conversationId, secondTask.task.id, secondTask.sourceRevision);
+    await journalSettledCreate(journal, conversationId, otherTask.task.id, otherTask.sourceRevision);
+
+    const projection = await provider.buildProjection(conversationId);
+
+    // The singular current effect target stays the latest settled action's Task.
+    expect(projection.task?.id).toBe(otherTask.task.id);
+    // The bounded card set retains both earlier project Tasks plus the latest one.
+    const cards = projection.taskCards;
+    expect(cards).toHaveLength(3);
+    const byId = new Map(cards!.map((card) => [card.id, card]));
+    const current = loadPrincipalTasks(home);
+    for (const task of [firstTask.task, secondTask.task, otherTask.task]) {
+      const card = byId.get(task.id);
+      expect(card, `card for ${task.id}`).toBeDefined();
+      expect(card!.sourceRevision).toBe(String(current.sourceRevision));
+      expect(card!.revision).toBe(task.revision);
+      expect(card!.status).toBe("open");
+    }
+    expect(byId.get(firstTask.task.id)!.projectId).toBe(firstProject.id);
+    expect(byId.get(secondTask.task.id)!.projectId).toBe(firstProject.id);
+    expect(byId.get(otherTask.task.id)!.projectId).toBe(secondProject.id);
+    expect(byId.get(otherTask.task.id)!.worktreePath).toBe(realpathSync(secondProject.worktree));
+    expect(projection.taskCardStanding).toEqual({
+      state: "complete",
+      cap: 8,
+      disclosed: 3,
+      known: 3,
+    });
+
+    const composed = composeConversationPrompt({
+      projection,
+      message: { text: "where are my tasks?", lineage: { messageId: "m", turnId: "t" } },
+      policy: { ...CURRENT_COORDINATOR_POLICY, disclosureEnvelope: "test" },
+    });
+    for (const task of [firstTask.task, secondTask.task, otherTask.task]) {
+      expect(composed.prompt).toContain(task.id);
+    }
+    expect(composed.prompt).toContain("task card standing: state=complete cap=8 disclosed=3 known=3");
+    expect(composed.sourceRevisionSelectors).toContainEqual({
+      source: `task:${firstTask.task.id}`,
+      revision: String(current.sourceRevision),
+    });
+    expect(composed.sourceRevisionSelectors).toContainEqual({
+      source: `task:${otherTask.task.id}`,
+      revision: String(current.sourceRevision),
+    });
+    expect(composed.prompt).not.toContain("has no Task");
+  });
+
+  test("a bounded card cap discloses a partial standing instead of silently dropping conversation Tasks", async () => {
+    const { home, journal } = fixture();
+    const conversationId = randomUUID();
+    const first = createPrincipalTask(home, {
+      title: "Capped fixture one",
+      objective: "First bounded obligation.",
+      acceptance: ["one"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+    });
+    const second = createPrincipalTask(home, {
+      title: "Capped fixture two",
+      objective: "Second bounded obligation.",
+      acceptance: ["two"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: first.sourceRevision,
+    });
+    await journalSettledCreate(journal, conversationId, first.task.id, first.sourceRevision);
+    await journalSettledCreate(journal, conversationId, second.task.id, second.sourceRevision);
+
+    const capped = createConversationContextProvider(home, { maxTaskCards: 1 });
+    const projection = await capped.buildProjection(conversationId);
+
+    expect(projection.taskCards).toHaveLength(1);
+    expect(projection.taskCards![0]!.id).toBe(second.task.id);
+    expect(projection.taskCardStanding).toMatchObject({
+      state: "partial",
+      cap: 1,
+      disclosed: 1,
+      known: 2,
+      omitted: 1,
+    });
+    expect(projection.taskCardStanding!.reason).toContain("omits 1 further conversation-attributed Task");
+  });
+
+  test("an unreadable canonical Task source projects unavailable, never a Task-absence claim", async () => {
+    const { home, provider, journal } = fixture();
+    const conversationId = randomUUID();
+    const created = createPrincipalTask(home, {
+      title: "Unreadable fixture",
+      objective: "A Task the projection cannot re-read.",
+      acceptance: ["readable"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+    });
+    await journalSettledCreate(journal, conversationId, created.task.id, created.sourceRevision);
+    writeFileSync(principalTasksPath(home), "{not-json\n");
+
+    const projection = await provider.buildProjection(conversationId);
+
+    expect(projection.task).toBeUndefined();
+    expect(projection).not.toHaveProperty("taskCards");
+    expect(projection.taskCardStanding).toMatchObject({ state: "unavailable", known: 1 });
+    expect(projection.taskCardStanding!.reason).toContain("cannot be read");
+
+    const composed = composeConversationPrompt({
+      projection,
+      message: { text: "does the project have a Task?", lineage: { messageId: "m", turnId: "t" } },
+      policy: { ...CURRENT_COORDINATOR_POLICY, disclosureEnvelope: "test" },
+    });
+    expect(composed.prompt).toContain("state=unavailable");
+    expect(composed.prompt).toContain("known=1");
+    expect(composed.prompt).not.toContain("no Task exists");
+  });
+
+  test("a conversation without settled Task actions carries an explicit omitted standing", async () => {
+    const { provider } = fixture();
+
+    const projection = await provider.buildProjection(randomUUID());
+
+    expect(projection.task).toBeUndefined();
+    expect(projection).not.toHaveProperty("taskCards");
+    expect(projection.taskCardStanding).toEqual({
+      state: "omitted",
+      reason: "the conversation has no settled Task action lineage",
+      disclosed: 0,
+    });
+  });
+
+  test("a settled task_continue receipt attributes its Task card through strict attempt evidence without moving the current effect target", async () => {
+    const { home, provider, journal, projectId, worktree } = fixture();
+    const conversationId = randomUUID();
+    const created = createPrincipalTask(home, {
+      title: "Continue fixture task",
+      objective: "Produce the bounded fixture result.",
+      acceptance: ["the fixture exists"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+      project: "context-fixture",
+      worktree,
+    });
+    const actionId = randomUUID();
+    const attemptId = randomUUID();
+    await journalSettledContinue(journal, conversationId, actionId, created.task.id, [
+      `state/task-attempts/${attemptId}/attempt.json`,
+    ]);
+    writeAttemptEvidence(home, attemptId, created.task.id, created.sourceRevision, {
+      conversationId,
+      turnId: randomUUID(),
+      actionId,
+      sourceRef: taskActionSourceRef(conversationId, actionId),
+    });
+
+    const projection = await provider.buildProjection(conversationId);
+
+    expect(projection.taskCards).toHaveLength(1);
+    expect(projection.taskCards![0]).toMatchObject({ id: created.task.id, projectId });
+    expect(projection.taskCardStanding).toEqual({ state: "complete", cap: 8, disclosed: 1, known: 1 });
+    // A continue does not change the singular current effect target.
+    expect(projection.task).toBeUndefined();
+  });
+
+  test("a settled task_continue with invalid attempt evidence stands partial, never a Task-absence claim", async () => {
+    const { home, provider, journal } = fixture();
+    const conversationId = randomUUID();
+    const created = createPrincipalTask(home, {
+      title: "Invalid evidence fixture",
+      objective: "A Task whose continue evidence cannot be trusted.",
+      acceptance: ["evidence"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+    });
+    const actionId = randomUUID();
+    const attemptId = randomUUID();
+    await journalSettledContinue(journal, conversationId, actionId, created.task.id, [
+      `state/task-attempts/${attemptId}/attempt.json`,
+    ]);
+    writeAttemptEvidence(home, attemptId, created.task.id, created.sourceRevision, {
+      conversationId,
+      turnId: randomUUID(),
+      actionId,
+      sourceRef: taskActionSourceRef(conversationId, actionId),
+    });
+    writeFileSync(join(home, "state", "task-attempts", attemptId, "settlement.json"), "{not-json\n");
+
+    const projection = await provider.buildProjection(conversationId);
+
+    expect(projection).not.toHaveProperty("taskCards");
+    expect(projection.taskCardStanding?.state).toBe("partial");
+    expect(projection.taskCardStanding!.reason).toContain("no strict owner-backed Task identity");
+  });
+
+  test("carrier cards correlate Task and project identity only through strict attempt evidence", async () => {
+    const { home, provider, projectId, worktree } = fixture();
+    const conversationId = randomUUID();
+    const created = createPrincipalTask(home, {
+      title: "Carrier correlation fixture",
+      objective: "A Task whose carrier identity must stay exact.",
+      acceptance: ["correlation"],
+      nextActor: "agent",
+      sourceRef: "test:context-create",
+      expectedSourceRevision: 0,
+      project: "context-fixture",
+      worktree,
+    });
+    const attemptId = randomUUID();
+    writeAttemptEvidence(home, attemptId, created.task.id, created.sourceRevision, {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      sourceRef: "conversation:unused:action:unused",
+    });
+
+    // A strict available attempt record supports the exact Task/project identity.
+    const first = await provider.buildProjection(conversationId);
+    expect(first.carriers).toEqual([{ id: attemptId, state: "unknown", taskId: created.task.id, projectId }]);
+
+    // Invalid evidence projects unknown/uninspectable with no guessed identity.
+    writeFileSync(join(home, "state", "task-attempts", attemptId, "settlement.json"), "{not-json\n");
+    const second = await provider.buildProjection(conversationId);
+    expect(second.carriers).toEqual([{ id: attemptId, state: "unknown" }]);
   });
 });

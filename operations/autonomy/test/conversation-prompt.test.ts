@@ -330,3 +330,107 @@ test("the task projection renders the exact numeric revision a correction must c
   expect(composed.prompt).toContain("source revision: 3");
   expect(composed.sourceRevisionSelectors).toContainEqual({ source: "task:task-1", revision: "3" });
 });
+
+test("the bounded task card set renders with its completeness standing and per-card selectors", () => {
+  const input = fullInput();
+  input.projection!.taskCards = [
+    {
+      id: "task-a1",
+      sourceRevision: "7",
+      revision: 2,
+      source: { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },
+      summary: "Keep the first fixture invariant in skills-dogfood.",
+      status: "open",
+      projectId: "skills-dogfood",
+      primaryHead: "1".repeat(40),
+      worktreePath: "/tmp/skills-dogfood",
+      worktreeHead: "1".repeat(40),
+    },
+    {
+      id: "task-b1",
+      sourceRevision: "7",
+      revision: 1,
+      source: { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },
+      summary: "Build the worker fixture in worker-dogfood.",
+      status: "open",
+      projectId: "worker-dogfood",
+    },
+  ];
+  input.projection!.taskCardStanding = { state: "complete", cap: 8, disclosed: 2, known: 2 };
+
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain("task card standing: state=complete cap=8 disclosed=2 known=2");
+  expect(composed.prompt).toContain("task card task-a1 [open] project skills-dogfood: Keep the first fixture invariant in skills-dogfood.");
+  expect(composed.prompt).toContain("task card task-b1 [open] project worker-dogfood: Build the worker fixture in worker-dogfood.");
+  expect(composed.prompt).toContain(`source workbench:state/tasks.json @ 7 (digest ${TASK_DIGEST})`);
+  expect(composed.prompt).toContain("task revision: 2");
+  expect(composed.prompt).toContain(
+    "execution selection: registered project skills-dogfood @ primary "
+    + `${"1".repeat(40)} in bound worktree /tmp/skills-dogfood @ ${"1".repeat(40)}`,
+  );
+  // A card without canonical selectors discloses its project identity but never a guessed execution route.
+  expect(composed.prompt).not.toContain("registered project worker-dogfood @ primary");
+  // Every disclosed Task carries its exact source revision selector.
+  expect(composed.sourceRevisionSelectors).toContainEqual({ source: "task:task-a1", revision: "7" });
+  expect(composed.sourceRevisionSelectors).toContainEqual({ source: "task:task-b1", revision: "7" });
+  expect(composed.sourceRevisionSelectors).toContainEqual({ source: "task-project:task-a1", revision: "1".repeat(40) });
+  expect(composed.sourceRevisionSelectors).toContainEqual({ source: "task-worktree:task-a1", revision: "1".repeat(40) });
+});
+
+test("a partial standing renders its reason and never reads omission as Task absence", () => {
+  const input = fullInput();
+  input.projection = {
+    taskCardStanding: {
+      state: "partial",
+      reason: "the bounded card cap omits 2 further conversation-attributed Task(s)",
+      cap: 8,
+      disclosed: 8,
+      known: 10,
+      omitted: 2,
+    },
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain(
+    "task card standing: state=partial reason=the bounded card cap omits 2 further "
+    + "conversation-attributed Task(s) cap=8 disclosed=8 known=10 omitted=2",
+  );
+  expect(composed.prompt).not.toContain("has no Task");
+  expect(composed.prompt).not.toContain("no tasks exist");
+});
+
+test("an omitted standing renders explicitly inside section 2 instead of a bare none", () => {
+  const input = fullInput();
+  input.projection = {
+    taskCardStanding: {
+      state: "omitted",
+      reason: "the conversation has no settled Task action lineage",
+      disclosed: 0,
+    },
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain(
+    "## 2. Current compact projection\n\n"
+    + "task card standing: state=omitted reason=the conversation has no settled Task action lineage disclosed=0",
+  );
+  expect(composed.prompt).not.toContain("## 2. Current compact projection\n\nnone");
+  expect(composed.prompt.lastIndexOf("## ")).toBe(composed.prompt.indexOf("## 6. Child result summaries"));
+});
+
+test("an unavailable standing states the unreadable source instead of absence", () => {
+  const input = fullInput();
+  input.projection = {
+    taskCardStanding: {
+      state: "unavailable",
+      reason: "the canonical Task source cannot be read; the conversation-attributed Tasks are not projected",
+      known: 3,
+    },
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain("task card standing: state=unavailable reason=the canonical Task source cannot be read");
+  expect(composed.prompt).toContain("known=3");
+  expect(composed.prompt).not.toContain("no Task exists");
+});
