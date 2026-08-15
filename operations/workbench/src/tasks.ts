@@ -146,6 +146,38 @@ export class PrincipalTaskError extends Error {
   }
 }
 
+/**
+ * The single-failure recovery payload for one stale revision-bound
+ * existing-Task mutation: both expected/current guard pairs plus the fresh
+ * current Task snapshot, read from the same source load that failed the
+ * guards. A caller can form the next exact mutation directly from these
+ * fields without an extra `task show` or a second stale retry.
+ */
+export interface StaleTaskRevisionRecovery {
+  readonly kind: "stale-task-revision";
+  readonly id: string;
+  readonly expectedSourceRevision: number;
+  readonly currentSourceRevision: number;
+  readonly expectedRevision: number;
+  readonly currentRevision: number;
+  readonly task: PrincipalTask;
+}
+
+/**
+ * The owner contract for a stale source/task revision guard failure with no
+ * effect. It keeps the ordinary `task-drift` code and message; the structured
+ * recovery is additive and never replaces the message-based error surface.
+ */
+export class StaleTaskRevisionError extends PrincipalTaskError {
+  constructor(
+    readonly recovery: StaleTaskRevisionRecovery,
+    message: string,
+    options: ErrorOptions = {},
+  ) {
+    super("task-drift", message, options);
+  }
+}
+
 export function principalTasksPath(homeArgument?: string): string {
   return join(resolveHome(homeArgument), "state", "tasks.json");
 }
@@ -645,11 +677,25 @@ function mutateTask(
 ): TaskMutationResult {
   const { current, source } = readPrincipalTaskSource(homeArgument);
   const projectIds = current.projects.projects.map((project) => project.id);
-  assertSourceRevision(source, expectation.expectedSourceRevision);
+  try {
+    assertSourceRevision(source, expectation.expectedSourceRevision);
+  } catch (error: unknown) {
+    const task = error instanceof PrincipalTaskError && error.code === "task-drift"
+      ? taskByIdIfPresent(source, expectation.id)
+      : undefined;
+    if (task !== undefined) {
+      throw new StaleTaskRevisionError(
+        staleTaskRevisionRecovery(source, task, expectation),
+        errorMessage(error),
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   const task = taskById(source, expectation.id);
   if (task.revision !== expectation.expectedRevision) {
-    throw new PrincipalTaskError(
-      "task-drift",
+    throw new StaleTaskRevisionError(
+      staleTaskRevisionRecovery(source, task, expectation),
       `task revision is stale for ${task.id}: expected ${expectation.expectedRevision}, current ${task.revision}`,
     );
   }
@@ -660,6 +706,36 @@ function mutateTask(
   source.sourceRevision += 1;
   persistPrincipalTasks(current.home, source, projectIds);
   return { sourceRevision: source.sourceRevision, task };
+}
+
+function staleTaskRevisionRecovery(
+  source: PrincipalTasks,
+  task: PrincipalTask,
+  expectation: TaskMutationExpectation,
+): StaleTaskRevisionRecovery {
+  return {
+    kind: "stale-task-revision",
+    id: task.id,
+    expectedSourceRevision: expectation.expectedSourceRevision,
+    currentSourceRevision: source.sourceRevision,
+    expectedRevision: expectation.expectedRevision,
+    currentRevision: task.revision,
+    task,
+  };
+}
+
+function taskByIdIfPresent(
+  source: PrincipalTasks,
+  idArgument: string,
+): PrincipalTask | undefined {
+  try {
+    return taskById(source, idArgument);
+  } catch (error: unknown) {
+    if (error instanceof PrincipalTaskError && error.code === "task-not-found") {
+      return undefined;
+    }
+    throw error;
+  }
 }
 
 function persistPrincipalTasks(home: string, source: PrincipalTasks, projectIds: string[]): void {

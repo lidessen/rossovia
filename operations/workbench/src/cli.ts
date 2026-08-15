@@ -8,7 +8,7 @@ import { helpForInvocation, packageVersionLabel } from "./help";
 import { initializeHome, loadHome } from "./home";
 import { runHookCommand } from "./hooks";
 import { runCorrectionCommand, runInterventionCommand } from "./interventions";
-import { createLocalTaskControlPlane } from "./local-task-control-plane";
+import { createLocalTaskControlPlane, LocalTaskControlError } from "./local-task-control-plane";
 import { migrateLegacyHome } from "./migration";
 import { runMissionCommand } from "./missions";
 import { listPreferences, retirePreference, setPreference } from "./preferences";
@@ -134,6 +134,10 @@ try {
     throw new Error("invalid command; run rossovia --help");
   }
 } catch (error: unknown) {
+  const recovery = error instanceof LocalTaskControlError ? error.recovery : undefined;
+  if (recovery !== undefined) {
+    console.log(JSON.stringify(recovery, null, 2));
+  }
   console.error(`rosso: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 2;
 }
