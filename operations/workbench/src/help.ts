@@ -21,8 +21,9 @@ import { UsageError } from "./cli-errors";
  * - `writes-state`: the success path may write state — Workbench home
  *   state, session state, managed files, or Git-tracked Mission records —
  *   but it starts or controls no execution.
- * - `starts-work`: the success path may start or control an execution
- *   (launching or resuming a worker run); it also writes its run state.
+ * - `starts-work`: the success path may start or control an execution —
+ *   launching or resuming a worker run, or returning a hook message that
+ *   continues an active Agent run.
  */
 export type EffectClass = "read-only" | "writes-state" | "starts-work";
 
@@ -264,7 +265,7 @@ export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: tr
   { kind: "verb", path: ["hook", "artifact"], topLevel: false,
     usage: "hook artifact <codex|claude|cursor> <post-tool-use|after-file-edit|stop>",
     description: "Run the artifact-consistency hook; reads a JSON payload from stdin.",
-    effect: "writes-state" },
+    effect: "starts-work" },
   { kind: "verb", path: ["statusline"], topLevel: true,
     usage: "statusline [claude] [--cwd <path>]",
     description: "Render the host session or registered-project label for a status line.",
@@ -297,7 +298,7 @@ export function topLevelUsage(): string {
     "effect labels describe what a success path may do — not authorization, preview, or atomicity:",
     "  read-only     no state writes, no work start/control",
     "  writes-state  may write Workbench home, session, managed, or Mission state",
-    "  starts-work   may start or control an execution (also writes its run state)",
+    "  starts-work   may start or control an execution",
     "",
     "commands:",
     ...HELP.filter((entry) => entry.topLevel)

@@ -151,7 +151,6 @@ describe("Rossovia CLI help effect contract", () => {
       "intervention observe",
       "correct",
       "hook intervention",
-      "hook artifact",
     ]) {
       const result = cli(["help", ...path.split(" ")], { stdin: "" });
       expect(result.exitCode, path).toBe(0);
@@ -160,15 +159,31 @@ describe("Rossovia CLI help effect contract", () => {
     }
   });
 
-  test("task run is the only starts-work verb", () => {
+  test("starts-work regressions: task run launches, hook artifact may continue an active run", () => {
+    expect(
+      verbEntries.filter((entry) => entry.effect === "starts-work")
+        .map((entry) => entry.path.join(" "))
+        .sort(),
+    ).toEqual(["hook artifact", "task run"]);
+
     const run = cli(["help", "task", "run"], { stdin: "" });
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toContain("effect: starts-work");
-    for (const entry of verbEntries) {
-      if (entry.effect === "starts-work") {
-        expect(entry.path.join(" "), "unexpected starts-work verb").toBe("task run");
-      }
-    }
+    expect(run.stdout).not.toContain("effect: read-only");
+
+    const artifact = cli(["help", "hook", "artifact"], { stdin: "" });
+    expect(artifact.exitCode).toBe(0);
+    expect(artifact.stdout).toContain("effect: starts-work");
+    expect(artifact.stdout).not.toContain("effect: read-only");
+
+    const intervention = cli(["help", "hook", "intervention"], { stdin: "" });
+    expect(intervention.exitCode).toBe(0);
+    expect(intervention.stdout).toContain("effect: writes-state");
+
+    const hook = cli(["help", "hook"], { stdin: "" });
+    expect(hook.exitCode).toBe(0);
+    expect(hook.stdout).toContain("effect: mixed");
+    expect(hook.stdout).toContain("intervention (writes-state), artifact (starts-work)");
   });
 
   test("top-level help shows the legend, per-line labels, and mixed-family markers", () => {
@@ -180,7 +195,7 @@ describe("Rossovia CLI help effect contract", () => {
     expect(top.stdout).toContain("init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH] (writes-state)");
     expect(top.stdout).toContain("task run <id> --worker <worker-id> [--continue] (starts-work)");
     expect(top.stdout).toContain("mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ... (mixed)");
-    expect(top.stdout).toContain("hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop] (writes-state)");
+    expect(top.stdout).toContain("hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop] (mixed)");
     expect(top.stdout).toContain("rossovia --version prints the @rosso/workbench package version (read-only)");
   });
 
@@ -201,8 +216,9 @@ describe("Rossovia CLI help effect contract", () => {
     expect(preference.stdout).toContain("list (read-only)");
 
     const hook = cli(["help", "hook"], { stdin: "" });
-    expect(hook.stdout).toContain("effect: writes-state");
-    expect(hook.stdout).not.toContain("mixed");
+    expect(hook.stdout).toContain("effect: mixed");
+    expect(hook.stdout).toContain("intervention (writes-state)");
+    expect(hook.stdout).toContain("artifact (starts-work)");
 
     const project = cli(["help", "project"], { stdin: "" });
     expect(project.stdout).toContain("effect: read-only");

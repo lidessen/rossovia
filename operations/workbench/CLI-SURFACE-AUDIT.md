@@ -282,10 +282,11 @@ executable verb path.
   from each dispatch owner's source. `read-only` is reserved for success paths
   that write no state and start or control no execution; `writes-state` marks
   paths that may write Workbench home, session, managed, or Git-tracked
-  Mission state; `starts-work` marks `task run`, which may launch or resume a
-  worker execution (and writes its run state). A family's label is derived
-  from its subcommand verbs at render time, so a family can never disagree
-  with its own verbs.
+  Mission state; `starts-work` marks paths that may start or control an
+  execution: `task run` launches or resumes a worker execution, and `hook
+  artifact` may return a hook followup message that continues an active Agent
+  run. A family's label is derived from its subcommand verbs at render time,
+  so a family can never disagree with its own verbs.
 - Top-level, family, and verb help render the labels consistently and
   compactly. Top-level help appends one `(label)` to every command line and
   prints a three-line legend; mixed families are marked `(mixed)` and list
@@ -298,10 +299,11 @@ executable verb path.
   rendering only — dispatch never reads it as a permission, gate, or
   execution control, and no parser, stdout/stderr, exit-code, or domain
   semantics changed outside the new help lines.
-- Classification notes: `hook artifact` writes its `$TMPDIR` consistency
-  state only when a payload carries relevant changed paths, so its label
-  reads `writes-state` (the success path may write) rather than promising
-  every success writes. `task run` is the only `starts-work` verb today.
+- Classification notes: `hook artifact` may write its `$TMPDIR` consistency
+  state when a payload carries relevant changed paths, but its Cursor stop
+  path can return `followup_message` and continue the active Agent run, so
+  its label reads `starts-work`; `hook intervention` remains `writes-state`,
+  and the `hook` family label therefore derives `mixed`.
 
 ## Verification of this audit
 
