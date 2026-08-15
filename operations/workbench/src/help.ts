@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { UsageError } from "./cli-errors";
 
 /**
  * One shared help contract for the Workbench CLI. The top-level usage, the
@@ -274,6 +275,19 @@ export function usageForPath(path: string[]): string | undefined {
 }
 
 /**
+ * The nearest help path present in the usage table: the longest prefix of
+ * `path` with a usage entry, or the empty top-level path. Structural prefix
+ * resolution only; it never inspects error messages.
+ */
+export function nearestHelpPath(path: string[]): string[] {
+  for (let length = path.length; length >= 1; length -= 1) {
+    const candidate = path.slice(0, length);
+    if (usageForPath(candidate) !== undefined) return candidate;
+  }
+  return [];
+}
+
+/**
  * Resolve a help request from raw CLI arguments. Returns the usage text to
  * print and exit 0, or undefined when the invocation is not a help request
  * and must proceed through the normal dispatch. A trailing `--help`/`-h` on
@@ -289,7 +303,10 @@ export function helpForInvocation(args: string[]): string | undefined {
     if (tail === "--help" || tail === "-h") target = target.slice(0, -1);
     const usage = usageForPath(target);
     if (usage === undefined) {
-      throw new Error(`unknown help path: ${target.join(" ") || "(top level)"}`);
+      throw new UsageError(
+        `unknown help path: ${target.join(" ") || "(top level)"}`,
+        nearestHelpPath(target),
+      );
     }
     return usage;
   }

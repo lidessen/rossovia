@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import { HELP } from "../src/help";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
@@ -134,32 +135,36 @@ describe("Rossovia CLI help contract", () => {
     expect(mission.stderr).toBe("");
     expect(mission.stdout).toContain("usage: rossovia mission [--root <path>] list");
     const failing = cliRun(["mission", "list"], { cwd: root });
-    expect(failing.exitCode).toBe(2);
-    expect(failing.stderr).toContain("mission root not found");
+    expect(failing.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(failing.stderr).toContain("rossovia: mission root not found");
+    expect(failing.stderr).not.toContain("for usage");
     expect(existsSync(home)).toBe(false);
   });
 
-  test("an unknown help path exits 2 with a clear message", () => {
+  test("an unknown help path exits 2 with a usage pointer at the nearest known help path", () => {
     const result = cliRun(["help", "bogus"]);
     expect(result.exitCode).toBe(2);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("rosso: unknown help path: bogus\n");
-    expect(cliRun(["help", "task", "bogus"]).stderr).toBe("rosso: unknown help path: task bogus\n");
+    expect(result.stderr).toBe("rossovia: unknown help path: bogus\nrun 'rossovia help' for usage\n");
+    expect(cliRun(["help", "task", "bogus"]).stderr)
+      .toBe("rossovia: unknown help path: task bogus\nrun 'rossovia help task' for usage\n");
+    expect(cliRun(["help", "mission", "list", "bogus"]).stderr)
+      .toBe("rossovia: unknown help path: mission list bogus\nrun 'rossovia help mission list' for usage\n");
   });
 
-  test("previously invalid non-help calls keep their original errors", () => {
+  test("previously invalid non-help calls keep their errors and gain the nearest help pointer", () => {
     const show = cliRun(["task", "show"]);
     expect(show.exitCode).toBe(2);
-    expect(show.stderr).toBe("rosso: task show requires exactly one task id\n");
+    expect(show.stderr).toBe("rossovia: task show requires exactly one task id\nrun 'rossovia help task show' for usage\n");
     const init = cliRun(["init", "--bad", "x"]);
     expect(init.exitCode).toBe(2);
-    expect(init.stderr).toBe("rosso: invalid init option sequence: --bad x\n");
+    expect(init.stderr).toBe("rossovia: invalid init option sequence: --bad x\nrun 'rossovia help init' for usage\n");
     const bogus = cliRun(["task", "bogus", "--help"]);
     expect(bogus.exitCode).toBe(2);
-    expect(bogus.stderr).toBe("rosso: missing required task command argument\n");
+    expect(bogus.stderr).toBe("rossovia: unknown task command: bogus\nrun 'rossovia help task' for usage\n");
     const unknown = cliRun(["frobnicate"]);
     expect(unknown.exitCode).toBe(2);
-    expect(unknown.stderr).toBe("rosso: invalid command; run rossovia --help\n");
+    expect(unknown.stderr).toBe("rossovia: unknown command: frobnicate\nrun 'rossovia help' for usage\n");
   });
 
   test("help resolution does not change a valid non-help invocation", () => {

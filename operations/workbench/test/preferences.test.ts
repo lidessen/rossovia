@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
@@ -128,15 +129,19 @@ describe("user and project preference boundary", () => {
       "--project",
       "missing",
     );
-    expect(unknownProject.exitCode).toBe(2);
+    expect(unknownProject.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(unknownProject.stderr).toContain("rossovia: ");
     expect(unknownProject.stderr).toContain("no project matches");
+    expect(unknownProject.stderr).not.toContain("for usage");
 
     const sourcePath = join(home, "config", "preferences.json");
     const sourceBefore = readFileSync(sourcePath, "utf8");
     writeFileSync(receiptPath, "not-json\n", "utf8");
     const rejected = workbench(home, "preference", "set", "receipt-preflight", "--statement", "Must not commit.");
-    expect(rejected.exitCode).toBe(2);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: ");
     expect(rejected.stderr).toContain("invalid preference receipt");
+    expect(rejected.stderr).not.toContain("for usage");
     expect(readFileSync(sourcePath, "utf8")).toBe(sourceBefore);
   });
 });

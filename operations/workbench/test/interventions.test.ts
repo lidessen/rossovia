@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const cli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
@@ -135,7 +136,8 @@ describe("intervention reconciliation", () => {
 
     const unselected = workbench("intervention", "status", "--state-root", stateRoot);
     expect(unselected.exitCode).toBe(2);
-    expect(unselected.stderr).toContain("requires --state-file or --session-id");
+    expect(unselected.stderr).toContain("rossovia: intervention status requires --state-file or --session-id");
+    expect(unselected.stderr).toContain("run 'rossovia help intervention status' for usage");
 
     const duplicateIdentity = command(
       [process.execPath, cli, "intervention", "observe", "--state-root", stateRoot],
@@ -150,8 +152,9 @@ describe("intervention reconciliation", () => {
       "--session-id",
       "session-1",
     );
-    expect(ambiguousSession.exitCode).toBe(2);
-    expect(ambiguousSession.stderr).toContain("intervention session is ambiguous");
+    expect(ambiguousSession.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(ambiguousSession.stderr).toContain("rossovia: intervention session is ambiguous");
+    expect(ambiguousSession.stderr).not.toContain("for usage");
   });
 
   test("retains concurrent observations and receipts as append-only witnesses", async () => {
@@ -245,7 +248,7 @@ describe("intervention reconciliation", () => {
       "--next-probe",
       "missing",
     ]);
-    expect(missing.exitCode).toBe(2);
+    expect(missing.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(existsSync(join(temporary, "not-created"))).toBe(false);
 
     writeFileSync(statePath, "not-json");
@@ -264,8 +267,9 @@ describe("intervention reconciliation", () => {
       "--next-probe",
       "malformed",
     ]);
-    expect(malformed.exitCode).toBe(2);
-    expect(malformed.stderr).toContain("JSON Parse error");
+    expect(malformed.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(malformed.stderr).toContain("rossovia: JSON Parse error");
+    expect(malformed.stderr).not.toContain("for usage");
     expect(existsSync(`${statePath}.receipts`)).toBe(false);
   });
 
@@ -385,9 +389,10 @@ describe("intervention reconciliation", () => {
         "--next-probe",
         "retry from a fresh session with the exact state root granted",
       );
-      expect(correction.exitCode).toBe(2);
-      expect(correction.stderr).toContain(`cannot persist Rossovia state at ${statePath}`);
+      expect(correction.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+      expect(correction.stderr).toContain(`rossovia: cannot persist Rossovia state at ${statePath}`);
       expect(correction.stderr).toContain("grant write access to this exact state location");
+      expect(correction.stderr).not.toContain("for usage");
       expect(readdirSync(directory).some((entry) => entry.endsWith(".tmp"))).toBe(false);
     } finally {
       chmodSync(directory, 0o755);

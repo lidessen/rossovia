@@ -2,6 +2,13 @@
 
 import { createRequire } from "node:module";
 import { attachWorkspace } from "./attach";
+import {
+  CliStateError,
+  ParseUsageError,
+  STATE_FAILURE_EXIT_CODE,
+  UsageError,
+  USAGE_EXIT_CODE,
+} from "./cli-errors";
 import type { ContributionLeaseReconcileResult } from "./conversation/contributions";
 import { authorizeExecution, inspectExecution } from "./execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
@@ -30,57 +37,219 @@ import {
   runPrincipalTask,
 } from "./task-run";
 
+const TASK_SUBCOMMANDS = new Set([
+  "list",
+  "show",
+  "attempts",
+  "reconcile-attempt",
+  "create",
+  "run",
+  "append-review",
+  "assign",
+  "correct",
+  "link-execution",
+  "rebind-worktree",
+  "submit",
+  "accept",
+  "reopen",
+]);
+
 try {
   const { args, home } = extractHome(process.argv.slice(2));
   const helpText = helpForInvocation(args);
   if (helpText !== undefined) {
     console.log(helpText);
-  } else if (args.length === 1 && args[0] === "--version") {
+  } else {
+    dispatchCommand(home, args);
+  }
+} catch (error: unknown) {
+  const recovery = error instanceof LocalTaskControlError ? error.recovery : undefined;
+  if (recovery !== undefined) {
+    console.log(JSON.stringify(recovery, null, 2));
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof UsageError) {
+    process.stderr.write(`rossovia: ${message}\n`);
+    process.stderr.write(`run 'rossovia help${helpPathSuffix(error.helpPath)}' for usage\n`);
+    process.exitCode = USAGE_EXIT_CODE;
+  } else {
+    process.stderr.write(`rossovia: ${message}\n`);
+    process.exitCode = STATE_FAILURE_EXIT_CODE;
+  }
+}
+
+function helpPathSuffix(helpPath: readonly string[]): string {
+  return helpPath.length === 0 ? "" : ` ${helpPath.join(" ")}`;
+}
+
+function dispatchCommand(home: string | undefined, args: string[]): void {
+  const command = args[0];
+  if (command === undefined) throw new UsageError("no command given", []);
+  if (command === "--version") {
+    if (args.length !== 1) throw new UsageError("--version accepts no arguments", []);
     console.log(packageVersionLabel());
-  } else if (args[0] === "resolve" && args.length === 2) {
-    console.log(JSON.stringify(resolveProject(home, args[1]!), null, 2));
-  } else if (args[0] === "project" && args[1] === "list" && args.length === 2) {
-    const result = listProjects(home);
-    console.log(JSON.stringify(result, null, 2));
-    if (!result.complete) process.exitCode = 2;
-  } else if (args[0] === "worker" && args[1] === "list" && args.length === 2) {
-    console.log(JSON.stringify(listPrincipalTaskWorkers(), null, 2));
-  } else if (args[0] === "init") {
-    const options = parseInit(args.slice(1));
-    const initialized = initializeHome(home);
-    const roots = options.workspaceRoots.length > 0
-      ? addRoots(initialized.home, initialized.roots, options.workspaceRoots)
-      : initialized.roots;
-    const index = options.workspaceRoots.length > 0
-      ? scanRoots(initialized.home, roots)
-      : initialized.index;
-    if (options.setup.length > 0) {
-      selectSetupModules(initialized.home, options.setup);
-      applySetup(initialized.home, {
-        ...(options.targetRoot ? { targetRoot: options.targetRoot } : {}),
-      });
+    return;
+  }
+  if (command === "--help" || command === "-h") {
+    throw new UsageError(`${command} accepts no arguments`, []);
+  }
+  if (command.startsWith("--")) throw new UsageError(`unknown option: ${command}`, []);
+
+  switch (command) {
+    case "resolve":
+      dispatchResolve(home, args);
+      return;
+    case "init":
+      dispatchInit(home, args);
+      return;
+    case "project":
+      dispatchProject(home, args);
+      return;
+    case "worker":
+      dispatchWorker(args);
+      return;
+    case "setup":
+      dispatchSetup(home, args);
+      return;
+    case "migrate":
+      dispatchMigrate(home, args);
+      return;
+    case "root":
+      dispatchRoot(home, args);
+      return;
+    case "scan":
+      dispatchScan(home, args);
+      return;
+    case "register":
+      dispatchRegister(home, args);
+      return;
+    case "attach":
+      dispatchAttach(home, args);
+      return;
+    case "preference":
+      dispatchPreference(home, args);
+      return;
+    case "execution":
+      dispatchExecution(home, args);
+      return;
+    case "contribution":
+      dispatchContribution(home, args);
+      return;
+    case "task":
+      console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
+      return;
+    case "mission": {
+      const result = runMissionCommand(args.slice(1));
+      if (result !== undefined) {
+        console.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
+      }
+      return;
     }
-    console.log(JSON.stringify({
-      home: initialized.home,
-      initialized: true,
-      writeAccess: initialized.writeAccess,
-      workspaceRoots: roots.roots,
-      indexedWorkspaces: index.entries.length,
-      ...(options.setup.length > 0
-        ? { setup: setupStatus(initialized.home, {
-            ...(options.targetRoot ? { targetRoot: options.targetRoot } : {}),
-          }) }
-        : {}),
-    }, null, 2));
-  } else if (args[0] === "setup" && args[1] === "status") {
-    console.log(JSON.stringify(setupStatus(home, parseSetupOptions(args.slice(2))), null, 2));
-  } else if (args[0] === "setup" && args[1] === "apply") {
-    console.log(JSON.stringify(applySetup(home, parseSetupOptions(args.slice(2))), null, 2));
-  } else if (args[0] === "migrate") {
-    console.log(JSON.stringify(migrateLegacyHome(home, optionalFromHome(args.slice(1))), null, 2));
-  } else if (args[0] === "root" && args[1] === "list" && args.length === 2) {
+    case "intervention":
+      console.log(JSON.stringify(runInterventionCommand(args.slice(1), "", home), null, 2));
+      return;
+    case "correct":
+      console.log(JSON.stringify(runCorrectionCommand(args.slice(1)), null, 2));
+      return;
+    case "hook": {
+      const result = runHookCommand(args.slice(1), "", home);
+      if (result !== undefined) console.log(JSON.stringify(result));
+      return;
+    }
+    case "statusline":
+      dispatchStatusLine(home, args);
+      return;
+    default:
+      throw new UsageError(`unknown command: ${command}`, []);
+  }
+}
+
+function dispatchResolve(home: string | undefined, args: string[]): void {
+  if (args.length !== 2) throw new UsageError("resolve requires exactly one project name", ["resolve"]);
+  console.log(JSON.stringify(resolveProject(home, args[1]!), null, 2));
+}
+
+function dispatchInit(home: string | undefined, args: string[]): void {
+  const options = parseInit(args.slice(1));
+  const initialized = initializeHome(home);
+  const roots = options.workspaceRoots.length > 0
+    ? addRoots(initialized.home, initialized.roots, options.workspaceRoots)
+    : initialized.roots;
+  const index = options.workspaceRoots.length > 0
+    ? scanRoots(initialized.home, roots)
+    : initialized.index;
+  if (options.setup.length > 0) {
+    selectSetupModules(initialized.home, options.setup);
+    applySetup(initialized.home, {
+      ...(options.targetRoot ? { targetRoot: options.targetRoot } : {}),
+    });
+  }
+  console.log(JSON.stringify({
+    home: initialized.home,
+    initialized: true,
+    writeAccess: initialized.writeAccess,
+    workspaceRoots: roots.roots,
+    indexedWorkspaces: index.entries.length,
+    ...(options.setup.length > 0
+      ? { setup: setupStatus(initialized.home, {
+          ...(options.targetRoot ? { targetRoot: options.targetRoot } : {}),
+        }) }
+      : {}),
+  }, null, 2));
+}
+
+function dispatchProject(home: string | undefined, args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("project requires a subcommand", ["project"]);
+  if (subcommand !== "list") throw new UsageError(`unknown project command: ${subcommand}`, ["project"]);
+  if (args.length !== 2) throw new UsageError("project list accepts no arguments", ["project", "list"]);
+  const result = listProjects(home);
+  console.log(JSON.stringify(result, null, 2));
+  if (!result.complete) {
+    const unverified = result.projects.filter((entry) => entry.status !== "available");
+    throw new CliStateError(
+      `project list is incomplete: ${unverified.length} of ${result.projects.length} projects are unverified`,
+    );
+  }
+}
+
+function dispatchWorker(args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("worker requires a subcommand", ["worker"]);
+  if (subcommand !== "list") throw new UsageError(`unknown worker command: ${subcommand}`, ["worker"]);
+  if (args.length !== 2) throw new UsageError("worker list accepts no arguments", ["worker", "list"]);
+  console.log(JSON.stringify(listPrincipalTaskWorkers(), null, 2));
+}
+
+function dispatchSetup(home: string | undefined, args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("setup requires a subcommand", ["setup"]);
+  if (subcommand !== "status" && subcommand !== "apply") {
+    throw new UsageError(`unknown setup command: ${subcommand}`, ["setup"]);
+  }
+  const options = parseSetupOptions(args.slice(2), ["setup", subcommand]);
+  console.log(JSON.stringify(
+    subcommand === "status" ? setupStatus(home, options) : applySetup(home, options),
+    null, 2,
+  ));
+}
+
+function dispatchMigrate(home: string | undefined, args: string[]): void {
+  console.log(JSON.stringify(migrateLegacyHome(home, optionalFromHome(args.slice(1))), null, 2));
+}
+
+function dispatchRoot(home: string | undefined, args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("root requires a subcommand", ["root"]);
+  if (subcommand === "list") {
+    if (args.length !== 2) throw new UsageError("root list accepts no arguments", ["root", "list"]);
     console.log(JSON.stringify(loadHome(home).roots, null, 2));
-  } else if (args[0] === "root" && args[1] === "add" && args.length > 2) {
+    return;
+  }
+  if (subcommand === "add") {
+    if (args.length <= 2) {
+      throw new UsageError("root add requires at least one workspace root path", ["root", "add"]);
+    }
     const current = loadHome(home);
     const roots = addRoots(current.home, current.roots, args.slice(2));
     const index = scanRoots(current.home, roots);
@@ -88,65 +257,88 @@ try {
       workspaceRoots: roots.roots,
       indexedWorkspaces: index.entries.length,
     }, null, 2));
-  } else if (args[0] === "scan" && args.length === 1) {
-    const current = loadHome(home);
-    const index = scanRoots(current.home, current.roots);
-    console.log(JSON.stringify({
-      indexedWorkspaces: index.entries.length,
-      index: `${current.home}/cache/workspaces.json`,
-    }, null, 2));
-  } else if (args[0] === "register") {
-    console.log(JSON.stringify(registerProject(home, parseRegister(args.slice(1))), null, 2));
-  } else if (args[0] === "attach" && args.length === 3) {
-    console.log(JSON.stringify(attachWorkspace(home, args[1]!, args[2]!), null, 2));
-  } else if (args[0] === "preference" && args[1] === "set") {
+    return;
+  }
+  throw new UsageError(`unknown root command: ${subcommand}`, ["root"]);
+}
+
+function dispatchScan(home: string | undefined, args: string[]): void {
+  if (args.length !== 1) throw new UsageError("scan accepts no arguments", ["scan"]);
+  const current = loadHome(home);
+  const index = scanRoots(current.home, current.roots);
+  console.log(JSON.stringify({
+    indexedWorkspaces: index.entries.length,
+    index: `${current.home}/cache/workspaces.json`,
+  }, null, 2));
+}
+
+function dispatchRegister(home: string | undefined, args: string[]): void {
+  console.log(JSON.stringify(registerProject(home, parseRegister(args.slice(1))), null, 2));
+}
+
+function dispatchAttach(home: string | undefined, args: string[]): void {
+  if (args.length !== 3) throw new UsageError("attach requires <project> <path>", ["attach"]);
+  console.log(JSON.stringify(attachWorkspace(home, args[1]!, args[2]!), null, 2));
+}
+
+function dispatchPreference(home: string | undefined, args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("preference requires a subcommand", ["preference"]);
+  if (subcommand === "set") {
     console.log(JSON.stringify(setPreference(home, parsePreferenceSet(args.slice(2))), null, 2));
-  } else if (args[0] === "preference" && args[1] === "list") {
+  } else if (subcommand === "list") {
     console.log(JSON.stringify(listPreferences(home, optionalProject(args.slice(2))), null, 2));
-  } else if (args[0] === "preference" && args[1] === "retire") {
+  } else if (subcommand === "retire") {
     console.log(JSON.stringify(retirePreference(home, parsePreferenceRetire(args.slice(2))), null, 2));
-  } else if (args[0] === "execution" && args[1] === "inspect" && args.length === 4) {
-    console.log(JSON.stringify(inspectExecution(home, args[2]!, args[3]!), null, 2));
-  } else if (args[0] === "execution" && args[1] === "authorize") {
-    console.log(JSON.stringify(authorizeExecution(home, parseExecutionAuthorize(args.slice(2))), null, 2));
-  } else if (args[0] === "contribution" && args[1] === "reconcile-lease" && args.length === 5) {
-    console.log(JSON.stringify(runContributionReconcileLeaseCli(home, args[2]!, args[3]!, args[4]!), null, 2));
-  } else if (args[0] === "task") {
-    console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
-  } else if (args[0] === "mission") {
-    const result = runMissionCommand(args.slice(1));
-    if (result !== undefined) {
-      console.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
-    }
-  } else if (args[0] === "intervention") {
-    console.log(JSON.stringify(runInterventionCommand(args.slice(1), "", home), null, 2));
-  } else if (args[0] === "correct") {
-    console.log(JSON.stringify(runCorrectionCommand(args.slice(1)), null, 2));
-  } else if (args[0] === "hook") {
-    const result = runHookCommand(args.slice(1), "", home);
-    if (result !== undefined) console.log(JSON.stringify(result));
-  } else if (args[0] === "statusline") {
-    const options = parseStatusLineOptions(args.slice(1));
-    const input = statusLineInput(process.stdin.isTTY);
-    const host = statusLineHostContext(input, options.cwd);
-    console.log(renderStatusLine(statusLineProjection(home, host.cwd, host.projectName)));
   } else {
-    throw new Error("invalid command; run rossovia --help");
+    throw new UsageError(`unknown preference command: ${subcommand}`, ["preference"]);
   }
-} catch (error: unknown) {
-  const recovery = error instanceof LocalTaskControlError ? error.recovery : undefined;
-  if (recovery !== undefined) {
-    console.log(JSON.stringify(recovery, null, 2));
+}
+
+function dispatchExecution(home: string | undefined, args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("execution requires a subcommand", ["execution"]);
+  if (subcommand === "inspect") {
+    if (args.length !== 4) {
+      throw new UsageError("execution inspect requires <project> <mission-id>", ["execution", "inspect"]);
+    }
+    console.log(JSON.stringify(inspectExecution(home, args[2]!, args[3]!), null, 2));
+    return;
   }
-  console.error(`rosso: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 2;
+  if (subcommand === "authorize") {
+    console.log(JSON.stringify(authorizeExecution(home, parseExecutionAuthorize(args.slice(2))), null, 2));
+    return;
+  }
+  throw new UsageError(`unknown execution command: ${subcommand}`, ["execution"]);
+}
+
+function dispatchContribution(home: string | undefined, args: string[]): void {
+  const subcommand = args[1];
+  if (subcommand === undefined) throw new UsageError("contribution requires a subcommand", ["contribution"]);
+  if (subcommand !== "reconcile-lease") {
+    throw new UsageError(`unknown contribution command: ${subcommand}`, ["contribution"]);
+  }
+  if (args.length !== 5) {
+    throw new UsageError(
+      "contribution reconcile-lease requires <conversation-id> <batch-id> <key>",
+      ["contribution", "reconcile-lease"],
+    );
+  }
+  console.log(JSON.stringify(runContributionReconcileLeaseCli(home, args[2]!, args[3]!, args[4]!), null, 2));
+}
+
+function dispatchStatusLine(home: string | undefined, args: string[]): void {
+  const options = parseStatusLineOptions(args.slice(1));
+  const input = statusLineInput(process.stdin.isTTY);
+  const host = statusLineHostContext(input, options.cwd);
+  console.log(renderStatusLine(statusLineProjection(home, host.cwd, host.projectName)));
 }
 
 function parseStatusLineOptions(raw: string[]): { cwd?: string } {
   const args = raw[0] === "claude" ? raw.slice(1) : raw;
   if (args.length === 0) return {};
   if (args.length === 2 && args[0] === "--cwd" && args[1]?.trim()) return { cwd: args[1] };
-  throw new Error("statusline accepts optional 'claude' and --cwd <path>");
+  throw new UsageError("statusline accepts optional 'claude' and --cwd <path>", ["statusline"]);
 }
 
 /**
@@ -173,17 +365,36 @@ function runContributionReconcileLeaseCli(
 function runTaskCli(home: string | undefined, raw: string[]): unknown {
   const controlPlane = createLocalTaskControlPlane(home);
   const command = raw[0];
-  if (!command) throw new Error("task requires a subcommand");
+  if (!command) throw new UsageError("task requires a subcommand", ["task"]);
+  if (!TASK_SUBCOMMANDS.has(command)) {
+    throw new UsageError(`unknown task command: ${command}`, ["task"]);
+  }
+  try {
+    return dispatchTaskCommand(controlPlane, home, command, raw);
+  } catch (error: unknown) {
+    if (error instanceof ParseUsageError) {
+      throw new UsageError(error.message, ["task", command], { cause: error });
+    }
+    throw error;
+  }
+}
+
+function dispatchTaskCommand(
+  controlPlane: ReturnType<typeof createLocalTaskControlPlane>,
+  home: string | undefined,
+  command: string,
+  raw: string[],
+): unknown {
   if (command === "list") {
-    if (raw.length !== 1) throw new Error("task list accepts no arguments");
+    if (raw.length !== 1) throw new ParseUsageError("task list accepts no arguments");
     return controlPlane.list();
   }
   if (command === "show") {
-    if (raw.length !== 2) throw new Error("task show requires exactly one task id");
+    if (raw.length !== 2) throw new ParseUsageError("task show requires exactly one task id");
     return controlPlane.show(raw[1]!);
   }
   if (command === "attempts") {
-    if (raw.length !== 2) throw new Error("task attempts requires exactly one task id");
+    if (raw.length !== 2) throw new ParseUsageError("task attempts requires exactly one task id");
     return showPrincipalTaskAttempts(home, raw[1]!);
   }
   if (command === "reconcile-attempt") {
@@ -310,11 +521,11 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
     ]));
     const independence = taskOption(reviewed, "--independence-basis");
     if (independence !== "independent-review-context" && independence !== "unproven") {
-      throw new Error("--independence-basis must be independent-review-context or unproven");
+      throw new ParseUsageError("--independence-basis must be independent-review-context or unproven");
     }
     const verdict = taskOption(reviewed, "--verdict");
     if (verdict !== "passed" && verdict !== "failed") {
-      throw new Error("--verdict must be passed or failed");
+      throw new ParseUsageError("--verdict must be passed or failed");
     }
     return controlPlane.execute({
       kind: "review",
@@ -451,7 +662,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
       },
     });
   }
-  throw new Error(`unknown task command: ${command}`);
+  throw new ParseUsageError(`unknown task command: ${command}`);
 }
 
 interface ParsedTaskOptions {
@@ -468,13 +679,13 @@ function parseTaskOptions(
 ): ParsedTaskOptions {
   const positionals = raw.slice(0, positionalCount);
   if (positionals.length !== positionalCount || positionals.some((value) => value.startsWith("--"))) {
-    throw new Error("missing required task command argument");
+    throw new ParseUsageError("missing required task command argument");
   }
   const values = new Map<string, string[]>();
   for (let index = positionalCount; index < raw.length;) {
     const option = raw[index];
     if (option && booleans.has(option)) {
-      if (values.has(option)) throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
+      if (values.has(option)) throw new ParseUsageError(`invalid task option sequence: ${raw.join(" ")}`);
       values.set(option, []);
       index += 1;
       continue;
@@ -487,7 +698,7 @@ function parseTaskOptions(
       || value.startsWith("--")
       || (singles.has(option) && values.has(option))
     ) {
-      throw new Error(`invalid task option sequence: ${raw.join(" ")}`);
+      throw new ParseUsageError(`invalid task option sequence: ${raw.join(" ")}`);
     }
     values.set(option, [...(values.get(option) ?? []), value]);
     index += 2;
@@ -497,19 +708,19 @@ function parseTaskOptions(
 
 function assertTaskOptions(parsed: ParsedTaskOptions, allowed: ReadonlySet<string>): void {
   for (const option of parsed.values.keys()) {
-    if (!allowed.has(option)) throw new Error(`invalid task option: ${option}`);
+    if (!allowed.has(option)) throw new ParseUsageError(`invalid task option: ${option}`);
   }
 }
 
 function taskOption(parsed: ParsedTaskOptions, option: string): string {
   const value = parsed.values.get(option)?.[0];
-  if (!value) throw new Error(`task command requires ${option} <value>`);
+  if (!value) throw new ParseUsageError(`task command requires ${option} <value>`);
   return value;
 }
 
 function taskOptions(parsed: ParsedTaskOptions, option: string): string[] {
   const values = parsed.values.get(option);
-  if (!values?.length) throw new Error(`task command requires ${option} <value>`);
+  if (!values?.length) throw new ParseUsageError(`task command requires ${option} <value>`);
   return values;
 }
 
@@ -521,7 +732,7 @@ function taskRevision(
   const raw = taskOption(parsed, option);
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1)) {
-    throw new Error(`${option} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
+    throw new ParseUsageError(`${option} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
   }
   return value;
 }
@@ -531,13 +742,13 @@ function taskActor(
 ): "principal" | "agent" | "external" {
   const value = taskOption(parsed, "--next-actor");
   if (value !== "principal" && value !== "agent" && value !== "external") {
-    throw new Error("--next-actor must be principal, agent, or external");
+    throw new ParseUsageError("--next-actor must be principal, agent, or external");
   }
   return value;
 }
 
 function optionalFromHome(raw: string[]): string | undefined {
-  const options = namedOptions(raw, new Set(["--from-home"]));
+  const options = namedOptions(raw, new Set(["--from-home"]), ["migrate"]);
   return options.get("--from-home");
 }
 
@@ -547,10 +758,10 @@ function parsePreferenceSet(raw: string[]): {
   project?: string;
   reopenWhen?: string;
 } {
-  const id = positionalHead(raw, "preference set");
-  const options = namedOptions(raw.slice(1), new Set(["--statement", "--project", "--reopen-when"]));
+  const id = positionalHead(raw, "preference set", ["preference", "set"]);
+  const options = namedOptions(raw.slice(1), new Set(["--statement", "--project", "--reopen-when"]), ["preference", "set"]);
   const statement = options.get("--statement");
-  if (!statement) throw new Error("preference set requires --statement <text>");
+  if (!statement) throw new UsageError("preference set requires --statement <text>", ["preference", "set"]);
   return {
     id,
     statement,
@@ -560,13 +771,13 @@ function parsePreferenceSet(raw: string[]): {
 }
 
 function parsePreferenceRetire(raw: string[]): { id: string; project?: string } {
-  const id = positionalHead(raw, "preference retire");
-  const options = namedOptions(raw.slice(1), new Set(["--project"]));
+  const id = positionalHead(raw, "preference retire", ["preference", "retire"]);
+  const options = namedOptions(raw.slice(1), new Set(["--project"]), ["preference", "retire"]);
   return { id, ...(options.has("--project") ? { project: options.get("--project")! } : {}) };
 }
 
 function optionalProject(raw: string[]): string | undefined {
-  const options = namedOptions(raw, new Set(["--project"]));
+  const options = namedOptions(raw, new Set(["--project"]), ["preference", "list"]);
   return options.get("--project");
 }
 
@@ -582,7 +793,7 @@ function parseExecutionAuthorize(raw: string[]): {
   const project = raw[0];
   const missionId = raw[1];
   if (!project || project.startsWith("--") || !missionId || missionId.startsWith("--")) {
-    throw new Error("execution authorize requires <project> <mission-id>");
+    throw new UsageError("execution authorize requires <project> <mission-id>", ["execution", "authorize"]);
   }
   const choices: string[] = [];
   const singles = new Map<string, string>();
@@ -591,15 +802,15 @@ function parseExecutionAuthorize(raw: string[]): {
     const option = raw[index];
     const value = raw[index + 1];
     if (!option || !value || value.startsWith("--")) {
-      throw new Error(`invalid execution authorize option sequence: ${raw.join(" ")}`);
+      throw new UsageError(`invalid execution authorize option sequence: ${raw.join(" ")}`, ["execution", "authorize"]);
     }
     if (option === "--choice") choices.push(value);
     else if (allowedSingles.has(option) && !singles.has(option)) singles.set(option, value);
-    else throw new Error(`invalid execution authorize option sequence: ${raw.join(" ")}`);
+    else throw new UsageError(`invalid execution authorize option sequence: ${raw.join(" ")}`, ["execution", "authorize"]);
   }
   const required = (option: string): string => {
     const value = singles.get(option);
-    if (!value) throw new Error(`execution authorize requires ${option} <value>`);
+    if (!value) throw new UsageError(`execution authorize requires ${option} <value>`, ["execution", "authorize"]);
     return value;
   };
   return {
@@ -613,19 +824,19 @@ function parseExecutionAuthorize(raw: string[]): {
   };
 }
 
-function positionalHead(raw: string[], command: string): string {
+function positionalHead(raw: string[], command: string, helpPath: string[]): string {
   const value = raw[0];
-  if (!value || value.startsWith("--")) throw new Error(`${command} requires an id`);
+  if (!value || value.startsWith("--")) throw new UsageError(`${command} requires an id`, helpPath);
   return value;
 }
 
-function namedOptions(raw: string[], allowed: Set<string>): Map<string, string> {
+function namedOptions(raw: string[], allowed: Set<string>, helpPath: string[]): Map<string, string> {
   const result = new Map<string, string>();
   for (let index = 0; index < raw.length; index += 2) {
     const option = raw[index];
     const value = raw[index + 1];
     if (!option || !allowed.has(option) || !value || value.startsWith("--") || result.has(option)) {
-      throw new Error(`invalid option sequence: ${raw.join(" ")}`);
+      throw new UsageError(`invalid option sequence: ${raw.join(" ")}`, helpPath);
     }
     result.set(option, value);
   }
@@ -640,30 +851,18 @@ function parseRegister(raw: string[]): { path: string; id: string; aliases: stri
     const argument = raw[index]!;
     if (argument === "--id" || argument === "--alias") {
       const value = raw[index + 1];
-      if (!value) throw new Error(`${argument} requires a value`);
+      if (!value) throw new UsageError(`${argument} requires a value`, ["register"]);
       if (argument === "--id") id = value;
       else aliases.push(value);
       index += 1;
     } else if (argument.startsWith("--") || path !== undefined) {
-      throw new Error(`invalid register argument: ${argument}`);
+      throw new UsageError(`invalid register argument: ${argument}`, ["register"]);
     } else {
       path = argument;
     }
   }
-  if (!path || !id) throw new Error("register requires <path> and --id <stable-id>");
+  if (!path || !id) throw new UsageError("register requires <path> and --id <stable-id>", ["register"]);
   return { path, id, aliases };
-}
-
-function repeatedOption(raw: string[], option: string): string[] {
-  const values: string[] = [];
-  for (let index = 0; index < raw.length; index += 1) {
-    if (raw[index] !== option || !raw[index + 1]) {
-      throw new Error(`${option} requires a path and may be repeated`);
-    }
-    values.push(raw[index + 1]!);
-    index += 1;
-  }
-  return values;
 }
 
 function parseInit(raw: string[]): {
@@ -677,11 +876,13 @@ function parseInit(raw: string[]): {
   for (let index = 0; index < raw.length; index += 2) {
     const option = raw[index];
     const value = raw[index + 1];
-    if (!option || !value || value.startsWith("--")) throw new Error(`invalid init option sequence: ${raw.join(" ")}`);
+    if (!option || !value || value.startsWith("--")) {
+      throw new UsageError(`invalid init option sequence: ${raw.join(" ")}`, ["init"]);
+    }
     if (option === "--workspace-root") workspaceRoots.push(value);
     else if (option === "--setup") setup.push(value);
     else if (option === "--target-root" && targetRoot === undefined) targetRoot = value;
-    else throw new Error(`invalid init option sequence: ${raw.join(" ")}`);
+    else throw new UsageError(`invalid init option sequence: ${raw.join(" ")}`, ["init"]);
   }
   return {
     workspaceRoots,
@@ -690,8 +891,8 @@ function parseInit(raw: string[]): {
   };
 }
 
-function parseSetupOptions(raw: string[]): { targetRoot?: string } {
-  const options = namedOptions(raw, new Set(["--target-root"]));
+function parseSetupOptions(raw: string[], helpPath: string[]): { targetRoot?: string } {
+  const options = namedOptions(raw, new Set(["--target-root"]), helpPath);
   return {
     ...(options.has("--target-root") ? { targetRoot: options.get("--target-root")! } : {}),
   };
@@ -702,7 +903,7 @@ function extractHome(raw: string[]): { args: string[]; home: string | undefined 
   let index = 0;
   while (raw[index] === "--home") {
     const value = raw[index + 1];
-    if (!value) throw new Error("--home requires a path");
+    if (!value) throw new UsageError("--home requires a path", []);
     home = value;
     index += 2;
   }

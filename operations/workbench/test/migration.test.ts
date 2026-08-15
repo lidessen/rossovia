@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
@@ -138,8 +139,10 @@ describe("legacy namespace migration", () => {
     expect(preferenceReceipt).not.toHaveProperty("scope");
 
     const rerun = workbench(target, "migrate", "--from-home", source);
-    expect(rerun.exitCode).toBe(2);
+    expect(rerun.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rerun.stderr).toContain("rossovia: ");
     expect(rerun.stderr).toContain("target home already exists");
+    expect(rerun.stderr).not.toContain("for usage");
   });
 
   test("restarts an interrupted migration inside the exact target home", () => {
@@ -179,8 +182,9 @@ describe("legacy namespace migration", () => {
     chmodSync(target, 0o555);
     try {
       const denied = workbench(target, "migrate", "--from-home", source);
-      expect(denied.exitCode).toBe(2);
-      expect(denied.stderr).toContain("cannot persist Rossovia state");
+      expect(denied.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+      expect(denied.stderr).toContain("rossovia: cannot persist Rossovia state");
+      expect(denied.stderr).not.toContain("for usage");
       expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
     } finally {
       chmodSync(target, 0o755);
@@ -207,8 +211,9 @@ describe("legacy namespace migration", () => {
       updatedAt: "2026-07-18T00:00:00Z",
     }]);
     const rejected = workbench(target, "migrate", "--from-home", source);
-    expect(rejected.exitCode).toBe(2);
-    expect(rejected.stderr).toContain("require explicit environment reconciliation");
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: legacy machine preferences require explicit environment reconciliation");
+    expect(rejected.stderr).not.toContain("for usage");
     expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
     expect(existsSync(join(target, "manifest.json"))).toBe(false);
   });
@@ -226,8 +231,9 @@ describe("legacy namespace migration", () => {
     receipt.scope = "machine";
     writeFileSync(receiptPath, `${JSON.stringify(receipt)}\n`, "utf8");
     const rejected = workbench(target, "migrate", "--from-home", source);
-    expect(rejected.exitCode).toBe(2);
-    expect(rejected.stderr).toContain("machine preference receipts require explicit environment reconciliation");
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: legacy machine preference receipts require explicit environment reconciliation");
+    expect(rejected.stderr).not.toContain("for usage");
     expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
     expect(existsSync(join(target, "manifest.json"))).toBe(false);
   });
