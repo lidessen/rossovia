@@ -97,7 +97,10 @@ function scriptedHarness(script: (input: {
   emit(event: unknown): void;
   abortSignal?: AbortSignal;
   waitForToolResult(count: number): Promise<void>;
-}) => Promise<void>, toolResults: Array<{ toolCallId: string; output: unknown }> = []): HarnessV1<ToolSet> {
+}) => Promise<void>, toolResults: Array<{ toolCallId: string; output: unknown }> = [], options: {
+  /** The harness-resolved model identity the session wrapper reports; the driver must match the requested profile exactly. */
+  modelId?: string;
+} = {}): HarnessV1<ToolSet> {
   return {
     specificationVersion: "harness-v1",
     harnessId: "scripted-pi",
@@ -106,7 +109,7 @@ function scriptedHarness(script: (input: {
     doStart: async (start) => ({
       sessionId: start.sessionId,
       isResume: false,
-      modelId: "deepseek-v4-pro",
+      modelId: options.modelId ?? "deepseek-v4-pro",
       doPromptTurn: (turn: HarnessV1PromptTurnOptions) => {
         const waiters: Array<() => void> = [];
         const waitForToolResult = async (count: number) => {
@@ -696,6 +699,27 @@ describe("Pi harness driver fail-closed mapping", () => {
       harness: fakeHarness,
       sandbox: fakeSandbox,
     })).toThrow(/DEEPSEEK_API_KEY/);
+  });
+
+  test("refuses a run whose harness-resolved model differs from the requested execution profile", async () => {
+    const harness = scriptedHarness(async ({ emit }) => {
+      emit({ type: "stream-start", warnings: [] });
+    }, [], { modelId: "deepseek-v4-flash" });
+    const { workspace, input } = await fixture();
+    const driver = new PiHarnessCellDriver({
+      route: [{
+        provider: "deepseek",
+        credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+        model: "deepseek-v4-pro",
+      }],
+      environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+      harness,
+    });
+
+    await expect(driver.run(input, driverContext(workspace))).rejects.toThrow(
+      "the Pi harness resolved model deepseek-v4-flash but the worker execution "
+      + "profile requires deepseek-v4-pro; refusing the mismatched adapter default",
+    );
   });
 });
 

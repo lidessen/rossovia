@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CellInput } from "../src/contracts";
+import type { CellInput, CellRunRecord } from "../src/contracts";
+import { CellRunRecordSchema } from "../src/contracts";
 import type { CellDriver, DriverResult } from "../src/driver";
 import { runCell } from "../src/run-cell";
 
@@ -100,3 +101,111 @@ class EmptyTaskProjectionDriver implements CellDriver {
     };
   }
 }
+
+describe("provider fingerprint evidence", () => {
+  async function fingerprintInput(): Promise<CellInput> {
+    const root = await mkdtemp(join(tmpdir(), "work-cell-run-fingerprint-"));
+    temporaryRoots.push(root);
+    return {
+      id: "fingerprint-fixture",
+      intent: "Retain truthful provider fingerprint evidence.",
+      workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Return the fixture result."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["The fingerprint standing is retained."],
+      budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
+    };
+  }
+
+  function fingerprintDriver(providerMetadata: unknown): CellDriver {
+    return {
+      descriptor: { adapter: "fingerprint-fixture", provider: "deterministic", model: "fixture" },
+      async run(): Promise<DriverResult> {
+        return {
+          terminalToolsCalled: [],
+          finalText: "done",
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+          rawSteps: [],
+          providerMetadata,
+        };
+      },
+    };
+  }
+
+  test("retains an observed provider namespace fingerprint verbatim with an observed standing", async () => {
+    const record = await runCell(await fingerprintInput(), fingerprintDriver({
+      "openai-compatible": { systemFingerprint: "fp_abc123", promptCacheHitTokens: 7 },
+    }));
+
+    expect(record.executionObservation.providerFingerprint).toBe("fp_abc123");
+    expect(record.executionObservation.providerFingerprintStanding).toEqual({ standing: "observed" });
+    const parsed = CellRunRecordSchema.parse(record);
+    expect(parsed.executionObservation.providerFingerprint).toBe("fp_abc123");
+    expect(parsed.executionObservation.providerFingerprintStanding).toEqual({ standing: "observed" });
+  });
+
+  test("retains a direct top-level system fingerprint verbatim", async () => {
+    const record = await runCell(await fingerprintInput(), fingerprintDriver({
+      systemFingerprint: "fp_direct",
+    }));
+
+    expect(record.executionObservation.providerFingerprint).toBe("fp_direct");
+    expect(record.executionObservation.providerFingerprintStanding).toEqual({ standing: "observed" });
+  });
+
+  test("retains an explicit unavailable standing when no provider metadata exists", async () => {
+    const record = await runCell(await fingerprintInput(), fingerprintDriver(undefined));
+
+    expect(record.executionObservation.providerFingerprint).toBeUndefined();
+    expect(record.executionObservation.providerFingerprintStanding).toEqual({
+      standing: "unavailable",
+      reason: "the driver retained no provider metadata for this route; the provider response exposed no system fingerprint",
+    });
+    expect(CellRunRecordSchema.parse(record).executionObservation.providerFingerprint).toBeUndefined();
+  });
+
+  test("retains an explicit unavailable standing when metadata carries no fingerprint", async () => {
+    const record = await runCell(await fingerprintInput(), fingerprintDriver({
+      sessionId: "harness-session-1",
+    }));
+
+    expect(record.executionObservation.sessionId).toBe("harness-session-1");
+    expect(record.executionObservation.providerFingerprint).toBeUndefined();
+    expect(record.executionObservation.providerFingerprintStanding).toEqual({
+      standing: "unavailable",
+      reason: "provider metadata was retained but carried no system fingerprint",
+    });
+  });
+
+  test("fails closed on contradictory fingerprint standings in a retained record", async () => {
+    const record = await runCell(await fingerprintInput(), fingerprintDriver({
+      "openai-compatible": { systemFingerprint: "fp_abc123" },
+    }));
+
+    const {
+      providerFingerprint: _retainedFingerprint,
+      ...observationWithoutFingerprint
+    } = record.executionObservation;
+    const observedWithoutValue: CellRunRecord = {
+      ...record,
+      executionObservation: {
+        ...observationWithoutFingerprint,
+        providerFingerprintStanding: { standing: "observed" },
+      },
+    };
+    expect(() => CellRunRecordSchema.parse(observedWithoutValue))
+      .toThrow(/observed provider fingerprint standing requires the retained fingerprint value/);
+
+    const unavailableWithValue: CellRunRecord = {
+      ...record,
+      executionObservation: {
+        ...record.executionObservation,
+        providerFingerprintStanding: { standing: "unavailable", reason: "contradictory" },
+      },
+    };
+    expect(() => CellRunRecordSchema.parse(unavailableWithValue))
+      .toThrow(/unavailable provider fingerprint standing cannot carry a fingerprint value/);
+  });
+});

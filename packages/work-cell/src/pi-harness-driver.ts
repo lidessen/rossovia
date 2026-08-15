@@ -592,6 +592,9 @@ function createHarnessStreamObserver(options: {
       context.emit("harness.turn.finished", {
         finishReason: normalizeFinishReason(value.finishReason),
         totalUsage: normalizeUsage(value.totalUsage),
+        ...(value.providerMetadata !== undefined
+          ? { providerMetadata: sanitize(value.providerMetadata) }
+          : {}),
       });
     }
   };

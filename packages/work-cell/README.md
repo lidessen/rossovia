@@ -157,6 +157,19 @@ models the old adapter as a barrier that drops pre-registration results: the
 control (no handoff) fails boundedly while the production boundary returns
 every immediately resolving parallel host tool result exactly once.
 
+Provider fingerprint evidence is truthful in both directions. When the
+provider response exposes a backend `system_fingerprint` through the AI SDK
+provider metadata (directly or under its provider namespace, such as
+`openai-compatible`), the final record retains the value verbatim with
+`executionObservation.providerFingerprintStanding: { standing: "observed" }`.
+When the upstream exposes no fingerprint — as observed in the live
+HarnessAgent + Pi DeepSeek qualification, whose harness stream materialized
+no provider metadata, and for an OpenCode Go response without a
+`system_fingerprint` field — the record retains an explicit
+`{ standing: "unavailable", reason }` standing instead of silence that could
+be misread as a verified match. No fingerprint is fabricated, and no volatile
+session, response, or timestamp data is hashed into an identity.
+
 Command policy has two explicit forms. A one-token `allowedCommands` entry is
 the legacy executable-wide capability. A multi-token entry is an exact argv
 capability and accepts no extra flags or arguments. Exact argv restricts

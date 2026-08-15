@@ -43,7 +43,7 @@ import {
   type TaskRunResult,
 } from "../src/task-run";
 import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
-import { showPrincipalTaskAttempts } from "../src/task-attempts";
+import { readStrictTaskAttemptEvidence, showPrincipalTaskAttempts } from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
 const repositoryRoot = resolve(import.meta.dir, "../../..");
@@ -2442,6 +2442,71 @@ describe("task attempts projection", () => {
     expect(unknown.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(unknown.stderr).toContain("rossovia: Principal task not found");
     expect(unknown.stderr).not.toContain("for usage");
+  });
+});
+
+describe("strict attempt-family reading", () => {
+  test("reads a complete recorded family with every member parsed and exact refs", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("available");
+    expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+    expect(evidence.attempt?.taskId).toBe(created.task.id);
+    expect(evidence.input?.id).toBe(`workbench-task-${created.task.id}-attempt-${run.attemptId}`);
+    expect(evidence.finalRecord?.runId).toBe("fake-run-1");
+    expect(evidence.finalRecord?.status).toBe("passed");
+    expect(evidence.settlement?.status).toBe("recorded");
+    expect(evidence.settlement?.workCellRunId).toBe("fake-run-1");
+    expect(evidence.refs).toEqual({
+      inputRef: run.inputRef,
+      attemptRef: run.attemptRef,
+      finalRecordRef: run.finalRecordRef,
+      settlementRef: run.settlementRef,
+    });
+  });
+
+  test("fails closed as invalid when the retained final embeds a different input", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+    const finalPath = join(current.home, run.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    finalRecord.input.intent = "forged intent";
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("embedded input does not match its immutable CellInput");
+    expect(evidence.finalRecord).toBeUndefined();
+    // The valid attempt record stays attributable even when its family is invalid.
+    expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+  });
+
+  test("reports unavailable when the attempt record itself is missing", () => {
+    const current = fixture();
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, randomUUID());
+
+    expect(evidence.standing).toBe("unavailable");
+    expect(evidence.attempt).toBeUndefined();
+    expect(evidence.refs.inputRef).toContain("state/task-attempts/");
   });
 });
 

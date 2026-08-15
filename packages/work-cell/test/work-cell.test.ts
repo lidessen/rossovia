@@ -412,6 +412,10 @@ describe("Work Cell core", () => {
       workEstimateId: "estimate-1",
       executionProfileId: "profile-1",
       priceRevision: "fixture-price-v1",
+      providerFingerprintStanding: {
+        standing: "unavailable",
+        reason: "the driver retained no provider metadata for this route; the provider response exposed no system fingerprint",
+      },
     });
   });
 
