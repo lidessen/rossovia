@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T04:43:16Z",
+  "updatedAt": "2026-08-15T04:55:16Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -120,7 +120,19 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "Integrated PR #114 (exact head 9a2083749609dc8e3a5f03426e5a88abb2f4609c; merge commit 54b2d44ace4512832744f6adb926adfb41273ff0) into main: the DeepSeek conversation coordinator can form bounded catalog-selected temporary contribution batches with a zero-worker path, bounded read-only parallel contributors, one effectful owner, keyed child results, correction and stale-result handling, cancellation and liveness, and no self-review or majority settlement, while existing Task, attempt, Work Cell, and Mission sources remain authoritative. P7 whole-system verification, Principal Task acceptance, and GLM/Harness trials remain pending."
+    },
+    {
+      "id": "p7-whole-verification",
+      "parent": "mainline",
+      "kind": "review",
+      "purpose": "Independently verify the frozen Conversation Command Entry whole and execute Two-Workbench Daily Correction, recording deterministic, provider, event, and visual evidence only in the natural P7 evidence paths; no hidden Codex coordination, implementation edits, or acceptance.",
+      "returnCondition": "Return only with one exact verification commit owning design/organization/sessions/2026-08-13-conversation-command-entry-verification.md and the exact named files under design/organization/sessions/evidence/2026-08-13-conversation-command-entry/: focused Workbench, Autonomy, and Work Cell tests plus all three typechecks and diff-check retained; a disposable home with two explicitly registered isolated Worktrees; real production UI and requested/observed DeepSeek Pro/max evidence with no silent downgrade; the complete Two-Workbench Daily Correction; pinned-browser 1440x900 and 390x844 snapshot, console, geometry, and screenshots; and every Mission row evidence-backed or named as an exact finding. Any product contradiction is recorded and returned to its owner, never repaired here. Do not edit implementation, design, Mission/Task fixtures, accept any Task/Mission/product, use Principal state, publish, or merge.",
+      "sources": [
+        "principal:2026-08-15-p7-whole-verification",
+        "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#p7-independent-whole-verifier"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "p7-whole-verification"
 }

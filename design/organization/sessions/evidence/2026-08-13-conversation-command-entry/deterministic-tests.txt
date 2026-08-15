@@ -1,0 +1,43 @@
+P7 deterministic verification
+Date: 2026-08-15
+Frozen product base: 520c76857d048d6a22ad67374b8d27b622856df0
+P7 coordination head before evidence: ab3845b601d704b6fb85fe703e965167d4b6700b
+
+Focused suites
+- Workbench conversation/UI: 359 pass, 0 fail, 1979 assertions, 26 files, 52.06s.
+- Autonomy coordinator/prompt/DeepSeek adapter: 65 pass, 0 fail, 296 assertions, 3 files.
+- Work Cell OpenCode CLI driver: 32 pass, 0 fail, 198 assertions, 1 file.
+
+Full suites
+- Workbench: 633 pass, 0 fail, 5244 assertions, 49 files, 98.32s. The first sandboxed run was 586 pass / 47 fail because loopback binds were denied; the same suite passed outside that sandbox restriction.
+- Work Cell: 225 pass, 0 fail, 1018 assertions, 29 files. The sandboxed run was 210 pass / 15 fail with Bun.serve EADDRINUSE for port 0; the same suite passed with disposable loopback authority.
+- Autonomy: 214 pass, 4 fail, 1051 assertions, 25 files. All four failures are the unchanged agent-era Blog fixture boundary: experiments/agent-era-blog/node_modules is absent and drizzle-kit is not installed. Focused conversation tests are green; no P7 product path failed.
+
+Typechecks
+- operations/workbench: pass.
+- operations/autonomy: pass.
+- packages/work-cell: pass.
+- packages/cognition: pass.
+
+Other checks
+- git diff --check 520c76857d048d6a22ad67374b8d27b622856df0..HEAD: pass before evidence creation.
+- Independent fixture check in skills-dogfood-run: node test.mjs passed after the worker edit. This check is verifier evidence; the worker itself had no allowed command executable and only reasoned over the test source.
+
+Concurrent register reproduction
+- Source/worktree: /Users/lidessen/workspaces/skills at exact 520c76857d048d6a22ad67374b8d27b622856df0, clean.
+- Disposable root: /private/tmp/rossovia-p7-register-repro.pE9tmU (removed after evidence capture).
+- Setup: initialized a disposable ROSSO_HOME plus two clean Git repositories with distinct HTTPS origin URLs.
+- Concurrent command A: env ROSSO_HOME=/private/tmp/rossovia-p7-register-repro.pE9tmU/home ./operations/workbench/rossovia register /private/tmp/rossovia-p7-register-repro.pE9tmU/projects/alpha --id p7-register-alpha --alias alpha
+  exit 0; result={project:{id:p7-register-alpha,repository:https://example.com/p7-alpha.git,aliases:[alpha,p7-alpha]},workspace:{projectId:p7-register-alpha,path:/private/tmp/rossovia-p7-register-repro.pE9tmU/projects/alpha}}.
+- Concurrent command B: env ROSSO_HOME=/private/tmp/rossovia-p7-register-repro.pE9tmU/home ./operations/workbench/rossovia register /private/tmp/rossovia-p7-register-repro.pE9tmU/projects/beta --id p7-register-beta --alias beta
+  exit 0; result={project:{id:p7-register-beta,repository:https://example.com/p7-beta.git,aliases:[beta,p7-beta]},workspace:{projectId:p7-register-beta,path:/private/tmp/rossovia-p7-register-repro.pE9tmU/projects/beta}}.
+- Immediate final command: env ROSSO_HOME=/private/tmp/rossovia-p7-register-repro.pE9tmU/home ./operations/workbench/rossovia project list
+  exit 0; complete=true; projects=[p7-register-alpha]; p7-register-beta was absent. The retained alpha workspace was clean at 5c6a09a33e81a1bcc69469132b9ba1a745a7b66c.
+- Final config/projects.json: version rosso.projects.v1 with only p7-register-alpha; SHA-256 3498eef407f145297c0ab69d6ac47a7994f0b85f735c9e500fbe6085a7131244.
+- Final state/workspaces.json SHA-256: 777f8712ce368d734d2bcec43b9c31ef745d846e154242c88c0cbbd18c11c59c.
+- Interpretation: two concurrent successful read-modify-save registrations do not converge; one acknowledged update is lost.
+
+Interpretation
+- Sandbox loopback failures are environment restrictions, not product assertions.
+- The four Autonomy failures remain an explicit unrelated fixture-environment limitation; no extra experiment dependency install was used to hide it.
+- Mechanical checks and Work Cell status do not imply semantic acceptance.
