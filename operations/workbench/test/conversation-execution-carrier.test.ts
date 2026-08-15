@@ -728,7 +728,9 @@ describe("conversation execution carrier reconnect truthfulness", () => {
     const projection = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(first.conversationId);
-    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+    expect(projection.carriers).toEqual([
+      { id: carrierId, state: "unknown", taskId: current.taskId, projectId: current.projectId },
+    ]);
 
     // Without the exact retained handle, a stop cannot be verified.
     const hostAfterRestart = createConversationTaskOperationHost(current.home, { carrierRegistry: restarted });
@@ -759,7 +761,9 @@ describe("conversation execution carrier reconnect truthfulness", () => {
     const after = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(first.conversationId);
-    expect(after.carriers).toEqual([{ id: carrierId, state: "control-stopped" }]);
+    expect(after.carriers).toEqual([
+      { id: carrierId, state: "control-stopped", taskId: current.taskId, projectId: current.projectId },
+    ]);
   });
 });
 
@@ -1031,7 +1035,9 @@ describe("conversation execution carrier strict evidence standing", () => {
     const projection = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(conversationId);
-    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+    expect(projection.carriers).toEqual([
+      { id: carrierId, state: "unknown", taskId: current.taskId, projectId: current.projectId },
+    ]);
 
     const hostAfterRestart = createConversationTaskOperationHost(current.home, { carrierRegistry: restarted });
     try {
@@ -1061,7 +1067,9 @@ describe("conversation execution carrier strict evidence standing", () => {
     const after = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(conversationId);
-    expect(after.carriers).toEqual([{ id: carrierId, state: "recorded" }]);
+    expect(after.carriers).toEqual([
+      { id: carrierId, state: "recorded", taskId: current.taskId, projectId: current.projectId },
+    ]);
   });
 
   test("a control receipt that fails a cross-link against its owning attempt is uninspectable, never settled", async () => {
@@ -1261,7 +1269,9 @@ describe("conversation execution carrier strict evidence standing", () => {
     const projection = await createConversationContextProvider(current.home, {
       carrierRegistry: restarted,
     }).buildProjection(conversationId);
-    expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
+    expect(projection.carriers).toEqual([
+      { id: carrierId, state: "unknown", taskId: current.taskId, projectId: current.projectId },
+    ]);
   });
 
   test("a control-stopped settlement that omits the exact retained final evidence is invalid", async () => {
@@ -1376,7 +1386,13 @@ describe("conversation context projection", () => {
     const provider = createConversationContextProvider(current.home, { carrierRegistry: registry });
     const live = await provider.buildProjection(conversationId);
     expect(live.carriers).toEqual([
-      { id: carrierId, state: "live", runId: expect.any(String) },
+      {
+        id: carrierId,
+        state: "live",
+        runId: expect.any(String),
+        taskId: current.taskId,
+        projectId: current.projectId,
+      },
     ]);
     // A different conversation never sees this carrier.
     expect(await provider.buildProjection(randomUUID())).not.toHaveProperty("carriers");
@@ -1384,6 +1400,8 @@ describe("conversation context projection", () => {
     registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
     await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
     const terminal = await provider.buildProjection(conversationId);
-    expect(terminal.carriers).toEqual([{ id: carrierId, state: "control-stopped" }]);
+    expect(terminal.carriers).toEqual([
+      { id: carrierId, state: "control-stopped", taskId: current.taskId, projectId: current.projectId },
+    ]);
   });
 });

@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T06:14:53Z",
+  "updatedAt": "2026-08-15T06:26:14Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -134,7 +134,19 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "P7 verification evidence entered main through PR #123: exact candidate 38cef716f1616ce350895d0e366a47c662cddf35, normal merge fc6bdee0dc830da07e9c943bcb1dae25273a61b9. The integrated record preserves the frozen-product verdict Not ready for Principal product acceptance and returns F1-F6 to their owners. Evidence integration does not accept Task d7dc2c93-102a-4ef2-ba18-862a5fb4b8f1, complete the Mission, or close product acceptance; those remain pending on active mainline."
+    },
+    {
+      "id": "f2-truthful-task-context",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Correct P7 F2 by making conversation compact context retain truthful bounded cards for all conversation-attributed current Tasks across projects while preserving one explicit current effect target and canonical owner semantics.",
+      "returnCondition": "Return only with an exact clean implementation commit plus independent exact-head review evidence; keep F2 and product acceptance pending until Principal judgment, and do not infer product acceptance from integration.",
+      "sources": [
+        "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f2-high-compact-context-loses-earlier-project-tasks",
+        "principal:2026-08-15-f2-truthful-task-context"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "f2-truthful-task-context"
 }

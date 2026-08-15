@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v6" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v7" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -48,7 +48,12 @@ export const TaskProjectionSchema = z.object({
   revision: z.number().int().positive().optional(),
   source: DisclosedSourceSchema.optional(),
   summary: z.string().min(1).max(800),
-  status: z.enum(["open", "settled", "accepted"]).optional(),
+  /**
+   * The task's exact canonical lifecycle, copied verbatim from the current
+   * Task source: open, in-progress, waiting, verifying, or settled. It is
+   * never inferred from a bounded projection.
+   */
+  status: z.enum(["open", "in-progress", "waiting", "verifying", "settled"]).optional(),
   corrections: z.array(CorrectionProjectionSchema).optional(),
   /**
    * The task's exact execution selection, present only when the task is bound
@@ -84,6 +89,16 @@ export const CarrierActivityProjectionSchema = z.object({
   id: z.string().min(1),
   state: z.string().min(1),
   runId: z.string().min(1).optional(),
+  /**
+   * Exact Task/project correlation, disclosed only when strict owner-backed
+   * evidence supports it: the runtime-retained carrier identity or a strict
+   * available attempt record names the taskId, and the current canonical Task
+   * source re-reads its registered project identity. Invalid, mismatched, or
+   * unavailable evidence projects the carrier without correlation — unknown
+   * or uninspectable, never guessed.
+   */
+  taskId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
 }).strict();
 export type CarrierActivityProjection = z.infer<typeof CarrierActivityProjectionSchema>;
 
@@ -124,8 +139,71 @@ export const ContributionProjectionSchema = z.object({
 }).strict();
 export type ContributionProjection = z.infer<typeof ContributionProjectionSchema>;
 
+/**
+ * One bounded conversation-attributed Task card: the exact Task identity,
+ * current source and task revisions, lifecycle standing, bounded summary,
+ * registered project identity from the canonical binding, and the exact
+ * execution selection only when it can be re-read from the canonical owners.
+ * A card exists only when the Task identity was re-read from the current Task
+ * source; the collection standing carries every omission explicitly.
+ */
+export const TaskCardProjectionSchema = z.object({
+  id: z.string().min(1),
+  sourceRevision: z.string().min(1),
+  /** The task's current numeric revision, carried so a copied correction stays exact. */
+  revision: z.number().int().positive().optional(),
+  source: DisclosedSourceSchema.optional(),
+  summary: z.string().min(1).max(800),
+  /**
+   * The task's exact canonical lifecycle, copied verbatim from the current
+   * Task source and required on every card so the coordinator never infers
+   * lifecycle standing from a bounded disclosure: open, in-progress,
+   * waiting, verifying, or settled.
+   */
+  status: z.enum(["open", "in-progress", "waiting", "verifying", "settled"]),
+  /** The task's exact registered project identity from its canonical binding. */
+  projectId: z.string().min(1).optional(),
+  primaryHead: GitObjectSchema.optional(),
+  worktreePath: z.string().min(1).optional(),
+  worktreeHead: GitObjectSchema.optional(),
+}).strict();
+export type TaskCardProjection = z.infer<typeof TaskCardProjectionSchema>;
+
+/**
+ * The explicit completeness standing of the conversation-attributed Task card
+ * collection. `complete` means every settled Task action lineage identity was
+ * re-read from the current Task source and disclosed within the bound.
+ * `partial` means the bound omitted cards or at least one lineage identity
+ * could not be re-read (cap exceeded, missing receipt, or unresolvable
+ * evidence). `unavailable` means the canonical Task source could not be read.
+ * `omitted` means the conversation has no settled Task action lineage at all.
+ * A bounded projection never converts any of these into a factual claim that
+ * no Task exists.
+ */
+export const TaskCardCollectionStandingSchema = z.object({
+  state: z.enum(["complete", "partial", "unavailable", "omitted"]),
+  /** Exact reason when the standing is not complete. */
+  reason: z.string().min(1).optional(),
+  cap: z.number().int().positive().optional(),
+  disclosed: z.number().int().nonnegative().optional(),
+  /** Task identities derived from the lineage before re-reading the source. */
+  known: z.number().int().nonnegative().optional(),
+  omitted: z.number().int().nonnegative().optional(),
+}).strict();
+export type TaskCardCollectionStanding = z.infer<typeof TaskCardCollectionStandingSchema>;
+
 export const CompactProjectionSchema = z.object({
   task: TaskProjectionSchema.optional(),
+  /**
+   * The bounded collection of conversation-attributed current Task cards,
+   * deduplicated from the canonical settled Task action lineage and re-read
+   * from the current Task source. Cards are disclosed only when the exact
+   * Task identity re-reads from the canonical source; the collection standing
+   * states omission explicitly so absence is never inferred from a bounded
+   * projection.
+   */
+  taskCards: z.array(TaskCardProjectionSchema).optional(),
+  taskCardStanding: TaskCardCollectionStandingSchema.optional(),
   projects: z.array(ProjectProjectionSchema).optional(),
   carriers: z.array(CarrierActivityProjectionSchema).optional(),
   workers: z.array(WorkerCardProjectionSchema).optional(),
@@ -323,6 +401,43 @@ function renderProjection(
     }
   }
 
+  if (projection?.taskCardStanding !== undefined) {
+    lines.push(renderTaskCardStanding(projection.taskCardStanding));
+  }
+  for (const card of projection?.taskCards ?? []) {
+    lines.push(
+      `task card ${card.id} [${card.status ?? "open"}]`
+      + `${card.projectId === undefined ? "" : ` project ${card.projectId}`}: ${card.summary}`,
+    );
+    if (card.source !== undefined) {
+      lines.push(`  source ${card.source.ref} @ ${card.sourceRevision} (digest ${card.source.digest})`);
+      pushDisclosed(disclosedSources, card.source);
+    } else {
+      lines.push(`  source revision: ${card.sourceRevision}`);
+    }
+    if (card.revision !== undefined) {
+      lines.push(`  task revision: ${card.revision}`);
+    }
+    if (
+      card.projectId !== undefined
+      && (card.primaryHead !== undefined || card.worktreePath !== undefined || card.worktreeHead !== undefined)
+    ) {
+      lines.push(
+        `  execution selection: registered project ${card.projectId}`
+        + ` @ primary ${card.primaryHead ?? "unavailable"}`
+        + ` in bound worktree ${card.worktreePath ?? "unavailable"}`
+        + ` @ ${card.worktreeHead ?? "unavailable"}`,
+      );
+    }
+    sourceRevisionSelectors.push({ source: `task:${card.id}`, revision: card.sourceRevision });
+    if (card.projectId !== undefined && card.primaryHead !== undefined) {
+      sourceRevisionSelectors.push({ source: `task-project:${card.id}`, revision: card.primaryHead });
+    }
+    if (card.worktreePath !== undefined && card.worktreeHead !== undefined) {
+      sourceRevisionSelectors.push({ source: `task-worktree:${card.id}`, revision: card.worktreeHead });
+    }
+  }
+
   for (const project of projection?.projects ?? []) {
     lines.push(`project ${project.name} [${project.status}]${project.id !== undefined ? ` (${project.id})` : ""}`);
     if (project.primaryHead !== undefined) {
@@ -344,7 +459,15 @@ function renderProjection(
   }
 
   for (const carrier of projection?.carriers ?? []) {
-    lines.push(`carrier ${carrier.id}: ${carrier.state}${carrier.runId !== undefined ? ` (run ${carrier.runId})` : ""}`);
+    const identity = [
+      carrier.taskId === undefined ? "" : `task ${carrier.taskId}`,
+      carrier.projectId === undefined ? "" : `project ${carrier.projectId}`,
+    ].filter((part) => part !== "");
+    lines.push(
+      `carrier ${carrier.id}: ${carrier.state}`
+      + `${carrier.runId !== undefined ? ` (run ${carrier.runId})` : ""}`
+      + `${identity.length === 0 ? "" : ` (${identity.join(", ")})`}`,
+    );
     if (carrier.runId !== undefined) {
       sourceRevisionSelectors.push({ source: `carrier:${carrier.id}`, revision: carrier.runId });
     }
@@ -367,6 +490,21 @@ function renderProjection(
   }
 
   return `## 2. Current compact projection\n\n${lines.length === 0 ? "none" : lines.join("\n")}`;
+}
+
+/**
+ * The explicit completeness standing of the conversation-attributed Task
+ * card set, rendered inside section 2 so a bounded or partial disclosure is
+ * always visible and never readable as proof that a Task does not exist.
+ */
+function renderTaskCardStanding(standing: TaskCardCollectionStanding): string {
+  const parts: string[] = [`state=${standing.state}`];
+  if (standing.reason !== undefined) parts.push(`reason=${standing.reason}`);
+  if (standing.cap !== undefined) parts.push(`cap=${standing.cap}`);
+  if (standing.disclosed !== undefined) parts.push(`disclosed=${standing.disclosed}`);
+  if (standing.known !== undefined) parts.push(`known=${standing.known}`);
+  if (standing.omitted !== undefined) parts.push(`omitted=${standing.omitted}`);
+  return `task card standing: ${parts.join(" ")}`;
 }
 
 function renderMessage(message: PrincipalMessage): string {
