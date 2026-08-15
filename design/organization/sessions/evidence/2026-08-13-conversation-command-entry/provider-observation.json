@@ -13,12 +13,15 @@
       "reasoningEffort": "max"
     },
     "turnsObserved": 9,
-    "systemFingerprint": "a307abda487cd1b463329ccb945ce396",
+    "settledTurnsWithUsageAndFingerprint": 8,
+    "interruptedTurnsWithoutTerminalObservation": 1,
+    "settledTurnSystemFingerprint": "a307abda487cd1b463329ccb945ce396",
+    "interruptedTurnId": "31e48cf5-7ce6-44a9-9d8d-798a7c74174e",
     "observedProvider": null,
     "observedModel": null,
     "observedReasoningEffort": null,
     "uiStanding": "unknown/unknown",
-    "finding": "The live coordinator retained requested policy, fingerprint, and usage, but did not retain independently observed provider/model/effort; the feed truthfully displayed unknown/unknown rather than silently claiming max."
+    "finding": "All nine live coordinator turns retained requested policy. Eight settled turns retained fingerprint and usage; the interrupted turn retained neither terminal usage nor fingerprint. Settled turns did not retain independently observed provider/model/effort, and the feed truthfully displayed unknown/unknown rather than silently claiming max."
   },
   "workers": [
     {

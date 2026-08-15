@@ -23,9 +23,11 @@ The exact [named dogfood](./2026-08-13-conversation-command-entry-implementation
 
 - [Deterministic tests](evidence/2026-08-13-conversation-command-entry/deterministic-tests.txt) retain focused/full suites, all four package typechecks, environment limitations, and diff-check standing.
 - [Provider observation](evidence/2026-08-13-conversation-command-entry/provider-observation.json) separates requested coordinator policy from observed worker route evidence.
-- [Dogfood event projection](evidence/2026-08-13-conversation-command-entry/dogfood-events.jsonl) preserves exact event IDs, sequence, Task/attempt/carrier identities, failure, stop, response interruption, and reconnect observation. Its disposable raw journal had SHA-256 `39b45ef1ff5297e122767b148a7286e6a95abf2c7044a0d6bd9558cd1d672ae1`.
+- [Dogfood event projection](evidence/2026-08-13-conversation-command-entry/dogfood-events.jsonl) preserves selected exact event IDs, sequence, Task/attempt/carrier identities, failure, stop, response interruption, and reconnect observation. Its disposable raw journal had SHA-256 `39b45ef1ff5297e122767b148a7286e6a95abf2c7044a0d6bd9558cd1d672ae1`.
 - [Desktop snapshot](evidence/2026-08-13-conversation-command-entry/desktop.snapshot.md), [desktop screenshot](evidence/2026-08-13-conversation-command-entry/desktop.png), [mobile snapshot](evidence/2026-08-13-conversation-command-entry/mobile.snapshot.md), and [mobile screenshot](evidence/2026-08-13-conversation-command-entry/mobile.png) were captured after reconnect.
 - [Console](evidence/2026-08-13-conversation-command-entry/console.txt) is 0 errors / 0 warnings at both sizes. [Geometry](evidence/2026-08-13-conversation-command-entry/geometry.json) shows no horizontal overflow; the 390×844 composer remains visible.
+
+The selected event projection is not the complete journal. The raw journal and canonical disposable `tasks.json` were hashed and then removed with the disposable home, so their hashes identify the observed source but cannot reconstruct it. Claims below that depend only on the removed Task terminal snapshot are explicitly labeled verifier observations rather than independently reproducible facts.
 
 ## What worked
 
@@ -35,7 +37,7 @@ The exact [named dogfood](./2026-08-13-conversation-command-entry-implementation
 4. A second registered project received a distinct Task and carrier. Its live carrier was stopped from the browser; `control.json` preceded `control-stopped`, the Cell was cancelled, and the Worktree remained clean.
 5. A separate inquiry turn was interrupted and settled as `coordinator.turn-interrupted`; the prior persistent stop remained intact. Tool interruption remained visibly unsupported, as designed.
 6. A page reload preserved the same local conversation ID, reconnected, replayed journal events through sequence 44 in order, and did not repeat an effect.
-7. No Task was accepted. All three disposable Tasks remained `open`, `nextActor=agent`, and had zero result claims.
+7. The verifier sent no accept action. Before cleanup it observed all three disposable Tasks as `open`, `nextActor=agent`, with zero result claims; because the canonical `tasks.json` was not retained, this terminal standing remains a verifier observation rather than independent Passed evidence.
 
 ## Findings returned to owners
 
@@ -53,7 +55,7 @@ Smallest owner correction: bounded context may summarize, but it must retain one
 
 ### F3 — HIGH — coordinator observed provider/model remains unknown
 
-Every coordinator turn requested `deepseek / deepseek-v4-pro / thinking / max` and retained the DeepSeek fingerprint and token usage, but journal/UI observed provider, model, and effort remained unavailable (`unknown/unknown`). Worker execution separately proved the current direct DeepSeek Pro/max route. The current coordinator therefore honors the [requested-versus-observed boundary](./2026-08-13-conversation-command-entry-system-case.md#deepseek-pro-reasoningmax-is-policy-not-mechanism) by not lying, but it does not meet the Mission requirement to retain actual coordinator identity.
+All nine coordinator turns retained the requested `deepseek / deepseek-v4-pro / thinking / max` policy. The eight settled turns retained token usage and the DeepSeek fingerprint, while the ninth interrupted turn retained neither terminal usage nor fingerprint and displayed `未报告 · unknown`. Across the settled turns, journal/UI observed provider, model, and effort still remained unavailable (`unknown/unknown`). Worker execution separately proved the current direct DeepSeek Pro/max route. The current coordinator therefore honors the [requested-versus-observed boundary](./2026-08-13-conversation-command-entry-system-case.md#deepseek-pro-reasoningmax-is-policy-not-mechanism) by not lying, but it does not meet the Mission requirement to retain actual coordinator identity.
 
 Smallest owner correction: normalize the adapter's returned model ID and provider identity into coordinator observed evidence without inferring effort; keep observed effort unavailable unless independently returned.
 
@@ -65,13 +67,13 @@ Smallest owner correction: derive the control affordance from owner-backed live 
 
 ### F5 — HIGH — named walkthrough cannot produce its required result claims
 
-The passed Work Cell left a valid diff and recorded settlement, but the canonical Task stayed open with zero result claims. The stopped second Task also had no result claim. Neither the coordinator operation vocabulary nor the ordinary worker path produced the evidence-linked claims required by step 6 of the named walkthrough. The verifier did not synthesize claims on their behalf and did not accept anything.
+The passed Work Cell left a valid diff and recorded settlement, but the verifier observed its canonical Task still open with zero result claims. It also observed no result claim on the stopped second Task. Neither the coordinator operation vocabulary nor the ordinary worker path produced a claim during the run, although the removed canonical `tasks.json` means the final zero-claim standing is not independently reconstructable from this package. The evidence-linked claim handoff required by step 6 of the named walkthrough was therefore not demonstrated. The verifier did not synthesize claims on their behalf and did not accept anything.
 
 Smallest owner correction: define one explicit post-attempt result-claim handoff owned by the worker/carrier or an exact browser Task action; it must bind Task revision, attempt/Cell evidence, diff/check standing, and semantic uncertainty without auto-accepting.
 
 ### F6 — MEDIUM — concurrent project registration loses an update
 
-Two independent `rossovia register` commands against the disposable home both returned success when launched concurrently, but the next project list retained only the latter project. Re-registering the first sequentially restored both. This is outside the conversation journal yet directly threatens multi-project setup integrity.
+Two independent `rossovia register` commands against the dogfood home both returned success when launched concurrently, but the next project list retained only one project. A fresh no-model reproduction at the same frozen source repeated the behavior: both commands exited 0, while the final project list and `projects.json` retained only `p7-register-alpha`. The exact commands, exits, result payloads, final list, and state hashes are retained in [deterministic tests](evidence/2026-08-13-conversation-command-entry/deterministic-tests.txt). This is outside the conversation journal yet directly threatens multi-project setup integrity.
 
 Smallest owner correction: serialize the projects/workspaces state write or use compare-and-swap/retry so concurrent successful registrations cannot overwrite one another.
 
@@ -89,7 +91,7 @@ Smallest owner correction: serialize the projects/workspaces state write or use 
 | Reconstruct after connection loss | Passed | Same ID/cursor replay through sequence 44, no duplicate effect. |
 | Runtime and UI independently testable | Passed | Focused/full suites, typechecks, production browser evidence. |
 | Multi-project daily use | Partial | Distinct projects/Tasks/Worktrees and live second-project stop proved; multi-project context loss is F2. |
-| Principal acceptance separate | Passed | No accept action; every disposable Task remains open/unaccepted. |
+| Principal acceptance separate | Partial | No accept action was sent and the UI showed no completed Task; the removed canonical `tasks.json` prevents independent reconstruction of every Task's final lifecycle/result-claim standing. |
 | No voice/scheduling/standing roster/vote/new authority | Passed | No such contract, state, event, or UI appeared in source or evidence. |
 
 ## Principal handoff

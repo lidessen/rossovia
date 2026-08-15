@@ -23,6 +23,20 @@ Other checks
 - git diff --check 520c76857d048d6a22ad67374b8d27b622856df0..HEAD: pass before evidence creation.
 - Independent fixture check in skills-dogfood-run: node test.mjs passed after the worker edit. This check is verifier evidence; the worker itself had no allowed command executable and only reasoned over the test source.
 
+Concurrent register reproduction
+- Source/worktree: /Users/lidessen/workspaces/skills at exact 520c76857d048d6a22ad67374b8d27b622856df0, clean.
+- Disposable root: /private/tmp/rossovia-p7-register-repro.pE9tmU (removed after evidence capture).
+- Setup: initialized a disposable ROSSO_HOME plus two clean Git repositories with distinct HTTPS origin URLs.
+- Concurrent command A: env ROSSO_HOME=/private/tmp/rossovia-p7-register-repro.pE9tmU/home ./operations/workbench/rossovia register /private/tmp/rossovia-p7-register-repro.pE9tmU/projects/alpha --id p7-register-alpha --alias alpha
+  exit 0; result={project:{id:p7-register-alpha,repository:https://example.com/p7-alpha.git,aliases:[alpha,p7-alpha]},workspace:{projectId:p7-register-alpha,path:/private/tmp/rossovia-p7-register-repro.pE9tmU/projects/alpha}}.
+- Concurrent command B: env ROSSO_HOME=/private/tmp/rossovia-p7-register-repro.pE9tmU/home ./operations/workbench/rossovia register /private/tmp/rossovia-p7-register-repro.pE9tmU/projects/beta --id p7-register-beta --alias beta
+  exit 0; result={project:{id:p7-register-beta,repository:https://example.com/p7-beta.git,aliases:[beta,p7-beta]},workspace:{projectId:p7-register-beta,path:/private/tmp/rossovia-p7-register-repro.pE9tmU/projects/beta}}.
+- Immediate final command: env ROSSO_HOME=/private/tmp/rossovia-p7-register-repro.pE9tmU/home ./operations/workbench/rossovia project list
+  exit 0; complete=true; projects=[p7-register-alpha]; p7-register-beta was absent. The retained alpha workspace was clean at 5c6a09a33e81a1bcc69469132b9ba1a745a7b66c.
+- Final config/projects.json: version rosso.projects.v1 with only p7-register-alpha; SHA-256 3498eef407f145297c0ab69d6ac47a7994f0b85f735c9e500fbe6085a7131244.
+- Final state/workspaces.json SHA-256: 777f8712ce368d734d2bcec43b9c31ef745d846e154242c88c0cbbd18c11c59c.
+- Interpretation: two concurrent successful read-modify-save registrations do not converge; one acknowledged update is lost.
+
 Interpretation
 - Sandbox loopback failures are environment restrictions, not product assertions.
 - The four Autonomy failures remain an explicit unrelated fixture-environment limitation; no extra experiment dependency install was used to hide it.
