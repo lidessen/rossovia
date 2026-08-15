@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T17:08:19Z",
+  "updatedAt": "2026-08-15T17:29:20Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -173,8 +173,10 @@
         "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f1-high-browser-create-can-produce-an-unexecutable-task",
         "principal:2026-08-15-f1-runnable-task-create"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "PR #127 integrated exact candidate 9de404feff88ea566e7237070f389a2fe4332cfd as normal merge e82a2104d33fcd4d51da66b8816800747227fe2c: conversation task_create now commits only to an immediately revalidated exact clean linked Worktree, rejects primary, dirty, stale, or unobserved candidates with zero Task mutation, and preserves canonical receipts, the singular effect target, the shared AI SDK ordinary-Task runtime, and existing task_continue revalidation. Final two-project DeepSeek browser dogfood, GLM/Harness trials, Principal Task acceptance, and whole Mission completion remain pending."
     }
   ],
-  "currentFocus": "f1-runnable-task-create"
+  "currentFocus": "mainline"
 }
