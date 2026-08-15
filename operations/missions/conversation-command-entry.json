@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T04:55:16Z",
+  "updatedAt": "2026-08-15T06:14:53Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -131,8 +131,10 @@
         "principal:2026-08-15-p7-whole-verification",
         "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#p7-independent-whole-verifier"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "P7 verification evidence entered main through PR #123: exact candidate 38cef716f1616ce350895d0e366a47c662cddf35, normal merge fc6bdee0dc830da07e9c943bcb1dae25273a61b9. The integrated record preserves the frozen-product verdict Not ready for Principal product acceptance and returns F1-F6 to their owners. Evidence integration does not accept Task d7dc2c93-102a-4ef2-ba18-862a5fb4b8f1, complete the Mission, or close product acceptance; those remain pending on active mainline."
     }
   ],
-  "currentFocus": "p7-whole-verification"
+  "currentFocus": "mainline"
 }
