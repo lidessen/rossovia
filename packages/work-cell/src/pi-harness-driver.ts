@@ -389,7 +389,7 @@ export class PiHarnessCellDriver implements CellDriver {
             observedSettlementUsage = addUsage(observedSettlementUsage, usage);
           }
         },
-        onStepFinished: (finishReason) => {
+        onStepFinished: (_finishReason, stepHadToolActivity) => {
           completedSteps += 1;
           if (context.budgetControl?.phase === "production") {
             const decisionPoint = context.budgetControl.completedStep();
@@ -397,7 +397,15 @@ export class PiHarnessCellDriver implements CellDriver {
           } else if (
             context.budgetControl === undefined
             && completedSteps >= input.budget.maxSteps
-            && finishReason === "tool-calls"
+            // The pinned harness-pi adapter translates every inferred
+            // completed step — including tool-continuing steps — to a
+            // unified stop finish label, so a label-gated guard is
+            // unreachable on the production adapter. "Another model step
+            // will begin" is therefore derived from actual tool activity
+            // in the completed step, never from the hardcoded finish
+            // label. A tool-free terminal response on the final allowed
+            // step completes naturally.
+            && stepHadToolActivity
           ) {
             stepBudgetExhausted = true;
             stepBudgetAbort.abort(new Error(
@@ -533,21 +541,25 @@ function observedHarnessModelId(session: HarnessAgentSession): string | undefine
  * Bounded live observation over the translated harness stream: step starts,
  * tool boundaries (attributable targets only), per-step usage, and finish
  * evidence. Raw file content, command output, and reasoning text never enter
- * the trace.
+ * the trace. Per-step tool activity is tracked so the immutable step budget
+ * can derive "another model step will begin" from actual tool calls instead
+ * of the pinned adapter's hardcoded unified stop finish label.
  */
 function createHarnessStreamObserver(options: {
   context: DriverContext;
   observeUsage(usage: CellUsage): void;
-  onStepFinished(finishReason: string): void;
+  onStepFinished(finishReason: string, stepHadToolActivity: boolean): void;
 }): (chunk: unknown) => void {
   const { context } = options;
   let stepNumber = 0;
   let activeTools: string[] | undefined;
+  let stepHadToolActivity = false;
   return (chunk: unknown): void => {
     const value = asRecord(chunk);
     const type = typeof value.type === "string" ? value.type : "";
     if (type === "step-start") {
       stepNumber += 1;
+      stepHadToolActivity = false;
       activeTools = Array.isArray(value.activeTools) && value.activeTools.every(
         (item) => typeof item === "string",
       ) ? value.activeTools as string[] : undefined;
@@ -558,6 +570,7 @@ function createHarnessStreamObserver(options: {
       return;
     }
     if (type === "tool-call") {
+      stepHadToolActivity = true;
       const name = typeof value.toolName === "string" ? value.toolName : "unknown";
       context.emit("agent.tool.started", {
         id: typeof value.toolCallId === "string" ? value.toolCallId : undefined,
@@ -567,6 +580,7 @@ function createHarnessStreamObserver(options: {
       return;
     }
     if (type === "tool-result") {
+      stepHadToolActivity = true;
       context.emit("agent.tool.finished", {
         id: typeof value.toolCallId === "string" ? value.toolCallId : undefined,
         name: typeof value.toolName === "string" ? value.toolName : "unknown",
@@ -578,7 +592,8 @@ function createHarnessStreamObserver(options: {
       const usage = normalizeUsage(value.usage);
       const finishReason = normalizeFinishReason(value.finishReason);
       options.observeUsage(usage);
-      options.onStepFinished(finishReason);
+      options.onStepFinished(finishReason, stepHadToolActivity);
+      stepHadToolActivity = false;
       context.emit("agent.step.finished", {
         stepNumber,
         finishReason,

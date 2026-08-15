@@ -40,7 +40,6 @@ const V4_USAGE = {
   outputTokens: { total: 1, text: 1, reasoning: 0 },
 };
 const STOP_REASON = { unified: "stop" as const, raw: "stop" };
-const TOOL_CALLS_REASON = { unified: "tool-calls" as const, raw: "tool-calls" };
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -490,19 +489,33 @@ describe("Pi harness driver fail-closed mapping", () => {
     await session.destroy();
   });
 
-  test("enforces the immutable maxSteps budget when soft-budget control is absent", async () => {
+  test("enforces the immutable maxSteps budget from actual tool activity even when the pinned adapter labels every completed step stop", async () => {
     let emittedSteps = 0;
-    const harness = scriptedHarness(async ({ emit, abortSignal }) => {
+    const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
+    const harness = scriptedHarness(async ({ emit, abortSignal, waitForToolResult }) => {
       emit({ type: "stream-start", warnings: [] });
       for (let index = 0; index < 10 && !abortSignal?.aborted; index += 1) {
         emittedSteps += 1;
-        emit({ type: "finish-step", finishReason: TOOL_CALLS_REASON, usage: V4_USAGE });
+        emit({
+          type: "tool-call",
+          toolCallId: `read-${index}`,
+          toolName: "read_file",
+          input: JSON.stringify({ path: "notes.md" }),
+          providerExecuted: false,
+        });
+        await waitForToolResult(index + 1);
+        // The pinned adapter translates every inferred completed step —
+        // including this tool-continuing step — to a unified stop label, so
+        // a label-gated guard never fires on the production adapter. Only
+        // the actual tool activity can prove another step will begin.
+        emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
         // Yield until HarnessAgent has delivered this boundary to the driver;
         // the next scripted step is conditional on the resulting abort.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
-    });
-    const { workspace, input } = await fixture();
+    }, toolResults);
+    const { root, workspace, input } = await fixture();
+    writeFileSync(join(root, "notes.md"), "note\n");
     input.budget.maxSteps = 3;
     const driver = new PiHarnessCellDriver({
       route: [{
@@ -518,16 +531,24 @@ describe("Pi harness driver fail-closed mapping", () => {
     expect(emittedSteps).toBe(3);
   });
 
-  test("accepts a natural finish on the final allowed step", async () => {
-    const harness = scriptedHarness(async ({ emit }) => {
+  test("permits a natural terminal response on the final allowed step", async () => {
+    const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
+    const harness = scriptedHarness(async ({ emit, waitForToolResult }) => {
       emit({ type: "stream-start", warnings: [] });
-      for (let index = 0; index < 3; index += 1) {
+      for (const [index, toolCallId] of ["read-first", "read-second"].entries()) {
         emit({
-          type: "finish-step",
-          finishReason: index === 2 ? STOP_REASON : TOOL_CALLS_REASON,
-          usage: V4_USAGE,
+          type: "tool-call",
+          toolCallId,
+          toolName: "read_file",
+          input: JSON.stringify({ path: "notes.md" }),
+          providerExecuted: false,
         });
+        await waitForToolResult(index + 1);
+        emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
       }
+      // The final allowed step carries no tool activity: a natural terminal
+      // response completes instead of being cut off by the step budget.
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
       emit({
         type: "finish",
         finishReason: STOP_REASON,
@@ -536,8 +557,9 @@ describe("Pi harness driver fail-closed mapping", () => {
           outputTokens: { total: 3, text: 3, reasoning: 0 },
         },
       });
-    });
-    const { workspace, input } = await fixture();
+    }, toolResults);
+    const { root, workspace, input } = await fixture();
+    writeFileSync(join(root, "notes.md"), "note\n");
     input.budget.maxSteps = 3;
     const driver = new PiHarnessCellDriver({
       route: [{

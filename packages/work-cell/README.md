@@ -157,6 +157,14 @@ models the old adapter as a barrier that drops pre-registration results: the
 control (no handoff) fails boundedly while the production boundary returns
 every immediately resolving parallel host tool result exactly once.
 
+The immutable `maxSteps` budget is enforced from actual tool activity, never
+from the harness finish label. The pinned adapter translates every inferred
+completed step — including tool-continuing steps whose results feed the next
+model step — to a unified stop finish reason, so a label-gated guard would be
+unreachable in production. A completed step that carried tool activity aborts
+the run before step `maxSteps + 1` can begin; a tool-free terminal response
+on the final allowed step completes naturally.
+
 Provider fingerprint evidence is truthful in both directions. When the
 provider response exposes a backend `system_fingerprint` through the AI SDK
 provider metadata (directly or under its provider namespace, such as
