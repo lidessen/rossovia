@@ -134,6 +134,24 @@ describe("conversation frame vocabulary", () => {
     expect(
       parseConversationServerFrame(JSON.stringify({ type: "activity.delta" })),
     ).toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.terminal",
+        turnId,
+        messageId: turnId,
+        actionId,
+        carrierId: "attempt-4",
+        status: "recorded",
+        cellStatus: "passed",
+        evidenceRefs: ["state/task-attempts/attempt-4/settlement.json"],
+      })),
+    ).not.toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.terminal",
+        status: "recorded",
+      })),
+    ).toBeNull();
     expect(parseConversationServerFrame("{broken")).toBeNull();
     expect(parseConversationServerFrame("42")).toBeNull();
   });
@@ -277,6 +295,41 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain('control !== "stop"');
     expect(app).toContain("此回复已按请求中断；工作控制不受其影响");
     expect(app).toContain("只发送精确 turn/action/carrier 目标");
+  });
+
+  test("derives the stop affordance from owner-backed terminal standing and keeps terminal history visible", () => {
+    expect(app).toContain('frame.type === "carrier.terminal"');
+    expect(app).toContain('case "carrier.terminal"');
+    expect(app).toContain("carrier.terminal = {");
+    expect(app).toContain("已终止 · 活动历史保留");
+    expect(app).toContain("停止控制已移除");
+    expect(app).toContain("conversationCarrierTerminalCopy");
+    expect(app).toContain('data-carrier-terminal');
+    expect(app).toContain("该载体已终止；停止未发送");
+    expect(app).toContain('if (carrier.terminal !== undefined)');
+    // A terminal carrier never renders a stop button; only the live branch does.
+    const carrierBlock = app.slice(
+      app.indexOf("function renderConversationCarrier"),
+      app.indexOf("function renderConversationAction"),
+    );
+    expect(carrierBlock).toContain('class="carrier-terminal"');
+    expect(carrierBlock).toContain("terminal !== undefined");
+    expect(carrierBlock).toContain("停止该工作");
+    expect(carrierBlock.indexOf("data-conversation-work-stop"))
+      .toBeGreaterThan(carrierBlock.indexOf('class="carrier-terminal"'));
+  });
+
+  test("exposes one explicit ordinary-attempt result submission without auto-submit or auto-accept", () => {
+    expect(html).toContain('id="task-attempt-result-candidate"');
+    expect(html).toContain('id="task-submit-attempt-result"');
+    expect(html).toContain("提交当前已验证运行尝试结果");
+    expect(html).toContain("不会自动提交或验收");
+    expect(app).toContain('["attemptResultCandidate"]');
+    expect(app).toContain('kind: "ordinary-attempt-result.v1"');
+    expect(app).toContain("expectedWorktreeHead");
+    expect(app).toContain('$("#task-submit-attempt-result")');
+    expect(app).toContain("task-attempt-result-effect");
+    expect(app).not.toContain('kind: "submit-verified-execution", // auto');
   });
 
   test("preserves Principal task acceptance as a separate explicit control", () => {

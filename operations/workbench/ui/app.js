@@ -424,6 +424,19 @@ export function parseConversationServerFrame(raw) {
     ) return null;
     return frame;
   }
+  if (frame.type === "carrier.terminal") {
+    if (
+      typeof frame.turnId !== "string"
+      || typeof frame.messageId !== "string"
+      || typeof frame.actionId !== "string"
+      || typeof frame.carrierId !== "string"
+      || typeof frame.status !== "string"
+      || !Array.isArray(frame.evidenceRefs)
+      || !frame.evidenceRefs.every((ref) => typeof ref === "string")
+      || (frame.cellStatus !== undefined && typeof frame.cellStatus !== "string")
+    ) return null;
+    return frame;
+  }
   if (frame.type === "projection.changed") return frame;
   if (frame.type === "protocol.error") {
     if (typeof frame.code !== "string" || typeof frame.message !== "string") return null;
@@ -2273,6 +2286,30 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         evidenceRefs.length
           ? evidenceRefs.join(" · ")
           : "运行时 selector 已形成；引用来源未投影。";
+    }
+    const attemptResultCandidate = first(
+      executionContext,
+      ["attemptResultCandidate"],
+    );
+    const attemptResultPanel = $("#task-attempt-result-candidate");
+    attemptResultPanel.hidden =
+      attemptResultCandidate === null
+      || attemptResultCandidate === undefined;
+    if (!attemptResultPanel.hidden) {
+      const worktree = first(attemptResultCandidate, ["worktree"], {});
+      const diff = first(attemptResultCandidate, ["workspaceDiff"], {});
+      const checks = first(attemptResultCandidate, ["verification"], {});
+      $("#task-attempt-result-effect").textContent =
+        `attempt ${text(first(attemptResultCandidate, ["attemptId"]), "未识别")} · task revision ${text(first(attemptResultCandidate, ["taskRevision"]), "—")}`;
+      $("#task-attempt-result-source").textContent = [
+        `run ${text(first(attemptResultCandidate, ["workCellRunId"]), "未保留")}`,
+        `worktree ${text(first(worktree, ["path"]), "未绑定")} @ ${text(first(worktree, ["head"]), "unknown")}`,
+        `diff +${list(first(diff, ["added"], [])).length} ~${list(first(diff, ["changed"], [])).length} −${list(first(diff, ["removed"], [])).length}`,
+        `checks passed ${first(checks, ["passed"]) === true ? "是" : "否"} · terminal ${first(checks, ["terminalPassed"]) === true ? "是" : "否"}`,
+        ...list(first(attemptResultCandidate, ["evidenceRefs"], [])).map(
+          (ref) => text(ref),
+        ),
+      ].join("\n");
     }
 
     const settled = task.lifecycle === "settled";
@@ -4489,10 +4526,28 @@ export function taskEvidenceLinkTarget(ref, workItems) {
             attemptId: frame.attemptId,
             activity: [],
             control: "idle",
+            terminal: undefined,
           };
           conversationState.carriers.set(frame.actionId, carrier);
         }
-        carrier.activity.push({ text: frame.text, at: new Date().toISOString() });
+        if (carrier.terminal === undefined) {
+          carrier.activity.push({ text: frame.text, at: new Date().toISOString() });
+        }
+        renderConversationSurface();
+        return;
+      }
+      case "carrier.terminal": {
+        const carrier = conversationState.carriers.get(frame.actionId);
+        if (carrier === undefined) return;
+        // Owner-backed terminal standing: keep the retained activity/history
+        // visible and never overwrite an already recorded terminal fact.
+        if (carrier.terminal === undefined) {
+          carrier.terminal = {
+            status: frame.status,
+            cellStatus: typeof frame.cellStatus === "string" ? frame.cellStatus : null,
+            evidenceRefs: [...frame.evidenceRefs],
+          };
+        }
         renderConversationSurface();
         return;
       }
@@ -4641,6 +4696,13 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       );
       return;
     }
+    if (carrier.terminal !== undefined) {
+      pushProtocolNotice(
+        "not-sent",
+        "该载体已终止；停止未发送，活动历史与终态证据保留。",
+      );
+      return;
+    }
     if (conversationState.connection !== "live") {
       pushProtocolNotice(
         "not-sent",
@@ -4760,6 +4822,13 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     }).join("");
   }
 
+  const conversationCarrierTerminalCopy = {
+    recorded: "recorded · 已记录（passed）",
+    "runner-failed": "runner-failed · Runner 失败",
+    "control-stopped": "control-stopped · 已停止",
+    unresolved: "unresolved · 结算未确认",
+  };
+
   function renderConversationCarrier(actionId) {
     const carrier = conversationState.carriers.get(actionId);
     if (carrier === undefined) return "";
@@ -4768,11 +4837,17 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     }).join("");
     const controlBusy = carrier.control === "requested";
     const live = conversationState.connection === "live";
+    const terminal = carrier.terminal;
+    const standingLabel = terminal !== undefined
+      ? "已终止 · 活动历史保留"
+      : controlBusy
+        ? "停止已请求 · 等待权威回执"
+        : "活动已观察";
     return `
-      <div class="conversation-carrier" data-carrier-control="${carrier.control}">
+      <div class="conversation-carrier" data-carrier-control="${carrier.control}" data-carrier-terminal="${terminal === undefined ? "live" : escapeHtml(terminal.status)}">
         <header>
           <span>执行载体 · owner-backed 活动</span>
-          <b>${controlBusy ? "停止已请求 · 等待权威回执" : "活动已观察"}</b>
+          <b>${escapeHtml(standingLabel)}</b>
         </header>
         <p class="carrier-identity">
           task <code>${escapeHtml(carrier.taskId)}</code> ·
@@ -4784,20 +4859,30 @@ export function taskEvidenceLinkTarget(ref, workItems) {
             ? `<ul class="carrier-activity">${recent}</ul>`
             : '<p class="carrier-activity empty">暂无实时活动文本。</p>'
         }
-        <footer>
-          <button
-            class="conversation-control is-danger"
-            type="button"
-            data-conversation-work-stop="${escapeHtml(actionId)}"
-            ${controlBusy || !live ? "disabled" : ""}
-          >
-            停止该工作
-          </button>
-          <small>
-            只发送精确 turn/action/carrier 目标；过期的目标会被运行时以零效果拒绝。
-            暂停/续接/恢复不在此 UI 提供，因为它们不属于当前普通 Task 载体的控制面。
-          </small>
-        </footer>
+        ${
+          terminal !== undefined
+            ? `<footer class="carrier-terminal">
+                 <b>${escapeHtml(conversationCarrierTerminalCopy[terminal.status] || terminal.status)}</b>
+                 <small>
+                   载体已终止；停止控制已移除，活动历史保留。canonical 终态证据由 attempt/settlement 所有者保留，
+                   不会重放或重新发出停止。
+                 </small>
+               </footer>`
+            : `<footer>
+                 <button
+                   class="conversation-control is-danger"
+                   type="button"
+                   data-conversation-work-stop="${escapeHtml(actionId)}"
+                   ${controlBusy || !live ? "disabled" : ""}
+                 >
+                   停止该工作
+                 </button>
+                 <small>
+                   只发送精确 turn/action/carrier 目标；过期的目标会被运行时以零效果拒绝。
+                   暂停/续接/恢复不在此 UI 提供，因为它们不属于当前普通 Task 载体的控制面。
+                 </small>
+               </footer>`
+        }
       </div>
     `;
   }
@@ -5682,6 +5767,26 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         summary,
         authorizationId: first(candidate, ["authorizationId"]),
         selector: first(candidate, ["selector"]),
+      });
+    });
+    $("#task-submit-attempt-result").addEventListener("click", () => {
+      const summary = $("#task-result-summary").value.trim();
+      const detail = taskDetail();
+      const candidate = first(
+        first(detail, ["executionContext"], {}),
+        ["attemptResultCandidate"],
+      );
+      if (!summary || candidate === null || candidate === undefined) return;
+      const worktree = first(candidate, ["worktree"], {});
+      const head = text(first(worktree, ["head"]), "");
+      if (!/^[0-9a-f]{40}$/.test(head)) return;
+      sendTaskMutation("submit-verified-execution", {
+        summary,
+        selector: {
+          kind: "ordinary-attempt-result.v1",
+          attemptId: first(candidate, ["attemptId"]),
+          expectedWorktreeHead: head,
+        },
       });
     });
     $("#task-accept-button").addEventListener("click", () => {

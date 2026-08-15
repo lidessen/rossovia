@@ -1076,7 +1076,9 @@ import {
 import type { ConversationContextProvider } from "../src/conversation/context";
 import {
   ConversationCarrierError,
+  type CarrierControlReceipt,
   type CarrierSettlement,
+  type CarrierStartReceipt,
   type ConversationCarrierHandle,
   type ConversationCarrierIdentity,
   type ConversationExecutionCarrierRegistry,
@@ -1644,17 +1646,38 @@ const CONTINUE_OPERATION: ConversationOperation = {
 
 type FakeCarrierHandle = ConversationCarrierHandle & {
   stops: Array<{ conversationId: string; turnId: string; actionId: string }>;
+  /** Deterministically settle the fake carrier like the real owner's terminal settlement. */
+  settle(settlement: CarrierSettlement): void;
 };
 
 function fakeCarrierHandle(identity: ConversationCarrierIdentity): FakeCarrierHandle {
   const stops: Array<{ conversationId: string; turnId: string; actionId: string }> = [];
+  let settledListener: ((settlement: CarrierSettlement) => void) | undefined;
+  let terminal: CarrierSettlement | undefined;
   return {
     identity,
-    liveness: () => ({ state: "live" }),
+    liveness: () => terminal !== undefined
+      ? { state: "settled", settlement: terminal }
+      : { state: "live" },
     onActivity: () => () => {},
-    onSettled: () => () => {},
+    onSettled: (listener) => {
+      if (terminal !== undefined) {
+        listener(terminal);
+        return () => {};
+      }
+      settledListener = listener;
+      return () => {
+        if (settledListener === listener) settledListener = undefined;
+      };
+    },
     settled: new Promise<CarrierSettlement>(() => {}),
     stop(actor) {
+      if (terminal !== undefined) {
+        throw new ConversationCarrierError(
+          "carrier-not-live",
+          `carrier ${identity.carrierId} already settled with status ${terminal.status}; stop has no effect`,
+        );
+      }
       stops.push(actor);
       return {
         carrierId: identity.carrierId,
@@ -1665,10 +1688,41 @@ function fakeCarrierHandle(identity: ConversationCarrierIdentity): FakeCarrierHa
     },
     retention: () => ({ activityListeners: 0, settledListeners: 0, retainedPayloads: 0 }),
     stops,
+    settle(settlement) {
+      if (terminal !== undefined) return;
+      terminal = settlement;
+      const listener = settledListener;
+      settledListener = undefined;
+      listener?.(settlement);
+    },
   };
 }
 
-type FakeCarrierRegistry = ConversationExecutionCarrierRegistry & {
+/**
+ * The exact test-local carrier registry fixture. It declares the same
+ * production surface with the fixture handle as its precise return type, so
+ * deterministic tests can drive terminal settlement (`settle`) and observe
+ * stop effects (`stops`) without expanding the production
+ * `ConversationCarrierHandle`. The type is structurally assignable to
+ * `ConversationExecutionCarrierRegistry`, which is what the runtime is
+ * injected with.
+ */
+interface FakeCarrierRegistry {
+  readonly home: string;
+  startCarrier(input: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+    readonly operation: Extract<ConversationOperation, { kind: "task_continue" }>;
+  }): CarrierStartReceipt;
+  carrier(carrierId: string): FakeCarrierHandle | undefined;
+  carriers(): readonly FakeCarrierHandle[];
+  startedCarrier(conversationId: string, actionId: string): FakeCarrierHandle | undefined;
+  controlCarrier(input: {
+    readonly carrierId: string;
+    readonly control: "stop";
+    readonly actor: { readonly conversationId: string; readonly turnId: string; readonly actionId: string };
+  }): CarrierControlReceipt;
   handles: Map<string, FakeCarrierHandle>;
   started: Map<string, string>;
   controls: Array<{
@@ -1676,19 +1730,41 @@ type FakeCarrierRegistry = ConversationExecutionCarrierRegistry & {
     control: "stop";
     actor: { conversationId: string; turnId: string; actionId: string };
   }>;
-};
+}
 
-function fakeCarrierRegistry(): FakeCarrierRegistry {
+function fakeCarrierRegistry(options: { startable?: boolean } = {}): FakeCarrierRegistry {
   const handles = new Map<string, FakeCarrierHandle>();
   const started = new Map<string, string>();
   const controls: FakeCarrierRegistry["controls"] = [];
   return {
     home: "/tmp/fake-carrier-registry",
-    startCarrier() {
-      throw new ConversationCarrierError(
-        "carrier-duplicate",
-        "startCarrier is not used by transport control tests",
-      );
+    startCarrier(input) {
+      if (options.startable !== true) {
+        throw new ConversationCarrierError(
+          "carrier-duplicate",
+          "startCarrier is not used by transport control tests",
+        );
+      }
+      const carrierId = randomUUID();
+      const handle = fakeCarrierHandle({
+        carrierId,
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+        taskId: "fixture-task",
+        attemptId: carrierId,
+        workerId: "fixture-worker",
+        worktree: "/tmp/fixture-worktree",
+      });
+      handles.set(carrierId, handle);
+      started.set(`${input.conversationId}\u0000${input.actionId}`, carrierId);
+      return {
+        carrierId,
+        taskId: "fixture-task",
+        sourceRevision: 0,
+        taskRevision: 1,
+        evidenceRefs: [`workbench:state/task-attempts/${carrierId}/attempt.json`],
+      };
     },
     carrier: (carrierId) => handles.get(carrierId),
     carriers: () => [...handles.values()],
@@ -1710,6 +1786,58 @@ function fakeCarrierRegistry(): FakeCarrierRegistry {
     handles,
     started,
     controls,
+  };
+}
+
+/**
+ * One deterministic host that starts a fake carrier for a task_continue and
+ * applies work_control stops through the fake registry: the exact surface
+ * the terminal-carrier transport tests need.
+ */
+function continueControlHost(registry: FakeCarrierRegistry): ConversationOperationHost {
+  return {
+    home: "/tmp/fake-continue-control-host",
+    executeOperation(input) {
+      const operation = input.operation;
+      if (operation.kind === "task_continue") {
+        const receipt = registry.startCarrier({
+          conversationId: input.conversationId,
+          turnId: input.turnId,
+          actionId: input.actionId,
+          operation,
+        });
+        return { taskId: receipt.taskId, evidenceRefs: [...receipt.evidenceRefs] };
+      }
+      if (operation.kind === "work_control") {
+        // Truthful narrowing: only an exact live stop reaches the fixture
+        // registry; pause/resume/recover are not owned by an ordinary Task
+        // carrier and must fail visibly through the same guard the
+        // production host applies.
+        if (operation.control !== "stop") {
+          throw new ConversationOperationHostError(
+            "control-unsupported",
+            `control '${operation.control}' is not owned by an ordinary Task carrier; only an exact live stop is available`,
+          );
+        }
+        const receipt = registry.controlCarrier({
+          carrierId: operation.carrierId,
+          control: operation.control,
+          actor: {
+            conversationId: input.conversationId,
+            turnId: input.turnId,
+            actionId: input.actionId,
+          },
+        });
+        return { taskId: operation.carrierId, evidenceRefs: [...receipt.evidenceRefs] };
+      }
+      throw new ConversationOperationHostError(
+        "invalid-operation",
+        `unsupported operation kind ${operation.kind} for the continue-control host`,
+      );
+    },
+    findCanonicalReceipt() {
+      return { standing: "absent" as const };
+    },
   };
 }
 
@@ -2293,6 +2421,114 @@ describe("conversation socket work.control frames", () => {
       expect(events.some((event) =>
         (event.type === "action.settled" || event.type === "action.failed" || event.type === "action.uncertain")
           && event.data.actionId === unrelatedActionId)).toBe(false);
+    } finally {
+      client.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a terminal carrier broadcasts one exact carrier.terminal frame before projection.changed and rejects a later stop with zero effect", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry({ startable: true });
+    const host = continueControlHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([operationScript("Continuing the fixture task.", CONTINUE_OPERATION)]),
+      host,
+      undefined,
+      registry,
+    );
+    const conversationId = randomUUID();
+    const client = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(client, randomUUID(), "continue the fixture task");
+      await waitFor(() => client.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"), "the continue action settles");
+
+      const events = await runtime.journal.readEvents(conversationId);
+      const requested = events.find((event) => event.type === "action.requested");
+      if (requested === undefined || requested.type !== "action.requested") {
+        throw new Error("expected the task_continue action.requested");
+      }
+      const actionId = requested.data.actionId;
+      const carrier = registry.startedCarrier(conversationId, actionId);
+      if (carrier === undefined) throw new Error("expected a retained carrier");
+      expect(carrier.liveness()).toEqual({ state: "live" });
+
+      // The exact owner-backed terminal settlement the real carrier derives
+      // from the shared finalization owner.
+      carrier.settle({
+        status: "recorded",
+        evidenceRefs: [
+          `workbench:state/task-attempts/${carrier.identity.carrierId}/settlement.json`,
+          `workbench:state/task-attempts/${carrier.identity.carrierId}/cell-input.run.json`,
+        ],
+        cellStatus: "passed",
+      });
+      await waitFor(
+        () => client.messages.some((frame) => frame.type === "carrier.terminal"),
+        "the exact terminal carrier frame",
+      );
+
+      const terminalFrames = client.messages.filter(
+        (frame) => frame.type === "carrier.terminal",
+      );
+      expect(terminalFrames).toHaveLength(1);
+      expect(terminalFrames[0]).toEqual({
+        type: "carrier.terminal",
+        turnId: requested.data.turnId,
+        messageId: requested.data.messageId,
+        actionId,
+        carrierId: carrier.identity.carrierId,
+        status: "recorded",
+        cellStatus: "passed",
+        evidenceRefs: [
+          `workbench:state/task-attempts/${carrier.identity.carrierId}/settlement.json`,
+          `workbench:state/task-attempts/${carrier.identity.carrierId}/cell-input.run.json`,
+        ],
+      });
+      const terminalIndex = client.messages.findIndex(
+        (frame) => frame.type === "carrier.terminal",
+      );
+      const projectionIndex = client.messages.findLastIndex(
+        (frame) => frame.type === "projection.changed",
+      );
+      expect(projectionIndex).toBeGreaterThanOrEqual(0);
+      expect(projectionIndex).toBeGreaterThan(terminalIndex);
+
+      // A later exact stop for the terminal carrier is a visible durable
+      // refusal with zero carrier effect: the projection removed the
+      // affordance and the runtime still fails closed.
+      expect(carrier.liveness()).toEqual({
+        state: "settled",
+        settlement: {
+          status: "recorded",
+          evidenceRefs: [
+            `workbench:state/task-attempts/${carrier.identity.carrierId}/settlement.json`,
+            `workbench:state/task-attempts/${carrier.identity.carrierId}/cell-input.run.json`,
+          ],
+          cellStatus: "passed",
+        },
+      });
+      workControlFrame(client, {
+        turnId: requested.data.turnId,
+        actionId,
+        carrierId: carrier.identity.carrierId,
+        control: "stop",
+      });
+      await waitFor(() => client.messages.some((frame) =>
+        frame.type === "journal.event"
+          && frame.event.type === "action.failed"
+          && frame.event.data.actionId !== actionId), "the terminal stop fails durably");
+      const failure = client.messages.find((frame) =>
+        frame.type === "journal.event"
+          && frame.event.type === "action.failed"
+          && frame.event.data.actionId !== actionId);
+      expect(failure?.type === "journal.event" && failure.event.type === "action.failed"
+        ? failure.event.data.reason
+        : undefined).toContain("already settled");
+      expect(carrier.stops).toHaveLength(0);
+      expect(registry.controls).toHaveLength(1);
     } finally {
       client.ws.close();
       server.stop(true);

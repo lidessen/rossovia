@@ -105,6 +105,27 @@ export const ServerActivityDeltaFrameSchema = z.object({
 }).strict();
 export type ServerActivityDeltaFrame = z.infer<typeof ServerActivityDeltaFrameSchema>;
 
+/**
+ * One owner-backed terminal carrier broadcast: the exact starting
+ * turn/action/carrier identity plus the carrier's terminal settlement
+ * standing, cell status, and canonical evidence refs, relayed from the
+ * retained carrier's settled owner (the shared finalizeTaskAttempt
+ * settlement). It is provisional like an activity delta — never replayed —
+ * and it arrives before the `projection.changed` refresh so the browser can
+ * remove the stop affordance the moment terminal evidence is visible.
+ */
+export const ServerCarrierTerminalFrameSchema = z.object({
+  type: z.literal("carrier.terminal"),
+  turnId: z.string().uuid(),
+  messageId: z.string().uuid(),
+  actionId: z.string().uuid(),
+  carrierId: z.string().min(1),
+  status: z.enum(["recorded", "runner-failed", "control-stopped", "unresolved"]),
+  cellStatus: z.string().min(1).optional(),
+  evidenceRefs: z.array(z.string().min(1)),
+}).strict();
+export type ServerCarrierTerminalFrame = z.infer<typeof ServerCarrierTerminalFrameSchema>;
+
 export const ServerProjectionChangedFrameSchema = z.object({
   type: z.literal("projection.changed"),
 }).strict();
@@ -130,6 +151,7 @@ export const ServerFrameSchema = z.discriminatedUnion("type", [
   ServerJournalEventFrameSchema,
   ServerResponseDeltaFrameSchema,
   ServerActivityDeltaFrameSchema,
+  ServerCarrierTerminalFrameSchema,
   ServerProjectionChangedFrameSchema,
   ServerProtocolErrorFrameSchema,
 ]);
@@ -896,10 +918,12 @@ export class ConversationSocketRuntime {
   /**
    * After a task_continue action settles, subscribe the runtime to the exact
    * carrier the action started: owner-backed trace activity becomes
-   * attributable `activity.delta` frames and the terminal settlement
-   * broadcasts `projection.changed`. The subscriptions are runtime-only and
-   * are disposed at terminal settlement so neither the carrier nor the
-   * runtime retains per-run listener closures; the durable
+   * attributable `activity.delta` frames, the carrier's terminal settlement
+   * broadcasts one exact `carrier.terminal` frame followed by
+   * `projection.changed`, so the browser can remove the stop affordance the
+   * moment canonical terminal evidence is visible. The subscriptions are
+   * runtime-only and are disposed at terminal settlement so neither the
+   * carrier nor the runtime retains per-run listener closures; the durable
    * Task/attempt/settlement evidence stays in its canonical owners.
    */
   private attachCarrier(conversationId: string, requested: ActionRequestedEvent): void {
@@ -921,9 +945,18 @@ export class ConversationSocketRuntime {
       }));
     });
     let disposeSettled: (() => void) | undefined;
-    disposeSettled = carrier.onSettled(() => {
+    disposeSettled = carrier.onSettled((settlement) => {
       disposeActivity();
       disposeSettled?.();
+      this.broadcast(conversationId, carrierTerminalFrame({
+        turnId,
+        messageId,
+        actionId,
+        carrierId,
+        status: settlement.status,
+        evidenceRefs: settlement.evidenceRefs,
+        ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
+      }));
       this.broadcast(conversationId, { type: "projection.changed" });
     });
   }
@@ -1276,6 +1309,30 @@ function activityDeltaFrame(data: {
   readonly text: string;
 }): ServerActivityDeltaFrame {
   return { type: "activity.delta", ...data };
+}
+
+function carrierTerminalFrame(data: {
+  readonly turnId: string;
+  readonly messageId: string;
+  readonly actionId: string;
+  readonly carrierId: string;
+  readonly status: ServerCarrierTerminalFrame["status"];
+  readonly cellStatus?: string;
+  readonly evidenceRefs: readonly string[];
+}): ServerCarrierTerminalFrame {
+  // The frame boundary constructs one owned mutable copy: the owner input
+  // stays readonly and the caller's retained settlement refs can never be
+  // mutated through the emitted frame.
+  return {
+    type: "carrier.terminal",
+    turnId: data.turnId,
+    messageId: data.messageId,
+    actionId: data.actionId,
+    carrierId: data.carrierId,
+    status: data.status,
+    ...(data.cellStatus === undefined ? {} : { cellStatus: data.cellStatus }),
+    evidenceRefs: [...data.evidenceRefs],
+  };
 }
 
 /** The bounded full child evidence shape one keyed read feeds a synthesis turn. */

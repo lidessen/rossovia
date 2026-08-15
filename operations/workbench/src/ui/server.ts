@@ -450,7 +450,7 @@ async function buildLiveSnapshot(
   };
   return {
     ...liveSnapshot,
-    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts),
+    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts, options.home),
   };
 }
 

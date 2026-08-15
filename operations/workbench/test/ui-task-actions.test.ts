@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
@@ -15,6 +15,7 @@ import {
   CellRunRecordSchema,
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
+import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
 import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
 import {
   authorizeExecution,
@@ -65,6 +66,7 @@ import type {
 } from "../src/ui/actions";
 import { createWorkbenchRequestHandler } from "../src/ui/server";
 import { TaskMutationRequestSchema } from "../src/ui/task-actions";
+import { TaskVerifiedResultRequestSchema } from "../src/ui/task-verified-result";
 
 const temporaryRoots: string[] = [];
 const publicationRuntimeRef =
@@ -146,11 +148,238 @@ function retainedAttemptExecutor(): TaskCellExecutor {
           cachedInputTokens: 0,
         },
       },
-      executionObservation: { sessionId: "session-ui-attempt" },
+      executionObservation: {
+        sessionId: "session-ui-attempt",
+        providerFingerprintStanding: {
+          standing: "unavailable",
+          reason: "fixture executor retains no provider fingerprint",
+        },
+      },
       trace: [],
       rawSteps: [],
     }) as unknown as CellRunRecord;
   };
+}
+
+/**
+ * A deterministic failing executor whose retained Work Cell final record
+ * settles runner-failed with a non-passed final: the exact counterexample
+ * that must yield no ordinary-attempt result candidate.
+ */
+function failingAttemptExecutor(): TaskCellExecutor {
+  return async ({ cellInput }) => {
+    const input = cellInput;
+    return CellRunRecordSchema.parse({
+      version: "work-cell.run.v4",
+      runId: "ui-failed-attempt-run",
+      cellId: input.id,
+      driver: {
+        adapter: PI_HARNESS_DRIVER_ADAPTER,
+        provider: "deepseek",
+        model: input.executionProfile?.model ?? "deepseek/deepseek-v4-flash",
+      },
+      startedAt: "2026-08-12T18:01:00.000Z",
+      finishedAt: "2026-08-12T18:02:00.000Z",
+      durationMs: 60_000,
+      status: "failed",
+      input,
+      finalText: "Failed UI fixture result.",
+      artifacts: [],
+      verification: {
+        passed: false,
+        terminal: { passed: false, required: [], called: [] },
+        artifacts: { passed: false, errors: ["fixture failure"] },
+      },
+      workspaceDiff: { added: [], changed: [], removed: [] },
+      usage: {
+        inputTokens: 20,
+        outputTokens: 10,
+        totalTokens: 30,
+        cachedInputTokens: 0,
+      },
+      usageByPhase: {
+        preparation: {
+          inputTokens: 10,
+          outputTokens: 0,
+          totalTokens: 10,
+          cachedInputTokens: 0,
+        },
+        execution: {
+          inputTokens: 10,
+          outputTokens: 10,
+          totalTokens: 20,
+          cachedInputTokens: 0,
+        },
+      },
+      executionObservation: {
+        providerFingerprintStanding: {
+          standing: "unavailable",
+          reason: "fixture executor retains no provider fingerprint",
+        },
+      },
+      trace: [],
+      rawSteps: [],
+      error: "fixture failure",
+    }) as unknown as CellRunRecord;
+  };
+}
+
+/**
+ * Write one exact attempt evidence family by hand so stopped, failed,
+ * malformed, and unavailable counterexamples can be staged without a real
+ * run. The bytes follow the exact canonical shapes the strict attempt
+ * evidence reader validates; startedAt defaults to a far-future timestamp so
+ * a manual attempt sorts as the latest attempt for its Task.
+ */
+function writeManualTaskAttempt(
+  home: string,
+  input: {
+    taskId: string;
+    taskRevision: number;
+    sourceRevision: number;
+    attemptId: string;
+    worktree: string;
+    workerId: string;
+    model: string;
+    status: "recorded" | "runner-failed" | "control-stopped";
+    cellStatus: "passed" | "failed";
+    verificationPassed: boolean;
+    startedAt?: string;
+  },
+): void {
+  const directory = join(home, "state", "task-attempts", input.attemptId);
+  const inputRef = `state/task-attempts/${input.attemptId}/cell-input.json`;
+  const attemptRef = `state/task-attempts/${input.attemptId}/attempt.json`;
+  const finalRecordRef = `state/task-attempts/${input.attemptId}/cell-input.run.json`;
+  const settlementRef = `state/task-attempts/${input.attemptId}/settlement.json`;
+  const controlRef = `state/task-attempts/${input.attemptId}/control.json`;
+  const cellId = `workbench-task-${input.taskId}-attempt-${input.attemptId}`;
+  const startedAt = input.startedAt ?? "2099-01-01T00:00:00.000Z";
+  const cellInput = CellInputSchema.parse({
+    id: cellId,
+    workerId: input.workerId,
+    intent: "Manual attempt fixture.",
+    workspace: {
+      root: realpathSync(input.worktree),
+      readPaths: ["."],
+      writePaths: ["."],
+      excludePaths: [],
+      allowedCommands: [],
+    },
+    instructions: ["Produce the manual fixture result."],
+    acceptance: ["The manual fixture result exists"],
+    executionProfile: {
+      id: input.workerId,
+      version: "execution-profile.v1",
+      provider: "deepseek",
+      model: input.model,
+      parallelism: "serial",
+    },
+    budget: { maxDurationMs: 60_000 },
+  });
+  writeJson(join(directory, "cell-input.json"), cellInput);
+  writeJson(join(directory, "attempt.json"), {
+    version: "rosso.task-run-attempt.v1",
+    taskId: input.taskId,
+    taskRevision: input.taskRevision,
+    sourceRevision: input.sourceRevision,
+    attemptId: input.attemptId,
+    inputRef,
+    finalRecordRef,
+    workerId: input.workerId,
+    driver: PI_HARNESS_DRIVER_ADAPTER,
+    model: input.model,
+    status: "started",
+    startedAt,
+  });
+  writeJson(join(directory, "cell-input.run.json"), CellRunRecordSchema.parse({
+    version: "work-cell.run.v4",
+    runId: `run-${input.attemptId}`,
+    cellId,
+    driver: {
+      adapter: PI_HARNESS_DRIVER_ADAPTER,
+      provider: "deepseek",
+      model: input.model,
+    },
+    startedAt,
+    finishedAt: "2099-01-01T00:01:00.000Z",
+    durationMs: 60_000,
+    status: input.cellStatus,
+    input: cellInput,
+    finalText: "Manual attempt fixture final text.",
+    artifacts: [],
+    verification: {
+      passed: input.verificationPassed,
+      terminal: { passed: input.verificationPassed, required: [], called: [] },
+      artifacts: { passed: input.verificationPassed, errors: [] },
+    },
+    workspaceDiff: {
+      added: ["manual-added.txt"],
+      changed: [],
+      removed: [],
+    },
+    usage: {
+      inputTokens: 10,
+      outputTokens: 5,
+      totalTokens: 15,
+      cachedInputTokens: 0,
+    },
+    usageByPhase: {
+      preparation: {
+        inputTokens: 5,
+        outputTokens: 0,
+        totalTokens: 5,
+        cachedInputTokens: 0,
+      },
+      execution: {
+        inputTokens: 5,
+        outputTokens: 5,
+        totalTokens: 10,
+        cachedInputTokens: 0,
+      },
+    },
+    executionObservation: {
+      providerFingerprintStanding: { standing: "unavailable", reason: "manual fixture" },
+    },
+    trace: [],
+    rawSteps: [],
+    ...(input.cellStatus === "failed" ? { error: "manual fixture failure" } : {}),
+  }) as unknown as CellRunRecord);
+  writeJson(join(directory, "settlement.json"), {
+    version: "rosso.task-run-settlement.v1",
+    taskId: input.taskId,
+    taskRevision: input.taskRevision,
+    attemptId: input.attemptId,
+    inputRef,
+    finalRecordRef,
+    status: input.status,
+    workCellRunId: `run-${input.attemptId}`,
+    cellStatus: input.cellStatus,
+    semanticAcceptance: "not-evaluated",
+    ...(input.status === "control-stopped" ? { controlRef } : {}),
+    ...(input.status === "runner-failed" ? { error: "manual fixture failure" } : {}),
+    settledAt: "2099-01-01T00:02:00.000Z",
+  });
+  if (input.status === "control-stopped") {
+    writeJson(join(directory, "control.json"), {
+      version: "rosso.task-run-control-receipt.v1",
+      control: "stop",
+      carrierId: input.attemptId,
+      taskId: input.taskId,
+      attemptId: input.attemptId,
+      workerId: input.workerId,
+      worktree: realpathSync(input.worktree),
+      sourceRef: "test:manual-attempt-stop",
+      requestedBy: {
+        conversationId: randomUUID(),
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+      },
+      requestedAt: "2099-01-01T00:01:30.000Z",
+      attemptRef,
+      settlementRef,
+    });
+  }
 }
 
 function git(cwd: string, ...arguments_: string[]): string {
@@ -2546,5 +2775,682 @@ describe("Workbench task UI actions", () => {
     });
     expect(readFileSync(principalTasksPath(home))).toEqual(taskBytes);
     expect(readFileSync(attemptsRoot)).toEqual(unavailableBytes);
+  });
+
+  test("accepts only the exact attempt selector shape without mixing execution authorization", () => {
+    const attemptRequest = {
+      kind: "submit-verified-execution",
+      summary: "The ordinary attempt passed.",
+      selector: {
+        kind: "ordinary-attempt-result.v1",
+        attemptId: "11111111-1111-4111-8111-111111111111",
+        expectedWorktreeHead: "a".repeat(40),
+      },
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    } as const;
+    expect(TaskVerifiedResultRequestSchema.parse(attemptRequest)).toEqual(
+      attemptRequest,
+    );
+    expect(TaskVerifiedResultRequestSchema.safeParse({
+      ...attemptRequest,
+      authorizationId: "22222222-2222-4222-8222-222222222222",
+    }).success).toBe(false);
+    expect(TaskVerifiedResultRequestSchema.safeParse({
+      ...attemptRequest,
+      selector: {
+        kind: "autonomy-effect-verification.v1",
+        effectId: "effect-a",
+        verificationEventId: "event-a",
+      },
+    }).success).toBe(false);
+    expect(TaskVerifiedResultRequestSchema.safeParse({
+      ...attemptRequest,
+      selector: {
+        ...attemptRequest.selector,
+        expectedWorktreeHead: "not-a-sha",
+      },
+    }).success).toBe(false);
+  });
+
+  test("derives one ordinary-attempt result candidate from the exact current recorded passed attempt", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "attempt-result-worktree");
+    git(project, "worktree", "add", "--detach", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Return an ordinary attempt result",
+      objective: "Bind the result to the exact retained attempt evidence",
+      acceptance: ["The candidate re-reads canonical attempt evidence"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+
+    const emptySnapshot = await (
+      await handler(new Request(`${origin}/api/snapshot`))
+    ).json();
+    expect(
+      emptySnapshot.workItems.items.find(
+        (item: { id: string }) => item.id === `principal-task:${taskId}`,
+      ).taskDetail.executionContext.attemptResultCandidate,
+    ).toBeNull();
+
+    const attempt = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      resolveWorkerCard: () => ({
+        version: "work-cell.worker-card.v1",
+        id: "deepseek-flash-test",
+        labels: ["coding", "text", "write"],
+        description: "Ordinary attempt candidate fixture worker.",
+        executionProfile: {
+          id: "deepseek-flash-test",
+          version: "execution-profile.v1",
+          provider: "deepseek",
+          model: "deepseek/deepseek-v4-flash",
+          reasoningEffort: "low",
+          parallelism: "serial",
+        },
+        availability: { status: "available" },
+      }),
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+
+    const snapshot = await (
+      await handler(new Request(`${origin}/api/snapshot`))
+    ).json();
+    const detail = snapshot.workItems.items.find(
+      (item: { id: string }) => item.id === `principal-task:${taskId}`,
+    ).taskDetail;
+    expect(detail.executionContext.attemptResultCandidate).toEqual({
+      selector: {
+        kind: "ordinary-attempt-result.v1",
+        attemptId: attempt.attemptId,
+      },
+      attemptId: attempt.attemptId,
+      taskRevision: 1,
+      cellStatus: "passed",
+      workCellRunId: attempt.workCellRunId,
+      workspaceDiff: {
+        added: ["evidence/new.txt"],
+        changed: ["src/existing.ts"],
+        removed: [],
+      },
+      verification: { passed: true, terminalPassed: true },
+      worktree: {
+        path: realpathSync(worktree),
+        head: git(worktree, "rev-parse", "HEAD"),
+      },
+      evidenceRefs: [
+        attempt.inputRef,
+        attempt.attemptRef,
+        attempt.finalRecordRef,
+        attempt.settlementRef,
+      ],
+    });
+    expect(detail.latestResultVerification).toEqual({ standing: "none" });
+  });
+
+  test("withholds the attempt result candidate for stopped, failed, stale, malformed, and unavailable evidence", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "attempt-counterexample-worktree");
+    git(project, "worktree", "add", "--detach", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Withhold non-passed attempt candidates",
+      objective: "Only a current recorded passed attempt forms a candidate",
+      acceptance: ["Stopped, failed, stale, malformed, and unavailable evidence yields nothing"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    const candidateFor = async () => {
+      const snapshot = await (
+        await handler(new Request(`${origin}/api/snapshot`))
+      ).json();
+      return snapshot.workItems.items.find(
+        (item: { id: string }) => item.id === `principal-task:${taskId}`,
+      ).taskDetail.executionContext.attemptResultCandidate;
+    };
+    const worker: WorkerCard = {
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash-test",
+      labels: ["coding", "text", "write"],
+      description: "Attempt counterexample fixture worker.",
+      executionProfile: {
+        id: "deepseek-flash-test",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek/deepseek-v4-flash",
+        reasoningEffort: "low",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    };
+    const dependencies = {
+      resolveWorkerCard: () => worker,
+    };
+
+    // Failed: the retained runner-failed settlement admits no candidate.
+    await expect(
+      runPrincipalTask(home, { id: taskId, workerId: "deepseek-flash-test" }, {
+        ...dependencies,
+        executeTaskCell: failingAttemptExecutor(),
+      }),
+    ).rejects.toThrow();
+    expect(await candidateFor()).toBeNull();
+
+    // Passed: the recorded passed final forms the candidate.
+    const passed = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      ...dependencies,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    expect((await candidateFor())?.attemptId).toBe(passed.attemptId);
+
+    // Stopped: a control-stopped settlement with its durable control receipt
+    // admits no candidate even though a final exists.
+    const stoppedAttemptId = randomUUID();
+    writeManualTaskAttempt(home, {
+      taskId,
+      taskRevision: 1,
+      sourceRevision: 1,
+      attemptId: stoppedAttemptId,
+      worktree,
+      workerId: "deepseek-flash-test",
+      model: "deepseek/deepseek-v4-flash",
+      status: "control-stopped",
+      cellStatus: "passed",
+      verificationPassed: true,
+    });
+    expect(await candidateFor()).toBeNull();
+
+    // Malformed: a corrupted Work Cell final record admits no candidate.
+    rmSync(join(home, "state", "task-attempts", stoppedAttemptId), {
+      recursive: true,
+      force: true,
+    });
+    const corruptedAttemptId = randomUUID();
+    writeManualTaskAttempt(home, {
+      taskId,
+      taskRevision: 1,
+      sourceRevision: 1,
+      attemptId: corruptedAttemptId,
+      worktree,
+      workerId: "deepseek-flash-test",
+      model: "deepseek/deepseek-v4-flash",
+      status: "recorded",
+      cellStatus: "passed",
+      verificationPassed: true,
+    });
+    writeFileSync(
+      join(home, "state", "task-attempts", corruptedAttemptId, "cell-input.run.json"),
+      "{broken",
+      "utf8",
+    );
+    expect(await candidateFor()).toBeNull();
+    rmSync(join(home, "state", "task-attempts", corruptedAttemptId), {
+      recursive: true,
+      force: true,
+    });
+
+    // Stale: a later Task correction invalidates the recorded attempt.
+    const corrected = await post(handler, origin, `/api/tasks/${taskId}/actions`, {
+      kind: "correct",
+      statement: "A later correction invalidates the passed attempt.",
+      nextActor: "agent",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    expect(corrected.status).toBe(200);
+    expect((await corrected.json()).result.task.revision).toBe(2);
+    expect(await candidateFor()).toBeNull();
+
+    // A fresh recorded passed attempt at the new revision forms it again.
+    const repassed = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      ...dependencies,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    expect((await candidateFor())?.attemptId).toBe(repassed.attemptId);
+  });
+
+  test("submits one attempt-verified result through the existing verified-result path and fails replay, stale selectors, and duplicates closed", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "attempt-submit-worktree");
+    git(project, "worktree", "add", "--detach", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const worker: WorkerCard = {
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash-test",
+      labels: ["coding", "text", "write"],
+      description: "Attempt submission fixture worker.",
+      executionProfile: {
+        id: "deepseek-flash-test",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek/deepseek-v4-flash",
+        reasoningEffort: "low",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    };
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Submit an ordinary attempt result",
+      objective: "Reuse the existing verified-result submission authority",
+      acceptance: ["Only the exact current attempt selector submits once"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    const attempt = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      resolveWorkerCard: () => worker,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    const head = git(worktree, "rev-parse", "HEAD");
+    const request = {
+      kind: "submit-verified-execution",
+      summary: "The ordinary attempt passed its checks.",
+      selector: {
+        kind: "ordinary-attempt-result.v1",
+        attemptId: attempt.attemptId,
+        expectedWorktreeHead: head,
+      },
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    };
+
+    const submitted = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      request,
+    );
+    expect(submitted.status).toBe(200);
+    expect(await submitted.json()).toMatchObject({
+      result: {
+        sourceRevision: 2,
+        task: {
+          lifecycle: "verifying",
+          nextActor: "principal",
+          revision: 2,
+          resultClaims: [{
+            standing: "submitted",
+            evidence: {
+              kind: "runtime-verified-attempt",
+              selector: {
+                kind: "ordinary-attempt-result.v1",
+                attemptId: attempt.attemptId,
+              },
+              taskRevision: 1,
+              worktreeHead: head,
+            },
+            evidenceRefs: [
+              attempt.inputRef,
+              attempt.attemptRef,
+              attempt.finalRecordRef,
+              attempt.settlementRef,
+            ],
+            sourceRef: "workbench-ui:runtime-verified-attempt",
+            resolution: null,
+          }],
+        },
+      },
+    });
+
+    // Replay: the same exact request against the now-verifying Task fails
+    // closed with no additional claim.
+    const replay = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      request,
+    );
+    expect(replay.status).toBe(409);
+    expect(await replay.json()).toMatchObject({ error: "task-drift" });
+
+    // Duplicate selector with current revisions still fails closed: the Task
+    // is verifying, so no second claim can ever be appended.
+    const duplicate = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      {
+        ...request,
+        expectedSourceRevision: 2,
+        expectedRevision: 2,
+      },
+    );
+    expect(duplicate.status).toBe(409);
+    expect(await duplicate.json()).toMatchObject({ error: "task-drift" });
+    const claims = JSON.parse(
+      readFileSync(principalTasksPath(home), "utf8"),
+    ).tasks.find((task: { id: string }) => task.id === taskId).resultClaims;
+    expect(claims).toHaveLength(1);
+
+    // Stale selector: another Task whose attempt id never matched the
+    // current candidate refuses with zero effect.
+    const other = await post(handler, origin, "/api/tasks", {
+      title: "A second ordinary task",
+      objective: "Prove selectors never cross Tasks",
+      acceptance: ["No cross-Task selector submits"],
+      nextActor: "agent",
+      expectedSourceRevision: 2,
+      project: "fixture",
+      worktree,
+    });
+    const otherTaskId = (await other.json()).result.task.id as string;
+    const stale = await post(
+      handler,
+      origin,
+      `/api/tasks/${otherTaskId}/actions`,
+      {
+        ...request,
+        expectedSourceRevision: 3,
+        expectedRevision: 1,
+      },
+    );
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: "task-drift" });
+    expect(
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks.find(
+        (task: { id: string }) => task.id === otherTaskId,
+      ).resultClaims,
+    ).toEqual([]);
+  });
+
+  test("rejects attempt submission when the Task or the bound Worktree HEAD changed after the projection", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "attempt-drift-worktree");
+    git(project, "worktree", "add", "--detach", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const worker: WorkerCard = {
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash-test",
+      labels: ["coding", "text", "write"],
+      description: "Attempt drift fixture worker.",
+      executionProfile: {
+        id: "deepseek-flash-test",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek/deepseek-v4-flash",
+        reasoningEffort: "low",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    };
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Drift before submission",
+      objective: "Fail closed on Task or HEAD drift",
+      acceptance: ["No claim survives a drift"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    const attempt = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      resolveWorkerCard: () => worker,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    const originalHead = git(worktree, "rev-parse", "HEAD");
+    const request = {
+      kind: "submit-verified-execution",
+      summary: "The drifted attempt must refuse.",
+      selector: {
+        kind: "ordinary-attempt-result.v1",
+        attemptId: attempt.attemptId,
+        expectedWorktreeHead: originalHead,
+      },
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    };
+
+    // HEAD drift: the Worktree moved after the Principal's candidate.
+    git(worktree, "commit", "--allow-empty", "-m", "move the bound Worktree HEAD");
+    const headDrifted = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      request,
+    );
+    expect(headDrifted.status).toBe(409);
+    expect(await headDrifted.json()).toMatchObject({
+      error: "task-drift",
+      message: expect.stringContaining("Worktree HEAD changed"),
+    });
+    expect(
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks.find(
+        (task: { id: string }) => task.id === taskId,
+      ).resultClaims,
+    ).toEqual([]);
+
+    // Task drift: a correction after the projection removes the candidate.
+    git(worktree, "reset", "--hard", originalHead);
+    const corrected = await post(handler, origin, `/api/tasks/${taskId}/actions`, {
+      kind: "correct",
+      statement: "The task changed before submission.",
+      nextActor: "agent",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    expect(corrected.status).toBe(200);
+    const taskDrifted = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      request,
+    );
+    expect(taskDrifted.status).toBe(409);
+    expect(await taskDrifted.json()).toMatchObject({ error: "task-drift" });
+    expect(
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks.find(
+        (task: { id: string }) => task.id === taskId,
+      ).resultClaims,
+    ).toEqual([]);
+  });
+
+  test("accepting an attempt-verified claim revalidates current evidence and fails closed when it drifts", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "attempt-accept-worktree");
+    git(project, "worktree", "add", "--detach", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const worker: WorkerCard = {
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash-test",
+      labels: ["coding", "text", "write"],
+      description: "Attempt acceptance fixture worker.",
+      executionProfile: {
+        id: "deepseek-flash-test",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek/deepseek-v4-flash",
+        reasoningEffort: "low",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    };
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Accept an attempt-verified result",
+      objective: "Keep acceptance explicit and revalidated",
+      acceptance: ["Drifted attempt evidence blocks acceptance"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    const attempt = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      resolveWorkerCard: () => worker,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    const head = git(worktree, "rev-parse", "HEAD");
+    const request = {
+      kind: "submit-verified-execution",
+      summary: "The ordinary attempt passed its checks.",
+      selector: {
+        kind: "ordinary-attempt-result.v1",
+        attemptId: attempt.attemptId,
+        expectedWorktreeHead: head,
+      },
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    };
+    const submitted = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      request,
+    );
+    expect(submitted.status).toBe(200);
+
+    // The fresh snapshot revalidates the claim against the strict attempt
+    // evidence: current evidence keeps the verified-current standing.
+    const verificationSnapshot = await (
+      await handler(new Request(`${origin}/api/snapshot`))
+    ).json();
+    expect(
+      verificationSnapshot.workItems.items.find(
+        (item: { id: string }) => item.id === `principal-task:${taskId}`,
+      ).taskDetail.latestResultVerification,
+    ).toMatchObject({
+      standing: "verified-current",
+      selector: {
+        kind: "ordinary-attempt-result.v1",
+        attemptId: attempt.attemptId,
+      },
+    });
+
+    const accepted = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      { kind: "accept", expectedSourceRevision: 2, expectedRevision: 2 },
+    );
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      result: {
+        task: {
+          lifecycle: "settled",
+          resultClaims: [{
+            standing: "accepted",
+            resolution: {
+              kind: "accepted",
+              basis: "runtime-verified-attempt",
+              acceptanceBoundary: "workbench-local-task-only",
+            },
+          }],
+        },
+      },
+    });
+
+    // A drifted second Task proves acceptance revalidates: corrupt the final
+    // record after submission and the explicit accept refuses with no
+    // lifecycle change.
+    const drifted = await post(handler, origin, "/api/tasks", {
+      title: "Drifted acceptance counterexample",
+      objective: "Never accept drifted attempt evidence",
+      acceptance: ["Corrupted final evidence blocks acceptance"],
+      nextActor: "agent",
+      expectedSourceRevision: 3,
+      project: "fixture",
+      worktree,
+    });
+    const driftedTaskId = (await drifted.json()).result.task.id as string;
+    const driftedAttempt = await runPrincipalTask(home, {
+      id: driftedTaskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      resolveWorkerCard: () => worker,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    const driftedHead = git(worktree, "rev-parse", "HEAD");
+    const driftedSubmit = await post(
+      handler,
+      origin,
+      `/api/tasks/${driftedTaskId}/actions`,
+      {
+        kind: "submit-verified-execution",
+        summary: "The drifted attempt passed before corruption.",
+        selector: {
+          kind: "ordinary-attempt-result.v1",
+          attemptId: driftedAttempt.attemptId,
+          expectedWorktreeHead: driftedHead,
+        },
+        expectedSourceRevision: 4,
+        expectedRevision: 1,
+      },
+    );
+    expect(driftedSubmit.status).toBe(200);
+    writeFileSync(
+      join(home, driftedAttempt.finalRecordRef),
+      "{broken",
+      "utf8",
+    );
+    const driftedAccept = await post(
+      handler,
+      origin,
+      `/api/tasks/${driftedTaskId}/actions`,
+      { kind: "accept", expectedSourceRevision: 5, expectedRevision: 2 },
+    );
+    expect(driftedAccept.status).toBe(409);
+    expect(await driftedAccept.json()).toMatchObject({
+      error: "task-drift",
+      message: expect.stringContaining("no longer current"),
+    });
+    expect(
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks.find(
+        (task: { id: string }) => task.id === driftedTaskId,
+      ),
+    ).toMatchObject({
+      lifecycle: "verifying",
+      nextActor: "principal",
+    });
   });
 });
