@@ -157,17 +157,20 @@ models the old adapter as a barrier that drops pre-registration results: the
 control (no handoff) fails boundedly while the production boundary returns
 every immediately resolving parallel host tool result exactly once.
 
-The immutable `maxSteps` budget is enforced from actual tool activity, never
-from the harness finish label. The pinned adapter translates every inferred
-completed step — including tool-continuing steps whose results feed the next
-model step — to a unified stop finish reason, so a label-gated guard would be
-unreachable in production. A completed step that carried tool activity aborts
-the run before step `maxSteps + 1` can begin; a tool-free terminal response
-on the final allowed step completes naturally. The exhaustion count freezes at
-that accepted boundary: an inferred Pi finish emitted while the abort settles
-is neither counted nor retained as another completed step. When Pi exposes its
-aggregate session counters on this failure path, they supersede zero or partial
-inferred-step usage rather than being added to the same model work.
+When the caller supplies an explicit finite `maxSteps`, the immutable step
+budget is enforced from actual tool activity, never from the harness finish
+label. The pinned adapter translates every inferred completed step — including
+tool-continuing steps whose results feed the next model step — to a unified
+stop finish reason, so a label-gated guard would be unreachable in production.
+A completed step that carried tool activity aborts the run before step
+`maxSteps + 1` can begin; a tool-free terminal response on the final allowed
+step completes naturally. The exhaustion count freezes at that accepted
+boundary: an inferred Pi finish emitted while the abort settles is neither
+counted nor retained as another completed step. When Pi exposes its aggregate
+session counters on this failure path, they supersede zero or partial
+inferred-step usage rather than being added to the same model work. An
+omitted `maxSteps` installs no step-count stop condition: the model continues
+for as many steps as the work needs within the non-extendable duration budget.
 
 Provider fingerprint evidence is truthful in both directions. When the
 provider response exposes a backend `system_fingerprint` through the AI SDK
@@ -409,15 +412,29 @@ into zero usage.
 
 ### Programmatic budget approval
 
+`budget.maxSteps` is an optional explicit per-run/operator step policy. An
+omitted `maxSteps` means no step-count stop condition at all: the model may
+take as many steps as the work needs within the non-extendable duration
+budget, and no completed-step decision point or approval phase is installed.
+`budget.maxDurationMs` alone therefore remains a hard timeout, not a soft
+budget boundary — it ends the run without any settle/request choice.
+
+Programmatic budget approval requires a caller that explicitly selects a
+finite step policy: `runCell` rejects `budgetApproval` when the Cell input
+carries no explicit finite `maxSteps`, and it fails closed before execution
+when the selected driver does not implement the completed-step budget-control
+contract.
+
 AI SDK callers may pass `budgetApproval`, `settlementReserveMs`, and
-`hardLimitMs` to `runCell`. When the Cell reaches its soft step or duration
-budget after a completed step, ordinary tools close and the model must choose
-`settle_now` or one bounded `request_budget` action. A request contains only
-`additionalSteps`, `additionalDurationMs`, and `remainingWork`; Work Cell adds
-the Cell identity and observed step/time counters before invoking the callback.
-The callback also receives `{ signal }`; approval adapters should stop their
-own waiting or external review when it aborts so caller cancellation or the
-hard limit does not leave approval work running in the background.
+`hardLimitMs` to `runCell` together with such an explicit `maxSteps`. When the
+Cell reaches its soft step or duration budget after a completed step, ordinary
+tools close and the model must choose `settle_now` or one bounded
+`request_budget` action. A request contains only `additionalSteps`,
+`additionalDurationMs`, and `remainingWork`; Work Cell adds the Cell identity
+and observed step/time counters before invoking the callback. The callback
+also receives `{ signal }`; approval adapters should stop their own waiting or
+external review when it aborts so caller cancellation or the hard limit does
+not leave approval work running in the background.
 
 Returning `{ decision: "allow" }` adds exactly the requested step and duration
 allowances to the current run and retained transcript. Returning

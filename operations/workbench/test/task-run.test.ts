@@ -352,6 +352,37 @@ function deadPid(): number {
   return result.pid;
 }
 
+/**
+ * One retained legacy attempt family from the former BudgetSchema default:
+ * the immutable raw CellInput omits maxSteps while the embedded final input
+ * carries the injected maxSteps: 20, everything else identical. The attempt
+ * record names the catalog AI SDK execution form so the same family can
+ * exercise reconcile and continuation ownership.
+ */
+function legacyMaxSteps20Attempt(
+  fixture_: Fixture,
+  taskId: string,
+  pid: number,
+): InterruptedAttemptFixture {
+  const attempt = interruptedAttempt(fixture_, taskId, pid);
+  const attemptPath = join(attempt.directory, "attempt.json");
+  const attemptRecord = JSON.parse(readFileSync(attemptPath, "utf8"));
+  attemptRecord.driver = "ai-sdk-v7";
+  attemptRecord.model = "opencode/go";
+  writeFileSync(attemptPath, `${JSON.stringify(attemptRecord, null, 2)}\n`);
+  const rawInput = JSON.parse(readFileSync(join(attempt.directory, "cell-input.json"), "utf8"));
+  const legacyFinalInput = CellInputSchema.parse({
+    ...rawInput,
+    budget: { ...rawInput.budget, maxSteps: 20 },
+  }) as CellInput;
+  const finalRecord = validWorkCellRecord(legacyFinalInput, { runId: "legacy-default-maxsteps-run" });
+  writeFileSync(
+    join(attempt.directory, "cell-input.run.json"),
+    `${JSON.stringify(finalRecord, null, 2)}\n`,
+  );
+  return attempt;
+}
+
 describe("task attempt reconciliation", () => {
   test("reconciles an interrupted attempt with a dead owner, preserving evidence and enabling a fresh run", async () => {
     const current = fixture();
@@ -2598,6 +2629,184 @@ describe("strict attempt-family reading", () => {
     expect(evidence.standing).toBe("unavailable");
     expect(evidence.attempt).toBeUndefined();
     expect(evidence.refs.inputRef).toContain("state/task-attempts/");
+  });
+});
+
+describe("legacy default maxSteps attempt evidence", () => {
+  test("keeps the exact legacy raw-omitted/final-20 family available and restores reconcile ownership", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = legacyMaxSteps20Attempt(current, created.task.id, deadPid());
+
+    // The narrow version-aware compatibility keeps the historical pair
+    // available: the raw CellInput retains its omitted maxSteps and the
+    // embedded final keeps the formerly injected maxSteps: 20.
+    const evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.input?.budget.maxSteps).toBeUndefined();
+    expect(evidence.input?.budget).not.toHaveProperty("maxSteps");
+    expect(evidence.finalRecord?.input.budget.maxSteps).toBe(20);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
+
+    const result = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(result).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "recorded",
+      workCellRunId: "legacy-default-maxsteps-run",
+      cellStatus: "passed",
+    });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    const settlement = JSON.parse(
+      readFileSync(join(current.home, result.settlementRef), "utf8"),
+    );
+    expect(settlement).toMatchObject({
+      status: "recorded",
+      workCellRunId: "legacy-default-maxsteps-run",
+      cellStatus: "passed",
+    });
+    // The historical bytes are never rewritten by the compatibility read.
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
+    expect(JSON.parse(
+      readFileSync(join(attempt.directory, "cell-input.run.json"), "utf8"),
+    ).input.budget.maxSteps).toBe(20);
+  });
+
+  test("the reconciled legacy family restores exact continuation ownership", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = legacyMaxSteps20Attempt(current, created.task.id, deadPid());
+    reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+
+    const executor = new FakeCellExecutor();
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: attempt.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute)).resolves.toBeTruthy();
+    expect(executor.requests).toHaveLength(1);
+  });
+
+  test("rejects 19, 21, raw-owned maxSteps, and added fields as invalid evidence", () => {
+    const cases: Array<{
+      mutateInput?: (input: Record<string, unknown>) => void;
+      mutateFinal: (finalInput: CellInput) => CellInput;
+    }> = [
+      { mutateFinal: (value) => ({ ...value, budget: { ...value.budget, maxSteps: 19 } }) },
+      { mutateFinal: (value) => ({ ...value, budget: { ...value.budget, maxSteps: 21 } }) },
+      {
+        mutateFinal: (value) => ({
+          ...value,
+          intent: "forged intent",
+          budget: { ...value.budget, maxSteps: 20 },
+        }),
+      },
+      {
+        mutateFinal: (value) => ({
+          ...value,
+          budget: { ...value.budget, maxSteps: 20, estimatedTokens: 999 },
+        }),
+      },
+      {
+        mutateInput: (value) => {
+          (value.budget as Record<string, unknown>).maxSteps = 5;
+        },
+        mutateFinal: (value) => ({ ...value, budget: { ...value.budget, maxSteps: 20 } }),
+      },
+    ];
+    for (const candidate of cases) {
+      const current = fixture();
+      const created = agentTask(current);
+      const attempt = legacyMaxSteps20Attempt(current, created.task.id, deadPid());
+      if (candidate.mutateInput) {
+        const inputPath = join(attempt.directory, "cell-input.json");
+        const input = JSON.parse(readFileSync(inputPath, "utf8"));
+        candidate.mutateInput(input);
+        writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
+      }
+      const rawInput = CellInputSchema.parse(JSON.parse(
+        readFileSync(join(attempt.directory, "cell-input.json"), "utf8"),
+      )) as CellInput;
+      const finalRecord = validWorkCellRecord(candidate.mutateFinal(rawInput), {
+        runId: "mismatched-legacy-run",
+      });
+      writeFileSync(
+        join(attempt.directory, "cell-input.run.json"),
+        `${JSON.stringify(finalRecord, null, 2)}\n`,
+      );
+
+      const evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+      expect(evidence.standing).toBe("invalid");
+      expect(evidence.error).toContain("embedded input does not match its immutable CellInput");
+      expect(() => reconcilePrincipalTaskAttempt(current.home, {
+        id: created.task.id,
+        attemptId: attempt.attemptId,
+      })).toThrow("retains invalid evidence and cannot be reconciled");
+    }
+  });
+
+  test("newly written no-maxSteps attempt families remain exact with no injected maxSteps", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.input?.budget.maxSteps).toBeUndefined();
+    expect(evidence.input?.budget).not.toHaveProperty("maxSteps");
+    expect(evidence.finalRecord?.input.budget.maxSteps).toBeUndefined();
+    expect(evidence.finalRecord?.input.budget).not.toHaveProperty("maxSteps");
+    expect(evidence.finalRecord?.input).toEqual(evidence.input);
+  });
+
+  test("a deterministic ordinary task run crosses 20 completed steps with no maxSteps and records a normal terminal", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const completedSteps: number[] = [];
+    const executor: TaskCellExecutor = async ({ cellInput }) => {
+      expect(cellInput.budget.maxSteps).toBeUndefined();
+      expect(cellInput.budget).not.toHaveProperty("maxSteps");
+      expect(cellInput.budget.maxDurationMs).toBe(1_800_000);
+      for (let step = 0; step < 25; step += 1) completedSteps.push(step);
+      return validWorkCellRecord(cellInput, { runId: "fake-run-25-steps" });
+    };
+
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor);
+
+    expect(completedSteps).toHaveLength(25);
+    expect(result.cellStatus).toBe("passed");
+    const settlement = JSON.parse(readFileSync(join(current.home, result.settlementRef), "utf8"));
+    expect(settlement).toMatchObject({
+      status: "recorded",
+      workCellRunId: "fake-run-25-steps",
+      cellStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    });
+    const evidence = readStrictTaskAttemptEvidence(current.home, result.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.input?.budget.maxSteps).toBeUndefined();
+    expect(evidence.finalRecord?.input.budget.maxSteps).toBeUndefined();
   });
 });
 
