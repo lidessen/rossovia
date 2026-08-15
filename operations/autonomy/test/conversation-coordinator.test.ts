@@ -352,6 +352,74 @@ test("records missing observed effort as unavailable without failing the turn", 
   expect(result.requested.reasoningEffort).toBe(CURRENT_COORDINATOR_POLICY.reasoningEffort);
 });
 
+test("a finished turn settles a same-as-requested observed provider and model while requested evidence stays separate", async () => {
+  const result = await runTurn(fullOptions(), [
+    { kind: "delta", text: "settled with identity." },
+    {
+      kind: "finish",
+      provider: CURRENT_COORDINATOR_POLICY.provider,
+      model: CURRENT_COORDINATOR_POLICY.model,
+      usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8, cachedInputTokens: 0 },
+    },
+  ]);
+
+  assertFinished(result);
+  expect(result.observed.provider).toBe(CURRENT_COORDINATOR_POLICY.provider);
+  expect(result.observed.model).toBe(CURRENT_COORDINATOR_POLICY.model);
+  expect(result.observed.reasoningEffort).toBe("unavailable");
+  expect(result.requested.provider).toBe(CURRENT_COORDINATOR_POLICY.provider);
+  expect(result.requested.model).toBe(CURRENT_COORDINATOR_POLICY.model);
+  expect(result.requested.thinking).toBe(CURRENT_COORDINATOR_POLICY.thinking);
+  expect(result.requested.reasoningEffort).toBe(CURRENT_COORDINATOR_POLICY.reasoningEffort);
+});
+
+test("never copies requested provider or model into observed evidence when the port reports none", async () => {
+  const result = await runTurn(fullOptions(), [
+    { kind: "delta", text: "finished without reported identity." },
+    { kind: "finish", usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3, cachedInputTokens: 0 } },
+  ]);
+
+  assertFinished(result);
+  expect(result.requested.provider).toBe(CURRENT_COORDINATOR_POLICY.provider);
+  expect(result.requested.model).toBe(CURRENT_COORDINATOR_POLICY.model);
+  expect(result.observed.outcome).toBe("finished");
+  expect("provider" in result.observed).toBe(false);
+  expect("model" in result.observed).toBe(false);
+  expect(result.observed.reasoningEffort).toBe("unavailable");
+});
+
+test("an interrupted turn keeps provider, model, and effort explicitly unavailable", async () => {
+  const seen: ConversationTurnSafetyEvent[] = [];
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const handle = startConversationTurn({
+    ...fullOptions(),
+    port: {
+      async *run({ signal }) {
+        yield { kind: "delta", text: "partial" };
+        await gate;
+        if (signal.aborted) return;
+        yield {
+          kind: "finish",
+          provider: CURRENT_COORDINATOR_POLICY.provider,
+          model: CURRENT_COORDINATOR_POLICY.model,
+        };
+      },
+    },
+    onEvent: (event) => seen.push(event),
+  });
+
+  await until(() => seen.some((event) => event.kind === "delta"));
+  handle.interrupt();
+  release();
+  const result = await handle.result;
+
+  expect(result.kind).toBe("interrupted");
+  expect(result.requested.provider).toBe(CURRENT_COORDINATOR_POLICY.provider);
+  expect(result.requested.model).toBe(CURRENT_COORDINATOR_POLICY.model);
+  expect(result.observed).toEqual({ outcome: "interrupted", reasoningEffort: "unavailable" });
+});
+
 test("sanitizes observed usage to non-negative numbers and drops unknown fields", async () => {
   const result = await runTurn(fullOptions(), [
     {

@@ -709,6 +709,33 @@ describe("FileConversationJournal durable vocabulary boundary", () => {
     expect((await journal.readEvents(conversation)).some((event) => event.type === "coordinator.turn-settled"))
       .toBe(false);
   });
+
+  test("stores only reported observed evidence and never fills missing provider/model from the requested policy", async () => {
+    const journal = createJournal();
+    const conversation = conversationId();
+    const message = await receiptedMessage(journal, conversation);
+    const turn = await journal.startTurn(conversation, {
+      turnId: randomUUID(),
+      messageId: message.event.data.messageId,
+      requestedPolicy: policy,
+    });
+    const settledTurn = await journal.settleTurn(conversation, {
+      turnId: turn.data.turnId,
+      messageId: message.event.data.messageId,
+      response: "identity-unreported settlement",
+      observedEvidence: { usage: { inputTokens: 4, outputTokens: 2 } },
+    });
+
+    expect(settledTurn.data.observedEvidence).toEqual({ usage: { inputTokens: 4, outputTokens: 2 } });
+    expect("provider" in (settledTurn.data.observedEvidence ?? {})).toBe(false);
+    expect("model" in (settledTurn.data.observedEvidence ?? {})).toBe(false);
+    const events = await journal.readEvents(conversation);
+    const started = events.find((event) => event.type === "coordinator.turn-started");
+    expect(started?.type === "coordinator.turn-started" ? started.data.requestedPolicy : undefined)
+      .toEqual(policy);
+    expect(started?.type === "coordinator.turn-started" ? started.data.requestedPolicy.provider : undefined)
+      .toBe("deepseek");
+  });
 });
 
 describe("FileConversationJournal review corrections M1-M3", () => {

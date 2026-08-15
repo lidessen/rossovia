@@ -572,7 +572,7 @@ describe("conversation socket live delivery", () => {
     }
   });
 
-  test("a settled turn retains the scripted response with minimal observed evidence", async () => {
+  test("a settled turn retains the scripted response with minimal observed evidence and never copies requested identity into it", async () => {
     const root = tempRoot();
     const { runtime, server, socketUrl } = await startServer(root, scriptedOwner([
       settledScript("complete response text"),
@@ -595,6 +595,11 @@ describe("conversation socket live delivery", () => {
         .toBe("complete response text");
       expect(settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence : undefined)
         .toEqual({ usage: { inputTokens: 3, outputTokens: 2 } });
+      // Unreported provider/model stay absent from the durable settlement even
+      // though the requested policy still names them on the turn start.
+      const observed = settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence ?? {} : {};
+      expect("provider" in observed).toBe(false);
+      expect("model" in observed).toBe(false);
     } finally {
       client.ws.close();
       server.stop(true);
@@ -613,6 +618,7 @@ describe("conversation socket live delivery", () => {
       await waitFor(() => durableSequences(client.messages).length === 3, "the turn settles");
 
       const events = await runtime.journal.readEvents(conversationId);
+      const started = events.find((event) => event.type === "coordinator.turn-started");
       const settled = events.find((event) => event.type === "coordinator.turn-settled");
       expect(settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence : undefined)
         .toEqual({
@@ -621,6 +627,14 @@ describe("conversation socket live delivery", () => {
           fingerprint: "fp-1",
           usage: { inputTokens: 7, outputTokens: 4 },
         });
+      // The same-as-requested reported identity settles durably into observed
+      // evidence while the requested policy remains its own separate record.
+      expect(started?.type === "coordinator.turn-started" ? started.data.requestedPolicy : undefined)
+        .toEqual(FAKE_REQUESTED_POLICY);
+      expect(settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence?.provider : undefined)
+        .toBe(FAKE_REQUESTED_POLICY.provider);
+      expect(settled?.type === "coordinator.turn-settled" ? settled.data.observedEvidence?.model : undefined)
+        .toBe(FAKE_REQUESTED_POLICY.model);
     } finally {
       client.ws.close();
       server.stop(true);

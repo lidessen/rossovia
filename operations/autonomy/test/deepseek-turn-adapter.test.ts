@@ -112,7 +112,7 @@ function assertFailed(result: ConversationTurnResult): asserts result is Extract
   expect(result.kind).toBe("failed");
 }
 
-test("streams every text delta and does not infer observed effort from the requested adapter policy", async () => {
+test("streams every text delta and retains the adapter-confirmed provider and same-as-requested stream model without inferring observed effort", async () => {
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
     provider: "deepseek",
@@ -129,9 +129,14 @@ test("streams every text delta and does not infer observed effort from the reque
     { kind: "delta", text: "settled." },
     {
       kind: "finish",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
       usage: FLAT_USAGE_PASSTHROUGH,
     },
   ]);
+  // Observed reasoning effort stays unreported: the adapter never infers it
+  // from the requested adapter policy.
+  expect(JSON.stringify(events)).not.toContain("observedReasoningEffort");
 });
 
 test("retains a provider fingerprint only when DeepSeek returns it in provider metadata", async () => {
@@ -152,6 +157,8 @@ test("retains a provider fingerprint only when DeepSeek returns it in provider m
 
   expect(events.at(-1)).toEqual({
     kind: "finish",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
     providerFingerprint: "fp-returned",
     usage: FLAT_USAGE_PASSTHROUGH,
   });
@@ -381,11 +388,11 @@ test("omits observed reasoning effort and disables thinking when the policy is d
   expect(seen[0]?.inferencePolicy).toEqual({ thinking: "disabled" });
   expect(events).toEqual([
     { kind: "delta", text: "settled" },
-    { kind: "finish", usage: FLAT_USAGE_PASSTHROUGH },
+    { kind: "finish", provider: "deepseek", model: "deepseek-v4-pro", usage: FLAT_USAGE_PASSTHROUGH },
   ]);
 });
 
-test("settles with requested identity separate from unavailable observed provider, model, and effort", async () => {
+test("settles requested policy separate from adapter-confirmed observed provider and model with effort unavailable", async () => {
   const seen: ConversationTurnSafetyEvent[] = [];
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
@@ -406,6 +413,8 @@ test("settles with requested identity separate from unavailable observed provide
   expect(result.requested.reasoningEffort).toBe("max");
   expect(result.observed).toEqual({
     outcome: "finished",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
     reasoningEffort: "unavailable",
     usage: SANITIZED_USAGE,
   });
@@ -414,6 +423,57 @@ test("settles with requested identity separate from unavailable observed provide
     { kind: "delta", text: "settled." },
     { kind: "finished", usage: SANITIZED_USAGE },
   ]);
+});
+
+test("normalizes the provider-returned model identity and keeps provider in the policy vocabulary", async () => {
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [
+      { type: "response-metadata", modelId: "  deepseek-v4-pro  " },
+      ...adapterParts(),
+    ]),
+  });
+
+  const events = await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(events.at(-1)).toEqual({
+    kind: "finish",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    usage: FLAT_USAGE_PASSTHROUGH,
+  });
+  // The SDK registry id never leaks into observation: the observed provider
+  // stays in the coordinator policy vocabulary.
+  expect(JSON.stringify(events)).not.toContain(DEEPSEEK_SDK_PROVIDER_ID);
+});
+
+test("omits the observed model when the stream reports none, never copying the requested model", async () => {
+  const adapter = createDeepSeekTurnAdapter({
+    apiKey: "test-key",
+    provider: "deepseek",
+    model: "deepseek-v4-pro",
+    thinking: "enabled",
+    reasoningEffort: "max",
+    createModel: () => mockModel("deepseek-v4-pro", [
+      { type: "response-metadata", modelId: "   " },
+      ...adapterParts(),
+    ]),
+  });
+
+  const events = await collect(adapter.run({ prompt: composedPrompt(), signal: new AbortController().signal }));
+
+  expect(events.at(-1)).toEqual({
+    kind: "finish",
+    provider: "deepseek",
+    usage: FLAT_USAGE_PASSTHROUGH,
+  });
+  // The requested model never becomes observed evidence: the adapter reports
+  // only what the stream returned.
+  expect(JSON.stringify(events.at(-1))).not.toContain("deepseek-v4-pro");
 });
 
 test("a provider-returned flash model mismatches requested and constructed pro with no fallback", async () => {
@@ -633,7 +693,7 @@ test("forwards a model tool call as one typed operation port event with the kind
         expectedWorktreeHead: "1".repeat(40),
       },
     },
-    { kind: "finish", usage: FLAT_USAGE_PASSTHROUGH },
+    { kind: "finish", provider: "deepseek", model: "deepseek-v4-pro", usage: FLAT_USAGE_PASSTHROUGH },
   ]);
 });
 
