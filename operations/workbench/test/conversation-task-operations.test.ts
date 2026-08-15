@@ -17,6 +17,7 @@ import {
   ConversationOperationHostError,
   createConversationTaskOperationHost,
 } from "../src/conversation/operations";
+import { resolveBoundWorktree, verifyCleanStatus } from "../src/task-run";
 import type { ConversationOperation } from "../../autonomy/src/conversation-coordinator";
 
 const temporaryRoots: string[] = [];
@@ -237,6 +238,73 @@ describe("ConversationTaskOperationHost task_create", () => {
     }
     const tasks = loadPrincipalTasks(host.home).tasks;
     expect(tasks).toHaveLength(0);
+  });
+});
+
+describe("ConversationTaskOperationHost P7 F1 runnable create prevention", () => {
+  test("a primary-workspace create fails as task-not-runnable with zero Task mutation", () => {
+    const { host, primary, primaryHead } = fixture();
+    const attempt = input(host, currentCreateOperation({
+      worktree: primary,
+      primaryHead,
+      worktreeHead: primaryHead,
+    }));
+
+    try {
+      host.executeOperation(attempt);
+      throw new Error("expected the primary workspace create to be refused");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConversationOperationHostError);
+      expect((error as ConversationOperationHostError).code).toBe("task-not-runnable");
+    }
+    expect(loadPrincipalTasks(host.home).tasks).toHaveLength(0);
+  });
+
+  test("a dirty linked-Worktree create fails as worktree-dirty with zero Task mutation", () => {
+    const { host, primary, primaryHead } = fixture();
+    const dirty = join(primary, "..", "dirty-worktree");
+    git(primary, "worktree", "add", dirty);
+    writeFileSync(join(dirty, "uncommitted.md"), "dirty\n");
+    const attempt = input(host, currentCreateOperation({
+      worktree: dirty,
+      primaryHead,
+      worktreeHead: git(dirty, "rev-parse", "HEAD"),
+    }));
+
+    try {
+      host.executeOperation(attempt);
+      throw new Error("expected the dirty worktree create to be refused");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConversationOperationHostError);
+      expect((error as ConversationOperationHostError).code).toBe("worktree-dirty");
+    }
+    expect(loadPrincipalTasks(host.home).tasks).toHaveLength(0);
+  });
+
+  test("a clean linked-Worktree create settles with exact selectors that satisfy the existing continue preparation path", async () => {
+    const { host, primary, projectId, worktree, primaryHead, worktreeHead } = fixture();
+    const receipt = await host.executeOperation(input(
+      host,
+      currentCreateOperation({ worktree, primaryHead, worktreeHead }),
+    ));
+
+    const tasks = loadPrincipalTasks(host.home);
+    expect(tasks.tasks).toHaveLength(1);
+    const task = tasks.tasks[0]!;
+    expect(task.id).toBe(receipt.taskId);
+    expect(task.binding).toMatchObject({
+      kind: "project-context",
+      projectId,
+      worktreePath: realpathSync(worktree),
+    });
+    if (task.binding.kind !== "project-context" || task.binding.worktreePath === undefined) {
+      throw new Error("expected the created Task to be bound to a project Worktree");
+    }
+    expect(task.binding.worktreePath).not.toBe(realpathSync(primary));
+    // The exact continue preparation path (canonical binding re-validation
+    // plus the clean status check) accepts the created Task's selectors.
+    const bound = resolveBoundWorktree(host.home, projectId, task.binding.worktreePath);
+    expect(() => verifyCleanStatus(bound)).not.toThrow();
   });
 });
 

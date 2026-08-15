@@ -31,7 +31,10 @@ function fullInput(): ConversationPromptInput {
           status: "registered",
           primaryHead: "1".repeat(40),
           source: { ref: "workbench:state/projects.json", digest: PROJECT_DIGEST },
-          worktrees: [{ path: "/tmp/skills-dogfood", head: "1".repeat(40) }],
+          worktrees: [
+            { path: "/tmp/skills-dogfood", head: "1".repeat(40), role: "primary", clean: true },
+            { path: "/tmp/skills-dogfood/worktree", head: "2".repeat(40), role: "linked", clean: true },
+          ],
         },
       ],
       carriers: [{ id: "attempt-1", state: "running", runId: "run-1" }],
@@ -107,8 +110,15 @@ test("composes the six sections in fixed order and returns audit evidence", () =
     { source: "task:task-1", revision: "rev-3" },
     { source: "project:skills-dogfood", revision: "1".repeat(40) },
     { source: "worktree:/tmp/skills-dogfood", revision: "1".repeat(40) },
+    { source: "worktree:/tmp/skills-dogfood/worktree", revision: "2".repeat(40) },
     { source: "carrier:attempt-1", revision: "run-1" },
   ]);
+  // Section 2 renders each Worktree's exact role and clean standing beside
+  // the preserved path/head selectors.
+  expect(composed.prompt).toContain(
+    `worktrees: /tmp/skills-dogfood @ ${"1".repeat(40)} [primary, clean]`
+    + ` | /tmp/skills-dogfood/worktree @ ${"2".repeat(40)} [linked, clean]`,
+  );
 });
 
 test("is byte-identical for identical input and always renders the six fixed-order sections with bounded none bodies", () => {
@@ -254,6 +264,59 @@ test("the relation kernel is short and expresses owner, provisional, verificatio
   expect(RELATION_KERNEL_V1).toContain("provisional until settled");
   expect(RELATION_KERNEL_V1).toContain("Verification is separate from production");
   expect(RELATION_KERNEL_V1).toContain("acceptance is the Principal's explicit act");
+});
+
+test("a worktree projection requires an exact role and clean standing and renders both", () => {
+  const input = fullInput();
+  input.projection = {
+    projects: [
+      {
+        name: "skills-dogfood",
+        id: "skills-dogfood",
+        status: "registered",
+        primaryHead: "1".repeat(40),
+        worktrees: [
+          { path: "/tmp/skills-dogfood", head: "1".repeat(40), role: "primary", clean: true },
+          { path: "/tmp/skills-dogfood/run-a", head: "2".repeat(40), role: "linked", clean: false },
+        ],
+      },
+    ],
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain(
+    `worktrees: /tmp/skills-dogfood @ ${"1".repeat(40)} [primary, clean]`
+    + ` | /tmp/skills-dogfood/run-a @ ${"2".repeat(40)} [linked, dirty]`,
+  );
+
+  // A Worktree without its exact role or clean standing is rejected, never defaulted.
+  const missingRole = fullInput();
+  missingRole.projection = {
+    projects: [
+      {
+        name: "skills-dogfood",
+        id: "skills-dogfood",
+        status: "registered",
+        primaryHead: "1".repeat(40),
+        worktrees: [{ path: "/tmp/skills-dogfood", head: "1".repeat(40), clean: true }],
+      },
+    ],
+  } as unknown as typeof missingRole.projection;
+  expect(() => composeConversationPrompt(missingRole)).toThrow();
+
+  const missingClean = fullInput();
+  missingClean.projection = {
+    projects: [
+      {
+        name: "skills-dogfood",
+        id: "skills-dogfood",
+        status: "registered",
+        primaryHead: "1".repeat(40),
+        worktrees: [{ path: "/tmp/skills-dogfood", head: "1".repeat(40), role: "linked" }],
+      },
+    ],
+  } as unknown as typeof missingClean.projection;
+  expect(() => composeConversationPrompt(missingClean)).toThrow();
 });
 
 test("rejects non-strict input", () => {

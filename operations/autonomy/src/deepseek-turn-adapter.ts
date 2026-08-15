@@ -75,8 +75,8 @@ export const conversationOperationTools: Record<
 > = {
   task_create: tool({
     description: [
-      "Form one new local obligation. Copy the exact registered project ID, expected current-primary head, exact observed Worktree path, and expected Worktree head from the current projection; never invent or guess any of them.",
-      "If the message names no project or Worktree, or the route is ambiguous, unregistered, merely discovered, or stale, do not call this tool; ask for the missing judgment instead.",
+      "Form one new local obligation. Copy the exact registered project ID and expected current-primary head from the current projection, and the exact path and head of one clean linked Worktree of that project; never invent or guess any of them, and never select the primary workspace or a dirty, stale, or unobserved Worktree.",
+      "If the message names no project, or the projection shows no clean linked Worktree, do not call this tool; answer with what you know and ask for the missing judgment instead.",
     ].join(" "),
     inputSchema: TaskCreateOperationSchema.omit({ kind: true }),
   }),

@@ -1610,7 +1610,7 @@ test("the projection provider result flows into the turn owner preparation", asy
         id: "fixture-project",
         status: "registered",
         primaryHead: "1".repeat(40),
-        worktrees: [{ path: "/tmp/fixture-worktree", head: "1".repeat(40) }],
+        worktrees: [{ path: "/tmp/fixture-worktree", head: "1".repeat(40), role: "linked", clean: true }],
       }],
     }),
     buildChildren: async () => [],

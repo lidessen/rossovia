@@ -683,6 +683,36 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
       operation.worktreePath,
       operation.expectedWorktreeHead,
     );
+    let primaryReal: string;
+    try {
+      primaryReal = realpathSync(primaryWorkspace);
+    } catch (error) {
+      throw new ConversationOperationHostError(
+        "project-unresolved",
+        `the registered project's primary workspace path cannot be resolved: ${errorMessage(error)}`,
+      );
+    }
+    if (canonicalWorktree === primaryReal) {
+      throw new ConversationOperationHostError(
+        "task-not-runnable",
+        `task ${operation.projectId} must use an isolated Worktree rather than the primary workspace; the action has no effect`,
+      );
+    }
+    let statusOutput: string;
+    try {
+      statusOutput = requiredGit(["status", "--porcelain"], canonicalWorktree) ?? "";
+    } catch (error) {
+      throw new ConversationOperationHostError(
+        "worktree-unobserved",
+        `the observed Worktree's clean status cannot be read: ${errorMessage(error)}`,
+      );
+    }
+    if (statusOutput.trim().length > 0) {
+      throw new ConversationOperationHostError(
+        "worktree-dirty",
+        `task Worktree is not clean: ${canonicalWorktree}`,
+      );
+    }
     const tasks = loadPrincipalTasks(this.home);
     const result = createPrincipalTask(this.home, {
       title: operation.title,

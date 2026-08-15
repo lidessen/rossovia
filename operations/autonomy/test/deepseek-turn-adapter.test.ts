@@ -577,6 +577,18 @@ test("the work_control tool advertises exact live-carrier stop-only semantics, n
   expect(description).not.toMatch(/not yet available|do not call|unavailable/i);
 });
 
+test("the task_create tool requires one clean linked Worktree from the projection and abstains when none exists", () => {
+  const description = conversationOperationTools.task_create.description;
+  expect(description).toContain("clean linked Worktree");
+  expect(description).toContain("never select the primary workspace");
+  expect(description).toContain("dirty, stale, or unobserved Worktree");
+  expect(description).toContain("no clean linked Worktree");
+  expect(description).toContain("ask for the missing judgment");
+  // The tool is a typed selector contract, never a prose classifier or
+  // fixed-phrase route.
+  expect(description).not.toMatch(/keyword|fixed phrase|regex/i);
+});
+
 test("forwards a model tool call as one typed operation port event with the kind restored", async () => {
   const adapter = createDeepSeekTurnAdapter({
     apiKey: "test-key",
