@@ -1,4 +1,5 @@
 import { AiSdkValidationDriver, type AiSdkDriverOptions } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { PiHarnessCellDriver } from "../../../packages/work-cell/src/pi-harness-driver";
 import {
   DEEPSEEK_PROVIDER_ID,
   DeepSeekInferencePolicySchema,
@@ -106,14 +107,22 @@ export function createCurrentWorkerCatalog(
   const [deepseekFlash, deepseekPro, kimi] = currentWorkerCards(environment);
   return new WorkerCatalog([
     {
+      // The ordinary production driver: the pinned Pi harness adapter inside
+      // Vercel AI SDK's HarnessAgent, with every Pi built-in tool disabled
+      // and only the host-executed Work Cell tool surface visible. The exact
+      // worker execution profile is mapped into the Pi adapter explicitly;
+      // an unresolvable provider/model fails closed, never falls back to a
+      // Pi default.
       card: deepseekFlash!,
-      createDriver: () => new AiSdkValidationDriver(deepSeekDriverOptions(deepseekFlash!, environment)),
+      createDriver: () => new PiHarnessCellDriver(deepSeekDriverOptions(deepseekFlash!, environment)),
     },
     {
       card: deepseekPro!,
-      createDriver: () => new AiSdkValidationDriver(deepSeekDriverOptions(deepseekPro!, environment)),
+      createDriver: () => new PiHarnessCellDriver(deepSeekDriverOptions(deepseekPro!, environment)),
     },
     {
+      // OpenCode Go stays an AI SDK provider, not a harness: the Kimi worker
+      // keeps the general AI SDK validation driver.
       card: kimi!,
       createDriver: () => new AiSdkValidationDriver({
         route: [{

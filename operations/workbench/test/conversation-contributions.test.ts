@@ -248,6 +248,92 @@ function cliPath(): string {
   return join(import.meta.dir, "../src/cli.ts");
 }
 
+/** The exact durable lease binding retained by a settled effectful spawn reservation. */
+interface ReconcileLeaseBinding {
+  path: string;
+  worktree: string;
+  taskId: string;
+  attemptId: string;
+}
+
+/** One settled effectful contribution plus its reservation-derived lease binding and one bounded CLI launcher. */
+interface ReconcileCliScenario {
+  readonly home: string;
+  readonly conversationId: string;
+  readonly batchId: string;
+  readonly key: string;
+  readonly binding: ReconcileLeaseBinding;
+  readonly leasePath: string;
+  reconcile(batchId: string, key: string): { exitCode: number; stdout: string };
+  writeLease(record: Record<string, unknown>): void;
+}
+
+/** A crash-retained lease record with the given recorded owner pid. */
+function crashRetainedLease(binding: ReconcileLeaseBinding, pid: number): Record<string, unknown> {
+  return {
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree: binding.worktree,
+    taskId: binding.taskId,
+    attemptId: binding.attemptId,
+    pid,
+    acquiredAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Each reconcile CLI story owns its fixture and launches the production
+ * ordinary CLI exactly once, so no single test aggregates the launcher
+ * startup cost into one default time budget.
+ */
+async function reconcileCliScenario(key: string): Promise<ReconcileCliScenario> {
+  const fixture_ = fixture();
+  const registry = createConversationContributionRegistry(fixture_.home, {
+    catalog: fakeCatalog(),
+  });
+  const conversationId = randomUUID();
+  await seedTaskAction(fixture_.home, conversationId, fixture_);
+  const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+  const receipt = await registry.spawn(spawnInput(
+    actor,
+    spawnOperation({ key, effectKind: "effectful" }),
+  ));
+  await waitFor(async () => {
+    const projections = await registry.listContributions(conversationId);
+    return projections.every((entry) => entry.state === "settled");
+  }, `${key} contribution settles`);
+  const reservationPath = join(
+    contributionStateDirectory(fixture_.home, conversationId),
+    `spawn-${actor.actionId}.json`,
+  );
+  const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+  const binding = spawnRecord.lease as unknown as ReconcileLeaseBinding;
+  return {
+    home: fixture_.home,
+    conversationId,
+    batchId: receipt.batchId,
+    key,
+    binding,
+    leasePath: binding.path,
+    reconcile(batchId, keyToReconcile) {
+      const result = Bun.spawnSync([
+        process.execPath,
+        cliPath(),
+        "--home",
+        fixture_.home,
+        "contribution",
+        "reconcile-lease",
+        conversationId,
+        batchId,
+        keyToReconcile,
+      ], { stdout: "pipe", stderr: "pipe" });
+      return { exitCode: result.exitCode, stdout: result.stdout.toString() };
+    },
+    writeLease(record) {
+      writeFileSync(binding.path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    },
+  };
+}
+
 /**
  * The bounded child script run by the truly concurrent two-process
  * effectful regression: it spawns the exact committed action against the
@@ -1728,132 +1814,70 @@ describe("conversation temporary contributions", () => {
     }, "the ordered-durability contribution settles");
   });
 
-  test("the contribution reconcile-lease CLI command is the production recovery owner", async () => {
-    const fixture_ = fixture();
-    const registry = createConversationContributionRegistry(fixture_.home, {
-      catalog: fakeCatalog(),
+  describe("the contribution reconcile-lease CLI command is the production recovery owner", () => {
+    test("releases a crash-retained lease whose recorded owner is verifiably absent", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      scenario.writeLease(crashRetainedLease(scenario.binding, 999_999_999));
+      const released = scenario.reconcile(scenario.batchId, scenario.key);
+      expect(released.exitCode).toBe(0);
+      expect(JSON.parse(released.stdout).outcome).toBe("released");
+      expect(existsSync(scenario.leasePath)).toBe(false);
     });
-    const conversationId = randomUUID();
-    await seedTaskAction(fixture_.home, conversationId, fixture_);
-    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
-    const receipt = await registry.spawn(spawnInput(
-      actor,
-      spawnOperation({ key: "cli-writer", effectKind: "effectful" }),
-    ));
-    await waitFor(async () => {
-      const projections = await registry.listContributions(conversationId);
-      return projections.every((entry) => entry.state === "settled");
-    }, "contribution settles");
 
-    const reservationPath = join(
-      contributionStateDirectory(fixture_.home, conversationId),
-      `spawn-${actor.actionId}.json`,
-    );
-    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
-    const binding = spawnRecord.lease as Record<string, unknown>;
-    const leasePath = String(binding.path);
-    const reconcile = (): { exitCode: number; stdout: string } => {
-      const result = Bun.spawnSync([
-        process.execPath,
-        cliPath(),
-        "--home",
-        fixture_.home,
-        "contribution",
-        "reconcile-lease",
-        conversationId,
-        receipt.batchId,
-        "cli-writer",
-      ], { stdout: "pipe", stderr: "pipe" });
-      return { exitCode: result.exitCode, stdout: result.stdout.toString() };
-    };
-
-    // A crash-retained lease with a verifiably absent owner is released by
-    // the CLI command, which re-enables a fresh effectful contribution.
-    writeFileSync(leasePath, `${JSON.stringify({
-      version: "rosso.task-run-worktree-lease.v1",
-      worktree: binding.worktree,
-      taskId: binding.taskId,
-      attemptId: binding.attemptId,
-      pid: 999_999_999,
-      acquiredAt: new Date().toISOString(),
-    }, null, 2)}\n`, "utf8");
-    const released = reconcile();
-    expect(released.exitCode).toBe(0);
-    expect(JSON.parse(released.stdout).outcome).toBe("released");
-    expect(existsSync(leasePath)).toBe(false);
-
-    // An already-absent lease reports not-retained, never re-acquired.
-    const absent = reconcile();
-    expect(JSON.parse(absent.stdout).outcome).toBe("not-retained");
-
-    // A live owner fails closed through the CLI.
-    writeFileSync(leasePath, `${JSON.stringify({
-      version: "rosso.task-run-worktree-lease.v1",
-      worktree: binding.worktree,
-      taskId: binding.taskId,
-      attemptId: binding.attemptId,
-      pid: process.pid,
-      acquiredAt: new Date().toISOString(),
-    }, null, 2)}\n`, "utf8");
-    const live = reconcile();
-    expect(live.exitCode).toBe(0);
-    expect(JSON.parse(live.stdout).outcome).toBe("refused");
-
-    // A mismatched owner identity fails closed through the CLI.
-    writeFileSync(leasePath, `${JSON.stringify({
-      version: "rosso.task-run-worktree-lease.v1",
-      worktree: binding.worktree,
-      taskId: binding.taskId,
-      attemptId: "another-attempt",
-      pid: 999_999_999,
-      acquiredAt: new Date().toISOString(),
-    }, null, 2)}\n`, "utf8");
-    const mismatch = reconcile();
-    expect(JSON.parse(mismatch.stdout).outcome).toBe("refused");
-
-    // An unreadable lease fails closed through the CLI, never guessed.
-    writeFileSync(leasePath, "not-json-bytes", "utf8");
-    const unreadable = reconcile();
-    expect(JSON.parse(unreadable.stdout).outcome).toBe("refused");
-
-    // An unknown batch/key is refused.
-    const unknown = Bun.spawnSync([
-      process.execPath,
-      cliPath(),
-      "--home",
-      fixture_.home,
-      "contribution",
-      "reconcile-lease",
-      conversationId,
-      randomUUID(),
-      "never-formed",
-    ], { stdout: "pipe", stderr: "pipe" });
-    expect(JSON.parse(unknown.stdout.toString()).outcome).toBe("refused");
-
-    // A dead exact owner release through the CLI re-enables a fresh
-    // effectful contribution on the same Task/Worktree.
-    writeFileSync(leasePath, `${JSON.stringify({
-      version: "rosso.task-run-worktree-lease.v1",
-      worktree: binding.worktree,
-      taskId: binding.taskId,
-      attemptId: binding.attemptId,
-      pid: 999_999_999,
-      acquiredAt: new Date().toISOString(),
-    }, null, 2)}\n`, "utf8");
-    const finalRelease = reconcile();
-    expect(JSON.parse(finalRelease.stdout).outcome).toBe("released");
-    const replacementRegistry = createConversationContributionRegistry(fixture_.home, {
-      catalog: fakeCatalog(),
+    test("reports not-retained for an already-absent lease and never re-acquires", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      const absent = scenario.reconcile(scenario.batchId, scenario.key);
+      expect(JSON.parse(absent.stdout).outcome).toBe("not-retained");
     });
-    const replacement = await replacementRegistry.spawn(spawnInput(
-      { conversationId, turnId: randomUUID(), actionId: randomUUID() },
-      spawnOperation({ key: "cli-replacement", effectKind: "effectful" }),
-    ));
-    expect(replacement.effectKind).toBe("effectful");
-    await waitFor(async () => {
-      const projections = await replacementRegistry.listContributions(conversationId);
-      return projections.find((entry) => entry.batchId === replacement.batchId)?.state === "settled";
-    }, "the CLI-recovered contribution settles");
+
+    test("fails closed while the recorded owner process is still alive", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      scenario.writeLease(crashRetainedLease(scenario.binding, process.pid));
+      const live = scenario.reconcile(scenario.batchId, scenario.key);
+      expect(live.exitCode).toBe(0);
+      expect(JSON.parse(live.stdout).outcome).toBe("refused");
+    });
+
+    test("fails closed on a mismatched owner identity", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      scenario.writeLease(crashRetainedLease({ ...scenario.binding, attemptId: "another-attempt" }, 999_999_999));
+      const mismatch = scenario.reconcile(scenario.batchId, scenario.key);
+      expect(JSON.parse(mismatch.stdout).outcome).toBe("refused");
+    });
+
+    test("fails closed on an unreadable lease without guessing", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      writeFileSync(scenario.leasePath, "not-json-bytes", "utf8");
+      const unreadable = scenario.reconcile(scenario.batchId, scenario.key);
+      expect(JSON.parse(unreadable.stdout).outcome).toBe("refused");
+    });
+
+    test("refuses an unknown batch/key through the real CLI", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      const unknown = scenario.reconcile(randomUUID(), "never-formed");
+      expect(JSON.parse(unknown.stdout).outcome).toBe("refused");
+    });
+
+    test("the exact dead-owner release re-enables a fresh effectful contribution", async () => {
+      const scenario = await reconcileCliScenario("cli-writer");
+      scenario.writeLease(crashRetainedLease(scenario.binding, 999_999_999));
+      const finalRelease = scenario.reconcile(scenario.batchId, scenario.key);
+      expect(JSON.parse(finalRelease.stdout).outcome).toBe("released");
+      expect(existsSync(scenario.leasePath)).toBe(false);
+
+      const replacementRegistry = createConversationContributionRegistry(scenario.home, {
+        catalog: fakeCatalog(),
+      });
+      const replacement = await replacementRegistry.spawn(spawnInput(
+        { conversationId: scenario.conversationId, turnId: randomUUID(), actionId: randomUUID() },
+        spawnOperation({ key: "cli-replacement", effectKind: "effectful" }),
+      ));
+      expect(replacement.effectKind).toBe("effectful");
+      await waitFor(async () => {
+        const projections = await replacementRegistry.listContributions(scenario.conversationId);
+        return projections.find((entry) => entry.batchId === replacement.batchId)?.state === "settled";
+      }, "the CLI-recovered contribution settles");
+    });
   });
 
   test("dependsOn admits only durably settled dependencies at the current Task revision", async () => {

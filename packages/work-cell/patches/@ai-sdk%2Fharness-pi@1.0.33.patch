@@ -1,0 +1,24 @@
+diff --git a/dist/index.js b/dist/index.js
+index 8f4e6cbc53348a5b4b55a991ce1ca3ea63dc59c6..b9e03abd5ac3f9cffad9f4beea1499c2d9002674 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1862,6 +1862,7 @@ async function createPiSession(input) {
+     // The model Pi actually resolves to (the configured id, or its default when
+     // unset) — `gen_ai.request.model`.
+     ...resolvedModel?.id ? { modelId: resolvedModel.id } : {},
++    getSessionStats: () => piSession?.getSessionStats(),
+     // Pi has no bridge to attach to and no on-disk event log to replay; its
+     // only resume path is restoring the session file on a fresh/snapshotted
+     // sandbox, i.e. `rerun`.
+diff --git a/src/pi-session.ts b/src/pi-session.ts
+index c3b481f8a606817ecb4687e760cb1e6e81ebb402..ff0a9f2522743c29240962a540ccb24f35e419ef 100644
+--- a/src/pi-session.ts
++++ b/src/pi-session.ts
+@@ -789 +789,3 @@ export async function createPiSession(
+-  const sessionImpl: HarnessV1Session = {
++  const sessionImpl: HarnessV1Session & {
++    getSessionStats: () => ReturnType<AgentSession['getSessionStats']> | undefined;
++  } = {
+@@ -794 +796,2 @@ export async function createPiSession(
+     ...(resolvedModel?.id ? { modelId: resolvedModel.id } : {}),
++    getSessionStats: () => piSession?.getSessionStats(),

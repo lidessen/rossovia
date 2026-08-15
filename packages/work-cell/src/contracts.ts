@@ -249,6 +249,10 @@ export interface CellRunRecord {
   executionObservation: {
     /** Actual harness-observed session id when the driver executes through a resumable session. */
     sessionId?: string;
+    /** Actual provider backend fingerprint observed in the provider response, when the provider emitted one. */
+    providerFingerprint?: string;
+    /** Truthful standing for the provider fingerprint observation; never fabricated or hashed from volatile data. */
+    providerFingerprintStanding?: ProviderFingerprintStanding;
     workEstimateId?: string;
     executionProfileId?: string;
     priceRevision?: string;
@@ -297,6 +301,28 @@ export interface DriverDescriptor {
     revision?: string;
   };
 }
+
+/**
+ * Truthful provider-fingerprint evidence standing. An observed provider
+ * backend fingerprint is retained verbatim and carries no reason; when the
+ * provider (or the driver path) exposes none, the record retains an explicit
+ * `unavailable` standing with a required nonempty reason instead of silence
+ * that could be misread as a verified match. The reason contract is
+ * structural, not a runCell convention: `unavailable` without a nonempty
+ * reason never parses, and `observed` with a reason never parses. Nothing is
+ * fabricated and no volatile session/response data is hashed into an identity.
+ */
+export const ProviderFingerprintStandingSchema = z.discriminatedUnion("standing", [
+  z.object({
+    standing: z.literal("observed"),
+  }).strict(),
+  z.object({
+    standing: z.literal("unavailable"),
+    reason: z.string().min(1),
+  }).strict(),
+]);
+
+export type ProviderFingerprintStanding = z.infer<typeof ProviderFingerprintStandingSchema>;
 
 export const CellRunRecordSchema = z.object({
   version: z.literal(WORK_CELL_RECORD_VERSION),
@@ -364,10 +390,28 @@ export const CellRunRecordSchema = z.object({
   }).strict(),
   executionObservation: z.object({
     sessionId: z.string().min(1).optional(),
+    providerFingerprint: z.string().min(1).optional(),
+    providerFingerprintStanding: ProviderFingerprintStandingSchema.optional(),
     workEstimateId: z.string().min(1).optional(),
     executionProfileId: z.string().min(1).optional(),
     priceRevision: z.string().min(1).optional(),
-  }).strict(),
+  }).strict().superRefine((observation, context) => {
+    const standing = observation.providerFingerprintStanding?.standing;
+    if (standing === "observed" && observation.providerFingerprint === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["providerFingerprint"],
+        message: "an observed provider fingerprint standing requires the retained fingerprint value",
+      });
+    }
+    if (standing === "unavailable" && observation.providerFingerprint !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["providerFingerprintStanding"],
+        message: "an unavailable provider fingerprint standing cannot carry a fingerprint value",
+      });
+    }
+  }),
   estimatedCostUsd: z.number().nonnegative().optional(),
   estimateBasis: z.string().min(1).optional(),
   trace: z.array(z.object({

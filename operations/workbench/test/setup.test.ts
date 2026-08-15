@@ -278,7 +278,7 @@ describe("user-level setup reconciliation", () => {
     expect(existsSync(join(source, "operations", "autonomy"))).toBe(false);
     const help = workbench(source, home, "--help");
     expect(help.exitCode).toBe(0);
-    expect(help.stdout).toContain("task run <id> --worker <worker-id> [--continue]");
+    expect(help.stdout).toContain("task run <id> --worker <worker-id> [--continue <attempt-id>]");
     const initialized = workbench(
       source,
       home,

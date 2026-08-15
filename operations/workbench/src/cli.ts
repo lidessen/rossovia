@@ -60,7 +60,7 @@ try {
   if (helpText !== undefined) {
     console.log(helpText);
   } else {
-    dispatchCommand(home, args);
+    await dispatchCommand(home, args);
   }
 } catch (error: unknown) {
   const recovery = error instanceof LocalTaskControlError ? error.recovery : undefined;
@@ -82,7 +82,7 @@ function helpPathSuffix(helpPath: readonly string[]): string {
   return helpPath.length === 0 ? "" : ` ${helpPath.join(" ")}`;
 }
 
-function dispatchCommand(home: string | undefined, args: string[]): void {
+async function dispatchCommand(home: string | undefined, args: string[]): Promise<void> {
   const command = args[0];
   if (command === undefined) throw new UsageError("no command given", []);
   if (command === "--version") {
@@ -136,7 +136,7 @@ function dispatchCommand(home: string | undefined, args: string[]): void {
       dispatchContribution(home, args);
       return;
     case "task":
-      console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
+      console.log(JSON.stringify(await runTaskCli(home, args.slice(1)), null, 2));
       return;
     case "mission": {
       console.log(JSON.stringify(runMissionCommand(args.slice(1)), null, 2));
@@ -359,7 +359,7 @@ function runContributionReconcileLeaseCli(
   return registry.reconcileLease({ conversationId, batchId, key });
 }
 
-function runTaskCli(home: string | undefined, raw: string[]): unknown {
+async function runTaskCli(home: string | undefined, raw: string[]): Promise<unknown> {
   const controlPlane = createLocalTaskControlPlane(home);
   const command = raw[0];
   if (!command) throw new UsageError("task requires a subcommand", ["task"]);
@@ -367,7 +367,7 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
     throw new UsageError(`unknown task command: ${command}`, ["task"]);
   }
   try {
-    return dispatchTaskCommand(controlPlane, home, command, raw);
+    return await dispatchTaskCommand(controlPlane, home, command, raw);
   } catch (error: unknown) {
     if (error instanceof ParseUsageError) {
       throw new UsageError(error.message, ["task", command], { cause: error });
@@ -376,12 +376,12 @@ function runTaskCli(home: string | undefined, raw: string[]): unknown {
   }
 }
 
-function dispatchTaskCommand(
+async function dispatchTaskCommand(
   controlPlane: ReturnType<typeof createLocalTaskControlPlane>,
   home: string | undefined,
   command: string,
   raw: string[],
-): unknown {
+): Promise<unknown> {
   if (command === "list") {
     if (raw.length !== 1) throw new ParseUsageError("task list accepts no arguments");
     return controlPlane.list();
@@ -443,15 +443,17 @@ function dispatchTaskCommand(
     const parsed = parseTaskOptions(
       raw.slice(1),
       1,
-      new Set(["--worker"]),
+      new Set(["--worker", "--continue"]),
       new Set(),
-      new Set(["--continue"]),
+      new Set(),
     );
     assertTaskOptions(parsed, new Set(["--worker", "--continue"]));
-    return runPrincipalTask(home, {
+    return await runPrincipalTask(home, {
       id: parsed.positionals[0]!,
       workerId: taskOption(parsed, "--worker"),
-      ...(parsed.values.has("--continue") ? { continueRun: true } : {}),
+      ...(parsed.values.has("--continue")
+        ? { continueFromAttemptId: taskOption(parsed, "--continue") }
+        : {}),
     });
   }
 

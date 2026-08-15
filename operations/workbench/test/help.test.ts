@@ -96,7 +96,7 @@ describe("Rossovia CLI help contract", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stderr).toBe("");
     expect(help.stdout).toContain("usage: rossovia [--home PATH] <command>");
-    expect(help.stdout).toContain("task run <id> --worker <worker-id> [--continue]");
+    expect(help.stdout).toContain("task run <id> --worker <worker-id> [--continue <attempt-id>]");
     expect(help.stdout).toContain("mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ...");
     expect(help.stdout).toContain("hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop]");
     expect(help.stdout).toContain("run 'rossovia help <command>' for per-command usage");
