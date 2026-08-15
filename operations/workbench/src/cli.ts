@@ -139,10 +139,7 @@ function dispatchCommand(home: string | undefined, args: string[]): void {
       console.log(JSON.stringify(runTaskCli(home, args.slice(1)), null, 2));
       return;
     case "mission": {
-      const result = runMissionCommand(args.slice(1));
-      if (result !== undefined) {
-        console.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
-      }
+      console.log(JSON.stringify(runMissionCommand(args.slice(1)), null, 2));
       return;
     }
     case "intervention":

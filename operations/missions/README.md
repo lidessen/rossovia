@@ -57,6 +57,40 @@ can close only with one of `integrate`, `no-change`, or `abandon` plus a
 `mainlineDelta`. A useful but unfinished branch stays `suspended` and names its
 reactivation signal; it cannot disappear as “done”.
 
+The mission root defaults to `<cwd>/operations/missions`, resolved to an
+absolute path at invocation time. `--root <path>` overrides it through exactly
+one of two family slots: one leading pair before the subcommand
+(`mission --root <path> <verb> ...`) or one final pair after all verb
+arguments (`mission <verb> ... --root <path>`). Mission records are Git-tracked
+in the repository; the Workbench `--home` (ROSSO_HOME) never relocates them.
+Run `rossovia help mission` or `rossovia mission <verb> --help` for the exact
+grammar.
+
+Every successful mission command prints one JSON object on stdout with empty
+stderr. Mutating verbs (`init`, `add-branch`, `focus`, `suspend`, `resume`,
+`settle`, `close`, `prune`) print a receipt naming the action, exact mission,
+resolved root, record path, and resulting state:
+
+```json
+{
+  "action": "init",
+  "mission": "founding",
+  "root": "/abs/repo/operations/missions",
+  "path": "/abs/repo/operations/missions/founding.json",
+  "status": {
+    "id": "founding",
+    "mainline": "active",
+    "currentFocus": "mainline",
+    "openBranches": []
+  }
+}
+```
+
+Migration note: earlier revisions printed a bare record path for
+`init`/`prune` and nothing for the other mutations. Scripts should read the
+receipt's `path` field instead of the old bare stdout, and may treat empty
+stdout as a failure, not as silent success.
+
 Before a material safe point—switching focus, opening/merging a PR, or reporting
 phase completion—run `status`. A mission can settle only when all its branches
 have returned. `close` retains closure sources in the record. After that state
