@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { HELP } from "../src/help";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
+const launcher = join(repositoryRoot, "operations", "workbench", "rossovia");
 const manifest = JSON.parse(
   await Bun.file(join(repositoryRoot, "operations", "workbench", "package.json")).text(),
 ) as { name: string; version: string };
@@ -33,7 +33,7 @@ function command(
 }
 
 function cliRun(args: string[], options: { cwd?: string; stdin?: string } = {}) {
-  return command([process.execPath, cli, ...args], options);
+  return command([launcher, ...args], options);
 }
 
 function temporary(): string {
