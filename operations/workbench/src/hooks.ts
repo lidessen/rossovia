@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { UsageError } from "./cli-errors";
 import { runInterventionCommand } from "./interventions";
 
 type Platform = "codex" | "claude" | "cursor";
@@ -59,9 +60,16 @@ export function runHookCommand(raw: string[], stdin: string, homeArgument?: stri
   }
 }
 
+/**
+ * Platform selection runs before the fallback region and is part of the
+ * CLI usage surface: a missing or invalid platform is a typed usage error
+ * pointing at `rossovia help hook`. Once a valid platform is selected,
+ * every later failure keeps the existing JSON/systemMessage or cursor
+ * exit-0 fallback.
+ */
 function platformValue(value: string | undefined): Platform {
   if (value === "codex" || value === "claude" || value === "cursor") return value;
-  throw new Error("hook platform must be codex, claude, or cursor");
+  throw new UsageError("hook platform must be codex, claude, or cursor", ["hook"]);
 }
 
 function artifactEvent(value: string | undefined): ArtifactEvent {

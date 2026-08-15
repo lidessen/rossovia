@@ -144,6 +144,9 @@ function usageCases(): Array<{ args: string[]; helpPath: string[] }> {
     { args: ["intervention", "status", "--state-root", "/tmp"], helpPath: ["intervention", "status"] },
     { args: ["correct"], helpPath: ["correct"] },
     { args: ["correct", "--bad", "x"], helpPath: ["correct"] },
+    { args: ["hook"], helpPath: ["hook"] },
+    { args: ["hook", "intervention", "bogus"], helpPath: ["hook"] },
+    { args: ["hook", "artifact"], helpPath: ["hook"] },
     { args: ["statusline", "--bad", "x"], helpPath: ["statusline"] },
   ];
 }
@@ -371,10 +374,12 @@ describe("Rossovia CLI error taxonomy through the ordinary launcher", () => {
     expect(JSON.parse(intervention.stdout)).toEqual(expect.objectContaining({
       systemMessage: expect.stringContaining("Rossovia intervention unavailable"),
     }));
+    expect(intervention.stderr).not.toContain("for usage");
     const artifact = cli(["hook", "artifact", "cursor", "post-tool-use"], { stdin: "not-json" });
     expect(artifact.exitCode).toBe(0);
     expect(JSON.parse(artifact.stdout)).toEqual({});
     expect(artifact.stderr).toContain("Rossovia artifact unavailable");
+    expect(artifact.stderr).not.toContain("for usage");
   });
 
   test("the launcher keeps exit 127 with a clear message when Bun is absent", () => {
