@@ -19,6 +19,14 @@ The launcher fails clearly when Bun is unavailable; it does not fall back to a
 stale generated carrier. A future distribution may build release artifacts
 outside Git, but this repository does not yet define that distribution system.
 
+Top-level, family, and verb help each mark one effect label per executable
+path — `read-only`, `writes-state`, or `starts-work` — describing what the
+success path may do (`rossovia --help` prints the legend). The labels are
+descriptive, not authorization, preview, or atomicity promises: they serve
+help rendering only, and dispatch never reads them as a gate, a `--dry-run`,
+or execution control. Mixed families (for example `task` and `mission`) list
+each subcommand's label so an Agent can drill down to the exact verb.
+
 ## Principal Workbench MVP
 
 The human UI is the **Principal workspace** over that control plane. It is a

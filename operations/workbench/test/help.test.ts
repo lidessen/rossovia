@@ -80,14 +80,15 @@ describe("Rossovia CLI help contract", () => {
     const task = cliRun(["task", "--help"]);
     expect(task.exitCode).toBe(0);
     expect(task.stdout).toContain("usage: rossovia task <subcommand> [arguments]");
+    expect(task.stdout).toContain("effect: mixed — each subcommand's effect is shown below");
     expect(task.stdout).toContain("task subcommands:");
-    expect(task.stdout).toContain("create, list, show, attempts, reconcile-attempt, run");
+    expect(task.stdout).toContain("create (writes-state), list (read-only)");
     expect(task.stdout).toContain("run 'rossovia help task <subcommand>' for the full usage of one subcommand");
 
     const mission = cliRun(["help", "mission"]);
     expect(mission.exitCode).toBe(0);
     expect(mission.stdout).toContain("mission subcommands:");
-    expect(mission.stdout).toContain("init, list, add-branch, status, check, focus");
+    expect(mission.stdout).toContain("init (writes-state), list (read-only)");
   });
 
   test("top-level help keeps every command line and adds the help and version pointers", () => {

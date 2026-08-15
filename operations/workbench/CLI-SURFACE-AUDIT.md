@@ -206,7 +206,8 @@ Workbench browser UI validates task results before acceptance — the CLI
   update below.
 - **T5.** Read/effect boundary invisible: no `--dry-run`/`--check` forms, help
   does not mark mutating verbs. Repair: mark mutation in help; defer
-  `--dry-run` to owner as a semantic addition.
+  `--dry-run` to owner as a semantic addition. Implemented — see the update
+  below.
 - **T6.** `hook`/`statusline`/`intervention`/`correct` side channels
   (stdin payloads, `$TMPDIR` state, non-home state roots) are under-documented
   in the flat top-level help. Repair: per-command help (T1) with payload
@@ -269,6 +270,38 @@ section is the migration notice for consumers of the prior surface.
   bare `init`/`prune` path must read the receipt's `path` field instead, and
   scripts must stop treating empty stdout as silent success for mutating
   verbs.
+
+## T5 implementation update (post-audit)
+
+T5 is implemented at a Workbench head that follows the audited revision; the
+help surface now exposes one source-backed effect classification per
+executable verb path.
+
+- The shared help table in [`src/help.ts`](src/help.ts) carries one `effect`
+  label per verb — `read-only`, `writes-state`, or `starts-work` — classified
+  from each dispatch owner's source. `read-only` is reserved for success paths
+  that write no state and start or control no execution; `writes-state` marks
+  paths that may write Workbench home, session, managed, or Git-tracked
+  Mission state; `starts-work` marks `task run`, which may launch or resume a
+  worker execution (and writes its run state). A family's label is derived
+  from its subcommand verbs at render time, so a family can never disagree
+  with its own verbs.
+- Top-level, family, and verb help render the labels consistently and
+  compactly. Top-level help appends one `(label)` to every command line and
+  prints a three-line legend; mixed families are marked `(mixed)` and list
+  each subcommand's label, so an agent can drill down to the exact verb
+  without guessing. Verb help prints an `effect: <label>` line directly under
+  the usage line.
+- The labels describe the possible effect on the success path. They are not
+  authorization, a preview, a `--dry-run`, or an atomicity promise, and no
+  `--dry-run`/`--check` form was added. The classification serves help
+  rendering only — dispatch never reads it as a permission, gate, or
+  execution control, and no parser, stdout/stderr, exit-code, or domain
+  semantics changed outside the new help lines.
+- Classification notes: `hook artifact` writes its `$TMPDIR` consistency
+  state only when a payload carries relevant changed paths, so its label
+  reads `writes-state` (the success path may write) rather than promising
+  every success writes. `task run` is the only `starts-work` verb today.
 
 ## Verification of this audit
 
