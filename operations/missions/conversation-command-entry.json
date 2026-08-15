@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T09:16:19Z",
+  "updatedAt": "2026-08-15T16:55:03Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -159,8 +159,10 @@
         "principal:2026-08-15-ai-sdk-task-runtime-correction",
         "github:pull/127-frozen"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "PR #128 integrated exact candidate 09f7bff39c2f33a60b6421d22ae275d9ba2d859f as normal merge eaff35c84c04b6a14c08752fc5847431c3de6c9c: ordinary Task and conversation carrier now share the catalog-selected Vercel AI SDK HarnessAgent plus Pi runtime; OpenCode CLI is compatibility-only, with strict stateless lineage, requested/observed provider evidence, maxSteps usage retention, and generic host tools integrated. F1 PR #127 refresh/integration, final two-project browser DeepSeek dogfood, GLM/Harness trials, Principal Task acceptance, and whole Mission completion remain pending."
     }
   ],
-  "currentFocus": "ai-sdk-task-runtime"
+  "currentFocus": "mainline"
 }
