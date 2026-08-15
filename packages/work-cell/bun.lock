@@ -25,6 +25,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@ai-sdk/harness-pi@1.0.33": "patches/@ai-sdk%2Fharness-pi@1.0.33.patch",
+  },
   "packages": {
     "@ai-sdk/deepseek": ["@ai-sdk/deepseek@3.0.11", "", { "dependencies": { "@ai-sdk/provider": "4.0.3", "@ai-sdk/provider-utils": "5.0.10" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-QhJTD6SAIAtdwsneKbkdsq6dL6KMJdnjUrA4jry/QAK4YQsLJw5Bw3CZLQhnU3L2IwtjAksr+qp1NY+gOI6Nfw=="],
 
