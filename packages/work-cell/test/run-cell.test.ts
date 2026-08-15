@@ -102,6 +102,45 @@ class EmptyTaskProjectionDriver implements CellDriver {
   }
 }
 
+test("budget approval without an explicit finite maxSteps fails closed before execution", async () => {
+  const root = await mkdtemp(join(tmpdir(), "work-cell-run-maxsteps-"));
+  temporaryRoots.push(root);
+  let runs = 0;
+  const driver: CellDriver = {
+    descriptor: { adapter: "budget-control-fixture", provider: "deterministic", model: "fixture" },
+    budgetControl: "completed-step-v1",
+    async run(): Promise<DriverResult> {
+      runs += 1;
+      return {
+        terminalToolsCalled: [],
+        finalText: "should not run",
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+        rawSteps: [],
+      };
+    },
+  };
+  const input: CellInput = {
+    id: "run-cell-maxsteps-fixture",
+    intent: "Prove the explicit finite step policy requirement.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Do not run."],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["The run fails closed before execution."],
+    budget: { maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
+  };
+
+  await expect(runCell(input, driver, {
+    budgetApproval: () => ({ decision: "deny" }),
+    settlementReserveMs: 500,
+    hardLimitMs: 3_000,
+  })).rejects.toThrow(
+    "budgetApproval requires an explicit finite maxSteps policy on the Cell input",
+  );
+  expect(runs).toBe(0);
+});
+
 describe("provider fingerprint evidence", () => {
   async function fingerprintInput(): Promise<CellInput> {
     const root = await mkdtemp(join(tmpdir(), "work-cell-run-fingerprint-"));

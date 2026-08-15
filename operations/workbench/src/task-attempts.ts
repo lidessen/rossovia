@@ -464,9 +464,8 @@ export function readStrictTaskAttemptEvidence(
       if (input === undefined) {
         return "Work Cell final record cannot be verified without its immutable CellInput";
       }
-      if (!isDeepStrictEqual(candidate.input, input)) {
-        return "Work Cell final record embedded input does not match its immutable CellInput";
-      }
+      const inputCompatibility = legacyDefaultMaxStepsInputCompatibilityError(candidate.input, input);
+      if (inputCompatibility !== undefined) return inputCompatibility;
       if (
         input.executionProfile !== undefined
         && candidate.driver.provider !== input.executionProfile.provider
@@ -533,6 +532,35 @@ function adapterForAttemptDriver(driver: string): string | undefined {
   if (driver === "ai-sdk-v7") return "ai-sdk-v7";
   if (driver === "ai-sdk-harness-pi-v1") return "ai-sdk-harness-pi-v1";
   return undefined;
+}
+
+/**
+ * Narrow version-aware compatibility for exactly one legacy evidence
+ * relation: the former BudgetSchema default injected `maxSteps: 20` into the
+ * embedded final input while the immutable raw CellInput retained no own
+ * maxSteps. Only that pair is accepted — the raw budget omits maxSteps, the
+ * embedded final is otherwise identical and carries exactly `maxSteps: 20`.
+ * 19, 21, arbitrary added fields, or any other difference stays invalid, and
+ * nothing rewrites the historical bytes: the raw input remains without
+ * maxSteps and the final record keeps its injected value. General
+ * deep-equality is untouched for every other pair.
+ */
+export function legacyDefaultMaxStepsInputCompatibilityError(
+  finalInput: CellInput,
+  rawInput: CellInput,
+): string | undefined {
+  if (isDeepStrictEqual(finalInput, rawInput)) return undefined;
+  if (rawInput.budget.maxSteps !== undefined) {
+    return "Work Cell final record embedded input does not match its immutable CellInput";
+  }
+  if (finalInput.budget.maxSteps !== 20) {
+    return "Work Cell final record embedded input does not match its immutable CellInput";
+  }
+  const { maxSteps: _legacyDefault, ...restBudget } = finalInput.budget;
+  const withoutLegacyDefault: CellInput = { ...finalInput, budget: restBudget };
+  return isDeepStrictEqual(withoutLegacyDefault, rawInput)
+    ? undefined
+    : "Work Cell final record embedded input does not match its immutable CellInput";
 }
 
 /**

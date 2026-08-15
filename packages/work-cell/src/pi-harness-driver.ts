@@ -397,6 +397,7 @@ export class PiHarnessCellDriver implements CellDriver {
             if (decisionPoint) context.emit("budget.decision_point", { completedSafeStep: true });
           } else if (
             context.budgetControl === undefined
+            && input.budget.maxSteps !== undefined
             && completedSteps >= input.budget.maxSteps
             // The pinned harness-pi adapter translates every inferred
             // completed step — including tool-continuing steps — to a

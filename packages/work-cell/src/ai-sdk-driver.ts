@@ -133,7 +133,9 @@ export class AiSdkValidationDriver implements CellDriver {
       }),
       tools,
       stopWhen: [
-        ...(context.budgetControl ? [] : [isStepCount(input.budget.maxSteps)]),
+        ...(context.budgetControl || input.budget.maxSteps === undefined
+          ? []
+          : [isStepCount(input.budget.maxSteps)]),
         ...(terminalNames.length > 0 && !inlineOutputSchema ? [stopAfterAcceptedTerminal] : []),
         ...(context.budgetControl ? [stopAfterSettlementChoice] : []),
         stopAfterCancellation,
@@ -179,9 +181,12 @@ export class AiSdkValidationDriver implements CellDriver {
               }
               // A terminal-only Cell needs one final action turn. When an
               // independent structured output is also required, reserve a
-              // second tool-free turn for that result.
+              // second tool-free turn for that result. Applies only when the
+              // caller selected an explicit finite step policy; an omitted
+              // maxSteps never creates a hidden step deadline.
               const reservedSteps = inlineOutputSchema ? 2 : 1;
-              if (stepNumber >= input.budget.maxSteps - reservedSteps) {
+              if (input.budget.maxSteps !== undefined
+                && stepNumber >= input.budget.maxSteps - reservedSteps) {
                 terminalOnly = true;
                 return {
                   // Terminal tools are dynamically registered from the caller's

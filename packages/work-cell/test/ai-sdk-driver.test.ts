@@ -1020,6 +1020,88 @@ test("allows budget-control names as caller terminals when budget control is dis
   }
 });
 
+test("a no-maxSteps Cell completes more than 20 tool steps with no budget decision point or approval", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls <= 25) {
+        return response([{
+          type: "tool-call",
+          toolCallId: `read-${calls}`,
+          toolName: "read_file",
+          input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+        }], "tool-calls");
+      }
+      return response([{ type: "text", text: "Investigation completed." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-no-maxsteps-long",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "no-maxsteps-long-run",
+    intent: "Continue for as many tool steps as the work needs.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read repeatedly, then finish with one final report."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["More than twenty tool steps complete with a normal terminal and no budget approval."],
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(25);
+  expect(record.trace.filter((event) => event.type === "agent.step.finished")).toHaveLength(26);
+  expect(record.trace.some((event) => event.type === "budget.decision_point")).toBe(false);
+  expect(record.trace.some((event) => event.type === "budget.request")).toBe(false);
+  expect(record.trace.some((event) => event.type === "budget.approval")).toBe(false);
+  expect(record.trace.some((event) => event.type === "budget.choice.settle_now")).toBe(false);
+  expect(calls).toBe(26);
+});
+
+test("an explicit maxSteps stops the loop exactly at the declared step count", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      return response([{
+        type: "tool-call",
+        toolCallId: `read-${calls}`,
+        toolName: "read_file",
+        input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+      }], "tool-calls");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-explicit-maxsteps-stop",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "explicit-maxsteps-stop",
+    intent: "Stop exactly at the explicit finite step policy.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read until the declared step count ends the loop."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The loop stops exactly at the explicit maxSteps."],
+    budget: { maxSteps: 3, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("passed");
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(3);
+  expect(calls).toBe(3);
+});
+
 test("stops the main loop after one structured output step following a terminal call", async () => {
   const root = await fixture();
   let calls = 0;

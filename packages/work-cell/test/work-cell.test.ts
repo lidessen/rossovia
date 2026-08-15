@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CellInputSchema, CellRunRecordSchema, type CellInput, type CellUsage } from "../src/contracts";
+import { BudgetSchema, CellInputSchema, CellRunRecordSchema, type CellInput, type CellUsage } from "../src/contracts";
 import type {
   CellDriver,
   DriverContext,
@@ -253,6 +253,30 @@ describe("Work Cell core", () => {
       ...base,
       budget: { ...base.budget, maxTokens: 10_000 },
     })).toThrow("maxTokens");
+  });
+
+  test("an omitted maxSteps parses with no step-count stop condition and no hidden default", async () => {
+    const root = await fixture();
+    const base = input(root);
+    const budget = {
+      estimatedTokens: 10_000,
+      maxDurationMs: 10_000,
+      maxCommandOutputBytes: 4_000,
+    };
+
+    const parsedBudget = BudgetSchema.parse(budget);
+    expect(parsedBudget).not.toHaveProperty("maxSteps");
+
+    const parsed = CellInputSchema.parse({ ...base, budget });
+    expect(parsed.budget.maxSteps).toBeUndefined();
+    expect(parsed.budget).not.toHaveProperty("maxSteps");
+
+    // The CellInput-level default budget must not reintroduce a step limit
+    // either: an ordinary caller that omits the budget entirely still gets no
+    // hidden 20-step ceiling.
+    const defaulted = CellInputSchema.parse({ ...base, budget: undefined });
+    expect(defaulted.budget.maxSteps).toBeUndefined();
+    expect(defaulted.budget).not.toHaveProperty("maxSteps");
   });
 
   test("projects the retained trace while the cell is still running", async () => {
