@@ -304,16 +304,23 @@ export interface DriverDescriptor {
 
 /**
  * Truthful provider-fingerprint evidence standing. An observed provider
- * backend fingerprint is retained verbatim; when the provider (or the driver
- * path) exposes none, the record retains an explicit `unavailable` standing
- * with the reason instead of silence that could be misread as a verified
- * match. Nothing is fabricated and no volatile session/response data is
- * hashed into an identity.
+ * backend fingerprint is retained verbatim and carries no reason; when the
+ * provider (or the driver path) exposes none, the record retains an explicit
+ * `unavailable` standing with a required nonempty reason instead of silence
+ * that could be misread as a verified match. The reason contract is
+ * structural, not a runCell convention: `unavailable` without a nonempty
+ * reason never parses, and `observed` with a reason never parses. Nothing is
+ * fabricated and no volatile session/response data is hashed into an identity.
  */
-export const ProviderFingerprintStandingSchema = z.object({
-  standing: z.enum(["observed", "unavailable"]),
-  reason: z.string().min(1).optional(),
-}).strict();
+export const ProviderFingerprintStandingSchema = z.discriminatedUnion("standing", [
+  z.object({
+    standing: z.literal("observed"),
+  }).strict(),
+  z.object({
+    standing: z.literal("unavailable"),
+    reason: z.string().min(1),
+  }).strict(),
+]);
 
 export type ProviderFingerprintStanding = z.infer<typeof ProviderFingerprintStandingSchema>;
 

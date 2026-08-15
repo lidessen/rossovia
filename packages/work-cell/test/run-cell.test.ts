@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CellInput, CellRunRecord } from "../src/contracts";
-import { CellRunRecordSchema } from "../src/contracts";
+import { CellRunRecordSchema, ProviderFingerprintStandingSchema } from "../src/contracts";
 import type { CellDriver, DriverResult } from "../src/driver";
 import { runCell } from "../src/run-cell";
 
@@ -207,5 +207,42 @@ describe("provider fingerprint evidence", () => {
     };
     expect(() => CellRunRecordSchema.parse(unavailableWithValue))
       .toThrow(/unavailable provider fingerprint standing cannot carry a fingerprint value/);
+  });
+
+  test("structurally requires a nonempty reason for an unavailable standing", () => {
+    expect(ProviderFingerprintStandingSchema.parse({
+      standing: "unavailable",
+      reason: "the provider response exposed no system fingerprint",
+    })).toEqual({
+      standing: "unavailable",
+      reason: "the provider response exposed no system fingerprint",
+    });
+    expect(() => ProviderFingerprintStandingSchema.parse({ standing: "unavailable" }))
+      .toThrow(/reason/);
+    expect(() => ProviderFingerprintStandingSchema.parse({ standing: "unavailable", reason: "" }))
+      .toThrow(/reason/);
+  });
+
+  test("structurally forbids a reason for an observed standing", () => {
+    expect(ProviderFingerprintStandingSchema.parse({ standing: "observed" }))
+      .toEqual({ standing: "observed" });
+    expect(() => ProviderFingerprintStandingSchema.parse({ standing: "observed", reason: "extra" }))
+      .toThrow(/reason/);
+  });
+
+  test("record-level parsing enforces the structural standing shape on retained evidence", async () => {
+    const record = await runCell(await fingerprintInput(), fingerprintDriver(undefined));
+    expect(record.executionObservation.providerFingerprintStanding).toEqual({
+      standing: "unavailable",
+      reason: expect.any(String),
+    });
+    const unavailableWithoutReason = {
+      ...record,
+      executionObservation: {
+        ...record.executionObservation,
+        providerFingerprintStanding: { standing: "unavailable" },
+      } as unknown as CellRunRecord["executionObservation"],
+    };
+    expect(() => CellRunRecordSchema.parse(unavailableWithoutReason)).toThrow(/reason/);
   });
 });

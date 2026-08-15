@@ -211,13 +211,15 @@ function validWorkCellRecord(
   },
 ): ParsedCellRunRecord {
   const profile = input.executionProfile;
+  const adapter = options.adapter
+    ?? (profile?.provider === "deepseek" ? PI_HARNESS_DRIVER_ADAPTER : "ai-sdk-v7");
+  const aiSdkFamily = adapter === "ai-sdk-v7" || adapter === PI_HARNESS_DRIVER_ADAPTER;
   return CellRunRecordSchema.parse({
     version: "work-cell.run.v4",
     runId: options.runId,
     cellId: input.id,
     driver: {
-      adapter: options.adapter
-        ?? (profile?.provider === "deepseek" ? PI_HARNESS_DRIVER_ADAPTER : "ai-sdk-v7"),
+      adapter,
       provider: options.provider ?? profile?.provider ?? "test-provider",
       model: options.model ?? profile?.model ?? "test/model",
     },
@@ -241,6 +243,14 @@ function validWorkCellRecord(
     },
     executionObservation: {
       ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+      ...(aiSdkFamily
+        ? {
+            providerFingerprintStanding: {
+              standing: "unavailable",
+              reason: "deterministic task-run test executor retains no provider metadata",
+            },
+          }
+        : {}),
     },
     trace: [],
     rawSteps: [],
@@ -2497,6 +2507,83 @@ describe("strict attempt-family reading", () => {
     expect(evidence.finalRecord).toBeUndefined();
     // The valid attempt record stays attributable even when its family is invalid.
     expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+  });
+
+  test("fails closed on a current AI SDK final record without a provider fingerprint standing", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+    const finalPath = join(current.home, run.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    const {
+      providerFingerprintStanding: _omitted,
+      ...observationWithoutStanding
+    } = finalRecord.executionObservation;
+    finalRecord.executionObservation = observationWithoutStanding;
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("must carry a truthful provider fingerprint standing");
+    expect(evidence.finalRecord).toBeUndefined();
+    // The valid attempt record stays attributable even when its family is invalid.
+    expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+  });
+
+  test("fails closed on a current Pi final record with a contradictory fingerprint standing", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+    const finalPath = join(current.home, run.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    // Observed without a retained fingerprint value: contradictory evidence
+    // rejected structurally by the Work Cell final record schema.
+    finalRecord.executionObservation.providerFingerprintStanding = { standing: "observed" };
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain(
+      "observed provider fingerprint standing requires the retained fingerprint value",
+    );
+    expect(evidence.finalRecord).toBeUndefined();
+  });
+
+  test("keeps a current Pi family with a valid unavailable-with-reason standing available", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("available");
+    expect(evidence.finalRecord?.driver.adapter).toBe(PI_HARNESS_DRIVER_ADAPTER);
+    expect(evidence.finalRecord?.executionObservation.providerFingerprintStanding).toEqual({
+      standing: "unavailable",
+      reason: "deterministic task-run test executor retains no provider metadata",
+    });
   });
 
   test("reports unavailable when the attempt record itself is missing", () => {

@@ -456,6 +456,11 @@ export function readStrictTaskAttemptEvidence(
       if (expectedAdapter !== undefined && candidate.driver.adapter !== expectedAdapter) {
         return "Work Cell final record driver adapter does not match the attempt execution form";
       }
+      const fingerprintStandingError = aiSdkFamilyFingerprintStandingError(
+        attemptRecord.driver,
+        candidate,
+      );
+      if (fingerprintStandingError !== undefined) return fingerprintStandingError;
       if (input === undefined) {
         return "Work Cell final record cannot be verified without its immutable CellInput";
       }
@@ -527,6 +532,26 @@ function adapterForAttemptDriver(driver: string): string | undefined {
   if (driver === "opencode-cli") return "opencode-cli.v1";
   if (driver === "ai-sdk-v7") return "ai-sdk-v7";
   if (driver === "ai-sdk-harness-pi-v1") return "ai-sdk-harness-pi-v1";
+  return undefined;
+}
+
+/**
+ * Production AI SDK evidence must carry a truthful provider fingerprint
+ * standing: a newly retained ai-sdk-v7 or ai-sdk-harness-pi-v1 final record
+ * never becomes strict attempt evidence without one. Historical OpenCode
+ * compatibility records may omit the standing. Contradictory
+ * value/standing/reason combinations are rejected structurally by the Work
+ * Cell final record schema itself; this gate only covers the absent
+ * standing the optional schema field would otherwise admit.
+ */
+function aiSdkFamilyFingerprintStandingError(
+  driver: string,
+  final: CellRunRecord,
+): string | undefined {
+  if (driver !== "ai-sdk-v7" && driver !== "ai-sdk-harness-pi-v1") return undefined;
+  if (final.executionObservation.providerFingerprintStanding === undefined) {
+    return `${driver} Work Cell final record must carry a truthful provider fingerprint standing`;
+  }
   return undefined;
 }
 
