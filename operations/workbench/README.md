@@ -34,8 +34,12 @@ The four side-channel commands document their full invocation contract in
 their per-command help (`rossovia help <path>`): `hook intervention` and
 `hook artifact` state their supported platforms/events, the JSON stdin
 payload fields, the conditional state locations (Workbench intervention
-state vs. `$TMPDIR` artifact-consistency state, written only for relevant
-changed paths), and their exit-0 host-output/fallback shapes;
+state vs. `$TMPDIR` artifact-consistency state, appended by
+post-tool-use/after-file-edit observations only for relevant changed
+paths), and their exit-0 host-output/fallback shapes, including the exact
+stop lifecycle (codex/claude `systemMessage` then removal; Cursor
+`followup_message` retained for another loop-0 stop, or silent removal on
+`loop_count>0`);
 `intervention observe`/`status` and `correct` state the stdin-or-flags
 split, the default `<home>/state/interventions` root with the `--state-root`
 override, the `--state-file`/`--session-id` relationship, the write/read

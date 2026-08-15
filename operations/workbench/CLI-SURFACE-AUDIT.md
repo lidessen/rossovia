@@ -329,15 +329,23 @@ their per-command help, rendered uniformly by the shared help registry.
   `systemMessage` fallback (cursor: stderr note plus `{}`).
 - **`hook artifact`** help states: the platform/event matrix
   (`codex|claude|cursor` × `post-tool-use|after-file-edit|stop`); the stdin
-  fields per event; that state is written **only** when a payload carries
-  relevant repository-relative changed paths, into
+  fields per event; that state is appended **only** by a post-tool-use or
+  after-file-edit observation carrying relevant repository-relative changed
+  paths, into
   `$TMPDIR/rossovia-hooks/artifact-consistency/<40-hex>.jsonl` — temporary
-  state, not Workbench home state — and is otherwise a silent no-op; the
-  one-shot stop output (`systemMessage` removing the session file on
-  codex/claude, bounded `followup_message` retained on cursor, silent
-  continue on `loop_count>0`); that `decision`/`additionalContext` are never
-  returned; and the exit-0 fallbacks. It does not claim the hook gains
-  permission or always writes state or continues a run.
+  state, not Workbench home state — and that such an observation without
+  relevant changed paths is a silent no-op (stop never appends); the exact
+  stop lifecycle (codex/claude `systemMessage` and removal of the session
+  file, so later stops stay silent; Cursor with `loop_count` missing or 0
+  returns `followup_message` and retains the file, so another loop-0 stop
+  notifies again; Cursor with `loop_count>0` removes the file silently,
+  after which later stops are silent); that `decision`/`additionalContext`
+  are never returned; and the exit-0 fallbacks. The help also states that
+  platform validation precedes stdin parsing: a missing or invalid platform
+  is a typed usage error (exit 2) before any payload read, and only a
+  non-help invocation with a valid platform reads one JSON payload from
+  stdin. It does not claim the hook gains permission or always writes state
+  or continues a run.
 - **`intervention observe` / `status` / `correct`** help states the
   stdin-or-flags split (`observe` reads stdin JSON with only `--state-root`;
   `status` and `correct` are flags-only), the default state root
@@ -361,9 +369,13 @@ their per-command help, rendered uniformly by the shared help registry.
   [`test/help-sidechannel.test.ts`](test/help-sidechannel.test.ts) cover the
   contract notes for all eight paths, behavioral probes of each input/state/
   output/platform boundary against disposable roots, help short-circuit
-  zero-effect (no home, no `$TMPDIR` state, stdin ignored), and T1–T5
+  zero-effect (no home, no `$TMPDIR` state, stdin ignored), T1–T5
   compatibility (effect lines, usage-error exits 2 with pointers,
-  state-failure exit 1).
+  state-failure exit 1), and the side-channel counterexamples: an invalid
+  platform with malformed JSON still exits 2 before any stdin parse, a valid
+  platform with malformed JSON keeps the exit-0 fallback, and the Cursor
+  stop lifecycle (two loop-0 reminders with the file retained, then a
+  `loop_count>0` silent deletion, then a silent stop).
 
 ## Verification of this audit
 

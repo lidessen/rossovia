@@ -54,7 +54,7 @@ const SIDE_CHANNEL_HELP_CONTRACT: Record<string, string[]> = {
     "hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop]",
     "Platform validation is the usage boundary",
     "exits 2 with a help pointer",
-    "Both verbs read one JSON payload from stdin on every non-help invocation",
+    "Only a non-help invocation with a valid platform reads one JSON payload from stdin",
     "exit-0 fallback",
   ],
   "hook intervention": [
@@ -77,11 +77,11 @@ const SIDE_CHANNEL_HELP_CONTRACT: Record<string, string[]> = {
     "stop reads loop_count (cursor)",
     "$TMPDIR/rossovia-hooks/artifact-consistency/<40-hex>.jsonl",
     "operating-system temporary state, not Workbench home state",
-    "payloads without relevant changed paths are a silent no-op",
+    "a post-tool-use or after-file-edit payload without relevant changed paths is a silent no-op (stop never appends)",
     "post-tool-use and after-file-edit succeed silently",
-    'codex/claude {"systemMessage":...} and removes that session\'s file',
-    'cursor {"followup_message":...} and keeps it',
-    "cursor stop with loop_count>0 is silent and continues the active run",
+    'codex/claude {"systemMessage":...} and removes that session\'s file so later stops stay silent',
+    'cursor with loop_count missing or 0 returns {"followup_message":...} and retains the file so another loop_count 0 stop notifies again',
+    "a cursor stop with loop_count>0 removes the file silently, after which later stops are silent",
     "decision and additionalContext are never returned",
     "this hook never stops or denies a run",
   ],
@@ -188,6 +188,14 @@ describe("Rossovia CLI side-channel help contract (T6)", () => {
     expect(missingPlatform.stderr).toContain("hook platform must be codex, claude, or cursor");
     expect(missingPlatform.stderr).toContain("run 'rossovia help hook' for usage");
 
+    const invalidPlatformBeforeStdin = cli(["hook", "artifact", "bogus", "stop"], {
+      stdin: "{not json that must never be parsed",
+    });
+    expect(invalidPlatformBeforeStdin.exitCode).toBe(2);
+    expect(invalidPlatformBeforeStdin.stdout).toBe("");
+    expect(invalidPlatformBeforeStdin.stderr).toContain("hook platform must be codex, claude, or cursor");
+    expect(invalidPlatformBeforeStdin.stderr).not.toContain("JSON Parse error");
+
     const invalidPayload = cli(["hook", "artifact", "codex", "stop"], { stdin: "{}" });
     expect(invalidPayload.exitCode).toBe(0);
     expect(invalidPayload.stderr).toBe("");
@@ -195,12 +203,84 @@ describe("Rossovia CLI side-channel help contract (T6)", () => {
       systemMessage: expect.stringContaining("session_id is required"),
     }));
 
+    const malformedJson = cli(["hook", "artifact", "codex", "stop"], {
+      stdin: "{not json",
+    });
+    expect(malformedJson.exitCode).toBe(0);
+    expect(malformedJson.stderr).toBe("");
+    expect(JSON.parse(malformedJson.stdout)).toEqual(expect.objectContaining({
+      systemMessage: expect.stringContaining("JSON Parse error"),
+    }));
+
+    const malformedJsonCursor = cli(["hook", "artifact", "cursor", "stop"], {
+      stdin: "{not json",
+    });
+    expect(malformedJsonCursor.exitCode).toBe(0);
+    expect(malformedJsonCursor.stdout.trim()).toBe("{}");
+    expect(malformedJsonCursor.stderr).toContain("Rossovia artifact unavailable");
+
     const cursorIntervention = cli(["hook", "intervention", "cursor"], {
       stdin: JSON.stringify({ conversation_id: "c1" }),
     });
     expect(cursorIntervention.exitCode).toBe(0);
     expect(cursorIntervention.stdout.trim()).toBe("{}");
     expect(cursorIntervention.stderr).toContain("intervention hooks are supported for codex and claude");
+  });
+
+  test("cursor stop lifecycle: loop-0 reminders twice with the file retained, loop-1 silent deletion, then silent stop", () => {
+    const root = temporary();
+    const stateDir = join(root, "hook-tmp");
+    mkdirSync(stateDir, { recursive: true });
+    const env = { ...process.env, TMPDIR: stateDir };
+    const skill = join(repositoryRoot, "skills", "visual-design", "SKILL.md");
+
+    const observed = cli(["hook", "artifact", "cursor", "after-file-edit"], {
+      stdin: JSON.stringify({ conversation_id: "cursor-t6", cwd: repositoryRoot, file_path: skill }),
+      env,
+    });
+    expect(observed.exitCode).toBe(0);
+    expect(observed.stdout).toBe("");
+    expect(observed.stderr).toBe("");
+    const consistencyDir = join(stateDir, "rossovia-hooks", "artifact-consistency");
+    const recorded = readdirSync(consistencyDir);
+    expect(recorded).toHaveLength(1);
+    const sessionFile = join(consistencyDir, recorded[0]!);
+    expect(existsSync(sessionFile)).toBe(true);
+
+    const firstStop = cli(["hook", "artifact", "cursor", "stop"], {
+      stdin: JSON.stringify({ conversation_id: "cursor-t6" }),
+      env,
+    });
+    expect(firstStop.exitCode).toBe(0);
+    expect(firstStop.stderr).toBe("");
+    expect(JSON.parse(firstStop.stdout).followup_message).toContain("skills/visual-design/SKILL.md");
+    expect(existsSync(sessionFile)).toBe(true);
+
+    const secondStop = cli(["hook", "artifact", "cursor", "stop"], {
+      stdin: JSON.stringify({ conversation_id: "cursor-t6", loop_count: 0 }),
+      env,
+    });
+    expect(secondStop.exitCode).toBe(0);
+    expect(secondStop.stderr).toBe("");
+    expect(JSON.parse(secondStop.stdout).followup_message).toContain("skills/visual-design/SKILL.md");
+    expect(existsSync(sessionFile)).toBe(true);
+
+    const continuing = cli(["hook", "artifact", "cursor", "stop"], {
+      stdin: JSON.stringify({ conversation_id: "cursor-t6", loop_count: 1 }),
+      env,
+    });
+    expect(continuing.exitCode).toBe(0);
+    expect(continuing.stdout).toBe("");
+    expect(continuing.stderr).toBe("");
+    expect(existsSync(sessionFile)).toBe(false);
+
+    const settled = cli(["hook", "artifact", "cursor", "stop"], {
+      stdin: JSON.stringify({ conversation_id: "cursor-t6", loop_count: 0 }),
+      env,
+    });
+    expect(settled.exitCode).toBe(0);
+    expect(settled.stdout).toBe("");
+    expect(settled.stderr).toBe("");
   });
 
   test("intervention observe/status/correct form one legal stdin-or-flags loop from help alone", () => {
