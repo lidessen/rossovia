@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T20:26:32Z",
+  "updatedAt": "2026-08-15T21:49:42Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -224,8 +224,10 @@
         "dogfood:task-attempt/00e1bac3-88e3-40ab-bae2-3eeb30637b89",
         "principal:2026-08-15-maxsteps-policy-correction"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "PR #131 integrated exact candidate 74f8c5c4806a412ad658f17dfc0724fa80043252 as normal merge c95c067709d176d9a883be6aa84cbbf46fee9de8: ordinary Tasks no longer receive an implicit maxSteps limit; finite maxSteps remains an explicit opt-in policy, and only the exact historical raw-omitted/final-20 evidence relation is normalized for strict compatibility. Duration, cancellation, usage, trace, lease, attempt, terminal settlement, and Task authority remain bounded and unchanged. Final two-project DeepSeek browser dogfood, GLM/Harness trials, Principal Task acceptance, and whole Mission completion remain pending."
     }
   ],
-  "currentFocus": "ordinary-task-budget-policy"
+  "currentFocus": "mainline"
 }
