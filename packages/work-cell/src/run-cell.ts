@@ -128,10 +128,14 @@ export async function runCell(
   if (budgetApprovalEnabled && (!options.settlementReserveMs || !options.hardLimitMs)) {
     throw new Error("budgetApproval requires positive settlementReserveMs and hardLimitMs");
   }
+  if (budgetApprovalEnabled && input.budget.maxSteps === undefined) {
+    throw new Error("budgetApproval requires an explicit finite maxSteps policy on the Cell input");
+  }
   if (budgetApprovalEnabled && options.hardLimitMs! < input.budget.maxDurationMs) {
     throw new Error("hardLimitMs must cover the initial Cell duration and cannot be extended");
   }
-  if (!budgetApprovalEnabled && input.terminalTools?.length && input.budget.maxSteps < 2) {
+  if (!budgetApprovalEnabled && input.budget.maxSteps !== undefined
+    && input.terminalTools?.length && input.budget.maxSteps < 2) {
     throw new Error("terminal tools require at least two steps: one terminal action and one final output");
   }
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
@@ -169,7 +173,7 @@ export async function runCell(
     ]);
     return reserveSignal;
   };
-  const budgetControl = options.budgetApproval
+  const budgetControl = options.budgetApproval && input.budget.maxSteps !== undefined
     ? new SoftBudgetControl({
         cellId: input.id,
         startedAtMs: startedAt.getTime(),

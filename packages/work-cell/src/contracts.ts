@@ -3,7 +3,14 @@ import { z } from "zod";
 export const WORK_CELL_RECORD_VERSION = "work-cell.run.v4" as const;
 
 export const BudgetSchema = z.object({
-  maxSteps: z.number().int().positive().default(20),
+  /**
+   * An explicit per-run/operator step constraint. Optional with no default:
+   * an omitted maxSteps means no step-count stop condition at all, and
+   * completed-step budget control engages only when a finite step policy is
+   * explicitly supplied. A hidden schema default must never silently cap an
+   * ordinary Task run.
+   */
+  maxSteps: z.number().int().positive().optional(),
   /** A caller's resource forecast, retained for post-run comparison; never a stop condition. */
   estimatedTokens: z.number().int().positive().optional(),
   /** Relative absolute-error tolerance, for example 0.5 means ±50%. */
@@ -163,7 +170,6 @@ export const CellInputSchema = z.object({
   artifacts: z.array(ArtifactRequirementSchema).min(1).optional(),
   tasks: z.array(TaskSeedSchema).min(1).optional(),
   budget: BudgetSchema.default({
-    maxSteps: 20,
     maxDurationMs: 300_000,
     maxCommandOutputBytes: 64_000,
   }),
