@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T21:49:42Z",
+  "updatedAt": "2026-08-15T22:40:27Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -187,7 +187,9 @@
         "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f3-high-coordinator-observed-provider-model-remains-unknown",
         "dogfood:conversation/24b6a5f4-34b2-472b-a959-5f3bf2cab2a3/2026-08-15"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "PR #133 integrated exact candidate 77dc7135cabdbc89583f4e797c2f60dcb696d662 as normal merge 31bc2f0f6dd1ba57b546bc62767378532e6a9459: successful DeepSeek coordinator turns retain adapter-confirmed provider=deepseek and the normalized non-empty model identity returned through the AI SDK stream; requested policy remains separate, absent observed provider/model stays absent, and observed reasoning effort remains unavailable unless independently reported. F4/F5 terminal-result handoff, F6 register serialization, final two-project DeepSeek browser dogfood, Principal Task acceptance, and whole Mission completion remain pending."
     },
     {
       "id": "f4-f5-terminal-result-handoff",
