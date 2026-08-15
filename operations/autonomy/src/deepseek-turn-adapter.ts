@@ -141,9 +141,15 @@ export const childResultRequestTool: Tool = tool({
 /**
  * A real DeepSeek turn adapter for the frozen P3b1 ConversationTurnPort
  * contract. It owns only the model call: prompt text, bounded output, the
- * requested DeepSeek inference policy, and the port event projection. All
- * usage, identity verification, interruption, and evidence settlement stay
- * with the coordinator kernel.
+ * requested DeepSeek inference policy, and the port event projection. Every
+ * terminal finish event reports the adapter-confirmed observed provider
+ * (the coordinator policy id `deepseek`; the constructed model was verified
+ * as served by the DeepSeek SDK provider before the call) and the normalized
+ * model identity the AI SDK stream returned for the turn. Observed reasoning
+ * effort is never reported here: it stays unavailable in the coordinator
+ * settlement unless independently returned. All usage, identity
+ * verification, interruption, and evidence settlement stay with the
+ * coordinator kernel.
  */
 export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): ConversationTurnPort {
   const createModel = options.createModel ?? createDeepSeekModel;
@@ -239,11 +245,14 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
             return;
           }
           if (part.type === "finish-step") {
-            // AI SDK initializes finish-step.response.modelId from the
-            // constructed model. Only a different returned value proves that
-            // the provider reported an observed model identity.
+            // The finish step carries the turn's model identity as returned
+            // through the AI SDK stream: provider-reported when the provider
+            // supplies one, and the verified constructed DeepSeek model
+            // otherwise. Normalize it (trim, non-empty) and retain exactly
+            // that; never synthesize a model from the requested policy when
+            // the stream reports none.
             const responseModel = part.response.modelId.trim();
-            if (responseModel !== "" && responseModel !== model.modelId) {
+            if (responseModel !== "") {
               observedModel = responseModel;
             }
             providerFingerprint ??= observedDeepSeekMetadata(part.providerMetadata).providerFingerprint;
@@ -255,12 +264,7 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
               yield { kind: "error", message: "the model stream finished with an error reason" };
               return;
             }
-            yield {
-              kind: "finish",
-              ...(observedModel === undefined ? {} : { model: observedModel }),
-              ...(providerFingerprint === undefined ? {} : { providerFingerprint }),
-              usage: part.totalUsage,
-            };
+            yield observedFinishEvent(observedModel, providerFingerprint, part.totalUsage);
             return;
           }
           if (part.type === "abort") return;
@@ -270,12 +274,11 @@ export function createDeepSeekTurnAdapter(options: DeepSeekTurnAdapterOptions): 
           // no tool result to feed back. The request itself is the terminal
           // turn outcome, so the adapter emits the finish with the best
           // observed step usage rather than failing the turn.
-          yield {
-            kind: "finish",
-            ...(observedModel === undefined ? {} : { model: observedModel }),
-            ...(providerFingerprint === undefined ? {} : { providerFingerprint }),
-            ...(stashedUsage === undefined ? {} : { usage: stashedUsage }),
-          };
+          yield observedFinishEvent(
+            observedModel,
+            providerFingerprint,
+            stashedUsage === undefined ? undefined : stashedUsage,
+          );
           return;
         }
       } catch (error) {
@@ -328,6 +331,28 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+/**
+ * The terminal finish event of a DeepSeek turn: the adapter-confirmed
+ * provider in coordinator policy vocabulary, the normalized stream-returned
+ * model identity when the stream reported one, the provider fingerprint when
+ * DeepSeek returned one, and the observed step usage. The adapter never
+ * emits an observed reasoning effort and never copies the requested policy
+ * into observation.
+ */
+function observedFinishEvent(
+  observedModel: string | undefined,
+  providerFingerprint: string | undefined,
+  usage: unknown,
+): ConversationTurnPortEvent {
+  return {
+    kind: "finish",
+    provider: DEEPSEEK_PROVIDER_ID,
+    ...(observedModel === undefined ? {} : { model: observedModel }),
+    ...(providerFingerprint === undefined ? {} : { providerFingerprint }),
+    ...(usage === undefined ? {} : { usage }),
+  };
 }
 
 function observedDeepSeekMetadata(metadata: unknown): { readonly providerFingerprint?: string } {

@@ -254,6 +254,22 @@ describe("conversation projection DOM contract", () => {
     expect(app).not.toContain("first(entry.requestedPolicy, [], {})");
   });
 
+  test("renders the observed line from observed evidence only and never falls back to the requested policy", () => {
+    expect(app).toContain("requestedPolicyLabel(policy)");
+    expect(app).toContain("observedEvidenceLabel(entry.observedEvidence)");
+    expect(app).toContain("请求 provider/model");
+    expect(app).toContain("实际 provider/model");
+    expect(app).not.toContain("observedEvidenceLabel(policy)");
+    expect(app).not.toContain("observedEvidenceLabel(entry.requestedPolicy)");
+    expect(app).not.toContain("requestedPolicyLabel(entry.observedEvidence)");
+    // A same-as-requested reported identity renders verbatim from the
+    // observed evidence object; an unreported field stays unknown because
+    // the unknown fallback is applied by text() to first(raw, [field]).
+    expect(app).toContain('text(first(raw, ["provider"]), "unknown")');
+    expect(app).toContain('text(first(raw, ["model"]), "unknown")');
+    expect(app).toContain("未报告 · unknown");
+  });
+
   test("renders task, project, activity, and result evidence references", () => {
     expect(app).toContain("canonical 证据引用");
     expect(app).toContain("renderConversationEvidenceRefs");
