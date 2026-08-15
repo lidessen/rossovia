@@ -117,6 +117,24 @@ describe("ConversationContextProvider", () => {
     const worktreeHeads = project.worktrees?.map((entry) => entry.path);
     expect(worktreeHeads).toContain(realpathSync(worktree));
     expect(worktreeHeads).toContain(realpathSync(primary));
+    const byPath = new Map(project.worktrees?.map((entry) => [entry.path, entry]));
+    expect(byPath.get(realpathSync(primary))).toMatchObject({ role: "primary", clean: true });
+    expect(byPath.get(realpathSync(worktree))).toMatchObject({ role: "linked", clean: true });
+  });
+
+  test("projects each observed Worktree with its exact role and clean standing, dirty linked included", async () => {
+    const { provider, primary, worktree } = fixture();
+    const dirty = join(worktree, "..", "dirty-worktree");
+    git(primary, "worktree", "add", dirty);
+    writeFileSync(join(dirty, "uncommitted.md"), "dirty\n");
+
+    const projection = await provider.buildProjection(randomUUID());
+
+    const project = projection.projects![0]!;
+    const byPath = new Map(project.worktrees?.map((entry) => [entry.path, entry]));
+    expect(byPath.get(realpathSync(primary))).toMatchObject({ role: "primary", clean: true });
+    expect(byPath.get(realpathSync(worktree))).toMatchObject({ role: "linked", clean: true });
+    expect(byPath.get(realpathSync(dirty))).toMatchObject({ role: "linked", clean: false });
   });
 
   test("projects the conversation's current Task with exact numeric revisions from the canonical source", async () => {

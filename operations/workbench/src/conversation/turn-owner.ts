@@ -86,7 +86,7 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
       name: "task_create",
       availability: "available",
       meaning:
-        "Form one new local obligation from this message. Copy the exact registered project ID, expected current-primary head, exact observed Worktree path, and expected Worktree head from the current projection; never invent or guess them. The host re-reads and compares every selector immediately before the effect and refuses stale, discovered, unregistered, or guessed context, so an incomplete or ambiguous route is not usable.",
+        "Form one new local obligation from this message. Copy the exact registered project ID and expected current-primary head from the current projection, plus the exact path and head of one clean linked Worktree of that project; never invent or guess them, and never select the primary workspace or a dirty, stale, or unobserved Worktree. If the projection shows no clean linked Worktree, abstain and ask for the missing judgment. The host re-reads and compares every selector immediately before the effect and refuses primary, dirty, stale, discovered, unregistered, or guessed context, so an incomplete or ambiguous route is not usable.",
     },
     {
       name: "task_correct",

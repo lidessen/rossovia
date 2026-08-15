@@ -596,18 +596,45 @@ function taskProjectId(tasks: PrincipalTasks | undefined, taskId: string): strin
   return task.binding.projectId;
 }
 
-/** Exact observed Worktrees of one primary workspace, each at its current head. */
-export function observedWorktrees(primaryWorkspace: string): { path: string; head: string }[] {
+/**
+ * Exact observed Worktrees of one primary workspace, each at its current
+ * head with its exact role (`primary` for the registered project's primary
+ * workspace, `linked` otherwise) and its current clean standing. Clean is
+ * true only when the canonical Git status observation succeeded and reported
+ * no change; an unreadable cleanliness is projected as not clean, never
+ * guessed into a runnable selector.
+ */
+export function observedWorktrees(
+  primaryWorkspace: string,
+): { path: string; head: string; role: "primary" | "linked"; clean: boolean }[] {
+  let primaryPath: string;
+  try {
+    primaryPath = realpathSync(expandPath(primaryWorkspace));
+  } catch {
+    primaryPath = expandPath(primaryWorkspace);
+  }
   const records = requiredGit(["worktree", "list", "--porcelain"], primaryWorkspace)
     .split(/\r?\n/)
     .filter((line) => line.startsWith("worktree "))
     .map((line) => expandPath(line.slice("worktree ".length)));
-  const worktrees: { path: string; head: string }[] = [];
+  const worktrees: { path: string; head: string; role: "primary" | "linked"; clean: boolean }[] = [];
   for (const record of records) {
     try {
       const path = realpathSync(record);
       const head = requiredGit(["rev-parse", "HEAD"], path);
-      if (/^[0-9a-f]{40}$/u.test(head)) worktrees.push({ path, head });
+      if (!/^[0-9a-f]{40}$/u.test(head)) continue;
+      let status: string | null;
+      try {
+        status = requiredGit(["status", "--porcelain"], path) ?? "";
+      } catch {
+        status = null;
+      }
+      worktrees.push({
+        path,
+        head,
+        role: path === primaryPath ? "primary" : "linked",
+        clean: status !== null && status.trim().length === 0,
+      });
     } catch {
       // A worktree without a readable current head cannot be bound exactly.
     }

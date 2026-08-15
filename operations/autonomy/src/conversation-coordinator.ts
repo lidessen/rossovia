@@ -64,7 +64,12 @@ export const TaskCreateOperationSchema = z.object({
   projectId: z.string().min(1),
   /** Expected current-primary head of that registered project, copied from the projection. */
   expectedPrimaryHead: GitObjectSchema,
-  /** Exact observed Worktree path the model must copy from the projection. */
+  /**
+   * Exact path of one clean linked Worktree the model must copy from the
+   * projection. The host re-verifies the path/head immediately before the
+   * effect and refuses the primary workspace, a dirty, stale, or unobserved
+   * Worktree with zero Task mutation.
+   */
   worktreePath: z.string().min(1),
   /** Expected head of that exact observed Worktree, copied from the projection. */
   expectedWorktreeHead: GitObjectSchema,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v7" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v8" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -72,6 +72,19 @@ export type TaskProjection = z.infer<typeof TaskProjectionSchema>;
 export const WorktreeProjectionSchema = z.object({
   path: z.string().min(1),
   head: GitObjectSchema,
+  /**
+   * The Worktree's exact role from the current canonical Git observation:
+   * `primary` is the registered project's primary workspace, `linked` any
+   * other Worktree of that project. A task_create must select a linked
+   * Worktree; the host refuses a primary candidate with no effect.
+   */
+  role: z.enum(["primary", "linked"]),
+  /**
+   * Clean from the current canonical Git observation: no staged, unstaged,
+   * or non-ignored untracked change. A task_create must select a clean
+   * Worktree; an unobservable cleanliness is projected as not clean.
+   */
+  clean: z.boolean(),
 }).strict();
 export type WorktreeProjection = z.infer<typeof WorktreeProjectionSchema>;
 
@@ -444,7 +457,11 @@ function renderProjection(
       lines.push(`  primary head: ${project.primaryHead}`);
     }
     if (project.worktrees !== undefined && project.worktrees.length > 0) {
-      lines.push(`  worktrees: ${project.worktrees.map((w) => `${w.path} @ ${w.head}`).join(" | ")}`);
+      lines.push(
+        `  worktrees: ${project.worktrees
+          .map((w) => `${w.path} @ ${w.head} [${w.role}, ${w.clean ? "clean" : "dirty"}]`)
+          .join(" | ")}`,
+      );
     }
     if (project.source !== undefined) {
       lines.push(`  source ${project.source.ref} (digest ${project.source.digest})`);
