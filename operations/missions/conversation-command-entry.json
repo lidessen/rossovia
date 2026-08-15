@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-14T18:32:39Z",
+  "updatedAt": "2026-08-15T04:43:16Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -117,8 +117,10 @@
         "principal:2026-08-14-continue-p5-temporary-contributions",
         "plan:design/organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md#wave-3"
       ],
-      "status": "open"
+      "status": "closed",
+      "disposition": "integrate",
+      "mainlineDelta": "Integrated PR #114 (exact head 9a2083749609dc8e3a5f03426e5a88abb2f4609c; merge commit 54b2d44ace4512832744f6adb926adfb41273ff0) into main: the DeepSeek conversation coordinator can form bounded catalog-selected temporary contribution batches with a zero-worker path, bounded read-only parallel contributors, one effectful owner, keyed child results, correction and stale-result handling, cancellation and liveness, and no self-review or majority settlement, while existing Task, attempt, Work Cell, and Mission sources remain authoritative. P7 whole-system verification, Principal Task acceptance, and GLM/Harness trials remain pending."
     }
   ],
-  "currentFocus": "p5-temporary-contributions"
+  "currentFocus": "mainline"
 }
