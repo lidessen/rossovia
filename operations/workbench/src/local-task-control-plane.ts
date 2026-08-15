@@ -11,7 +11,9 @@ import {
   reopenPrincipalTask,
   reviewPrincipalTaskResult,
   showPrincipalTask,
+  StaleTaskRevisionError,
   submitPrincipalTaskResult,
+  type StaleTaskRevisionRecovery,
   type TaskAcceptArguments,
   type TaskAssignArguments,
   type TaskCorrectArguments,
@@ -24,7 +26,7 @@ import {
   type TaskSubmitArguments,
 } from "./tasks";
 
-export type { TaskMutationResult } from "./tasks";
+export type { StaleTaskRevisionRecovery, TaskMutationResult } from "./tasks";
 
 export type LocalTaskControlErrorCode =
   | "invalid-task"
@@ -41,6 +43,7 @@ export class LocalTaskControlError extends Error {
     readonly code: LocalTaskControlErrorCode,
     message: string,
     options: ErrorOptions = {},
+    readonly recovery?: StaleTaskRevisionRecovery,
   ) {
     super(message, options);
   }
@@ -173,6 +176,14 @@ function executeTaskOperation<Result>(
     return operation();
   } catch (error: unknown) {
     if (error instanceof LocalTaskControlError) throw error;
+    if (error instanceof StaleTaskRevisionError) {
+      throw new LocalTaskControlError(
+        error.code,
+        error.message,
+        { cause: error },
+        error.recovery,
+      );
+    }
     if (error instanceof PrincipalTaskError) {
       throw new LocalTaskControlError(
         error.code,
