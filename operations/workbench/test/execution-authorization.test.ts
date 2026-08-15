@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import {
   ExecutionAuthorizationReceiptSchema,
 } from "../src/execution-authorization";
@@ -387,8 +388,10 @@ describe("local Principal execution authorization", () => {
     }));
 
     const duplicate = authorize(home, proposalDigest);
-    expect(duplicate.exitCode).toBe(2);
+    expect(duplicate.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(duplicate.stderr).toContain("rossovia: ");
     expect(duplicate.stderr).toContain("already has an authorization receipt");
+    expect(duplicate.stderr).not.toContain("for usage");
     expect(readFileSync(result.receiptPath, "utf8")).toContain(receipt.authorizationId);
   });
 
@@ -529,8 +532,10 @@ describe("local Principal execution authorization", () => {
       },
     ];
     for (const example of cases) {
-      expect(example.result.exitCode).toBe(2);
+      expect(example.result.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
       expect(example.result.stderr).toContain(example.message);
+      expect(example.result.stderr).toContain("rossovia: ");
+      expect(example.result.stderr).not.toContain("for usage");
       expect(existsSync(authorizationRoot)).toBe(false);
     }
 
@@ -538,19 +543,22 @@ describe("local Principal execution authorization", () => {
     changed.executionProposal.externalDisclosure.dataCategories.push("newly added context");
     writeFileSync(missionPath, `${JSON.stringify(changed, null, 2)}\n`);
     const staleAfterSourceChange = authorize(home, proposalDigest);
-    expect(staleAfterSourceChange.exitCode).toBe(2);
-    expect(staleAfterSourceChange.stderr).toContain("mission record must match HEAD");
+    expect(staleAfterSourceChange.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(staleAfterSourceChange.stderr).toContain("rossovia: mission record must match HEAD");
+    expect(staleAfterSourceChange.stderr).not.toContain("for usage");
     const dirtyInspection = inspect(home);
-    expect(dirtyInspection.exitCode).toBe(2);
-    expect(dirtyInspection.stderr).toContain("mission record must match HEAD");
+    expect(dirtyInspection.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(dirtyInspection.stderr).toContain("rossovia: mission record must match HEAD");
+    expect(dirtyInspection.stderr).not.toContain("for usage");
     expect(existsSync(authorizationRoot)).toBe(false);
     git(repository, "add", "operations/missions/blog-run.json");
     const stagedSourceChange = authorize(
       home,
       missionExecutionProposalDigest(changed.executionProposal),
     );
-    expect(stagedSourceChange.exitCode).toBe(2);
-    expect(stagedSourceChange.stderr).toContain("mission record must match HEAD");
+    expect(stagedSourceChange.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(stagedSourceChange.stderr).toContain("rossovia: mission record must match HEAD");
+    expect(stagedSourceChange.stderr).not.toContain("for usage");
     expect(existsSync(authorizationRoot)).toBe(false);
   });
 
@@ -578,11 +586,15 @@ describe("local Principal execution authorization", () => {
       "--source-ref",
       "conversation:thread-1/turn-7",
     );
-    expect(untracked.exitCode).toBe(2);
+    expect(untracked.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(untracked.stderr).toContain("rossovia: ");
     expect(untracked.stderr).toContain("not Git-tracked at HEAD");
+    expect(untracked.stderr).not.toContain("for usage");
     const untrackedInspection = inspect(home, "untracked");
-    expect(untrackedInspection.exitCode).toBe(2);
+    expect(untrackedInspection.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(untrackedInspection.stderr).toContain("rossovia: ");
     expect(untrackedInspection.stderr).toContain("not Git-tracked at HEAD");
+    expect(untrackedInspection.stderr).not.toContain("for usage");
 
     const plainChat = workbench(
       home,
@@ -603,8 +615,10 @@ describe("local Principal execution authorization", () => {
       "--source-ref",
       "looks approved",
     );
-    expect(plainChat.exitCode).toBe(2);
+    expect(plainChat.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(plainChat.stderr).toContain("rossovia: ");
     expect(plainChat.stderr).toContain("authorizing Principal");
+    expect(plainChat.stderr).not.toContain("for usage");
     expect(existsSync(join(home, "receipts", "execution-authorizations"))).toBe(false);
   });
 });

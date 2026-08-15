@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
@@ -64,8 +65,10 @@ describe("mission continuity", () => {
       currentFocus: "mainline",
     }));
     const untracked = workbench(repository, root, "check", "founding", "--git");
-    expect(untracked.exitCode).toBe(2);
+    expect(untracked.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(untracked.stderr).toContain("rossovia: ");
     expect(untracked.stderr).toContain("not Git-tracked");
+    expect(untracked.stderr).not.toContain("for usage");
 
     git(repository, "add", "operations/missions/founding.json");
     git(repository, "commit", "-m", "ops: open founding mission");
@@ -110,8 +113,9 @@ describe("mission continuity", () => {
       "--closure-source",
       "https://example.test/pr/1",
     );
-    expect(prematureClose.exitCode).toBe(2);
-    expect(prematureClose.stderr).toContain("close or resume every branch");
+    expect(prematureClose.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(prematureClose.stderr).toContain("rossovia: close or resume every branch");
+    expect(prematureClose.stderr).not.toContain("for usage");
     expect(workbench(repository, root, "resume", "founding", "research").exitCode).toBe(0);
     expect(workbench(
       repository,
@@ -208,11 +212,14 @@ describe("mission continuity", () => {
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, "broken.json"), "{}\n", "utf8");
     const invalid = workbench(repository, root, "list");
-    expect(invalid.exitCode).toBe(2);
+    expect(invalid.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(invalid.stderr).toContain("rossovia: ");
     expect(invalid.stderr).toContain("version must be mission-record.v1");
+    expect(invalid.stderr).not.toContain("for usage");
     const missing = workbench(repository, join(repository, "missing"), "list");
-    expect(missing.exitCode).toBe(2);
-    expect(missing.stderr).toContain("mission root not found");
+    expect(missing.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(missing.stderr).toContain("rossovia: mission root not found");
+    expect(missing.stderr).not.toContain("for usage");
   });
 
   test("accepts an optional execution proposal but rejects authority widening and unknown fields", () => {
@@ -247,13 +254,15 @@ describe("mission continuity", () => {
       "--closure-source",
       "design/blog-acceptance.md",
     );
-    expect(close.exitCode).toBe(2);
-    expect(close.stderr).toContain("executionProposal awaits Principal authorization");
+    expect(close.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(close.stderr).toContain("rossovia: cannot settle a mission while executionProposal awaits Principal authorization");
+    expect(close.stderr).not.toContain("for usage");
     expect(JSON.parse(readFileSync(path, "utf8")).mainline.status).toBe("active");
 
     const prune = workbench(repository, root, "prune", "blog-run");
-    expect(prune.exitCode).toBe(2);
-    expect(prune.stderr).toContain("executionProposal awaits Principal authorization");
+    expect(prune.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(prune.stderr).toContain("rossovia: cannot prune a mission while executionProposal awaits Principal authorization");
+    expect(prune.stderr).not.toContain("for usage");
     expect(existsSync(path)).toBe(true);
 
     const settledWithProposal = structuredClone(record);
@@ -261,15 +270,19 @@ describe("mission continuity", () => {
     settledWithProposal.mainline.closureSources = ["design/blog-acceptance.md"];
     writeFileSync(path, `${JSON.stringify(settledWithProposal, null, 2)}\n`);
     const incompatible = workbench(repository, root, "status", "blog-run");
-    expect(incompatible.exitCode).toBe(2);
+    expect(incompatible.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(incompatible.stderr).toContain("rossovia: ");
     expect(incompatible.stderr).toContain("settled mainline may not retain");
+    expect(incompatible.stderr).not.toContain("for usage");
 
     record.executionProposal.authority.execute = "granted";
     record.executionProposal.unexpected = true;
     writeFileSync(path, `${JSON.stringify(record, null, 2)}\n`);
     const invalid = workbench(repository, root, "status", "blog-run");
-    expect(invalid.exitCode).toBe(2);
+    expect(invalid.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(invalid.stderr).toContain("rossovia: ");
     expect(invalid.stderr).toContain("executionProposal is invalid");
+    expect(invalid.stderr).not.toContain("for usage");
   });
 });
 

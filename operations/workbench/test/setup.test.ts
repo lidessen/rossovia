@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import { setupAdapter } from "../src/setup-adapters";
 import { multiAgentDelegationModule } from "../src/setup-modules";
 
@@ -186,8 +187,9 @@ describe("user-level setup reconciliation", () => {
       "--target-root",
       codex,
     );
-    expect(applied.exitCode).toBe(2);
-    expect(applied.stderr).toContain("setup projection drift requires reconciliation");
+    expect(applied.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(applied.stderr).toContain("rossovia: setup projection drift requires reconciliation");
+    expect(applied.stderr).not.toContain("for usage");
     expect(readFileSync(path, "utf8")).toBe(before);
   });
 
@@ -232,8 +234,9 @@ describe("user-level setup reconciliation", () => {
       "--target-root",
       codex,
     );
-    expect(applied.exitCode).toBe(2);
-    expect(applied.stderr).toContain("setup applied baseline is unavailable");
+    expect(applied.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(applied.stderr).toContain("rossovia: setup applied baseline is unavailable");
+    expect(applied.stderr).not.toContain("for usage");
     expect(readFileSync(targetPath, "utf8")).toBe(targetBefore);
     expect(readFileSync(receiptPath, "utf8")).toBe(receiptBefore);
   });
@@ -254,8 +257,9 @@ describe("user-level setup reconciliation", () => {
       "--target-root",
       codex,
     );
-    expect(initialized.exitCode).toBe(2);
-    expect(initialized.stderr).toContain("setup source has uncommitted changes");
+    expect(initialized.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(initialized.stderr).toContain("rossovia: setup source has uncommitted changes");
+    expect(initialized.stderr).not.toContain("for usage");
     expect(readFileSync(join(codex, "AGENTS.md"), "utf8")).not.toContain("## Multi-agent delegation");
   });
 

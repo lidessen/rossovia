@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initializeHome } from "../src/home";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import {
   createLocalTaskControlPlane,
   LocalTaskControlError,
@@ -382,9 +383,10 @@ describe("Launcher projection of stale-revision recovery", () => {
       "--expected-revision",
       "1",
     );
-    expect(stale.exitCode).toBe(2);
-    expect(stale.stderr).toContain("rosso:");
+    expect(stale.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(stale.stderr).toContain("rossovia:");
     expect(stale.stderr).toContain("source revision is stale");
+    expect(stale.stderr).not.toContain("for usage");
     const payload = JSON.parse(stale.stdout) as StaleTaskRevisionRecovery & {
       task: PrincipalTask;
     };
@@ -429,7 +431,7 @@ describe("Launcher projection of stale-revision recovery", () => {
       "--expected-revision",
       "1",
     );
-    expect(stale.exitCode).toBe(2);
+    expect(stale.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     const payload = JSON.parse(stale.stdout) as StaleTaskRevisionRecovery;
 
     const retry = launcherTask(
@@ -469,9 +471,10 @@ describe("Launcher projection of stale-revision recovery", () => {
       "--expected-source-revision",
       "0",
     );
-    expect(stale.exitCode).toBe(2);
+    expect(stale.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(stale.stdout).toBe("");
-    expect(stale.stderr).toContain("rosso: Principal task source revision is stale");
+    expect(stale.stderr).toContain("rossovia: Principal task source revision is stale");
+    expect(stale.stderr).not.toContain("for usage");
   });
 
   test("task run and reconcile-attempt reject revision guards instead of faking them", () => {

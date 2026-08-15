@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { ParseUsageError, UsageError } from "./cli-errors";
 import { resolveHome, saveJson } from "./home";
 import { expandPath } from "./paths";
 
@@ -164,8 +165,8 @@ function parseOptions(raw: string[], repeated: Set<string> = new Set()): ParsedO
       continue;
     }
     const value = raw[index + 1];
-    if (!value || value.startsWith("--")) throw new Error(`${argument} requires a value`);
-    if (values.has(argument) && !repeated.has(argument)) throw new Error(`duplicate option: ${argument}`);
+    if (!value || value.startsWith("--")) throw new ParseUsageError(`${argument} requires a value`);
+    if (values.has(argument) && !repeated.has(argument)) throw new ParseUsageError(`duplicate option: ${argument}`);
     values.set(argument, [...(values.get(argument) ?? []), value]);
     index += 1;
   }
@@ -174,20 +175,20 @@ function parseOptions(raw: string[], repeated: Set<string> = new Set()): ParsedO
 
 function option(parsed: ParsedOptions, name: string, fallback?: string): string {
   const value = parsed.values.get(name)?.[0] ?? fallback;
-  if (value === undefined) throw new Error(`missing required option: ${name}`);
+  if (value === undefined) throw new ParseUsageError(`missing required option: ${name}`);
   return value;
 }
 
 function repeatedOption(parsed: ParsedOptions, name: string): string[] {
   const values = parsed.values.get(name);
-  if (!values?.length) throw new Error(`missing required option: ${name}`);
+  if (!values?.length) throw new ParseUsageError(`missing required option: ${name}`);
   return values;
 }
 
 function rejectUnknown(parsed: ParsedOptions, allowed: Set<string>): void {
-  if (parsed.positionals.length > 0) throw new Error(`unexpected argument: ${parsed.positionals[0]}`);
+  if (parsed.positionals.length > 0) throw new ParseUsageError(`unexpected argument: ${parsed.positionals[0]}`);
   for (const name of parsed.values.keys()) {
-    if (!allowed.has(name)) throw new Error(`invalid option: ${name}`);
+    if (!allowed.has(name)) throw new ParseUsageError(`invalid option: ${name}`);
   }
 }
 
@@ -196,17 +197,38 @@ function selectedState(parsed: ParsedOptions, homeArgument?: string): string {
   const sessionId = parsed.values.get("--session-id")?.[0];
   const explicitRoot = parsed.values.get("--state-root")?.[0];
   if (explicit) {
-    if (sessionId || explicitRoot) throw new Error("--state-file cannot be combined with --session-id or --state-root");
+    if (sessionId || explicitRoot) {
+      throw new ParseUsageError("--state-file cannot be combined with --session-id or --state-root");
+    }
     return expandPath(explicit);
   }
-  if (!sessionId) throw new Error("intervention status requires --state-file or --session-id");
+  if (!sessionId) throw new ParseUsageError("intervention status requires --state-file or --session-id");
   return stateForSession(stateRoot(explicitRoot, homeArgument), sessionId);
 }
 
 export function runInterventionCommand(raw: string[], stdin = "", homeArgument?: string): unknown {
   const command = raw[0];
-  if (!command) throw new Error("intervention requires observe or status");
-  const parsed = parseOptions(raw.slice(1));
+  if (!command) throw new UsageError("intervention requires observe or status", ["intervention"]);
+  if (command !== "observe" && command !== "status") {
+    throw new UsageError(`unknown intervention command: ${command}`, ["intervention"]);
+  }
+  try {
+    return dispatchInterventionCommand(command, raw.slice(1), stdin, homeArgument);
+  } catch (error: unknown) {
+    if (error instanceof ParseUsageError) {
+      throw new UsageError(error.message, ["intervention", command], { cause: error });
+    }
+    throw error;
+  }
+}
+
+function dispatchInterventionCommand(
+  command: "observe" | "status",
+  raw: string[],
+  stdin: string,
+  homeArgument?: string,
+): unknown {
+  const parsed = parseOptions(raw);
 
   if (command === "observe") {
     rejectUnknown(parsed, new Set(["--state-root"]));
@@ -234,26 +256,33 @@ export function runInterventionCommand(raw: string[], stdin = "", homeArgument?:
     return { statePath: path, observation };
   }
 
-  if (command === "status") {
-    rejectUnknown(parsed, new Set(["--state-root", "--state-file", "--session-id"]));
-    const path = selectedState(parsed, homeArgument);
-    const state = readState(path);
-    const requestedSession = parsed.values.get("--session-id")?.[0];
-    if (requestedSession && state.sessionId !== requestedSession) {
-      throw new Error(`intervention state does not belong to session: ${requestedSession}`);
-    }
-    return {
-      statePath: path,
-      sessionId: state.sessionId,
-      observations: state.observations.length,
-      receipts: state.receipts,
-    };
+  rejectUnknown(parsed, new Set(["--state-root", "--state-file", "--session-id"]));
+  const path = selectedState(parsed, homeArgument);
+  const state = readState(path);
+  const requestedSession = parsed.values.get("--session-id")?.[0];
+  if (requestedSession && state.sessionId !== requestedSession) {
+    throw new Error(`intervention state does not belong to session: ${requestedSession}`);
   }
-
-  throw new Error(`unknown intervention command: ${command}`);
+  return {
+    statePath: path,
+    sessionId: state.sessionId,
+    observations: state.observations.length,
+    receipts: state.receipts,
+  };
 }
 
 export function runCorrectionCommand(raw: string[]): unknown {
+  try {
+    return dispatchCorrectionCommand(raw);
+  } catch (error: unknown) {
+    if (error instanceof ParseUsageError) {
+      throw new UsageError(error.message, ["correct"], { cause: error });
+    }
+    throw error;
+  }
+}
+
+function dispatchCorrectionCommand(raw: string[]): unknown {
   const parsed = parseOptions(raw, new Set(["--affected-surface"]));
   rejectUnknown(parsed, new Set([
     "--state-file",

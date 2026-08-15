@@ -16,6 +16,7 @@ import {
   CellInputSchema,
   CellRunRecordSchema,
 } from "../../../packages/work-cell/src/contracts";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
 import {
@@ -1758,8 +1759,9 @@ describe("task run public boundary", () => {
     }
 
     const continued = taskCli(current.home, "run", "unused", "--worker", "deepseek-flash", "--continue");
-    expect(continued.exitCode).toBe(2);
-    expect(continued.stderr).toContain("Principal task not found");
+    expect(continued.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(continued.stderr).toContain("rossovia: Principal task not found");
+    expect(continued.stderr).not.toContain("for usage");
   });
 
   test("rejects dirty, nonexistent, unbound, and completed tasks before the runner", () => {
@@ -2153,8 +2155,9 @@ describe("task attempts projection", () => {
     expect(missing.stderr).toContain("task attempts requires exactly one task id");
 
     const unknown = taskCli(current.home, "attempts", "missing-task");
-    expect(unknown.exitCode).toBe(2);
-    expect(unknown.stderr).toContain("Principal task not found");
+    expect(unknown.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(unknown.stderr).toContain("rossovia: Principal task not found");
+    expect(unknown.stderr).not.toContain("for usage");
   });
 });
 

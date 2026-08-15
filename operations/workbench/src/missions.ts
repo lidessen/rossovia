@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { ParseUsageError, UsageError } from "./cli-errors";
 import { saveJson } from "./home";
 import {
   MissionExecutionProposalSchema,
@@ -52,6 +53,20 @@ const idPattern = /^[a-z0-9][a-z0-9-]*$/;
 const branchKinds = new Set<BranchKind>(["implementation", "investigation", "review", "correction"]);
 const branchStatuses = new Set<BranchStatus>(["open", "integrating", "suspended", "closed"]);
 const dispositions = new Set<Disposition>(["integrate", "no-change", "abandon"]);
+
+const MISSION_SUBCOMMANDS = new Set([
+  "init",
+  "list",
+  "add-branch",
+  "status",
+  "check",
+  "focus",
+  "suspend",
+  "resume",
+  "settle",
+  "close",
+  "prune",
+]);
 
 function now(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -273,7 +288,7 @@ function parseCommand(
 ): ParsedCommand {
   const positionals = raw.slice(0, positionalCount);
   if (positionals.length !== positionalCount || positionals.some((value) => value.startsWith("--"))) {
-    throw new Error("missing required mission command argument");
+    throw new ParseUsageError("missing required mission command argument");
   }
   const allowedSingles = new Set(singles);
   const allowedMultiples = new Set(multiples);
@@ -283,14 +298,16 @@ function parseCommand(
   for (let index = positionalCount; index < raw.length; index += 1) {
     const option = raw[index]!;
     if (allowedFlags.has(option)) {
-      if (seenFlags.has(option)) throw new Error(`duplicate option: ${option}`);
+      if (seenFlags.has(option)) throw new ParseUsageError(`duplicate option: ${option}`);
       seenFlags.add(option);
       continue;
     }
-    if (!allowedSingles.has(option) && !allowedMultiples.has(option)) throw new Error(`invalid option: ${option}`);
+    if (!allowedSingles.has(option) && !allowedMultiples.has(option)) {
+      throw new ParseUsageError(`invalid option: ${option}`);
+    }
     const value = raw[index + 1];
-    if (!value) throw new Error(`${option} requires a value`);
-    if (allowedSingles.has(option) && options.has(option)) throw new Error(`duplicate option: ${option}`);
+    if (!value) throw new ParseUsageError(`${option} requires a value`);
+    if (allowedSingles.has(option) && options.has(option)) throw new ParseUsageError(`duplicate option: ${option}`);
     options.set(option, [...(options.get(option) ?? []), value]);
     index += 1;
   }
@@ -299,13 +316,13 @@ function parseCommand(
 
 function one(parsed: ParsedCommand, option: string, fallback?: string): string {
   const value = parsed.options.get(option)?.[0] ?? fallback;
-  if (value === undefined) throw new Error(`missing required option: ${option}`);
+  if (value === undefined) throw new ParseUsageError(`missing required option: ${option}`);
   return value;
 }
 
 function many(parsed: ParsedCommand, option: string): string[] {
   const values = parsed.options.get(option);
-  if (!values || values.length === 0) throw new Error(`missing required option: ${option}`);
+  if (!values || values.length === 0) throw new ParseUsageError(`missing required option: ${option}`);
   return values;
 }
 
@@ -313,13 +330,26 @@ export function runMissionCommand(rawArguments: string[]): unknown {
   let raw = [...rawArguments];
   let root = resolve("operations/missions");
   if (raw[0] === "--root") {
-    if (!raw[1]) throw new Error("--root requires a path");
+    if (!raw[1]) throw new UsageError("--root requires a path", ["mission"]);
     root = resolve(raw[1]);
     raw = raw.slice(2);
   }
   const command = raw.shift();
-  if (!command) throw new Error("mission requires a subcommand");
+  if (!command) throw new UsageError("mission requires a subcommand", ["mission"]);
+  if (!MISSION_SUBCOMMANDS.has(command)) {
+    throw new UsageError(`unknown mission command: ${command}`, ["mission"]);
+  }
+  try {
+    return dispatchMissionCommand(command, raw, root);
+  } catch (error: unknown) {
+    if (error instanceof ParseUsageError) {
+      throw new UsageError(error.message, ["mission", command], { cause: error });
+    }
+    throw error;
+  }
+}
 
+function dispatchMissionCommand(command: string, raw: string[], root: string): unknown {
   if (command === "init") {
     const parsed = parseCommand(raw, 1, ["--title", "--mainline"], ["--accept", "--source"]);
     const path = missionPath(root, parsed.positionals[0]!);
@@ -501,5 +531,5 @@ export function runMissionCommand(rawArguments: string[]): unknown {
     return path;
   }
 
-  throw new Error(`unknown mission command: ${command}`);
+  throw new ParseUsageError(`unknown mission command: ${command}`);
 }

@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
@@ -119,10 +120,12 @@ describe("Rossovia workbench", () => {
       chmodSync(directory, 0o555);
       try {
         const result = workbench(home, "init");
-        expect(result.exitCode).toBe(2);
+        expect(result.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+        expect(result.stderr).toContain("rossovia: ");
         expect(result.stderr).toContain("a required write surface is not writable by the current runtime");
         expect(result.stderr).toContain(directory);
         expect(result.stderr).toContain("Grant write access to the exact ROSSO_HOME");
+        expect(result.stderr).not.toContain("for usage");
         expect(result.stderr).not.toContain("initialized\": true");
       } finally {
         chmodSync(directory, 0o755);
@@ -138,9 +141,10 @@ describe("Rossovia workbench", () => {
     chmodSync(root, 0o555);
     try {
       const result = workbench(home, "init");
-      expect(result.exitCode).toBe(2);
-      expect(result.stderr).toContain("Rossovia home cannot be prepared by the current runtime");
+      expect(result.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+      expect(result.stderr).toContain("rossovia: Rossovia home cannot be prepared by the current runtime");
       expect(result.stderr).toContain("Grant write access to the exact ROSSO_HOME");
+      expect(result.stderr).not.toContain("for usage");
       expect(existsSync(home)).toBe(false);
     } finally {
       chmodSync(root, 0o755);
@@ -197,8 +201,9 @@ describe("Rossovia workbench", () => {
     const conflicting = join(root, "conflicting-checkout");
     createRepository(conflicting, "https://example.test/lidessen/different.git");
     const rejected = workbench(home, "register", conflicting, "--id", "repository:registered");
-    expect(rejected.exitCode).toBe(2);
-    expect(rejected.stderr).toContain("refusing to rebind stable project id");
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: refusing to rebind stable project id");
+    expect(rejected.stderr).not.toContain("for usage");
   });
 
   test("resolves registered and discovered projects and fails closed on stale mappings", () => {
@@ -224,13 +229,16 @@ describe("Rossovia workbench", () => {
 
     renameSync(registered, `${registered}-moved`);
     const partial = workbench(home, "project", "list");
-    expect(partial.exitCode).toBe(2);
+    expect(partial.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(JSON.parse(partial.stdout)).toEqual(expect.objectContaining({
       complete: false,
       projects: [expect.objectContaining({ status: "unverified" })],
     }));
+    expect(partial.stderr).toContain("rossovia: project list is incomplete");
+    expect(partial.stderr).not.toContain("for usage");
     const stale = workbench(home, "resolve", "survey");
-    expect(stale.exitCode).toBe(2);
-    expect(stale.stderr).toContain("workspace path does not exist");
+    expect(stale.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(stale.stderr).toContain("rossovia: workspace path does not exist");
+    expect(stale.stderr).not.toContain("for usage");
   });
 });
