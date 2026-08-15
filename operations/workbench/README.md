@@ -245,63 +245,71 @@ Immediately before creating the attempt, Workbench rereads the Task and lowers
 its current objective, acceptance conditions, and corrections into an immutable
 attempt-specific Work Cell input. Any Principal-supplied ordinary todos lower
 into that input's existing task seeds only when non-empty; `task show` and the
-immutable Cell input retain them as the single todo data set. The OpenCode CLI
-adapter (installed 1.18.x) initializes those seeds as native session todos
-before the first agent message: it starts a loopback `opencode serve` server,
-creates a zero-message session, writes the seeds into the version-specific
-local database identified by `opencode db path`, verifies them through `GET
-/session/{sessionID}/todo`, attaches the CLI run to that session, and stops the
-server. Seeding failure fails the run visibly; no prompt adoption instruction,
-todo-based phase, gate, or completion validator is invented, and the AI SDK
-path keeps its existing seeded TaskStore behavior. To continue the same
-still-open task, pass
-`--continue`; Workbench selects the latest usable OpenCode session retained by
-an attributable attempt in the current bound Worktree. The Worktree
-may remain dirty only when its current staged, unstaged, and non-ignored
-untracked path set is a subset of the cumulative `workspaceDiff` path union
-reconstructed from that session's continuous, owner-backed attempt history in
-the current Worktree; a fresh attempt or a different observed session starts a
-new history branch. A failed or otherwise unusable attempt contributes no path
-ownership, but its different observed session still terminates the previous
-branch. Ignored artifacts do not block continuation. This is a mechanical
-path-ownership check, not a content digest or proof that file contents still
-match a prior attempt. A session absent from this active Task's current-Worktree
-attempts, a session older than the latest observation, an extra Git-visible
-path, no latest usable continuation session, or a continued session that does
-not match the returned final record fails. Every run result reports the OpenCode session id actually observed in
-that attempt's final Work Cell record.
+immutable Cell input retain them as the single todo data set.
+
+The ordinary production path runs through the one shared catalog-backed Task
+Cell owner: `WorkerCatalog.createDriver` resolves the selected worker card to
+its driver, and the run executes in-process through the AI SDK driver stack
+(the DeepSeek workers use the pinned Pi harness adapter inside Vercel AI SDK's
+HarnessAgent with every Pi built-in tool disabled; the Kimi worker keeps the
+general AI SDK validation driver, because OpenCode Go remains an AI SDK
+provider, never a harness). No opencode-cli executable, OpenCode session id,
+or OpenCode database is part of this path; the OpenCode CLI driver exists only
+as an explicit Work Cell compatibility/experiment adapter and is never a
+default or a fallback. DeepSeek attempts retain the distinct
+`ai-sdk-harness-pi-v1` mechanism identity and explicitly map the selected
+reasoning policy into Pi rather than accepting its default. Ordinary Tasks can
+run no model-visible host command: an exact argv is not filesystem confinement
+when Agent-edited tests or package scripts execute as host code. Verification
+runs through the separate trusted host boundary until a confined check owner
+exists; no generic `git`, `bun`, install, stash, or shell authority is implied. To
+continue the same still-open task, pass
+`--continue <attempt-id>` with the exact prior attempt id; Workbench derives a
+stateless continuation from that exact prior-attempt lineage only. The
+Worktree may remain dirty only when its current staged, unstaged, and
+non-ignored untracked path set is a subset of the cumulative `workspaceDiff`
+path union walked from that exact lineage: the anchor attempt must retain an
+available owner-backed passed final in the current bound Worktree executed by
+the same driver and model, and every predecessor along its exact
+`continuedFromAttemptId` chain must satisfy the same checks. A missing,
+malformed, differently driven, foreign-Worktree, non-passed, or cyclic
+lineage member fails closed. Ignored artifacts do not block continuation.
+This is a mechanical path-ownership check, not a content digest or proof that
+file contents still match a prior attempt. Harness session ids remain
+observation-only: an observed session is retained in the final Work Cell
+record when one exists, but production continuation authority is the exact
+prior-attempt lineage, never a session id.
 The Workbench retains the input, final Work Cell record, and a small append-only
 settlement under its home state. Cell settlement is execution evidence only: it
 does not submit or accept the Task. A completed Task is ordinary viewable
 history and cannot run.
 
 Ordinary task execution sets a 30-minute emergency ceiling instead of inheriting
-Work Cell's five-minute probe default. The OpenCode CLI adapter does not yet
-support completed-step soft-budget requests, so this change deliberately does
-not invent an approval protocol; the ceiling remains a hard runtime boundary.
+Work Cell's five-minute probe default.
 
-This checkpoint is synchronous. Its attempt view is non-streaming history, not
+The CLI checkpoint runs the attempt in-process and returns only after the
+terminal settlement. Its attempt view is non-streaming history, not
 live execution detection: a crash-retained attempt without a settlement remains
 visible as `started`, meaning only that an attempt record exists and no
 settlement was observed. It does not provide a background or live streaming
 projection, independent review display, automatic submission, or semantic
 acceptance, and it does not require Mission context.
-Continuation is explicit per attempt, but session identity stays owner-backed:
-the caller requests `--continue` and Workbench resolves the latest usable
-retained session. The final record—not a copy made by the Workbench—remains the
-source for the observed session, model, status, usage, workspace diff, and
-verification. The read-only attempt
-projection described below reads owner-backed history whenever requested.
-Complete observed and settlement facts appear only after the corresponding
-final record and settlement are retained; a crash-retained `started` entry may
-appear earlier and is not a live execution claim.
+Continuation is explicit per exact attempt: the caller names
+`--continue <attempt-id>` and Workbench walks that exact lineage. The final
+record—not a copy made by the Workbench—remains the source for the observed
+provider, model, adapter, fingerprint when present, status, usage, workspace
+diff, and verification. The read-only attempt projection described below reads
+owner-backed history whenever requested. Complete observed and settlement facts
+appear only after the corresponding final record and settlement are retained;
+a crash-retained `started` entry may appear earlier and is not a live execution
+claim.
 
 `task attempts <id>` is a read-only view over that same append-only evidence.
 It projects every recorded attempt of the task, sorted by start time, without
 copying Work Cell facts: the selected worker, resolved driver/model/reasoning
-effort, and any resolved continuation session come from the immutable attempt
-record; the observed session, cell status, usage, workspace diff, and
-verification come from the retained Work
+effort, and any exact `continuedFromAttemptId` lineage anchor come from the
+immutable attempt record; the observed session (observation only), cell status,
+usage, workspace diff, and verification come from the retained Work
 Cell final record; settlement status and time come from the append-only
 settlement. An attempt without a settlement (a crash-retained in-flight run)
 projects as `started` without observed facts; a `runner-failed` attempt keeps
@@ -335,7 +343,7 @@ not an independent review display, an automatic submission, or semantic
 acceptance: no attempt standing, cell status, or verification display accepts
 the Task or claims the Agent's product result.
 
-The ordinary OpenCode checkpoint considers `.git`, `node_modules`, `dist`,
+The ordinary checkpoint considers `.git`, `node_modules`, `dist`,
 `build`, `target`, `coverage`, `.next`, `outputs`, `.work-cell`, and `.reasonix`
 as reconstructible or generated-directory exclusion candidates. Because Work
 Cell matches those names at any path segment, a candidate is excluded only when

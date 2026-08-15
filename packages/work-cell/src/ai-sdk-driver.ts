@@ -1,4 +1,4 @@
-import { Output, ToolLoopAgent, isStepCount, tool, type UserModelMessage } from "ai";
+import { Output, ToolLoopAgent, isStepCount, tool } from "ai";
 import { z } from "zod";
 import {
   type CellInput,
@@ -16,13 +16,29 @@ import { compileOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import { TaskStore } from "./task-store";
-import { createTaskTools } from "./task-tools";
+import {
+  BUDGET_CONTROL_TOOL_NAMES,
+  createHostTools,
+  EXECUTION_TOOL_NAMES,
+  terminalActionRequired,
+} from "./host-tools";
 import {
   createValidationModel,
   validationModelName,
   validationProviderName,
   type ValidationModelOptions,
 } from "./validation-model";
+import {
+  addUsage,
+  asRecord,
+  emptyUsage,
+  renderExecutionInstructions,
+  renderFirstUserInput,
+  renderRecoveryEvidence,
+  safeToolTarget,
+  sanitize,
+  taskToolNames,
+} from "./driver-common";
 
 export type AiSdkDriverOptions = ValidationModelOptions & {
   /** Host-selected Task authority; it changes the actual tool surface, not only the prompt. */
@@ -31,19 +47,6 @@ export type AiSdkDriverOptions = ValidationModelOptions & {
 
 export const TaskToolSetSchema = z.enum(["manage", "read-update", "read-only"]);
 export type TaskToolSet = z.infer<typeof TaskToolSetSchema>;
-
-const EXECUTION_TOOL_NAMES = new Set([
-  "list_files",
-  "read_file",
-  "write_file",
-  "run_command",
-  "task_create",
-  "task_update",
-  "task_list",
-  "task_get",
-]);
-
-const BUDGET_CONTROL_TOOL_NAMES = new Set(["settle_now", "request_budget"]);
 
 const MAX_AGENT_OUTPUT_TOKENS = 16_000;
 const STREAM_PROGRESS_CHARACTERS = 1_000;
@@ -525,108 +528,15 @@ export class AiSdkValidationDriver implements CellDriver {
       );
     }
 
-    const tools = {
-      ...(context.workspace.canRead
-        ? {
-            list_files: tool({
-              description: "List files inside the declared workspace read scope.",
-              inputSchema: z.object({
-                path: z.string().default("."),
-                maxEntries: z.number().int().positive().max(2_000).default(500),
-              }),
-              execute: async ({ path, maxEntries }) => {
-                if (terminalOnly()) return terminalActionRequired();
-                const files = await context.workspace.listFiles(path, maxEntries);
-                context.emit("tool.list_files", { path, count: files.length });
-                return { files };
-              },
-            }),
-            read_file: tool({
-              description: "Read a UTF-8 file inside the declared workspace read scope.",
-              inputSchema: z.object({
-                path: z.string().min(1),
-                startLine: z.number().int().positive().default(1),
-                endLine: z.number().int().positive().optional(),
-              }),
-              execute: async ({ path, startLine, endLine }) => {
-                if (terminalOnly()) return terminalActionRequired();
-                const content = await context.workspace.readText(path, startLine, endLine);
-                context.emit("tool.read_file", { path, startLine, endLine, characters: content.length });
-                return { path, content };
-              },
-            }),
-          }
-        : {}),
-      ...(context.workspace.canWrite
-        ? {
-            write_file: tool({
-              description: "Write a complete UTF-8 file inside the declared workspace write scope.",
-              inputSchema: z.object({ path: z.string().min(1), content: z.string() }),
-              execute: async ({ path, content }) => {
-                if (terminalOnly()) return terminalActionRequired();
-                await context.workspace.writeText(path, content);
-                context.emit("tool.write_file", { path, characters: content.length });
-                return this.decorateSuccessfulWriteResult(
-                  { path, characters: content.length },
-                  context,
-                );
-              },
-            }),
-          }
-        : {}),
-      ...(context.workspace.canRunCommands
-        ? {
-            run_command: tool({
-              description: "Run one allow-listed executable without a shell inside the workspace.",
-              inputSchema: z.object({
-                argv: z.array(z.string()).min(1),
-                cwd: z.string().default("."),
-                timeoutMs: z.number().int().positive().max(input.budget.maxDurationMs).default(60_000),
-              }),
-              execute: async ({ argv, cwd, timeoutMs }) => {
-                if (terminalOnly()) return terminalActionRequired();
-                const result = await context.workspace.runCommand(argv, cwd, timeoutMs, context.signal);
-                context.emit("tool.run_command", { argv, cwd, ...result });
-                return result;
-              },
-            }),
-          }
-        : {}),
-      ...createTaskTools(tasks, {
-        projection: this.taskToolSet === "manage"
-          ? { read: "all", create: true, update: "all", principal: input.id }
-          : this.taskToolSet === "read-update"
-            ? { read: "all", create: false, update: "status", updateScope: "owned", principal: input.id }
-            : { read: "all", create: false, update: "none", principal: input.id },
-        actionBlocked: () => terminalOnly() ? terminalActionRequired() : undefined,
-        emit: (event) => context.emit(event.type, event.data),
-      }),
-      ...(context.budgetControl ? {
-        settle_now: tool({
-          description: "End investigation and enter terminal/structured settlement now.",
-          inputSchema: z.object({}).strict(),
-          execute: async () => {
-            context.budgetControl!.settleNow();
-            context.emit("budget.choice.settle_now", {});
-            return { accepted: true };
-          },
-        }),
-        request_budget: tool({
-          description: "Request a bounded increase to this run's soft work allowance.",
-          inputSchema: z.object({
-            additionalSteps: z.number().int().positive(),
-            additionalDurationMs: z.number().int().positive(),
-            remainingWork: z.string().min(1),
-          }).strict(),
-          execute: async (value) => {
-            const { request, result } = await context.budgetControl!.requestBudget(value);
-            context.emit("budget.request", request);
-            context.emit("budget.approval", result);
-            return { accepted: result.decision === "allow", decision: result.decision };
-          },
-        }),
-      } : {}),
-    };
+    const tools = createHostTools({
+      input,
+      context,
+      tasks,
+      taskToolSet: this.taskToolSet,
+      fullWriteMode: "overwrite-allowed",
+      actionBlocked: () => terminalOnly() ? terminalActionRequired() : undefined,
+      decorateWriteResult: (result, hostContext) => this.decorateSuccessfulWriteResult(result, hostContext),
+    });
     return {
       ...tools,
       ...Object.fromEntries((input.terminalTools ?? []).map((terminal) => [terminal.name, tool({
@@ -646,13 +556,6 @@ function terminalToolChoice(names: string[]) {
   return names.length === 1
     ? { type: "tool" as const, toolName: names[0]! }
     : "required" as const;
-}
-
-function terminalActionRequired() {
-  return {
-    accepted: false,
-    error: "The action phase is closed. Invoke one declared terminal tool now.",
-  };
 }
 
 function finalOutputStep(
@@ -779,172 +682,4 @@ function createStreamActivityObserver(context: DriverContext, phase: string) {
       responses.delete(id);
     }
   };
-}
-
-function renderRecoveryEvidence(steps: readonly unknown[]): string {
-  const evidence: unknown[] = [];
-  const seen = new Set<string>();
-  for (const [stepIndex, value] of steps.entries()) {
-    const step = asRecord(value);
-    const results = Array.isArray(step.toolResults) ? step.toolResults : [];
-    for (const value of results) {
-      const result = asRecord(value);
-      const output = result.output;
-      if (asRecord(output).accepted === false) continue;
-      const retained = {
-        step: stepIndex + 1,
-        tool: result.toolName,
-        input: result.input,
-        output,
-      };
-      const identity = JSON.stringify({
-        tool: retained.tool,
-        input: retained.input,
-        output: retained.output,
-      });
-      if (seen.has(identity)) continue;
-      seen.add(identity);
-      evidence.push(retained);
-    }
-  }
-  return evidence.length > 0
-    ? JSON.stringify(evidence)
-    : "No successful tool result was retained; submit only the bounded facts available from the task contract.";
-}
-
-function renderExecutionInstructions(
-  input: CellInput,
-  options: { deferStructuredOutput?: boolean; taskToolSet: TaskToolSet },
-): string {
-  const terminalInstruction = input.terminalTools?.length
-    ? `Finish by invoking exactly one declared terminal tool: ${input.terminalTools.map((terminal) => terminal.name).join(", ")}.`
-    : "A terminal tool is not required. Leave a concise final response after completing the work.";
-  const outputInstruction = input.outputSchema && !options.deferStructuredOutput
-    ? `Return a final structured output that conforms exactly to this JSON Schema. This is independent of every tool input:\n${JSON.stringify(input.outputSchema)}`
-    : undefined;
-  const deferredOutputInstruction = input.outputSchema && options.deferStructuredOutput
-    ? "A separate structured settlement phase will follow. Complete the necessary investigation first and leave a source-grounded report; do not guess schema fields or stop at placeholders."
-    : undefined;
-  const artifactInstruction = input.artifacts?.length
-    ? `Create each declared artifact in the workspace write scope. Their paths and instructions are binding:\n${input.artifacts.map((artifact) => `- ${artifact.path}: ${artifact.instructions}`).join("\n")}`
-    : undefined;
-  const taskInstruction = renderTaskInstruction(input, options.taskToolSet);
-  return [
-    "You are one ephemeral Work Cell. Work only inside the granted tools and workspace.",
-    "You own investigation order and local tool choice. You do not own durable acceptance.",
-    "If the task exceeds your scope or capability, state the bounded blocker in the final response. Do not invoke another agent yourself.",
-    terminalInstruction,
-    outputInstruction,
-    deferredOutputInstruction,
-    artifactInstruction,
-    taskInstruction,
-    ...input.instructions,
-    ...input.context.map((section) => `## ${section.title}\n${section.content}`),
-  ].filter((section): section is string => Boolean(section)).join("\n\n");
-}
-
-function taskToolNames(taskToolSet: TaskToolSet): string[] {
-  if (taskToolSet === "manage") return ["task_list", "task_get", "task_create", "task_update"];
-  if (taskToolSet === "read-update") return ["task_list", "task_get", "task_update"];
-  return ["task_list", "task_get"];
-}
-
-function renderTaskInstruction(input: CellInput, taskToolSet: TaskToolSet): string {
-  const seeds = input.tasks?.map((task) => `- ${task.subject}: ${task.description}`).join("\n");
-  if (taskToolSet === "read-only") {
-    return seeds
-      ? `The host supplied read-only task context. Use task_list/task_get for detail; do not claim task mutation authority:\n${seeds}`
-      : "Task access is read-only. Use task_list/task_get only if host task context is relevant; do not create or update tasks.";
-  }
-  if (taskToolSet === "read-update") {
-    return seeds
-      ? `The host seeded these assigned tasks. Use task_list/task_get for detail and task_update only for execution status; leave no assigned task pending or in_progress at completion. Task completion is process evidence, not correctness:\n${seeds}`
-      : "No Task cycle is assigned. The available Task tools cannot create work; do not manufacture a task list.";
-  }
-  return seeds
-    ? `The host seeded these tasks. Use task_list/task_get for detail and task_update as work advances; leave no task pending or in_progress at completion. Task completion is process evidence, not correctness:\n${seeds}`
-    : "Use task_create only when several steps or outcomes create real omission risk; skip task tracking for simple work. Use task_list/task_get/task_update to keep created tasks accurate, and complete every created task before finishing. Task completion is process evidence, not correctness.";
-}
-
-function renderTaskPrompt(input: CellInput): string {
-  return [
-    `Intent:\n${input.intent}`,
-    `Acceptance:\n${input.acceptance.map((item) => `- ${item}`).join("\n")}`,
-    `Capabilities required:\n${input.capabilitiesRequired.join(", ") || "none"}`,
-    `Workspace read scope:\n${input.workspace.readPaths.join("\n")}`,
-    `Workspace write scope:\n${input.workspace.writePaths.join("\n") || "read-only"}`,
-    `Allowed command executables:\n${input.workspace.allowedCommands.join(", ") || "none"}`,
-  ].join("\n\n");
-}
-
-async function renderFirstUserInput(
-  input: CellInput,
-  context: DriverContext,
-): Promise<string | UserModelMessage> {
-  const task = renderTaskPrompt(input);
-  if (!input.imagePaths?.length) return task;
-  const images = await Promise.all(input.imagePaths.map(async (path) => ({
-    type: "file" as const,
-    mediaType: "image",
-    data: await context.workspace.readBinary(path),
-  })));
-  return {
-    role: "user",
-    content: [
-      { type: "text", text: task },
-      ...images,
-    ],
-  };
-}
-
-function addUsage(left: CellUsage, right: CellUsage): CellUsage {
-  return {
-    inputTokens: left.inputTokens + right.inputTokens,
-    outputTokens: left.outputTokens + right.outputTokens,
-    totalTokens: left.totalTokens + right.totalTokens,
-    cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
-  };
-}
-
-function emptyUsage(): CellUsage {
-  return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-}
-
-/**
- * Live supervision needs to know which boundary a tool is touching without
- * retaining model-authored file content, command output, or hidden reasoning.
- */
-function safeToolTarget(name: string, input: unknown): Record<string, unknown> {
-  const value = asRecord(input);
-  if (name === "write_file" || name === "read_file" || name === "list_files") {
-    return typeof value.path === "string"
-      ? { target: { kind: "workspace-path", path: value.path } }
-      : {};
-  }
-  if (name === "run_command") {
-    const argv = Array.isArray(value.argv)
-      ? value.argv.filter((item): item is string => typeof item === "string")
-      : [];
-    return {
-      target: {
-        kind: "command",
-        executable: argv[0] ?? "unknown",
-        cwd: typeof value.cwd === "string" ? value.cwd : ".",
-      },
-    };
-  }
-  return {};
-}
-
-function sanitize(value: unknown): unknown {
-  const serialized = JSON.stringify(value, (_key, item) => {
-    if (typeof item === "bigint") return item.toString();
-    if (item instanceof Error) return { name: item.name, message: item.message };
-    return item;
-  });
-  return serialized === undefined ? undefined : JSON.parse(serialized);
 }

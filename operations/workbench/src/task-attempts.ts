@@ -9,12 +9,15 @@ import { showPrincipalTask } from "./tasks";
 
 const requireFromHere = createRequire(import.meta.url);
 
+/** Canonical identifier for every retained ordinary Task attempt directory. */
+export const TaskAttemptIdSchema = z.string().uuid();
+
 const TaskRunAttemptSchema = z.object({
   version: z.literal("rosso.task-run-attempt.v1"),
   taskId: z.string().min(1),
   taskRevision: z.number().int().positive(),
   sourceRevision: z.number().int().nonnegative(),
-  attemptId: z.string().min(1),
+  attemptId: TaskAttemptIdSchema,
   inputRef: z.string().min(1),
   finalRecordRef: z.string().min(1),
   workerId: z.string().min(1).optional(),
@@ -22,6 +25,21 @@ const TaskRunAttemptSchema = z.object({
   model: z.string().min(1),
   reasoningEffort: z.string().min(1).optional(),
   session: z.string().min(1).optional(),
+  /**
+   * Exact prior-attempt lineage retained by a stateless continuation: the
+   * anchor attempt id and the cumulative owner-backed workspaceDiff union
+   * verified before the run. Legacy `session` stays readable for historical
+   * OpenCode compatibility records only; production continuation authority
+   * is this lineage, never a session id.
+   */
+  continuation: z.object({
+    continuedFromAttemptId: TaskAttemptIdSchema,
+    workspaceDiff: z.object({
+      added: z.array(z.string()),
+      changed: z.array(z.string()),
+      removed: z.array(z.string()),
+    }).strict(),
+  }).strict().optional(),
   status: z.literal("started"),
   startedAt: z.iso.datetime(),
   /**
@@ -84,6 +102,8 @@ export interface TaskAttemptProjection {
   requestedSession?: string;
   /** Session observed in this attempt's retained Work Cell final record, when available. */
   observedSession?: string;
+  /** Exact prior-attempt lineage anchor retained by a stateless continuation, when one exists. */
+  continuedFromAttemptId?: string;
   /** Terminal status retained in the Work Cell final record, when available. */
   cellStatus?: CellRunRecord["status"];
   usage?: CellRunRecord["usage"];
@@ -255,6 +275,9 @@ function projectAttempt(
         ? { correlation: attempt.value.correlation }
         : {}),
       ...(attempt.value.session !== undefined ? { requestedSession: attempt.value.session } : {}),
+      ...(attempt.value.continuation !== undefined
+        ? { continuedFromAttemptId: attempt.value.continuation.continuedFromAttemptId }
+        : {}),
       startedAt: attempt.value.startedAt,
     } : {}),
     ...(finalRecord.value?.executionObservation.sessionId !== undefined
@@ -439,6 +462,12 @@ export function readStrictTaskAttemptEvidence(
       if (!isDeepStrictEqual(candidate.input, input)) {
         return "Work Cell final record embedded input does not match its immutable CellInput";
       }
+      if (
+        input.executionProfile !== undefined
+        && candidate.driver.provider !== input.executionProfile.provider
+      ) {
+        return "Work Cell final record provider does not match its immutable execution profile";
+      }
       return undefined;
     });
     if (parsed.value === undefined) {
@@ -497,6 +526,7 @@ function workCellContracts(): typeof import("../../../packages/work-cell/src/con
 function adapterForAttemptDriver(driver: string): string | undefined {
   if (driver === "opencode-cli") return "opencode-cli.v1";
   if (driver === "ai-sdk-v7") return "ai-sdk-v7";
+  if (driver === "ai-sdk-harness-pi-v1") return "ai-sdk-harness-pi-v1";
   return undefined;
 }
 

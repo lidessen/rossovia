@@ -150,7 +150,13 @@ interface ResolvedValidationTarget {
   baseURL?: string;
 }
 
-function resolveValidationRoute(options: ValidationModelOptions): ResolvedValidationTarget[] {
+/**
+ * The exact resolved validation route with its credential, exposed so a
+ * catalog driver can map the same host-selected provider policy into another
+ * adapter without re-reading credentials or silently accepting an adapter
+ * default.
+ */
+export function resolveValidationRoute(options: ValidationModelOptions = {}): ResolvedValidationTarget[] {
   const route = options.route
     ? ValidationRouteSchema.parse(options.route)
     : loadProviderProfile(options.providerProfilePath).routes.validation;

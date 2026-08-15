@@ -496,6 +496,22 @@ describe("Workspace containment", () => {
     await expect(workspace.runCommand(["true"])).resolves.toMatchObject({ exitCode: 0 });
   });
 
+  test("multi-token command capabilities require one exact argv", async () => {
+    const root = await fixture();
+    const parsed = input(root);
+    parsed.workspace.allowedCommands = ["true exact"];
+    const workspace = await Workspace.create(parsed.workspace, parsed.budget);
+
+    await expect(workspace.runCommand(["true", "exact"]))
+      .resolves.toMatchObject({ exitCode: 0 });
+    await expect(workspace.runCommand(["true"]))
+      .rejects.toThrow("command not allowed: true");
+    await expect(workspace.runCommand(["true", "exact", "extra"]))
+      .rejects.toThrow("command not allowed: true exact extra");
+    await expect(workspace.runCommand(["git", "stash"]))
+      .rejects.toThrow("command not allowed: git stash");
+  });
+
   test("reads binary inputs only through the declared workspace read scope", async () => {
     const root = await fixture();
     await mkdir(join(root, "images"), { recursive: true });

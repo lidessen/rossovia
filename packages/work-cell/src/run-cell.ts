@@ -316,6 +316,8 @@ export async function runCell(
     ...(input.workEstimate ? { workEstimateId: input.workEstimate.id } : {}),
     ...(input.executionProfile ? { executionProfileId: input.executionProfile.id } : {}),
   };
+  const providerFingerprint = observedProviderFingerprint(driverResult?.providerMetadata);
+  if (providerFingerprint) executionObservation.providerFingerprint = providerFingerprint;
   if (priceRevision) executionObservation.priceRevision = priceRevision;
 
   return {
@@ -476,6 +478,26 @@ function observedSessionId(providerMetadata: unknown): string | undefined {
   }
   const value = (providerMetadata as Record<string, unknown>).sessionId;
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
+ * The provider backend fingerprint actually observed in the provider response,
+ * when the provider emitted one. Never fabricated: an absent fingerprint stays
+ * absent in the final evidence.
+ */
+function observedProviderFingerprint(providerMetadata: unknown): string | undefined {
+  if (typeof providerMetadata !== "object" || providerMetadata === null || Array.isArray(providerMetadata)) {
+    return undefined;
+  }
+  const top = providerMetadata as Record<string, unknown>;
+  const direct = typeof top.systemFingerprint === "string" ? top.systemFingerprint : undefined;
+  if (direct && direct.trim()) return direct;
+  for (const value of Object.values(top)) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+    const nested = (value as Record<string, unknown>).systemFingerprint;
+    if (typeof nested === "string" && nested.trim()) return nested;
+  }
+  return undefined;
 }
 
 function addUsage(left: CellUsage, right: CellUsage): CellUsage {

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
 import {
   createCurrentWorkerCatalog,
   currentWorkerCards,
@@ -116,6 +117,9 @@ test("deepseek card reasoning effort matches the inference policy used to constr
       budget: { maxSteps: 1, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
     });
     expect(driver.descriptor).toMatchObject({
+      adapter: card.executionProfile.provider === "deepseek"
+        ? PI_HARNESS_DRIVER_ADAPTER
+        : "ai-sdk-v7",
       provider: card.executionProfile.provider,
       model: card.executionProfile.model,
     });

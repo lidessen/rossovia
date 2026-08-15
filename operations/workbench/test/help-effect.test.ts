@@ -193,7 +193,7 @@ describe("Rossovia CLI help effect contract", () => {
     expect(top.stdout).toContain("effect labels describe what a success path may do");
     expect(top.stdout).toContain("resolve <project> (read-only)");
     expect(top.stdout).toContain("init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH] (writes-state)");
-    expect(top.stdout).toContain("task run <id> --worker <worker-id> [--continue] (starts-work)");
+    expect(top.stdout).toContain("task run <id> --worker <worker-id> [--continue <attempt-id>] (starts-work)");
     expect(top.stdout).toContain("mission [--root <path>] <init|add-branch|focus|suspend|resume|settle|check|status|list|close|prune> ... (mixed)");
     expect(top.stdout).toContain("hook <intervention|artifact> <codex|claude|cursor> [post-tool-use|after-file-edit|stop] (mixed)");
     expect(top.stdout).toContain("rossovia --version prints the @rosso/workbench package version (read-only)");

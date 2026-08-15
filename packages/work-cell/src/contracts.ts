@@ -249,6 +249,8 @@ export interface CellRunRecord {
   executionObservation: {
     /** Actual harness-observed session id when the driver executes through a resumable session. */
     sessionId?: string;
+    /** Actual provider backend fingerprint observed in the provider response, when the provider emitted one. */
+    providerFingerprint?: string;
     workEstimateId?: string;
     executionProfileId?: string;
     priceRevision?: string;
@@ -364,6 +366,7 @@ export const CellRunRecordSchema = z.object({
   }).strict(),
   executionObservation: z.object({
     sessionId: z.string().min(1).optional(),
+    providerFingerprint: z.string().min(1).optional(),
     workEstimateId: z.string().min(1).optional(),
     executionProfileId: z.string().min(1).optional(),
     priceRevision: z.string().min(1).optional(),
