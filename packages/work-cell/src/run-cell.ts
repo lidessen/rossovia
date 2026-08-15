@@ -12,6 +12,7 @@ import {
   type TaskVerification,
   type CellPreparation,
   type TraceEvent,
+  type ProviderFingerprintStanding,
   BudgetApprovalResultSchema,
   type BudgetApprovalResult,
   type BudgetRequest,
@@ -311,11 +312,16 @@ export async function runCell(
 
   const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
   const sessionId = observedSessionId(driverResult?.providerMetadata);
+  const fingerprintEvidence = providerFingerprintEvidence(driverResult?.providerMetadata);
   const executionObservation: CellRunRecord["executionObservation"] = {
     ...(sessionId ? { sessionId } : {}),
     ...(input.workEstimate ? { workEstimateId: input.workEstimate.id } : {}),
     ...(input.executionProfile ? { executionProfileId: input.executionProfile.id } : {}),
+    providerFingerprintStanding: fingerprintEvidence.standing,
   };
+  if (fingerprintEvidence.value !== undefined) {
+    executionObservation.providerFingerprint = fingerprintEvidence.value;
+  }
   if (priceRevision) executionObservation.priceRevision = priceRevision;
 
   return {
@@ -476,6 +482,52 @@ function observedSessionId(providerMetadata: unknown): string | undefined {
   }
   const value = (providerMetadata as Record<string, unknown>).sessionId;
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
+ * Truthful provider-fingerprint evidence. The AI SDK provider metadata
+ * contract surfaces a provider backend fingerprint as `systemFingerprint`,
+ * directly or under the provider namespace (for example
+ * `{"openai-compatible": {systemFingerprint}}`). An observed value is
+ * retained verbatim with an `observed` standing; when the provider emitted
+ * no fingerprint — or no metadata at all — the record retains an explicit
+ * `unavailable` standing with the reason instead of silence that could be
+ * misread as a verified match. Nothing is fabricated, and volatile
+ * session/response data is never hashed into an identity.
+ */
+function providerFingerprintEvidence(providerMetadata: unknown): {
+  value?: string;
+  standing: ProviderFingerprintStanding;
+} {
+  const value = systemFingerprintIn(providerMetadata);
+  if (value !== undefined) return { value, standing: { standing: "observed" } };
+  const metadataPresent = providerMetadata !== null
+    && typeof providerMetadata === "object"
+    && !Array.isArray(providerMetadata)
+    && Object.keys(providerMetadata as Record<string, unknown>).length > 0;
+  return {
+    standing: {
+      standing: "unavailable",
+      reason: metadataPresent
+        ? "provider metadata was retained but carried no system fingerprint"
+        : "the driver retained no provider metadata for this route; the provider response exposed no system fingerprint",
+    },
+  };
+}
+
+function systemFingerprintIn(providerMetadata: unknown): string | undefined {
+  if (typeof providerMetadata !== "object" || providerMetadata === null || Array.isArray(providerMetadata)) {
+    return undefined;
+  }
+  const top = providerMetadata as Record<string, unknown>;
+  const direct = typeof top.systemFingerprint === "string" ? top.systemFingerprint : undefined;
+  if (direct && direct.trim()) return direct;
+  for (const value of Object.values(top)) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+    const nested = (value as Record<string, unknown>).systemFingerprint;
+    if (typeof nested === "string" && nested.trim()) return nested;
+  }
+  return undefined;
 }
 
 function addUsage(left: CellUsage, right: CellUsage): CellUsage {

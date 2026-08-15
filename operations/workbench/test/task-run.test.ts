@@ -15,7 +15,10 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   CellInputSchema,
   CellRunRecordSchema,
+  type CellInput,
+  type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
@@ -30,20 +33,22 @@ import {
 import {
   acquireWorktreeLease,
   attemptLeaseStanding,
+  ORDINARY_TASK_ALLOWED_COMMANDS,
+  PI_HARNESS_TASK_RUN_ADAPTER,
   reconcilePrincipalTaskAttempt,
   releaseWorktreeLease,
   runPrincipalTask as runPrincipalTaskImpl,
+  type TaskCellExecutor,
+  type TaskCellExecutionInput,
   type TaskRunResult,
-  type TaskRunRequest,
-  type TaskRunRunner,
 } from "../src/task-run";
 import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
-import { showPrincipalTaskAttempts } from "../src/task-attempts";
+import { readStrictTaskAttemptEvidence, showPrincipalTaskAttempts } from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const bunCli = join(repositoryRoot, "operations", "workbench", "src", "cli.ts");
-type ParsedCellRunRecord = ReturnType<typeof CellRunRecordSchema.parse>;
+type ParsedCellRunRecord = CellRunRecord;
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -105,25 +110,18 @@ function agentTask(fixture_: Fixture) {
   });
 }
 
-interface LegacyTestRunArguments {
+interface TestRunArguments {
   id: string;
-  driver: "opencode-cli";
+  provider: string;
   model: string;
   reasoningEffort?: string;
-  session?: string;
   expectedSourceRevision: number;
   expectedRevision: number;
 }
 
-function runTestTask(
-  home: string,
-  arguments_: LegacyTestRunArguments,
-  runner?: TaskRunRunner,
-  dependencies: Parameters<typeof runPrincipalTaskImpl>[3] = {},
-): TaskRunResult {
+function testCard(arguments_: TestRunArguments): WorkerCard {
   const workerId = "test-worker";
-  const [provider] = arguments_.model.split("/", 1);
-  const card: WorkerCard = {
+  return {
     version: "work-cell.worker-card.v1",
     id: workerId,
     labels: ["coding", "text", "write", "commands"],
@@ -131,7 +129,7 @@ function runTestTask(
     executionProfile: {
       id: workerId,
       version: "execution-profile.v1",
-      provider: provider!,
+      provider: arguments_.provider,
       model: arguments_.model,
       ...(arguments_.reasoningEffort
         ? { reasoningEffort: arguments_.reasoningEffort }
@@ -140,70 +138,95 @@ function runTestTask(
     },
     availability: { status: "available" },
   };
+}
+
+/**
+ * Run one ordinary task attempt through the shared async catalog-backed path
+ * with a deterministic fake Task Cell executor seam. `continueFromAttemptId`
+ * selects an exact prior-attempt lineage instead of any session coupling.
+ */
+function runTestTask(
+  home: string,
+  arguments_: TestRunArguments & { continueFromAttemptId?: string },
+  executor?: TaskCellExecutor,
+  dependencies: Parameters<typeof runPrincipalTaskImpl>[2] = {},
+): Promise<TaskRunResult> {
   return runPrincipalTaskImpl(
     home,
     {
       id: arguments_.id,
-      workerId,
-      ...(arguments_.session ? { continueRun: true } : {}),
+      workerId: "test-worker",
+      ...(arguments_.continueFromAttemptId !== undefined
+        ? { continueFromAttemptId: arguments_.continueFromAttemptId }
+        : {}),
     },
-    runner,
     {
       ...dependencies,
-      resolveWorkerCard: () => card,
+      resolveWorkerCard: () => testCard(arguments_),
+      executeTaskCell: executor ?? defaultCellExecutor(),
     },
   );
 }
 
-class FakeRunner implements TaskRunRunner {
-  readonly requests: TaskRunRequest[] = [];
+function defaultCellExecutor(): TaskCellExecutor {
+  return async ({ cellInput }) => validWorkCellRecord(cellInput, {
+    runId: "fake-run-default",
+  });
+}
+
+class FakeCellExecutor {
+  readonly requests: TaskCellExecutionInput[] = [];
 
   constructor(
     private readonly retain: (
       record: ParsedCellRunRecord,
-      request: TaskRunRequest,
+      input: CellInput,
+      requestIndex: number,
     ) => unknown = (record) => record,
     private readonly observedSessions: string[] = [],
   ) {}
 
-  run(request: TaskRunRequest) {
-    this.requests.push(request);
-    const result = {
-      runId: `fake-run-${this.requests.length}`,
-      status: "passed" as const,
-    };
-    const observedSession = this.observedSessions[this.requests.length - 1]
-      ?? request.session
-      ?? `fresh-session-${this.requests.length}`;
-    const record = validWorkCellRecord(request, result, observedSession);
-    writeFileSync(
-      request.finalRecordPath,
-      `${JSON.stringify(this.retain(record, request), null, 2)}\n`,
-      { flag: "wx" },
-    );
-    return result;
-  }
+  execute: TaskCellExecutor = async (input) => {
+    this.requests.push(input);
+    const requestIndex = this.requests.length;
+    const observedSession = this.observedSessions[requestIndex - 1]
+      ?? `fresh-session-${requestIndex}`;
+    const record = validWorkCellRecord(input.cellInput, {
+      runId: `fake-run-${requestIndex}`,
+      sessionId: observedSession,
+    });
+    return this.retain(record, input.cellInput, requestIndex) as ParsedCellRunRecord;
+  };
 }
 
 function validWorkCellRecord(
-  request: TaskRunRequest,
-  result: { runId: string; status: "passed" },
-  sessionId = "session-1",
+  input: CellInput,
+  options: {
+    runId: string;
+    status?: CellRunRecord["status"];
+    sessionId?: string;
+    provider?: string;
+    model?: string;
+    adapter?: string;
+  },
 ): ParsedCellRunRecord {
-  const input = CellInputSchema.parse(JSON.parse(readFileSync(request.inputPath, "utf8")));
+  const profile = input.executionProfile;
+  const adapter = options.adapter
+    ?? (profile?.provider === "deepseek" ? PI_HARNESS_DRIVER_ADAPTER : "ai-sdk-v7");
+  const aiSdkFamily = adapter === "ai-sdk-v7" || adapter === PI_HARNESS_DRIVER_ADAPTER;
   return CellRunRecordSchema.parse({
     version: "work-cell.run.v4",
-    runId: result.runId,
+    runId: options.runId,
     cellId: input.id,
     driver: {
-      adapter: "opencode-cli.v1",
-      provider: request.model.split("/", 1)[0],
-      model: request.model,
+      adapter,
+      provider: options.provider ?? profile?.provider ?? "test-provider",
+      model: options.model ?? profile?.model ?? "test/model",
     },
     startedAt: "2026-08-12T00:00:00.000Z",
     finishedAt: "2026-08-12T00:00:01.000Z",
     durationMs: 1_000,
-    status: result.status,
+    status: options.status ?? "passed",
     input,
     finalText: "Fake Work Cell settled.",
     artifacts: [],
@@ -218,9 +241,29 @@ function validWorkCellRecord(
       preparation: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
       execution: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
     },
-    executionObservation: { sessionId },
+    executionObservation: {
+      ...(options.sessionId !== undefined ? { sessionId: options.sessionId } : {}),
+      ...(aiSdkFamily
+        ? {
+            providerFingerprintStanding: {
+              standing: "unavailable",
+              reason: "deterministic task-run test executor retains no provider metadata",
+            },
+          }
+        : {}),
+    },
     trace: [],
     rawSteps: [],
+  }) as CellRunRecord;
+}
+
+/** One legacy OpenCode compatibility final record used only by reconcile reads. */
+function legacyWorkCellRecord(input: CellInput, options: { runId: string }): ParsedCellRunRecord {
+  return validWorkCellRecord(input, {
+    runId: options.runId,
+    adapter: "opencode-cli.v1",
+    provider: "opencode",
+    model: "opencode/go",
   });
 }
 
@@ -310,7 +353,7 @@ function deadPid(): number {
 }
 
 describe("task attempt reconciliation", () => {
-  test("reconciles an interrupted attempt with a dead owner, preserving evidence and enabling a fresh run", () => {
+  test("reconciles an interrupted attempt with a dead owner, preserving evidence and enabling a fresh run", async () => {
     const current = fixture();
     const created = agentTask(current);
     const attempt = interruptedAttempt(current, created.task.id, deadPid());
@@ -361,24 +404,24 @@ describe("task attempt reconciliation", () => {
     expect(projections[0]).not.toHaveProperty("workspaceDiff");
     expect(projections[0]).not.toHaveProperty("verification");
 
-    expect(() => runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: "retained-session",
+      continueFromAttemptId: randomUUID(),
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner())).toThrow("has no usable recorded Work Cell attempt");
+    }, new FakeCellExecutor().execute)).rejects.toThrow("has no usable retained evidence");
 
-    const runner = new FakeRunner();
-    expect(() => runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).not.toThrow();
-    expect(runner.requests).toHaveLength(1);
+    }, executor.execute)).resolves.toBeTruthy();
+    expect(executor.requests).toHaveLength(1);
   });
 
   test("refuses to reconcile while the recorded lease owner process is still alive", () => {
@@ -583,17 +626,12 @@ describe("task attempt reconciliation", () => {
     expect(existsSync(attempt.leasePath)).toBeTrue();
   });
 
-  test("derives the shared normal settlement from a retained final record without a settlement", () => {
+  test("derives the shared normal settlement from a retained final record without a settlement", async () => {
     const current = fixture();
     const created = agentTask(current);
     const attempt = interruptedAttempt(current, created.task.id, deadPid());
     const input = JSON.parse(readFileSync(join(attempt.directory, "cell-input.json"), "utf8"));
-    const finalRecord = validWorkCellRecord({
-      inputPath: join(attempt.directory, "cell-input.json"),
-      finalRecordPath: join(attempt.directory, "cell-input.run.json"),
-      driver: "opencode-cli",
-      model: "opencode/go",
-    }, { runId: "recovered-run", status: "passed" }, "recovered-session-1");
+    const finalRecord = legacyWorkCellRecord(input, { runId: "recovered-run" });
     writeFileSync(join(attempt.directory, "cell-input.run.json"), `${JSON.stringify(finalRecord, null, 2)}\n`);
 
     const result = reconcilePrincipalTaskAttempt(current.home, {
@@ -623,28 +661,32 @@ describe("task attempt reconciliation", () => {
     expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
     expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
 
-    // The recovered owner-backed final record makes normal continuation
-    // attributable again; a fresh run remains available too.
-    expect(() => runTestTask(current.home, {
+    // The recovered legacy OpenCode attempt cannot be continued by the
+    // catalog AI SDK execution form: a different driver fails closed, while
+    // a fresh run remains available.
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: "recovered-session-1",
+      continueFromAttemptId: attempt.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner())).not.toThrow();
+    }, new FakeCellExecutor().execute)).rejects.toThrow("differs and cannot continue it");
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute)).resolves.toBeTruthy();
   });
 
   test("a failed final record without a settlement derives runner-failed with retained cell evidence", () => {
     const current = fixture();
     const created = agentTask(current);
     const attempt = interruptedAttempt(current, created.task.id, deadPid());
-    const finalRecord = validWorkCellRecord({
-      inputPath: join(attempt.directory, "cell-input.json"),
-      finalRecordPath: join(attempt.directory, "cell-input.run.json"),
-      driver: "opencode-cli",
-      model: "opencode/go",
-    }, { runId: "failed-run", status: "passed" }, "session-failed");
+    const input = JSON.parse(readFileSync(join(attempt.directory, "cell-input.json"), "utf8"));
+    const finalRecord = legacyWorkCellRecord(input, { runId: "failed-run" });
     writeFileSync(
       join(attempt.directory, "cell-input.run.json"),
       `${JSON.stringify({ ...finalRecord, status: "failed", error: "the run failed" }, null, 2)}\n`,
@@ -667,12 +709,8 @@ describe("task attempt reconciliation", () => {
     const current = fixture();
     const created = agentTask(current);
     const attempt = interruptedAttempt(current, created.task.id, deadPid());
-    const finalRecord = validWorkCellRecord({
-      inputPath: join(attempt.directory, "cell-input.json"),
-      finalRecordPath: join(attempt.directory, "cell-input.run.json"),
-      driver: "opencode-cli",
-      model: "opencode/go",
-    }, { runId: "tampered-run", status: "passed" }, "session-tampered");
+    const input = JSON.parse(readFileSync(join(attempt.directory, "cell-input.json"), "utf8"));
+    const finalRecord = legacyWorkCellRecord(input, { runId: "tampered-run" });
     writeFileSync(
       join(attempt.directory, "cell-input.run.json"),
       `${JSON.stringify({ ...finalRecord, input: { ...finalRecord.input, intent: "forged" } }, null, 2)}\n`,
@@ -682,6 +720,48 @@ describe("task attempt reconciliation", () => {
       id: created.task.id,
       attemptId: attempt.attemptId,
     })).toThrow("does not match its immutable CellInput");
+    expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+    expect(existsSync(attempt.leasePath)).toBeTrue();
+  });
+
+  test("refuses to reconcile a Pi attempt whose retained final claims another adapter", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+    const attemptPath = join(attempt.directory, "attempt.json");
+    const attemptRecord = JSON.parse(readFileSync(attemptPath, "utf8"));
+    attemptRecord.workerId = "deepseek-pro";
+    attemptRecord.driver = PI_HARNESS_TASK_RUN_ADAPTER;
+    attemptRecord.model = "deepseek-v4-pro";
+    writeFileSync(attemptPath, `${JSON.stringify(attemptRecord, null, 2)}\n`);
+
+    const inputPath = join(attempt.directory, "cell-input.json");
+    const input = JSON.parse(readFileSync(inputPath, "utf8"));
+    input.workerId = "deepseek-pro";
+    input.executionProfile = {
+      id: "deepseek-pro",
+      version: "execution-profile.v1",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      parallelism: "serial",
+    };
+    writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
+    const finalRecord = validWorkCellRecord(CellInputSchema.parse(input), {
+      runId: "wrong-pi-adapter-run",
+      adapter: "ai-sdk-v7",
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+    });
+    writeFileSync(
+      join(attempt.directory, "cell-input.run.json"),
+      `${JSON.stringify(finalRecord, null, 2)}\n`,
+    );
+
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("driver adapter does not match the attempt execution form");
     expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
     expect(existsSync(attempt.leasePath)).toBeTrue();
   });
@@ -794,59 +874,104 @@ describe("task attempt reconciliation", () => {
 });
 
 describe("task run public boundary", () => {
-  test("selects the available Kimi worker and lowers its exact OpenCode carrier identity", () => {
+  test("retains the exact HarnessAgent plus Pi mechanism for a DeepSeek worker", async () => {
+    expect(PI_HARNESS_TASK_RUN_ADAPTER).toBe(PI_HARNESS_DRIVER_ADAPTER);
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
+    const executor = new FakeCellExecutor();
+    const originalKey = process.env.DEEPSEEK_API_KEY;
+    process.env.DEEPSEEK_API_KEY = "configured-for-test";
+    try {
+      const result = await runPrincipalTaskImpl(current.home, {
+        id: created.task.id,
+        workerId: "deepseek-pro",
+      }, { executeTaskCell: executor.execute });
+      const attempt = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+      const finalRecord = JSON.parse(
+        readFileSync(join(current.home, result.finalRecordRef), "utf8"),
+      );
+      expect(attempt).toMatchObject({
+        workerId: "deepseek-pro",
+        driver: PI_HARNESS_DRIVER_ADAPTER,
+        model: "deepseek-v4-pro",
+        reasoningEffort: "max",
+      });
+      expect(finalRecord.driver).toMatchObject({
+        adapter: PI_HARNESS_DRIVER_ADAPTER,
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+      });
+      expect(finalRecord.input.workspace.allowedCommands)
+        .toEqual([...ORDINARY_TASK_ALLOWED_COMMANDS]);
+    } finally {
+      restoreEnvironment("DEEPSEEK_API_KEY", originalKey);
+    }
+  });
+
+  test("selects the available Kimi worker and lowers its exact AI SDK execution identity", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
     const originalOpenCodeKey = process.env.OPENCODE_API_KEY;
     const originalKimiKey = process.env.KIMI_CODE_API_KEY;
     process.env.OPENCODE_API_KEY = "configured-for-test";
     delete process.env.KIMI_CODE_API_KEY;
 
     try {
-      const result = runPrincipalTaskImpl(current.home, {
+      const result = await runPrincipalTaskImpl(current.home, {
         id: created.task.id,
         workerId: "kimi-coding",
-      }, runner);
+      }, {
+        executeTaskCell: executor.execute,
+      });
       const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
       expect(input.executionProfile).toMatchObject({
         provider: "opencode-go",
         model: "kimi-k2.7-code",
       });
-      expect(runner.requests).toEqual([
-        expect.objectContaining({
-          driver: "opencode-cli",
-          model: "opencode-go/kimi-k2.7-code",
-        }),
-      ]);
+      const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+      expect(attemptRecord).toMatchObject({
+        workerId: "kimi-coding",
+        driver: "ai-sdk-v7",
+        model: "kimi-k2.7-code",
+      });
+      expect(attemptRecord).not.toHaveProperty("session");
+      const finalRecord = JSON.parse(readFileSync(join(current.home, result.finalRecordRef), "utf8"));
+      expect(finalRecord.driver).toMatchObject({
+        adapter: "ai-sdk-v7",
+        provider: "opencode-go",
+        model: "kimi-k2.7-code",
+      });
     } finally {
       restoreEnvironment("OPENCODE_API_KEY", originalOpenCodeKey);
       restoreEnvironment("KIMI_CODE_API_KEY", originalKimiKey);
     }
   });
 
-  test("rejects the Kimi worker when only its obsolete provider credential is configured", () => {
+  test("rejects the Kimi worker when only its obsolete provider credential is configured", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
+    const executor = new FakeCellExecutor();
     const originalOpenCodeKey = process.env.OPENCODE_API_KEY;
     const originalKimiKey = process.env.KIMI_CODE_API_KEY;
     delete process.env.OPENCODE_API_KEY;
     process.env.KIMI_CODE_API_KEY = "configured-for-test";
 
     try {
-      expect(() => runPrincipalTaskImpl(current.home, {
+      await expect(runPrincipalTaskImpl(current.home, {
         id: created.task.id,
         workerId: "kimi-coding",
-      }, runner)).toThrow("worker kimi-coding is unavailable: OPENCODE_API_KEY is not configured");
-      expect(runner.requests).toHaveLength(0);
+      }, {
+        executeTaskCell: executor.execute,
+      })).rejects.toThrow("worker kimi-coding is unavailable: OPENCODE_API_KEY is not configured");
+      expect(executor.requests).toHaveLength(0);
     } finally {
       restoreEnvironment("OPENCODE_API_KEY", originalOpenCodeKey);
       restoreEnvironment("KIMI_CODE_API_KEY", originalKimiKey);
     }
   });
 
-  test("lowers exact current task guidance without Mission and appends immutable attempts", () => {
+  test("lowers exact current task guidance without Mission and appends immutable attempts", async () => {
     const current = fixture();
     const created = agentTask(current);
     const firstCorrection = correctPrincipalTask(current.home, {
@@ -865,18 +990,18 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 2,
       expectedRevision: firstCorrection.task.revision,
     });
-    const runner = new FakeRunner();
+    const executor = new FakeCellExecutor();
     const run = () => runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       reasoningEffort: "high",
       expectedSourceRevision: 3,
       expectedRevision: corrected.task.revision,
-    }, runner);
+    }, executor.execute);
 
-    const first = run();
-    const second = run();
+    const first = await run();
+    const second = await run();
     const input = JSON.parse(readFileSync(join(current.home, first.inputRef), "utf8"));
     expect(input).toMatchObject({
       intent: "Implement the exact bounded change",
@@ -889,6 +1014,7 @@ describe("task run public boundary", () => {
       workspace: {
         root: realpathSync(current.worktree),
         writePaths: ["."],
+        allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
         excludePaths: [
           ".git",
           "node_modules",
@@ -916,24 +1042,14 @@ describe("task run public boundary", () => {
     expect(first.attemptId).not.toBe(second.attemptId);
     expect(first.inputRef).not.toBe(second.inputRef);
     expect(first.finalRecordRef).not.toBe(second.finalRecordRef);
-    expect(runner.requests).toEqual([
-      expect.objectContaining({
-        driver: "opencode-cli",
-        model: "opencode/go",
-        reasoningEffort: "high",
-      }),
-      expect.objectContaining({
-        driver: "opencode-cli",
-        model: "opencode/go",
-        reasoningEffort: "high",
-      }),
-    ]);
+    expect(executor.requests).toHaveLength(2);
 
     const attemptRecord = JSON.parse(
       readFileSync(join(current.home, first.attemptRef), "utf8"),
     );
     expect(attemptRecord).toMatchObject({ reasoningEffort: "high" });
     expect(attemptRecord).not.toHaveProperty("variant");
+    expect(attemptRecord).not.toHaveProperty("session");
 
     const settlement = JSON.parse(readFileSync(join(current.home, first.settlementRef), "utf8"));
     expect(settlement).toMatchObject({
@@ -951,7 +1067,7 @@ describe("task run public boundary", () => {
     });
   });
 
-  test("lowers ordinary todos into the immutable CellInput.tasks seeds only when non-empty", () => {
+  test("lowers ordinary todos into the immutable CellInput.tasks seeds only when non-empty", async () => {
     const current = fixture();
     const created = createPrincipalTask(current.home, {
       title: "Run one todo-backed task",
@@ -964,14 +1080,14 @@ describe("task run public boundary", () => {
       project: "task-run",
       worktree: current.worktree,
     });
-    const runner = new FakeRunner();
-    const withTodos = runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    const withTodos = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
     const seededInput = JSON.parse(
       readFileSync(join(current.home, withTodos.inputRef), "utf8"),
     );
@@ -990,13 +1106,13 @@ describe("task run public boundary", () => {
       project: "task-run",
       worktree: current.worktree,
     });
-    const withoutTodos = runTestTask(current.home, {
+    const withoutTodos = await runTestTask(current.home, {
       id: plain.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 2,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
     const plainInput = JSON.parse(
       readFileSync(join(current.home, withoutTodos.inputRef), "utf8"),
     );
@@ -1007,42 +1123,74 @@ describe("task run public boundary", () => {
     });
   });
 
-  test("returns the observed OpenCode session and continues the same active task by session", () => {
+  test("a stateless continuation retains the exact prior-attempt lineage without requiring any session id", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
-
-    const fresh = runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    const fresh = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    expect(fresh.sessionId).toBe("fresh-session-1");
+    }, executor.execute);
 
-    const resumed = runTestTask(current.home, {
+    const continued = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: fresh.sessionId,
+      continueFromAttemptId: fresh.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    expect(resumed.sessionId).toBe(fresh.sessionId);
-    expect(runner.requests[1]).toMatchObject({
-      driver: "opencode-cli",
+    }, executor.execute);
+    expect(executor.requests).toHaveLength(2);
+    const attemptRecord = JSON.parse(
+      readFileSync(join(current.home, continued.attemptRef), "utf8"),
+    );
+    expect(attemptRecord).toMatchObject({
+      driver: "ai-sdk-v7",
       model: "opencode/go",
-      session: fresh.sessionId,
+      continuation: {
+        continuedFromAttemptId: fresh.attemptId,
+        workspaceDiff: { added: [], changed: [], removed: [] },
+      },
     });
+    expect(attemptRecord).not.toHaveProperty("session");
+    // The stateless continuation carries its own fresh observation; it never
+    // reuses the anchor attempt's session as continuation authority.
+    expect(continued.sessionId).not.toBe(fresh.sessionId);
   });
 
-  test("continues the latest retained session when its Git-visible dirty paths remain owned", () => {
+  test("a continuation never requires or fabricates a harness session id", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const sessionless: TaskCellExecutor = async ({ cellInput }) =>
+      validWorkCellRecord(cellInput, { runId: "sessionless-run" });
+    const fresh = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, sessionless);
+    expect(fresh.sessionId).toBeUndefined();
+    const continued = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: fresh.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, sessionless);
+    expect(continued.sessionId).toBeUndefined();
+  });
+
+  test("a lineage continuation accepts Git-visible dirty paths owned by the cumulative union and rejects extras", async () => {
     const current = fixture();
     const created = agentTask(current);
     const retainedPath = "app/blog/content.ts";
-    const runner = new FakeRunner((record, request) => {
-      if (request.session === undefined) {
+    const executor = new FakeCellExecutor((record, _input, requestIndex) => {
+      if (requestIndex === 1) {
         mkdirSync(join(current.worktree, "app", "blog"), { recursive: true });
         writeFileSync(join(current.worktree, retainedPath), "export const draft = true;\n");
         return {
@@ -1052,26 +1200,38 @@ describe("task run public boundary", () => {
       }
       return record;
     });
-    const first = runTestTask(current.home, {
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
 
-    expect(() => runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: first.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).not.toThrow();
-    expect(runner.requests).toHaveLength(2);
+    }, executor.execute)).resolves.toBeTruthy();
+    expect(executor.requests).toHaveLength(2);
+
+    writeFileSync(join(current.worktree, "notes-unowned.md"), "unowned\n");
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: first.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute)).rejects.toThrow(
+      `task Worktree has Git-visible paths outside the retained continuation workspace diff union: notes-unowned.md`,
+    );
   });
 
-  test("retains cumulative added, removed, and renamed paths across a later subset attempt", () => {
+  test("retains cumulative added, removed, and renamed paths across an exact lineage chain", async () => {
     const current = fixture();
     const firstPath = "app/blog/content.ts";
     const untouchedPath = "app/blog/metadata.ts";
@@ -1081,9 +1241,9 @@ describe("task run public boundary", () => {
     git(current.worktree, "add", removedPath);
     git(current.worktree, "commit", "-m", "add legacy fixture");
     const created = agentTask(current);
-    const runner = new FakeRunner((record) => {
+    const executor = new FakeCellExecutor((record, _input, requestIndex) => {
       mkdirSync(join(current.worktree, "app", "blog"), { recursive: true });
-      if (runner.requests.length === 1) {
+      if (requestIndex === 1) {
         writeFileSync(join(current.worktree, firstPath), "export const content = 1;\n");
         writeFileSync(join(current.worktree, untouchedPath), "export const metadata = 1;\n");
         mkdirSync(join(current.worktree, "docs"), { recursive: true });
@@ -1098,7 +1258,7 @@ describe("task run public boundary", () => {
           },
         };
       }
-      if (runner.requests.length === 2) {
+      if (requestIndex === 2) {
         writeFileSync(join(current.worktree, firstPath), "export const content = 2;\n");
         return {
           ...record,
@@ -1107,39 +1267,50 @@ describe("task run public boundary", () => {
       }
       return record;
     });
-    const first = runTestTask(current.home, {
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    runTestTask(current.home, {
+    }, executor.execute);
+    const second = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: first.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
 
-    expect(() => runTestTask(current.home, {
+    const third = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: second.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).not.toThrow();
-    expect(runner.requests).toHaveLength(3);
+    }, executor.execute);
+    expect(executor.requests).toHaveLength(3);
+    const attemptRecord = JSON.parse(
+      readFileSync(join(current.home, third.attemptRef), "utf8"),
+    );
+    expect(attemptRecord.continuation).toEqual({
+      continuedFromAttemptId: second.attemptId,
+      workspaceDiff: {
+        added: [firstPath, untouchedPath, renamedPath],
+        changed: [firstPath],
+        removed: ["README.md", removedPath],
+      },
+    });
   });
 
-  test("preserves leading whitespace and embedded newlines in raw Git-visible paths", () => {
+  test("preserves leading whitespace and embedded newlines in raw Git-visible paths", async () => {
     for (const retainedPath of [" leading-space.ts", "line\nbreak.ts"]) {
       const current = fixture();
       const created = agentTask(current);
-      const runner = new FakeRunner((record, request) => {
-        if (request.session === undefined) {
+      const executor = new FakeCellExecutor((record, _input, requestIndex) => {
+        if (requestIndex === 1) {
           writeFileSync(join(current.worktree, retainedPath), "export const draft = true;\n");
           return {
             ...record,
@@ -1148,40 +1319,40 @@ describe("task run public boundary", () => {
         }
         return record;
       });
-      const first = runTestTask(current.home, {
+      const first = await runTestTask(current.home, {
         id: created.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, runner);
+      }, executor.execute);
 
-      expect(() => runTestTask(current.home, {
+      await expect(runTestTask(current.home, {
         id: created.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
-        session: first.sessionId,
+        continueFromAttemptId: first.attemptId,
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, runner)).not.toThrow();
-      expect(runner.requests).toHaveLength(2);
+      }, executor.execute)).resolves.toBeTruthy();
+      expect(executor.requests).toHaveLength(2);
     }
   });
 
-  test("does not inherit path ownership across a fresh-session discontinuity", () => {
+  test("does not inherit path ownership across an unrelated attempt", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const priorPath = "prior-session.ts";
-    const currentPath = "current-session.ts";
-    const runner = new FakeRunner((record) => {
-      if (runner.requests.length === 1) {
+    const priorPath = "prior-attempt.ts";
+    const currentPath = "current-attempt.ts";
+    const executor = new FakeCellExecutor((record, _input, requestIndex) => {
+      if (requestIndex === 1) {
         writeFileSync(join(current.worktree, priorPath), "export const prior = true;\n");
         return {
           ...record,
           workspaceDiff: { added: [priorPath], changed: [], removed: [] },
         };
       }
-      if (runner.requests.length === 2) {
+      if (requestIndex === 2) {
         writeFileSync(join(current.worktree, currentPath), "export const current = true;\n");
         return {
           ...record,
@@ -1189,43 +1360,43 @@ describe("task run public boundary", () => {
         };
       }
       return record;
-    }, ["session-prior", "session-current"]);
-    runTestTask(current.home, {
+    });
+    await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
     rmSync(join(current.worktree, priorPath));
-    const currentSession = runTestTask(current.home, {
+    const currentAttempt = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    writeFileSync(join(current.worktree, priorPath), "unowned in current session\n");
+    }, executor.execute);
+    writeFileSync(join(current.worktree, priorPath), "unowned in current lineage\n");
 
-    expect(() => runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: currentSession.sessionId,
+      continueFromAttemptId: currentAttempt.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow(
-      `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${priorPath}`,
+    }, executor.execute)).rejects.toThrow(
+      `task Worktree has Git-visible paths outside the retained continuation workspace diff union: ${priorPath}`,
     );
-    expect(runner.requests).toHaveLength(2);
+    expect(executor.requests).toHaveLength(2);
   });
 
-  test("rejects extra tracked or untracked paths outside retained same-session history", () => {
+  test("rejects extra tracked or untracked paths outside the retained lineage union", async () => {
     for (const extra of ["README.md", "notes/unowned.md"]) {
       const current = fixture();
       const created = agentTask(current);
       const retainedPath = "app/blog/content.ts";
-      const runner = new FakeRunner((record) => {
+      const executor = new FakeCellExecutor((record) => {
         mkdirSync(join(current.worktree, "app", "blog"), { recursive: true });
         writeFileSync(join(current.worktree, retainedPath), "export const draft = true;\n");
         return {
@@ -1233,156 +1404,247 @@ describe("task run public boundary", () => {
           workspaceDiff: { added: [retainedPath], changed: [], removed: [] },
         };
       });
-      const first = runTestTask(current.home, {
+      const first = await runTestTask(current.home, {
         id: created.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, runner);
+      }, executor.execute);
       mkdirSync(join(current.worktree, "notes"), { recursive: true });
       writeFileSync(join(current.worktree, extra), "unowned\n");
 
-      expect(() => runTestTask(current.home, {
+      await expect(runTestTask(current.home, {
         id: created.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
-        session: first.sessionId,
+        continueFromAttemptId: first.attemptId,
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, runner)).toThrow(
-        `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${extra}`,
+      }, executor.execute)).rejects.toThrow(
+        `task Worktree has Git-visible paths outside the retained continuation workspace diff union: ${extra}`,
       );
-      expect(runner.requests).toHaveLength(1);
+      expect(executor.requests).toHaveLength(1);
     }
   });
 
-  test("does not let ignored artifacts block an explicit session continuation", () => {
+  test("does not let ignored artifacts block an exact lineage continuation", async () => {
     const current = fixture();
     writeFileSync(join(current.worktree, ".gitignore"), "build/\n");
     git(current.worktree, "add", ".gitignore");
     git(current.worktree, "commit", "-m", "ignore build artifacts");
     const created = agentTask(current);
-    const runner = new FakeRunner();
-    const first = runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
     mkdirSync(join(current.worktree, "build"), { recursive: true });
     writeFileSync(join(current.worktree, "build", "artifact.js"), "generated\n");
 
-    expect(() => runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: first.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).not.toThrow();
-    expect(runner.requests).toHaveLength(2);
+    }, executor.execute)).resolves.toBeTruthy();
+    expect(executor.requests).toHaveLength(2);
   });
 
-  test("continues the latest retained session without a caller-supplied session id", () => {
+  test("fails closed on a missing, unknown, or malformed continueFromAttemptId", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner(undefined, ["session-old", "session-latest"]);
-    const first = runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    runTestTask(current.home, {
-      id: created.task.id,
-      driver: "opencode-cli",
-      model: "opencode/go",
-      expectedSourceRevision: 1,
-      expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
 
-    const continued = runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: randomUUID(),
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    expect(continued.sessionId).toBe("session-latest");
-    expect(runner.requests[2]).toMatchObject({ session: "session-latest" });
+    }, executor.execute)).rejects.toThrow("has no usable retained evidence");
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: "../escape",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute)).rejects.toThrow("task run --continue must be a valid attempt id");
+    expect(executor.requests).toHaveLength(1);
   });
 
-  test("a failed mismatched observation terminates the previously passed session branch", () => {
+  test("fails closed on a lineage executed by a different driver or model", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner(undefined, ["requested-session-1", "observed-session-9"]);
-    const first = runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    expect(first.sessionId).toBe("requested-session-1");
-    expect(() => runTestTask(current.home, {
+    }, executor.execute);
+
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
-      model: "opencode/go",
-      session: "requested-session-1",
+      provider: "another-provider",
+      model: "another/model",
+      continueFromAttemptId: first.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow(
-      "requested OpenCode session does not match the observed session: requested requested-session-1, observed observed-session-9",
+    }, executor.execute)).rejects.toThrow("differs and cannot continue it");
+    expect(executor.requests).toHaveLength(1);
+  });
+
+  test("rejects a Pi continuation whose retained final claims the generic AI SDK adapter", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const finalPath = join(current.home, first.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    finalRecord.driver.adapter = "ai-sdk-v7";
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      continueFromAttemptId: first.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute)).rejects.toThrow(
+      "driver adapter does not match the attempt execution form",
     );
-    const attemptDirectory = join(current.home, "state", "task-attempts");
-    const attempts = readdirSync(attemptDirectory);
-    const statuses = attempts.map((attempt) => JSON.parse(
-      readFileSync(join(attemptDirectory, attempt, "settlement.json"), "utf8"),
-    ).status);
-    expect(statuses).toContain("runner-failed");
-    expect(() => runTestTask(current.home, {
-      id: created.task.id,
-      driver: "opencode-cli",
-      model: "opencode/go",
-      session: first.sessionId,
-      expectedSourceRevision: 1,
-      expectedRevision: 1,
-    }, runner)).toThrow("has no usable recorded Work Cell attempt in the current Worktree session branch");
-    expect(runner.requests).toHaveLength(2);
+    expect(executor.requests).toHaveLength(1);
   });
 
-  test("rejects a session that was not observed in a prior attempt of the same active task", () => {
+  test("fails closed on a lineage anchor without an owner-backed passed final", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
-    expect(() => runTestTask(current.home, {
+    const failing: TaskCellExecutor = async () => {
+      throw new Error("provider crashed");
+    };
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: "external-session",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow(
-      `task ${created.task.id} has no usable recorded Work Cell attempt in the current Worktree`,
-    );
-    expect(runner.requests).toHaveLength(0);
+    }, failing)).rejects.toThrow("the attempt settlement is runner-failed");
+    const failed = showPrincipalTaskAttempts(current.home, created.task.id)[0]!;
+
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: failed.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute)).rejects.toThrow("has no owner-backed passed final");
   });
 
-  test("rejects a retained session from the same active task's previous Worktree", () => {
+  test("fails closed on an unavailable or invalid lineage predecessor", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
-    const first = runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
+    const second = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: first.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+
+    // Break the chain behind the anchor: the anchor itself is fine, but its
+    // exact predecessor evidence is now invalid.
+    writeFileSync(join(current.home, first.finalRecordRef), "{not-json\n");
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: second.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute)).rejects.toThrow(`has no usable retained evidence at attempt ${first.attemptId}`);
+  });
+
+  test("rejects a path-like persisted predecessor before any evidence-path resolution", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const second = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: first.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const attemptPath = join(current.home, second.attemptRef);
+    const attemptRecord = JSON.parse(readFileSync(attemptPath, "utf8"));
+    attemptRecord.continuation.continuedFromAttemptId = "../../tasks";
+    writeFileSync(attemptPath, `${JSON.stringify(attemptRecord, null, 2)}\n`);
+
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      continueFromAttemptId: second.attemptId,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute)).rejects.toThrow("Invalid UUID");
+    expect(executor.requests).toHaveLength(2);
+  });
+
+  test("rejects a lineage anchor from the task's previous Worktree", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
     const replacement = join(current.root, "replacement-worktree");
     git(current.primary, "worktree", "add", "-b", "task/replacement", replacement);
     const rebound = rebindPrincipalTaskWorktree(current.home, {
@@ -1394,81 +1656,83 @@ describe("task run public boundary", () => {
       expectedRevision: 1,
     });
 
-    expect(() => runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: first.attemptId,
       expectedSourceRevision: rebound.sourceRevision,
       expectedRevision: rebound.task.revision,
-    }, runner)).toThrow(
-      `task ${created.task.id} has no usable recorded Work Cell attempt in the current Worktree`,
+    }, executor.execute)).rejects.toThrow(
+      `continuation lineage attempt ${first.attemptId} belongs to Worktree`,
     );
-    expect(runner.requests).toHaveLength(1);
+    expect(executor.requests).toHaveLength(1);
   });
 
-  test("rejects malformed or inconsistent Work Cell final records and releases the lease", () => {
+  test("rejects malformed or mismatched Work Cell final records and releases the lease", async () => {
     const current = fixture();
     const created = agentTask(current);
     const cases: Array<{
-      retain: ConstructorParameters<typeof FakeRunner>[0];
+      retain: ConstructorParameters<typeof FakeCellExecutor>[0];
       error: string;
     }> = [
       {
         retain: () => ({ version: "work-cell.run.v4", runId: "fake-run-1", status: "passed" }),
-        error: "invalid Work Cell final record",
+        error: "cell id does not match immutable input",
       },
       {
         retain: (record) => ({ ...record, cellId: "another-cell" }),
         error: "cell id does not match immutable input",
       },
       {
-        retain: (record) => ({ ...record, runId: "another-run" }),
-        error: "run id/status does not match runner settlement",
-      },
-      {
-        retain: (record) => ({ ...record, status: "failed" }),
-        error: "run id/status does not match runner settlement",
+        retain: (record) => ({
+          ...record,
+          driver: { ...record.driver, adapter: "opencode-cli.v1" },
+        }),
+        error: "driver adapter opencode-cli.v1 does not match the requested execution driver ai-sdk-v7",
       },
       {
         retain: (record) => ({
           ...record,
-          driver: { ...record.driver, adapter: "another-adapter" },
+          driver: { ...record.driver, provider: "another-provider" },
         }),
-        error: "driver does not match requested OpenCode model",
+        error: "provider another-provider does not match worker test-worker execution profile provider opencode",
       },
       {
         retain: (record) => ({
           ...record,
           driver: { ...record.driver, model: "opencode/another" },
         }),
-        error: "driver does not match requested OpenCode model",
-      },
-      {
-        retain: (record) => ({ ...record, executionObservation: {} }),
-        error: "did not retain the observed OpenCode session id",
+        error: "driver model opencode/another does not match the requested model opencode/go",
       },
     ];
 
     for (const candidate of cases) {
-      expect(() => runTestTask(current.home, {
+      await expect(runTestTask(current.home, {
         id: created.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, new FakeRunner(candidate.retain))).toThrow(candidate.error);
+      }, new FakeCellExecutor(candidate.retain).execute)).rejects.toThrow(candidate.error);
     }
-    expect(() => runTestTask(current.home, {
+
+    // A mismatched final settles runner-failed without terminal claims, never
+    // retains the invalid record as evidence, and releases the lease so a
+    // later run works.
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(cases.length);
+    expect(projections.every((projection) => projection.status === "runner-failed")).toBeTrue();
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner())).not.toThrow();
+    }, new FakeCellExecutor().execute)).resolves.toBeTruthy();
   });
 
-  test("rejects cross-home overlap on the same Worktree and permits a later run after release", () => {
+  test("rejects cross-home overlap on the same Worktree and permits a later run after release", async () => {
     const current = fixture();
     const created = agentTask(current);
     const otherHome = join(current.root, "other-home");
@@ -1481,7 +1745,7 @@ describe("task run public boundary", () => {
     const otherTask = createPrincipalTask(otherHome, {
       title: "Same Worktree through another home",
       objective: "Do not overlap the first writer",
-      acceptance: ["The inner runner is never reached"],
+      acceptance: ["The inner executor is never reached"],
       nextActor: "agent",
       sourceRef: "test:cross-home",
       expectedSourceRevision: 0,
@@ -1490,56 +1754,56 @@ describe("task run public boundary", () => {
     });
     const arguments_ = {
       id: created.task.id,
-      driver: "opencode-cli" as const,
+      provider: "opencode" as const,
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
     };
-    const inner = new FakeRunner();
-    const overlapping = new FakeRunner((record) => {
-      expect(() => runTestTask(
+    const inner = new FakeCellExecutor();
+    const overlapping = new FakeCellExecutor(async (record) => {
+      await expect(runTestTask(
         otherHome,
         { ...arguments_, id: otherTask.task.id },
-        inner,
-      )).toThrow("active task-run lease");
+        inner.execute,
+      )).rejects.toThrow("active task-run lease");
       return record;
     });
 
-    expect(() => runTestTask(current.home, arguments_, overlapping)).not.toThrow();
+    await expect(runTestTask(current.home, arguments_, overlapping.execute)).resolves.toBeTruthy();
     expect(inner.requests).toHaveLength(0);
     expect(existsSync(join(otherHome, "state", "task-attempts"))).toBeFalse();
-    expect(() => runTestTask(current.home, arguments_, new FakeRunner())).not.toThrow();
+    await expect(runTestTask(current.home, arguments_, new FakeCellExecutor().execute)).resolves.toBeTruthy();
   });
 
-  test("rechecks cleanliness after lease acquisition before creating attempt evidence", () => {
+  test("rechecks cleanliness after lease acquisition before creating attempt evidence", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
-    expect(() => runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner, {
+    }, executor.execute, {
       beforeLeaseAcquire() {
         writeFileSync(join(current.worktree, "became-dirty.txt"), "dirty while waiting\n");
       },
-    })).toThrow("task Worktree is not clean");
-    expect(runner.requests).toHaveLength(0);
+    })).rejects.toThrow("task Worktree is not clean");
+    expect(executor.requests).toHaveLength(0);
     expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
 
     rmSync(join(current.worktree, "became-dirty.txt"));
-    expect(() => runTestTask(current.home, {
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner())).not.toThrow();
+    }, new FakeCellExecutor().execute)).resolves.toBeTruthy();
   });
 
-  test("rechecks correction, Worktree binding, and settlement after lease acquisition", () => {
+  test("rechecks correction, Worktree binding, and settlement after lease acquisition", async () => {
     for (const drift of ["correction", "rebind", "settle"] as const) {
       const current = fixture();
       const created = agentTask(current);
@@ -1547,15 +1811,15 @@ describe("task run public boundary", () => {
       if (drift === "rebind") {
         git(current.primary, "worktree", "add", "-b", "task/replacement", replacement);
       }
-      const runner = new FakeRunner();
+      const executor = new FakeCellExecutor();
 
-      expect(() => runTestTask(current.home, {
+      await expect(runTestTask(current.home, {
         id: created.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, runner, {
+      }, executor.execute, {
         beforeLeaseAcquire() {
           if (drift === "correction") {
             correctPrincipalTask(current.home, {
@@ -1592,15 +1856,15 @@ describe("task run public boundary", () => {
             });
           }
         },
-      })).toThrow(
+      })).rejects.toThrow(
         `task ${created.task.id} changed before attempt creation after the task-run lease was acquired`,
       );
-      expect(runner.requests).toHaveLength(0);
+      expect(executor.requests).toHaveLength(0);
       expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
     }
   });
 
-  test("keeps tracked generated-name paths observable in Work Cell evidence", () => {
+  test("keeps tracked generated-name paths observable in Work Cell evidence", async () => {
     const current = fixture();
     mkdirSync(join(current.worktree, "experiments", "example", "build"), { recursive: true });
     mkdirSync(join(current.worktree, "experiments", "example", "scoring", "outputs"), { recursive: true });
@@ -1611,7 +1875,7 @@ describe("task run public boundary", () => {
     git(current.worktree, "add", buildPath, outputPath);
     git(current.worktree, "commit", "-m", "track generated-name paths");
     const created = agentTask(current);
-    const runner = new FakeRunner((record, request) => {
+    const executor = new FakeCellExecutor((record, input) => {
       writeFileSync(join(current.worktree, buildPath), "export const value = 2;\n");
       writeFileSync(join(current.worktree, outputPath), "two\n");
       return {
@@ -1620,17 +1884,17 @@ describe("task run public boundary", () => {
           ...record.workspaceDiff,
           changed: [buildPath, outputPath],
         },
-        input: CellInputSchema.parse(JSON.parse(readFileSync(request.inputPath, "utf8"))),
+        input: CellInputSchema.parse(input),
       };
     });
 
-    const result = runTestTask(current.home, {
+    const result = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
     const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
     const record = JSON.parse(readFileSync(join(current.home, result.finalRecordRef), "utf8"));
     expect(input.workspace.excludePaths).not.toContain("build");
@@ -1638,38 +1902,26 @@ describe("task run public boundary", () => {
     expect(record.workspaceDiff.changed).toEqual([buildPath, outputPath]);
   });
 
-  test("a valid non-passed owner final settles runner-failed and the run fails after settlement", () => {
+  test("a valid non-passed owner final settles runner-failed and the run fails after settlement", async () => {
     for (const terminal of ["failed", "cancelled"] as const) {
       const perCase = fixture();
       const task = agentTask(perCase);
-      class TerminalRunner implements TaskRunRunner {
-        run(request: TaskRunRequest) {
-          const result = { runId: `terminal-${terminal}`, status: terminal };
-          const record = validWorkCellRecord(
-            request,
-            { runId: result.runId, status: "passed" },
-            `session-terminal-${terminal}`,
-          );
-          writeFileSync(
-            request.finalRecordPath,
-            `${JSON.stringify({
-              ...record,
-              status: terminal,
-              ...(terminal === "failed" ? { error: "the final failed" } : {}),
-            }, null, 2)}\n`,
-            { flag: "wx" },
-          );
-          return result;
-        }
-      }
+      const executor: TaskCellExecutor = async ({ cellInput }) => ({
+        ...validWorkCellRecord(cellInput, {
+          runId: `terminal-${terminal}`,
+          sessionId: `session-terminal-${terminal}`,
+        }),
+        status: terminal,
+        ...(terminal === "failed" ? { error: "the final failed" } : {}),
+      });
 
-      expect(() => runTestTask(perCase.home, {
+      await expect(runTestTask(perCase.home, {
         id: task.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, new TerminalRunner())).toThrow(`settled with status ${terminal}`);
+      }, executor)).rejects.toThrow(`settled with status ${terminal}`);
 
       const projections = showPrincipalTaskAttempts(perCase.home, task.task.id);
       expect(projections).toHaveLength(1);
@@ -1689,27 +1941,60 @@ describe("task run public boundary", () => {
       expect(settlement).not.toHaveProperty("sessionId");
 
       // The durable settlement exists; the lease released; a later run works.
-      expect(() => runTestTask(perCase.home, {
+      await expect(runTestTask(perCase.home, {
         id: task.task.id,
-        driver: "opencode-cli",
+        provider: "opencode",
         model: "opencode/go",
         expectedSourceRevision: 1,
         expectedRevision: 1,
-      }, new FakeRunner())).not.toThrow();
+      }, new FakeCellExecutor().execute)).resolves.toBeTruthy();
     }
   });
 
-  test("a passed owner final keeps the recorded settlement and the successful result", () => {
+  test("a provider crash settles runner-failed with the visible error and releases the lease", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
-    const result = runTestTask(current.home, {
+    const crashing: TaskCellExecutor = async () => {
+      throw new Error("provider crashed mid-run");
+    };
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, crashing)).rejects.toThrow("provider crashed mid-run");
+
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(1);
+    expect(projections[0]).toMatchObject({ status: "runner-failed" });
+    expect(projections[0]).not.toHaveProperty("cellStatus");
+    const settlement = JSON.parse(readFileSync(join(current.home, projections[0]!.settlementRef), "utf8"));
+    expect(settlement).toMatchObject({
+      status: "runner-failed",
+      error: "provider crashed mid-run",
+    });
+    expect(settlement).not.toHaveProperty("workCellRunId");
+    await expect(runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute)).resolves.toBeTruthy();
+  });
+
+  test("a passed owner final keeps the recorded settlement and the successful result", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
     expect(result.cellStatus).toBe("passed");
     const settlement = JSON.parse(readFileSync(join(current.home, result.settlementRef), "utf8"));
     expect(settlement).toMatchObject({
@@ -1721,7 +2006,7 @@ describe("task run public boundary", () => {
     expect(settlement).not.toHaveProperty("error");
   });
 
-  test("lists worker policy and accepts only worker selection plus continuation at the CLI boundary", () => {
+  test("lists worker policy and accepts only worker selection plus exact continuation at the CLI boundary", async () => {
     const current = fixture();
     const listed = workbenchCli(current.home, "worker", "list");
     expect(listed.exitCode).toBe(0);
@@ -1758,52 +2043,52 @@ describe("task run public boundary", () => {
       expect(result.stderr).toContain("invalid task option sequence");
     }
 
-    const continued = taskCli(current.home, "run", "unused", "--worker", "deepseek-flash", "--continue");
+    const continued = taskCli(current.home, "run", "unused", "--worker", "deepseek-flash", "--continue", randomUUID());
     expect(continued.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(continued.stderr).toContain("rossovia: Principal task not found");
     expect(continued.stderr).not.toContain("for usage");
   });
 
-  test("rejects dirty, nonexistent, unbound, and completed tasks before the runner", () => {
+  test("rejects dirty, nonexistent, unbound, and completed tasks before the executor", async () => {
     const dirty = fixture();
     const dirtyTask = agentTask(dirty);
     writeFileSync(join(dirty.worktree, "dirty.txt"), "dirty\n");
-    const runner = new FakeRunner();
-    expect(() => runTestTask(dirty.home, {
+    const executor = new FakeCellExecutor();
+    await expect(runTestTask(dirty.home, {
       id: dirtyTask.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow("task Worktree is not clean");
+    }, executor.execute)).rejects.toThrow("task Worktree is not clean");
 
     const nonexistent = fixture();
     const nonexistentTask = agentTask(nonexistent);
     rmSync(nonexistent.worktree, { recursive: true, force: true });
-    expect(() => runTestTask(nonexistent.home, {
+    await expect(runTestTask(nonexistent.home, {
       id: nonexistentTask.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow("task Worktree does not exist");
+    }, executor.execute)).rejects.toThrow("task Worktree does not exist");
 
     const unbound = fixture();
     const unboundTask = createPrincipalTask(unbound.home, {
       title: "Unbound task",
       objective: "Remain unbound",
-      acceptance: ["Runner is not called"],
+      acceptance: ["Executor is not called"],
       nextActor: "agent",
       sourceRef: "test:unbound",
       expectedSourceRevision: 0,
     });
-    expect(() => runTestTask(unbound.home, {
+    await expect(runTestTask(unbound.home, {
       id: unboundTask.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow("must be bound to an existing project Worktree");
+    }, executor.execute)).rejects.toThrow("must be bound to an existing project Worktree");
 
     const completed = fixture();
     const completedTask = agentTask(completed);
@@ -1821,14 +2106,14 @@ describe("task run public boundary", () => {
       expectedSourceRevision: 2,
       expectedRevision: submitted.task.revision,
     });
-    expect(() => runTestTask(completed.home, {
+    await expect(runTestTask(completed.home, {
       id: completedTask.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 3,
       expectedRevision: accepted.task.revision,
-    }, runner)).toThrow("completed tasks are viewable history");
-    expect(runner.requests).toHaveLength(0);
+    }, executor.execute)).rejects.toThrow("completed tasks are viewable history");
+    expect(executor.requests).toHaveLength(0);
   });
 });
 
@@ -1839,26 +2124,26 @@ describe("task attempts projection", () => {
     expect(showPrincipalTaskAttempts(current.home, created.task.id)).toEqual([]);
   });
 
-  test("projects recorded attempts sorted by startedAt with observed facts and stable refs", () => {
+  test("projects recorded attempts sorted by startedAt with observed facts and stable refs", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner(undefined, ["session-a"]);
-    const first = runTestTask(current.home, {
+    const executor = new FakeCellExecutor(undefined, ["session-a"]);
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       reasoningEffort: "high",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    const second = runTestTask(current.home, {
+    }, executor.execute);
+    const second = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
+      continueFromAttemptId: first.attemptId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
 
     const projections = showPrincipalTaskAttempts(current.home, created.task.id);
     expect(projections).toHaveLength(2);
@@ -1868,7 +2153,7 @@ describe("task attempts projection", () => {
       taskRevision: 1,
       sourceRevision: 1,
       workerId: "test-worker",
-      driver: "opencode-cli",
+      driver: "ai-sdk-v7",
       model: "opencode/go",
       reasoningEffort: "high",
       observedSession: "session-a",
@@ -1880,12 +2165,13 @@ describe("task attempts projection", () => {
       settlementRef: first.settlementRef,
     });
     expect(firstProjection!.requestedSession).toBeUndefined();
+    expect(firstProjection!.continuedFromAttemptId).toBeUndefined();
     expect(firstProjection!.startedAt).toBeDefined();
     expect(firstProjection!.settledAt).toBeDefined();
     expect(secondProjection).toMatchObject({
       attemptId: second.attemptId,
-      requestedSession: first.sessionId,
-      observedSession: first.sessionId,
+      continuedFromAttemptId: first.attemptId,
+      observedSession: "fresh-session-2",
       status: "recorded",
     });
     expect(firstProjection!.startedAt! <= secondProjection!.startedAt!).toBeTrue();
@@ -1902,36 +2188,44 @@ describe("task attempts projection", () => {
     );
   });
 
-  test("includes runner-failed attempts with settlement status and retained final record facts", () => {
+  test("includes runner-failed attempts with settlement status and retained final record facts", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner(undefined, ["requested-1", "observed-9"]);
-    const first = runTestTask(current.home, {
+    const passing = new FakeCellExecutor();
+    const first = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
-    expect(() => runTestTask(current.home, {
+    }, passing.execute);
+    const failing = new FakeCellExecutor((record) => ({
+      ...record,
+      driver: { ...record.driver, model: "opencode/another" },
+    }));
+    await expect(runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
-      session: first.sessionId,
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner)).toThrow("requested OpenCode session does not match the observed session");
+    }, failing.execute)).rejects.toThrow(
+      "driver model opencode/another does not match the requested model opencode/go",
+    );
 
     const projections = showPrincipalTaskAttempts(current.home, created.task.id);
     expect(projections).toHaveLength(2);
     const failedProjection = projections[1]!;
     expect(failedProjection).toMatchObject({
-      requestedSession: first.sessionId,
-      observedSession: "observed-9",
-      cellStatus: "passed",
       status: "runner-failed",
     });
+    // A mismatched final is never retained as terminal evidence: the
+    // failed attempt carries no invented run/cell claims.
+    expect(failedProjection).not.toHaveProperty("cellStatus");
+    expect(failedProjection).not.toHaveProperty("observedSession");
+    expect(failedProjection).not.toHaveProperty("usage");
     expect(failedProjection.settledAt).toBeDefined();
+    expect(first.sessionId).toBeDefined();
   });
 
   test("projects a crash-retained in-flight attempt without settlement facts", () => {
@@ -1975,16 +2269,16 @@ describe("task attempts projection", () => {
     });
   });
 
-  test("keeps attributable malformed evidence visible without projecting unowned facts", () => {
+  test("keeps attributable malformed evidence visible without projecting unowned facts", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const valid = runTestTask(current.home, {
+    const valid = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner());
+    }, new FakeCellExecutor().execute);
     writeFileSync(join(current.home, valid.finalRecordRef), "{}\n");
 
     const malformedAttemptId = randomUUID();
@@ -2070,16 +2364,16 @@ describe("task attempts projection", () => {
     expect(showPrincipalTaskAttempts(current.home, created.task.id)).toEqual([]);
   });
 
-  test("gives the attempt task claim exclusive ownership when settlement conflicts", () => {
+  test("gives the attempt task claim exclusive ownership when settlement conflicts", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const run = runTestTask(current.home, {
+    const run = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner());
+    }, new FakeCellExecutor().execute);
     const other = createPrincipalTask(current.home, {
       title: "Settlement claim target",
       objective: "Must not gain another task's attempt",
@@ -2106,17 +2400,17 @@ describe("task attempts projection", () => {
     expect(showPrincipalTaskAttempts(current.home, other.task.id)).toEqual([]);
   });
 
-  test("projects only the requested task's attempts and rejects unknown tasks", () => {
+  test("projects only the requested task's attempts and rejects unknown tasks", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const runner = new FakeRunner();
-    runTestTask(current.home, {
+    const executor = new FakeCellExecutor();
+    await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, runner);
+    }, executor.execute);
     const other = createPrincipalTask(current.home, {
       title: "Unrelated task",
       objective: "Keep its attempts separate",
@@ -2131,16 +2425,16 @@ describe("task attempts projection", () => {
       .toThrow("Principal task not found");
   });
 
-  test("the CLI exposes task attempts as a read-only projection", () => {
+  test("the CLI exposes task attempts as a read-only projection", async () => {
     const current = fixture();
     const created = agentTask(current);
-    const run = runTestTask(current.home, {
+    const run = await runTestTask(current.home, {
       id: created.task.id,
-      driver: "opencode-cli",
+      provider: "opencode",
       model: "opencode/go",
       expectedSourceRevision: 1,
       expectedRevision: 1,
-    }, new FakeRunner());
+    }, new FakeCellExecutor().execute);
 
     const result = taskCliWithOutput(current.home, "attempts", created.task.id);
     expect(result.exitCode).toBe(0);
@@ -2158,6 +2452,148 @@ describe("task attempts projection", () => {
     expect(unknown.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(unknown.stderr).toContain("rossovia: Principal task not found");
     expect(unknown.stderr).not.toContain("for usage");
+  });
+});
+
+describe("strict attempt-family reading", () => {
+  test("reads a complete recorded family with every member parsed and exact refs", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("available");
+    expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+    expect(evidence.attempt?.taskId).toBe(created.task.id);
+    expect(evidence.input?.id).toBe(`workbench-task-${created.task.id}-attempt-${run.attemptId}`);
+    expect(evidence.finalRecord?.runId).toBe("fake-run-1");
+    expect(evidence.finalRecord?.status).toBe("passed");
+    expect(evidence.settlement?.status).toBe("recorded");
+    expect(evidence.settlement?.workCellRunId).toBe("fake-run-1");
+    expect(evidence.refs).toEqual({
+      inputRef: run.inputRef,
+      attemptRef: run.attemptRef,
+      finalRecordRef: run.finalRecordRef,
+      settlementRef: run.settlementRef,
+    });
+  });
+
+  test("fails closed as invalid when the retained final embeds a different input", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+    const finalPath = join(current.home, run.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    finalRecord.input.intent = "forged intent";
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("embedded input does not match its immutable CellInput");
+    expect(evidence.finalRecord).toBeUndefined();
+    // The valid attempt record stays attributable even when its family is invalid.
+    expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+  });
+
+  test("fails closed on a current AI SDK final record without a provider fingerprint standing", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+    const finalPath = join(current.home, run.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    const {
+      providerFingerprintStanding: _omitted,
+      ...observationWithoutStanding
+    } = finalRecord.executionObservation;
+    finalRecord.executionObservation = observationWithoutStanding;
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("must carry a truthful provider fingerprint standing");
+    expect(evidence.finalRecord).toBeUndefined();
+    // The valid attempt record stays attributable even when its family is invalid.
+    expect(evidence.attempt?.attemptId).toBe(run.attemptId);
+  });
+
+  test("fails closed on a current Pi final record with a contradictory fingerprint standing", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+    const finalPath = join(current.home, run.finalRecordRef);
+    const finalRecord = JSON.parse(readFileSync(finalPath, "utf8"));
+    // Observed without a retained fingerprint value: contradictory evidence
+    // rejected structurally by the Work Cell final record schema.
+    finalRecord.executionObservation.providerFingerprintStanding = { standing: "observed" };
+    writeFileSync(finalPath, `${JSON.stringify(finalRecord, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain(
+      "observed provider fingerprint standing requires the retained fingerprint value",
+    );
+    expect(evidence.finalRecord).toBeUndefined();
+  });
+
+  test("keeps a current Pi family with a valid unavailable-with-reason standing available", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const run = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+      reasoningEffort: "max",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, run.attemptId);
+
+    expect(evidence.standing).toBe("available");
+    expect(evidence.finalRecord?.driver.adapter).toBe(PI_HARNESS_DRIVER_ADAPTER);
+    expect(evidence.finalRecord?.executionObservation.providerFingerprintStanding).toEqual({
+      standing: "unavailable",
+      reason: "deterministic task-run test executor retains no provider metadata",
+    });
+  });
+
+  test("reports unavailable when the attempt record itself is missing", () => {
+    const current = fixture();
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, randomUUID());
+
+    expect(evidence.standing).toBe("unavailable");
+    expect(evidence.attempt).toBeUndefined();
+    expect(evidence.refs.inputRef).toContain("state/task-attempts/");
   });
 });
 

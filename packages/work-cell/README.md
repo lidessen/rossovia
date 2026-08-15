@@ -40,7 +40,9 @@ paths, while the run record, raw steps, and trace do not persist the image
 bytes.
 
 The ordinary `run` command keeps that AI SDK driver as its default. A caller may
-instead select the OpenCode CLI explicitly for an already-prepared coding Cell:
+instead select the OpenCode CLI explicitly as a Work Cell
+compatibility/experiment adapter for an already-prepared coding Cell; the
+adapter is never a default or an automatic fallback:
 
 ```bash
 # Fresh session in the Cell workspace.
@@ -125,6 +127,68 @@ A catalog-backed Cell with `imagePaths` automatically requires the factual
 `vision` label even when the caller omitted it from `capabilitiesRequired`.
 Driver resolution therefore rejects image input on a text-only worker instead
 of sending it to an incompatible model.
+
+### Pi harness driver and the one host tool surface
+
+The ordinary production driver for the DeepSeek workers is
+`PiHarnessCellDriver`: a Vercel AI SDK `HarnessAgent` with the pinned Pi
+adapter in-process and an empty in-memory just-bash sandbox. Every Pi built-in
+tool is disabled, and the model-visible tool set is exactly the host-executed
+Work Cell surface: scope-bound `list_files`/`read_file`, the Pi-native exact
+batch `edit_file` (unique, non-overlapping exact `oldText` matches; an absent,
+duplicated, overlapping, or out-of-scope match fails the whole call with zero
+mutation), `write_file` (create-new-only: it refuses to overwrite an existing
+file), allow-listed `run_command`, the host Task tools, and budget/terminal
+tools. Every driver shares that one host tool owner (`createHostTools`); no
+driver re-implements a second execution pathway. Provider/model identity,
+usage, tasks, and workspace effects remain Work Cell evidence; the harness
+session identity is observation only.
+
+Every host tool execution through the Pi adapter crosses one causal
+event-loop handoff before its effect. The pinned harness-pi adapter can
+deliver `tool_execution_start` to `HarnessAgent` before its
+`buildUserToolDefinition` has installed the pending tool-result registration
+for that call, so an immediately-resolving host tool (an in-memory task
+update, a small read) submits an early result the adapter drops and the turn
+never completes. Yielding one macrotask before the host effect lets the
+registration barrier settle first; the handoff changes timing only, never the
+tool surface, evidence, or host ownership. The deterministic regression
+models the old adapter as a barrier that drops pre-registration results: the
+control (no handoff) fails boundedly while the production boundary returns
+every immediately resolving parallel host tool result exactly once.
+
+The immutable `maxSteps` budget is enforced from actual tool activity, never
+from the harness finish label. The pinned adapter translates every inferred
+completed step — including tool-continuing steps whose results feed the next
+model step — to a unified stop finish reason, so a label-gated guard would be
+unreachable in production. A completed step that carried tool activity aborts
+the run before step `maxSteps + 1` can begin; a tool-free terminal response
+on the final allowed step completes naturally. The exhaustion count freezes at
+that accepted boundary: an inferred Pi finish emitted while the abort settles
+is neither counted nor retained as another completed step. When Pi exposes its
+aggregate session counters on this failure path, they supersede zero or partial
+inferred-step usage rather than being added to the same model work.
+
+Provider fingerprint evidence is truthful in both directions. When the
+provider response exposes a backend `system_fingerprint` through the AI SDK
+provider metadata (directly or under its provider namespace, such as
+`openai-compatible`), the final record retains the value verbatim with
+`executionObservation.providerFingerprintStanding: { standing: "observed" }`.
+When the upstream exposes no fingerprint — as observed in the live
+HarnessAgent + Pi DeepSeek qualification, whose harness stream materialized
+no provider metadata, and for an OpenCode Go response without a
+`system_fingerprint` field — the record retains an explicit
+`{ standing: "unavailable", reason }` standing instead of silence that could
+be misread as a verified match. No fingerprint is fabricated, and no volatile
+session, response, or timestamp data is hashed into an identity.
+
+Command policy has two explicit forms. A one-token `allowedCommands` entry is
+the legacy executable-wide capability. A multi-token entry is an exact argv
+capability and accepts no extra flags or arguments. Exact argv restricts
+selection, not filesystem effects: Agent-edited tests or package scripts still
+execute as host code. Ordinary Rossovia Tasks therefore receive no
+model-visible command authority until a filesystem-confined check owner exists;
+trusted host verification remains separate from the model loop.
 
 ### Local image-input evidence
 

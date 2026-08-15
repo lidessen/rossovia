@@ -14,13 +14,14 @@ import { z } from "zod";
 import type {
   CellInput,
   CellRunRecord,
+  TraceEvent,
 } from "../../../packages/work-cell/src/contracts";
-import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
+import type { WorkerCard, WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import { runCommand } from "./process";
-import { showPrincipalTaskAttempts } from "./task-attempts";
 import {
   readStrictTaskAttemptEvidence,
+  TaskAttemptIdSchema,
   type ParsedTaskRunAttempt,
   type ParsedTaskRunSettlement,
   type TaskRunSettlementStatus,
@@ -41,43 +42,35 @@ const ORDINARY_OPENCODE_EXCLUDES = [
   ".reasonix",
 ] as const;
 
-// Ordinary project work must not inherit Work Cell's five-minute probe default.
-// OpenCode has no completed-step budget-control adapter yet, so this is a broad
-// emergency ceiling rather than a user-facing approval mechanism.
+/**
+ * Ordinary model-visible command authority is intentionally empty. Exact argv
+ * selection is not filesystem confinement when Agent-edited tests or package
+ * scripts execute as host code; trusted verification stays outside this loop
+ * until a confined check owner exists.
+ */
+export const ORDINARY_TASK_ALLOWED_COMMANDS = [] as const;
+
+/**
+ * Workbench policy identity for the DeepSeek in-process HarnessAgent + Pi
+ * adapter. Keep this value local to the control plane: importing the concrete
+ * Work Cell adapter would make the Workbench CLI depend on sibling runtime
+ * source at module-load time. The integration test locks this protocol value
+ * to the driver descriptor without introducing that production dependency.
+ */
+export const PI_HARNESS_TASK_RUN_ADAPTER = "ai-sdk-harness-pi-v1";
+
+// Ordinary project work must not inherit Work Cell's five-minute probe default;
+// this is a broad emergency ceiling rather than a user-facing approval mechanism.
 export const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
 
 const requireFromHere = createRequire(import.meta.url);
-
-const WorkCellCliResultSchema = z.object({
-  output: z.string().min(1),
-  runId: z.string().min(1),
-  status: z.string().min(1),
-}).passthrough();
 
 export interface TaskRunArguments {
   id: string;
   /** Worker selected from the current worker policy catalog. */
   workerId: string;
-  /** Continue the latest retained same-session branch instead of starting fresh. */
-  continueRun?: boolean;
-}
-
-export interface TaskRunRequest {
-  inputPath: string;
-  finalRecordPath: string;
-  driver: string;
-  model: string;
-  reasoningEffort?: string;
-  session?: string;
-}
-
-export interface TaskRunRunnerResult {
-  runId: string;
-  status: string;
-}
-
-export interface TaskRunRunner {
-  run(request: TaskRunRequest): TaskRunRunnerResult;
+  /** Continue one exact prior attempt lineage instead of starting fresh. */
+  continueFromAttemptId?: string;
 }
 
 interface TaskRunDependencies {
@@ -86,11 +79,21 @@ interface TaskRunDependencies {
   /** Test seam for worker card resolution; the default reads the current worker policy catalog. */
   resolveWorkerCard?(workerId: string): WorkerCard;
   /**
-   * Execution-form seam: the default derives the OpenCode CLI request; an
-   * asynchronous catalog carrier supplies its own in-process derivation for
-   * the same guarded preparation.
+   * The catalog that binds the resolved worker card to a driver. Defaults to
+   * the current worker policy catalog; no opencode-cli fallback exists.
+   */
+  catalog?: WorkerCatalog;
+  /**
+   * Execution-form seam: the default derives the catalog AI SDK execution;
+   * a conversation-owned carrier supplies its own derivation for the same
+   * guarded preparation.
    */
   deriveExecution?(card: WorkerCard): TaskRunExecution;
+  /**
+   * Test seam replacing the one asynchronous catalog-backed Task Cell
+   * execution (WorkerCatalog.createDriver -> runCell).
+   */
+  executeTaskCell?: TaskCellExecutor;
 }
 
 /** One execution request as retained on the attempt record. */
@@ -112,8 +115,12 @@ export interface TaskRunResult {
   settlementRef: string;
   workCellRunId: string;
   cellStatus: CellRunRecord["status"];
-  /** Actual OpenCode session id observed in the Work Cell final record. */
-  sessionId: string;
+  /**
+   * Harness/legacy session id observed in the Work Cell final record, when
+   * one exists. Observation only; ordinary continuation authority is exact
+   * prior-attempt lineage, never a session id.
+   */
+  sessionId?: string;
   semanticAcceptance: "not-evaluated";
 }
 
@@ -145,13 +152,11 @@ const TaskRunWorktreeLeaseSchema = z.object({
   acquiredAt: z.string().min(1),
 });
 
-const ATTEMPT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
-
 /**
  * The shared normal settlement derivation for one validated owner-backed
  * Work Cell final record: a passed run records normally, any other terminal
  * status settles runner-failed with the retained run/status evidence. The
- * synchronous CLI path, a conversation-owned carrier, and crash
+ * ordinary CLI run, a conversation-owned carrier, and crash
  * reconcile-attempt finalization all derive the same append-only settlement
  * from the same owner evidence; nothing is forged or copied.
  */
@@ -203,7 +208,7 @@ export function reconcilePrincipalTaskAttempt(
   homeArgument: string | undefined,
   arguments_: TaskAttemptReconcileArguments,
 ): TaskAttemptReconcileResult {
-  if (!ATTEMPT_ID_PATTERN.test(arguments_.attemptId)) {
+  if (!TaskAttemptIdSchema.safeParse(arguments_.attemptId).success) {
     throw new Error("task reconcile-attempt --attempt must be a valid attempt id");
   }
   const home = resolveHome(homeArgument);
@@ -243,7 +248,6 @@ export function reconcilePrincipalTaskAttempt(
 
   let settlementInput: TaskRunSettlementInput;
   if (evidence.finalRecord !== undefined) {
-    verifyReconcileFinalRecord(evidence.finalRecord, attemptRecord);
     settlementInput = finalRecordSettlementInput(
       task.id,
       attemptRecord.taskRevision,
@@ -306,21 +310,11 @@ function reconcileCellInputWorkspace(input: CellInput, attemptId: string): strin
 }
 
 /**
- * Validate a real owner-backed final record that retained no settlement: it
- * must retain the observed session. Shape, cell/input identity, driver/model
- * form, and the embedded immutable CellInput identity were already validated
- * by the strict evidence reader; nothing here copies or forges evidence.
+ * Reconcile reads the strict attempt evidence family: shape, cell/input
+ * identity, driver/model form, and the embedded immutable CellInput identity
+ * were already validated by the strict evidence reader; nothing here copies
+ * or forges evidence.
  */
-function verifyReconcileFinalRecord(
-  record: CellRunRecord,
-  attemptRecord: ParsedTaskRunAttempt,
-): void {
-  if (!record.executionObservation.sessionId) {
-    throw new Error(
-      `attempt ${attemptRecord.attemptId} final record did not retain the observed session id; the settlement is not derived`,
-    );
-  }
-}
 
 function readRetainedTaskRunLease(
   leasePath: string,
@@ -468,50 +462,221 @@ export function listPrincipalTaskWorkers(
   };
 }
 
-export class WorkCellCliRunner implements TaskRunRunner {
-  run(request: TaskRunRequest): TaskRunRunnerResult {
-    const repositoryRoot = resolve(import.meta.dir, "../../..");
-    const result = Bun.spawnSync([
-      process.execPath,
-      join(repositoryRoot, "packages", "work-cell", "src", "cli.ts"),
-      "run",
-      request.inputPath,
-      "--driver",
-      request.driver,
-      "--model",
-      request.model,
-      ...(request.reasoningEffort
-        ? ["--reasoning-effort", request.reasoningEffort]
-        : []),
-      ...(request.session ? ["--session", request.session] : []),
-    ], {
-      cwd: repositoryRoot,
-      stdout: "pipe",
-      stderr: "inherit",
+/** One asynchronous catalog-backed Task Cell execution request. */
+export interface TaskCellExecutionInput {
+  catalog: WorkerCatalog;
+  cellInput: CellInput;
+  signal?: AbortSignal;
+  onTrace?: (event: TraceEvent) => void;
+}
+
+export type TaskCellExecutor = (input: TaskCellExecutionInput) => Promise<CellRunRecord>;
+
+export type TaskCellOutcome =
+  | { status: "final"; record: CellRunRecord }
+  | { status: "failed"; error: string };
+
+/**
+ * The one asynchronous catalog-backed Task Cell owner shared by the ordinary
+ * CLI run and the conversation carrier: WorkerCatalog.createDriver ->
+ * driver.run via runCell, never a spawned harness process or a second
+ * execution pathway. A run that produces a terminal record (including a
+ * failed or cancelled cell) is `final`; a run that throws before a record is
+ * `failed` with the visible error.
+ */
+export async function executeTaskCellRun(
+  catalog: WorkerCatalog,
+  cellInput: CellInput,
+  options: { signal?: AbortSignal; onTrace?: (event: TraceEvent) => void } = {},
+): Promise<TaskCellOutcome> {
+  try {
+    // The one shared Task Cell execution owner. The run-cell module is loaded
+    // lazily so a minimal Workbench-only CLI fixture (without the Work Cell
+    // sibling package) can still load for setup and other local commands.
+    const record = await workCellRunCell().runCell(cellInput, catalog.createDriver(cellInput), {
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.onTrace ? { onTrace: options.onTrace } : {}),
     });
-    if (result.exitCode !== 0) {
-      throw new Error(`Work Cell CLI exited with code ${result.exitCode}`);
-    }
-    const parsed = WorkCellCliResultSchema.parse(JSON.parse(result.stdout.toString()));
-    if (realpathSync(parsed.output) !== realpathSync(request.finalRecordPath)) {
-      throw new Error(
-        `Work Cell retained an unexpected final record: expected ${request.finalRecordPath}, observed ${parsed.output}`,
-      );
-    }
-    return { runId: parsed.runId, status: parsed.status };
+    return { status: "final", record };
+  } catch (error) {
+    return { status: "failed", error: errorMessage(error) };
   }
 }
 
-export function runPrincipalTask(
+export interface TaskAttemptFinalizationInput {
+  attempt: AttemptEvidence;
+  /** The immutable CellInput the retained final record must embed exactly. */
+  expectedInput: CellInput;
+  task: { id: string; revision: number };
+  attemptId: string;
+  lease: TaskRunLease;
+  outcome: TaskCellOutcome;
+  /** Durable control receipt ref when a work_control stop settled this attempt. */
+  controlRef?: string;
+  /** The exact requested execution identity the retained final record must match. */
+  execution: TaskRunExecution;
+  /** The catalog card that authorized the run. */
+  card: WorkerCard;
+}
+
+export type TaskAttemptFinalization =
+  | { status: "finalized"; settlement: TaskRunSettlementInput; finalRecord?: CellRunRecord }
+  | { status: "unresolved"; error: string };
+
+/**
+ * The shared terminal finalization owner for every ordinary task run — the
+ * CLI run, the conversation carrier, and reconcile-attempt's derivation — in
+ * the canonical final record -> settlement -> lease release order. It never
+ * forges usage, session, or diff evidence: a malformed, mismatched, or
+ * driver-inconsistent final record settles runner-failed without terminal
+ * claims, and a retention failure surfaces an `unresolved` standing with the
+ * exact lease retained so reconcile-attempt can retry the exact finalization.
+ */
+export function finalizeTaskAttempt(input: TaskAttemptFinalizationInput): TaskAttemptFinalization {
+  // 1. Validate the produced record against the immutable CellInput and the
+  //    exact requested execution identity before anything is retained: a
+  //    malformed or mismatched final settles runner-failed without terminal
+  //    claims and is never written as attempt evidence.
+  let record: CellRunRecord | undefined;
+  if (input.outcome.status === "final") {
+    try {
+      record = validateFinalRecord(
+        input.outcome.record,
+        input.expectedInput,
+        input.execution,
+        input.card,
+      );
+    } catch (error) {
+      // Requested/observed mismatch stays visible: runner-failed without
+      // terminal claims, never a fabricated relation to an invalid record.
+      return settleAndReleaseTaskAttempt({
+        ...input,
+        settlement: {
+          taskId: input.task.id,
+          taskRevision: input.task.revision,
+          attemptId: input.attemptId,
+          status: "runner-failed",
+          error: errorMessage(error),
+        },
+      });
+    }
+  }
+  // 2. Retain the validated final record byte-exactly (canonical order:
+  //    final record -> settlement -> lease release).
+  if (record !== undefined) {
+    try {
+      writeImmutableJson(input.attempt.finalRecordPath, record);
+    } catch (error) {
+      return { status: "unresolved", error: `terminal evidence retention failed: ${errorMessage(error)}` };
+    }
+  }
+  // 3. Derive the canonical settlement from the validated owner evidence.
+  const settlement: TaskRunSettlementInput = input.controlRef !== undefined
+    ? {
+        taskId: input.task.id,
+        taskRevision: input.task.revision,
+        attemptId: input.attemptId,
+        status: "control-stopped",
+        controlRef: input.controlRef,
+        ...(record === undefined ? {} : { workCellRunId: record.runId, cellStatus: record.status }),
+      }
+    : record !== undefined
+      ? finalRecordSettlementInput(input.task.id, input.task.revision, input.attemptId, record)
+      : {
+          taskId: input.task.id,
+          taskRevision: input.task.revision,
+          attemptId: input.attemptId,
+          status: "runner-failed",
+          error: input.outcome.status === "failed"
+            ? input.outcome.error
+            : "the Work Cell run failed without a retained final record",
+        };
+  return settleAndReleaseTaskAttempt({ ...input, settlement });
+}
+
+/** Durable settlement first; the exact lease release only after it exists. */
+function settleAndReleaseTaskAttempt(
+  input: TaskAttemptFinalizationInput & { settlement: TaskRunSettlementInput },
+): TaskAttemptFinalization {
+  try {
+    writeTaskRunSettlement(input.attempt, input.settlement);
+  } catch (error) {
+    return { status: "unresolved", error: `terminal evidence retention failed: ${errorMessage(error)}` };
+  }
+  try {
+    releaseWorktreeLease(input.lease);
+  } catch (error) {
+    return {
+      status: "unresolved",
+      error:
+        "the durable settlement was retained but the task-run lease could not be released: "
+        + `${errorMessage(error)}; task reconcile-attempt can retry the exact finalization`,
+    };
+  }
+  return {
+    status: "finalized",
+    settlement: input.settlement,
+    ...(input.outcome.status === "final" && input.settlement.workCellRunId !== undefined
+      ? { finalRecord: input.outcome.record }
+      : {}),
+  };
+}
+
+/**
+ * Validate one produced Work Cell final record against the immutable CellInput
+ * and the exact requested execution identity before it can be retained as
+ * attempt evidence: cell/input identity, the requested driver adapter, and
+ * the worker card's provider/model must all match. Harness/legacy session ids
+ * are observation only and are never required, and nothing here forges usage,
+ * diff, verification, or session evidence.
+ */
+function validateFinalRecord(
+  record: CellRunRecord,
+  expectedInput: CellInput,
+  execution: TaskRunExecution,
+  card: WorkerCard,
+): CellRunRecord {
+  if (record.cellId !== expectedInput.id) {
+    throw new Error(`Work Cell final record cell id does not match immutable input: ${record.cellId}`);
+  }
+  if (!isDeepStrictEqual(record.input, expectedInput)) {
+    throw new Error("Work Cell final record input does not match immutable CellInput");
+  }
+  if (record.driver.adapter !== execution.driver) {
+    throw new Error(
+      `Work Cell final record driver adapter ${record.driver.adapter} does not match the requested execution driver ${execution.driver}`,
+    );
+  }
+  const profile = card.executionProfile;
+  if (record.driver.provider !== profile.provider) {
+    throw new Error(
+      `Work Cell final record provider ${record.driver.provider} does not match worker ${card.id} execution profile provider ${profile.provider}`,
+    );
+  }
+  if (record.driver.model !== execution.model) {
+    throw new Error(
+      `Work Cell final record driver model ${record.driver.model} does not match the requested model ${execution.model}`,
+    );
+  }
+  return record;
+}
+
+/**
+ * Run one ordinary task attempt through the one shared catalog-backed Task
+ * Cell owner. The CLI dispatch is asynchronous in-process; it never spawns an
+ * opencode-cli harness process.
+ */
+export async function runPrincipalTask(
   homeArgument: string | undefined,
   arguments_: TaskRunArguments,
-  runner: TaskRunRunner = new WorkCellCliRunner(),
   dependencies: TaskRunDependencies = {},
-): TaskRunResult {
+): Promise<TaskRunResult> {
   const prepared = preparePrincipalTaskRun(homeArgument, arguments_, dependencies);
   const { home, task, observed, worktree, attemptId, lease, execution, continuation } = prepared;
+  let finalized = false;
+  let attempt: (AttemptEvidence & { expectedCellInput: CellInput }) | undefined;
   try {
-    const attempt = createAttempt(
+    attempt = createAttempt(
       home,
       task,
       observed.sourceRevision,
@@ -522,36 +687,39 @@ export function runPrincipalTask(
       execution,
       continuation,
     );
-    const runnerResult = runner.run({
-      inputPath: attempt.inputPath,
-      finalRecordPath: attempt.finalRecordPath,
-      driver: execution.driver,
-      model: execution.model,
-      ...(execution.reasoningEffort
-        ? { reasoningEffort: execution.reasoningEffort }
-        : {}),
-      ...(continuation ? { session: continuation.session } : {}),
+    const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
+    let outcome: TaskCellOutcome;
+    try {
+      const record = await executor({
+        catalog: dependencies.catalog ?? currentCatalog(),
+        cellInput: attempt.expectedCellInput,
+      });
+      outcome = { status: "final", record };
+    } catch (error) {
+      outcome = { status: "failed", error: errorMessage(error) };
+    }
+    const finalization = finalizeTaskAttempt({
+      attempt,
+      expectedInput: attempt.expectedCellInput,
+      task: { id: task.id, revision: task.revision },
+      attemptId,
+      lease,
+      outcome,
+      execution,
+      card: prepared.card,
     });
-    const finalRecord = validateFinalRecord(
-      attempt.finalRecordPath,
-      attempt.expectedCellInput,
-      runnerResult,
-      execution.model,
-      continuation?.session,
-    );
-    // The same shared normal derivation as the asynchronous carrier and
-    // reconcile-attempt: a passed owner final records; any other terminal
-    // status settles runner-failed with the retained evidence. The CLI call
-    // then fails after the durable settlement — a failed or cancelled final
-    // record is never hard-coded as `recorded`.
-    const settlementInput = finalRecordSettlementInput(task.id, task.revision, attemptId, finalRecord);
-    writeTaskRunSettlement(attempt, settlementInput);
-    if (settlementInput.status !== "recorded") {
+    finalized = true;
+    if (finalization.status === "unresolved") {
+      throw new Error(finalization.error);
+    }
+    if (finalization.settlement.status !== "recorded") {
       throw new Error(
-        `the Work Cell run settled with status ${finalRecord.status}; `
-        + `the attempt settlement is ${settlementInput.status}`,
+        `the Work Cell run settled with status ${finalization.finalRecord?.status ?? "unknown"}; `
+        + `the attempt settlement is ${finalization.settlement.status}`
+        + `${finalization.settlement.error !== undefined ? `: ${finalization.settlement.error}` : ""}`,
       );
     }
+    const finalRecord = finalization.finalRecord!;
     return {
       version: "rosso.task-run-result.v1",
       taskId: task.id,
@@ -564,24 +732,43 @@ export function runPrincipalTask(
       settlementRef: attempt.settlementRef,
       workCellRunId: finalRecord.runId,
       cellStatus: finalRecord.status,
-      sessionId: finalRecord.executionObservation.sessionId!,
+      ...(finalRecord.executionObservation.sessionId
+        ? { sessionId: finalRecord.executionObservation.sessionId }
+        : {}),
       semanticAcceptance: "not-evaluated",
     };
   } catch (error: unknown) {
-    const attempt = attemptEvidence(home, attemptId);
-    if (existsSync(attempt.attemptPath) && !existsSync(attempt.settlementPath)) {
-      writeTaskRunSettlement(attempt, {
-        taskId: task.id,
-        taskRevision: task.revision,
-        attemptId,
-        status: "runner-failed",
-        error: error instanceof Error ? error.message : String(error),
-      });
+    if (!finalized && attempt !== undefined && existsSync(attempt.attemptPath) && !existsSync(attempt.settlementPath)) {
+      try {
+        writeTaskRunSettlement(attempt, {
+          taskId: task.id,
+          taskRevision: task.revision,
+          attemptId,
+          status: "runner-failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } catch {
+        // The original failure stays primary; a fallback settlement write
+        // that still cannot succeed is the same visible retention failure.
+      }
     }
     throw error;
   } finally {
-    releaseWorktreeLease(lease);
+    // The shared finalization owns the canonical settlement -> lease release
+    // order. The lease is released here only when finalization never ran;
+    // an unresolved finalization keeps the exact lease for reconcile-attempt.
+    if (!finalized) releaseWorktreeLease(lease);
   }
+}
+
+function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRunRecord> {
+  return executeTaskCellRun(input.catalog, input.cellInput, {
+    ...(input.signal ? { signal: input.signal } : {}),
+    ...(input.onTrace ? { onTrace: input.onTrace } : {}),
+  }).then((outcome) => {
+    if (outcome.status === "failed") throw new Error(outcome.error);
+    return outcome.record;
+  });
 }
 
 /**
@@ -602,7 +789,11 @@ export interface PreparedPrincipalTaskRun {
   readonly worktree: string;
   readonly attemptId: string;
   readonly lease: TaskRunLease;
-  readonly continuation?: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] };
+  /** Exact prior-attempt lineage for a stateless continuation, when requested. */
+  readonly continuation?: {
+    continuedFromAttemptId: string;
+    workspaceDiff: CellRunRecord["workspaceDiff"];
+  };
 }
 
 export function preparePrincipalTaskRun(
@@ -615,7 +806,7 @@ export function preparePrincipalTaskRun(
   const card = resolveWorkerCard(arguments_.workerId, dependencies);
   const execution = dependencies.deriveExecution
     ? dependencies.deriveExecution(card)
-    : deriveExecutionRequest(card);
+    : deriveTaskRunExecution(card);
   const observed = showPrincipalTask(home, arguments_.id);
   const task = observed.task;
   if (task.lifecycle === "settled") {
@@ -644,8 +835,8 @@ export function preparePrincipalTaskRun(
   try {
     verifyTaskSnapshotAfterLease(home, observed);
     verifyCurrentBinding(home, task.binding.projectId, worktree);
-    const continuation = arguments_.continueRun
-      ? continuationEvidence(home, task.id, worktree)
+    const continuation = arguments_.continueFromAttemptId
+      ? continuationEvidence(home, task.id, worktree, arguments_.continueFromAttemptId, execution)
       : undefined;
     if (continuation !== undefined) {
       verifyContinuationDiff(worktree, continuation.workspaceDiff);
@@ -669,90 +860,92 @@ export function preparePrincipalTaskRun(
   }
 }
 
+/**
+ * Derive one stateless continuation from one exact prior attempt: the
+ * anchor's strict attempt evidence family must be fully available, its
+ * settlement recorded, its final passed and owner-backed, its immutable
+ * CellInput must bind the exact current Worktree, and its retained execution
+ * identity (driver/model) must equal the requested one. The cumulative
+ * workspaceDiff is the union of the anchor's own final diff with every
+ * predecessor's diff along its exact continuedFromAttemptId lineage; a
+ * missing, invalid, mismatched, foreign, or cyclic predecessor fails closed
+ * and no execution is started.
+ */
 function continuationEvidence(
   home: string,
   taskId: string,
   worktree: string,
-): { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] } {
-  const observed = observedRetainedSessions(home, taskId, worktree);
-  const latest = observed.at(-1);
-  if (latest === undefined) {
-    throw new Error(`task ${taskId} has no usable recorded Work Cell attempt in the current Worktree`);
-  }
+  anchorAttemptId: string,
+  execution: TaskRunExecution,
+): { continuedFromAttemptId: string; workspaceDiff: CellRunRecord["workspaceDiff"] } {
   const cumulative = {
     added: new Set<string>(),
     changed: new Set<string>(),
     removed: new Set<string>(),
   };
-  let hasPathAnchor = false;
-  for (let index = observed.length - 1; index >= 0; index -= 1) {
-    const attempt = observed[index]!;
-    if (attempt.session !== latest.session) break;
-    if (attempt.workspaceDiff !== undefined) {
-      hasPathAnchor = true;
-      for (const kind of ["added", "changed", "removed"] as const) {
-        for (const path of attempt.workspaceDiff[kind]) cumulative[kind].add(path);
-      }
+  let currentId: string | undefined = anchorAttemptId;
+  const visited = new Set<string>();
+  while (currentId !== undefined) {
+    if (!TaskAttemptIdSchema.safeParse(currentId).success) {
+      throw new Error(
+        `continuation lineage attempt id is not a canonical UUID: ${currentId}`,
+      );
     }
-    if (attempt.requestedSession === undefined) break;
-    if (attempt.requestedSession !== latest.session) break;
-  }
-  if (!hasPathAnchor) {
-    throw new Error(
-      `task ${taskId} has no usable recorded Work Cell attempt in the current Worktree session branch`,
-    );
+    if (visited.has(currentId)) {
+      throw new Error(`continuation lineage is cyclic at attempt ${currentId}`);
+    }
+    visited.add(currentId);
+    const evidence = readStrictTaskAttemptEvidence(home, currentId);
+    if (evidence.standing !== "available") {
+      throw new Error(
+        `continuation anchor attempt ${anchorAttemptId} has no usable retained evidence at attempt ${currentId}: `
+        + `${evidence.error ?? evidence.standing}`,
+      );
+    }
+    const attempt = evidence.attempt!;
+    if (attempt.taskId !== taskId) {
+      throw new Error(
+        `continuation lineage attempt ${currentId} belongs to task ${attempt.taskId}, not the requested task ${taskId}`,
+      );
+    }
+    if (attempt.driver !== execution.driver || attempt.model !== execution.model) {
+      throw new Error(
+        `continuation lineage attempt ${currentId} was executed with driver ${attempt.driver} model ${attempt.model}; `
+        + `the requested execution ${execution.driver} ${execution.model} differs and cannot continue it`,
+      );
+    }
+    const record = evidence.finalRecord;
+    const settlement = evidence.settlement;
+    if (record === undefined || settlement === undefined || settlement.status !== "recorded" || record.status !== "passed") {
+      throw new Error(
+        `continuation lineage attempt ${currentId} has no owner-backed passed final: `
+        + `${record === undefined ? "no retained Work Cell final record" : `final status ${record.status}, settlement ${settlement?.status ?? "absent"}`}`,
+      );
+    }
+    let root: string;
+    try {
+      root = realpathSync(record.input.workspace.root);
+    } catch {
+      throw new Error(`continuation lineage attempt ${currentId} final record workspace root cannot be resolved`);
+    }
+    if (root !== worktree) {
+      throw new Error(
+        `continuation lineage attempt ${currentId} belongs to Worktree ${root}, not the task's current bound Worktree ${worktree}`,
+      );
+    }
+    for (const kind of ["added", "changed", "removed"] as const) {
+      for (const path of record.workspaceDiff[kind]) cumulative[kind].add(path);
+    }
+    currentId = attempt.continuation?.continuedFromAttemptId;
   }
   return {
-    session: latest.session,
+    continuedFromAttemptId: anchorAttemptId,
     workspaceDiff: {
       added: [...cumulative.added].sort(),
       changed: [...cumulative.changed].sort(),
       removed: [...cumulative.removed].sort(),
     },
   };
-}
-
-function observedRetainedSessions(
-  home: string,
-  taskId: string,
-  worktree: string,
-): Array<{
-  session: string;
-  requestedSession?: string;
-  workspaceDiff?: CellRunRecord["workspaceDiff"];
-}> {
-  const attempts = showPrincipalTaskAttempts(home, taskId);
-  const observed: Array<{
-    session: string;
-    requestedSession?: string;
-    workspaceDiff?: CellRunRecord["workspaceDiff"];
-  }> = [];
-  for (const attempt of attempts) {
-    if (
-      attempt.observedSession === undefined
-      || attempt.evidence.finalRecord.standing !== "available"
-    ) continue;
-    try {
-      const record = workCellContracts().CellRunRecordSchema.parse(
-        JSON.parse(readFileSync(join(home, attempt.finalRecordRef), "utf8")),
-      ) as CellRunRecord;
-      if (realpathSync(record.input.workspace.root) !== worktree) continue;
-      const pathAnchor = attempt.status === "recorded"
-        && attempt.cellStatus === "passed"
-        && attempt.workspaceDiff !== undefined
-        && Object.values(attempt.evidence).every((source) => source.standing === "available");
-      observed.push({
-        session: attempt.observedSession,
-        ...(attempt.requestedSession !== undefined
-          ? { requestedSession: attempt.requestedSession }
-          : {}),
-        ...(pathAnchor ? { workspaceDiff: attempt.workspaceDiff } : {}),
-      });
-    } catch {
-      // Only an attributable final record in the exact Worktree can affect session continuity.
-    }
-  }
-  return observed;
 }
 
 function verifyContinuationDiff(
@@ -768,7 +961,7 @@ function verifyContinuationDiff(
   const extraPaths = [...currentPaths].filter((path) => !retainedPaths.has(path)).sort();
   if (extraPaths.length > 0) {
     throw new Error(
-      `task Worktree has Git-visible paths outside the retained same-session workspace diff history: ${extraPaths.join(", ")}`,
+      `task Worktree has Git-visible paths outside the retained continuation workspace diff union: ${extraPaths.join(", ")}`,
     );
   }
 }
@@ -868,7 +1061,7 @@ export function createAttempt(
   workerId: string,
   worker: WorkerCard,
   execution: TaskRunExecution,
-  continuation?: { session: string; workspaceDiff: CellRunRecord["workspaceDiff"] },
+  continuation?: { continuedFromAttemptId: string; workspaceDiff: CellRunRecord["workspaceDiff"] },
   correlation?: AttemptCorrelation,
 ): AttemptEvidence & { expectedCellInput: CellInput } {
   const attempt = attemptEvidence(home, attemptId);
@@ -882,7 +1075,7 @@ export function createAttempt(
       readPaths: ["."],
       writePaths: ["."],
       excludePaths: ordinaryOpenCodeExcludes(worktree),
-      allowedCommands: [],
+      allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
     },
     instructions: [
       "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
@@ -915,7 +1108,14 @@ export function createAttempt(
     ...(execution.reasoningEffort
       ? { reasoningEffort: execution.reasoningEffort }
       : {}),
-    ...(continuation ? { session: continuation.session } : {}),
+    ...(continuation
+      ? {
+          continuation: {
+            continuedFromAttemptId: continuation.continuedFromAttemptId,
+            workspaceDiff: continuation.workspaceDiff,
+          },
+        }
+      : {}),
     ...(correlation === undefined ? {} : { correlation }),
     status: "started",
     startedAt: new Date().toISOString(),
@@ -943,10 +1143,10 @@ export function attemptEvidence(home: string, attemptId: string): AttemptEvidenc
 
 /**
  * The shared terminal settlement writer: every ordinary task run — the
- * synchronous CLI path and a conversation-owned asynchronous carrier — retains
- * the same append-only settlement shape on the attempt evidence. The terminal
- * attempt settlement is separate evidence from any control receipt and never
- * moves Task lifecycle.
+ * CLI run and a conversation-owned asynchronous carrier — retains the same
+ * append-only settlement shape on the attempt evidence through the shared
+ * finalization owner. The terminal attempt settlement is separate evidence
+ * from any control receipt and never moves Task lifecycle.
  */
 export interface TaskRunSettlementInput {
   readonly taskId: string;
@@ -1002,54 +1202,14 @@ export function releaseWorktreeLease(lease: TaskRunLease): void {
   rmSync(lease.path);
 }
 
-function validateFinalRecord(
-  path: string,
-  expectedInput: CellInput,
-  runnerResult: TaskRunRunnerResult,
-  model: string,
-  requestedSession?: string,
-): CellRunRecord {
-  let record: CellRunRecord;
-  try {
-    record = workCellContracts().CellRunRecordSchema.parse(
-      JSON.parse(readFileSync(path, "utf8")),
-    ) as CellRunRecord;
-  } catch (error: unknown) {
-    throw new Error(
-      `invalid Work Cell final record at ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-  if (record.cellId !== expectedInput.id) {
-    throw new Error(`Work Cell final record cell id does not match immutable input: ${record.cellId}`);
-  }
-  if (!isDeepStrictEqual(record.input, expectedInput)) {
-    throw new Error("Work Cell final record input does not match immutable CellInput");
-  }
-  if (record.runId !== runnerResult.runId || record.status !== runnerResult.status) {
-    throw new Error("Work Cell final record run id/status does not match runner settlement");
-  }
-  if (
-    record.driver.adapter !== "opencode-cli.v1"
-    || record.driver.provider !== model.split("/", 1)[0]
-    || record.driver.model !== model
-  ) {
-    throw new Error(`Work Cell final record driver does not match requested OpenCode model: ${model}`);
-  }
-  const observedSession = record.executionObservation.sessionId;
-  if (!observedSession) {
-    throw new Error("Work Cell final record did not retain the observed OpenCode session id");
-  }
-  if (requestedSession !== undefined && requestedSession !== observedSession) {
-    throw new Error(
-      `requested OpenCode session does not match the observed session: requested ${requestedSession}, observed ${observedSession}`,
-    );
-  }
-  return record;
-}
+
 
 function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {
   return requireFromHere("../../../packages/work-cell/src/contracts");
+}
+
+function workCellRunCell(): typeof import("../../../packages/work-cell/src/run-cell") {
+  return requireFromHere("../../../packages/work-cell/src/run-cell");
 }
 
 // The sibling worker policy is loaded only when worker list/task run actually
@@ -1060,12 +1220,27 @@ function currentWorkerPolicy(): typeof import("../../autonomy/src/worker-policy"
   return requireFromHere("../../autonomy/src/worker-policy");
 }
 
+/** The one catalog that binds the resolved worker card to its driver. */
+function currentCatalog(environment: NodeJS.ProcessEnv = process.env): WorkerCatalog {
+  return currentWorkerPolicy().createCurrentWorkerCatalog(environment);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function isAlreadyExists(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
 function validatePolicy(arguments_: TaskRunArguments): void {
   if (!arguments_.workerId.trim()) throw new Error("task run --worker must be a non-empty worker id");
+  if (
+    arguments_.continueFromAttemptId !== undefined
+    && !TaskAttemptIdSchema.safeParse(arguments_.continueFromAttemptId).success
+  ) {
+    throw new Error("task run --continue must be a valid attempt id");
+  }
 }
 
 function resolveWorkerCard(
@@ -1081,11 +1256,15 @@ function resolveWorkerCard(
   return card;
 }
 
-function deriveExecutionRequest(card: WorkerCard): TaskRunExecution {
-  const { provider, model, reasoningEffort } = card.executionProfile;
+export function deriveTaskRunExecution(card: WorkerCard): TaskRunExecution {
+  const { model, reasoningEffort } = card.executionProfile;
   return {
-    driver: "opencode-cli",
-    model: model.includes("/") ? model : `${provider}/${model}`,
+    // Retain the mechanism, not merely provider/model: a generic AI SDK driver
+    // cannot masquerade as the selected in-process HarnessAgent + Pi runtime.
+    driver: card.executionProfile.provider === "deepseek"
+      ? PI_HARNESS_TASK_RUN_ADAPTER
+      : "ai-sdk-v7",
+    model,
     ...(reasoningEffort ? { reasoningEffort } : {}),
   };
 }

@@ -156,24 +156,36 @@ Workbench home has a task source.
 - Run `worker list` to inspect the host-owned worker descriptions, capabilities,
   provider/model/reasoning defaults, and availability. Run an ordinary open
   Agent-owned project task that already has one exact isolated Worktree with
-  `task run <id> --worker <worker-id>`. Add `--continue` to continue only the
-  latest usable OpenCode session retained by an attributable previous attempt
-  of the same still-open task in its current bound Worktree. Do not ask the
+  `task run <id> --worker <worker-id>`. Add `--continue <attempt-id>` to start
+  a stateless continuation of the exact named prior-attempt lineage of the same
+  still-open task in its current bound Worktree. Do not ask the
   human or calling Agent for driver, provider/model syntax, reasoning effort,
   session ID, or Task revisions.
-  The 30-minute run ceiling is only an emergency ceiling while the OpenCode
-  adapter has no completed-step soft-budget control; it is not an approval or
-  budget mechanism.
+  The ordinary run executes in-process through the shared catalog-backed Task
+  Cell owner (`WorkerCatalog.createDriver` -> the AI SDK driver stack), never
+  through an opencode-cli harness process. The OpenCode CLI driver exists only
+  as an explicit Work Cell compatibility/experiment adapter, never as a
+  default or fallback; OpenCode Go remains an AI SDK provider, not a harness.
+  DeepSeek attempts retain the exact `ai-sdk-harness-pi-v1` mechanism and the
+  host-selected reasoning policy. Ordinary model-visible command authority is
+  empty: an exact argv is not confinement when Agent-edited tests or package
+  scripts execute as host code. Run verification from the separate trusted
+  host boundary until a filesystem-confined check owner exists; do not add
+  bare `git`, bare `bun`, install, stash, or a shell.
+  The 30-minute run ceiling is only an emergency ceiling; it is not an approval
+  or budget mechanism.
   A fresh run remains Git-clean-only. An explicit continuation may retain a
   dirty Worktree only when every currently staged, unstaged, or non-ignored
-  untracked path is present in the cumulative `workspaceDiff` union of usable,
-  owner-backed attempts on that continuous same-session branch. A failed or
-  otherwise unusable attempt contributes no paths, but a different observed
-  session still terminates the prior branch. Ignored artifacts do not block,
-  and path membership proves no content identity. The result returns the actual
-  OpenCode session id observed in the new attempt's final Work Cell record; no
-  usable latest session or a continued session that does not match the new
-  observation fails.
+  untracked path is present in the cumulative `workspaceDiff` union walked from
+  the exact prior-attempt lineage: the anchor attempt and every predecessor
+  along its exact `continuedFromAttemptId` chain must retain an available
+  owner-backed passed final in the current bound Worktree executed by the same
+  driver and model. A missing, malformed, differently driven, foreign-Worktree,
+  non-passed, or cyclic lineage member fails closed. Ignored artifacts do not
+  block, and path membership proves no content identity. Harness session ids
+  are observation only and are never continuation authority. A harness session
+  id observed in the new attempt's final Work Cell record is returned as
+  observation; nothing requires or fabricates one.
   Mission context is not required. The command creates the Work Cell input and
   append-only attempt evidence inside the Workbench home, but its settlement
   neither submits nor accepts the task. An atomic lease in the exact Worktree Git metadata rejects

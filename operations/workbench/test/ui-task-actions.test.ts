@@ -13,7 +13,9 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   CellInputSchema,
   CellRunRecordSchema,
+  type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
 import {
   authorizeExecution,
   executionAuthorizationReceiptPath,
@@ -51,8 +53,7 @@ import {
 } from "../src/tasks";
 import {
   runPrincipalTask,
-  type TaskRunRequest,
-  type TaskRunRunner,
+  type TaskCellExecutor,
 } from "../src/task-run";
 import type {
   AutonomyClient,
@@ -96,69 +97,59 @@ function fixture() {
   return { root, home, origin, handler };
 }
 
-function retainedAttemptRunner(): TaskRunRunner {
-  return {
-    run(request: TaskRunRequest) {
-      const input = CellInputSchema.parse(
-        JSON.parse(readFileSync(request.inputPath, "utf8")),
-      );
-      const record = CellRunRecordSchema.parse({
-        version: "work-cell.run.v4",
-        runId: "ui-attempt-run",
-        cellId: input.id,
-        driver: {
-          adapter: "opencode-cli.v1",
-          provider: "deepseek",
-          model: request.model,
-        },
-        startedAt: "2026-08-12T18:01:00.000Z",
-        finishedAt: "2026-08-12T18:02:00.000Z",
-        durationMs: 60_000,
-        status: "passed",
-        input,
-        finalText: "Retained UI fixture result.",
-        artifacts: [],
-        verification: {
-          passed: true,
-          terminal: { passed: true, required: [], called: [] },
-          artifacts: { passed: true, errors: [] },
-        },
-        workspaceDiff: {
-          added: ["evidence/new.txt"],
-          changed: ["src/existing.ts"],
-          removed: [],
-        },
-        usage: {
-          inputTokens: 120,
-          outputTokens: 40,
-          totalTokens: 160,
+function retainedAttemptExecutor(): TaskCellExecutor {
+  return async ({ cellInput }) => {
+    const input = cellInput;
+    return CellRunRecordSchema.parse({
+      version: "work-cell.run.v4",
+      runId: "ui-attempt-run",
+      cellId: input.id,
+      driver: {
+        adapter: PI_HARNESS_DRIVER_ADAPTER,
+        provider: "deepseek",
+        model: input.executionProfile?.model ?? "deepseek/deepseek-v4-flash",
+      },
+      startedAt: "2026-08-12T18:01:00.000Z",
+      finishedAt: "2026-08-12T18:02:00.000Z",
+      durationMs: 60_000,
+      status: "passed",
+      input,
+      finalText: "Retained UI fixture result.",
+      artifacts: [],
+      verification: {
+        passed: true,
+        terminal: { passed: true, required: [], called: [] },
+        artifacts: { passed: true, errors: [] },
+      },
+      workspaceDiff: {
+        added: ["evidence/new.txt"],
+        changed: ["src/existing.ts"],
+        removed: [],
+      },
+      usage: {
+        inputTokens: 120,
+        outputTokens: 40,
+        totalTokens: 160,
+        cachedInputTokens: 20,
+      },
+      usageByPhase: {
+        preparation: {
+          inputTokens: 20,
+          outputTokens: 0,
+          totalTokens: 20,
           cachedInputTokens: 20,
         },
-        usageByPhase: {
-          preparation: {
-            inputTokens: 20,
-            outputTokens: 0,
-            totalTokens: 20,
-            cachedInputTokens: 20,
-          },
-          execution: {
-            inputTokens: 100,
-            outputTokens: 40,
-            totalTokens: 140,
-            cachedInputTokens: 0,
-          },
+        execution: {
+          inputTokens: 100,
+          outputTokens: 40,
+          totalTokens: 140,
+          cachedInputTokens: 0,
         },
-        executionObservation: { sessionId: "session-ui-attempt" },
-        trace: [],
-        rawSteps: [],
-      });
-      writeFileSync(
-        request.finalRecordPath,
-        `${JSON.stringify(record, null, 2)}\n`,
-        { flag: "wx" },
-      );
-      return { runId: record.runId, status: record.status };
-    },
+      },
+      executionObservation: { sessionId: "session-ui-attempt" },
+      trace: [],
+      rawSteps: [],
+    }) as unknown as CellRunRecord;
   };
 }
 
@@ -2288,10 +2279,10 @@ describe("Workbench task UI actions", () => {
     });
     expect(created.status).toBe(200);
     const taskId = (await created.json()).result.task.id as string;
-    const attempt = runPrincipalTask(home, {
+    const attempt = await runPrincipalTask(home, {
       id: taskId,
       workerId: "deepseek-flash-test",
-    }, retainedAttemptRunner(), {
+    }, {
       resolveWorkerCard: () => ({
         version: "work-cell.worker-card.v1",
         id: "deepseek-flash-test",
@@ -2307,6 +2298,7 @@ describe("Workbench task UI actions", () => {
         },
         availability: { status: "available" },
       }),
+      executeTaskCell: retainedAttemptExecutor(),
     });
     const sourcePaths = [
       principalTasksPath(home),
@@ -2330,7 +2322,7 @@ describe("Workbench task UI actions", () => {
       attempts: [{
         attemptId: attempt.attemptId,
         workerId: "deepseek-flash-test",
-        driver: "opencode-cli",
+        driver: PI_HARNESS_DRIVER_ADAPTER,
         model: "deepseek/deepseek-v4-flash",
         reasoningEffort: "low",
         observedSession: "session-ui-attempt",

@@ -91,6 +91,32 @@ export class Workspace {
     await writeFile(absolute, content, "utf8");
   }
 
+  /**
+   * Create a new UTF-8 file inside the write scope. Refuses to overwrite an
+   * existing file; the exclusive-create is atomic so a concurrent writer
+   * cannot be silently replaced.
+   */
+  async createText(path: string, content: string): Promise<void> {
+    const absolute = await this.resolveWritable(path);
+    await mkdir(dirname(absolute), { recursive: true });
+    await writeFile(absolute, content, { encoding: "utf8", flag: "wx" });
+  }
+
+  /**
+   * Resolve one edit target through both the read scope and the write scope
+   * without loading its content. Backs the host edit tool's access check:
+   * a target that is readable but not writable, or writable but not
+   * readable, is never edited.
+   */
+  async assertEditable(path: string): Promise<string> {
+    const readable = await this.resolveReadable(path);
+    const writable = await this.resolveWritable(path);
+    if (readable !== writable) {
+      throw new Error(`edit target resolves to different read and write paths: ${path}`);
+    }
+    return writable;
+  }
+
   /** Read a declared output only when it is a regular file inside write scope. */
   async describeArtifact(path: string): Promise<WorkspaceArtifact> {
     const absolute = await this.resolveWritable(path);
@@ -117,8 +143,8 @@ export class Workspace {
       throw new Error(`command argv[0] must not contain a path separator: ${argv[0]}`);
     }
     const executable = basename(argv[0]);
-    if (!this.policy.allowedCommands.includes(executable)) {
-      throw new Error(`command not allowed: ${executable}`);
+    if (!this.policy.allowedCommands.some((allowed) => commandPolicyMatches(allowed, argv))) {
+      throw new Error(`command not allowed: ${argv.join(" ")}`);
     }
     const commandCwd = await this.resolveReadable(cwd);
     if (!(await stat(commandCwd)).isDirectory()) throw new Error(`cwd is not a directory: ${cwd}`);
@@ -276,6 +302,17 @@ export class Workspace {
     const value = relative(this.root, path).split(sep).join("/");
     return value === "" ? "." : value;
   }
+}
+
+/**
+ * A single-token policy retains the original executable-wide compatibility.
+ * A multi-token policy is an exact argv capability: it cannot be extended
+ * with install, stash, output, or other unreviewed flags by the caller.
+ */
+function commandPolicyMatches(policy: string, argv: readonly string[]): boolean {
+  const tokens = policy.split(" ").filter(Boolean);
+  if (tokens.length === 1) return tokens[0] === argv[0];
+  return tokens.length === argv.length && tokens.every((token, index) => token === argv[index]);
 }
 
 function normalizeScope(scope: string): string {
