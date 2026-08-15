@@ -1,0 +1,10 @@
+P7 pinned-browser console evidence
+
+Desktop 1440x900
+Total messages: 0 (Errors: 0, Warnings: 0)
+
+Mobile 390x844
+Total messages: 0 (Errors: 0, Warnings: 0)
+
+Session: p7-conversation-520c76
+Conversation: fcd5fe2d-d0be-4115-80af-512671b1a47f

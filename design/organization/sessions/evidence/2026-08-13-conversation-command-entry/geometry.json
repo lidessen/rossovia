@@ -1,0 +1,24 @@
+{
+  "version": "rosso.conversation-p7-geometry.v1",
+  "desktop": {
+    "viewport": {"width": 1440, "height": 900},
+    "document": {"scrollWidth": 1440, "scrollHeight": 900},
+    "body": {"scrollWidth": 1440, "scrollHeight": 900},
+    "horizontalOverflow": false,
+    "connection": "实时 · 已连接",
+    "conversationId": "fcd5fe2d-d0be-4115-80af-512671b1a47f"
+  },
+  "mobile": {
+    "viewport": {"width": 390, "height": 844},
+    "document": {"scrollWidth": 390, "scrollHeight": 1052},
+    "body": {"scrollWidth": 390, "scrollHeight": 1052},
+    "horizontalOverflow": false,
+    "connection": "实时 · 已连接",
+    "conversationId": "fcd5fe2d-d0be-4115-80af-512671b1a47f",
+    "composer": {
+      "exists": true,
+      "visible": true,
+      "rect": {"top": 524.234375, "left": 13.59375, "right": 376.40625, "bottom": 615.828125, "width": 362.8125, "height": 91.59375}
+    }
+  }
+}

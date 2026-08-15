@@ -1,0 +1,29 @@
+P7 deterministic verification
+Date: 2026-08-15
+Frozen product base: 520c76857d048d6a22ad67374b8d27b622856df0
+P7 coordination head before evidence: ab3845b601d704b6fb85fe703e965167d4b6700b
+
+Focused suites
+- Workbench conversation/UI: 359 pass, 0 fail, 1979 assertions, 26 files, 52.06s.
+- Autonomy coordinator/prompt/DeepSeek adapter: 65 pass, 0 fail, 296 assertions, 3 files.
+- Work Cell OpenCode CLI driver: 32 pass, 0 fail, 198 assertions, 1 file.
+
+Full suites
+- Workbench: 633 pass, 0 fail, 5244 assertions, 49 files, 98.32s. The first sandboxed run was 586 pass / 47 fail because loopback binds were denied; the same suite passed outside that sandbox restriction.
+- Work Cell: 225 pass, 0 fail, 1018 assertions, 29 files. The sandboxed run was 210 pass / 15 fail with Bun.serve EADDRINUSE for port 0; the same suite passed with disposable loopback authority.
+- Autonomy: 214 pass, 4 fail, 1051 assertions, 25 files. All four failures are the unchanged agent-era Blog fixture boundary: experiments/agent-era-blog/node_modules is absent and drizzle-kit is not installed. Focused conversation tests are green; no P7 product path failed.
+
+Typechecks
+- operations/workbench: pass.
+- operations/autonomy: pass.
+- packages/work-cell: pass.
+- packages/cognition: pass.
+
+Other checks
+- git diff --check 520c76857d048d6a22ad67374b8d27b622856df0..HEAD: pass before evidence creation.
+- Independent fixture check in skills-dogfood-run: node test.mjs passed after the worker edit. This check is verifier evidence; the worker itself had no allowed command executable and only reasoned over the test source.
+
+Interpretation
+- Sandbox loopback failures are environment restrictions, not product assertions.
+- The four Autonomy failures remain an explicit unrelated fixture-environment limitation; no extra experiment dependency install was used to hide it.
+- Mechanical checks and Work Cell status do not imply semantic acceptance.

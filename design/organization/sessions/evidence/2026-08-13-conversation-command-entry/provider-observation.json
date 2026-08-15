@@ -1,0 +1,82 @@
+{
+  "version": "rosso.conversation-p7-provider-observation.v1",
+  "observedAt": "2026-08-15T05:30:34.781Z",
+  "credential": {
+    "DEEPSEEK_API_KEY": "set",
+    "valueRetained": false
+  },
+  "coordinator": {
+    "requested": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "thinking": "enabled",
+      "reasoningEffort": "max"
+    },
+    "turnsObserved": 9,
+    "systemFingerprint": "a307abda487cd1b463329ccb945ce396",
+    "observedProvider": null,
+    "observedModel": null,
+    "observedReasoningEffort": null,
+    "uiStanding": "unknown/unknown",
+    "finding": "The live coordinator retained requested policy, fingerprint, and usage, but did not retain independently observed provider/model/effort; the feed truthfully displayed unknown/unknown rather than silently claiming max."
+  },
+  "workers": [
+    {
+      "taskId": "39bf33bb-4ac6-41cb-88a2-ae0cdab83ccb",
+      "attemptId": "953d8cb5-4972-4af2-b356-b5110be7d81c",
+      "executionProfile": {
+        "id": "deepseek-pro",
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "reasoningEffort": "max",
+        "parallelism": "serial"
+      },
+      "observedRoute": {
+        "servedBy": "deepseek",
+        "model": "deepseek-v4-pro",
+        "mode": "direct",
+        "systemFingerprint": "a307abda487cd1b463329ccb945ce396"
+      },
+      "status": "passed",
+      "semanticAcceptance": "not-evaluated",
+      "durationMs": 40476,
+      "usage": {
+        "inputTokens": 25082,
+        "outputTokens": 2639,
+        "totalTokens": 27721,
+        "cachedInputTokens": 18816
+      },
+      "workspaceDiff": ["src/correction.mjs"],
+      "evidenceSha256": "bd1bf30006ec1a187ba46ece59f5b03429d8c872bce50b5afd115c3fd8c8e24f"
+    },
+    {
+      "taskId": "25cfff9b-2de5-41b8-8da3-fcee01c54eaa",
+      "attemptId": "03abf213-bdb0-4d5b-90d4-a649e0611c9e",
+      "executionProfile": {
+        "id": "deepseek-pro",
+        "provider": "deepseek",
+        "model": "deepseek-v4-pro",
+        "reasoningEffort": "max",
+        "parallelism": "serial"
+      },
+      "status": "cancelled",
+      "settlement": "control-stopped",
+      "semanticAcceptance": "not-evaluated",
+      "durationMs": 39227,
+      "usage": {
+        "inputTokens": 11260,
+        "outputTokens": 1010,
+        "totalTokens": 12270,
+        "cachedInputTokens": 7680
+      },
+      "workspaceDiff": [],
+      "runEvidenceSha256": "fda03a39015a044282ec58fc4124308d27130435ab6e23c6e4ad034bf54b84a7",
+      "controlEvidenceSha256": "37d53bf3ebeb4f33a3ef53e89c9b25bd44370fbcb96fdb78c1670f022167286b"
+    }
+  ],
+  "sourceEvidence": {
+    "conversationId": "fcd5fe2d-d0be-4115-80af-512671b1a47f",
+    "journalSha256": "39b45ef1ff5297e122767b148a7286e6a95abf2c7044a0d6bd9558cd1d672ae1",
+    "tasksSha256": "e93515d56c48a32fa4d2fa06decbfaa385e89be1481727cdd9f138b1cd325fb2"
+  }
+}
