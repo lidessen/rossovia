@@ -244,16 +244,20 @@ public mission invocation/output contract changed as recorded here. This
 section is the migration notice for consumers of the prior surface.
 
 - `--root <path>` follows one composable grammar instead of
-  must-precede-the-subcommand: it may precede the subcommand or follow its
-  arguments, at most once. Missing and duplicate roots are typed usage errors
-  (exit 2) pointing at the nearest mission help path
-  ([missions.ts:353](src/missions.ts)); arity and option failures keep the same
-  T3 typed usage behavior.
+  must-precede-the-subcommand: it occupies exactly one of two family slots —
+  one leading pair before the subcommand or one final pair after all verb
+  arguments. Leading plus trailing is duplicate usage, and missing and
+  duplicate roots are typed usage errors (exit 2) pointing at the nearest
+  mission help path ([missions.ts:357](src/missions.ts)); arity and option
+  failures keep the same T3 typed usage behavior. Any other `--root` token
+  stays with the verb's own option values, so values such as
+  `--title --root` keep persisting.
 - The default mission root `<cwd>/operations/missions` (resolved to an
   absolute path) is documented in the mission family and every verb's help,
   together with the note that Workbench `--home` never relocates Git-tracked
-  Mission records. Help resolution ignores `--root` tokens, so
-  `mission --root <path> list --help` prints the list usage.
+  Mission records. Help resolution ignores `--root` tokens in the same two
+  family slots, so `mission --root <path> list --help` and
+  `mission list --root <path> --help` print the list usage.
 - Every successful mission command prints one JSON object on stdout with empty
   stderr. `init`/`prune` receipts replace the prior bare path string;
   `add-branch`/`focus`/`suspend`/`resume`/`settle`/`close` replace prior silent

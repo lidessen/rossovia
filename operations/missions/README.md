@@ -58,11 +58,13 @@ can close only with one of `integrate`, `no-change`, or `abandon` plus a
 reactivation signal; it cannot disappear as “done”.
 
 The mission root defaults to `<cwd>/operations/missions`, resolved to an
-absolute path at invocation time. `--root <path>` overrides it and may appear
-before the subcommand or after its arguments, at most once. Mission records
-are Git-tracked in the repository; the Workbench `--home` (ROSSO_HOME) never
-relocates them. Run `rossovia help mission` or
-`rossovia mission <verb> --help` for the exact grammar.
+absolute path at invocation time. `--root <path>` overrides it through exactly
+one of two family slots: one leading pair before the subcommand
+(`mission --root <path> <verb> ...`) or one final pair after all verb
+arguments (`mission <verb> ... --root <path>`). Mission records are Git-tracked
+in the repository; the Workbench `--home` (ROSSO_HOME) never relocates them.
+Run `rossovia help mission` or `rossovia mission <verb> --help` for the exact
+grammar.
 
 Every successful mission command prints one JSON object on stdout with empty
 stderr. Mutating verbs (`init`, `add-branch`, `focus`, `suspend`, `resume`,

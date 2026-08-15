@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE, USAGE_EXIT_CODE } from "../src/cli-errors";
@@ -240,6 +240,7 @@ describe("mission CLI contract through the ordinary launcher", () => {
       ["mission", "--root", "/tmp/anywhere", "list", "--help"],
       ["mission", "list", "--root", "/tmp/anywhere", "--help"],
       ["help", "mission", "--root", "/tmp/anywhere", "list"],
+      ["help", "mission", "list", "--root", "/tmp/anywhere"],
     ]) {
       const result = cli(args, { cwd: repositoryRoot });
       expect(result.exitCode, args.join(" ")).toBe(0);
@@ -259,8 +260,13 @@ describe("mission CLI contract through the ordinary launcher", () => {
         pointer: "run 'rossovia help mission' for usage",
       },
       {
-        args: ["mission", "list", "--root", "/tmp/a", "--root", "/tmp/b"],
+        args: ["mission", "--root", "/tmp/a", "list", "--root", "/tmp/b"],
         message: "rossovia: duplicate option: --root",
+        pointer: "run 'rossovia help mission list' for usage",
+      },
+      {
+        args: ["mission", "list", "--root", "/tmp/a", "--root", "/tmp/b"],
+        message: "rossovia: invalid option: --root",
         pointer: "run 'rossovia help mission list' for usage",
       },
       {
@@ -269,8 +275,13 @@ describe("mission CLI contract through the ordinary launcher", () => {
         pointer: "run 'rossovia help mission' for usage",
       },
       {
+        args: ["mission", "list", "--root"],
+        message: "rossovia: invalid option: --root",
+        pointer: "run 'rossovia help mission list' for usage",
+      },
+      {
         args: ["mission", "init", "x", "--root"],
-        message: "rossovia: --root requires a path",
+        message: "rossovia: invalid option: --root",
         pointer: "run 'rossovia help mission init' for usage",
       },
       {
@@ -291,6 +302,24 @@ describe("mission CLI contract through the ordinary launcher", () => {
       expect(result.stderr.trim().split("\n"), args.join(" ")).toEqual([message, pointer]);
       expect(result.stderr, args.join(" ")).not.toMatch(/rosso:/);
     }
+  });
+
+  test("keeps a literal --root that is a verb option value out of the family root slots", () => {
+    const repository = missionRepository();
+    const root = join(repository, "operations", "missions");
+    const result = cli([
+      "mission", "--root", root,
+      "init", "root-as-title",
+      "--title", "--root",
+      "--mainline", "contradiction",
+      "--accept", "accepted",
+      "--source", "test:root-value",
+    ], { cwd: repository });
+    const receipt = assertJsonReceipt(result, "init", "root-as-title");
+    expect(receipt.root).toBe(root);
+    expect(receipt.path).toBe(join(root, "root-as-title.json"));
+    const record = JSON.parse(readFileSync(receipt.path, "utf8")) as { title: string };
+    expect(record.title).toBe("--root");
   });
 
   test("a state failure keeps exit 1, empty stdout, and one stderr line", () => {

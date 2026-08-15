@@ -27,7 +27,7 @@ export interface FamilyHelp {
 
 export type HelpEntry = VerbHelp | FamilyHelp;
 
-const MISSION_ROOT_NOTE = "Default mission root: <cwd>/operations/missions, resolved to an absolute path. Pass --root <path> (before the subcommand or after its arguments, at most once) to override. Mission records are Git-tracked in the target repository; the Workbench --home never relocates them.";
+const MISSION_ROOT_NOTE = "Default mission root: <cwd>/operations/missions, resolved to an absolute path. Pass --root <path> in exactly one of two family slots — one leading pair before the subcommand, or one final pair after all verb arguments — to override. Mission records are Git-tracked in the target repository; the Workbench --home never relocates them.";
 
 export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: true,
     usage: "init [--workspace-root PATH]... [--setup MODULE]... [--target-root PATH]",
@@ -324,19 +324,19 @@ export function helpForInvocation(args: string[]): string | undefined {
 }
 
 /**
- * The composable mission grammar permits `--root <path>` anywhere in the
- * invocation, so help-path resolution ignores `--root` and its value inside
- * a mission command path.
+ * The composable mission grammar permits `--root <path>` in exactly one of
+ * two family slots — one leading pair after `mission`, or one final pair
+ * after all verb arguments. Help-path resolution ignores only those slots;
+ * every other `--root` token belongs to the verb's own arguments.
  */
 function stripMissionRoot(path: string[]): string[] {
   if (path[0] !== "mission") return path;
-  const filtered: string[] = [];
-  for (let index = 0; index < path.length; index += 1) {
-    if (path[index] === "--root") {
-      index += 1;
-      continue;
-    }
-    filtered.push(path[index]!);
+  const filtered = [...path];
+  if (filtered[1] === "--root") {
+    filtered.splice(1, filtered.length >= 3 ? 2 : 1);
+  }
+  if (filtered.length >= 2 && filtered[filtered.length - 2] === "--root") {
+    filtered.splice(filtered.length - 2, 2);
   }
   return filtered;
 }

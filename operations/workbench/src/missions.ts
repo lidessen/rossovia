@@ -343,42 +343,45 @@ function many(parsed: ParsedCommand, option: string): string[] {
 }
 
 /**
- * One composable mission grammar: `--root <path>` is a mission-family option
- * that may precede the subcommand or follow its arguments. It may appear
- * exactly once; a missing value or a duplicate is a typed usage error at the
- * nearest mission help path. Without `--root`, the mission root is
- * `<cwd>/operations/missions` resolved to an absolute path; the Workbench
- * `--home` never relocates Git-tracked Mission records.
+ * One explicit composable mission grammar: `--root <path>` occupies exactly
+ * one of two family slots — one leading pair before the subcommand
+ * (`mission --root <path> <verb> ...`) or one final pair after all verb
+ * arguments (`mission <verb> ... --root <path>`). A leading plus a final pair
+ * is a duplicate usage error; a missing leading value is a usage error. Every
+ * other `--root` token stays in the verb arguments, so the existing verb
+ * parser keeps owning option values such as `--title --root`. Without
+ * `--root`, the mission root is `<cwd>/operations/missions` resolved to an
+ * absolute path; the Workbench `--home` never relocates Git-tracked Mission
+ * records.
  */
 export function runMissionCommand(rawArguments: string[]): unknown {
   const raw = [...rawArguments];
   let root: string | undefined;
-  const takeRoot = (value: string | undefined, helpPath: string[]): void => {
-    if (root !== undefined) throw new UsageError("duplicate option: --root", helpPath);
-    if (!value) throw new UsageError("--root requires a path", helpPath);
+  if (raw[0] === "--root") {
+    const value = raw[1];
+    if (!value) throw new UsageError("--root requires a path", ["mission"]);
     root = value;
-  };
-  while (raw[0] === "--root") {
-    takeRoot(raw[1], ["mission"]);
     raw.splice(0, 2);
+    if (raw[0] === "--root") throw new UsageError("duplicate option: --root", ["mission"]);
+  }
+  if (raw.length >= 2 && raw[raw.length - 2] === "--root") {
+    if (root !== undefined) {
+      const command = MISSION_SUBCOMMANDS.has(raw[0] ?? "") ? raw[0]! : undefined;
+      throw new UsageError(
+        "duplicate option: --root",
+        command === undefined ? ["mission"] : ["mission", command],
+      );
+    }
+    root = raw[raw.length - 1]!;
+    raw.splice(raw.length - 2, 2);
   }
   const command = raw.shift();
   if (!command) throw new UsageError("mission requires a subcommand", ["mission"]);
   if (!MISSION_SUBCOMMANDS.has(command)) {
     throw new UsageError(`unknown mission command: ${command}`, ["mission"]);
   }
-  const remainder: string[] = [];
-  for (let index = 0; index < raw.length; index += 1) {
-    const argument = raw[index]!;
-    if (argument === "--root") {
-      takeRoot(raw[index + 1], ["mission", command]);
-      index += 1;
-      continue;
-    }
-    remainder.push(argument);
-  }
   try {
-    return dispatchMissionCommand(command, remainder, resolve(root ?? "operations/missions"));
+    return dispatchMissionCommand(command, raw, resolve(root ?? "operations/missions"));
   } catch (error: unknown) {
     if (error instanceof ParseUsageError) {
       throw new UsageError(error.message, ["mission", command], { cause: error });
