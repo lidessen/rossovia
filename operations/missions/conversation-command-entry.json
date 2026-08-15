@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T20:09:15Z",
+  "updatedAt": "2026-08-15T20:26:32Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -211,7 +211,21 @@
         "verification:design/organization/sessions/2026-08-13-conversation-command-entry-verification.md#f6-medium-concurrent-project-registration-loses-an-update"
       ],
       "status": "open"
+    },
+    {
+      "id": "ordinary-task-budget-policy",
+      "parent": "mainline",
+      "kind": "correction",
+      "purpose": "Replace the hidden ordinary-Task maxSteps=20 hard failure with an explicit policy-owned soft budget decision and observable bounded extension under a non-extendable duration safety envelope, reusing Work Cell budget control rather than weakening cancellation or evidence.",
+      "returnCondition": "Return with one clean exact runtime-policy commit only after immutable-input, decision-point, allow/deny, hard-duration, settlement-reserve, no-budget-owner, adapter compatibility, and real greater-than-20-step ordinary DeepSeek evidence; no unbounded loop, silent budget extension, Task acceptance, or provider-specific mechanism.",
+      "sources": [
+        "dogfood:task-attempt/4443b755-3e86-4c32-a10d-9789f21bbb8d",
+        "dogfood:task-attempt/7f4fa963-ea71-4775-8ffb-218382368a8e",
+        "dogfood:task-attempt/00e1bac3-88e3-40ab-bae2-3eeb30637b89",
+        "principal:2026-08-15-maxsteps-policy-correction"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "f3-coordinator-observed-identity"
+  "currentFocus": "ordinary-task-budget-policy"
 }
