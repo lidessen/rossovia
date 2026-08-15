@@ -163,7 +163,11 @@ completed step — including tool-continuing steps whose results feed the next
 model step — to a unified stop finish reason, so a label-gated guard would be
 unreachable in production. A completed step that carried tool activity aborts
 the run before step `maxSteps + 1` can begin; a tool-free terminal response
-on the final allowed step completes naturally.
+on the final allowed step completes naturally. The exhaustion count freezes at
+that accepted boundary: an inferred Pi finish emitted while the abort settles
+is neither counted nor retained as another completed step. When Pi exposes its
+aggregate session counters on this failure path, they supersede zero or partial
+inferred-step usage rather than being added to the same model work.
 
 Provider fingerprint evidence is truthful in both directions. When the
 provider response exposes a backend `system_fingerprint` through the AI SDK

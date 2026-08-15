@@ -99,6 +99,10 @@ function scriptedHarness(script: (input: {
 }) => Promise<void>, toolResults: Array<{ toolCallId: string; output: unknown }> = [], options: {
   /** The harness-resolved model identity the session wrapper reports; the driver must match the requested profile exactly. */
   modelId?: string;
+  /** Optional underlying Pi aggregate counters retained when a turn aborts before its final finish event. */
+  sessionStats?: {
+    tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  };
 } = {}): HarnessV1<ToolSet> {
   return {
     specificationVersion: "harness-v1",
@@ -109,6 +113,7 @@ function scriptedHarness(script: (input: {
       sessionId: start.sessionId,
       isResume: false,
       modelId: options.modelId ?? "deepseek-v4-pro",
+      ...(options.sessionStats ? { getSessionStats: () => options.sessionStats } : {}),
       doPromptTurn: (turn: HarnessV1PromptTurnOptions) => {
         const waiters: Array<() => void> = [];
         const waitForToolResult = async (count: number) => {
@@ -489,13 +494,12 @@ describe("Pi harness driver fail-closed mapping", () => {
     await session.destroy();
   });
 
-  test("enforces the immutable maxSteps budget from actual tool activity even when the pinned adapter labels every completed step stop", async () => {
-    let emittedSteps = 0;
+  test("freezes maxSteps exhaustion before Pi's abort tail and retains aggregate session usage", async () => {
+    let emittedAbortTail = false;
     const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
     const harness = scriptedHarness(async ({ emit, abortSignal, waitForToolResult }) => {
       emit({ type: "stream-start", warnings: [] });
-      for (let index = 0; index < 10 && !abortSignal?.aborted; index += 1) {
-        emittedSteps += 1;
+      for (let index = 0; index < 2; index += 1) {
         emit({
           type: "tool-call",
           toolCallId: `read-${index}`,
@@ -504,19 +508,48 @@ describe("Pi harness driver fail-closed mapping", () => {
           providerExecuted: false,
         });
         await waitForToolResult(index + 1);
-        // The pinned adapter translates every inferred completed step —
-        // including this tool-continuing step — to a unified stop label, so
-        // a label-gated guard never fires on the production adapter. Only
-        // the actual tool activity can prove another step will begin.
-        emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
-        // Yield until HarnessAgent has delivered this boundary to the driver;
-        // the next scripted step is conditional on the resulting abort.
+        // Pi labels tool-continuing inferred steps stop and reports zero
+        // per-step usage, so only the activity proves another step would begin.
+        emit({
+          type: "finish-step",
+          finishReason: STOP_REASON,
+          usage: {
+            inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 0, text: 0, reasoning: 0 },
+          },
+        });
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
-    }, toolResults);
+      // The pinned Pi adapter emits this inferred finish while abort settles.
+      // It is not another accepted provider step and must not enter the trace.
+      emittedAbortTail = true;
+      emit({
+        type: "finish-step",
+        finishReason: STOP_REASON,
+        usage: {
+          inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 0, text: 0, reasoning: 0 },
+        },
+      });
+      if (!abortSignal?.aborted) {
+        emit({
+          type: "tool-call",
+          toolCallId: "read-third",
+          toolName: "read_file",
+          input: JSON.stringify({ path: "notes.md" }),
+          providerExecuted: false,
+        });
+        await waitForToolResult(3);
+      }
+    }, toolResults, {
+      sessionStats: {
+        tokens: { input: 11, output: 5, cacheRead: 3, cacheWrite: 1, total: 20 },
+      },
+    });
     const { root, workspace, input } = await fixture();
     writeFileSync(join(root, "notes.md"), "note\n");
-    input.budget.maxSteps = 3;
+    input.budget.maxSteps = 2;
+    const completedSteps: unknown[] = [];
     const driver = new PiHarnessCellDriver({
       route: [{
         provider: "deepseek",
@@ -526,9 +559,17 @@ describe("Pi harness driver fail-closed mapping", () => {
       environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
       harness,
     });
-    await expect(driver.run(input, driverContext(workspace)))
-      .rejects.toThrow("step budget exhausted after 3 completed steps");
-    expect(emittedSteps).toBe(3);
+    await expect(driver.run(input, driverContext(workspace, {
+      emit(type, data) {
+        if (type === "agent.step.finished") completedSteps.push(data);
+      },
+    }))).rejects.toMatchObject({
+      message: "Work Cell step budget exhausted after 2 completed steps",
+      usage: { inputTokens: 11, outputTokens: 5, totalTokens: 16, cachedInputTokens: 3 },
+    });
+    expect(emittedAbortTail).toBeTrue();
+    expect(completedSteps).toHaveLength(2);
+    expect(toolResults.map((result) => result.toolCallId)).toEqual(["read-0", "read-1"]);
   });
 
   test("permits a natural terminal response on the final allowed step", async () => {

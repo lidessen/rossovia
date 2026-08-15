@@ -353,7 +353,7 @@ export class PiHarnessCellDriver implements CellDriver {
     const stepBudgetAbort = new AbortController();
     const turnSignal = AbortSignal.any([context.signal, stepBudgetAbort.signal]);
     let completedSteps = 0;
-    let stepBudgetExhausted = false;
+    let stepBudgetExhaustedAt: number | undefined;
     try {
       // Exact provider/model evidence: the adapter must resolve the exact
       // requested model; an unresolved or different model fails closed
@@ -379,6 +379,7 @@ export class PiHarnessCellDriver implements CellDriver {
       });
       const observeChunk = createHarnessStreamObserver({
         context,
+        acceptStep: () => stepBudgetExhaustedAt === undefined,
         observeUsage: (usage) => {
           observedUsage = addUsage(observedUsage, usage);
           context.observeUsage(
@@ -407,9 +408,12 @@ export class PiHarnessCellDriver implements CellDriver {
             // step completes naturally.
             && stepHadToolActivity
           ) {
-            stepBudgetExhausted = true;
+            // Freeze the exact accepted-step count before aborting. Pi emits
+            // one inferred finish-step while its abort settles; that tail is
+            // not another completed provider step.
+            stepBudgetExhaustedAt = completedSteps;
             stepBudgetAbort.abort(new Error(
-              `Work Cell step budget exhausted after ${completedSteps} completed steps`,
+              `Work Cell step budget exhausted after ${stepBudgetExhaustedAt} completed steps`,
             ));
           }
         },
@@ -417,11 +421,16 @@ export class PiHarnessCellDriver implements CellDriver {
       try {
         for await (const chunk of streamed.stream) observeChunk(chunk);
       } catch (error) {
-        if (!stepBudgetExhausted) throw error;
+        if (stepBudgetExhaustedAt === undefined) throw error;
       }
-      if (stepBudgetExhausted) {
+      if (stepBudgetExhaustedAt !== undefined) {
+        const aggregateUsage = observedPiSessionUsage(session);
+        // Pi's aggregate session counters are another view of the same model
+        // calls, so they supersede zero or partial inferred-step usage rather
+        // than being added to it.
+        if (aggregateUsage?.totalTokens) observedUsage = aggregateUsage;
         throw new CellExecutionError(
-          `Work Cell step budget exhausted after ${completedSteps} completed steps`,
+          `Work Cell step budget exhausted after ${stepBudgetExhaustedAt} completed steps`,
           observedUsage,
           observedSettlementUsage,
         );
@@ -538,6 +547,35 @@ function observedHarnessModelId(session: HarnessAgentSession): string | undefine
 }
 
 /**
+ * Read Pi's own aggregate counters when the underlying session exposes them.
+ * This is an optional observation seam: an adapter without readable session
+ * statistics leaves the already-observed per-step fallback unchanged.
+ */
+function observedPiSessionUsage(session: HarnessAgentSession): CellUsage | undefined {
+  const underlying = (session as unknown as {
+    underlyingSession?: { getSessionStats?: () => unknown };
+  }).underlyingSession;
+  if (typeof underlying?.getSessionStats !== "function") return undefined;
+  try {
+    const tokens = asRecord(asRecord(underlying.getSessionStats()).tokens);
+    const inputTokens = nonnegativeFinite(tokens.input);
+    const outputTokens = nonnegativeFinite(tokens.output);
+    return {
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      cachedInputTokens: nonnegativeFinite(tokens.cacheRead),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function nonnegativeFinite(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/**
  * Bounded live observation over the translated harness stream: step starts,
  * tool boundaries (attributable targets only), per-step usage, and finish
  * evidence. Raw file content, command output, and reasoning text never enter
@@ -547,6 +585,7 @@ function observedHarnessModelId(session: HarnessAgentSession): string | undefine
  */
 function createHarnessStreamObserver(options: {
   context: DriverContext;
+  acceptStep(): boolean;
   observeUsage(usage: CellUsage): void;
   onStepFinished(finishReason: string, stepHadToolActivity: boolean): void;
 }): (chunk: unknown) => void {
@@ -589,6 +628,11 @@ function createHarnessStreamObserver(options: {
       return;
     }
     if (type === "finish-step") {
+      if (!options.acceptStep()) {
+        stepHadToolActivity = false;
+        activeTools = undefined;
+        return;
+      }
       const usage = normalizeUsage(value.usage);
       const finishReason = normalizeFinishReason(value.finishReason);
       options.observeUsage(usage);
