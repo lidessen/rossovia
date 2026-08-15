@@ -84,21 +84,40 @@ therefore **unverified** beyond this audit's own probes.
    `--flag value` pairs, repeated flags for `--accept`/`--evidence-ref`;
    positionals validated. `--home` is a leading-only global (fine, but
    undocumented as such); `mission --root` must precede the subcommand; no `--`
-   end-of-options handling (values starting with `--` rejected by design).
+   end-of-options handling. Values starting with `--` are handled
+   inconsistently: the `task`/`init`/`namedOptions` parsers reject them,
+   while `mission` `parseCommand` option values and `register`
+   `--id`/`--alias` values consume them as-is — a parser inconsistency, not a
+   universal rule.
 3. **Stable selectors — observed.** Task UUIDs, project `--id` (alias is
    display name, never identity), mission ids, `head` sha + `branch` in
-   `resolve`, numeric `--expected-*-revision` for all task mutations.
+   `resolve`, and numeric `--expected-source-revision`/`--expected-revision`
+   guards for revision-bound Task-source mutations. `task run` and
+   `task reconcile-attempt` instead address their target with exact selectors
+   (`--worker <worker-id>`, `--attempt <attempt-id>`); neither exposes
+   revision guards to the caller.
 4. **Read/effect boundary — absent in grammar.** Help lists verbs flat; no
    `list`/`get` vs mutation separation, no `--dry-run`/`--check`. `scan`,
-   `root add`, `register`, `preference set`, `setup apply`, all task verbs
-   mutate with no preview form. Source separates reads (list/show/inspect)
-   from effects, but the CLI does not express it.
-5. **Structured output — observed, one exception.** All commands emit JSON on
-   stdout except `mission init`/`prune` (bare path string, [missions.ts:339](src/missions.ts))
-   and mutating mission verbs (silent success, no stdout).
-6. **Error and recovery — partial.** All failures exit 2 with one stderr line
-   prefixed `rosso:` (binary is `rossovia` — naming mismatch). No usage-error
-   vs state-error distinction. Stale-revision errors do report the failed
+   `root add`, `register`, `preference set`, `setup apply`, and the
+   effect-bearing Task verbs (`create`/`run`/`assign`/`correct`/
+   `link-execution`/`rebind-worktree`/`submit`/`append-review`/`accept`/
+   `reopen`/`reconcile-attempt`) mutate with no preview form; `task list`,
+   `task show`, and `task attempts` are the read-only exception. Source
+   separates reads (list/show/inspect) from effects, but the CLI does not
+   express it.
+5. **Structured output — observed with exceptions.** Most successful
+   operational commands emit JSON on stdout. Exact exceptions: top-level help
+   is human text, `statusline` is plain text, `mission init`/`prune` return a
+   bare path string ([missions.ts:339](src/missions.ts)), `mission
+   focus`/`suspend`/`resume`/`settle`/`close` are silent success, and
+   `hook artifact` outputs conditionally (JSON or silent).
+6. **Error and recovery — partial.** Outer CLI parser/dispatch failures and
+   the incomplete `project list` case exit 2 with one stderr line prefixed
+   `rosso:` (binary is `rossovia` — naming mismatch); the launcher exits 127
+   with a clear message when Bun is missing; `hook` failures after platform
+   parsing return fallback JSON (`systemMessage`, or a stderr note plus `{}`
+   for cursor) with exit 0. No usage-error vs state-error distinction.
+   Stale-revision errors do report the failed
    guard's current value (`expected 0, current 1` above; the source guard
    [tasks.ts:943](src/tasks.ts) runs before the Task guard
    [tasks.ts:653](src/tasks.ts) in existing-Task mutations, while
@@ -173,14 +192,16 @@ Workbench browser UI validates task results before acceptance — the CLI
   Repair: return the fresh Task snapshot and both current guard values with
   the stale failure; state the revision grammar in each subcommand's new
   help.
-- **T3.** Undifferentiated error surface: one exit code (2) for usage and
-  state failures; `rosso:` prefix vs `rossovia` binary name; no error
+- **T3.** Undifferentiated error surface: one exit code (2) for outer-parser
+  usage and state failures (hook fallbacks and the missing-Bun launcher are
+  the exceptions); `rosso:` prefix vs `rossovia` binary name; no error
   categories. Repair: distinguish usage errors (still exit 2, message points
   at `rossovia help <command>`) from state failures; fix the prefix.
 - **T4.** `mission` family grammar drift: cwd-dependent default root,
-  `--root`-must-be-first, bare-string `init`/`prune` output, silent success on
-  mutating verbs, no `--home`. Repair: JSON for all outputs, help text
-  documenting root resolution.
+  `--root`-must-be-first, bare-path `init`/`prune` output, silent success on
+  `focus`/`suspend`/`resume`/`settle`/`close` (`init`/`prune` are mutating
+  path-returning commands, not silent), no `--home`. Repair: JSON for all
+  outputs, help text documenting root resolution.
 - **T5.** Read/effect boundary invisible: no `--dry-run`/`--check` forms, help
   does not mark mutating verbs. Repair: mark mutation in help; defer
   `--dry-run` to owner as a semantic addition.
@@ -198,8 +219,10 @@ Workbench browser UI validates task results before acceptance — the CLI
   argument of any command path (or a `help <command>` spelling), print that
   command's usage and exit 0; add `--version` (package version
   `@rosso/workbench`); add a top-level pointer `run 'rossovia help <command>'
-  for per-command usage`. Purely additive; zero change to existing
-  invocations, outputs, or exit codes.
+  for per-command usage`. Purely additive; zero change to previously valid
+  non-help invocations, outputs, or exit codes. Existing subcommand
+  `--help`/`-h` calls are the deliberate exception: they change from exit 2
+  to exit 0 with usage on stdout.
 - **Tests (ordinary entry path):** spawn the launcher from
   `test/workbench.test.ts` style for every family (`task --help`, `task create
   --help`, `mission list --help`, `init --help`, `statusline --help`, …):
