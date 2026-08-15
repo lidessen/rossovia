@@ -13,6 +13,7 @@ import { CellInputSchema, type CellInput } from "../src/contracts";
 import type { DriverContext } from "../src/driver";
 import { Workspace } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
+import { runCell } from "../src/run-cell";
 import {
   BUDGET_CONTROL_TOOL_NAMES,
   createHostTools,
@@ -613,6 +614,69 @@ describe("Pi harness driver fail-closed mapping", () => {
     });
     const result = await driver.run(input, driverContext(workspace));
     expect(result.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
+  });
+
+  test("a stream without a maxSteps policy crosses twenty tool steps and completes normally", async () => {
+    const toolStepCount = 22;
+    const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
+    const harness = scriptedHarness(async ({ emit, waitForToolResult }) => {
+      emit({ type: "stream-start", warnings: [] });
+      for (let index = 0; index < toolStepCount; index += 1) {
+        emit({
+          type: "tool-call",
+          toolCallId: `read-${index}`,
+          toolName: "read_file",
+          input: JSON.stringify({ path: "notes.md" }),
+          providerExecuted: false,
+        });
+        await waitForToolResult(index + 1);
+        emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      // A tool-free terminal step completes naturally: no step-count policy
+      // exists to freeze or abort it, and no budget decision point occurs.
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "finish",
+        finishReason: STOP_REASON,
+        totalUsage: {
+          inputTokens: { total: toolStepCount + 1, noCache: toolStepCount + 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: toolStepCount + 1, text: toolStepCount + 1, reasoning: 0 },
+        },
+      });
+    }, toolResults);
+    const { root, input } = await fixture();
+    writeFileSync(join(root, "notes.md"), "note\n");
+    // An omitted maxSteps means no step-count stop condition at all; the
+    // production driver must not substitute a hidden 20-step default.
+    delete input.budget.maxSteps;
+    const driver = new PiHarnessCellDriver({
+      route: [{
+        provider: "deepseek",
+        credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+        model: "deepseek-v4-pro",
+      }],
+      environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+      harness,
+    });
+
+    // The full runCell path: the recorded terminal is normal (passed), the
+    // immutable input retains no maxSteps, every tool step completes, and no
+    // budget request, approval, or decision point is ever projected.
+    const record = await runCell(input, driver);
+    expect(record.status).toBe("passed");
+    expect(record.input.budget.maxSteps).toBeUndefined();
+    expect(record.trace.filter((event) => event.type === "agent.step.finished"))
+      .toHaveLength(toolStepCount + 1);
+    expect(record.trace.some((event) => event.type === "budget.decision_point")).toBe(false);
+    expect(record.trace.some((event) =>
+      event.type === "budget.request" || event.type === "budget.approval")).toBe(false);
+    expect(record.usage).toMatchObject({
+      inputTokens: toolStepCount + 1,
+      outputTokens: toolStepCount + 1,
+      totalTokens: 2 * (toolStepCount + 1),
+    });
+    expect(toolResults.map((entry) => entry.toolCallId)).toHaveLength(toolStepCount);
   });
 
   test("a terminal tool closes the action phase before a later edit call", async () => {

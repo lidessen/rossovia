@@ -1038,6 +1038,10 @@ describe("task run public boundary", () => {
       },
       budget: { maxDurationMs: 1_800_000 },
     });
+    // The ordinary immutable CellInput records only the duration envelope:
+    // an omitted maxSteps must never reappear as a hidden step-count limit,
+    // and no budget approval boundary is installed for an ordinary run.
+    expect(input.budget).not.toHaveProperty("maxSteps");
     expect(corrected.task.binding).not.toHaveProperty("missionId");
     expect(first.attemptId).not.toBe(second.attemptId);
     expect(first.inputRef).not.toBe(second.inputRef);
