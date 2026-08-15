@@ -152,16 +152,18 @@ function usageCases(): Array<{ args: string[]; helpPath: string[] }> {
 }
 
 describe("Rossovia CLI error taxonomy through the ordinary launcher", () => {
-  test("every parser owner's usage failure exits 2 with empty stdout and the exact nearest-help pointer", () => {
+  describe("usage failures through the ordinary launcher", () => {
     for (const { args, helpPath } of usageCases()) {
-      const result = cli(args);
-      const lines = result.stderr.trim().split("\n");
-      expect(result.exitCode, args.join(" ") || "(no command)").toBe(USAGE_EXIT_CODE);
-      expect(result.stdout, args.join(" ")).toBe("");
-      expect(lines, args.join(" ")).toHaveLength(2);
-      expect(lines[0], args.join(" ")).toMatch(/^rossovia: /);
-      expect(lines[1], args.join(" ")).toBe(helpPointer(helpPath));
-      expect(result.stderr, args.join(" ")).not.toMatch(/rosso:/);
+      test(`'${args.join(" ") || "(no command)"}' exits 2 with empty stdout and the exact nearest-help pointer`, () => {
+        const result = cli(args);
+        const lines = result.stderr.trim().split("\n");
+        expect(result.exitCode).toBe(USAGE_EXIT_CODE);
+        expect(result.stdout).toBe("");
+        expect(lines).toHaveLength(2);
+        expect(lines[0]).toMatch(/^rossovia: /);
+        expect(lines[1]).toBe(helpPointer(helpPath));
+        expect(result.stderr).not.toMatch(/rosso:/);
+      });
     }
   });
 
@@ -177,168 +179,193 @@ describe("Rossovia CLI error taxonomy through the ordinary launcher", () => {
     expect(bogusOption.stderr).toContain(helpPointer(["init"]));
   });
 
-  test("state failures exit with the stable non-usage code, one specific stderr line, and no help pointer", () => {
-    const root = mkdtempSync(join(tmpdir(), "rossovia-taxonomy-state-"));
-    temporaryRoots.push(root);
-    const home = join(root, "home");
-    const registered = join(root, "survey");
-    const conflicting = join(root, "conflicting");
-    createRepository(registered);
-    createRepository(conflicting, "https://example.test/lidessen/different.git");
-    expect(cli(["--home", home, "init"]).exitCode).toBe(0);
-    expect(cli(["--home", home, "register", registered, "--id", "repository:1304098496", "--alias", "survey"]).exitCode).toBe(0);
-    const created = cli([
-      "--home", home, "task", "create",
-      "--title", "Taxonomy task",
-      "--objective", "Prove state failures keep one stable exit code",
-      "--accept", "One machine-readable failure",
-      "--next-actor", "agent",
-      "--source-ref", "test:error-taxonomy",
-      "--expected-source-revision", "0",
-    ]);
-    expect(created.exitCode, created.stderr).toBe(0);
-    const taskId = (JSON.parse(created.stdout) as { task: { id: string } }).task.id;
-
-    const stateCases: Array<{
-      name: string;
-      args: string[];
-      options?: { cwd?: string };
-      contains: string;
-      stdout: "empty" | ((stdout: string) => void);
-    }> = [
-      {
-        name: "resolve unknown project",
-        args: ["--home", home, "resolve", "nope"],
-        contains: "no registered or indexed project matches 'nope'",
-        stdout: "empty",
-      },
-      {
-        name: "resolve moved workspace",
-        args: ["--home", home, "resolve", "survey"],
-        contains: "workspace path does not exist",
-        stdout: "empty",
-      },
-      {
-        name: "incomplete project list keeps its machine projection",
-        args: ["--home", home, "project", "list"],
-        contains: "project list is incomplete",
-        stdout: (stdout) => {
-          const projection = JSON.parse(stdout) as { complete: boolean };
-          expect(projection.complete).toBe(false);
-        },
-      },
-      {
-        name: "register refuses to rebind a stable id",
-        args: ["--home", home, "register", conflicting, "--id", "repository:1304098496"],
-        contains: "refusing to rebind stable project id",
-        stdout: "empty",
-      },
-      {
-        name: "task show unknown id",
-        args: ["--home", home, "task", "show", "missing"],
-        contains: "Principal task not found: missing",
-        stdout: "empty",
-      },
-      {
-        name: "stale revision keeps the full recovery payload",
-        args: [
-          "--home", home, "task", "assign", taskId,
-          "--next-actor", "agent",
-          "--expected-source-revision", "0",
-          "--expected-revision", "1",
-        ],
-        contains: "source revision is stale",
-        stdout: (stdout) => {
-          const recovery = JSON.parse(stdout) as { kind: string; id: string };
-          expect(recovery).toEqual(expect.objectContaining({
-            kind: "stale-task-revision",
-            id: taskId,
-            expectedSourceRevision: 0,
-            currentSourceRevision: 1,
-          }));
-        },
-      },
-      {
-        name: "preference set against an unknown project",
-        args: ["--home", home, "preference", "set", "p", "--statement", "s", "--project", "missing"],
-        contains: "no project matches",
-        stdout: "empty",
-      },
-      {
-        name: "attach against an unknown project",
-        args: ["--home", home, "attach", "nope", registered],
-        contains: "no project matches",
-        stdout: "empty",
-      },
-      {
-        name: "execution inspect against an unknown project",
-        args: ["--home", home, "execution", "inspect", "nope", "m"],
-        contains: "no project matches 'nope'",
-        stdout: "empty",
-      },
-      {
-        name: "mission list without a mission root",
-        args: ["mission", "list"],
-        options: { cwd: join(root, "empty-cwd") },
-        contains: "mission root not found",
-        stdout: "empty",
-      },
-      {
-        name: "mission init over an existing record",
-        args: [
-          "mission", "--root", join(root, "missions"),
-          "init", "taken",
-          "--title", "taken",
-          "--mainline", "contradiction",
-          "--accept", "a",
-          "--source", "s",
-        ],
-        contains: "mission record already exists",
-        stdout: "empty",
-      },      {
-        name: "intervention status without an observed session",
-        args: ["--home", home, "intervention", "status", "--state-root", join(root, "no-sessions"), "--session-id", "s"],
-        contains: "no observed intervention session",
-        stdout: "empty",
-      },
-      {
-        name: "correct against a missing state file",
-        args: [
-          "correct", "--state-file", join(root, "missing.json"),
-          "--rejected-assumption", "a",
-          "--new-invariant", "i",
-          "--affected-surface", "s",
-          "--next-probe", "p",
-        ],
-        contains: "intervention state not found",
-        stdout: "empty",
-      },
-    ];
-
-    mkdirSync(join(root, "empty-cwd"), { recursive: true });
-    expect(cli([
-      "mission", "--root", join(root, "missions"),
-      "init", "taken",
-      "--title", "taken",
-      "--mainline", "contradiction",
-      "--accept", "a",
-      "--source", "s",
-    ]).exitCode).toBe(0);
-    renameSync(registered, `${registered}-moved`);
-    for (const candidate of stateCases) {
-      const result = cli(candidate.args, candidate.options);
-      expect(result.exitCode, candidate.name).toBe(STATE_FAILURE_EXIT_CODE);
-      expect(result.stderr.trim().split("\n"), candidate.name).toHaveLength(1);
-      expect(result.stderr, candidate.name).toMatch(/^rossovia: /);
-      expect(result.stderr, candidate.name).toContain(candidate.contains);
-      expect(result.stderr, candidate.name).not.toContain("for usage");
-      expect(result.stderr, candidate.name).not.toMatch(/rosso:/);
-      if (candidate.stdout === "empty") {
-        expect(result.stdout, candidate.name).toBe("");
-      } else {
-        candidate.stdout(result.stdout);
-      }
+  describe("state failures through the ordinary launcher", () => {
+    function stateFixture(): { root: string; home: string } {
+      const root = mkdtempSync(join(tmpdir(), "rossovia-taxonomy-state-"));
+      temporaryRoots.push(root);
+      const home = join(root, "home");
+      expect(cli(["--home", home, "init"]).exitCode).toBe(0);
+      return { root, home };
     }
+
+    function registeredFixture(): { root: string; home: string; registered: string } {
+      const { root, home } = stateFixture();
+      const registered = join(root, "survey");
+      createRepository(registered);
+      expect(cli([
+        "--home", home, "register", registered,
+        "--id", "repository:1304098496",
+        "--alias", "survey",
+      ]).exitCode).toBe(0);
+      return { root, home, registered };
+    }
+
+    function assertStateFailure(result: CommandResult): void {
+      expect(result.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+      expect(result.stderr.trim().split("\n")).toHaveLength(1);
+      expect(result.stderr).toMatch(/^rossovia: /);
+      expect(result.stderr).not.toContain("for usage");
+      expect(result.stderr).not.toMatch(/rosso:/);
+    }
+
+    test("resolve against an unknown project", () => {
+      const { home } = stateFixture();
+      const result = cli(["--home", home, "resolve", "nope"]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("no registered or indexed project matches 'nope'");
+      expect(result.stdout).toBe("");
+    });
+
+    test("resolve against a moved workspace", () => {
+      const { home, registered } = registeredFixture();
+      renameSync(registered, `${registered}-moved`);
+      const result = cli(["--home", home, "resolve", "survey"]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("workspace path does not exist");
+      expect(result.stdout).toBe("");
+    });
+
+    test("incomplete project list keeps its machine projection", () => {
+      const { home, registered } = registeredFixture();
+      renameSync(registered, `${registered}-moved`);
+      const result = cli(["--home", home, "project", "list"]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("project list is incomplete");
+      const projection = JSON.parse(result.stdout) as { complete: boolean };
+      expect(projection.complete).toBe(false);
+    });
+
+    test("register refuses to rebind a stable id", () => {
+      const { root, home, registered } = registeredFixture();
+      const conflicting = join(root, "conflicting");
+      createRepository(conflicting, "https://example.test/lidessen/different.git");
+      const result = cli(["--home", home, "register", conflicting, "--id", "repository:1304098496"]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("refusing to rebind stable project id");
+      expect(result.stdout).toBe("");
+    });
+
+    test("task show against an unknown id", () => {
+      const { home } = stateFixture();
+      const result = cli(["--home", home, "task", "show", "missing"]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("Principal task not found: missing");
+      expect(result.stdout).toBe("");
+    });
+
+    test("stale revision keeps the full recovery payload", () => {
+      const { home } = stateFixture();
+      const created = cli([
+        "--home", home, "task", "create",
+        "--title", "Taxonomy task",
+        "--objective", "Prove state failures keep one stable exit code",
+        "--accept", "One machine-readable failure",
+        "--next-actor", "agent",
+        "--source-ref", "test:error-taxonomy",
+        "--expected-source-revision", "0",
+      ]);
+      expect(created.exitCode, created.stderr).toBe(0);
+      const taskId = (JSON.parse(created.stdout) as { task: { id: string } }).task.id;
+      const result = cli([
+        "--home", home, "task", "assign", taskId,
+        "--next-actor", "agent",
+        "--expected-source-revision", "0",
+        "--expected-revision", "1",
+      ]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("source revision is stale");
+      const recovery = JSON.parse(result.stdout) as { kind: string; id: string };
+      expect(recovery).toEqual(expect.objectContaining({
+        kind: "stale-task-revision",
+        id: taskId,
+        expectedSourceRevision: 0,
+        currentSourceRevision: 1,
+      }));
+    });
+
+    test("preference set against an unknown project", () => {
+      const { home } = stateFixture();
+      const result = cli([
+        "--home", home, "preference", "set", "p",
+        "--statement", "s",
+        "--project", "missing",
+      ]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("no project matches");
+      expect(result.stdout).toBe("");
+    });
+
+    test("attach against an unknown project", () => {
+      const { root, home } = stateFixture();
+      const result = cli(["--home", home, "attach", "nope", join(root, "somewhere")]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("no project matches");
+      expect(result.stdout).toBe("");
+    });
+
+    test("execution inspect against an unknown project", () => {
+      const { home } = stateFixture();
+      const result = cli(["--home", home, "execution", "inspect", "nope", "m"]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("no project matches 'nope'");
+      expect(result.stdout).toBe("");
+    });
+
+    test("mission list without a mission root", () => {
+      const root = mkdtempSync(join(tmpdir(), "rossovia-taxonomy-state-"));
+      temporaryRoots.push(root);
+      const cwd = join(root, "empty-cwd");
+      mkdirSync(cwd, { recursive: true });
+      const result = cli(["mission", "list"], { cwd });
+      assertStateFailure(result);
+      expect(result.stderr).toContain("mission root not found");
+      expect(result.stdout).toBe("");
+    });
+
+    test("mission init over an existing record", () => {
+      const root = mkdtempSync(join(tmpdir(), "rossovia-taxonomy-state-"));
+      temporaryRoots.push(root);
+      const args = [
+        "mission", "--root", join(root, "missions"),
+        "init", "taken",
+        "--title", "taken",
+        "--mainline", "contradiction",
+        "--accept", "a",
+        "--source", "s",
+      ];
+      expect(cli(args).exitCode).toBe(0);
+      const result = cli(args);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("mission record already exists");
+      expect(result.stdout).toBe("");
+    });
+
+    test("intervention status without an observed session", () => {
+      const { root, home } = stateFixture();
+      const result = cli([
+        "--home", home, "intervention", "status",
+        "--state-root", join(root, "no-sessions"),
+        "--session-id", "s",
+      ]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("no observed intervention session");
+      expect(result.stdout).toBe("");
+    });
+
+    test("correct against a missing state file", () => {
+      const root = mkdtempSync(join(tmpdir(), "rossovia-taxonomy-state-"));
+      temporaryRoots.push(root);
+      const result = cli([
+        "correct", "--state-file", join(root, "missing.json"),
+        "--rejected-assumption", "a",
+        "--new-invariant", "i",
+        "--affected-surface", "s",
+        "--next-probe", "p",
+      ]);
+      assertStateFailure(result);
+      expect(result.stderr).toContain("intervention state not found");
+      expect(result.stdout).toBe("");
+    });
   });
 
   test("the same message words classify as usage in a parser and as state in a domain owner", () => {
