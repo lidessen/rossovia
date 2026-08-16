@@ -1,11 +1,9 @@
 import { z } from "zod";
 import {
-  submitPrincipalTaskResult,
-  type TaskMutationResult,
-} from "../tasks";
-import {
   createLocalTaskControlPlane,
+  LocalTaskControlError,
   type LocalTaskControlPlane,
+  type TaskMutationResult,
 } from "../local-task-control-plane";
 import {
   classifyTaskError,
@@ -39,7 +37,7 @@ const TaskAcceptRequestSchema = z.object({
 }).strict();
 
 export function submitVerifiedTaskResult(
-  home: string | undefined,
+  controlPlane: LocalTaskControlPlane,
   workItems: WorkItemSetProjection,
   taskId: string,
   unparsed: unknown,
@@ -74,20 +72,24 @@ export function submitVerifiedTaskResult(
     );
   }
   try {
-    return submitPrincipalTaskResult(home, {
-      id: taskId,
-      summary: request.summary,
-      evidenceRefs: [...candidate.evidenceRefs],
-      evidence: {
-        kind: "runtime-verified-effect",
-        authorizationId: candidate.authorizationId,
-        selector: candidate.selector,
+    return controlPlane.execute({
+      kind: "submit",
+      arguments: {
+        id: taskId,
+        summary: request.summary,
+        evidenceRefs: [...candidate.evidenceRefs],
+        evidence: {
+          kind: "runtime-verified-effect",
+          authorizationId: candidate.authorizationId,
+          selector: candidate.selector,
+        },
+        sourceRef: "workbench-ui:runtime-verified-effect",
+        expectedSourceRevision: request.expectedSourceRevision,
+        expectedRevision: request.expectedRevision,
       },
-      sourceRef: "workbench-ui:runtime-verified-effect",
-      expectedSourceRevision: request.expectedSourceRevision,
-      expectedRevision: request.expectedRevision,
     });
   } catch (error: unknown) {
+    if (error instanceof LocalTaskControlError) throw classifyTaskError(error);
     throw classifyResultError(error, "submit");
   }
 }

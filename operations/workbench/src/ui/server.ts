@@ -68,7 +68,7 @@ export interface ServerOptions {
 }
 
 export interface WorkbenchRequestHandlerDependencies {
-  readonly localTaskControlPlane?: LocalTaskControlPlane;
+  readonly localTaskControlPlaneFactory?: (home: string) => LocalTaskControlPlane;
   readonly conversationSocket?: ConversationSocketRuntime;
 }
 
@@ -83,8 +83,10 @@ export function createWorkbenchRequestHandler(
   dependencies: WorkbenchRequestHandlerDependencies = {},
 ): (request: Request, server?: Bun.Server<ConversationSocketData>) => Promise<Response> {
   const taskActionsInFlight = new Set<string>();
-  const localTaskControlPlane = dependencies.localTaskControlPlane
-    ?? createLocalTaskControlPlane(options.home);
+  const home = resolveHome(options.home);
+  const localTaskControlPlaneFactory = dependencies.localTaskControlPlaneFactory
+    ?? createLocalTaskControlPlane;
+  const localTaskControlPlane = localTaskControlPlaneFactory(home);
 
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
@@ -130,6 +132,7 @@ export function createWorkbenchRequestHandler(
         const result = executeTaskCreateAction(
           options.home,
           await readJsonRequest(request, "task creation"),
+          localTaskControlPlane,
         );
         return json({ ok: true, result }, 200);
       } catch (error: unknown) {
@@ -191,7 +194,7 @@ export function createWorkbenchRequestHandler(
             )
             : kind === "submit-verified-execution"
               ? submitVerifiedTaskResult(
-                options.home,
+                localTaskControlPlane,
                 (await buildLiveSnapshot(options, client)).workItems,
                 taskActionId,
                 body,
@@ -204,7 +207,12 @@ export function createWorkbenchRequestHandler(
                   body,
                   localTaskControlPlane,
                 )
-                : executeTaskMutationAction(options.home, taskActionId, body);
+                : executeTaskMutationAction(
+                  options.home,
+                  taskActionId,
+                  body,
+                  localTaskControlPlane,
+                );
           return json({ ok: true, result }, 200);
         } finally {
           if (reservesTask) taskActionsInFlight.delete(taskActionId);

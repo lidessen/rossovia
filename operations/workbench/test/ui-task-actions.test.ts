@@ -34,6 +34,7 @@ import {
 import {
   createLocalTaskControlPlane,
   LocalTaskControlError,
+  type LocalTaskCommand,
   type LocalTaskControlPlane,
 } from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
@@ -1846,7 +1847,12 @@ describe("Workbench task UI actions", () => {
       home,
       port: 4317,
       roots: [],
-    }, recovery.client, { localTaskControlPlane: controlPlane });
+    }, recovery.client, {
+      localTaskControlPlaneFactory(handlerHome) {
+        expect(handlerHome).toBe(realpathSync(home));
+        return controlPlane;
+      },
+    });
     const created = await post(handler, origin, "/api/tasks", {
       title: "Reject recovery after Worktree rebind",
       objective: "Keep recovery bound to the current task Worktree",
@@ -1920,7 +1926,7 @@ describe("Workbench task UI actions", () => {
     expect(recovery.recoveries).toEqual([]);
   });
 
-  test("submits and accepts a result only against the current Autonomy verification selector", async () => {
+  test("routes ordinary Task actions through one port while preserving verified-result guards", async () => {
     const { home, origin, root } = fixture();
     const project = projectWithMission(root);
     registerProject(home, {
@@ -1943,11 +1949,34 @@ describe("Workbench task UI actions", () => {
       join(home, "missions", "daily-task-loop", "runner-status.json"),
       verified.status,
     );
+    const taskControlDelegate = createLocalTaskControlPlane(home);
+    const observedTaskCommands: LocalTaskCommand["kind"][] = [];
+    const taskControlPlaneFactoryHomes: string[] = [];
+    let failVerifiedSubmit = true;
+    const observedTaskControlPlane: LocalTaskControlPlane = {
+      list: () => taskControlDelegate.list(),
+      show: (id) => taskControlDelegate.show(id),
+      execute(command) {
+        observedTaskCommands.push(command.kind);
+        if (command.kind === "submit" && failVerifiedSubmit) {
+          throw new LocalTaskControlError(
+            "source-unavailable",
+            "typed verified-submit source unavailable",
+          );
+        }
+        return taskControlDelegate.execute(command);
+      },
+    };
     const handler = createWorkbenchRequestHandler({
       home,
       port: 4317,
       roots: [],
-    }, verified.client);
+    }, verified.client, {
+      localTaskControlPlaneFactory(handlerHome) {
+        taskControlPlaneFactoryHomes.push(handlerHome);
+        return observedTaskControlPlane;
+      },
+    });
     const created = await post(handler, origin, "/api/tasks", {
       title: "Return a verified Agent result",
       objective: "Keep runtime verification distinct from Agent references",
@@ -2008,18 +2037,35 @@ describe("Workbench task UI actions", () => {
       ],
     });
 
+    const submitRequest = {
+      kind: "submit-verified-execution",
+      summary: "The Agent result passed the current runtime verification.",
+      authorizationId: execution.authorizationId,
+      selector: verified.selector,
+      expectedSourceRevision: 2,
+      expectedRevision: 2,
+    };
+    const beforeFailedSubmit = readFileSync(principalTasksPath(home));
+    const failedSubmit = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      submitRequest,
+    );
+    expect(failedSubmit.status).toBe(503);
+    expect(await failedSubmit.json()).toEqual({
+      error: "source-unavailable",
+      message: "typed verified-submit source unavailable",
+    });
+    expect(readFileSync(principalTasksPath(home))).toEqual(beforeFailedSubmit);
+    expect(observedTaskCommands).toEqual(["create", "link-execution", "submit"]);
+
+    failVerifiedSubmit = false;
     const submitted = await post(
       handler,
       origin,
       `/api/tasks/${taskId}/actions`,
-      {
-        kind: "submit-verified-execution",
-        summary: "The Agent result passed the current runtime verification.",
-        authorizationId: execution.authorizationId,
-        selector: verified.selector,
-        expectedSourceRevision: 2,
-        expectedRevision: 2,
-      },
+      submitRequest,
     );
     expect(submitted.status).toBe(200);
     expect(await submitted.json()).toMatchObject({
@@ -2071,7 +2117,10 @@ describe("Workbench task UI actions", () => {
       port: 4317,
       roots: [],
     }, verified.client, {
-      localTaskControlPlane: sourceFailureControlPlane,
+      localTaskControlPlaneFactory(handlerHome) {
+        expect(handlerHome).toBe(realpathSync(home));
+        return sourceFailureControlPlane;
+      },
     });
     const staleAcceptance = await post(
       sourceFailureHandler,
@@ -2134,6 +2183,14 @@ describe("Workbench task UI actions", () => {
         },
       },
     });
+    expect(observedTaskCommands).toEqual([
+      "create",
+      "link-execution",
+      "submit",
+      "submit",
+      "accept",
+    ]);
+    expect(taskControlPlaneFactoryHomes).toEqual([realpathSync(home)]);
   });
 
   test("enforces same-origin, JSON, size, and optimistic revision boundaries", async () => {
