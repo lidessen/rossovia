@@ -132,6 +132,16 @@ and formal operation remains human-initiated. See
 
 ## Modules
 
+[Decision 055](decisions/055-rossovia-runtime-module-ownership.md) fixes the
+target runtime ownership model used by future migrations: Workbench is the pure
+Project/Task manager; Orchestration owns the Main-Agent function, Run lifecycle,
+and shared-Worktree writer ownership; Work Cell remains a standalone bounded
+execution kernel; Integrations translate external protocols; and Presentation
+owns no authoritative fact. The current capability map below still describes
+the wider implemented repository during the
+[staged migration](organization/rossovia-runtime-ownership-migration.md). Its
+physical placement or continued existence does not override the target owner.
+
 The list below is a current capability map beneath the governing layers, not a
 second architecture root. A module may change, split, or retire without
 changing the upper relations unless representative practice exposes a failure

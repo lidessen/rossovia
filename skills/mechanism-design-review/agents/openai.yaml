@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mechanism Design Review"
+  short_description: "Derive and explain simpler agent-system mechanisms"
+  default_prompt: "Use $mechanism-design-review to derive the smallest sufficient treatment from identity, causal origin, and destination, then give the design owner a self-contained explanation and decision without requiring source-code reconstruction."

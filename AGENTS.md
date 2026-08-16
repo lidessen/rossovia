@@ -157,12 +157,24 @@ When creating or materially updating a skill:
 ### Human decision handoffs
 
 When a material choice belongs to the human principal, do not ask for bare
-approval or make them reconstruct the option set. Present the recommendation,
-two to four consequential choices, each choice's immediate authorized result,
-main tradeoff or reopening signal, and a compact reply key. Use the project's
-[Decision Brief](design/operations/DECISION-BRIEF.md) when it exists. The brief
-is a projection for human action; it never approves, merges, expands scope, or
-turns silence into consent.
+approval or make them reconstruct either the system or the option set. The live
+response must contain the decision-relevant working model: what the object is,
+why it exists, how its main parts interact, what is true now, what would change,
+the recommendation, two to four consequential choices, each choice's immediate
+authorized result, its main tradeoff or reopening signal, and a compact reply
+key. For architecture or system decisions, explain the normal path, failure and
+recovery boundary, retained and removed responsibilities, and material residual
+risk in plain language before asking for a choice.
+
+Source and code links provide traceability and optional drill-down; they must
+not carry explanation that the response itself omits. A Principal should be
+able to restate the system, compare the material alternatives, and understand
+what their reply authorizes without opening repository files. Calibrate depth
+to the decision—a simple reversible choice can remain short—but do not compress
+a consequential design into status labels, changed-file lists, test counts, or
+links. Use the project's [Decision Brief](design/operations/DECISION-BRIEF.md)
+when it exists. The brief is a projection for human action; it never approves,
+merges, expands scope, or turns silence into consent.
 
 MIT licensed, maintained by Lidessen.
 
