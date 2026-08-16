@@ -3,14 +3,14 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { PrincipalTask, PrincipalTasks } from "../contracts";
 import { resolveHome } from "../home";
+import {
+  createLocalTaskControlPlane,
+  LocalTaskControlError,
+  type LocalTaskControlPlane,
+} from "../local-task-control-plane";
 import { expandPath } from "../paths";
 import { resolveProject } from "../resolve";
-import {
-  correctPrincipalTask,
-  createPrincipalTask,
-  loadPrincipalTasks,
-  PrincipalTaskError,
-} from "../tasks";
+import { PrincipalTaskError } from "../tasks";
 import { evidenceRef } from "../task-run";
 import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { optionalGit, requiredGit } from "../workspace";
@@ -125,6 +125,13 @@ export interface ConversationOperationHost {
 
 export interface ConversationTaskOperationHostOptions {
   /**
+   * Create the Workbench-owned Project/Task mutation and read port for this
+   * host's resolved home. Conversation orchestration may request typed Task
+   * operations but never supplies an already-bound port or writes the Task
+   * source directly.
+   */
+  readonly taskControlPlaneFactory?: (home: string) => LocalTaskControlPlane;
+  /**
    * The exact retained carrier runtime that starts and controls ordinary Task
    * carriers. Absent, `task_continue` and `work_control` fail visibly.
    */
@@ -145,6 +152,7 @@ export function createConversationTaskOperationHost(
 
 class WorkbenchTaskOperationHost implements ConversationOperationHost {
   readonly home: string;
+  private readonly taskControlPlane: LocalTaskControlPlane;
   private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
   private readonly contributionRegistry: ConversationContributionRegistry | undefined;
 
@@ -153,6 +161,8 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     options: ConversationTaskOperationHostOptions,
   ) {
     this.home = home;
+    const taskControlPlaneFactory = options.taskControlPlaneFactory ?? createLocalTaskControlPlane;
+    this.taskControlPlane = taskControlPlaneFactory(home);
     this.carrierRegistry = options.carrierRegistry;
     this.contributionRegistry = options.contributionRegistry;
   }
@@ -246,7 +256,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     }
     let tasks: PrincipalTasks;
     try {
-      tasks = loadPrincipalTasks(this.home);
+      tasks = this.taskControlPlane.list();
     } catch (error) {
       return {
         standing: "uninspectable",
@@ -713,26 +723,29 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
         `task Worktree is not clean: ${canonicalWorktree}`,
       );
     }
-    const tasks = loadPrincipalTasks(this.home);
-    const result = createPrincipalTask(this.home, {
-      title: operation.title,
-      objective: operation.objective,
-      acceptance: operation.acceptance,
-      ...(operation.todos === undefined ? {} : { todos: operation.todos }),
-      nextActor: "agent",
-      sourceRef,
-      expectedSourceRevision: tasks.sourceRevision,
-      project: operation.projectId,
-      worktree: canonicalWorktree,
+    const tasks = this.taskControlPlane.list();
+    const result = this.taskControlPlane.execute({
+      kind: "create",
+      arguments: {
+        title: operation.title,
+        objective: operation.objective,
+        acceptance: operation.acceptance,
+        ...(operation.todos === undefined ? {} : { todos: operation.todos }),
+        nextActor: "agent",
+        sourceRef,
+        expectedSourceRevision: tasks.sourceRevision,
+        project: operation.projectId,
+        worktree: canonicalWorktree,
+      },
     });
-    return receiptFor(loadPrincipalTasks(this.home), result.task);
+    return receiptFor(this.taskControlPlane.list(), result.task);
   }
 
   private executeCorrect(
     operation: Extract<ConversationOperation, { kind: "task_correct" }>,
     sourceRef: string,
   ): TaskActionReceipt {
-    const tasks = loadPrincipalTasks(this.home);
+    const tasks = this.taskControlPlane.list();
     if (tasks.sourceRevision !== operation.expectedSourceRevision) {
       throw new ConversationOperationHostError(
         "stale-revision",
@@ -758,15 +771,18 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
         `task ${task.id} is settled; reopen it before appending a correction`,
       );
     }
-    const result = correctPrincipalTask(this.home, {
-      id: task.id,
-      expectedSourceRevision: tasks.sourceRevision,
-      expectedRevision: task.revision,
-      statement: operation.statement,
-      sourceRef,
-      nextActor: "agent",
+    const result = this.taskControlPlane.execute({
+      kind: "correct",
+      arguments: {
+        id: task.id,
+        expectedSourceRevision: tasks.sourceRevision,
+        expectedRevision: task.revision,
+        statement: operation.statement,
+        sourceRef,
+        nextActor: "agent",
+      },
     });
-    return receiptFor(loadPrincipalTasks(this.home), result.task);
+    return receiptFor(this.taskControlPlane.list(), result.task);
   }
 }
 
@@ -845,7 +861,7 @@ function mapOperationError(error: unknown): Error {
   if (error instanceof ConversationOperationHostError) return error;
   if (error instanceof ConversationCarrierError) return mapCarrierError(error);
   if (error instanceof ContributionError) return mapContributionError(error);
-  if (error instanceof PrincipalTaskError) {
+  if (error instanceof LocalTaskControlError || error instanceof PrincipalTaskError) {
     const code: ConversationOperationHostErrorCode =
       error.code === "task-drift" ? "stale-revision"
       : error.code === "task-not-found" ? "task-not-found"

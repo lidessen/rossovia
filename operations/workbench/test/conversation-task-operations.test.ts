@@ -4,6 +4,11 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initializeHome } from "../src/home";
+import {
+  createLocalTaskControlPlane,
+  type LocalTaskCommand,
+  type LocalTaskControlPlane,
+} from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
 import {
   acceptPrincipalTaskResult,
@@ -104,6 +109,88 @@ function input(host: ReturnType<typeof createConversationTaskOperationHost>, ope
 }
 
 describe("ConversationTaskOperationHost task_create", () => {
+  test("routes Task writes, receipts, and reconciliation reads through the host-bound Workbench port", async () => {
+    const current = fixture();
+    const resolvedHome = realpathSync(current.home);
+    const observed: Array<"list" | LocalTaskCommand["kind"]> = [];
+    const taskControlPlaneFactory = (home: string): LocalTaskControlPlane => {
+      expect(home).toBe(resolvedHome);
+      const delegate = createLocalTaskControlPlane(home);
+      return {
+        list: () => {
+          observed.push("list");
+          return delegate.list();
+        },
+        show: (id) => delegate.show(id),
+        execute(command) {
+          observed.push(command.kind);
+          return delegate.execute(command);
+        },
+      };
+    };
+    const host = createConversationTaskOperationHost(current.home, { taskControlPlaneFactory });
+    const createAttempt = input(
+      host,
+      currentCreateOperation(current),
+    );
+    const created = await host.executeOperation(createAttempt);
+    const foundCreate = host.findCanonicalReceipt(createAttempt);
+    const source = loadPrincipalTasks(current.home);
+    const task = source.tasks[0]!;
+
+    const correctionAttempt = input(host, {
+      kind: "task_correct",
+      taskId: created.taskId,
+      expectedSourceRevision: source.sourceRevision,
+      expectedRevision: task.revision,
+      statement: "Preserve the Workbench-owned mutation boundary.",
+    });
+    const corrected = await host.executeOperation(correctionAttempt);
+    const foundCorrection = host.findCanonicalReceipt(correctionAttempt);
+
+    expect(foundCreate).toEqual({ standing: "settled", receipt: created });
+    expect(foundCorrection).toEqual({ standing: "settled", receipt: corrected });
+    expect(observed).toEqual([
+      "list", "create", "list", "list",
+      "list", "correct", "list", "list",
+    ]);
+    expect(loadPrincipalTasks(current.home).tasks[0]!.corrections).toHaveLength(1);
+  });
+
+  test("binds the Task port factory to the resolved host home rather than another initialized home", async () => {
+    const current = fixture();
+    const resolvedHome = realpathSync(current.home);
+    const otherHome = initializeHome(join(current.home, "..", "other-home")).home;
+    const boundHomes: string[] = [];
+    const host = createConversationTaskOperationHost(join(current.home, "..", "home"), {
+      taskControlPlaneFactory(home) {
+        boundHomes.push(home);
+        return createLocalTaskControlPlane(home);
+      },
+    });
+    const createAttempt = input(host, currentCreateOperation(current));
+    const created = await host.executeOperation(createAttempt);
+    const createLookup = host.findCanonicalReceipt(createAttempt);
+    const source = loadPrincipalTasks(current.home);
+    const task = source.tasks[0]!;
+    const correctionAttempt = input(host, {
+      kind: "task_correct",
+      taskId: created.taskId,
+      expectedSourceRevision: source.sourceRevision,
+      expectedRevision: task.revision,
+      statement: "Keep all Task effects in the host-bound home.",
+    });
+    const corrected = await host.executeOperation(correctionAttempt);
+    const correctionLookup = host.findCanonicalReceipt(correctionAttempt);
+
+    expect(host.home).toBe(resolvedHome);
+    expect(boundHomes).toEqual([resolvedHome]);
+    expect(createLookup).toEqual({ standing: "settled", receipt: created });
+    expect(correctionLookup).toEqual({ standing: "settled", receipt: corrected });
+    expect(loadPrincipalTasks(current.home).tasks[0]!.corrections).toHaveLength(1);
+    expect(loadPrincipalTasks(otherHome).tasks).toHaveLength(0);
+  });
+
   test("creates one project-bound Task with the causal action source ref and a canonical receipt", async () => {
     const { host, worktree, primaryHead, worktreeHead } = fixture();
     const { conversationId, turnId, actionId, operation } = input(
