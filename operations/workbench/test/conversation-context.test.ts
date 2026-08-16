@@ -4,6 +4,10 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initializeHome, loadJson, saveJson } from "../src/home";
+import {
+  LocalTaskControlError,
+  type LocalTaskControlPlane,
+} from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
 import { createPrincipalTask, correctPrincipalTask, loadPrincipalTasks, principalTasksPath, submitPrincipalTaskResult } from "../src/tasks";
 import { PrincipalTasksSchema } from "../src/contracts";
@@ -158,6 +162,132 @@ describe("ConversationContextProvider", () => {
     expect(projection.task!.revision).toBe(1);
     expect(projection.task!.status).toBe("open");
   });
+
+  test("binds one Task read port to the canonical home and shares its state across Task and carrier projections", async () => {
+    const { home, journal, projectId, worktree } = fixture();
+    const conversationId = randomUUID();
+    const created = createPrincipalTask(home, {
+      title: "Disk-owned title must not leak",
+      objective: "Keep the disk fixture distinguishable from the injected read port.",
+      acceptance: ["the read port controls the projection"],
+      nextActor: "agent",
+      sourceRef: "test:context-port-create",
+      expectedSourceRevision: 0,
+    });
+    const portTasks = PrincipalTasksSchema.parse({
+      version: "rosso.principal-tasks.v1",
+      sourceRevision: 41,
+      tasks: [{
+        ...created.task,
+        title: "Port-owned canonical title",
+        binding: {
+          kind: "project-context",
+          projectId,
+          worktreePath: realpathSync(worktree),
+        },
+      }],
+    });
+    await journalSettledCreate(journal, conversationId, created.task.id, 41);
+    const attemptId = randomUUID();
+    writeAttemptEvidence(home, attemptId, created.task.id, 41, {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      sourceRef: "conversation:port-read:action:carrier",
+    });
+    const factoryHomes: string[] = [];
+    let listCalls = 0;
+    const taskControlPlane: LocalTaskControlPlane = {
+      list() {
+        listCalls += 1;
+        return portTasks;
+      },
+      show() {
+        throw new Error("Task show is outside the context read boundary");
+      },
+      execute() {
+        throw new Error("Task mutation is outside the context read boundary");
+      },
+    };
+    const provider = createConversationContextProvider(join(home, "..", "home"), {
+      taskControlPlaneFactory(handlerHome) {
+        factoryHomes.push(handlerHome);
+        return taskControlPlane;
+      },
+    });
+
+    const first = await provider.buildProjection(conversationId);
+
+    expect(listCalls).toBe(1);
+    expect(factoryHomes).toEqual([realpathSync(home)]);
+    expect(first.task).toMatchObject({
+      id: created.task.id,
+      sourceRevision: "41",
+      summary: expect.stringContaining("Port-owned canonical title"),
+      projectId,
+    });
+    expect(first.taskCards).toEqual([
+      expect.objectContaining({
+        id: created.task.id,
+        sourceRevision: "41",
+        summary: expect.stringContaining("Port-owned canonical title"),
+        projectId,
+      }),
+    ]);
+    expect(first.carriers).toEqual([{
+      id: attemptId,
+      state: "unknown",
+      taskId: created.task.id,
+      projectId,
+    }]);
+
+    await provider.buildProjection(conversationId);
+
+    expect(listCalls).toBe(2);
+    expect(factoryHomes).toEqual([realpathSync(home)]);
+  });
+
+  test.each(["typed", "untyped"])(
+    "projects a %s Task read failure as unavailable rather than Task absence",
+    async (failureKind) => {
+      const { home, journal } = fixture();
+      const conversationId = randomUUID();
+      await journalSettledCreate(journal, conversationId, "port-read-failure-task", 1);
+      let listCalls = 0;
+      const taskControlPlane: LocalTaskControlPlane = {
+        list() {
+          listCalls += 1;
+          if (failureKind === "typed") {
+            throw new LocalTaskControlError(
+              "source-unavailable",
+              "typed Task read failure",
+            );
+          }
+          throw new Error("untyped Task read failure");
+        },
+        show() {
+          throw new Error("Task show is outside the context read boundary");
+        },
+        execute() {
+          throw new Error("Task mutation is outside the context read boundary");
+        },
+      };
+      const provider = createConversationContextProvider(home, {
+        taskControlPlaneFactory: () => taskControlPlane,
+      });
+
+      const projection = await provider.buildProjection(conversationId);
+
+      expect(listCalls).toBe(1);
+      expect(projection).not.toHaveProperty("task");
+      expect(projection).not.toHaveProperty("taskCards");
+      expect(projection.taskCardStanding).toMatchObject({
+        state: "unavailable",
+        known: 1,
+      });
+      expect(projection.taskCardStanding!.reason).toContain("cannot be read");
+    },
+  );
 
   test("exposes the exact execution selection of a bound Task for an exact task_continue", async () => {
     const { home, provider, journal, projectId, worktree, primary } = fixture();
