@@ -60,12 +60,15 @@ export type LocalTaskCommand =
   | { readonly kind: "accept"; readonly arguments: TaskAcceptArguments }
   | { readonly kind: "reopen"; readonly arguments: TaskReopenArguments };
 
-export interface LocalTaskControlPlane {
+export interface LocalTaskReadPort {
   list(): PrincipalTasks;
   show(id: string): {
     sourceRevision: number;
     task: PrincipalTask;
   };
+}
+
+export interface LocalTaskControlPlane extends LocalTaskReadPort {
   execute(command: LocalTaskCommand): TaskMutationResult;
 }
 

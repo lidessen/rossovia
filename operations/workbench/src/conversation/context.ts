@@ -17,7 +17,7 @@ import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/s
 import { loadHome, resolveHome, workspaceFor } from "../home";
 import {
   createLocalTaskControlPlane,
-  type LocalTaskControlPlane,
+  type LocalTaskReadPort,
 } from "../local-task-control-plane";
 import { expandPath } from "../paths";
 import { attemptLeaseStanding } from "../task-run";
@@ -72,7 +72,7 @@ export interface ConversationContextProvider {
 
 export interface ConversationContextProviderOptions {
   /** Create the canonical Task read port for this provider's resolved home. */
-  readonly taskControlPlaneFactory?: (home: string) => LocalTaskControlPlane;
+  readonly taskReadPortFactory?: (home: string) => LocalTaskReadPort;
   /** The exact retained carrier runtime; liveness is claimed only through it. */
   readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
   /** The exact retained temporary contribution runtime. */
@@ -94,7 +94,7 @@ export function createConversationContextProvider(
 class WorkbenchConversationContextProvider implements ConversationContextProvider {
   private readonly home: string;
   private readonly journal: FileConversationJournal;
-  private readonly taskControlPlane: LocalTaskControlPlane;
+  private readonly taskReadPort: LocalTaskReadPort;
   private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
   private readonly contributionRegistry: ConversationContributionRegistry | undefined;
   private readonly catalog: WorkerCatalog | undefined;
@@ -103,8 +103,8 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
   constructor(home: string, options: ConversationContextProviderOptions) {
     this.home = home;
     this.journal = new FileConversationJournal(home);
-    const taskControlPlaneFactory = options.taskControlPlaneFactory ?? createLocalTaskControlPlane;
-    this.taskControlPlane = taskControlPlaneFactory(home);
+    const taskReadPortFactory = options.taskReadPortFactory ?? createLocalTaskControlPlane;
+    this.taskReadPort = taskReadPortFactory(home);
     this.carrierRegistry = options.carrierRegistry;
     this.contributionRegistry = options.contributionRegistry;
     this.catalog = options.catalog;
@@ -115,7 +115,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
     const events = await this.journal.readEvents(conversationId);
     let tasks: PrincipalTasks | undefined;
     try {
-      tasks = this.taskControlPlane.list();
+      tasks = this.taskReadPort.list();
     } catch {
       tasks = undefined;
     }

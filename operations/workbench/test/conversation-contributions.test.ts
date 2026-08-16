@@ -16,8 +16,13 @@ import { dirname, join } from "node:path";
 import type { CellDriver, DriverResult } from "../../../packages/work-cell/src/driver";
 import { WorkerCatalog, type WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
 import { initializeHome } from "../src/home";
+import {
+  LocalTaskControlError,
+  type LocalTaskReadPort,
+} from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
 import { correctPrincipalTask, createPrincipalTask, loadPrincipalTasks } from "../src/tasks";
+import { PrincipalTasksSchema, type PrincipalTasks } from "../src/contracts";
 import {
   CONTRIBUTION_TASK_SOURCE_REF,
   CONTRIBUTION_TERMINAL_TOOL,
@@ -129,6 +134,25 @@ function fixture(): Fixture {
     primaryHead: git(primary, "rev-parse", "HEAD"),
     worktreeHead: git(worktree, "rev-parse", "HEAD"),
   };
+}
+
+function taskReadSource(
+  fixture_: Fixture,
+  sourceRevision: number,
+  taskRevision: number,
+): PrincipalTasks {
+  const disk = loadPrincipalTasks(fixture_.home);
+  const task = disk.tasks.find((candidate) => candidate.id === fixture_.taskId);
+  if (task === undefined) throw new Error(`fixture Task ${fixture_.taskId} is missing`);
+  return PrincipalTasksSchema.parse({
+    ...disk,
+    sourceRevision,
+    tasks: [{
+      ...task,
+      revision: taskRevision,
+      acceptance: ["The port-owned Task acceptance is preserved"],
+    }],
+  });
 }
 
 const FAKE_WORKER_ID = "fake-worker";
@@ -606,6 +630,200 @@ describe("conversation temporary contributions", () => {
       const projections = await registry.listContributions(actor.conversationId);
       return projections.every((entry) => entry.state === "settled");
     }, "derived-task contribution settles");
+  });
+
+  test("derives spawn and settled-result currentness from one canonical-home Task read port", async () => {
+    const fixture_ = fixture();
+    let taskSource = taskReadSource(fixture_, 41, 7);
+    let listCalls = 0;
+    const factoryHomes: string[] = [];
+    const taskReadPort: LocalTaskReadPort = {
+      list() {
+        listCalls += 1;
+        return taskSource;
+      },
+      show() {
+        throw new Error("Task show is outside the contribution read boundary");
+      },
+    };
+    const registry = createConversationContributionRegistry(
+      join(fixture_.home, "..", "home"),
+      {
+        catalog: fakeCatalog(),
+        taskReadPortFactory(handlerHome) {
+          factoryHomes.push(handlerHome);
+          return taskReadPort;
+        },
+      },
+    );
+    const actor = await seededActor(fixture_);
+
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "port-derived-task" }),
+    ));
+
+    expect(listCalls).toBe(1);
+    expect(factoryHomes).toEqual([realpathSync(fixture_.home)]);
+    expect(receipt).toMatchObject({
+      taskId: fixture_.taskId,
+      sourceRevision: 41,
+      taskRevision: 7,
+    });
+    const spawnRecord = readContributionSpawnReceipts(
+      fixture_.home,
+      actor.conversationId,
+    )[0]!;
+    expect(spawnRecord).toMatchObject({
+      taskId: fixture_.taskId,
+      sourceRevision: 41,
+      taskRevision: 7,
+    });
+    await waitFor(async () => {
+      const projections = await registry.listContributions(actor.conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "port-derived contribution settles");
+
+    const currentRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(currentRead.standing).toBe("read");
+    expect(listCalls).toBe(2);
+    const currentSummaries = await registry.listSettledChildSummaries(actor.conversationId);
+    expect(currentSummaries).toHaveLength(1);
+    expect(listCalls).toBe(3);
+
+    taskSource = taskReadSource(fixture_, 42, 8);
+    const staleRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(staleRead).toMatchObject({ standing: "refused", code: "stale" });
+    expect(listCalls).toBe(4);
+    expect(await registry.listSettledChildSummaries(actor.conversationId)).toEqual([]);
+    expect(listCalls).toBe(5);
+    expect(factoryHomes).toEqual([realpathSync(fixture_.home)]);
+  });
+
+  test("fails spawn visibly and refuses settled results when the Task read port fails", async () => {
+    const fixture_ = fixture();
+    const taskSource = taskReadSource(fixture_, 51, 9);
+    let failure: "none" | "typed" | "untyped" = "none";
+    let failOnListCall: number | undefined;
+    let listCalls = 0;
+    const factoryHomes: string[] = [];
+    const taskReadPort: LocalTaskReadPort = {
+      list() {
+        listCalls += 1;
+        if (listCalls === failOnListCall) {
+          throw new Error("dependency currentness Task read failure");
+        }
+        if (failure === "typed") {
+          throw new LocalTaskControlError(
+            "source-unavailable",
+            "typed contribution Task read failure",
+          );
+        }
+        if (failure === "untyped") {
+          throw new Error("untyped contribution Task read failure");
+        }
+        return taskSource;
+      },
+      show() {
+        throw new Error("Task show is outside the contribution read boundary");
+      },
+    };
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      taskReadPortFactory(handlerHome) {
+        factoryHomes.push(handlerHome);
+        return taskReadPort;
+      },
+    });
+    const actor = await seededActor(fixture_);
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "read-failure-currentness" }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(actor.conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "read-failure contribution settles");
+    expect(listCalls).toBe(1);
+
+    failure = "untyped";
+    const unavailableRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(unavailableRead).toMatchObject({
+      standing: "refused",
+      code: "source-unavailable",
+      reason: expect.stringContaining("untyped contribution Task read failure"),
+    });
+    expect(listCalls).toBe(2);
+    const unavailableSummaries = await registry
+      .listSettledChildSummaries(actor.conversationId)
+      .catch((error: unknown) => error);
+    expect(unavailableSummaries).toBeInstanceOf(ContributionError);
+    expect(unavailableSummaries).toMatchObject({
+      code: "source-unavailable",
+      message: expect.stringContaining("untyped contribution Task read failure"),
+    });
+    expect(listCalls).toBe(3);
+
+    failure = "none";
+    const recoveredRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(recoveredRead.standing).toBe("read");
+    expect(listCalls).toBe(4);
+    expect(await registry.listSettledChildSummaries(actor.conversationId)).toHaveLength(1);
+    expect(listCalls).toBe(5);
+
+    failOnListCall = listCalls + 2;
+    const dependencyFailure = await registry.spawn(spawnInput(
+      {
+        conversationId: actor.conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+      },
+      spawnOperation({
+        key: "read-failure-dependency",
+        dependsOn: [receipt.key],
+      }),
+    )).catch((error: unknown) => error);
+    expect(dependencyFailure).toBeInstanceOf(ContributionError);
+    expect(dependencyFailure).toMatchObject({
+      code: "source-unavailable",
+      message: expect.stringContaining("dependency currentness Task read failure"),
+    });
+    expect(listCalls).toBe(7);
+
+    failOnListCall = undefined;
+    failure = "typed";
+    const spawnFailure = await registry.spawn(spawnInput(
+      {
+        conversationId: actor.conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+      },
+      spawnOperation({ key: "read-failure-spawn" }),
+    )).catch((error: unknown) => error);
+    expect(spawnFailure).toBeInstanceOf(ContributionError);
+    expect(spawnFailure).toMatchObject({
+      code: "source-unavailable",
+      message: expect.stringContaining("typed contribution Task read failure"),
+    });
+    expect(listCalls).toBe(8);
+    expect(readContributionSpawnReceipts(fixture_.home, actor.conversationId)).toHaveLength(1);
+    expect(factoryHomes).toEqual([realpathSync(fixture_.home)]);
   });
 
   test("spawn selects the exact catalog worker and refuses unknown or unavailable workers", async () => {

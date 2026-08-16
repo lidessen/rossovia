@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { initializeHome, loadJson, saveJson } from "../src/home";
 import {
   LocalTaskControlError,
-  type LocalTaskControlPlane,
+  type LocalTaskReadPort,
 } from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
 import { createPrincipalTask, correctPrincipalTask, loadPrincipalTasks, principalTasksPath, submitPrincipalTaskResult } from "../src/tasks";
@@ -197,7 +197,7 @@ describe("ConversationContextProvider", () => {
     });
     const factoryHomes: string[] = [];
     let listCalls = 0;
-    const taskControlPlane: LocalTaskControlPlane = {
+    const taskReadPort: LocalTaskReadPort = {
       list() {
         listCalls += 1;
         return portTasks;
@@ -205,14 +205,11 @@ describe("ConversationContextProvider", () => {
       show() {
         throw new Error("Task show is outside the context read boundary");
       },
-      execute() {
-        throw new Error("Task mutation is outside the context read boundary");
-      },
     };
     const provider = createConversationContextProvider(join(home, "..", "home"), {
-      taskControlPlaneFactory(handlerHome) {
+      taskReadPortFactory(handlerHome) {
         factoryHomes.push(handlerHome);
-        return taskControlPlane;
+        return taskReadPort;
       },
     });
 
@@ -254,7 +251,7 @@ describe("ConversationContextProvider", () => {
       const conversationId = randomUUID();
       await journalSettledCreate(journal, conversationId, "port-read-failure-task", 1);
       let listCalls = 0;
-      const taskControlPlane: LocalTaskControlPlane = {
+      const taskReadPort: LocalTaskReadPort = {
         list() {
           listCalls += 1;
           if (failureKind === "typed") {
@@ -268,12 +265,9 @@ describe("ConversationContextProvider", () => {
         show() {
           throw new Error("Task show is outside the context read boundary");
         },
-        execute() {
-          throw new Error("Task mutation is outside the context read boundary");
-        },
       };
       const provider = createConversationContextProvider(home, {
-        taskControlPlaneFactory: () => taskControlPlane,
+        taskReadPortFactory: () => taskReadPort,
       });
 
       const projection = await provider.buildProjection(conversationId);

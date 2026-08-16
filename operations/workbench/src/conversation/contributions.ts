@@ -35,9 +35,12 @@ import {
   type DelegateResultProjection,
 } from "../../../autonomy/src/delegate-loop";
 import { FileMissionTimeline } from "../../../autonomy/src/delegate-timeline";
-import type { PrincipalTask } from "../contracts";
-import { loadPrincipalTasks } from "../tasks";
+import type { PrincipalTask, PrincipalTasks } from "../contracts";
 import { loadHome, resolveHome, workspaceFor } from "../home";
+import {
+  createLocalTaskControlPlane,
+  type LocalTaskReadPort,
+} from "../local-task-control-plane";
 import { expandPath } from "../paths";
 import { observeWorkspace, requiredGit } from "../workspace";
 import {
@@ -201,7 +204,12 @@ export interface ContributionProjection {
   readonly status?: string;
 }
 
-export type ChildResultRefusalCode = "not-found" | "not-settled" | "stale" | "invalid";
+export type ChildResultRefusalCode =
+  | "not-found"
+  | "not-settled"
+  | "stale"
+  | "source-unavailable"
+  | "invalid";
 
 export type ChildResultRead =
   | { readonly standing: "read"; readonly result: DelegateResultProjection }
@@ -298,6 +306,8 @@ export interface ConversationContributionRegistry {
 }
 
 export interface ConversationContributionRegistryOptions {
+  /** Create the canonical Task read port for this registry's resolved home. */
+  readonly taskReadPortFactory?: (home: string) => LocalTaskReadPort;
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
@@ -401,6 +411,11 @@ const SpawnReceiptSchema = z.object({
 }).strict();
 type SpawnReceipt = z.infer<typeof SpawnReceiptSchema>;
 
+type ContributionTaskCurrentness =
+  | { readonly standing: "current" }
+  | { readonly standing: "stale" }
+  | { readonly standing: "unavailable"; readonly reason: string };
+
 /**
  * The durable started marker one successful spawn publishes AFTER its
  * reservation, lease acquisition, and handle registration. It is the only
@@ -499,6 +514,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   private readonly catalog: WorkerCatalog;
   private readonly timeline: FileMissionTimeline;
   private readonly journal: FileConversationJournal;
+  private readonly taskReadPort: LocalTaskReadPort;
   private readonly maxLiveContributions: number;
   private readonly now: () => string;
   private readonly handles = new Map<string, WorkbenchContributionHandle>();
@@ -527,6 +543,8 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       options.timelineSyncDurability,
     );
     this.journal = new FileConversationJournal(home);
+    const taskReadPortFactory = options.taskReadPortFactory ?? createLocalTaskControlPlane;
+    this.taskReadPort = taskReadPortFactory(home);
     const max = options.maxLiveContributions ?? 8;
     if (!Number.isInteger(max) || max < 1) {
       throw new Error("maxLiveContributions must be a positive integer");
@@ -1080,7 +1098,11 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   async listSettledChildSummaries(conversationId: string): Promise<readonly ChildSummary[]> {
     const summaries: ChildSummary[] = [];
     for (const receipt of this.readSpawnReceipts(conversationId)) {
-      if (!this.isStillCurrent(receipt)) continue;
+      const currentness = this.taskCurrentness(receipt);
+      if (currentness.standing === "unavailable") {
+        throw new ContributionError("source-unavailable", currentness.reason);
+      }
+      if (currentness.standing === "stale") continue;
       let result: DelegateResultProjection;
       try {
         result = await this.timeline.readResult(conversationId, contributionPreparedBatchId(conversationId, receipt.batchId), receipt.key);
@@ -1119,7 +1141,15 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         reason: `batch ${input.batchId} does not retain a child result for key ${input.key}`,
       };
     }
-    if (!this.isStillCurrent(receipt)) {
+    const currentness = this.taskCurrentness(receipt);
+    if (currentness.standing === "unavailable") {
+      return {
+        standing: "refused",
+        code: "source-unavailable",
+        reason: currentness.reason,
+      };
+    }
+    if (currentness.standing === "stale") {
       return {
         standing: "refused",
         code: "stale",
@@ -1323,9 +1353,9 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
   }
 
-  private currentTasks(): ReturnType<typeof loadPrincipalTasks> {
+  private currentTasks(): PrincipalTasks {
     try {
-      return loadPrincipalTasks(this.home);
+      return this.taskReadPort.list();
     } catch (error) {
       throw new ContributionError("source-unavailable", `the canonical Task source cannot be read: ${errorMessage(error)}`);
     }
@@ -1365,7 +1395,14 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    */
   private eligibleSettledKeys(conversationId: string, dependsOn: readonly string[]): string[] {
     if (dependsOn.length === 0) return [];
-    const current = this.readSpawnReceipts(conversationId).filter((receipt) => this.isStillCurrent(receipt));
+    const current: SpawnReceipt[] = [];
+    for (const receipt of this.readSpawnReceipts(conversationId)) {
+      const currentness = this.taskCurrentness(receipt);
+      if (currentness.standing === "unavailable") {
+        throw new ContributionError("source-unavailable", currentness.reason);
+      }
+      if (currentness.standing === "current") current.push(receipt);
+    }
     const byKey = new Map(current.map((receipt) => [receipt.key, receipt] as const));
     const eligible: string[] = [];
     for (const dependency of dependsOn) {
@@ -1829,16 +1866,28 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     return receipts;
   }
 
-  /** The contribution is still current only while its Task revision still matches the current source. */
-  private isStillCurrent(receipt: SpawnReceipt): boolean {
-    let tasks;
+  /**
+   * The contribution is current only while an observed Task still carries
+   * its retained revision. A missing Task or revision mismatch is stale;
+   * an unreadable Task source is unavailable and must never be reported as
+   * an observed stale fact.
+   */
+  private taskCurrentness(receipt: SpawnReceipt): ContributionTaskCurrentness {
+    let tasks: PrincipalTasks;
     try {
-      tasks = loadPrincipalTasks(this.home);
-    } catch {
-      return false;
+      tasks = this.taskReadPort.list();
+    } catch (error) {
+      return {
+        standing: "unavailable",
+        reason:
+          `the canonical Task source cannot be read while checking contribution `
+          + `${receipt.batchId}/${receipt.key}: ${errorMessage(error)}`,
+      };
     }
     const task = taskById(tasks, receipt.taskId);
-    return task !== undefined && task.revision === receipt.taskRevision;
+    return task !== undefined && task.revision === receipt.taskRevision
+      ? { standing: "current" }
+      : { standing: "stale" };
   }
 
   private conversationDirectory(conversationId: string): string {
@@ -2105,7 +2154,7 @@ function contributionControlReceipt(
   };
 }
 
-function taskById(tasks: ReturnType<typeof loadPrincipalTasks>, idArgument: string): PrincipalTask | undefined {
+function taskById(tasks: PrincipalTasks, idArgument: string): PrincipalTask | undefined {
   const folded = idArgument.trim().toLowerCase();
   if (folded.length === 0) return undefined;
   const matches = tasks.tasks.filter((task) => task.id.toLowerCase() === folded);
