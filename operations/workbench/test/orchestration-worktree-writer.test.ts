@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -539,7 +540,44 @@ describe("O3 integration regressions", () => {
     await expect(runTestTask(current.home, created.task.id, executor.execute))
       .rejects.toThrow("active task-run lease");
     expect(executor.requests).toHaveLength(0);
-    expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+
+    // O2 acceptance: the durable Run request record exists before O3
+    // acquisition, so the claim refusal leaves exactly one attributable
+    // pre-Cell terminal Run/attempt family — with no invented Cell final —
+    // and never touches the held foreign claim.
+    const attemptsRoot = join(current.home, "state", "task-attempts");
+    expect(existsSync(attemptsRoot)).toBeTrue();
+    const retainedDirs = readdirSync(attemptsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+    expect(retainedDirs).toHaveLength(1);
+    const attemptId = retainedDirs[0]!;
+    const retainedAttempt = JSON.parse(
+      readFileSync(join(attemptsRoot, attemptId, "attempt.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(retainedAttempt).toMatchObject({
+      version: "rosso.task-run-attempt.v1",
+      taskId: created.task.id,
+      attemptId,
+      status: "started",
+    });
+    expect(typeof retainedAttempt.requestDigest).toBe("string");
+    const retainedSettlement = JSON.parse(
+      readFileSync(join(attemptsRoot, attemptId, "settlement.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(retainedSettlement).toMatchObject({
+      version: "rosso.task-run-settlement.v1",
+      taskId: created.task.id,
+      attemptId,
+      status: "runner-failed",
+      error: expect.stringContaining("active task-run lease"),
+    });
+    // The claim was refused before any mutable preparation: no CellInput was
+    // lowered and no Cell final was invented.
+    expect(existsSync(join(attemptsRoot, attemptId, "cell-input.json"))).toBeFalse();
+    expect(existsSync(join(attemptsRoot, attemptId, "cell-input.run.json"))).toBeFalse();
+    // The held O3 claim bytes are preserved exactly by the refusal path.
+    expect(readFileSync(held.path, "utf8")).toBe(held.content);
 
     releaseWorktreeWriterLease(held);
     await expect(runTestTask(current.home, created.task.id, executor.execute))
