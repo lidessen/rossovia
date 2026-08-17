@@ -30,78 +30,97 @@ would require repeating every delegated investigation.
 | Consequential candidate | maker then fresh reviewer | reviewer stays read-only |
 | Strict dependency | sequential work or targeted follow-up | preserve one owner |
 
-## Delegation envelope
+## Child prompt construction
 
-### Canonical child prompt fragment
+Build every worker, reviewer, and nested-child prompt from four compact parts,
+in order. Include only information that can change the receiver's action. Do
+not replace a contribution relation with a title or pass through parent/runtime
+terms that the receiver does not need. If a project-specific term is necessary,
+define it at first use in one operational sentence: what object it names, its
+boundary, and why it matters to this contribution.
 
-Prepend this fragment to every worker, reviewer, and nested-child prompt. Fill
-the two bracketed fields for the concrete contribution. Preserve the portable
-working method verbatim so changing carriers does not silently change how the
-contribution relates to the whole.
+### 1. Contribution relation, only when decision-relevant
+
+Use plain object and action language. Omit this part when the task contract
+already makes the same relation unambiguous; a title adds no useful
+differentiation.
 
 ```text
-Temporary role and purpose:
-- For this contribution, act as [concrete temporary role] so that [purpose in the current whole].
-- This differentiates only the task, context, and working environment. It does not create a runtime role enum, team membership, team lifecycle, or authority beyond the contract below.
-
-Portable working method:
-- Ground claims and decisions in the actual named sources, candidate, and revision; do not substitute memory or a summary when the source is available.
-- Preserve the relation between this contribution and the stated whole. Choose the smallest valid transition that resolves the local gap without weakening inherited constraints.
-- Keep observations and mechanical checks, producer claims, independent semantic-review judgment, and Principal or named-owner acceptance distinct. Do not promote one into another.
-- Stay inside the granted read, effect, and authority boundary. Stop and return when completion requires a broader owner or a changed premise.
-- State unknowns and unavailable evidence truthfully. Verify the local claim with the requested check, then return a reconstructible conclusion with source/effect evidence, uncertainty, and retained judgment and acceptance owners.
-- If you delegate a permitted narrower contribution, give it a newly instantiated temporary role and purpose, this same portable working method, a narrower task contract, and the applicable complete role contract.
+Contribution relation:
+- Object and bounded action owned here:
+- How the result will be used downstream:
+- Explicit non-goals and decisions retained elsewhere:
 ```
 
-This is prompt context, not a registry, schema, gate, runtime role, or durable
-team record. A useful temporary role names what this Agent contributes to this
-whole—for example, source investigator, bounded maker, or independent
-reviewer—without claiming a general species or standing authority.
+### 2. Canonical portable method
 
-### Worker task envelope
-
-After the canonical fragment, construct every worker prompt from this envelope
-and only the task-specific context it needs:
+Preserve this fragment when changing carriers:
 
 ```text
-Whole outcome:
-Main-owned constraint or relation:
-Contribution:
+Portable method:
+- Use the named sources, candidate, and revision; state missing evidence instead of substituting memory or a summary.
+- Keep the result connected to the requested whole and choose the smallest change that closes this contribution without weakening its constraints.
+- Stay inside the stated read, change, and decision boundaries. Stop when completion needs a broader owner or changed premise.
+- Record observations and check results separately from your claims. Independent semantic review and named-owner acceptance remain separate decisions.
+- Run the requested local verification. Return the conclusion, source/change evidence, unknowns, and hand-off relation needed to reconstruct the result.
+- If narrower delegation is explicitly allowed, give that child these same four prompt parts with the same or tighter boundaries.
+```
+
+This is prompt content, not a registry, schema, gate, or runtime state.
+
+### 3–4. Worker task and return contracts
+
+After the two parts above, construct the exact task contract and then the
+return contract. Read `worker.md`; inline every constraint from its `Execute
+inside the envelope` section under the task contract and every field from its
+`Return` section under the return contract. Do not paste the file heading or
+make the receiver locate it.
+
+```text
+Exact task contract:
+Object and requested action:
+Requested whole outcome or relevant constraint:
 Working directory and governing sources:
 Source revision or candidate identity:
 Read boundary:
-Effect ownership: read-only | exact writable paths/effects
-Required evidence and local verification:
-Compressed return shape:
-Stop or disconfirming signal:
-Authority withheld:
-Returned evidence use: leads only | exact source claims may be admitted as bounded premises after Main checks the declared conditions
-Claim-admission conditions: exact source scope and lineage, named admissible claims, uncertainty, and retained judgment owner
+Allowed changes or other effects: read-only | exact paths/effects
+Non-goals and decisions not owned here:
+Required evidence and verification:
+Stop conditions:
 Nested delegation posture: direct only | available when a newly discovered bounded contribution earns its coordination cost
 Inherited limits for descendants: same or narrower read, effect, evidence, and authority boundary
-Worker rules: inline the complete contents of references/worker.md here
+Execution constraints: inline the complete worker.md execution section here
+
+Return contract:
+Inline the complete worker.md return section here
 ```
 
 If the contribution cannot be expressed this way, its independence is not yet
 formed. Keep it with Main or return to the domain owner that can define the
-semantic boundary. The Main Agent resolves and loads the role file; never make
-the child locate a Skill-relative path.
+semantic boundary.
 
 ## Reviewer envelope
 
-A reviewer receives the same canonical child prompt fragment, followed by a
-different task contract:
+A reviewer receives the same optional contribution relation and portable
+method, followed by its exact task contract and return contract. Read
+`reviewer.md`; inline every constraint from its `Review` section under the task
+contract and every field from its `Return` section under the return contract.
 
 ```text
+Exact task contract:
 Candidate identity and source revision:
+Requested whole outcome or relevant constraint:
 Exact claim or acceptance contract:
 Read-only evidence boundary:
 Highest-risk failure classes:
 Required finding and no-finding evidence:
-Authority withheld: no implementation, acceptance, merge, or publication
+Non-goals and decisions not owned here: no implementation, acceptance, merge, or publication
 Nested delegation posture: direct review preferred; a narrow evidence reproduction may be delegated only when independence and final reviewer ownership remain explicit
 Inherited limits for descendants: read-only evidence boundary and no implementation or acceptance authority
-Reviewer rules: inline the complete contents of references/reviewer.md here
+Review constraints: inline the complete reviewer.md review section here
+
+Return contract:
+Inline the complete reviewer.md return section here
 ```
 
 Do not give the reviewer the maker's desired verdict or ask it to continue the
@@ -141,6 +160,7 @@ Source scope and lineage actually read:
 Exact source claims and their declared use: leads only | bounded premises under the envelope's conditions
 Uncertainties:
 Judgment and acceptance retained by:
+Hand-off: named downstream use of this result and decisions retained elsewhere
 Risks and unresolved relations:
 Changed paths or effects:
 Nested contributions: none | local benefit, inherited boundary, child evidence, and realized cost

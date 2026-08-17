@@ -95,26 +95,25 @@ refactoring boundaries, research questions, or project policy.
    have one writer, and a review counts as independent only when its context is
    isolated from producer reasoning.
 3. **Contract each contribution.** Read `references/delegation.md`. Give every
-   worker an exact whole constraint, bounded contribution, sources and
-   revision, effect ownership, required evidence, return shape, stop signal,
-   and withheld authorities. Prepend the canonical child prompt fragment from
-   `references/delegation.md`: instantiate one temporary role and purpose for
-   this contribution, then preserve its portable working method. Before
-   release, load exactly one applicable role contract—`references/worker.md`
-   or `references/reviewer.md`—and embed its complete contents in the child
-   prompt. Do this for native, injected, and nested children; do not require a
-   child to discover a Skill-relative path. Give a reviewer the exact
-   candidate, acceptance contract, and narrow evidence in addition to these
-   two shared layers and its embedded role contract.
+   child four receiver-facing parts in this order: a concrete contribution
+   relation only when it changes attention or responsibility; the concise
+   portable method; the exact task contract; and the return contract. A
+   contribution relation states the object and bounded action, downstream use,
+   and explicit non-goals—it is never a title. Load exactly one applicable
+   contract—`references/worker.md` or
+   `references/reviewer.md`—and inline all of its execution and return
+   constraints into those last two parts. Do this for native, injected, and
+   nested children; never make a child discover a Skill-relative path. Omit
+   parent and runtime internals that do not change the child's action. Define a
+   necessary project term at first use by its object, boundary, and relevance.
 4. **Map without changing meaning.** Read `references/runtime-mapping.md` when
    choosing between native delegates, a caller-injected sub-worker tool backed
    by explicit persistent Runs, or a bounded hybrid. Map one contribution to
    exactly one execution owner. A native child handle and a durable child Run
    ID are different lifecycle facts, but they must receive the same complete
-   child prompt and return the same class of claim and evidence. Temporary
-   role and purpose differentiate the Agent through its prompt and working
-   environment; do not encode them as runtime types or teach Work Cell the
-   child lifecycle.
+   child prompt and return the same class of claim and evidence. Concrete work
+   and responsibility differentiate the Agent; do not encode prompt language
+   as runtime types or teach Work Cell the child lifecycle.
 5. **Release through the active environment.** Use its supported delegation
    capability directly. Do not start another system merely to gain
    delegation, and never dispatch the same contribution through two carriers.
@@ -159,11 +158,13 @@ refactoring boundaries, research questions, or project policy.
 - Read `references/runtime-mapping.md` when the active environment offers more
   than one execution carrier, when mapping the mode to a persistent Run
   runtime, or when moving the same topology between harnesses.
-- Load `references/worker.md` only to embed it in an implementation or
-  investigation worker's prompt; it does not become Main-side policy.
-- Load `references/reviewer.md` only to embed it in a non-producing reviewer's
-  prompt; do not reuse the maker's role contract.
-- Do not load all three role files merely because delegation is available.
+- Load `references/worker.md` only to inline its complete execution and return
+  constraints into an implementation or investigation prompt; it does not
+  become Main-side policy.
+- Load `references/reviewer.md` only to inline its complete review and return
+  constraints into a non-producing reviewer's prompt; do not reuse the maker's
+  contract.
+- Do not load every contract file merely because delegation is available.
 
 ## Boundaries
 

@@ -3,12 +3,11 @@
 These rules are for a delegated implementation or investigation worker. Do not
 use the Main Agent's full `SKILL.md` as your operating prompt.
 
-Your prompt must begin with a concrete temporary role and purpose plus the
-portable working method, then supply a delegation envelope with the whole
-constraint, bounded contribution, sources and revision, read/effect boundary,
-evidence, return shape, stop signal, and withheld authorities. The temporary
-role differentiates this contribution only; it grants no runtime status or
-authority.
+Your prompt must supply, in order, any decision-relevant contribution relation,
+the portable method, an exact task contract, and a return contract. A title is
+not a contribution relation. Act from the concrete object, requested action,
+downstream use, and non-goals. If an unexplained project term changes what you
+would do, stop and name the ambiguity rather than guessing.
 
 ## Execute inside the envelope
 
@@ -25,14 +24,14 @@ authority.
   and authority boundary. You remain responsible for reconstructing its
   evidence and cost in your parent return.
 - When you form that smaller delegation, act as its immediate parent: construct
-  a complete self-contained child prompt. Instantiate a new temporary role and
-  purpose, carry forward the complete portable working method from your own
-  prompt, add the narrower child envelope, embed the complete applicable worker
-  or reviewer contract, and declare the child's next-layer delegation posture.
-  Use `direct only` by default. Open another delegation layer only when your
-  received envelope explicitly permits you to do so and the child envelope
-  explicitly carries that narrower allowance; never make the child discover
-  its role contract or infer permission from tool availability.
+  a complete self-contained child prompt in the same four-part order. Include a
+  contribution relation only when it changes the child's attention or
+  responsibility, carry forward the portable method, narrow the task and return
+  contracts, and include the applicable execution constraints. Use `direct
+  only` by default. Open another delegation layer only when your received
+  envelope explicitly permits you to do so and the child envelope explicitly
+  carries that narrower allowance; never make the child discover instructions
+  or infer permission from tool availability.
 - Verify the local claim with the requested evidence or report why it is
   unavailable.
 - Stop rather than expanding scope when the work requires a different owner,
@@ -59,6 +58,7 @@ Source scope and lineage actually read:
 Exact source claims and their declared use: leads only | bounded premises under the envelope's conditions
 Uncertainties:
 Judgment and acceptance retained by:
+Hand-off: named downstream use of this result and decisions retained elsewhere
 Risks and unresolved relations:
 Changed paths or effects:
 Nested contributions: none | why used, inherited boundary, child evidence, and realized cost

@@ -16,17 +16,13 @@ whole constraint
   -> Main reconstruction against the whole
 ```
 
-The carrier input is the complete child prompt: one concrete temporary role
-and purpose, the canonical portable working method, the task-specific
-contribution contract, and the applicable complete worker or reviewer
-contract. The first two layers shape the Agent's differentiation and method;
-the carrier transports them without interpreting them as lifecycle state.
-
-`researcher`, `implementer`, `reviewer`, and similar names are prompt context,
-not runtime species. Change the task, sources, workspace, capabilities, budget,
-effect boundary, or return contract to differentiate an Agent. Do not add a
-role enum or team lifecycle merely because the current organization has several
-purposes.
+The carrier input is the complete receiver-facing child prompt: an optional
+concrete contribution relation when it changes action, the canonical portable
+method, the exact task contract, and the return contract. A title alone is not
+an input layer. Differentiate an Agent with the actual object, action, sources,
+environment, effects, non-goals, verification, and downstream use. The carrier
+transports those semantics without interpreting them as lifecycle state or
+adding a role enum.
 
 ## Select the execution carrier
 
@@ -34,12 +30,18 @@ purposes.
 |---|---|---|
 | The contribution is trivial, coupled to Main judgment, or cheaper to keep local | direct Main work | avoids coordination and reconstruction cost |
 | The contribution is session-local, bounded, and does not need crash-surviving identity or recovery | native delegate | isolates attention and can reduce latency with minimal durable machinery |
-| The contribution needs durable identity, exact stop, restart recovery, retained usage, or shared-Worktree effect ownership | injected sub-worker tool backed by an explicit Run | lets the Main delegate from its current Cell while the active orchestration owner retains lifecycle and evidence |
+| The contribution needs durable identity, exact stop, restart recovery, retained usage, or shared-Worktree effect ownership | injected sub-worker tool backed by an explicit Run | lets the Main delegate from its current invocation while the active orchestration owner retains lifecycle and evidence |
 | Independent read-only inquiry can remain ephemeral while effectful work needs durable ownership | bounded hybrid | maps different contributions to their smallest truthful carriers |
 
 Choose per contribution, not once for every task. A hybrid is valid only when
 each contribution has one owner and the Main can reconstruct both evidence
 forms without dispatching the same work twice.
+
+In the persistent mapping, a **Run** is the orchestration-owned identity and
+lifecycle for one authorized execution; it matters when control or recovery
+must survive the current session. A **Work Cell** is the standalone executor of
+one bounded model invocation; it records that invocation but owns no child Run
+lifecycle.
 
 ## Relation map
 
@@ -70,17 +72,17 @@ a failed or corrected contribution warrants another attempt or new Run.
 When Rossovia or another persistent runtime is already the requested owner:
 
 1. Keep Project and Task meaning in Workbench. Do not create a child Task only
-   to encode `researcher`, `maker`, or `reviewer`; create one only when the
-   contribution is independently managed domain work.
+   to persist a prompt title; create one only when the contribution is
+   independently managed domain work.
 2. The Main Agent may itself execute inside one ordinary parent Run and Work
    Cell. Give that Cell no special team state. Through its caller-supplied tool
    surface, inject one sub-worker delegation capability only when the current
    task topology needs it.
 3. Let the Main call that tool with the same complete child prompt used by a
-   native delegate, including
-   its temporary role and purpose, portable working method, task contract, and
-   role contract. The tool adapter translates and submits that bounded request;
-   Orchestration authorizes, creates, and persists one explicit child Run, then
+   native delegate: any decision-relevant contribution relation, the portable
+   method, exact task contract, and return contract. The tool adapter translates
+   and submits that bounded request. Orchestration authorizes, creates, and
+   persists one explicit child Run, then
    lowers its immutable input into a bounded Cell invocation. The capability
    returns an opaque child reference plus a compressed claim, evidence,
    uncertainty, and terminal standing. It never returns acceptance or transfers
@@ -132,17 +134,19 @@ role-agnostic: they carry an opaque model-visible tool capability and bounded
 request, not a role enum, prompt registry, or team lifecycle. The Rossovia
 adapter is responsible for preserving the complete child prompt when it maps
 that request to the future `sub_worker` capability. Neither neutral layer
-parses temporary roles or promotes the portable method into persistent state.
+parses contribution language or promotes the portable method into persistent
+state. Runtime-specific terms stay outside the child prompt unless they change
+the child's action; when one is necessary, the caller defines its object,
+boundary, and immediate relevance.
 
 ## Native-sub-agent mapping
 
 When the active harness exposes session-local sub-agents:
 
 1. Create one native child for each independently useful contribution.
-2. Give it the same complete child prompt: temporary role and purpose,
-   portable working method, task envelope, and applicable worker or reviewer
-   contract. Do not rely on inherited conversation history as its
-   specification.
+2. Give it the same complete child prompt: any decision-relevant contribution
+   relation, portable method, exact task contract, and return contract. Do not
+   rely on inherited conversation history as its specification.
 3. Follow up the same child only for a named gap inside its current ownership.
    Use a fresh child for a new contribution or independent review.
 4. Treat liveness, cancellation, and context inheritance as current-harness
@@ -152,7 +156,8 @@ When the active harness exposes session-local sub-agents:
 
 ## Portability probe
 
-Use the same frozen fixture twice when claiming portability:
+Use one frozen task in four arms when evaluating the prompt relation and its
+carrier transfer:
 
 ```text
 Whole: one consequential change with two independent source investigations,
@@ -165,24 +170,35 @@ Expected semantic topology:
   Main synthesizes; reviewer does not accept
 ```
 
-Run the same Main prompt and complete child prompts once with native delegates
-and once inside a Work Cell supplied with the sub-worker tool. For each matched
-contribution, retain the two complete child prompts and mechanically confirm
-that they contain the same temporary role and purpose, portable working method,
-task envelope, and role contract. Then have a fresh reviewer judge task fidelity,
-source grounding, effect containment, evidence reconstruction, unknowns, and
-the separation of producer claim, semantic review, and named acceptance; prompt
-presence alone does not prove correct execution. The work-unit cuts, effect
-ownership, return claims, and acceptance owner must remain equivalent. Native
-child handles versus child Run IDs, progress evidence, and recovery behavior
-should differ because those belong to the harness.
+Hold the method, exact task, and return contract fixed. For each carrier—native
+delegate and injected sub-worker—run one control prompt that adds only a title
+and one candidate prompt that instead states the concrete object/action,
+downstream use, and explicit non-goals. The title-only arm is an evaluation
+control, not an operating recommendation. Retain all four complete prompts and
+carrier evidence.
 
-The probe fails if either carrier omits or rewrites the portable prompt layers,
-if Work Cell gains child lifecycle, if the persistent mapping adds role types
-or a second lifecycle, if the native mapping fabricates durable state, or if
-either mapping gives multiple writers the same effect. Until retained evidence
-exists from both carriers, describe Rossovia transfer as a forward contract or
-pending probe, not observed portability.
+Before execution, give each complete prompt to a fresh Agent and ask it to
+restate only the object, boundary, allowed effects, non-goals, verification, and
+required return. Needing to ask what a term means is a comprehension failure;
+a successful restatement proves prompt comprehension, not task correctness.
+After execution, have a fresh reviewer judge task fidelity, relation to the
+whole, non-goal preservation, source and check evidence, and hand-off
+reconstruction. Record irrelevant prompt/output language and the number of
+corrective follow-ups needed to recover those relations as two counts: noise
+statements and correction turns. Keep mechanical prompt and carrier checks
+separate from that semantic judgment and from named-owner acceptance.
+
+Across carriers, the work-unit cuts, effects, return claims, and acceptance
+owner must remain equivalent. Native child handles versus child Run IDs,
+progress evidence, and recovery behavior should differ because those belong to
+the harness. The probe fails if the injected carrier omits or rewrites the
+portable prompt parts, if the relational arm does not improve reconstruction or
+reduce corrective follow-ups enough to repay its added words, if Work Cell gains
+child lifecycle, if the persistent mapping adds role types or a second
+lifecycle, if the native mapping fabricates durable state, or if either mapping
+gives multiple writers the same effect. Until retained evidence exists from all
+four arms, describe Rossovia transfer and the relational-prompt advantage as
+forward contracts or pending probes, not observed results.
 
 ## Stop and reshape
 
