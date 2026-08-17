@@ -1,6 +1,7 @@
 import { basename, join } from "node:path";
-import type { Project, Workspace } from "./contracts";
-import { loadHome, saveJson, validateProjects, validateWorkspaces } from "./home";
+import { ManifestSchema, type Project, type Workspace } from "./contracts";
+import { loadJson, resolveHome } from "./home";
+import { transitionRegistration } from "./registration";
 import {
   gitRoot,
   normalizedRepository,
@@ -31,32 +32,33 @@ export function registerProject(homeArgument: string | undefined, arguments_: Re
   project: Project;
   workspace: Workspace;
 } {
-  const current = loadHome(homeArgument);
+  // Preserve the historical failure precedence: an uninitialized or unreadable
+  // home is reported before workspace path errors. This is a validation read
+  // only; the mutation re-reads the pair under the serialized transition lock.
+  loadJson(join(resolveHome(homeArgument), "manifest.json"), ManifestSchema);
   const root = gitRoot(arguments_.path);
   const repository = repositoryLocator(requiredGit(["remote", "get-url", "origin"], root));
   const additions = [basename(root), repositoryBasename(repository), ...arguments_.aliases]
     .map((alias) => nonempty(alias, "alias"));
   const projectId = nonempty(arguments_.id, "project id");
-  let project = current.projects.projects.find((entry) => entry.id === projectId);
-  if (!project) {
-    project = { id: projectId, repository, aliases: [] };
-    current.projects.projects.push(project);
-  } else if (normalizedRepository(project.repository) !== normalizedRepository(repository)) {
-    throw new Error(`refusing to rebind stable project id ${projectId}: expected ${project.repository}, observed ${repository}`);
-  }
-  project.repository = repository;
-  project.aliases = [...new Set([...project.aliases, ...additions])].sort(foldedCompare);
+  return transitionRegistration(homeArgument, (current) => {
+    let project = current.projects.projects.find((entry) => entry.id === projectId);
+    if (!project) {
+      project = { id: projectId, repository, aliases: [] };
+      current.projects.projects.push(project);
+    } else if (normalizedRepository(project.repository) !== normalizedRepository(repository)) {
+      throw new Error(`refusing to rebind stable project id ${projectId}: expected ${project.repository}, observed ${repository}`);
+    }
+    project.repository = repository;
+    project.aliases = [...new Set([...project.aliases, ...additions])].sort(foldedCompare);
 
-  let workspace = current.workspaces.workspaces.find((entry) => entry.projectId === projectId);
-  if (!workspace) {
-    workspace = { projectId, path: root };
-    current.workspaces.workspaces.push(workspace);
-  } else {
-    workspace.path = root;
-  }
-  validateProjects(current.projects);
-  validateWorkspaces(current.workspaces);
-  saveJson(join(current.home, "config", "projects.json"), current.projects);
-  saveJson(join(current.home, "state", "workspaces.json"), current.workspaces);
-  return { project, workspace };
+    let workspace = current.workspaces.workspaces.find((entry) => entry.projectId === projectId);
+    if (!workspace) {
+      workspace = { projectId, path: root };
+      current.workspaces.workspaces.push(workspace);
+    } else {
+      workspace.path = root;
+    }
+    return { project, workspace };
+  });
 }
