@@ -100,6 +100,12 @@ export async function settleStructuredOutput(options: {
           const observed = normalizeUsage(stepUsage, providerMetadata);
           usage = addUsage(usage, observed);
           options.context.observeUsage(observed, "settlement");
+          // A step that completes only after caller cancellation must not
+          // emit a step-finished event: the enclosing runCell already emitted
+          // the immutable Cell final, and an emit here would mutate the
+          // returned trace and notify live observers after cell.finished.
+          // Usage attribution stays; only the post-final event is suppressed.
+          if (options.context.signal.aborted) return;
           options.context.emit("structured.settlement.step.finished", {
             attempt,
             finishReason,
@@ -120,6 +126,14 @@ export async function settleStructuredOutput(options: {
         // trace, so a short maxDurationMs can never race a checkpoint yield
         // and relabel the exact finite-bound outcome as cancellation.
         if (options.stepAllowance.exhausted) {
+          // The final allowed step completed only after the caller cancelled
+          // while it was still in flight: the Cell final is already emitted,
+          // so the original abort reason stays causal and no attempt-failed
+          // event is emitted after cell.finished.
+          if (options.context.signal.aborted) {
+            lastError = abortReasonMessage(options.context.signal);
+            break;
+          }
           lastError = stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract was not satisfied");
           options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
           continue;
@@ -146,15 +160,26 @@ export async function settleStructuredOutput(options: {
         options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
       }
     } catch (error) {
-      // A thrown agent failure is a provider or adapter outcome (network,
-      // API, or abort), never the normally completed no-output case handled
-      // above: it ends settlement with its real causal error instead of
-      // being retried into invisibility, whether or not the shared allowance
-      // is now exhausted. The throw is never relabeled as step-budget
-      // exhaustion merely because its onStepStart consumed the final allowed
-      // step; only a normally completed attempt with no accepted output may
-      // report the canonical exhaustion wording. Ending here also keeps the
-      // next precheck from overwriting the causal error.
+      if (options.context.signal.aborted) {
+        // Caller cancellation while this settlement step was still in
+        // flight: runWithSignal already finalized runCell first (cell.error
+        // then cell.finished). Emitting an attempt-failed event here would
+        // mutate the returned trace and notify live observers after the
+        // immutable Cell final, so the original caller reason is retained
+        // instead and no settlement event is emitted.
+        lastError = abortReasonMessage(options.context.signal);
+        break;
+      }
+      // A thrown agent failure without cancellation is a provider or adapter
+      // outcome (network, API, or malformed response), never the normally
+      // completed no-output case handled above: it ends settlement with its
+      // real causal error instead of being retried into invisibility,
+      // whether or not the shared allowance is now exhausted. The throw is
+      // never relabeled as step-budget exhaustion merely because its
+      // onStepStart consumed the final allowed step; only a normally
+      // completed attempt with no accepted output may report the canonical
+      // exhaustion wording. Ending here also keeps the next precheck from
+      // overwriting the causal error.
       lastError = error instanceof Error ? error.message : String(error);
       options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
       break;
