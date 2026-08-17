@@ -37,6 +37,7 @@ import {
   // `instanceof ReconcileRunRefusal` to translate typed O2 reconciliation
   // refusals into the frozen historical observable messages.
   ReconcileRunRefusal,
+  RunControlRegistry,
   runOrdinaryTaskRun,
   type ReconcileRunResult,
   type RunRequest,
@@ -118,6 +119,15 @@ interface TaskRunDependencies {
    * execution (WorkerCatalog.createDriver -> runCell).
    */
   executeTaskCell?: TaskCellExecutor;
+  /**
+   * Optional foreground Run-control bundle: one existing O2 registry plus a
+   * publication callback. Used only by the CLI signal adapter; conversation and
+   * other callers must not pass this.
+   */
+  controlBundle?: {
+    readonly registry: RunControlRegistry;
+    readonly onControlAvailable: (runId: string) => void;
+  };
 }
 
 /** One execution request as retained on the attempt record. */
@@ -688,6 +698,12 @@ export async function runPrincipalTask(
     ...(dependencies.beforeLeaseAcquire === undefined
       ? {}
       : { beforeLeaseAcquire: dependencies.beforeLeaseAcquire }),
+    ...(dependencies.controlBundle === undefined
+      ? {}
+      : {
+          registry: dependencies.controlBundle.registry,
+          onControlAvailable: dependencies.controlBundle.onControlAvailable,
+        }),
     card,
     revalidate: () => {
       verifyTaskSnapshotAfterLease(home, observed);

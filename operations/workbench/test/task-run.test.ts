@@ -43,6 +43,8 @@ import {
   type TaskRunResult,
 } from "../src/task-run";
 import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
+import { RunControlRegistry, stopRun } from "../src/orchestration/run";
+import { worktreeWriterLeasePath } from "../src/orchestration/worktree-writer";
 import { readStrictTaskAttemptEvidence, showPrincipalTaskAttempts } from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
@@ -3126,3 +3128,111 @@ function taskCliWithOutput(home: string, ...arguments_: string[]): {
   });
   return { exitCode: result.exitCode, stdout: result.stdout.toString() };
 }
+
+describe("foreground control bundle for ordinary task run", () => {
+  test("an ordinary task run with a control bundle but no signal records normally and releases the lease", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const registry = new RunControlRegistry();
+    let publishedRunId: string | undefined;
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute, {
+      controlBundle: {
+        registry,
+        onControlAvailable: (runId) => { publishedRunId = runId; },
+      },
+    });
+    expect(publishedRunId).toBeDefined();
+    expect(registry.has(publishedRunId!)).toBeFalse();
+    expect(result.cellStatus).toBe("passed");
+    expect(attemptLeaseStanding(current.home, created.task.id, publishedRunId!)).toBe("released");
+    const evidence = readStrictTaskAttemptEvidence(current.home, publishedRunId!);
+    expect(evidence.settlement?.status).toBe("recorded");
+    expect(showPrincipalTask(current.home, created.task.id).task.lifecycle).toBe("open");
+  });
+
+  test("a foreground signal drains the admitted effect before control-stopped finalization and O3 release, leaving the task open", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const registry = new RunControlRegistry();
+    let publishedRunId: string | undefined;
+    let resolveStarted!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { resolveStarted = resolve; });
+    let resolveEffectDrained!: () => void;
+    const effectDrainedPromise = new Promise<void>((resolve) => { resolveEffectDrained = resolve; });
+    const effectMarker = join(current.worktree, "admitted-effect.marker");
+    let receiptBeforeAbortHandling = false;
+    let effectIncompleteWhenAborted = false;
+    let settlementAbsentWhenAborted = false;
+    let leaseHeldWhenAborted = false;
+
+    const execute: TaskCellExecutor = async (input) => {
+      resolveStarted();
+      const { cellInput, signal } = input;
+      writeFileSync(effectMarker, "incomplete\n");
+      return new Promise((resolve) => {
+        const onAbort = () => {
+          const receiptPath = join(current.home, "state", "task-attempts", publishedRunId!, "control.json");
+          receiptBeforeAbortHandling = existsSync(receiptPath);
+          effectIncompleteWhenAborted = existsSync(effectMarker);
+          settlementAbsentWhenAborted = !existsSync(
+            join(current.home, "state", "task-attempts", publishedRunId!, "settlement.json"),
+          );
+          leaseHeldWhenAborted = existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)));
+          effectDrainedPromise.then(() => {
+            rmSync(effectMarker);
+            resolve(validWorkCellRecord(cellInput, { runId: "stopped-run", status: "cancelled" }));
+          });
+        };
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    };
+    const runPromise = runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, execute, {
+      controlBundle: {
+        registry,
+        onControlAvailable: (runId) => { publishedRunId = runId; },
+      },
+    });
+    await startedPromise;
+    expect(publishedRunId).toBeDefined();
+
+    const receipt = stopRun(
+      current.home,
+      publishedRunId!,
+      { control: "stop", requestedBy: "test", sourceRef: "test:signal" },
+      registry,
+    );
+    resolveEffectDrained();
+
+    await expect(runPromise).rejects.toThrow("settled with status cancelled");
+    expect(receiptBeforeAbortHandling).toBeTrue();
+    expect(effectIncompleteWhenAborted).toBeTrue();
+    expect(settlementAbsentWhenAborted).toBeTrue();
+    expect(leaseHeldWhenAborted).toBeTrue();
+    expect(existsSync(effectMarker)).toBeFalse();
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, publishedRunId!);
+    expect(evidence.finalRecord).toBeDefined();
+    expect(evidence.finalRecord?.status).toBe("cancelled");
+    expect(evidence.settlement?.status).toBe("control-stopped");
+    expect(evidence.settlement?.controlRef).toBe(receipt.receiptRef);
+    expect(attemptLeaseStanding(current.home, created.task.id, publishedRunId!)).toBe("released");
+    const task = showPrincipalTask(current.home, created.task.id);
+    expect(task.task.lifecycle).toBe("open");
+  });
+});

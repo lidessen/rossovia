@@ -1444,3 +1444,47 @@ describe("O2 reconciliation and restart", () => {
     expectReconcileRefusal(() => reconcileRun(current.home, inputless.runId), "unreadable-input");
   });
 });
+
+describe("O2 live publication callback", () => {
+  test("invokes onControlAvailable with the runId after registering and before executing the Cell", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id);
+    const registry = new RunControlRegistry();
+    let callbackRunId: string | undefined;
+    let executing = false;
+    const executor = new RecordingExecutor();
+    const result = await runOrdinaryTaskRun(current.home, request, {
+      card: testCard(),
+      lowerCellInput: lowerFor(current, created.task.id, request.requestId),
+      execute: async (input, options) => {
+        executing = true;
+        return executor.execute(input, options);
+      },
+      registry,
+      onControlAvailable: (runId) => {
+        callbackRunId = runId;
+        expect(executing).toBeFalse();
+        expect(registry.has(runId)).toBeTrue();
+      },
+    });
+    expect(callbackRunId).toBe(request.requestId);
+    expect(executing).toBeTrue();
+    expect(terminalRun(result).status).toBe("recorded");
+  });
+
+  test("unregisters the live handle after a terminal Run", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id);
+    const registry = new RunControlRegistry();
+    const result = await runOrdinaryTaskRun(current.home, request, {
+      card: testCard(),
+      lowerCellInput: lowerFor(current, created.task.id, request.requestId),
+      execute: new RecordingExecutor().execute,
+      registry,
+    });
+    expect(result.standing).toBe("terminal");
+    expect(registry.has(request.requestId)).toBeFalse();
+  });
+});

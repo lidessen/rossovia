@@ -528,6 +528,12 @@ export interface OrdinaryRunDependencies {
   readonly card?: unknown;
   /** Optional in-process live-handle registry enabling exact live stop. */
   readonly registry?: RunControlRegistry;
+  /**
+   * Publication callback invoked exactly after the Run is registered in the
+   * supplied `registry` and before the Work Cell is executed. Meaningful only
+   * together with `registry`.
+   */
+  readonly onControlAvailable?: (runId: string) => void;
 }
 
 /**
@@ -593,7 +599,10 @@ export async function runOrdinaryTaskRun(
       validateLoweredCellInput(cellInput, request, lease);
       taskRunHelpers().writeImmutableJson(refs.inputPath, cellInput);
       dependencies.revalidate?.();
-      if (registry !== undefined) registry.register(request.requestId, controller);
+      if (registry !== undefined) {
+        registry.register(request.requestId, controller);
+        dependencies.onControlAvailable?.(request.requestId);
+      }
       const outcome = await executeOnce(dependencies.execute, cellInput, controller.signal);
       const controlRef = registry?.receiptRef(request.requestId);
       const finalization = (dependencies.finalize ?? defaultRunFinalize)({

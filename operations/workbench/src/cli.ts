@@ -9,10 +9,11 @@ import {
   UsageError,
   USAGE_EXIT_CODE,
 } from "./cli-errors";
+import { createForegroundRunSignalAdapter } from "./integrations/foreground-run-signals";
 import type { ContributionLeaseReconcileResult } from "./conversation/contributions";
 import { authorizeExecution, inspectExecution } from "./execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
-import { initializeHome, loadHome } from "./home";
+import { initializeHome, loadHome, resolveHome } from "./home";
 import { runHookCommand } from "./hooks";
 import { runCorrectionCommand, runInterventionCommand } from "./interventions";
 import { createLocalTaskControlPlane, LocalTaskControlError } from "./local-task-control-plane";
@@ -448,13 +449,21 @@ async function dispatchTaskCommand(
       new Set(),
     );
     assertTaskOptions(parsed, new Set(["--worker", "--continue"]));
-    return await runPrincipalTask(home, {
-      id: parsed.positionals[0]!,
-      workerId: taskOption(parsed, "--worker"),
-      ...(parsed.values.has("--continue")
-        ? { continueFromAttemptId: taskOption(parsed, "--continue") }
-        : {}),
-    });
+    const runHome = resolveHome(home);
+    const adapter = createForegroundRunSignalAdapter({ home: runHome });
+    try {
+      return await runPrincipalTask(home, {
+        id: parsed.positionals[0]!,
+        workerId: taskOption(parsed, "--worker"),
+        ...(parsed.values.has("--continue")
+          ? { continueFromAttemptId: taskOption(parsed, "--continue") }
+          : {}),
+      }, {
+        controlBundle: adapter.controlBundle,
+      });
+    } finally {
+      adapter.dispose();
+    }
   }
 
   const parsed = parseTaskOptions(
