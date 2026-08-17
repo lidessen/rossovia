@@ -481,7 +481,12 @@ settlement attempt starts when no step remains. An omitted `maxSteps` also
 installs no settlement-attempt ceiling: each attempt still consumes the same
 shared allowance when one exists, and attempts continue until the output is
 accepted, `maxDurationMs` or caller cancellation ends the run, or a provider
-or adapter failure ends settlement with its causal error.
+or adapter failure ends settlement with its causal error. After each normally
+completed unsatisfied settlement attempt the settlement yields one event-loop
+checkpoint, so `maxDurationMs` and caller cancellation stay observable even
+against an immediately-resolving noncompliant provider; a cancelled run ends
+with the original abort reason instead of starting another provider call or
+inventing step-budget exhaustion.
 Settlement usage remains usage attribution only: it is never
 extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
 budget boundary: it ends the run with a `cancelled` standing that keeps the

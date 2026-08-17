@@ -114,9 +114,31 @@ export async function settleStructuredOutput(options: {
       });
       rawSteps.push(...sanitizeSteps(result.steps));
       if (output === undefined) {
-        lastError = options.stepAllowance.exhausted
-          ? stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract was not satisfied")
-          : "emit_structured_output was not accepted";
+        // A normally completed unsatisfied attempt with an exhausted explicit
+        // allowance has no next provider call to protect: it reports the
+        // canonical step-budget exhaustion immediately and keeps its existing
+        // trace, so a short maxDurationMs can never race a checkpoint yield
+        // and relabel the exact finite-bound outcome as cancellation.
+        if (options.stepAllowance.exhausted) {
+          lastError = stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract was not satisfied");
+          options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
+          continue;
+        }
+        // Only when another settlement provider step can actually start —
+        // maxSteps omitted or explicit allowance still remaining — one
+        // macrotask yield keeps the event-loop timer that owns maxDurationMs
+        // and caller cancellation observable before the next provider call:
+        // an immediately-resolving noncompliant provider would otherwise
+        // starve the timer phase with an uninterrupted Promise chain.
+        await yieldEventLoopCheckpoint();
+        if (options.context.signal.aborted) {
+          // The run ends with the original abort reason instead of starting
+          // another provider call or inventing step-budget exhaustion.
+          lastError = abortReasonMessage(options.context.signal);
+          options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
+          break;
+        }
+        lastError = "emit_structured_output was not accepted";
         options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
       }
     } catch (error) {
@@ -145,6 +167,33 @@ export async function settleStructuredOutput(options: {
 
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+}
+
+/**
+ * One macrotask yield so event-loop timers — the maxDurationMs timeout and
+ * caller cancellation scheduled on the timer phase — stay observable between
+ * settlement attempts even when the provider resolves immediately. It is only
+ * awaited when another settlement provider step can actually start: an
+ * exhausted explicit allowance needs no checkpoint because no next provider
+ * call exists to protect. This is the smallest checkpoint that opens the
+ * timer phase; it adds no attempt policy, retry, or cancellation controller
+ * of its own.
+ */
+function yieldEventLoopCheckpoint(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (typeof setImmediate === "function") setImmediate(resolve);
+    else setTimeout(resolve, 0);
+  });
+}
+
+/**
+ * The original abort reason, retained as the causal settlement outcome when
+ * cancellation becomes observable between attempts. It is never rewritten
+ * into step-budget exhaustion wording.
+ */
+function abortReasonMessage(signal: AbortSignal): string {
+  const reason = signal.reason;
+  return reason instanceof Error ? reason.message : String(reason ?? "Cell execution cancelled");
 }
 
 function addUsage(left: CellUsage, right: CellUsage): CellUsage {

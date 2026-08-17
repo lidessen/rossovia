@@ -1523,6 +1523,118 @@ test("an omitted maxSteps settlement retains a real provider error as its causal
   expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(false);
 });
 
+test("an immediately resolving noncompliant settlement stays bounded by a short maxDurationMs with maxSteps omitted", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // Every settlement attempt completes normally without calling the
+      // schema tool, and the provider resolves immediately. Without an
+      // event-loop checkpoint between attempts this Promise/microtask loop
+      // would starve the timer that owns maxDurationMs, so the short
+      // duration budget must still end the run. The budget is long enough
+      // for the main execution step and at least one settlement attempt to
+      // complete, so the loop is really entered before the timer fires.
+      return response([{ type: "text", text: "Still no settlement tool call." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-duration-bound",
+    intent: "Prove a short maxDurationMs bounds an immediately resolving noncompliant settlement.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The duration budget ends the settlement with a cancelled standing."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 100, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  // The run entered the settlement retry loop and still terminated boundedly:
+  // no shell watchdog, no step-budget exhaustion invention, and no unbounded
+  // provider-call or trace growth.
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error?.toLowerCase()).toContain("timed out");
+  expect(calls).toBeGreaterThan(1);
+  expect(calls).toBeLessThan(10_000);
+  expect(record.durationMs).toBeLessThan(1_000);
+});
+
+test("an omitted maxSteps settlement observes caller cancellation between immediately resolving noncompliant attempts", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      if (calls === 3) {
+        // Deterministic caller cancellation queued as a macrotask after the
+        // normally completed unsatisfied settlement attempt, not fired
+        // synchronously inside the provider callback: a synchronous abort
+        // would be observed by the outer run's own signal listener regardless
+        // of any checkpoint, which would be false coverage. Only the
+        // event-loop checkpoint after the attempt can observe this queued
+        // caller reason before another provider call, with no sleep-based
+        // assertion mechanism and no shell watchdog.
+        setImmediate(() => controller.abort(new Error("caller cancelled the noncompliant settlement")));
+      }
+      return response([{ type: "text", text: "Still no settlement tool call." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-caller-abort",
+    intent: "Prove caller cancellation bounds an immediately resolving noncompliant settlement.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["Caller cancellation ends the settlement without another provider call."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, { signal: controller.signal });
+
+  // The run ends with the original abort reason and never starts another
+  // provider call or invents step-budget exhaustion.
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the noncompliant settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // Exactly three provider calls ran: the main execution step and two
+  // settlement attempts. The queued abort became observable at the checkpoint
+  // after the second attempt, so no fourth call ever starts; without the
+  // checkpoint the loop would begin the next provider call before the queued
+  // macrotask could run.
+  expect(calls).toBe(3);
+});
+
 test("stops the main loop after one structured output step following a terminal call", async () => {
   const root = await fixture();
   let calls = 0;
