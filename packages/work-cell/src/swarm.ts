@@ -11,6 +11,7 @@ import {
   type CellUsage,
 } from "./contracts";
 import type { CellDriver } from "./driver";
+import type { CellHost } from "./host-port";
 import { readJsonFileInput, type JsonFileInputRef } from "./file-input";
 import { assertMultiCellWorkspaceBoundary } from "./multi-cell-workspace";
 import { InMemoryCellQueue, runOrchestration } from "./orchestration";
@@ -123,6 +124,8 @@ export interface StartSwarmFromFileOptions {
   readonly inputRoot: string;
   /** Host-owned directory for operation status, index, and Cell records. */
   readonly outputRoot: string;
+  /** The caller-injected host port used for every manifest Cell. */
+  readonly host: CellHost;
   readonly signal?: AbortSignal;
 }
 
@@ -183,15 +186,17 @@ export type SwarmIndex = z.infer<typeof SwarmIndexSchema>;
 export async function runSwarm(
   unparsedManifest: unknown,
   createDriver: (input: CellInput) => CellDriver,
+  host: CellHost,
   signal?: AbortSignal,
 ): Promise<SwarmRun> {
-  const handle = await startSwarm(unparsedManifest, createDriver, signal);
+  const handle = await startSwarm(unparsedManifest, createDriver, host, signal);
   return handle.settled;
 }
 
 export async function startSwarm(
   unparsedManifest: unknown,
   createDriver: (input: CellInput) => CellDriver,
+  host: CellHost,
   signal?: AbortSignal,
 ): Promise<SwarmHandle> {
   const manifest = SwarmInputSchema.parse(unparsedManifest);
@@ -200,7 +205,7 @@ export async function startSwarm(
   const executionSignal = signal === undefined
     ? controller.signal
     : AbortSignal.any([signal, controller.signal]);
-  const settled = runAdmittedSwarm(manifest, createDriver, executionSignal);
+  const settled = runAdmittedSwarm(manifest, createDriver, host, executionSignal);
   return {
     swarmId: manifest.id,
     settled,
@@ -228,7 +233,7 @@ export async function startSwarmFromFile(
   const resultPath = join(directory, "index.json");
   await mkdir(directory, { recursive: true });
 
-  const handle = await startSwarm(manifest, createDriver, options.signal);
+  const handle = await startSwarm(manifest, createDriver, options.host, options.signal);
   const base = {
     version: SWARM_FILE_OPERATION_VERSION,
     operationId,
@@ -267,6 +272,7 @@ export async function startSwarmFromFile(
 async function runAdmittedSwarm(
   manifest: SwarmInput,
   createDriver: (input: CellInput) => CellDriver,
+  host: CellHost,
   signal: AbortSignal,
 ): Promise<SwarmRun> {
   const source = new InMemoryCellQueue("Swarm cells");
@@ -274,6 +280,7 @@ async function runAdmittedSwarm(
   source.close();
   const orchestration = await runOrchestration(source, createDriver, {
     concurrency: manifest.concurrency,
+    host,
     signal,
   });
   const outcomes: SwarmCellOutcome[] = source.settlements().map((settlement): SwarmCellOutcome => {

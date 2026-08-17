@@ -17,6 +17,7 @@ import {
   startSwarmFromFile,
   type SwarmInput,
 } from "../src/swarm";
+import { createLocalHost } from "../src/workspace";
 
 const roots: string[] = [];
 
@@ -35,7 +36,7 @@ test("256 complete Cells cross the concurrent boundary exactly once while retain
   const record = await runSwarm(manifest, () => {
     drivers += 1;
     return new BarrierSwarmDriver(barrier);
-  });
+  }, createLocalHost());
 
   expect(drivers).toBe(256);
   expect(barrier.peak).toBe(256);
@@ -49,7 +50,7 @@ test("input requires declared concurrency while run memory contains only executi
   const manifest = swarm(root, ["only"]);
   expect(SwarmInputSchema.safeParse({ ...manifest, concurrency: undefined }).success).toBe(false);
 
-  const run = await runSwarm(manifest, () => new SwarmDriver());
+  const run = await runSwarm(manifest, () => new SwarmDriver(), createLocalHost());
   expect(run.startedAt).toBeInstanceOf(Date);
   expect(run.finishedAt).toBeInstanceOf(Date);
   expect(run).not.toHaveProperty("version");
@@ -60,7 +61,7 @@ test("input requires declared concurrency while run memory contains only executi
 test("startSwarm returns an asynchronous handle while admitted Cells remain active", async () => {
   const root = await fixture();
   const barrier = new ManualBarrier(2);
-  const handle = await startSwarm(swarm(root, ["first", "second"]), () => new BarrierSwarmDriver(barrier));
+  const handle = await startSwarm(swarm(root, ["first", "second"]), () => new BarrierSwarmDriver(barrier), createLocalHost());
 
   await barrier.waitUntilBlocked();
   let settled = false;
@@ -91,7 +92,7 @@ test("file-backed Swarm returns stable status and result paths without retaining
   const handle = await startSwarmFromFile(
     { inputFile: "swarm.json" },
     () => new BarrierSwarmDriver(barrier),
-    { inputRoot: root, outputRoot },
+    { inputRoot: root, outputRoot, host: createLocalHost() },
   );
   await barrier.waitUntilBlocked();
   expect(JSON.parse(await readFile(handle.statusPath, "utf8"))).toMatchObject({
@@ -129,7 +130,7 @@ test("one Cell runner error cannot erase passing siblings or reorder their recor
       throw new Error("deterministic runner failure for broken cell");
     }
     return new SwarmDriver();
-  });
+  }, createLocalHost());
 
   expect(drivers).toBe(3);
   expect(record.outcomes.map((outcome) => [outcome.cellId, outcome.kind])).toEqual([
@@ -169,7 +170,7 @@ test("cancellation retains one manifest-order outcome for every undispatched Cel
   const controller = new AbortController();
   controller.abort(new Error("cancel before release"));
 
-  const record = await runSwarm(manifest, () => new SwarmDriver(), controller.signal);
+  const record = await runSwarm(manifest, () => new SwarmDriver(), createLocalHost(), controller.signal);
 
   expect(record.outcomes.map((outcome) => outcome.cellId)).toEqual(["first", "second", "third"]);
   expect(record.outcomes.every((outcome) =>
@@ -184,7 +185,7 @@ test("shared roots allow read-only Cells but reject write or command authority b
   const record = await runSwarm(readOnly, () => {
     drivers += 1;
     return new SwarmDriver();
-  });
+  }, createLocalHost());
   expect(projectSwarm(record).counts).toEqual({ passed: 2 });
   expect(drivers).toBe(2);
 
@@ -193,12 +194,12 @@ test("shared roots allow read-only Cells but reject write or command authority b
   await expect(runSwarm(writable, () => {
     drivers += 1;
     return new SwarmDriver();
-  })).rejects.toThrow("must all be read-only and command-free");
+  }, createLocalHost())).rejects.toThrow("must all be read-only and command-free");
   expect(drivers).toBe(2);
 
   const commandCapable = swarm(root, ["reader", "commander"]);
   commandCapable.cells[1]!.workspace.allowedCommands = ["true"];
-  await expect(runSwarm(commandCapable, () => new SwarmDriver())).rejects.toThrow(
+  await expect(runSwarm(commandCapable, () => new SwarmDriver(), createLocalHost())).rejects.toThrow(
     "must all be read-only and command-free",
   );
 });
@@ -208,7 +209,7 @@ test("persistence writes independent Cell evidence and a compact rebuildable Swa
   const manifest = swarm(root, ["alpha", "beta"]);
   const manifestPath = join(root, "swarm.json");
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`, "utf8");
-  const record = await runSwarm(manifest, () => new SwarmDriver());
+  const record = await runSwarm(manifest, () => new SwarmDriver(), createLocalHost());
 
   const persisted = await persistSwarmRecord(manifestPath, record);
   const indexText = await readFile(persisted.indexPath, "utf8");

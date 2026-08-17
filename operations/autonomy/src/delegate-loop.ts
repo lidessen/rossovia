@@ -15,6 +15,7 @@ import type {
   TaskSeed,
   TraceEvent,
 } from "../../../packages/work-cell/src/contracts";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import {
   JsonFileInputRefSchema,
   readJsonFileInput,
@@ -122,6 +123,8 @@ export interface DelegateLoopInput {
 
 export interface DelegateLoopOptions {
   readonly model: LanguageModel;
+  /** The caller-injected host port used for every delegated Cell or Swarm. */
+  readonly host: CellHost;
   readonly prepareContribution: (call: DelegatePreparationCall) => Promise<PreparedDelegateExecution>;
   /** Enables the catalog vocabulary (`worker_list`, `worker_spawn`) and binds selected workers to drivers. */
   readonly workerCatalog?: WorkerCatalog;
@@ -297,7 +300,7 @@ export async function startDelegateBatch(
   checkpoint: DelegateBatchCheckpoint,
   options: Pick<
     DelegateLoopOptions,
-    "timeline" | "createDriver" | "workerCatalog" | "concurrency" | "executionObserver" | "signal"
+    "timeline" | "createDriver" | "workerCatalog" | "concurrency" | "executionObserver" | "signal" | "host"
   >,
 ): Promise<DelegateBatchHandle> {
   await options.timeline.prepareBatch(checkpoint);
@@ -316,6 +319,7 @@ export async function startDelegateBatch(
     : AbortSignal.any([options.signal, controller.signal]);
   const settled = runAdmittedDelegateBatch(checkpoint.admission, driverFactory(options), {
     concurrency: options.concurrency,
+    host: options.host,
     signal: executionSignal,
     ...(options.executionObserver === undefined
       ? {}
@@ -615,6 +619,7 @@ export class DelegateLoopSession {
       ...(this.options.createDriver === undefined ? {} : { createDriver: this.options.createDriver }),
       ...(this.options.workerCatalog === undefined ? {} : { workerCatalog: this.options.workerCatalog }),
       concurrency: this.options.concurrency,
+      host: this.options.host,
       ...(this.options.executionObserver === undefined
         ? {}
         : { executionObserver: this.options.executionObserver }),

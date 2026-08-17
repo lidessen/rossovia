@@ -636,6 +636,9 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
    */
   async run(input: CellInput): Promise<void> {
     const outcome = await executeTaskCellRun(this.catalog, input, {
+      // The O2 carrier explicitly injects the local host adapter for its
+      // O3-authorized bound Worktree; runCell never opens one itself.
+      host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
       signal: this.controller.signal,
       onTrace: (event) => this.observeTrace(event),
     });

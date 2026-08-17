@@ -15,6 +15,31 @@ generic `CellInput` contract. The Sequence adapter selects one lead P-ID and up
 to three supports, loads only their interpretations, and retains the expression
 as typed preparation evidence before invoking the unchanged core.
 
+## Neutral host port and the local adapter
+
+The core executes files, commands, snapshots, and artifact effects only through
+one caller-injected neutral host port (`CellHost`/`HostWorkspace` in
+`src/host-port.ts`). `runCell` requires an explicit `host` in its options and
+never constructs a concrete filesystem, reads the process environment, or
+starts a process on its own. The model-visible `list_files`/`read_file`,
+`edit_file`/`write_file`, and `run_command` tools exist only when the injected
+port grants `canRead`, `canWrite`, and `canRunCommands`; `CellInput.capabilities`
+and `capabilitiesRequired` remain model/worker adapter descriptions and can
+never grant host effects on their own.
+
+The concrete local implementation (`LocalWorkspaceHost`/
+`createLocalHost` in `src/workspace.ts`) keeps the absolute-root, read/write
+scope, exclude, symlink, command allow-list, output-byte, duration, and caller
+AbortSignal enforcement plus the snapshot/diff logic, and executes allowed
+commands through `Bun.spawn` with the caller's `PATH`. Callers that own a real
+process and filesystem — the CLI, the Workbench O2 ordinary Task path over its
+O3-authorized bound Worktree, Autonomy delegates over disposable or isolated
+workspaces, direct experiments, and tests — inject that adapter explicitly.
+`src/fake-host.ts` provides a deterministic in-memory `FakeHost` and a
+capability-overriding `FilteredHost` so the same Cell contract can run against
+a fake host and the real adapter interchangeably in tests and substitution
+probes.
+
 The package does not depend on an external agent engine. AI SDK 7 is the first
 driver adapter; `deepseek-v4-flash` is the default model. Validation calls use
 only an explicitly supplied route or a human-confirmed provider profile. A
@@ -302,7 +327,10 @@ only after its producer explicitly closes it and every dispatched Cell settles:
 
 ```ts
 const queue = new InMemoryCellQueue();
-const running = runOrchestration(queue, (input) => catalog.createDriver(input), { concurrency: 4 });
+const running = runOrchestration(queue, (input) => catalog.createDriver(input), {
+  concurrency: 4,
+  host: createLocalHost(),
+});
 
 await queue.submit(firstCell);
 await queue.submit(secondCell);
@@ -689,10 +717,11 @@ Sequence expression, experiment treatment, proposal-specific role, vote,
 workflow, or doctrine belongs in an adapter, not in `CellInput`, `CellDriver`,
 or `runCell`.
 
-The public core barrel exports contracts, the driver interface, workspace,
-`runCell`, the AI SDK driver, the orchestration protocol and in-memory queue,
-and the general Swarm runtime. Optional carriers are explicit adapter entry
-points:
+The public core barrel exports contracts, the neutral host port, the driver
+interface, workspace (`Workspace` as the local adapter plus `createLocalHost`),
+the deterministic `FakeHost`/`FilteredHost`, `runCell`, the AI SDK driver, the
+orchestration protocol and in-memory queue, and the general Swarm runtime.
+Optional carriers are explicit adapter entry points:
 
 - `src/adapters/sequence/`
 - `src/adapters/experiment/`

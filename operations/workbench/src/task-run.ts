@@ -14,6 +14,7 @@ import type {
   CellRunRecord,
   TraceEvent,
 } from "../../../packages/work-cell/src/contracts";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import type { WorkerCard, WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import {
@@ -446,6 +447,12 @@ export function listPrincipalTaskWorkers(
 export interface TaskCellExecutionInput {
   catalog: WorkerCatalog;
   cellInput: CellInput;
+  /**
+   * The caller-injected host port for this Task Cell. The O2 ordinary path
+   * always injects the local adapter over its O3-authorized bound Worktree;
+   * the field stays overridable only for the test seam.
+   */
+  host?: CellHost;
   signal?: AbortSignal;
   onTrace?: (event: TraceEvent) => void;
 }
@@ -467,13 +474,22 @@ export type TaskCellOutcome =
 export async function executeTaskCellRun(
   catalog: WorkerCatalog,
   cellInput: CellInput,
-  options: { signal?: AbortSignal; onTrace?: (event: TraceEvent) => void } = {},
+  options: {
+    host?: CellHost;
+    signal?: AbortSignal;
+    onTrace?: (event: TraceEvent) => void;
+  } = {},
 ): Promise<TaskCellOutcome> {
   try {
     // The one shared Task Cell execution owner. The run-cell module is loaded
     // lazily so a minimal Workbench-only CLI fixture (without the Work Cell
     // sibling package) can still load for setup and other local commands.
+    // The host port is explicit caller injection: the O2 ordinary path
+    // supplies the local adapter bound to its O3-authorized Worktree, and
+    // runCell never constructs a filesystem or process on its own.
+    const host = options.host ?? workCellWorkspace().createLocalHost();
     const record = await workCellRunCell().runCell(cellInput, catalog.createDriver(cellInput), {
+      host,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.onTrace ? { onTrace: options.onTrace } : {}),
     });
@@ -688,6 +704,9 @@ export async function runPrincipalTask(
       return executor({
         catalog: dependencies.catalog ?? currentCatalog(),
         cellInput,
+        // The O2 owner constructs the local host adapter for its O3-authorized
+        // bound Worktree and injects it explicitly on every attempt.
+        host: workCellWorkspace().createLocalHost(),
         ...(options.signal ? { signal: options.signal } : {}),
       });
     },
@@ -735,6 +754,7 @@ export async function runPrincipalTask(
 
 function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRunRecord> {
   return executeTaskCellRun(input.catalog, input.cellInput, {
+    ...(input.host ? { host: input.host } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.onTrace ? { onTrace: input.onTrace } : {}),
   }).then((outcome) => {
@@ -1236,6 +1256,10 @@ function workCellContracts(): typeof import("../../../packages/work-cell/src/con
 
 function workCellRunCell(): typeof import("../../../packages/work-cell/src/run-cell") {
   return requireFromHere("../../../packages/work-cell/src/run-cell");
+}
+
+function workCellWorkspace(): typeof import("../../../packages/work-cell/src/workspace") {
+  return requireFromHere("../../../packages/work-cell/src/workspace");
 }
 
 // The sibling worker policy is loaded only when worker list/task run actually

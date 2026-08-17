@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CellInputSchema, type CellInput } from "../src/contracts";
 import type { DriverContext } from "../src/driver";
-import { Workspace } from "../src/workspace";
+import { Workspace, createLocalHost } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
 import { runCell } from "../src/run-cell";
 import {
@@ -640,7 +640,7 @@ describe("Pi harness driver fail-closed mapping", () => {
     // Cell. The single allowed step performs the accepted terminal action, the
     // turn freezes there, and the Cell passes without a separate final-output
     // step or any additional provider call.
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
     // Exactly one accepted terminal call and one finished provider step; the
     // forbidden second provider/model step was never even attempted, and the
     // Cell still passes with the exact observed usage of the single step.
@@ -704,7 +704,7 @@ describe("Pi harness driver fail-closed mapping", () => {
 
     // The full runCell path: the recorded terminal is normal (passed), the
     // immutable input retains no maxSteps, and every tool step completes.
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
     expect(record.status).toBe("passed");
     expect(record.input.budget.maxSteps).toBeUndefined();
     expect(record.trace.filter((event) => event.type === "agent.step.finished"))

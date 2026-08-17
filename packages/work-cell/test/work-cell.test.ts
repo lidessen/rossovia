@@ -12,7 +12,7 @@ import { CellExecutionError } from "../src/driver";
 import type { GeneExpression, GeneSelectionResult, Genome, SequenceCellInput } from "../src/adapters/sequence/genome";
 import { runCell } from "../src/run-cell";
 import { runSequenceCell, sequencePreparation, type SequenceSelector } from "../src/adapters/sequence/runtime";
-import { Workspace } from "../src/workspace";
+import { Workspace, createLocalHost } from "../src/workspace";
 
 const temporaryRoots: string[] = [];
 
@@ -26,7 +26,7 @@ describe("Sequence adapter", () => {
     const expression = geneExpression("P04", ["P15"]);
     const driver = new ScriptedDriver(expression);
 
-    const record = await runSequenceCell(sequenceInput(root), driver);
+    const record = await runSequenceCell(sequenceInput(root), driver, createLocalHost());
     const preparation = sequencePreparation(record);
 
     expect(record.status).toBe("passed");
@@ -44,7 +44,7 @@ describe("Sequence adapter", () => {
     const root = await fixture();
     const driver = new ScriptedDriver(geneExpression("P99", []));
 
-    const record = await runSequenceCell(sequenceInput(root), driver);
+    const record = await runSequenceCell(sequenceInput(root), driver, createLocalHost());
 
     expect(record.status).toBe("failed");
     expect(record.error).toContain("unknown P-ID: P99");
@@ -98,7 +98,7 @@ describe("Work Cell core", () => {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     }];
 
-    const record = await runCell(base, new ContractDriver(true));
+    const record = await runCell(base, new ContractDriver(true), { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.output).toEqual({ status: "ready" });
@@ -111,7 +111,7 @@ describe("Work Cell core", () => {
     const base = input(root);
     base.artifacts = [{ path: "output/report.md", instructions: "Write the bounded report." }];
 
-    const record = await runCell(base, new ContractDriver(false));
+    const record = await runCell(base, new ContractDriver(false), { host: createLocalHost() });
 
     expect(record.status).toBe("verification_failed");
     expect(record.verification.artifacts).toMatchObject({ passed: false });
@@ -125,7 +125,7 @@ describe("Work Cell core", () => {
       { subject: "Return the requested result", description: "Report the bounded result." },
     ];
 
-    const record = await runCell(base, new ContractDriver(false));
+    const record = await runCell(base, new ContractDriver(false), { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.tasks).toEqual([
@@ -147,7 +147,7 @@ describe("Work Cell core", () => {
     const base = input(root);
     base.tasks = [{ subject: "Inspect the bounded source", description: "Read the bounded source." }];
 
-    const record = await runCell(base, new ContractDriver(false, true, false));
+    const record = await runCell(base, new ContractDriver(false, true, false), { host: createLocalHost() });
 
     expect(record.status).toBe("verification_failed");
     expect(record.tasks).toEqual([{
@@ -178,7 +178,7 @@ describe("Work Cell core", () => {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     }];
 
-    const record = await runCell(base, new ContractDriver(true, false));
+    const record = await runCell(base, new ContractDriver(true, false), { host: createLocalHost() });
 
     expect(record.status).toBe("protocol_error");
     expect(record.output).toEqual({ status: "ready" });
@@ -202,7 +202,7 @@ describe("Work Cell core", () => {
       },
     ];
 
-    const record = await runCell(base, new ContractDriver(false));
+    const record = await runCell(base, new ContractDriver(false), { host: createLocalHost() });
 
     expect(record.status).toBe("protocol_error");
     expect(record.error).toContain("expected exactly one declared terminal tool call; received 2");
@@ -230,7 +230,7 @@ describe("Work Cell core", () => {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     }];
 
-    await expect(runCell(base, new ScriptedDriver(geneExpression("P04", [])))).rejects.toThrow(
+    await expect(runCell(base, new ScriptedDriver(geneExpression("P04", [])), { host: createLocalHost() })).rejects.toThrow(
       "terminal tools require at least two steps",
     );
   });
@@ -245,7 +245,7 @@ describe("Work Cell core", () => {
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
     }];
 
-    const record = await runCell(base, new ContractDriver(false));
+    const record = await runCell(base, new ContractDriver(false), { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.verification.terminal).toEqual({
@@ -265,7 +265,7 @@ describe("Work Cell core", () => {
       run: usage(40, 20),
     });
 
-    const record = await runSequenceCell(sequenceInput(root, base), driver);
+    const record = await runSequenceCell(sequenceInput(root, base), driver, createLocalHost());
 
     expect(record.status).toBe("passed");
     expect(record.usage.totalTokens).toBe(100);
@@ -323,6 +323,7 @@ describe("Work Cell core", () => {
     };
 
     const record = await runCell(input(root), driver, {
+      host: createLocalHost(),
       onTrace: ({ type, data }) => observed.push({ type, data }),
     });
 
@@ -357,6 +358,7 @@ describe("Work Cell core", () => {
     };
 
     const record = await runCell(input(root), driver, {
+      host: createLocalHost(),
       onTrace() {
         observerCalls += 1;
         throw new Error("event sink unavailable");
@@ -378,7 +380,7 @@ describe("Work Cell core", () => {
     const driver = new ScriptedDriver(geneExpression("P04", []));
     driver.runError = new CellExecutionError("provider ended without a final output", usage(100, 40));
 
-    const record = await runSequenceCell(sequenceInput(root), driver);
+    const record = await runSequenceCell(sequenceInput(root), driver, createLocalHost());
 
     expect(record.status).toBe("failed");
     expect(record.error).toContain("provider ended without a final output");
@@ -392,7 +394,7 @@ describe("Work Cell core", () => {
     const driver = new ScriptedDriver(geneExpression("P04", []));
     driver.runDelayMs = 200;
 
-    const record = await runCell(base, driver);
+    const record = await runCell(base, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("cancelled");
     expect(record.durationMs).toBeLessThan(200);
@@ -409,7 +411,7 @@ describe("Work Cell core", () => {
     const base = input(root);
     base.budget.maxDurationMs = 20;
 
-    const record = await runCell(base, uncooperative);
+    const record = await runCell(base, uncooperative, { host: createLocalHost() });
 
     expect(record.status).toBe("cancelled");
     expect(record.durationMs).toBeLessThan(200);
@@ -428,7 +430,7 @@ describe("Work Cell core", () => {
     const base = input(root);
     base.budget.maxDurationMs = 20;
 
-    const record = await runCell(base, uncooperative);
+    const record = await runCell(base, uncooperative, { host: createLocalHost() });
 
     expect(record.status).toBe("cancelled");
     expect(record.usage).toEqual(usage(40, 10));
@@ -457,7 +459,7 @@ describe("Work Cell core", () => {
       priceRevision: "fixture-price-v1",
     };
 
-    const record = await runCell(base, new ScriptedDriver(geneExpression("P04", [])));
+    const record = await runCell(base, new ScriptedDriver(geneExpression("P04", [])), { host: createLocalHost() });
 
     expect(record.executionObservation).toEqual({
       workEstimateId: "estimate-1",
@@ -486,7 +488,7 @@ describe("Work Cell core", () => {
       },
     };
 
-    const record = await runCell(base, driver);
+    const record = await runCell(base, driver, { host: createLocalHost() });
 
     expect(record.executionObservation.sessionId).toBe("resume-123");
     expect(CellRunRecordSchema.parse(record).executionObservation.sessionId).toBe("resume-123");

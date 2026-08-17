@@ -10,6 +10,7 @@ import type {
   DriverContext,
   DriverResult,
 } from "../../../packages/work-cell/src/driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { digest } from "../src/canonical-json";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import type { TimelineEvent } from "../src/delegate-timeline-events";
@@ -609,6 +610,7 @@ test("SETTLE_CONTINUE uses fresh independent Cells and binds commit authority to
       return {
         workspaceRoot,
         driver: new ActionDriver(role),
+        host: createLocalHost(),
         isolation: "fresh-disposable-no-environment",
         dispose: async () => {},
       };
@@ -685,6 +687,7 @@ test("a commit-attempt result that cannot prove its event is retained as uncerta
     createCell: async (role) => ({
       workspaceRoot: await fixture(),
       driver: new ActionDriver(role),
+      host: createLocalHost(),
       isolation: "fresh-disposable-no-environment",
       dispose: async () => {},
     }),
@@ -725,6 +728,7 @@ test("the executor rejects a Cell carrier outside the exact authorized adapter",
     createCell: async (role) => ({
       workspaceRoot: await fixture(),
       driver: new ActionDriver(role, "another-adapter"),
+      host: createLocalHost(),
       isolation: "fresh-disposable-no-environment",
       dispose: async () => {},
     }),

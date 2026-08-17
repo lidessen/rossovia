@@ -23,6 +23,7 @@ import { latestProjectRun, lowerProjectProbe, persistProjectRun } from "./adapte
 import { prepareProjectDeliberation } from "./adapters/deliberation/project";
 import { renderRunSummary } from "./adapters/sequence/presentation";
 import { runCell } from "./run-cell";
+import { createLocalHost } from "./workspace";
 import { createLiveTraceFile } from "./live-trace-file";
 import { runSequenceCell } from "./adapters/sequence/runtime";
 import { persistSwarmRecord, runSwarm } from "./swarm";
@@ -48,6 +49,9 @@ await main(process.argv.slice(2)).catch((error: unknown) => {
 async function main(args: string[]): Promise<void> {
   const [command, ...rest] = args;
   if (!command) usage();
+  // The CLI owns the real process and filesystem: it constructs the local
+  // host adapter and injects it explicitly into every execution path.
+  const host = createLocalHost();
 
   if (command === "run") {
     const {
@@ -76,6 +80,7 @@ async function main(args: string[]): Promise<void> {
         })
       : new AiSdkValidationDriver({ taskToolSet });
     const record = await runCell(input, driver, {
+      host,
       onTrace(event) {
         liveTrace.observe(event);
         console.error(renderLiveEvent(event));
@@ -98,7 +103,7 @@ async function main(args: string[]): Promise<void> {
         }
       }
     }
-    const record = await runSwarm(raw, () => new AiSdkValidationDriver({ taskToolSet }));
+    const record = await runSwarm(raw, () => new AiSdkValidationDriver({ taskToolSet }), host);
     const persisted = await persistSwarmRecord(absolutePath, record);
     console.log(JSON.stringify({
       output: persisted.indexPath,
@@ -118,6 +123,7 @@ async function main(args: string[]): Promise<void> {
       path,
       () => new AiSdkValidationSequenceDriver(),
       new AiSdkValidationJudge(),
+      host,
     );
     console.log(
       JSON.stringify(
@@ -159,6 +165,7 @@ async function main(args: string[]): Promise<void> {
           : {}),
       }),
       new AiSdkModelEvaluationJudge({ route: spec.judge.route }),
+      host,
     );
     console.log(JSON.stringify({
       id: record.id,
@@ -183,7 +190,7 @@ async function main(args: string[]): Promise<void> {
     const receipt = `${absolutePath.replace(/\.json$/, "")}.${attemptId}.attempt.json`;
     await writeFile(receipt, `${JSON.stringify({ version: "work-cell.deliberation-attempt.v1", attemptId, manifest: absolutePath, pid: process.pid, status: "started", startedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
     try {
-      const record = await runDeliberation(manifest, () => new AiSdkValidationSequenceDriver());
+      const record = await runDeliberation(manifest, () => new AiSdkValidationSequenceDriver(), host);
       const output = await persistDeliberationRecord(absolutePath, record);
       await writeFile(receipt, `${JSON.stringify({ version: "work-cell.deliberation-attempt.v1", attemptId, manifest: absolutePath, status: "settled", startedAt: record.startedAt, finishedAt: record.finishedAt, record: output }, null, 2)}\n`, "utf8");
       console.log(JSON.stringify({ output, receipt, docketId: record.docket.id, summary: record.summary }, null, 2));
@@ -209,7 +216,7 @@ async function main(args: string[]): Promise<void> {
       }, null, 2));
       return;
     }
-    const record = await runDeliberation(prepared.manifest, () => new AiSdkValidationSequenceDriver());
+    const record = await runDeliberation(prepared.manifest, () => new AiSdkValidationSequenceDriver(), host);
     const output = resolve(prepared.directory, `record-${record.runId}.json`);
     await writeFile(output, `${JSON.stringify(record, null, 2)}\n`, "utf8");
     console.log(JSON.stringify({ output, evidence: prepared.evidencePath, docketId: record.docket.id, summary: record.summary }, null, 2));
@@ -218,7 +225,7 @@ async function main(args: string[]): Promise<void> {
 
   if (command === "probe") {
     const input = await lowerProjectProbe(parseProbeArguments(rest));
-    const record = await runSequenceCell(input, new AiSdkValidationSequenceDriver());
+    const record = await runSequenceCell(input, new AiSdkValidationSequenceDriver(), host);
     const output = await persistProjectRun(record, input.workspace.root);
     console.log(renderRunSummary(record, output));
     if (record.status !== "passed") process.exitCode = 1;

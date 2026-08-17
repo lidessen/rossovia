@@ -8,6 +8,7 @@ import {
   type CodexCliProcessRequest,
   type CodexCliProcessResult,
 } from "../src/codex-cli-driver";
+import { createLocalHost } from "../src/workspace";
 import { runCell } from "../src/run-cell";
 
 const temporaryRoots: string[] = [];
@@ -37,7 +38,7 @@ describe("Codex CLI driver", () => {
     });
     const driver = codexDriver(root, processAdapter);
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
     const canonicalRoot = await realpath(root);
 
     expect(record.status).toBe("passed");
@@ -184,7 +185,7 @@ describe("Codex CLI driver", () => {
       durationMs: 17,
     })));
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.finalText).toBe("Evidence is ready.");
@@ -226,7 +227,7 @@ describe("Codex CLI driver", () => {
       output_tokens: 8,
     })));
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
 
     expect(record.status).toBe("failed");
     expect(record.error).toContain("invalid input for terminal tool submit_review");
@@ -255,7 +256,7 @@ describe("Codex CLI driver", () => {
     }));
     const controller = new AbortController();
 
-    const running = runCell(cellInput(root), driver, { signal: controller.signal });
+    const running = runCell(cellInput(root), driver, { host: createLocalHost(), signal: controller.signal });
     await processStarted;
     controller.abort(new Error("fixture cancellation"));
     const record = await running;
@@ -280,7 +281,7 @@ describe("Codex CLI driver", () => {
       )),
     });
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
 
     expect(record.status).toBe("failed");
     expect(record.error).toBe("Codex CLI execution timed out after 10ms");
@@ -302,7 +303,7 @@ describe("Codex CLI driver", () => {
       durationMs: 4,
     })));
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
 
     expect(record.status).toBe("failed");
     expect(record.error).toBe(
@@ -325,7 +326,7 @@ describe("Codex CLI driver", () => {
       durationMs: 1,
     })));
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
 
     expect(record.status).toBe("failed");
     expect(record.error).toContain("completed without a structured final message");

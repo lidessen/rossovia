@@ -7,6 +7,7 @@ import {
   type CellRunRecord,
 } from "../../contracts";
 import type { CellDriver } from "../../driver";
+import type { CellHost } from "../../host-port";
 import { SequenceCellInputSchema, type SequenceCellInput } from "../sequence/genome";
 import type {
   BlindRunEvidence,
@@ -79,11 +80,12 @@ export async function runExperimentFromFile(
   specPath: string,
   createDriver: () => CellDriver & SequenceSelector,
   judge: ComparisonJudge,
+  host: CellHost,
   signal?: AbortSignal,
 ): Promise<ExperimentRecord> {
   const absoluteSpec = resolve(specPath);
   const spec = ExperimentSpecSchema.parse(JSON.parse(await readFile(absoluteSpec, "utf8")));
-  return runExperiment(spec, dirname(absoluteSpec), createDriver, judge, signal);
+  return runExperiment(spec, dirname(absoluteSpec), createDriver, judge, host, signal);
 }
 
 export async function runExperiment(
@@ -91,6 +93,7 @@ export async function runExperiment(
   baseDir: string,
   createDriver: () => CellDriver & SequenceSelector,
   judge: ComparisonJudge,
+  host: CellHost,
   signal?: AbortSignal,
 ): Promise<ExperimentRecord> {
   const startedAt = new Date();
@@ -121,7 +124,7 @@ export async function runExperiment(
           ].filter((part): part is string => Boolean(part)).join("\n\n"),
         },
       });
-      const record = await runSequenceCell(input, createDriver(), signal);
+      const record = await runSequenceCell(input, createDriver(), host, signal);
       const diffs: Record<string, string> = {};
       await writeJson(join(directory, "record.json"), record);
       diffs[record.runId] = await unifiedDiff(fixtureSnapshot, record.input.workspace.root);

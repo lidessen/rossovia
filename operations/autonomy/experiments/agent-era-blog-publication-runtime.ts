@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
 import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
 import {
   executionAuthorizationClaimPath,
@@ -430,6 +431,9 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
     },
   }, {
     model: selection.model,
+    // The supervised publication trial owns the real process: it explicitly
+    // injects the local host adapter over its operator-selected worktree.
+    host: createLocalHost(),
     delegateInputRoot: delegateInput.root,
     initialDelegateTool: "delegate_file",
     prepareContribution: async (call) =>

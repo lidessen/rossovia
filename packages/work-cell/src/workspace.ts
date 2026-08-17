@@ -2,23 +2,24 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { Budget, WorkspaceDiff, WorkspacePolicy } from "./contracts";
+import type {
+  CellHost,
+  CommandResult,
+  HostWorkspace,
+  WorkspaceArtifact,
+  WorkspaceSnapshot,
+} from "./host-port";
 
-export interface CommandResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  durationMs: number;
-}
+// Bounded compatibility re-exports: these value-neutral types moved to the
+// neutral host port (`host-port.ts`); the adapter keeps the historical import
+// surface so current callers keep compiling without a second definition.
+export type { CommandResult, WorkspaceArtifact, WorkspaceSnapshot } from "./host-port";
 
-export interface WorkspaceArtifact {
-  path: string;
-  bytes: number;
-  sha256: string;
-}
+type Snapshot = WorkspaceSnapshot;
 
-type Snapshot = Map<string, string>;
+export const LOCAL_WORKSPACE_HOST_KIND = "local-fs-bun.v1" as const;
 
-export class Workspace {
+export class Workspace implements HostWorkspace {
   readonly root: string;
   readonly canRead: boolean;
   readonly canWrite: boolean;
@@ -173,7 +174,10 @@ export class Workspace {
   }
 
   async snapshot(): Promise<Snapshot> {
-    const snapshot: Snapshot = new Map();
+    // The port's public return type is the neutral readonly projection, but
+    // the concrete adapter builds its own mutable accumulator locally; only
+    // the returned value is widened to the readonly contract.
+    const snapshot: Map<string, string> = new Map();
     if (!this.canWrite && !this.canRunCommands) return snapshot;
     const visit = async (directory: string): Promise<void> => {
       const entries = await readdir(directory, { withFileTypes: true });
@@ -341,4 +345,24 @@ function truncateBytes(value: string, maxBytes: number): string {
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+/**
+ * The concrete local adapter: absolute-root filesystem access through
+ * node:fs/promises, `Bun.spawn` command execution with the caller's PATH,
+ * and the scope/exclude/symlink/snapshot/diff enforcement above. The Work
+ * Cell core never imports this adapter; callers that own a real process and
+ * filesystem inject it explicitly as their host port.
+ */
+export class LocalWorkspaceHost implements CellHost {
+  readonly kind = LOCAL_WORKSPACE_HOST_KIND;
+
+  createWorkspace(policy: WorkspacePolicy, budget: Budget): Promise<Workspace> {
+    return Workspace.create(policy, budget);
+  }
+}
+
+/** One fresh local host port instance per caller boundary. */
+export function createLocalHost(): CellHost {
+  return new LocalWorkspaceHost();
 }

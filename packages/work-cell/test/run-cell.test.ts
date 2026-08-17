@@ -6,6 +6,7 @@ import type { CellInput, CellRunRecord } from "../src/contracts";
 import { CellRunRecordSchema, ProviderFingerprintStandingSchema } from "../src/contracts";
 import type { CellDriver, DriverResult } from "../src/driver";
 import { runCell } from "../src/run-cell";
+import { createLocalHost } from "../src/workspace";
 
 const temporaryRoots: string[] = [];
 
@@ -29,7 +30,7 @@ test("fails closed when supplied tasks are ignored by a driver", async () => {
     budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
   };
 
-  const record = await runCell(input, new IgnoringTaskDriver());
+  const record = await runCell(input, new IgnoringTaskDriver(), { host: createLocalHost() });
 
   expect(record.status).toBe("verification_failed");
   expect(record.tasks).toBeUndefined();
@@ -60,7 +61,7 @@ test("fails closed when a driver returns an empty final task projection", async 
     budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
   };
 
-  const record = await runCell(input, new EmptyTaskProjectionDriver());
+  const record = await runCell(input, new EmptyTaskProjectionDriver(), { host: createLocalHost() });
 
   expect(record.status).toBe("verification_failed");
   expect(record.tasks).toEqual([]);
@@ -130,7 +131,7 @@ test("a malicious driver cannot rewrite the canonical caller contract", async ()
   };
   const driver = new MaliciousMutationDriver();
 
-  const record = await runCell(canonical, driver);
+  const record = await runCell(canonical, driver, { host: createLocalHost() });
 
   // The driver received an isolated disposable parsed copy: every mutation
   // attempt was rejected on that copy, so verification and the final record
@@ -230,7 +231,7 @@ describe("provider fingerprint evidence", () => {
   test("retains an observed provider namespace fingerprint verbatim with an observed standing", async () => {
     const record = await runCell(await fingerprintInput(), fingerprintDriver({
       "openai-compatible": { systemFingerprint: "fp_abc123", promptCacheHitTokens: 7 },
-    }));
+    }), { host: createLocalHost() });
 
     expect(record.executionObservation.providerFingerprint).toBe("fp_abc123");
     expect(record.executionObservation.providerFingerprintStanding).toEqual({ standing: "observed" });
@@ -242,14 +243,14 @@ describe("provider fingerprint evidence", () => {
   test("retains a direct top-level system fingerprint verbatim", async () => {
     const record = await runCell(await fingerprintInput(), fingerprintDriver({
       systemFingerprint: "fp_direct",
-    }));
+    }), { host: createLocalHost() });
 
     expect(record.executionObservation.providerFingerprint).toBe("fp_direct");
     expect(record.executionObservation.providerFingerprintStanding).toEqual({ standing: "observed" });
   });
 
   test("retains an explicit unavailable standing when no provider metadata exists", async () => {
-    const record = await runCell(await fingerprintInput(), fingerprintDriver(undefined));
+    const record = await runCell(await fingerprintInput(), fingerprintDriver(undefined), { host: createLocalHost() });
 
     expect(record.executionObservation.providerFingerprint).toBeUndefined();
     expect(record.executionObservation.providerFingerprintStanding).toEqual({
@@ -262,7 +263,7 @@ describe("provider fingerprint evidence", () => {
   test("retains an explicit unavailable standing when metadata carries no fingerprint", async () => {
     const record = await runCell(await fingerprintInput(), fingerprintDriver({
       sessionId: "harness-session-1",
-    }));
+    }), { host: createLocalHost() });
 
     expect(record.executionObservation.sessionId).toBe("harness-session-1");
     expect(record.executionObservation.providerFingerprint).toBeUndefined();
@@ -275,7 +276,7 @@ describe("provider fingerprint evidence", () => {
   test("fails closed on contradictory fingerprint standings in a retained record", async () => {
     const record = await runCell(await fingerprintInput(), fingerprintDriver({
       "openai-compatible": { systemFingerprint: "fp_abc123" },
-    }));
+    }), { host: createLocalHost() });
 
     const {
       providerFingerprint: _retainedFingerprint,
@@ -324,7 +325,7 @@ describe("provider fingerprint evidence", () => {
   });
 
   test("record-level parsing enforces the structural standing shape on retained evidence", async () => {
-    const record = await runCell(await fingerprintInput(), fingerprintDriver(undefined));
+    const record = await runCell(await fingerprintInput(), fingerprintDriver(undefined), { host: createLocalHost() });
     expect(record.executionObservation.providerFingerprintStanding).toEqual({
       standing: "unavailable",
       reason: expect.any(String),

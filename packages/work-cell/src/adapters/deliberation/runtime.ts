@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { type CellRunRecord } from "../../contracts";
 import type { CellDriver } from "../../driver";
+import type { CellHost } from "../../host-port";
 import { SequenceCellInputSchema, type SequenceCellInput } from "../sequence/genome";
 import { runSequenceCell, type SequenceSelector } from "../sequence/runtime";
 
@@ -124,6 +125,7 @@ export interface DeliberationRecord {
 export async function runDeliberation(
   unparsedManifest: unknown,
   createDriver: () => CellDriver & SequenceSelector,
+  host: CellHost,
 ): Promise<DeliberationRecord> {
   const manifest = DeliberationManifestSchema.parse(unparsedManifest);
   await assertDeliberationBoundary(manifest);
@@ -156,7 +158,7 @@ export async function runDeliberation(
         baseInstructions: `${member.input.dna.baseInstructions}\n\n${renderMemberInstructions(manifest, member)}`,
       },
     });
-    const record = await runSequenceCell(input, createDriver());
+    const record = await runSequenceCell(input, createDriver(), host);
     observedTokens += record.usage.totalTokens;
     members.push({ memberId: member.id, role: member.role, status: "run", attempt, record });
   };

@@ -11,6 +11,7 @@ import type {
 import { ExperimentSpecSchema, runExperiment } from "../src/adapters/experiment/runtime";
 import type { GeneSelectionResult, Genome, SequenceCellInput } from "../src/adapters/sequence/genome";
 import type { SequenceSelector } from "../src/adapters/sequence/runtime";
+import { createLocalHost } from "../src/workspace";
 import type {
   ComparisonJudge,
   ComparisonJudgeRequest,
@@ -56,7 +57,7 @@ test("experiment keeps variants blind and attributes a treatment-only decision",
   });
   const judge = new DiffJudge();
 
-  const record = await runExperiment(spec, root, () => new VariantDriver(), judge);
+  const record = await runExperiment(spec, root, () => new VariantDriver(), judge, createLocalHost());
 
   expect(record.runs).toHaveLength(2);
   expect(record.comparisons[0]?.attribution).toBe("supported");
@@ -99,7 +100,7 @@ test("experiment skips its judge when either Work Cell is unsettled", async () =
   });
   const judge = new CountingJudge();
 
-  const record = await runExperiment(spec, root, () => new VariantDriver(), judge);
+  const record = await runExperiment(spec, root, () => new VariantDriver(), judge, createLocalHost());
 
   expect(judge.calls).toBe(0);
   expect(record.comparisons[0]?.attribution).toBe("inconclusive");

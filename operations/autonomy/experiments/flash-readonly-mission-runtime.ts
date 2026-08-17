@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
 import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
 import { stableStringify } from "../src/canonical-json";
 import {
@@ -110,6 +111,9 @@ export const createMissionRuntime: MissionRuntimeFactory = async (context): Prom
     },
   }, {
     model: selection.model,
+    // The live probe owns the real repository process: it explicitly injects
+    // the local host adapter for its one read-only delegated Cell.
+    host: createLocalHost(),
     prepareContribution: async (call) => prepareContribution(call),
     timeline: context.timeline,
     createDriver: () => new AiSdkValidationDriver({ route }),

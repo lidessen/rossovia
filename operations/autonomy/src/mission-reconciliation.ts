@@ -5,6 +5,7 @@ import {
   type ExecutionProfile,
 } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import { runCell } from "../../../packages/work-cell/src/run-cell";
 import {
   MissionInputEventDataSchema,
@@ -125,6 +126,8 @@ export interface ReconciliationProposalRequest {
 
 export interface ReconciliationProposalOptions {
   readonly driver: CellDriver;
+  /** The caller-injected host port for the proposal Cell. */
+  readonly host: CellHost;
   readonly maxSteps?: number;
   readonly maxDurationMs?: number;
   readonly signal?: AbortSignal;
@@ -219,6 +222,7 @@ export async function proposeMissionReconciliation(
     },
     executionProfile,
   }, options.driver, {
+    host: options.host,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   if (record.status !== "passed") {

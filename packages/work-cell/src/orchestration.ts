@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { CellInputSchema, type CellInput, type CellRunRecord } from "./contracts";
 import type { CellDriver } from "./driver";
+import type { CellHost } from "./host-port";
 import { MultiCellWorkspaceGuard } from "./multi-cell-workspace";
 import { runCell } from "./run-cell";
 
@@ -75,7 +76,7 @@ export class OrchestrationRunError extends Error {
 export async function runOrchestration(
   source: WorkSource,
   createDriver: (input: CellInput) => CellDriver,
-  options: { concurrency: number; signal?: AbortSignal },
+  options: { concurrency: number; host: CellHost; signal?: AbortSignal },
 ): Promise<OrchestrationRun> {
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1) {
     throw new Error("orchestration concurrency must be a positive integer");
@@ -122,7 +123,7 @@ export async function runOrchestration(
         const record = await runCell(
           lease.item.input,
           createDriver(lease.item.input),
-          { signal: executionSignal },
+          { host: options.host, signal: executionSignal },
         );
         settlement = {
           kind: "settled",

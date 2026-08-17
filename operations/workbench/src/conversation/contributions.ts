@@ -1544,6 +1544,10 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       timeline: this.timeline,
       workerCatalog: this.catalog,
       concurrency: 1,
+      // The Workbench contribution registry owns the real process: it
+      // explicitly injects the local host adapter for the contribution Cell
+      // over its O3-verified bound Worktree.
+      host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
       signal: handle.signal,
       executionObserver: {
         prepare: async () => {},

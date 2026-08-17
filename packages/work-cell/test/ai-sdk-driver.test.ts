@@ -16,8 +16,26 @@ import { AiSdkValidationDriver } from "../src/ai-sdk-driver";
 import { AiSdkValidationSequenceDriver } from "../src/adapters/sequence/ai-sdk-driver";
 import { createRoutedLanguageModel } from "../src/model-route";
 import type { SeedMaterialRetriever } from "../src/research/candidate-field";
-import { runCell } from "../src/run-cell";
-import { runSequenceCell } from "../src/adapters/sequence/runtime";
+import { runCell as runCellCore } from "../src/run-cell";
+import { runSequenceCell as runSequenceCellCore, type SequenceSelector } from "../src/adapters/sequence/runtime";
+import { createLocalHost } from "../src/workspace";
+import type { CellDriver } from "../src/driver";
+import type { CellRunRecord } from "../src/contracts";
+
+// Every test caller explicitly injects the real local filesystem/Bun adapter
+// through the neutral host port; the wrapper keeps the injection visible in
+// one place while the call sites below exercise the unchanged Cell contract.
+const runCell = (
+  input: unknown,
+  driver: CellDriver,
+  options: Omit<Parameters<typeof runCellCore>[2], "host"> = {},
+): Promise<CellRunRecord> => runCellCore(input, driver, { host: createLocalHost(), ...options });
+
+const runSequenceCell = (
+  input: unknown,
+  driver: CellDriver & SequenceSelector,
+  signal?: AbortSignal,
+): Promise<CellRunRecord> => runSequenceCellCore(input, driver, createLocalHost(), signal);
 
 const roots: string[] = [];
 const explicitDeepSeekRoute = () => [{

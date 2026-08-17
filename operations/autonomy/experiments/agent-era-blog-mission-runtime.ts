@@ -11,6 +11,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
 import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
 import {
   executionAuthorizationReceiptPath,
@@ -197,6 +198,9 @@ export const createMissionRuntime: MissionRuntimeFactory = async (
     },
   }, {
     model: selection.model,
+    // The supervised trial owns the real process: it explicitly injects the
+    // local host adapter over its operator-selected isolated worktree.
+    host: createLocalHost(),
     prepareContribution: async (call) => prepareContribution(worktree, call),
     timeline: context.timeline,
     createDriver: () => new AiSdkValidationDriver({ route }),

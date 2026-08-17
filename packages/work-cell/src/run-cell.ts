@@ -16,11 +16,18 @@ import {
 } from "./contracts";
 import type { CellDriver } from "./driver";
 import { CellExecutionError, TerminalContractError, traceEvent } from "./driver";
-import { Workspace } from "./workspace";
+import type { CellHost, HostWorkspace } from "./host-port";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
 
 export interface RunCellOptions {
+  /**
+   * The one injected host port. The caller supplies the implementation that
+   * opens the workspace capability surface for this run; the core never
+   * constructs a concrete filesystem, reads the process environment, or
+   * starts a process on its own.
+   */
+  host: CellHost;
   signal?: AbortSignal;
   preparation?: CellPreparation;
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
@@ -30,7 +37,7 @@ export interface RunCellOptions {
 export async function runCell(
   unparsedInput: unknown,
   driver: CellDriver,
-  options: RunCellOptions = {},
+  options: RunCellOptions,
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
   // A terminal-only Cell completes on its single allowed step: the accepted
@@ -62,7 +69,10 @@ export async function runCell(
     }
   };
   emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
-  const workspace = await Workspace.create(input.workspace, input.budget);
+  // The host port is caller-injected: only the supplied implementation may
+  // grant filesystem, command, snapshot, and artifact effects. A CellInput
+  // capability declaration never opens a host surface on its own.
+  const workspace = await options.host.createWorkspace(input.workspace, input.budget);
   const before = await workspace.snapshot();
   const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
@@ -82,7 +92,7 @@ export async function runCell(
   let artifactVerification: ArtifactVerification | undefined;
   let taskVerification: TaskVerification | undefined;
   let artifacts: ArtifactRecord[] = [];
-  let after: Awaited<ReturnType<Workspace["snapshot"]>> | undefined;
+  let after: Awaited<ReturnType<HostWorkspace["snapshot"]>> | undefined;
 
   if (missingCapabilities.length > 0) {
     status = "capability_mismatch";
@@ -357,7 +367,7 @@ function runWithSignal<T>(start: () => Promise<T>, signal: AbortSignal): Promise
 
 async function verifyArtifacts(
   input: CellInput,
-  workspace: Workspace,
+  workspace: HostWorkspace,
   diff: CellRunRecord["workspaceDiff"],
 ): Promise<{ artifacts: ArtifactRecord[]; verification: ArtifactVerification }> {
   if (!input.artifacts?.length) return { artifacts: [], verification: { passed: true, errors: [] } };

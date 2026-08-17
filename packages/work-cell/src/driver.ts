@@ -5,10 +5,10 @@ import type {
   Task,
   TraceEvent,
 } from "./contracts";
-import type { Workspace } from "./workspace";
+import type { HostWorkspace } from "./host-port";
 
 export interface DriverContext {
-  workspace: Workspace;
+  workspace: HostWorkspace;
   signal: AbortSignal;
   /** The caller is consuming execution events while the driver is running. */
   liveObservation: boolean;

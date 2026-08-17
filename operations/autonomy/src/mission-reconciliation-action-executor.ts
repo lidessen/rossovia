@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import { digest, stableStringify } from "./canonical-json";
 import {
   TimelineEventSchema,
@@ -40,6 +41,8 @@ export interface MissionReconciliationActionObservation {
 export interface MissionReconciliationActionCell {
   readonly workspaceRoot: string;
   readonly driver: CellDriver;
+  /** The caller-injected host port used to execute this disposable Cell. */
+  readonly host: CellHost;
   readonly isolation:
     | "fresh-disposable-read-only"
     | "fresh-disposable-no-environment";
@@ -163,6 +166,7 @@ export async function executeMissionReconciliationAction(
         executionProfile: proposal.execution.profile,
       }, {
         driver: proposerCell.driver,
+        host: proposerCell.host,
         maxDurationMs: proposal.execution.maxDurationMsPerCell,
       });
       proposalCellRecordDigest = (
@@ -252,6 +256,7 @@ export async function executeMissionReconciliationAction(
         executionProfile: proposal.execution.profile,
       }, {
         driver: verifierCell.driver,
+        host: verifierCell.host,
         maxDurationMs: proposal.execution.maxDurationMsPerCell,
       });
       verificationCellRecordDigest = (

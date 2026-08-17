@@ -12,6 +12,7 @@ import {
   type DriverDescriptor,
 } from "../../contracts";
 import type { CellDriver } from "../../driver";
+import type { CellHost } from "../../host-port";
 import { runCell } from "../../run-cell";
 import { ValidationRouteSchema, type ProviderRouteTarget } from "../../provider-profile";
 import { DeepSeekInferencePolicySchema } from "../../providers/deepseek";
@@ -287,6 +288,8 @@ export interface ModelEvaluationRecord {
 export type ModelEvaluationDriverFactory = (profile: ModelEvaluationProfile) => CellDriver;
 
 export interface ModelEvaluationRunOptions {
+  /** The caller-injected host port used for every trial Cell. */
+  host: CellHost;
   startingProfileIndex?: 0 | 1;
   signal?: AbortSignal;
   sourceSha256?: string;
@@ -296,12 +299,14 @@ export async function runModelEvaluationFromFile(
   specPath: string,
   createDriver: ModelEvaluationDriverFactory,
   judge: ModelEvaluationJudge,
+  host: CellHost,
   signal?: AbortSignal,
 ): Promise<ModelEvaluationRecord> {
   const absoluteSpec = resolve(specPath);
   const source = await readFile(absoluteSpec, "utf8");
   const spec = ModelEvaluationSpecSchema.parse(JSON.parse(source));
   return runModelEvaluation(spec, dirname(absoluteSpec), createDriver, judge, {
+    host,
     ...(signal ? { signal } : {}),
     sourceSha256: createHash("sha256").update(source).digest("hex"),
   });
@@ -312,7 +317,7 @@ export async function runModelEvaluation(
   baseDir: string,
   createDriver: ModelEvaluationDriverFactory,
   judge: ModelEvaluationJudge,
-  options: ModelEvaluationRunOptions = {},
+  options: ModelEvaluationRunOptions,
 ): Promise<ModelEvaluationRecord> {
   const startedAt = new Date();
   const outputRoot = absolute(baseDir, spec.outputDir);
@@ -366,7 +371,10 @@ export async function runModelEvaluation(
           trial.record = await runCell(
             input,
             driver,
-            options.signal ? { signal: options.signal } : undefined,
+            {
+              host: options.host,
+              ...(options.signal ? { signal: options.signal } : undefined),
+            },
           );
           await writeJson(join(trialDirectory, "record.json"), trial.record);
         } catch (error) {
