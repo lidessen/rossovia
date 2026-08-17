@@ -189,7 +189,10 @@ function asRecord(value: unknown): Record<string, unknown> {
  * non-object-root input schemas are rejected here — before any provider
  * dispatch. The action closure (`actionBlocked`) applies to injected tools
  * exactly like host tools: once the action phase is closed the caller
- * implementation is never invoked.
+ * implementation is never invoked, and the denial is routed through the
+ * core-owned gate refusal operation so the bounded `{ name, toolCallId,
+ * outcome: "refused" }` evidence is retained while the model still receives
+ * the ordinary blocked observation.
  */
 export function createCellToolDefinitions(options: {
   surface: CellToolSurface;
@@ -221,7 +224,20 @@ export function createCellToolDefinitions(options: {
         inputSchema: z.fromJSONSchema(cellTool.inputSchema),
         execute: async (value, callOptions) => {
           const blocked = options.actionBlocked();
-          if (blocked !== undefined) return blocked;
+          if (blocked !== undefined) {
+            // A model-issued injected call after terminal action closure is
+            // an invocation refused before caller execution, not an absent
+            // event: route the denial through the one core-owned refusal
+            // operation so its bounded evidence is retained, then return the
+            // existing blocked observation. The caller execute is never
+            // touched.
+            try {
+              await options.surface.refuse(name, callOptions.toolCallId);
+            } catch {
+              // The refusal operation never replaces the blocked observation.
+            }
+            return blocked;
+          }
           return options.surface.execute(name, value, callOptions.toolCallId);
         },
       }),

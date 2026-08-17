@@ -19,6 +19,7 @@ import { CellExecutionError, TerminalContractError, traceEvent } from "./driver"
 import type { CellHost, HostWorkspace } from "./host-port";
 import {
   cellToolContractErrors,
+  type CellTool,
   type CellToolSet,
   type CellToolSettledOutcome,
   type CellToolSurface,
@@ -43,7 +44,8 @@ export interface RunCellOptions {
    * tool set. The tools live outside `CellInput` because their implementations
    * are caller closures; the Cell retains only the sorted authorized names
    * and, per invocation, the name, exact toolCallId, and settled outcome. A
-   * non-empty set requires a driver that declares `supportsCellTools`.
+   * non-empty set requires a driver that declares the earned
+   * `supportsCellTools: true` capability.
    */
   tools?: CellToolSet;
 }
@@ -54,6 +56,15 @@ export async function runCell(
   options: RunCellOptions,
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
+  // Bind one immutable per-execution tool capability snapshot synchronously,
+  // before runCell's first await: the granted names plus each definition's
+  // description, object-root input schema, and execute reference are copied
+  // into a Cell-owned deep-frozen snapshot. Later caller or driver mutation
+  // of the supplied set cannot change the model-visible schema or executable
+  // authority, and the caller's object is never mutated.
+  const boundCellTools = options.tools === undefined
+    ? undefined
+    : bindCellToolSnapshot(options.tools);
   // A terminal-only Cell completes on its single allowed step: the accepted
   // terminal action is the final step and no separate output step exists.
   // Only a Cell that also declares a structured output contract needs a
@@ -110,8 +121,10 @@ export async function runCell(
   // boundary as host effects: after the gate closes no new tool call starts,
   // every admitted call is joined before the final, and each execute promise
   // covers the call's full effect and its settled evidence. The caller's
-  // implementation receives the Cell's exact combined signal.
-  const injectedCellTools = options.tools ?? {};
+  // implementation receives the Cell's exact combined signal. Only the
+  // synchronously bound immutable snapshot is validated, projected, and
+  // dispatched.
+  const injectedCellTools = boundCellTools ?? {};
   const cellToolGate = Object.keys(injectedCellTools).length > 0
     ? gateCellTools(injectedCellTools, emit, signal)
     : undefined;
@@ -459,7 +472,11 @@ interface CellToolAdmission {
  * `cell.tool.settled` event — exactly `{ name, toolCallId, outcome }`, never
  * input, result, or implementation identity — is appended to the trace. The
  * caller implementation receives the Cell's exact combined execution signal
- * so cancellation stays observable to in-flight calls.
+ * so cancellation stays observable to in-flight calls. The surface is frozen
+ * against driver mutation, and `refuse` retains the same bounded evidence
+ * for a model-issued invocation denied before caller execution (for example
+ * after terminal action closure) without ever invoking the caller
+ * implementation.
  */
 function gateCellTools(
   tools: CellToolSet,
@@ -502,8 +519,14 @@ function gateCellTools(
     );
     return covered;
   };
+  const refuse = (name: string, toolCallId: string): Promise<void> => {
+    // One core-owned refusal: the invocation is denied before the caller
+    // implementation can run and its bounded settled evidence is retained.
+    settled(name, toolCallId, "refused");
+    return Promise.resolve();
+  };
   return {
-    surface: { tools, execute },
+    surface: Object.freeze({ tools, execute, refuse }),
     close() {
       closed = true;
     },
@@ -594,6 +617,33 @@ function verifyTerminalContract(required: string[], called: string[]) {
  */
 function disposableCellInput(input: CellInput): CellInput {
   return deepFreeze(structuredClone(input));
+}
+
+/**
+ * Bind one immutable per-execution tool capability snapshot. The granted
+ * names plus each definition's description, object-root input schema, and
+ * execute reference are copied into a Cell-owned deep-frozen snapshot, so a
+ * caller or driver mutation after the binding can never change the
+ * model-visible schema or executable authority. The caller's object is
+ * never mutated.
+ */
+function bindCellToolSnapshot(tools: CellToolSet): CellToolSet {
+  const snapshot: Record<string, CellTool> = {};
+  for (const name of Object.keys(tools)) {
+    const definition = tools[name];
+    if (definition === undefined) {
+      // Retained only so the neutral contract reports the missing
+      // definition with its existing message.
+      snapshot[name] = undefined as unknown as CellTool;
+      continue;
+    }
+    snapshot[name] = Object.freeze({
+      description: definition.description,
+      inputSchema: deepFreeze(structuredClone(definition.inputSchema)),
+      execute: definition.execute,
+    });
+  }
+  return Object.freeze(snapshot);
 }
 
 function deepFreeze<T>(value: T): T {

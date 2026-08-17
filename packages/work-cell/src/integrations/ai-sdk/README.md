@@ -57,13 +57,33 @@ invocation, `{ name, toolCallId, outcome }` — never input, result, or
 implementation identity.
 
 `host-tools.ts` owns the single AI SDK translation (`createCellToolDefinitions`)
-used by both the AI SDK and the Pi harness drivers. Names colliding with the
-active host/task/terminal surface and non-object-root schemas are rejected
-before any provider dispatch; the Pi adapter additionally wraps injected tools
-in the same causal tool-effect handoff and action closure as host tools.
-Caller-supplied tools require a driver that declares `supportsCellTools: true`;
-otherwise the run fails closed as `capability_mismatch` before dispatch.
-Omitting tools leaves every driver surface and the final record unchanged.
+used by both the AI SDK and the Pi harness drivers. `runCell` binds one
+immutable per-execution snapshot synchronously before its first await: the
+granted names plus each definition's description, object-root input schema,
+and execute reference are copied into a Cell-owned deep-frozen snapshot, so a
+caller that mutates its tool set after the run began can never change the
+model-visible schema or executable authority. Only that bound snapshot is
+validated, projected, and dispatched.
+
+Names colliding with the active host/task/terminal surface and non-object-root
+schemas are rejected before any provider dispatch; the Pi adapter additionally
+wraps injected tools in the same causal tool-effect handoff and action closure
+as host tools. A model-issued injected call after terminal action closure is
+an invocation refused before caller execution, not an absent event: the denial
+is routed through the one core-owned `CellToolSurface.refuse` operation so the
+bounded `{ name, toolCallId, outcome: "refused" }` evidence is retained while
+the model still receives the ordinary blocked observation. Caller-supplied
+tools require a driver that declares `supportsCellTools: true`; otherwise the
+run fails closed as `capability_mismatch` before dispatch. Omitting tools
+leaves every driver surface and the final record unchanged.
+
+For an injected-tool run each adapter applies one fail-closed
+retained-evidence projection: step-level injected entries are removed from
+tool evidence, provider metadata never enters the trace, and the final
+rawSteps and providerMetadata are omitted entirely, because raw provider
+steps and metadata can echo injected inputs or results. Normalized usage and
+the bounded `cell.tool.*` events are preserved; runs without injected tools
+are byte/behavior compatible.
 
 ## Still owned elsewhere (host/process adapters, I2 scope)
 

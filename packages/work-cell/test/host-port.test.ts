@@ -546,7 +546,7 @@ describe("fake-host scope, exclude, artifact, and diff regressions", () => {
 describe("caller-injected cell tools and the C2 admission boundary", () => {
   class AbortGateDriver implements CellDriver {
     readonly descriptor = { adapter: "abort-gate-fixture", provider: "deterministic", model: "fixture" };
-    readonly supportsCellTools = true;
+    readonly supportsCellTools: true = true;
     events: string[] = [];
     savedContext: DriverContext | undefined;
 

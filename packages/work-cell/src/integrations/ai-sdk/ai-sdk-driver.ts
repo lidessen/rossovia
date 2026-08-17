@@ -64,7 +64,7 @@ interface MaterializedAgentResult {
 export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
   /** Declared cell-tool capability: the AI SDK adapter translates the neutral tool surface. */
-  readonly supportsCellTools = true;
+  readonly supportsCellTools: true = true;
   protected readonly model;
   private readonly structuredOutputMode: "inline" | "tool-settlement";
   private readonly taskToolSet: NonNullable<AiSdkDriverOptions["taskToolSet"]>;
@@ -89,10 +89,17 @@ export class AiSdkValidationDriver implements CellDriver {
     const terminalToolsCalled = new Set<string>();
     const tasks = TaskStore.fromSeeds(input.tasks, input.id);
     // Injected cell tools retain only name, exact toolCallId, and settled
-    // outcome per invocation: their input and result values are redacted from
-    // the step-level tool evidence below, never copied into the trace.
-    // `DriverContext.cellTools` is already the gated `CellToolSurface`;
-    // its neutral tool definitions live directly at `context.cellTools.tools`.
+    // outcome per invocation. `DriverContext.cellTools` is already the gated
+    // `CellToolSurface`; its neutral definitions live directly at
+    // `context.cellTools.tools`. For an injected-tool run the adapter applies
+    // one fail-closed retained-evidence projection: injected entries are
+    // removed from step-level tool evidence, provider metadata is never
+    // retained into the trace, and the final rawSteps and providerMetadata
+    // are omitted entirely, because raw provider steps and metadata can echo
+    // injected inputs or results. Normalized usage and the bounded
+    // cell.tool.* events are preserved; runs without injected tools are
+    // unchanged.
+    const injectedCellToolsPresent = context.cellTools !== undefined;
     const injectedCellToolNames = context.cellTools
       ? new Set(Object.keys(context.cellTools.tools))
       : undefined;
@@ -242,7 +249,7 @@ export class AiSdkValidationDriver implements CellDriver {
           context.emit("agent.step.finished", {
             finishReason,
             performance: sanitize(performance),
-            providerMetadata: sanitize(providerMetadata),
+            ...(injectedCellToolsPresent ? {} : { providerMetadata: sanitize(providerMetadata) }),
             usage,
             cumulativeUsage: observedUsage,
             toolCalls: sanitize(redactCellToolStepEvidence(toolCalls, injectedCellToolNames)),
@@ -443,7 +450,7 @@ export class AiSdkValidationDriver implements CellDriver {
               {
                 finishReason,
                 performance: sanitize(performance),
-                providerMetadata: sanitize(providerMetadata),
+                ...(injectedCellToolsPresent ? {} : { providerMetadata: sanitize(providerMetadata) }),
                 usage,
                 cumulativeUsage: closureUsage,
                 toolCalls: sanitize(toolCalls),
@@ -580,12 +587,20 @@ export class AiSdkValidationDriver implements CellDriver {
       ...(output === undefined ? {} : { output }),
       usage,
       ...(settlementUsage.totalTokens > 0 ? { settlementUsage } : {}),
-      rawSteps: sanitize([
-        ...executionResult.steps,
-        ...(closureResult?.steps ?? []),
-        ...(settlement?.rawSteps ?? []),
-      ]) as unknown[],
-      providerMetadata: sanitize(executionResult.providerMetadata),
+      // Injected-aware fail-closed projection: raw provider steps and
+      // provider metadata can echo injected tool inputs or results, so both
+      // are omitted for an injected-tool run. Runs without injected tools
+      // keep the ordinary evidence.
+      rawSteps: injectedCellToolsPresent
+        ? []
+        : sanitize([
+            ...executionResult.steps,
+            ...(closureResult?.steps ?? []),
+            ...(settlement?.rawSteps ?? []),
+          ]) as unknown[],
+      ...(injectedCellToolsPresent
+        ? {}
+        : { providerMetadata: sanitize(executionResult.providerMetadata) }),
     };
   }
 

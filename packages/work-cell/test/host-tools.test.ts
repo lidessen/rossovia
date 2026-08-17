@@ -14,7 +14,7 @@ import type { CellDriver, DriverContext } from "../src/driver";
 import { Workspace, createLocalHost } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
 import { runCell } from "../src/run-cell";
-import type { CellTool, CellToolExecutionContext, CellToolSet } from "../src/tool-port";
+import type { CellTool, CellToolExecutionContext, CellToolInputSchema, CellToolSet } from "../src/tool-port";
 import {
   createHostTools,
   EXECUTION_TOOL_NAMES,
@@ -1400,6 +1400,11 @@ describe("caller-injected cell tool translation", () => {
     // outcome: the trace never copies the injected tool's input or result.
     expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("abc");
     expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("cba");
+    // Total retained-evidence redaction: an injected-tool run omits the raw
+    // provider steps entirely (they can echo injected inputs or results)
+    // while normalized usage and the bounded events remain.
+    expect(aiSdkRecord.rawSteps).toEqual([{ phase: "execution", steps: [] }]);
+    expect(aiSdkRecord.usage.totalTokens).toBe(4);
     expect(calls).toBe(2);
 
     // Pi half: the same neutral fixture through the harness driver, with the
@@ -1445,6 +1450,10 @@ describe("caller-injected cell tool translation", () => {
           inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
           outputTokens: { total: 3, text: 3, reasoning: 0 },
         },
+        // A provider-shaped echo of the injected call's input and result:
+        // the injected-aware retained-evidence projection must never retain
+        // it in the trace or the final rawSteps.
+        providerMetadata: { injectedEcho: { input: "abc", result: "cba" } },
       });
     }, toolResults);
     const piInput = cellToolCell(root, {
@@ -1484,15 +1493,25 @@ describe("caller-injected cell tool translation", () => {
       data: { tools: ["invert_fixture"] },
     }));
     // The action closure refused the late post-terminal call before the
-    // caller implementation could run, and no settled evidence fabricates an
-    // execution that never happened.
+    // caller implementation could run: an invocation refused is retained as
+    // exact bounded evidence — { name, toolCallId, outcome: "refused" } —
+    // never as an absent event, and the model still received the ordinary
+    // blocked observation.
     expect(piLog).toHaveLength(1);
     expect(toolResults[2]?.output).toMatchObject({ accepted: false });
-    expect(piRecord.trace.some((event) => event.type === "cell.tool.settled"
-      && (event.data as { toolCallId?: string }).toolCallId === "late-invert")).toBe(false);
-    // The Pi trace likewise never copies the injected tool's input or result.
+    expect(piRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: "late-invert", outcome: "refused" },
+    }));
+    // Total retained-evidence redaction: the Pi trace never copies the
+    // injected tool's input or result or the provider metadata that echoed
+    // them, the final rawSteps are omitted for the injected-tool run, and
+    // normalized usage remains.
     expect(JSON.stringify(piRecord.trace)).not.toContain("abc");
     expect(JSON.stringify(piRecord.trace)).not.toContain("cba");
+    expect(JSON.stringify(piRecord.trace)).not.toContain("injectedEcho");
+    expect(piRecord.rawSteps).toEqual([{ phase: "execution", steps: [] }]);
+    expect(piRecord.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
   });
 
   test("omitting tools leaves the old surface and final unchanged, and every nonempty injection outside the declared support boundary fails closed before provider dispatch", async () => {
@@ -1555,6 +1574,98 @@ describe("caller-injected cell tool translation", () => {
     expect(unsupported.error).toContain("does not declare supportsCellTools");
     expect(unsupported.error).toContain("plain_probe");
     expect(dispatched).toBe(false);
+
+    // The per-execution tool snapshot is bound synchronously before runCell's
+    // first await: mutating the caller's set after the run began — adding a
+    // name, replacing execute, rewriting the schema — can never change the
+    // model-visible surface or executable authority of the running Cell.
+    interface MutableCellToolDefinition {
+      description: string;
+      inputSchema: CellToolInputSchema;
+      execute: CellTool["execute"];
+    }
+    const boundExecuteLog: unknown[] = [];
+    const mutableDefinition: MutableCellToolDefinition = {
+      description: "The original bound definition.",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        additionalProperties: false,
+      },
+      execute: async (probeInput: unknown) => {
+        boundExecuteLog.push(probeInput);
+        return { from: "original" };
+      },
+    };
+    const callerOwned = { mutable_probe: mutableDefinition } as unknown as CellToolSet;
+    let poisonedCalls = 0;
+    let translatedMutableSchema: unknown;
+    let mutableSecondRequest: unknown;
+    let mutableCalls = 0;
+    const mutableModel = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        mutableCalls += 1;
+        if (mutableCalls === 1) {
+          translatedMutableSchema = (
+            options.tools as Array<{ name: string; inputSchema?: unknown }> | undefined
+          )?.find((candidate) => candidate.name === "mutable_probe")?.inputSchema;
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: "mutable-call",
+            toolName: "mutable_probe",
+            input: JSON.stringify({ text: "abc" }),
+          }], "tool-calls");
+        }
+        mutableSecondRequest = options;
+        return modelResponse([{ type: "text", text: "The bound snapshot held." }], "stop");
+      },
+    });
+    const mutableRunning = runCell(cellToolCell(root), aiSdkDriver(mutableModel, "mock-bound-snapshot"), {
+      host: createLocalHost(),
+      tools: callerOwned,
+    });
+    // runCell's synchronous prefix has already bound the snapshot when this
+    // line runs; every mutation below lands after the binding.
+    (callerOwned as unknown as Record<string, MutableCellToolDefinition>)["added_later"] = {
+      description: "Added after the snapshot was bound.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      execute: async () => ({ from: "later" }),
+    };
+    mutableDefinition.execute = async () => {
+      poisonedCalls += 1;
+      return { from: "poisoned" };
+    };
+    mutableDefinition.inputSchema = {
+      type: "object",
+      properties: { text: { type: "number" } },
+      additionalProperties: false,
+    };
+    const mutableRecord = await mutableRunning;
+
+    expect(mutableRecord.status).toBe("passed");
+    // The projection is exactly the bound snapshot's granted names: the name
+    // added after the run began never reached the driver.
+    expect(mutableRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["mutable_probe"] },
+    }));
+    // The model-visible schema is the frozen bound copy: the caller's later
+    // schema rewrite never reached the translation.
+    expect(translatedMutableSchema).toMatchObject({
+      type: "object",
+      properties: { text: { type: "string" } },
+    });
+    // The executable authority is the bound execute reference: the original
+    // implementation ran with the exact input and its result crossed back to
+    // the next provider step; the replacement was never invoked.
+    expect(boundExecuteLog).toEqual([{ text: "abc" }]);
+    expect(poisonedCalls).toBe(0);
+    expect(JSON.stringify(mutableSecondRequest)).toContain("original");
+    expect(JSON.stringify(mutableSecondRequest)).not.toContain("poisoned");
+    expect(mutableRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "mutable_probe", toolCallId: "mutable-call", outcome: "fulfilled" },
+    }));
 
     // Invalid names and non-object-root schemas are rejected by the neutral
     // contract before any provider dispatch.

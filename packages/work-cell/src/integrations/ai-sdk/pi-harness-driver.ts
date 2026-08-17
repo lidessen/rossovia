@@ -217,7 +217,7 @@ function piHarnessTarget(options: PiHarnessDriverOptions): PiHarnessTarget {
 export class PiHarnessCellDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
   /** Declared cell-tool capability: the Pi adapter translates the neutral tool surface through the same host tool owner. */
-  readonly supportsCellTools = true;
+  readonly supportsCellTools: true = true;
   protected readonly model;
   private readonly harness: HarnessV1<ToolSet>;
   private readonly sandbox: HarnessV1SandboxProvider | undefined;
@@ -255,6 +255,12 @@ export class PiHarnessCellDriver implements CellDriver {
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
     const tasks = TaskStore.fromSeeds(input.tasks, input.id);
+    // Injected-aware fail-closed retained-evidence projection: for an
+    // injected-tool run the adapter retains no raw provider steps and no
+    // provider metadata (both can echo injected inputs or results), while
+    // normalized usage and the bounded cell.tool.* events are preserved.
+    // Runs without injected tools are unchanged.
+    const injectedCellToolsPresent = context.cellTools !== undefined;
     context.emit("task.tools.projected", {
       taskToolSet: this.taskToolSet,
       tools: taskToolNames(this.taskToolSet),
@@ -402,6 +408,7 @@ export class PiHarnessCellDriver implements CellDriver {
       const observeChunk = createHarnessStreamObserver({
         context,
         acceptStep: () => stepBudgetExhaustedAt === undefined,
+        retainProviderMetadata: !injectedCellToolsPresent,
         observeUsage: (usage) => {
           observedUsage = addUsage(observedUsage, usage);
           context.observeUsage(usage, "execution");
@@ -455,9 +462,13 @@ export class PiHarnessCellDriver implements CellDriver {
             finalText: `Terminal contract satisfied during execution through ${calledNames.join(", ")}; no final text was generated.`,
             usage: observedUsage,
             rawSteps: [],
-            providerMetadata: {
-              ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
-            },
+            ...(injectedCellToolsPresent
+              ? {}
+              : {
+                  providerMetadata: {
+                    ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
+                  },
+                }),
           };
         }
         throw new CellExecutionError(
@@ -546,13 +557,23 @@ export class PiHarnessCellDriver implements CellDriver {
         ...(output === undefined ? {} : { output }),
         usage: settlement ? addUsage(normalizedUsage, settlement.usage) : normalizedUsage,
         ...(settlementUsage.totalTokens > 0 ? { settlementUsage } : {}),
-        rawSteps: sanitize([...steps, ...(settlement?.rawSteps ?? [])]) as unknown[],
-        providerMetadata: {
-          ...asRecord(sanitize(providerMetadata)),
-          // Harness session identity is observation only; ordinary
-          // continuation remains exact prior-attempt lineage.
-          sessionId: harnessSessionId,
-        },
+        // Injected-aware fail-closed projection: raw provider steps and
+        // provider metadata can echo injected tool inputs or results, so
+        // both are omitted for an injected-tool run. Runs without injected
+        // tools keep the ordinary evidence.
+        rawSteps: injectedCellToolsPresent
+          ? []
+          : sanitize([...steps, ...(settlement?.rawSteps ?? [])]) as unknown[],
+        ...(injectedCellToolsPresent
+          ? {}
+          : {
+              providerMetadata: {
+                ...asRecord(sanitize(providerMetadata)),
+                // Harness session identity is observation only; ordinary
+                // continuation remains exact prior-attempt lineage.
+                sessionId: harnessSessionId,
+              },
+            }),
       };
     } catch (error) {
       if (error instanceof CellExecutionError) throw error;
@@ -640,6 +661,8 @@ function createHarnessStreamObserver(options: {
   acceptStep(): boolean;
   observeUsage(usage: CellUsage): void;
   onStepFinished(finishReason: string, stepHadToolActivity: boolean): void;
+  /** Provider metadata is never retained into the trace for an injected-tool run. */
+  retainProviderMetadata: boolean;
 }): (chunk: unknown) => void {
   const { context } = options;
   let stepNumber = 0;
@@ -703,7 +726,7 @@ function createHarnessStreamObserver(options: {
       context.emit("harness.turn.finished", {
         finishReason: normalizeFinishReason(value.finishReason),
         totalUsage: normalizeUsage(value.totalUsage),
-        ...(value.providerMetadata !== undefined
+        ...(value.providerMetadata !== undefined && options.retainProviderMetadata
           ? { providerMetadata: sanitize(value.providerMetadata) }
           : {}),
       });

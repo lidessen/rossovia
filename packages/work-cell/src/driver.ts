@@ -43,9 +43,9 @@ export interface CellDriver {
   /**
    * Declared optional cell-tool capability. A non-empty injected tool set
    * fails closed as `capability_mismatch` before dispatch when the supplied
-   * driver does not declare `supportsCellTools: true`.
+   * driver does not declare the earned `supportsCellTools: true`.
    */
-  readonly supportsCellTools?: boolean;
+  readonly supportsCellTools?: true;
   run(input: CellInput, context: DriverContext): Promise<DriverResult>;
 }
 

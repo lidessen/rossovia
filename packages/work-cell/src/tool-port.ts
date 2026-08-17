@@ -68,6 +68,15 @@ export interface CellToolSurface {
   /** The validated neutral tool definitions, keyed by declared name. */
   readonly tools: CellToolSet;
   execute(name: string, input: unknown, toolCallId: string): Promise<unknown>;
+  /**
+   * One core-owned refusal: retain the bounded `{ name, toolCallId,
+   * outcome: "refused" }` evidence for a model-issued invocation denied
+   * before caller execution (for example after terminal action closure),
+   * without ever invoking the caller implementation. Adapters route
+   * action-closure denials through this operation instead of fabricating
+   * an absent event.
+   */
+  refuse(name: string, toolCallId: string): Promise<void>;
 }
 
 /**
