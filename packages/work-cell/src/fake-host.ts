@@ -33,9 +33,15 @@ export class FakeHost implements CellHost {
     this.files.set(key(this.seedRoot, relativePath), Buffer.from(content, "utf8"));
   }
 
-  /** Host-side deterministic command registry, keyed by `argv.join(" ")`. */
+  /**
+   * Host-side deterministic command registry, keyed by the canonical JSON
+   * encoding of the exact argv array. A space-joined display string would
+   * conflate distinct argv arrays such as `["git", "show a"]` and
+   * `["git", "show", "a"]`; registration and lookup always use the same
+   * collision-free array identity.
+   */
   registerCommand(argv: string[], result: Partial<CommandResult> & { exitCode: number }): void {
-    this.commandResults.set(argv.join(" "), {
+    this.commandResults.set(commandKey(argv), {
       stdout: "",
       stderr: "",
       durationMs: 0,
@@ -147,7 +153,7 @@ export class FakeHost implements CellHost {
         const timeoutSignal = AbortSignal.timeout(Math.min(timeoutMs, budget.maxDurationMs));
         const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
         if (combined.aborted) throw combined.reason ?? new DOMException("Aborted", "AbortError");
-        const registered = commandResults.get(argv.join(" "));
+        const registered = commandResults.get(commandKey(argv));
         if (registered === undefined) {
           // An allowed command must never invent success: without a registered
           // deterministic result there is no truthful outcome to report.
@@ -231,6 +237,18 @@ export class FilteredHost implements CellHost {
 
 function key(root: string, relativePath: string): string {
   return `${root}\u0000${relativePath}`;
+}
+
+/**
+ * One collision-free exact argv identity: the canonical JSON encoding of the
+ * argument array, used identically at command registration and lookup. Two
+ * arrays that merely join to the same display string — for example
+ * `["git", "show a"]` and `["git", "show", "a"]` — encode to different
+ * keys, so a registered command can never authorize or answer a different
+ * argv array.
+ */
+function commandKey(argv: readonly string[]): string {
+  return JSON.stringify(argv);
 }
 
 function resolveLexical(root: string, path: string): string {

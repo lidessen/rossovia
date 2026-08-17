@@ -249,6 +249,26 @@ describe("fake-host deterministic command and root parity", () => {
       .rejects.toThrow("caller aborted command");
   });
 
+  test("distinct argv arrays never share one registered command identity", async () => {
+    const fake = new FakeHost("/fake-command-identity");
+    fake.registerCommand(["git", "show a"], {
+      exitCode: 0,
+      stdout: "one-token argument result\n",
+    });
+    const cell = commandCell("/fake-command-identity", "command-identity");
+    const workspace = await fake.createWorkspace(cell.workspace, cell.budget);
+
+    // `["git", "show", "a"]` is a different argv array: registering
+    // `["git", "show a"]` must never authorize or answer it, even though
+    // both arrays display identically when space-joined.
+    await expect(workspace.runCommand(["git", "show", "a"]))
+      .rejects.toThrow("command is allowed but has no registered deterministic result: git show a");
+
+    const result = await workspace.runCommand(["git", "show a"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("one-token argument result\n");
+  });
+
   test("fake and local hosts reject a relative workspace root with the same refusal", async () => {
     const policy: WorkspacePolicy = {
       root: "relative/workspace",
