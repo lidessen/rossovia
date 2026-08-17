@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T22:37:59Z",
+  "updatedAt": "2026-08-17T22:59:59Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -269,7 +269,20 @@
         "principal:daily-single-run-e2e"
       ],
       "status": "open"
+    },
+    {
+      "id": "ordinary-run-explicit-step-budget",
+      "parent": "daily-single-run-e2e",
+      "kind": "correction",
+      "purpose": "Let the caller of an ordinary rossovia task run explicitly choose an optional positive step cap while preserving the canonical Run, immutable CellInput, and no-default budget boundary.",
+      "returnCondition": "Ordinary rossovia task run optionally accepts a caller-explicit positive integer --max-steps; the value enters the canonical Run request and digest and the immutable CellInput budget; omission still means no step limit; the existing 30-minute ceiling remains emergency timeout only. Add no budget system, approval, default, or second lifecycle; do not change provider or driver output caps; do not touch conversation schema, S2, or P5.",
+      "sources": [
+        "principal:ordinary-run-explicit-step-budget",
+        "parent:daily-single-run-e2e@d27f652e80f751b9c49775ee5032e67f64599af6",
+        "blocker:ordinary-task-run-explicit-step-cap"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "daily-single-run-e2e"
+  "currentFocus": "ordinary-run-explicit-step-budget"
 }
