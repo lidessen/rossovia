@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Budget, CellInput, WorkspacePolicy } from "../src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
 import type { CellHost } from "../src/host-port";
+import type { CellTool, CellToolExecutionContext } from "../src/tool-port";
 import { FilteredHost, FakeHost } from "../src/fake-host";
 import { createLocalHost } from "../src/workspace";
 import { runCell } from "../src/run-cell";
@@ -539,5 +540,121 @@ describe("fake-host scope, exclude, artifact, and diff regressions", () => {
       changed: ["docs/source.md"],
       removed: [],
     });
+  });
+});
+
+describe("caller-injected cell tools and the C2 admission boundary", () => {
+  class AbortGateDriver implements CellDriver {
+    readonly descriptor = { adapter: "abort-gate-fixture", provider: "deterministic", model: "fixture" };
+    readonly supportsCellTools = true;
+    events: string[] = [];
+    savedContext: DriverContext | undefined;
+
+    async run(_input: CellInput, context: DriverContext): Promise<DriverResult> {
+      this.savedContext = context;
+      // Admit one call; its settlement stays in the caller implementation's
+      // hands, so quiescence is resolved only when the caller releases it.
+      const admitted = context.cellTools!.execute("abort_probe", { phase: "admitted" }, "admitted-call");
+      await new Promise<void>((resolve) => {
+        if (context.signal.aborted) resolve();
+        else context.signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      this.events.push("abort-observed");
+      // After the abort the shared admission gate is closed: this new call
+      // is refused before the caller implementation can run.
+      await context.cellTools!.execute("abort_probe", { phase: "late" }, "late-call").then(
+        () => {
+          this.events.push("late-fulfilled");
+        },
+        () => {
+          this.events.push("late-refused");
+        },
+      );
+      await admitted.catch(() => {});
+      return {
+        terminalToolsCalled: [],
+        finalText: "settled",
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+        rawSteps: [],
+      };
+    }
+  }
+
+  test("abort closes the shared admission gate: an unsettled admitted call holds the final, a new call is refused without caller execution, and the drained cancelled final leaves no late effect or evidence", async () => {
+    const fake = new FakeHost("/fake-cell-tool-abort");
+    const input = writableCell("/fake-cell-tool-abort", "cell-tool-abort");
+    delete input.artifacts;
+    const controller = new AbortController();
+    const executedInputs: unknown[] = [];
+    const observedSignals: AbortSignal[] = [];
+    let markAdmittedInFlight: (() => void) | undefined;
+    let releaseAdmitted: (() => void) | undefined;
+    const admittedInFlight = new Promise<void>((resolve) => { markAdmittedInFlight = resolve; });
+    const admittedHold = new Promise<void>((resolve) => { releaseAdmitted = resolve; });
+    const abortProbe: CellTool = {
+      description: "Observe the combined execution signal until released.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      async execute(probeInput: unknown, context: CellToolExecutionContext) {
+        executedInputs.push(probeInput);
+        observedSignals.push(context.signal);
+        markAdmittedInFlight?.();
+        // The caller implementation stays unsettled even after the signal
+        // aborts: quiescence is proven only when the caller releases it.
+        await admittedHold;
+        return { aborted: context.signal.aborted };
+      },
+    };
+    const driver = new AbortGateDriver();
+    const recordPromise = runCell(input, driver, {
+      host: fake,
+      tools: { abort_probe: abortProbe },
+      signal: controller.signal,
+    });
+    await admittedInFlight;
+    controller.abort(new Error("caller cancelled the probe"));
+    // One deterministic macrotask barrier: the driver observed the abort and
+    // its post-abort call was refused by the already-closed gate without the
+    // caller implementation ever running for it.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(driver.events).toEqual(["abort-observed", "late-refused"]);
+    expect(executedInputs).toEqual([{ phase: "admitted" }]);
+    // While the admitted call stays unsettled, quiescence is unproven and
+    // the run truthfully produces no final.
+    const whileHeld = await Promise.race([
+      recordPromise.then(() => "final" as const, () => "rejected" as const),
+      new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 100)),
+    ]);
+    expect(whileHeld).toBe("pending");
+    // Release the admitted call: it settles with the Cell's exact combined
+    // signal already aborted, the Cell drains it, and only then does the
+    // cancelled final arrive.
+    releaseAdmitted!();
+    const record = await recordPromise;
+
+    expect(record.status).toBe("cancelled");
+    expect(record.error).toBe("caller cancelled the probe");
+    expect(observedSignals[0]?.aborted).toBeTrue();
+    expect(executedInputs).toEqual([{ phase: "admitted" }]);
+    // Both the settled admitted evidence and the boundary refusal precede the
+    // immutable final; nothing follows it.
+    expect(record.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "abort_probe", toolCallId: "admitted-call", outcome: "fulfilled" },
+    }));
+    expect(record.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "abort_probe", toolCallId: "late-call", outcome: "refused" },
+    }));
+    const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+    expect(finishedIndex).toBe(record.trace.length - 1);
+    expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+    // After the final returned, the closed gate refuses every new call and
+    // the sealed trace gains no late evidence: no effect and no event can
+    // follow the final.
+    const traceLength = record.trace.length;
+    await expect(driver.savedContext!.cellTools!.execute("abort_probe", { phase: "post-final" }, "post-final-call"))
+      .rejects.toThrow("tool admission gate is closed");
+    expect(record.trace.length).toBe(traceLength);
+    expect(executedInputs).toEqual([{ phase: "admitted" }]);
   });
 });

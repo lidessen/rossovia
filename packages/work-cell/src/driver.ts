@@ -6,6 +6,7 @@ import type {
   TraceEvent,
 } from "./contracts";
 import type { HostWorkspace } from "./host-port";
+import type { CellToolSurface } from "./tool-port";
 
 export interface DriverContext {
   workspace: HostWorkspace;
@@ -15,6 +16,12 @@ export interface DriverContext {
   /** Retain completed provider-step usage even if the outer Cell timeout wins the driver race. */
   observeUsage(usage: CellUsage, phase?: "execution" | "settlement"): void;
   emit(type: string, data: unknown): void;
+  /**
+   * The caller-injected cell tool surface admitted for this run, when tools
+   * were supplied. Each `execute` covers the call's full effect and settled
+   * evidence and rejects after the Cell admission gate closes.
+   */
+  cellTools?: CellToolSurface;
 }
 
 export interface DriverResult {
@@ -33,6 +40,12 @@ export interface DriverResult {
 
 export interface CellDriver {
   readonly descriptor: DriverDescriptor;
+  /**
+   * Declared optional cell-tool capability. A non-empty injected tool set
+   * fails closed as `capability_mismatch` before dispatch when the supplied
+   * driver does not declare `supportsCellTools: true`.
+   */
+  readonly supportsCellTools?: boolean;
   run(input: CellInput, context: DriverContext): Promise<DriverResult>;
 }
 

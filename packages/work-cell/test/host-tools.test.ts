@@ -10,14 +10,16 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CellInputSchema, type CellInput } from "../src/contracts";
-import type { DriverContext } from "../src/driver";
+import type { CellDriver, DriverContext } from "../src/driver";
 import { Workspace, createLocalHost } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
 import { runCell } from "../src/run-cell";
+import type { CellTool, CellToolExecutionContext, CellToolSet } from "../src/tool-port";
 import {
   createHostTools,
   EXECUTION_TOOL_NAMES,
 } from "../src/integrations/ai-sdk/host-tools";
+import { AiSdkValidationDriver } from "../src/integrations/ai-sdk/ai-sdk-driver";
 import { createWorkspaceEditTool } from "../src/integrations/ai-sdk/workspace-edit";
 import { HarnessAgent } from "@ai-sdk/harness/agent";
 import { createPi, type PiHarnessSettings } from "@ai-sdk/harness-pi";
@@ -1250,5 +1252,384 @@ describe("workspace create/new-file evidence", () => {
     writeFileSync(join(root, "kept.md"), "original\n");
     await expect(workspace.createText("kept.md", "replaced\n")).rejects.toThrow();
     expect(readFileSync(join(root, "kept.md"), "utf8")).toBe("original\n");
+  });
+});
+
+describe("caller-injected cell tool translation", () => {
+  function cellToolCell(root: string, extra: Partial<CellInput> = {}): CellInput {
+    return CellInputSchema.parse({
+      id: "cell-tool-translation-fixture",
+      intent: "Prove the caller-injected cell tool port.",
+      workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Use only the injected tool."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["The injected tool surface behaves exactly."],
+      budget: { maxSteps: 4, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+      ...extra,
+    });
+  }
+
+  function modelResponse(
+    content: LanguageModelV3GenerateResult["content"],
+    finish: "stop" | "tool-calls",
+  ): LanguageModelV3GenerateResult {
+    return {
+      content,
+      finishReason: { unified: finish, raw: finish },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    };
+  }
+
+  /** The one neutral fixture shared by both adapter halves. */
+  function neutralFixtureTool(
+    log: Array<{ input: unknown; context: CellToolExecutionContext }>,
+  ): CellTool {
+    return {
+      description: "Return the supplied text reversed.",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+        additionalProperties: false,
+      },
+      async execute(input: unknown, context: CellToolExecutionContext) {
+        log.push({ input, context });
+        const text = (input as { text?: unknown }).text;
+        return { inverted: typeof text === "string" ? [...text].reverse().join("") : "" };
+      },
+    };
+  }
+
+  const aiSdkDriver = (model: unknown, modelName: string) => {
+    const driver = new AiSdkValidationDriver({
+      route: [{
+        provider: "deepseek" as const,
+        credential: { source: "env" as const, name: "DEEPSEEK_TEST_KEY" },
+      }],
+      deepSeekApiKey: "not-used",
+      model: modelName,
+    });
+    Object.defineProperty(driver, "model", { value: model });
+    return driver;
+  };
+
+  const deepSeekPiCellToolDriver = (
+    harness: HarnessV1<ToolSet>,
+    extra: { toolEffectHandoff?: () => Promise<void> } = {},
+  ) => new PiHarnessCellDriver({
+    route: [{
+      provider: "deepseek" as const,
+      credential: { source: "env" as const, name: "DEEPSEEK_API_KEY" },
+      model: "deepseek-v4-pro",
+    }],
+    environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+    harness,
+    ...(extra.toolEffectHandoff ? { toolEffectHandoff: extra.toolEffectHandoff } : {}),
+  });
+
+  test("one neutral fixture keeps its name, schema, input, exact toolCallId, result, and caller execute through the AI SDK and Pi drivers, with the Pi effect handoff and action closure", async () => {
+    const { root } = await fixture();
+    const input = cellToolCell(root);
+
+    // AI SDK half: the same fixture translates through the ToolLoopAgent path.
+    const aiSdkLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    let calls = 0;
+    let translatedTools: unknown;
+    let secondRequest: unknown;
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        calls += 1;
+        if (calls === 1) {
+          translatedTools = options.tools;
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: "ai-sdk-call-1",
+            toolName: "invert_fixture",
+            input: JSON.stringify({ text: "abc" }),
+          }], "tool-calls");
+        }
+        secondRequest = options;
+        return modelResponse([{ type: "text", text: "The inversion was delivered." }], "stop");
+      },
+    });
+    const aiSdkRecord = await runCell(input, aiSdkDriver(model, "mock-cell-tool-parity"), {
+      host: createLocalHost(),
+      tools: {
+        invert_fixture: neutralFixtureTool(aiSdkLog),
+        // Declared second and never called; proves the sorted-name projection.
+        alpha_marker: {
+          description: "Never called; proves the sorted projection.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => ({ value: "unused" }),
+        },
+      },
+    });
+
+    expect(aiSdkRecord.status).toBe("passed");
+    // Sorted authorized names, projected before dispatch.
+    expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["alpha_marker", "invert_fixture"] },
+    }));
+    // The translated model-facing schema is the neutral fixture schema.
+    const translated = (translatedTools as Array<{ name: string; inputSchema?: unknown }> | undefined)
+      ?.find((candidate) => candidate.name === "invert_fixture");
+    expect(translated?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    });
+    // Exact input, exact provider toolCallId, and the settled result crossed
+    // back into the next provider step verbatim.
+    expect(aiSdkLog).toHaveLength(1);
+    expect(aiSdkLog[0]?.input).toEqual({ text: "abc" });
+    expect(aiSdkLog[0]?.context).toMatchObject({ toolCallId: "ai-sdk-call-1" });
+    expect(aiSdkLog[0]?.context.signal.aborted).toBe(false);
+    expect(JSON.stringify(secondRequest)).toContain("cba");
+    expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: "ai-sdk-call-1", outcome: "fulfilled" },
+    }));
+    // Per-invocation retention is exactly name, exact toolCallId, and settled
+    // outcome: the trace never copies the injected tool's input or result.
+    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("abc");
+    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("cba");
+    expect(calls).toBe(2);
+
+    // Pi half: the same neutral fixture through the harness driver, with the
+    // causal tool-effect handoff and the post-terminal action closure in one
+    // run. The successful call proves exact forward substitution; the declared
+    // terminal action then closes the phase, and the late injected call is
+    // refused before the caller implementation can run.
+    const piLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
+    const harness = scriptedHarness(async ({ emit, waitForToolResult }) => {
+      emit({ type: "stream-start", warnings: [] });
+      emit({
+        type: "tool-call",
+        toolCallId: "pi-call-1",
+        toolName: "invert_fixture",
+        input: JSON.stringify({ text: "abc" }),
+        providerExecuted: false,
+      });
+      await waitForToolResult(1);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "tool-call",
+        toolCallId: "terminal-pi",
+        toolName: "finish_work",
+        input: "{}",
+        providerExecuted: false,
+      });
+      await waitForToolResult(2);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "tool-call",
+        toolCallId: "late-invert",
+        toolName: "invert_fixture",
+        input: JSON.stringify({ text: "abc" }),
+        providerExecuted: false,
+      });
+      await waitForToolResult(3);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "finish",
+        finishReason: STOP_REASON,
+        totalUsage: {
+          inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 3, text: 3, reasoning: 0 },
+        },
+      });
+    }, toolResults);
+    const piInput = cellToolCell(root, {
+      terminalTools: [{
+        name: "finish_work",
+        description: "Finish the bounded work.",
+        inputSchema: { type: "object", additionalProperties: false },
+      }],
+    });
+    let handoffCalls = 0;
+    const piRecord = await runCell(piInput, deepSeekPiCellToolDriver(harness, {
+      toolEffectHandoff: async () => {
+        handoffCalls += 1;
+      },
+    }), {
+      host: createLocalHost(),
+      tools: { invert_fixture: neutralFixtureTool(piLog) },
+    });
+
+    expect(piRecord.status).toBe("passed");
+    expect(piRecord.verification.terminal.called).toEqual(["finish_work"]);
+    // Exact forward substitution: the same fixture keeps its input and exact
+    // toolCallId, and its result crossed the harness tool boundary verbatim.
+    expect(piLog).toHaveLength(1);
+    expect(piLog[0]?.input).toEqual({ text: "abc" });
+    expect(piLog[0]?.context).toMatchObject({ toolCallId: "pi-call-1" });
+    expect(toolResults).toHaveLength(3);
+    expect(toolResults[0]).toEqual({ toolCallId: "pi-call-1", output: { inverted: "cba" } });
+    // The injected tool crossed the causal event-loop handoff like every host tool.
+    expect(handoffCalls).toBeGreaterThanOrEqual(1);
+    expect(piRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: "pi-call-1", outcome: "fulfilled" },
+    }));
+    expect(piRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["invert_fixture"] },
+    }));
+    // The action closure refused the late post-terminal call before the
+    // caller implementation could run, and no settled evidence fabricates an
+    // execution that never happened.
+    expect(piLog).toHaveLength(1);
+    expect(toolResults[2]?.output).toMatchObject({ accepted: false });
+    expect(piRecord.trace.some((event) => event.type === "cell.tool.settled"
+      && (event.data as { toolCallId?: string }).toolCallId === "late-invert")).toBe(false);
+    // The Pi trace likewise never copies the injected tool's input or result.
+    expect(JSON.stringify(piRecord.trace)).not.toContain("abc");
+    expect(JSON.stringify(piRecord.trace)).not.toContain("cba");
+  });
+
+  test("omitting tools leaves the old surface and final unchanged, and every nonempty injection outside the declared support boundary fails closed before provider dispatch", async () => {
+    const { root } = await fixture();
+
+    // Baseline: the exact old runCell call with no tools. The model-facing
+    // surface is the old host/task/terminal surface, the final is unchanged,
+    // and no cell-tool event appears.
+    let toolNames: string[] = [];
+    const baselineModel = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        toolNames = options.tools?.map((candidate) => candidate.name) ?? [];
+        return modelResponse([{
+          type: "tool-call",
+          toolCallId: "terminal-plain",
+          toolName: "finish_work",
+          input: "{}",
+        }], "tool-calls");
+      },
+    });
+    const terminalInput = cellToolCell(root, {
+      terminalTools: [{
+        name: "finish_work",
+        description: "Finish the bounded work.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      }],
+    });
+    const baseline = await runCell(terminalInput, aiSdkDriver(baselineModel, "mock-unchanged-surface"), {
+      host: createLocalHost(),
+    });
+    expect(baseline.status).toBe("passed");
+    expect(baseline.verification.terminal.called).toEqual(["finish_work"]);
+    expect(toolNames).toEqual(["task_list", "task_get", "task_create", "task_update", "finish_work"]);
+    expect(baseline.finalText).toContain("Terminal contract satisfied during execution through finish_work");
+    expect(baseline.trace.some((event) => event.type.startsWith("cell.tools"))).toBe(false);
+    expect(baseline.trace.some((event) => event.type === "cell.tool.settled")).toBe(false);
+
+    // A nonempty set with a driver that does not declare supportsCellTools
+    // fails closed as capability_mismatch before dispatch.
+    let dispatched = false;
+    const plainDriver: CellDriver = {
+      descriptor: { adapter: "no-cell-tools", provider: "deterministic", model: "fixture" },
+      async run() {
+        dispatched = true;
+        throw new Error("driver must not start");
+      },
+    };
+    const unsupportedTools: CellToolSet = {
+      plain_probe: {
+        description: "Refused by the unsupported driver.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never" }),
+      },
+    };
+    const unsupported = await runCell(cellToolCell(root), plainDriver, {
+      host: createLocalHost(),
+      tools: unsupportedTools,
+    });
+    expect(unsupported.status).toBe("capability_mismatch");
+    expect(unsupported.error).toContain("does not declare supportsCellTools");
+    expect(unsupported.error).toContain("plain_probe");
+    expect(dispatched).toBe(false);
+
+    // Invalid names and non-object-root schemas are rejected by the neutral
+    // contract before any provider dispatch.
+    let invalidDispatchCalls = 0;
+    const invalidModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        invalidDispatchCalls += 1;
+        throw new Error("model dispatch should not occur");
+      },
+    });
+    const invalidTools = {
+      "Bad-Name": {
+        description: "Invalid name shape.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never" }),
+      },
+      bad_schema: {
+        description: "Non-object-root schema.",
+        inputSchema: { type: "string" },
+        execute: async () => ({ value: "never" }),
+      },
+    } as unknown as CellToolSet;
+    const invalid = await runCell(cellToolCell(root), aiSdkDriver(invalidModel, "mock-invalid-cell-tool"), {
+      host: createLocalHost(),
+      tools: invalidTools,
+    });
+    expect(invalid.status).toBe("failed");
+    expect(invalid.error).toContain("cell tool names use lowercase snake_case: Bad-Name");
+    expect(invalid.error).toContain("cell tool bad_schema requires an object-root input schema");
+    expect(invalidDispatchCalls).toBe(0);
+
+    // Active host, task, and declared terminal name collisions fail closed
+    // before provider dispatch: read_file is active under the read scope,
+    // task_create under the default manage Task authority, and finish_work is
+    // the declared terminal tool.
+    for (const name of ["read_file", "task_create", "finish_work"] as const) {
+      let dispatchCalls = 0;
+      const collisionModel = new MockLanguageModelV3({
+        doGenerate: async () => {
+          dispatchCalls += 1;
+          throw new Error("model dispatch should not occur");
+        },
+      });
+      const collisionTools: CellToolSet = {
+        [name]: {
+          description: "Ambiguous execution surface collision.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => ({ value: "never" }),
+        },
+      };
+      const collisionRecord = await runCell(cellToolCell(root, {
+        // A read scope makes read_file part of the active host surface;
+        // task_create is active under the default manage Task authority.
+        workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+        terminalTools: [{
+          name: "finish_work",
+          description: "Finish the bounded work.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        }],
+      }), aiSdkDriver(collisionModel, `mock-cell-conflict-${name}`), {
+        host: createLocalHost(),
+        tools: collisionTools,
+      });
+
+      expect(collisionRecord.status).toBe("failed");
+      if (name === "finish_work") {
+        expect(collisionRecord.error).toContain(
+          "cell tool name conflicts with a declared terminal tool: finish_work",
+        );
+      } else {
+        expect(collisionRecord.error).toContain(
+          `cell tool names conflict with the active execution tool surface: ${name}`,
+        );
+      }
+      expect(dispatchCalls).toBe(0);
+    }
   });
 });

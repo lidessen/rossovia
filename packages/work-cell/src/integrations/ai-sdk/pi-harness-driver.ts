@@ -27,6 +27,7 @@ import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import { TaskStore } from "../../task-store";
 import {
+  createCellToolDefinitions,
   createHostTools,
   EXECUTION_TOOL_NAMES,
   terminalActionRequired,
@@ -215,6 +216,8 @@ function piHarnessTarget(options: PiHarnessDriverOptions): PiHarnessTarget {
  */
 export class PiHarnessCellDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
+  /** Declared cell-tool capability: the Pi adapter translates the neutral tool surface through the same host tool owner. */
+  readonly supportsCellTools = true;
   protected readonly model;
   private readonly harness: HarnessV1<ToolSet>;
   private readonly sandbox: HarnessV1SandboxProvider | undefined;
@@ -276,15 +279,31 @@ export class PiHarnessCellDriver implements CellDriver {
       if (terminalOnly) return terminalActionRequired();
       return undefined;
     };
-    const hostTools = {
-      ...createHostTools({
-        input,
-        context,
-        tasks,
-        taskToolSet: this.taskToolSet,
-        actionBlocked,
-        fullWriteMode: "create-new-only",
-      }),
+    const hostTools = createHostTools({
+      input,
+      context,
+      tasks,
+      taskToolSet: this.taskToolSet,
+      actionBlocked,
+      fullWriteMode: "create-new-only",
+    });
+    // Caller-injected cell tools join the same host-owned surface: the
+    // action closure and the causal tool-effect handoff apply to them
+    // exactly like host tools, and a name conflicting with the active
+    // host/task/terminal surface or a non-object-root schema fails before
+    // any provider dispatch.
+    const mergedTools = {
+      ...hostTools,
+      ...(context.cellTools
+        ? createCellToolDefinitions({
+            surface: context.cellTools,
+            reservedNames: [
+              ...Object.keys(hostTools),
+              ...(input.terminalTools ?? []).map((terminal) => terminal.name),
+            ],
+            actionBlocked,
+          })
+        : {}),
       ...Object.fromEntries((input.terminalTools ?? []).map((terminal) => [terminal.name, tool({
         description: terminal.description,
         inputSchema: z.fromJSONSchema(terminal.inputSchema),
@@ -319,7 +338,7 @@ export class PiHarnessCellDriver implements CellDriver {
     // changes timing only; tool names, schemas, evidence, and host ownership
     // are exact.
     const harnessTools: Record<string, Tool> = Object.fromEntries(
-      Object.entries(hostTools).map(([name, definition]): [string, Tool] => [
+      Object.entries(mergedTools).map(([name, definition]): [string, Tool] => [
         name,
         withToolEffectHandoff(definition, this.toolEffectHandoff),
       ]),
@@ -339,7 +358,7 @@ export class PiHarnessCellDriver implements CellDriver {
     });
     context.emit("harness.tool_surface.projected", {
       harnessId: this.harness.harnessId,
-      tools: Object.keys(hostTools),
+      tools: Object.keys(mergedTools),
       builtinToolFiltering: { mode: "allow", toolNames: [] },
     });
 

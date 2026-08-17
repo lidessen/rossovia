@@ -41,6 +41,30 @@ which asserts the former core root paths are physically absent (no tombstones,
 no compatibility shims) and that the C1-C3 core modules listed above carry no
 concrete AI SDK/Pi/provider dependency.
 
+## Caller-injected cell tools (C2 tool port)
+
+The core owns one provider-neutral caller-injected tool port
+(`src/tool-port.ts`): `RunCellOptions.tools` accepts a readonly name-keyed
+`CellToolSet` whose values carry `description`, an object-root `inputSchema`,
+and a caller-owned `execute` closure, so the set is never serializable into
+`CellInput`. `runCell` admits every call through the same gate as host
+effects: each execute promise covers the call's full effect and its settled
+evidence, the caller implementation receives exactly the toolCallId plus the
+Cell's combined execution signal, abort closes the gate and joins admitted
+calls before the final, and unresolved quiescence leaves no final. The core
+retains only the sorted authorized names (`cell.tools.projected`) and, per
+invocation, `{ name, toolCallId, outcome }` — never input, result, or
+implementation identity.
+
+`host-tools.ts` owns the single AI SDK translation (`createCellToolDefinitions`)
+used by both the AI SDK and the Pi harness drivers. Names colliding with the
+active host/task/terminal surface and non-object-root schemas are rejected
+before any provider dispatch; the Pi adapter additionally wraps injected tools
+in the same causal tool-effect handoff and action closure as host tools.
+Caller-supplied tools require a driver that declares `supportsCellTools: true`;
+otherwise the run fails closed as `capability_mismatch` before dispatch.
+Omitting tools leaves every driver surface and the final record unchanged.
+
 ## Still owned elsewhere (host/process adapters, I2 scope)
 
 - `src/codex-cli-driver.ts`, `src/opencode-cli-driver.ts`,

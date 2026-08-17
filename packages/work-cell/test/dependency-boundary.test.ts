@@ -22,6 +22,7 @@ const CORE_MODULES = [
   "host-port.ts",
   "output-schema.ts",
   "run-cell.ts",
+  "tool-port.ts",
 ] as const;
 
 const BANNED_IMPORT_PREFIXES = [

@@ -17,6 +17,12 @@ import {
 import type { CellDriver } from "./driver";
 import { CellExecutionError, TerminalContractError, traceEvent } from "./driver";
 import type { CellHost, HostWorkspace } from "./host-port";
+import {
+  cellToolContractErrors,
+  type CellToolSet,
+  type CellToolSettledOutcome,
+  type CellToolSurface,
+} from "./tool-port";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
 
@@ -32,6 +38,14 @@ export interface RunCellOptions {
   preparation?: CellPreparation;
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
   onTrace?: (event: TraceEvent) => void;
+  /**
+   * Optional caller-injected, provider-neutral, non-serializable model-visible
+   * tool set. The tools live outside `CellInput` because their implementations
+   * are caller closures; the Cell retains only the sorted authorized names
+   * and, per invocation, the name, exact toolCallId, and settled outcome. A
+   * non-empty set requires a driver that declares `supportsCellTools`.
+   */
+  tools?: CellToolSet;
 }
 
 export async function runCell(
@@ -92,17 +106,32 @@ export async function runCell(
   const before = await workspace.snapshot();
   const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+  // Caller-injected cell tools cross the same C2 admission/termination
+  // boundary as host effects: after the gate closes no new tool call starts,
+  // every admitted call is joined before the final, and each execute promise
+  // covers the call's full effect and its settled evidence. The caller's
+  // implementation receives the Cell's exact combined signal.
+  const injectedCellTools = options.tools ?? {};
+  const cellToolGate = Object.keys(injectedCellTools).length > 0
+    ? gateCellTools(injectedCellTools, emit, signal)
+    : undefined;
   // Close the host-effect admission gate synchronously from an abort
   // listener registered before the driver starts: during synchronous
   // AbortSignal dispatch a driver abort listener could otherwise start a
   // new workspace write before the rejection path reaches the outer catch.
   // The listener is removed as soon as the driver settles without aborting;
   // the close-and-drain final boundary below stays authoritative.
-  const closeAdmissionOnAbort = () => admission.close();
+  const closeAdmissionOnAbort = () => {
+    admission.close();
+    cellToolGate?.close();
+  };
   signal.addEventListener("abort", closeAdmissionOnAbort);
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
+  const cellToolsUnsupported = Object.keys(injectedCellTools).length > 0
+    && driver.supportsCellTools !== true;
+  const injectedToolNames = () => Object.keys(injectedCellTools).sort();
 
   let status: CellTerminalStatus = "failed";
   let error: string | undefined;
@@ -118,15 +147,38 @@ export async function runCell(
   let artifacts: ArtifactRecord[] = [];
   let after: Awaited<ReturnType<HostWorkspace["snapshot"]>> | undefined;
 
-  if (missingCapabilities.length > 0) {
+  if (missingCapabilities.length > 0 || cellToolsUnsupported) {
     status = "capability_mismatch";
-    error = `missing capabilities: ${missingCapabilities.join(", ")}`;
-    emit("cell.capability_mismatch", { missingCapabilities });
+    error = [
+      ...(missingCapabilities.length > 0 ? [`missing capabilities: ${missingCapabilities.join(", ")}`] : []),
+      ...(cellToolsUnsupported
+        ? [`the supplied driver does not declare supportsCellTools; refusing to dispatch cell tools: ${injectedToolNames().join(", ")}`]
+        : []),
+    ].join("; ");
+    emit("cell.capability_mismatch", {
+      ...(missingCapabilities.length > 0 ? { missingCapabilities } : {}),
+      ...(cellToolsUnsupported ? { cellTools: injectedToolNames() } : {}),
+    });
   } else {
     try {
+      // Neutral contract validation before dispatch: injected tools must
+      // carry valid names, object-root schemas, executable implementations,
+      // and no conflict with declared terminal tools. A name-keyed set cannot
+      // carry a duplicate name. Active host/task-surface conflicts are
+      // rejected by each driver before any provider dispatch.
+      const cellToolErrors = Object.keys(injectedCellTools).length > 0
+        ? cellToolContractErrors(
+            injectedCellTools,
+            input.terminalTools?.map((terminal) => terminal.name) ?? [],
+          )
+        : [];
+      if (cellToolErrors.length > 0) {
+        throw new Error(cellToolErrors.join("; "));
+      }
       const context = {
         workspace: admission.workspace,
         signal,
+        ...(cellToolGate ? { cellTools: cellToolGate.surface } : {}),
         liveObservation: observerActive,
         observeUsage(usage: CellUsage, phase?: "execution" | "settlement") {
           observedExecutionUsage = addUsage(observedExecutionUsage, usage);
@@ -142,6 +194,13 @@ export async function runCell(
         emit("cell.prepared", {
           adapter: options.preparation.adapter,
           usage: options.preparation.usage,
+        });
+      }
+      if (cellToolGate) {
+        // The actually authorized caller-injected tool surface, projected
+        // before dispatch with sorted names.
+        emit("cell.tools.projected", {
+          tools: Object.keys(cellToolGate.surface.tools).sort(),
         });
       }
       // One canonical pre-driver CellInput is the caller contract. Terminal,
@@ -160,7 +219,9 @@ export async function runCell(
       // join every already-admitted effect before verification and the
       // workspace snapshot, so the final record reflects only settled effects.
       admission.close();
+      cellToolGate?.close();
       await admission.drain();
+      await cellToolGate?.drain();
       const terminalTools = input.terminalTools ?? [];
       const terminalResult = verifyTerminalContract(
         terminalTools.map((terminal) => terminal.name),
@@ -235,7 +296,9 @@ export async function runCell(
   // quiescence cannot be proved the Cell returns no final at all, leaving
   // the existing no-final/unresolved/claim-retained O2 standing untouched.
   admission.close();
+  cellToolGate?.close();
   await admission.drain();
+  await cellToolGate?.drain();
   after ??= await workspace.snapshot();
   const finishedAt = new Date();
   const usage = addUsage(
@@ -370,6 +433,84 @@ function gateHostEffects(workspace: HostWorkspace): HostEffectAdmission {
       // Join the currently admitted effects exactly once; effects admitted
       // after close are impossible, and settled effects release themselves
       // from the set.
+      await Promise.allSettled([...pending]);
+    },
+  };
+}
+
+interface CellToolAdmission {
+  /** The gated neutral surface the driver receives through `DriverContext.cellTools`. */
+  readonly surface: CellToolSurface;
+  /** Close the admission gate: any new tool call is refused without executing the caller implementation. */
+  close(): void;
+  /** Resolve once every already-admitted tool call has settled with its evidence retained. */
+  drain(): Promise<void>;
+}
+
+/**
+ * The Cell-owned admission gate over caller-injected cell tools. Each
+ * invocation crosses the gate exactly like a host effect: after the gate
+ * closes (driver settlement, failure, or cancellation) new calls are refused
+ * before the caller's implementation can run, and every admitted call is
+ * joined before the immutable final, so no tool effect or settled evidence
+ * can outlive the returned record. The execute promise returned to the model
+ * loop covers the call's full effect and its retained evidence: it resolves
+ * only after the caller's implementation settles and the bounded
+ * `cell.tool.settled` event — exactly `{ name, toolCallId, outcome }`, never
+ * input, result, or implementation identity — is appended to the trace. The
+ * caller implementation receives the Cell's exact combined execution signal
+ * so cancellation stays observable to in-flight calls.
+ */
+function gateCellTools(
+  tools: CellToolSet,
+  emit: (type: string, data: unknown) => void,
+  signal: AbortSignal,
+): CellToolAdmission {
+  let closed = false;
+  const pending = new Set<Promise<unknown>>();
+  const settled = (name: string, toolCallId: string, outcome: CellToolSettledOutcome) => {
+    emit("cell.tool.settled", { name, toolCallId, outcome });
+  };
+  const execute = (name: string, input: unknown, toolCallId: string): Promise<unknown> => {
+    const tool = tools[name];
+    if (tool === undefined) {
+      return Promise.reject(new Error(`unknown cell tool: ${name}`));
+    }
+    if (closed) {
+      settled(name, toolCallId, "refused");
+      return Promise.reject(
+        new Error("the Cell tool admission gate is closed; no new tool calls may start"),
+      );
+    }
+    const effect = Promise.resolve().then(() =>
+      tool.execute(input, { signal, toolCallId }),
+    );
+    pending.add(effect);
+    const covered = effect.then(
+      (result) => {
+        settled(name, toolCallId, "fulfilled");
+        return result;
+      },
+      (error) => {
+        settled(name, toolCallId, "rejected");
+        throw error;
+      },
+    );
+    covered.then(
+      () => pending.delete(effect),
+      () => pending.delete(effect),
+    );
+    return covered;
+  };
+  return {
+    surface: { tools, execute },
+    close() {
+      closed = true;
+    },
+    async drain() {
+      // Join the currently admitted calls exactly once; calls admitted after
+      // close are impossible. When a caller implementation never settles,
+      // this join never resolves and the Cell truthfully produces no final.
       await Promise.allSettled([...pending]);
     },
   };

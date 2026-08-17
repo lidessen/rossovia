@@ -1,6 +1,7 @@
 export * from "./contracts";
 export * from "./driver";
 export * from "./host-port";
+export * from "./tool-port";
 export * from "./workspace";
 export * from "./fake-host";
 export * from "./file-input";
