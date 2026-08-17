@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../../../packages/work-cell/src/driver";
-import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
+import { createValidationModel } from "../../../packages/work-cell/src/integrations/ai-sdk/validation-model";
 import { Workspace, createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { runDelegateLoop, type DelegateCall } from "../src/delegate-loop";
 import { FileMissionTimeline } from "../src/delegate-timeline";

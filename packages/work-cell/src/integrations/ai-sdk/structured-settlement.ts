@@ -1,10 +1,10 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { ToolLoopAgent, hasToolCall, tool } from "ai";
-import type { CellUsage } from "./contracts";
-import type { DriverContext, StepAllowance } from "./driver";
-import { stepBudgetExhaustedMessage } from "./driver";
+import type { CellUsage } from "../../contracts";
+import type { DriverContext, StepAllowance } from "../../driver";
+import { stepBudgetExhaustedMessage } from "../../driver";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
-import type { CompiledOutputSchema } from "./output-schema";
+import type { CompiledAiSdkOutputSchema } from "./output-schema";
 
 export interface StructuredSettlementResult {
   output?: unknown;
@@ -15,7 +15,7 @@ export interface StructuredSettlementResult {
 
 export async function settleStructuredOutput(options: {
   model: LanguageModelV4;
-  schema: CompiledOutputSchema;
+  schema: CompiledAiSdkOutputSchema;
   intent: string;
   acceptance: string[];
   retainedEvidence: string;

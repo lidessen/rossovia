@@ -15,7 +15,7 @@ import {
   CellRunRecordSchema,
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
-import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integrations/ai-sdk";
 import {
   authorizeExecution,
   executionAuthorizationReceiptPath,

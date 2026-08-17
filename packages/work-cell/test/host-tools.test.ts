@@ -17,15 +17,15 @@ import { runCell } from "../src/run-cell";
 import {
   createHostTools,
   EXECUTION_TOOL_NAMES,
-} from "../src/host-tools";
-import { createWorkspaceEditTool } from "../src/workspace-edit";
+} from "../src/integrations/ai-sdk/host-tools";
+import { createWorkspaceEditTool } from "../src/integrations/ai-sdk/workspace-edit";
 import { HarnessAgent } from "@ai-sdk/harness/agent";
 import { createPi, type PiHarnessSettings } from "@ai-sdk/harness-pi";
 import {
   createPiInMemorySandbox,
   PI_HARNESS_DRIVER_ADAPTER,
   PiHarnessCellDriver,
-} from "../src/pi-harness-driver";
+} from "../src/integrations/ai-sdk/pi-harness-driver";
 import type {
   HarnessV1,
   HarnessV1PromptControl,

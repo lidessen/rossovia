@@ -5,7 +5,7 @@ import {
   type ProviderObservation,
   type QuotaWindow,
 } from "../provider-observation";
-import { KIMI_CODING_BASE_URL, KIMI_CODING_PROVIDER_ID } from "./kimi-coding";
+import { KIMI_CODING_BASE_URL, KIMI_CODING_PROVIDER_ID } from "../integrations/ai-sdk/providers/kimi-coding";
 
 const NumericFieldSchema = z.union([z.number(), z.string()]).transform((value, context) => {
   const parsed = Number(value);

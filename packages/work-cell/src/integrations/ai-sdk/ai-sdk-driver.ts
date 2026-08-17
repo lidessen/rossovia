@@ -4,7 +4,7 @@ import {
   type CellInput,
   type CellUsage,
   type DriverDescriptor,
-} from "./contracts";
+} from "../../contracts";
 import {
   CellExecutionError,
   TerminalContractError,
@@ -13,12 +13,12 @@ import {
   type CellDriver,
   type DriverContext,
   type DriverResult,
-} from "./driver";
-// AI SDK and provider types remain confined to this adapter.
-import { compileOutputSchema } from "./output-schema";
+} from "../../driver";
+// AI SDK and provider types remain confined to this Integration island.
+import { compileAiSdkOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
-import { TaskStore } from "./task-store";
+import { TaskStore } from "../../task-store";
 import {
   createHostTools,
   EXECUTION_TOOL_NAMES,
@@ -41,14 +41,12 @@ import {
   sanitize,
   taskToolNames,
 } from "./driver-common";
+import type { TaskToolSet } from "./task-tool-set";
 
 export type AiSdkDriverOptions = ValidationModelOptions & {
   /** Host-selected Task authority; it changes the actual tool surface, not only the prompt. */
   taskToolSet?: TaskToolSet;
 };
-
-export const TaskToolSetSchema = z.enum(["manage", "read-update", "read-only"]);
-export type TaskToolSet = z.infer<typeof TaskToolSetSchema>;
 
 const MAX_AGENT_OUTPUT_TOKENS = 16_000;
 const STREAM_PROGRESS_CHARACTERS = 1_000;
@@ -93,7 +91,7 @@ export class AiSdkValidationDriver implements CellDriver {
     });
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
-    const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
+    const outputSchema = input.outputSchema ? compileAiSdkOutputSchema(input.outputSchema) : undefined;
     // Inline structured output is a provider-adapter decision; the tool-based
     // settlement path stays the fallback for providers without native support.
     const inlineOutputSchema = this.structuredOutputMode === "inline"

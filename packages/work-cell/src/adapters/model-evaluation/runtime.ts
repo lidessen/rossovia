@@ -14,8 +14,8 @@ import {
 import type { CellDriver } from "../../driver";
 import type { CellHost } from "../../host-port";
 import { runCell } from "../../run-cell";
-import { ValidationRouteSchema, type ProviderRouteTarget } from "../../provider-profile";
-import { DeepSeekInferencePolicySchema } from "../../providers/deepseek";
+import { ValidationRouteSchema, type ProviderRouteTarget } from "../../integrations/ai-sdk/provider-profile";
+import { DeepSeekInferencePolicySchema } from "../../integrations/ai-sdk/providers/deepseek";
 import {
   type BlindModelRunEvidence,
   type ModelEvaluationJudge,

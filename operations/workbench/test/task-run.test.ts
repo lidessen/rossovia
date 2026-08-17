@@ -18,7 +18,7 @@ import {
   type CellInput,
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
-import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integrations/ai-sdk";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";

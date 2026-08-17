@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExecutionProfile } from "../../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
 import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import {

@@ -12,7 +12,7 @@ import {
   type CellInput,
   type CellUsage,
   type DriverDescriptor,
-} from "./contracts";
+} from "../../contracts";
 import {
   CellExecutionError,
   TerminalContractError,
@@ -21,11 +21,11 @@ import {
   type CellDriver,
   type DriverContext,
   type DriverResult,
-} from "./driver";
-import { compileOutputSchema } from "./output-schema";
+} from "../../driver";
+import { compileAiSdkOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
-import { TaskStore } from "./task-store";
+import { TaskStore } from "../../task-store";
 import {
   createHostTools,
   EXECUTION_TOOL_NAMES,
@@ -33,7 +33,6 @@ import {
 } from "./host-tools";
 import {
   AiSdkDriverOptions,
-  type TaskToolSet,
 } from "./ai-sdk-driver";
 import {
   createValidationModel,
@@ -259,7 +258,7 @@ export class PiHarnessCellDriver implements CellDriver {
     });
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
-    const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
+    const outputSchema = input.outputSchema ? compileAiSdkOutputSchema(input.outputSchema) : undefined;
     const markTerminalTool = (name: string): boolean => {
       if (terminalToolsCalled.size > 0) {
         terminalProtocolError = `expected exactly one terminal tool call; received ${[

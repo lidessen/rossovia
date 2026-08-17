@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
-import { requireValidationConfiguration } from "../validation-model";
+import { requireValidationConfiguration } from "../integrations/ai-sdk/validation-model";
 import type { ActivationFieldRecord } from "./activation-field";
 import { AiSdkResidualReadoutDriver } from "./ai-sdk-residual-readout";
 import { LatentRoutingSpecSchema, runLatentRouting } from "./latent-routing";

@@ -1,16 +1,17 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import type { CellInput } from "./contracts";
-import type { DriverContext } from "./driver";
-import type { TaskStore } from "./task-store";
+import type { CellInput } from "../../contracts";
+import type { DriverContext } from "../../driver";
+import type { TaskStore } from "../../task-store";
 import { createTaskTools } from "./task-tools";
 import { createWorkspaceEditTool } from "./workspace-edit";
-import type { TaskToolSet } from "./ai-sdk-driver";
+import type { TaskToolSet } from "./task-tool-set";
 
 /**
- * The one host-executed tool owner shared by every CellDriver: ordinary task
- * work and conversation carriers always cross the same scope-bound tool
- * surface, and no driver re-implements a second execution pathway.
+ * The one host-executed tool owner shared by every AI SDK/Pi CellDriver:
+ * ordinary task work and conversation carriers always cross the same
+ * scope-bound tool surface, and no driver re-implements a second execution
+ * pathway.
  */
 export const EXECUTION_TOOL_NAMES = new Set([
   "list_files",

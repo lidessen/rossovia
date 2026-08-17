@@ -119,13 +119,14 @@ successful attributable result; cleanup never replaces the original failure.
 There is no silent prompt fallback and no instruction to the worker to adopt
 todos through `todowrite`.
 
-Model routing has three extension points. `model-route.ts` executes an ordered
-provider-neutral route and retains attempts; `providers/` owns each external
-API's construction, request translation, error meaning, and pricing; and
-`provider-profile.ts` owns explicit preference and credential references while
-`validation-model.ts` resolves that selection into provider-specific models.
-Adding or replacing a validation provider should change these policy and
-adapter surfaces, not the generic route executor. OpenCode Go and Kimi Coding
+Model routing has three extension points, all inside the declared
+`src/integrations/ai-sdk/` Integration island: `model-route.ts` executes an
+ordered provider-neutral route and retains attempts; the island's `providers/`
+owns each external API's construction, request translation, error meaning, and
+pricing; and `provider-profile.ts` owns explicit preference and credential
+references while `validation-model.ts` resolves that selection into
+provider-specific models. Adding or replacing a validation provider should
+change these policy and adapter surfaces, not the generic route executor. OpenCode Go and Kimi Coding
 Plan are fixed-price subscriptions: their token tariffs measure allowance
 consumption, not marginal money spent by one Cell. Any subscription or mixed
 route therefore retains usage and serving evidence but omits a dollar estimate
@@ -717,10 +718,21 @@ Sequence expression, experiment treatment, proposal-specific role, vote,
 workflow, or doctrine belongs in an adapter, not in `CellInput`, `CellDriver`,
 or `runCell`.
 
-The public core barrel exports contracts, the neutral host port, the driver
+The current package barrel exports contracts, the neutral host port, the driver
 interface, workspace (`Workspace` as the local adapter plus `createLocalHost`),
-the deterministic `FakeHost`/`FilteredHost`, `runCell`, the AI SDK driver, the
-orchestration protocol and in-memory queue, and the general Swarm runtime.
+the deterministic `FakeHost`/`FilteredHost`, `runCell`, the orchestration
+protocol and in-memory queue, and the general Swarm runtime. The accepted C1-C3
+core is narrower: contracts, `CellDriver`, `HostWorkspace`, the neutral output
+validator, and `runCell`. Every concrete AI
+SDK/Pi/provider driver, provider route, host-tool wiring, and
+structured-settlement implementation is exported from the declared
+`src/integrations/ai-sdk/` Integration path; the C1-C3 core keeps no `ai`,
+`@ai-sdk`, Pi, or concrete provider import, and the former core root paths of
+those concrete implementations are physically removed — no tombstones or
+compatibility shims exist. Other currently exported helpers, local adapters,
+worker catalog, concurrency, `src/swarm.ts`, and `src/orchestration.ts` are not
+declared C1-C3 core architecture: they are untouched pre-existing adjacent or
+legacy mechanisms pending a later Goal review.
 Optional carriers are explicit adapter entry points:
 
 - `src/adapters/sequence/`

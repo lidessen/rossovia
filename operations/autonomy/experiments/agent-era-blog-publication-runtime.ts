@@ -3,9 +3,9 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
 import { createLocalHost } from "../../../packages/work-cell/src/workspace";
-import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
+import { createValidationModel } from "../../../packages/work-cell/src/integrations/ai-sdk/validation-model";
 import {
   executionAuthorizationClaimPath,
 } from "../../workbench/src/execution-authorization-claim";

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { rm } from "node:fs/promises";
 import { captureClaudeStatusline, observeClaude } from "../src/providers/claude-observer";
 import { observeCodex } from "../src/providers/codex-observer";
-import { discoverProviderCredentials } from "../src/provider-profile";
+import { discoverProviderCredentials } from "../src/integrations/ai-sdk/provider-profile";
 
 test("provider discovery exposes credential references without selecting or revealing values", () => {
   const candidates = discoverProviderCredentials({

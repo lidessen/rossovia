@@ -20,12 +20,12 @@ import {
   JsonFileInputRefSchema,
   readJsonFileInput,
 } from "../../../packages/work-cell/src/file-input";
-import { normalizeAiSdkUsage } from "../../../packages/work-cell/src/ai-sdk-usage";
+import { normalizeAiSdkUsage } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-usage";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
 import type { WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
 import type { SwarmCellOutcome } from "../../../packages/work-cell/src/swarm";
 import { TaskStore } from "../../../packages/work-cell/src/task-store";
-import { createTaskTools } from "../../../packages/work-cell/src/task-tools";
+import { createTaskTools } from "../../../packages/work-cell/src/integrations/ai-sdk";
 import {
   admitPreparedDelegateBatch,
   runAdmittedDelegateBatch,

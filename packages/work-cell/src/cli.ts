@@ -5,9 +5,11 @@ import { createInterface } from "node:readline/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import {
   AiSdkValidationDriver,
+} from "./integrations/ai-sdk/ai-sdk-driver";
+import {
   TaskToolSetSchema,
   type TaskToolSet,
-} from "./ai-sdk-driver";
+} from "./integrations/ai-sdk/task-tool-set";
 import { OpenCodeCliDriver } from "./opencode-cli-driver";
 import { AiSdkValidationSequenceDriver } from "./adapters/sequence/ai-sdk-driver";
 import { CellInputSchema, type CellRunRecord, type TraceEvent } from "./contracts";
@@ -39,7 +41,7 @@ import {
   discoverProviderCredentials,
   ProviderProfileSchema,
   type ProviderCredentialCandidate,
-} from "./provider-profile";
+} from "./integrations/ai-sdk/provider-profile";
 
 await main(process.argv.slice(2)).catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));

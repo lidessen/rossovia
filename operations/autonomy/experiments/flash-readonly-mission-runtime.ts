@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import type { CellInput } from "../../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
 import { createLocalHost } from "../../../packages/work-cell/src/workspace";
-import { createValidationModel } from "../../../packages/work-cell/src/validation-model";
+import { createValidationModel } from "../../../packages/work-cell/src/integrations/ai-sdk/validation-model";
 import { stableStringify } from "../src/canonical-json";
 import {
   DelegateLoopSession,
