@@ -596,7 +596,7 @@ describe("legacy namespace migration", () => {
     expect(workbench(target, "resolve", "second").exitCode).toBe(0);
   });
 
-  test("recovers an empty target after marker publication was denied", () => {
+  test("recovers an empty target after owner acquisition was denied", () => {
     if (process.platform === "win32") return;
     const root = mkdtempSync(join(tmpdir(), "rossovia-marker-publication-"));
     temporaryRoots.push(root);
@@ -608,11 +608,16 @@ describe("legacy namespace migration", () => {
     mkdirSync(target);
     chmodSync(target, 0o555);
     try {
+      // The registration owner is acquired before any marker publication, so
+      // the denied write surface fails visibly at owner acquisition instead
+      // of publishing a marker the retry would then misread.
       const denied = workbench(target, "migrate", "--from-home", source);
       expect(denied.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
-      expect(denied.stderr).toContain("rossovia: cannot persist Rossovia state");
+      expect(denied.stderr).toContain("rossovia: cannot acquire the Rossovia registration lock");
+      expect(denied.stderr).toContain("must grant write access to this exact state location");
       expect(denied.stderr).not.toContain("for usage");
       expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+      expect(existsSync(join(target, "state", "registration.lock"))).toBe(false);
     } finally {
       chmodSync(target, 0o755);
     }

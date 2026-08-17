@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   cpSync,
   existsSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -37,6 +36,12 @@ function digest(path: string): string {
 
 function digestBytes(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function ioErrorCode(error: unknown): string | undefined {
+  if (error === null || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
 }
 
 function migrateRecord(value: unknown): unknown {
@@ -259,12 +264,56 @@ const MigrationMarkerSchema = z.object({
   committedWorkspacesDigest: z.string().length(64).optional(),
 }).strict();
 
-function clearMigrationTarget(target: string): void {
-  // Runs only under the held registration owner. Inert marker stages
-  // recognized before the generic nonempty-target refusal are removed by
-  // this ordinary clearing — never by a read-then-delete recovery.
+/**
+ * Under the held registration owner, verify and remove only the exact
+ * admitted marker-stage snapshot. Every stage currently present in the
+ * reserved namespace must still hold the admitted name and exact bytes; a
+ * stage that was added or replaced after the admission is never touched and
+ * fails closed, so no read-then-delete can ever remove a replacement
+ * owner's stage. Missing admitted stages are already gone and need no
+ * removal. This runs inside the ordinary target clearing and inside the
+ * completion cleanup — never as a standalone recovery.
+ */
+function removeAdmittedMigrationStages(
+  target: string,
+  admittedStages: ReadonlyMap<string, string>,
+  io: RegistrationIo,
+): void {
+  // Verify the complete exact stage namespace before removing anything, so a
+  // failure leaves every stage and all other target content untouched.
+  const present = readdirSync(target).filter(isMigrationMarkerStageName);
+  for (const name of present) {
+    const path = join(target, name);
+    const admittedBytes = admittedStages.get(name);
+    if (admittedBytes === undefined) {
+      throw new Error(
+        `a migration marker stage appeared at ${path} after this transaction admitted the target. ` +
+        "It is never deleted or replaced automatically; reconcile the target explicitly before retrying migration.",
+      );
+    }
+    if (io.readFile(path) !== admittedBytes) {
+      throw new Error(
+        `the migration marker stage at ${path} was replaced since this transaction admitted the target. ` +
+        "It is never deleted or replaced automatically; reconcile the target explicitly before retrying migration.",
+      );
+    }
+  }
+  // The verified stages belong to this exact transaction; remove them while
+  // the owner is held.
+  for (const name of present) io.remove(join(target, name));
+}
+
+function clearMigrationTarget(
+  target: string,
+  admittedStages: ReadonlyMap<string, string>,
+  io: RegistrationIo,
+): void {
+  // Runs only under the held registration owner. The admitted marker stages
+  // are verified and removed first; a stage added or replaced since the
+  // admission fails the whole clear untouched — never a read-then-delete.
+  removeAdmittedMigrationStages(target, admittedStages, io);
   for (const entry of readdirSync(target, { withFileTypes: true })) {
-    if (entry.name === migrationMarkerName) continue;
+    if (entry.name === migrationMarkerName || isMigrationMarkerStageName(entry.name)) continue;
     const path = join(target, entry.name);
     if (entry.name === "state") {
       // The caller holds the registration lock inside state/: preserve the
@@ -283,6 +332,25 @@ function clearMigrationTarget(target: string): void {
   }
 }
 
+/**
+ * True when the directory holds only the reserved registration lock
+ * namespace (the live lock plus any descendant or tombstone form). Right
+ * after the owner acquisition this is exactly what the target's state/
+ * contains before the first admission, so it is the only tolerated
+ * pre-admission content in the marker-absent path.
+ */
+function isOnlyLockNamespaceDirectory(path: string): boolean {
+  try {
+    const entries = readdirSync(path, { withFileTypes: true });
+    return entries.every((entry) =>
+      entry.name === registrationLockName || entry.name.startsWith(`${registrationLockName}.`));
+  } catch (error: unknown) {
+    throw new Error(
+      `cannot inspect the Rossovia target directory at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 function registrationExposedError(target: string): Error {
   return new Error(
     `a registration succeeded in the rossovia target after the interrupted migration exposed it: ${target}. ` +
@@ -294,17 +362,20 @@ function registrationExposedError(target: string): Error {
 
 /**
  * Under the held registration owner, verify the exact canonical pair before
- * the interrupted target is cleared. The only states the migration's own
- * interrupted attempt can have left are admitted: no canonical admission yet,
- * the empty pair a concurrent initialization published during the exposure,
- * the projects-only subset of the recorded durable commit (a crash between
- * the two renames), the recorded committed projects with byte-exact
- * canonical empty workspaces (a crash between the two renames followed by an
- * unlocked no-clobber init), or the exact recorded committed pair. Anything
- * else proves a register or attach succeeded after the exposure — the
- * migration fails closed instead of clearing or replacing that successful
- * registration with the fabricated empty previous bytes of its durable
- * commit.
+ * the interrupted target is cleared or re-committed. The only states the
+ * migration's own interrupted attempt can have left are admitted: no
+ * canonical admission yet, the empty pair a concurrent initialization
+ * published during the exposure, the projects-only subset of the recorded
+ * durable commit (a crash between the two renames), the recorded committed
+ * projects with byte-exact canonical empty workspaces (a crash between the
+ * two renames followed by an unlocked no-clobber init), or the exact
+ * recorded committed pair. The initial phase admits only the first two and
+ * is then cleared; the digest phase admits all of them and keeps the
+ * digest-bearing marker byte-exact while the identical digest marker is
+ * re-published before the canonical commit. Anything else proves a register
+ * or attach succeeded after the exposure — the migration fails closed
+ * instead of clearing or replacing that successful registration with the
+ * fabricated empty previous bytes of its durable commit.
  */
 function verifyTargetCanonicalPairBeforeClear(
   target: string,
@@ -359,32 +430,66 @@ function verifyTargetCanonicalPairBeforeClear(
 /**
  * Publish one load-bearing migration marker publication durably through the
  * injected registration I/O seam: the complete payload is written to a
- * unique same-directory stage, the stage file is fsynced, the stage is
- * atomically renamed onto the marker path, and the marker's parent directory
- * entry is fsynced before the call returns. The digest marker recording the
- * committed canonical-pair bytes must be durable before the canonical
- * projects rename can become observable: otherwise a power loss could retain
- * the durably synced canonical pair while losing or reverting the digest
- * marker, and a resumed migration would misclassify its own committed pair
- * as a later successful registration and refuse to complete the retryable
- * transaction. Every marker publication (the initial exposure marker, the
- * post-clear reset, and the digest marker) goes through this one helper;
- * unrelated JSON writes keep their existing non-durable publication path.
- * Each stage lives in the reserved migration marker stage namespace
- * (migrationMarkerStagePrefix), so a publication terminated after the stage
- * write and fsync but before the rename leaves an artifact the resumed
- * transaction can attribute by the strict sourceHome and targetHome recorded
- * in its complete bytes.
+ * unique same-directory stage, the stage file is fsynced, the marker path
+ * is re-verified against the exact expected generation (absent for the
+ * initial admission), the stage is atomically renamed onto the marker path,
+ * and the marker's parent directory entry is fsynced before the call
+ * returns. Every caller holds the one registration owner, so the expected
+ * generation can only have been changed by a foreign writer; a marker that
+ * appeared, changed, or regressed fails closed and is never renamed over.
+ * The digest marker recording the committed canonical-pair bytes must be
+ * durable before the canonical projects rename can become observable:
+ * otherwise a power loss could retain the durably synced canonical pair
+ * while losing or reverting the digest marker, and a resumed migration
+ * would misclassify its own committed pair as a later successful
+ * registration and refuse to complete the retryable transaction. The
+ * initial admission and the digest phase change both go through this one
+ * helper; unrelated JSON writes keep their existing non-durable
+ * publication path. Each stage lives in the reserved migration marker stage
+ * namespace (migrationMarkerStagePrefix), so a publication terminated after
+ * the stage write and fsync but before the rename leaves an artifact the
+ * resumed transaction can attribute by the strict sourceHome and targetHome
+ * recorded in its complete bytes. Returns the exact serialized bytes
+ * published so the caller can re-verify the generation before advancing or
+ * completing the transaction.
  */
-function publishMigrationMarker(marker: string, value: unknown, io: RegistrationIo): void {
+function publishMigrationMarker(
+  marker: string,
+  value: unknown,
+  io: RegistrationIo,
+  expectedCurrent: string | undefined,
+): string {
   const serialized = `${JSON.stringify(value, null, 2)}\n`;
   const stage = `${marker}.stage-${randomUUID()}`;
+  let noClobberError: Error | undefined;
   try {
     io.mkdir(dirname(marker));
     io.writeFile(stage, serialized);
     io.fsyncFile(stage);
+    // The no-clobber phase guard immediately before the rename: the marker
+    // path must still hold exactly the expected generation. The initial
+    // admission expects absence; a phase change expects the exact admitted
+    // bytes. Anything else fails closed without renaming over another
+    // publisher's marker.
+    let current: string | undefined;
+    try {
+      current = io.readFile(marker);
+    } catch (error: unknown) {
+      if (ioErrorCode(error) !== "ENOENT") throw error;
+    }
+    if (current !== expectedCurrent) {
+      noClobberError = new Error(
+        expectedCurrent === undefined
+          ? `the migration marker appeared at ${marker} while this transaction was admitting the target; another publisher owns it. ` +
+          "Reconcile the target explicitly before retrying migration."
+          : `the migration marker at ${marker} changed or regressed since this transaction admitted it. ` +
+          "Reconcile the target explicitly before retrying migration.",
+      );
+      throw noClobberError;
+    }
     io.rename(stage, marker);
     io.fsyncDirectory(dirname(marker));
+    return serialized;
   } catch (error: unknown) {
     try {
       io.remove(stage);
@@ -392,6 +497,7 @@ function publishMigrationMarker(marker: string, value: unknown, io: Registration
       // Preserve the publication failure. The stage name is unique and the
       // marker path was never written directly.
     }
+    if (error === noClobberError) throw error;
     throw new Error(
       `cannot persist Rossovia state at ${marker}: ${error instanceof Error ? error.message : String(error)}. `
       + "The current runtime must grant write access to this exact state location.",
@@ -403,106 +509,136 @@ function prepareMigrationTarget(
   source: string,
   target: string,
   io: RegistrationIo,
-): { marker: string; markerValue: { version: string; sourceHome: string; targetHome: string }; release: () => void } {
+): {
+  marker: string;
+  markerValue: { version: string; sourceHome: string; targetHome: string };
+  admittedStages: ReadonlyMap<string, string>;
+  admittedMarkerBytes: string;
+  release: () => void;
+} {
   const marker = join(target, migrationMarkerName);
   const markerValue = {
     version: "rosso.namespace-migration.v1",
     sourceHome: source,
     targetHome: target,
   };
-  if (existsSync(target)) {
-    if (existsSync(marker)) {
-      // The first read only decides whether the retained marker belongs to
-      // this transaction; the authoritative decision happens under the lock.
-      const retained = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+  // The one registration owner is acquired before any marker stage,
+  // admission, phase change, or publication: no publisher can remain live
+  // outside the owner, so a delayed caller can never overwrite a later
+  // durable digest marker with its digest-less initial marker or recreate a
+  // marker after another migration completed and reported success. The lock
+  // acquisition itself creates state/ under the target, so the target is
+  // exposed only while the owner is already held.
+  const release = acquireRegistrationLock(target, io);
+  try {
+    // The full exact marker and marker-stage namespace is re-enumerated and
+    // strictly parsed under the held owner — there is no pre-lock
+    // observation left to go stale.
+    const entries = readdirSync(target);
+    const admittedStages = new Map<string, string>();
+    let matchingStages = 0;
+    for (const name of entries.filter(isMigrationMarkerStageName).sort()) {
+      const stagePath = join(target, name);
+      let bytes: string;
+      let retained: { sourceHome: string; targetHome: string };
+      try {
+        bytes = io.readFile(stagePath);
+        retained = MigrationMarkerSchema.parse(JSON.parse(bytes));
+      } catch (error: unknown) {
+        throw new Error(
+          `rossovia workbench target contains a malformed or incomplete migration marker stage at ${stagePath}: ` +
+          `${error instanceof Error ? error.message : String(error)}. Reconcile it explicitly before retrying migration; ` +
+          "a stage that cannot be proven to belong to this exact transaction is never deleted or replaced automatically.",
+        );
+      }
+      if (retained.sourceHome !== source || retained.targetHome !== target) {
+        throw new Error(
+          `rossovia workbench target contains an unrelated migration transaction stage at ${stagePath}. ` +
+          "Reconcile it explicitly before retrying migration; a stage that cannot be proven to belong to this exact " +
+          "transaction is never deleted or replaced automatically.",
+        );
+      }
+      matchingStages += 1;
+      admittedStages.set(name, bytes);
+    }
+    if (matchingStages > 1) {
+      throw new Error(
+        `rossovia workbench target contains multiple migration marker stages: ${target}. ` +
+        "Reconcile them explicitly before retrying migration; ambiguous stages are never deleted or replaced automatically.",
+      );
+    }
+    if (entries.includes(migrationMarkerName)) {
+      let admittedMarkerBytes: string;
+      try {
+        admittedMarkerBytes = io.readFile(marker);
+      } catch (error: unknown) {
+        throw new Error(
+          `cannot read the migration marker at ${marker}: ${error instanceof Error ? error.message : String(error)}. ` +
+          "Reconcile the target explicitly before retrying migration.",
+        );
+      }
+      const retained = MigrationMarkerSchema.parse(JSON.parse(admittedMarkerBytes));
       if (retained.sourceHome !== source || retained.targetHome !== target) {
         throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
       }
-    } else {
-      // A publication terminated after its stage write and fsync but before
-      // the marker rename leaves only the unique stage, which the generic
-      // nonempty-target refusal would then reject forever. Before that
-      // refusal, recognize exactly this transaction: every stage entry in
-      // the reserved namespace must hold complete marker bytes whose strict
-      // sourceHome and targetHome match the requested transaction. A safe
-      // matching stage is left inert while the fresh durable marker is
-      // published below — it is removed later under the held registration
-      // owner by the ordinary target clearing, never by a read-then-delete
-      // recovery — while any malformed, partial, unrelated, or ambiguous
-      // stage fails closed visibly and is never deleted, renamed, or
-      // replaced by this caller.
-      const entries = readdirSync(target);
-      const stageNames = entries.filter(isMigrationMarkerStageName);
-      const otherEntries = entries.filter((name) => !isMigrationMarkerStageName(name));
-      let matchingStages = 0;
-      for (const name of stageNames) {
-        const stagePath = join(target, name);
-        let retained: { sourceHome: string; targetHome: string };
-        try {
-          retained = MigrationMarkerSchema.parse(JSON.parse(readFileSync(stagePath, "utf8")));
-        } catch (error: unknown) {
-          throw new Error(
-            `rossovia workbench target contains a malformed or incomplete migration marker stage at ${stagePath}: ` +
-            `${error instanceof Error ? error.message : String(error)}. Reconcile it explicitly before retrying migration; ` +
-            "a stage that cannot be proven to belong to this exact transaction is never deleted or replaced automatically.",
-          );
-        }
-        if (retained.sourceHome !== source || retained.targetHome !== target) {
-          throw new Error(
-            `rossovia workbench target contains an unrelated migration transaction stage at ${stagePath}. ` +
-            "Reconcile it explicitly before retrying migration; a stage that cannot be proven to belong to this exact " +
-            "transaction is never deleted or replaced automatically.",
-          );
-        }
-        matchingStages += 1;
+      // The authoritative decision is made on the exact canonical state
+      // under the held owner, immediately before any clear or commit.
+      verifyTargetCanonicalPairBeforeClear(target, retained);
+      if (retained.committedProjectsDigest !== undefined || retained.committedWorkspacesDigest !== undefined) {
+        // Digest phase: the recorded commit belongs to this transaction and
+        // the canonical state was just verified as its own. The
+        // digest-bearing marker is kept byte-exact — it can never regress to
+        // the initial phase — and the main flow re-publishes the identical
+        // digest marker before the canonical commit.
+        return { marker, markerValue, admittedStages, admittedMarkerBytes, release };
       }
-      if (matchingStages > 1) {
+      // Initial phase: the marker bears no recorded commit. Re-read the
+      // exact current marker generation immediately before the clear and
+      // require the exact admitted bytes; a changed transaction or regressed
+      // phase fails closed with nothing cleared or replaced.
+      let currentMarker: string;
+      try {
+        currentMarker = io.readFile(marker);
+      } catch (error: unknown) {
         throw new Error(
-          `rossovia workbench target contains multiple migration marker stages: ${target}. ` +
-          "Reconcile them explicitly before retrying migration; ambiguous stages are never deleted or replaced automatically.",
+          `cannot re-verify the migration marker at ${marker} immediately before the target clear: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      if (otherEntries.length > 0) {
+      if (currentMarker !== admittedMarkerBytes) {
+        throw new Error(
+          `the migration marker at ${marker} changed while this transaction was admitting the target; ` +
+          "nothing was cleared or replaced. Reconcile the target explicitly before retrying migration.",
+        );
+      }
+      clearMigrationTarget(target, admittedStages, io);
+      // The clear preserves the retained initial-phase marker itself, so the
+      // phase is unchanged and no re-publication is needed.
+      return { marker, markerValue, admittedStages, admittedMarkerBytes, release };
+    }
+    // No marker: a publication terminated before its rename can only have
+    // left stages (verified above as this exact transaction). Any other
+    // content is a completed or foreign home and must not be admitted over.
+    if (existsSync(join(target, "manifest.json"))) {
+      throw new Error(`rossovia workbench target home already exists: ${target}`);
+    }
+    if (existsSync(canonicalProjectsPath(target)) || existsSync(canonicalWorkspacesPath(target))) {
+      throw new Error(
+        `the rossovia target received canonical registration state while the migration prepared it: ${target}. ` +
+        "Reconcile the target explicitly before retrying migration, so no successful registration is silently replaced.",
+      );
+    }
+    for (const name of entries) {
+      if (name === migrationMarkerName || isMigrationMarkerStageName(name)) continue;
+      if (name !== "state" || !isOnlyLockNamespaceDirectory(join(target, name))) {
         throw new Error(`rossovia workbench target home already exists: ${target}`);
       }
     }
-  } else {
-    mkdirSync(target, { recursive: true });
-  }
-  // Publish the marker before taking the lock so a later migration can
-  // recognize the interrupted transaction. The canonical pair is never
-  // touched here, and the exposure race is re-checked under the lock below.
-  if (!existsSync(marker)) publishMigrationMarker(marker, markerValue, io);
-  const release = acquireRegistrationLock(target, io);
-  try {
-    // Re-make the decision on the authoritative state under the registration
-    // owner. A register that succeeded while the target was exposed has
-    // already committed its pair; the migration must never clear or replace
-    // it, so the exact canonical state is verified immediately before the
-    // clear and the durable pair commit that follows under the same owner.
-    if (existsSync(marker)) {
-      const current = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
-      if (current.sourceHome !== source || current.targetHome !== target) {
-        throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
-      }
-      verifyTargetCanonicalPairBeforeClear(target, current);
-      clearMigrationTarget(target);
-      publishMigrationMarker(marker, markerValue, io);
-    } else {
-      // The marker published above is gone: another migration completed the
-      // target while this one waited, or the marker was removed manually.
-      if (existsSync(join(target, "manifest.json"))) {
-        throw new Error(`rossovia workbench target home already exists: ${target}`);
-      }
-      if (existsSync(canonicalProjectsPath(target)) || existsSync(canonicalWorkspacesPath(target))) {
-        throw new Error(
-          `the rossovia target received canonical registration state while the migration prepared it: ${target}. ` +
-          "Reconcile the target explicitly before retrying migration, so no successful registration is silently replaced.",
-        );
-      }
-      publishMigrationMarker(marker, markerValue, io);
-    }
-    return { marker, markerValue, release };
+    // Fresh initial admission under the held owner. The publication is
+    // no-clobber, so a marker that appeared since the enumeration fails
+    // closed instead of being overwritten.
+    const admittedMarkerBytes = publishMigrationMarker(marker, markerValue, io, undefined);
+    return { marker, markerValue, admittedStages, admittedMarkerBytes, release };
   } catch (error: unknown) {
     release();
     throw error;
@@ -602,7 +738,7 @@ export function migrateLegacyHome(
   const sourceManifestDigest = digest(sourceManifest);
   const sourceProjectsDigest = digest(sourceProjects);
   let verifiedProjectId: string | null = null;
-  const { marker, markerValue, release } = prepareMigrationTarget(source, target, io);
+  const { marker, markerValue, admittedStages, admittedMarkerBytes, release } = prepareMigrationTarget(source, target, io);
   try {
     copyLegacyHome(source, target);
     migrateNamespaceFiles(target);
@@ -616,19 +752,40 @@ export function migrateLegacyHome(
     // claimed migration success receives the same canonical-pair admission
     // as register and attach.
     const pair = migrateCanonicalPair(source);
+    // Re-read the exact current marker generation immediately before the
+    // canonical commit and fail closed on any changed transaction or
+    // regressed phase: the marker must still hold the exact bytes this
+    // migration admitted — its own initial marker, or the recorded digest
+    // marker of the same transaction.
+    let currentMarker: string;
+    try {
+      currentMarker = io.readFile(marker);
+    } catch (error: unknown) {
+      throw new Error(
+        `cannot re-verify the migration marker at ${marker} before the canonical commit: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (currentMarker !== admittedMarkerBytes) {
+      throw new Error(
+        `the migration marker at ${marker} changed or regressed since this transaction admitted it; ` +
+        "no canonical state was replaced. Reconcile the target explicitly before retrying migration.",
+      );
+    }
     // Record the exact committed bytes in the retained marker through the
     // durable marker publication before the durable canonical pair commit:
-    // the digest marker is fully written, fsynced, renamed, and its home
-    // directory entry fsynced before any canonical projects rename becomes
-    // observable, so a resumed migration can always prove which canonical
-    // state its own interrupted attempt committed and reject any state a
-    // register or attach published after the exposure, instead of clearing
-    // or replacing it with the fabricated empty previous bytes.
-    publishMigrationMarker(marker, {
+    // the digest marker is fully written, fsynced, renamed (no-clobber
+    // against the exact admitted generation), and its home directory entry
+    // fsynced before any canonical projects rename becomes observable, so a
+    // resumed migration can always prove which canonical state its own
+    // interrupted attempt committed and reject any state a register or
+    // attach published after the exposure, instead of clearing or replacing
+    // it with the fabricated empty previous bytes.
+    const digestMarkerBytes = publishMigrationMarker(marker, {
       ...markerValue,
       committedProjectsDigest: digestBytes(serializeState(pair.projects)),
       committedWorkspacesDigest: digestBytes(serializeState(pair.workspaces)),
-    }, io);
+    }, io, currentMarker);
     commitCanonicalPair(
       target,
       pair.projects,
@@ -666,10 +823,32 @@ export function migrateLegacyHome(
       verifiedProjectId,
     };
     writeFileSync(join(target, "receipts", "namespace-migrations.jsonl"), `${sortedJson(receipt)}\n`, "utf8");
-    rmSync(marker);
+    // Completion under the held registration owner: the exact admitted stage
+    // snapshot is verified and removed first (a stage added or replaced
+    // since the admission fails closed untouched), then the completion
+    // marker is re-read and removed only while it still holds this
+    // transaction's published digest bytes. A changed marker is never
+    // removed on behalf of another transaction.
+    removeAdmittedMigrationStages(target, admittedStages, io);
+    let finalMarker: string;
+    try {
+      finalMarker = io.readFile(marker);
+    } catch (error: unknown) {
+      throw new Error(
+        `cannot re-verify the migration marker at ${marker} before completion: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (finalMarker !== digestMarkerBytes) {
+      throw new Error(
+        `the migration marker at ${marker} changed since this transaction's canonical commit; ` +
+        "it is never removed on behalf of another transaction. Reconcile the target explicitly before retrying migration.",
+      );
+    }
+    io.remove(marker);
   } catch (error: unknown) {
     try {
-      clearMigrationTarget(target);
+      clearMigrationTarget(target, admittedStages, io);
     } catch {
       // Preserve the migration failure. The marker keeps the target retryable.
     }

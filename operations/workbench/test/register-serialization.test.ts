@@ -737,6 +737,60 @@ describe("Rossovia register serialization through the ordinary launcher", () => 
     expect(listing.complete).toBe(true);
   });
 
+  test("two truly concurrent migrations of one source admit exactly one winner and never recreate the completed marker", async () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-migration-dual-"));
+    temporaryRoots.push(root);
+    const migrated = join(root, "migrated");
+    createRepository(migrated, "https://example.com/lidessen/migration.git");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    writeLegacySource(source, migrated);
+    const marker = join(target, ".rossovia-namespace-migration.json");
+
+    // Both migrations start truly concurrently. The one registration owner
+    // serializes them: the winner completes the migration and removes the
+    // completion marker, and the delayed migration — which under the old
+    // pre-lock marker publication could recreate or overwrite the marker
+    // after the winner finished — must refuse the completed home instead.
+    const firstMigration = Bun.spawn(
+      [launcher, "--home", target, "migrate", "--from-home", source],
+      { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    const secondMigration = Bun.spawn(
+      [launcher, "--home", target, "migrate", "--from-home", source],
+      { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    // A tuple-shaped collection proves the exact two-result cardinality.
+    const [firstResult, secondResult] = await Promise.all([
+      collectCommandResult(firstMigration),
+      collectCommandResult(secondMigration),
+    ] as const);
+    const winner = firstResult.exitCode === 0 ? firstResult : secondResult;
+    const loser = firstResult.exitCode === 0 ? secondResult : firstResult;
+    expect(winner.exitCode, winner.stderr).toBe(0);
+    expect(JSON.parse(winner.stdout)).toEqual(expect.objectContaining({
+      migrated: true,
+      verifiedProjectId: "repository:migration",
+    }));
+    assertStateFailure(loser);
+    expect(loser.stderr).toContain("target home already exists");
+
+    // The delayed migration never overwrote or recreated the completed
+    // marker: exactly one migrated canonical pair survives, with no marker,
+    // no marker stages, and no lock leftovers.
+    expect(existsSync(marker)).toBe(false);
+    expect(readdirSync(target).filter((name) => name.startsWith(".rossovia-namespace-migration.json.")))
+      .toEqual([]);
+    expect(sortedProjectIds(target)).toEqual(["repository:migration"]);
+    expect(sortedWorkspaces(target)).toEqual([
+      { projectId: "repository:migration", path: migrated },
+    ]);
+    expect(transitionLeftovers(target)).toEqual([]);
+    const listing = JSON.parse(cli(["--home", target, "project", "list"]).stdout) as { complete: boolean };
+    expect(listing.complete).toBe(true);
+    expect(cli(["--home", target, "resolve", "migration"]).exitCode).toBe(0);
+  });
+
   test("init held at an exclusive creation cannot overwrite the migration winner's canonical pair", async () => {
     const root = mkdtempSync(join(tmpdir(), "rossovia-init-migration-race-"));
     temporaryRoots.push(root);
@@ -1008,6 +1062,23 @@ describe("registration transition durability and rollback seam", () => {
       operation.startsWith("create-exclusive:") && operation.endsWith(join("state", lockName)));
     expect(lockAcquisition).toBeGreaterThanOrEqual(0);
     expect(lockAcquisition).toBeLessThan(operationIndex(`write:${projectsStage}`));
+    // Every marker publication runs strictly under the held owner: both
+    // marker stage writes and both marker renames occur after the lock
+    // acquisition, and the initial admission precedes the digest phase
+    // change. No marker publisher can remain live outside the owner.
+    const markerPath = join(resolvedTarget, ".rossovia-namespace-migration.json");
+    const markerRenames = operations
+      .map((operation, index) => ({ operation, index }))
+      .filter(({ operation }) => operation.startsWith("rename:") && operation.endsWith(`->${markerPath}`));
+    expect(markerRenames.length).toBe(2);
+    const markerStageWrites = operations
+      .map((operation, index) => ({ operation, index }))
+      .filter(({ operation }) => operation.startsWith("write:") && operation.includes(`${markerPath}.stage-`));
+    expect(markerStageWrites.length).toBe(2);
+    for (const { index } of [...markerStageWrites, ...markerRenames]) {
+      expect(lockAcquisition).toBeLessThan(index);
+    }
+    expect(markerRenames[0]!.index).toBeLessThan(markerRenames[1]!.index);
     expect(operationIndex(`write:${projectsStage}`)).toBeLessThan(operationIndex(`fsync-file:${projectsStage}`));
     expect(operationIndex(`fsync-file:${projectsStage}`)).toBeLessThan(operationIndex(`rename:${projectsStage}->${projectsPath}`));
     expect(operationIndex(`rename:${projectsStage}->${projectsPath}`)).toBeLessThan(operationIndex(`fsync-dir:${configDirectory}`));
@@ -1091,9 +1162,26 @@ describe("registration transition durability and rollback seam", () => {
     const markerRenames = operations
       .map((operation, index) => ({ operation, index }))
       .filter(({ operation }) => operation.startsWith("rename:") && operation.endsWith(`->${marker}`));
-    // One durable publication before the lock, the reset after the clear,
-    // and the digest-carrying publication before the pair commit.
-    expect(markerRenames.length).toBe(3);
+    // Exactly two durable publications, both under the held registration
+    // owner: the no-clobber initial admission and the digest-carrying
+    // publication before the pair commit. No marker rename happens outside
+    // the owner and no post-clear reset rename remains.
+    expect(markerRenames.length).toBe(2);
+    // The one registration owner precedes every marker stage write and every
+    // marker rename: no marker publisher can remain live outside the owner,
+    // so a delayed caller can never overwrite the digest marker or recreate
+    // the marker after another migration completed.
+    const lockAcquisition = operations.findIndex((operation) =>
+      operation.startsWith("create-exclusive:") && operation.endsWith(join("state", lockName)));
+    expect(lockAcquisition).toBeGreaterThanOrEqual(0);
+    const markerStageWrites = operations
+      .map((operation, index) => ({ operation, index }))
+      .filter(({ operation }) => operation.startsWith("write:") && operation.includes(`${marker}.stage-`));
+    expect(markerStageWrites.length).toBe(2);
+    for (const { index } of [...markerStageWrites, ...markerRenames]) {
+      expect(lockAcquisition).toBeLessThan(index);
+    }
+    expect(markerRenames[0]!.index).toBeLessThan(markerRenames[1]!.index);
     const digestMarkerRename = markerRenames[markerRenames.length - 1]!;
     const digestStage = digestMarkerRename.operation.slice(
       "rename:".length,
@@ -1167,6 +1255,242 @@ describe("registration transition durability and rollback seam", () => {
     ]);
     expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
     expect(transitionLeftovers(target)).toEqual([]);
+  });
+
+  test("a marker changed between admission and the under-owner clear fails closed without mutation", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-migration-marker-changed-"));
+    temporaryRoots.push(root);
+    const migrated = join(root, "migrated");
+    createRepository(migrated, "https://example.com/lidessen/migration.git");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    writeJson(join(source, "manifest.json"), {
+      version: "atthis.home.v1",
+      namespace: "atthis",
+      createdAt: "2026-07-18T00:00:00Z",
+    });
+    writeJson(join(source, "config", "projects.json"), {
+      version: "atthis.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.com/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    });
+    writeJson(join(source, "state", "workspaces.json"), {
+      version: "atthis.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: migrated }],
+    });
+    writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
+    mkdirSync(target, { recursive: true });
+    // mkdtemp may return an alias path (for example /var, whose canonical
+    // realpath is /private/var on macOS). migrateLegacyHome expands the
+    // target to that canonical form, so the injected seam must observe the
+    // exact resolved paths while the ordinary target argument is preserved.
+    const resolvedTarget = realpathSync(target);
+    const marker = join(resolvedTarget, ".rossovia-namespace-migration.json");
+    writeJson(marker, {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: realpathSync(source),
+      targetHome: resolvedTarget,
+    });
+    const markerBytes = readFileSync(marker, "utf8");
+
+    // The seam injects a foreign marker generation at the exact
+    // re-verification read immediately before the under-owner clear (the
+    // admission read of the marker is call 0; the pre-clear re-read is
+    // call 1). A changed transaction must fail closed with nothing cleared.
+    const io = new RecordingIo();
+    const foreign = `${JSON.stringify({
+      version: "rosso.namespace-migration.v1",
+      sourceHome: "/foreign/legacy-atthis",
+      targetHome: resolvedTarget,
+    }, null, 2)}\n`;
+    io.readOverrides.push({
+      when: (path, call) => path === marker && call === 1,
+      content: foreign,
+    });
+    const failure = transitionError(() => {
+      migrateLegacyHome(target, source, io);
+    });
+    expect(failure.message).toContain("changed while this transaction was admitting the target");
+    expect(failure.message).toContain("nothing was cleared or replaced");
+    // The retained marker, the target content, and the canonical pair were
+    // never touched, and the registration owner was released.
+    expect(readFileSync(marker, "utf8")).toBe(markerBytes);
+    expect(existsSync(join(resolvedTarget, "manifest.json"))).toBe(false);
+    expect(existsSync(join(resolvedTarget, "config", "projects.json"))).toBe(false);
+    expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
+  });
+
+  test("a marker stage replaced or added after admission is rejected without touching any stage or target content", () => {
+    for (const scenario of ["replaced", "added"] as const) {
+      const root = mkdtempSync(join(tmpdir(), `rossovia-migration-stage-${scenario}-`));
+      temporaryRoots.push(root);
+      const migrated = join(root, "migrated");
+      createRepository(migrated, "https://example.com/lidessen/migration.git");
+      const source = join(root, "legacy-atthis");
+      const target = join(root, "rossovia");
+      writeJson(join(source, "manifest.json"), {
+        version: "atthis.home.v1",
+        namespace: "atthis",
+        createdAt: "2026-07-18T00:00:00Z",
+      });
+      writeJson(join(source, "config", "projects.json"), {
+        version: "atthis.projects.v1",
+        projects: [{
+          id: "repository:migration",
+          repository: "https://example.com/lidessen/migration.git",
+          aliases: ["migration"],
+        }],
+      });
+      writeJson(join(source, "state", "workspaces.json"), {
+        version: "atthis.workspaces.v1",
+        workspaces: [{ projectId: "repository:migration", path: migrated }],
+      });
+      writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
+      mkdirSync(target, { recursive: true });
+      // mkdtemp may return an alias path (for example /var, whose canonical
+      // realpath is /private/var on macOS). migrateLegacyHome expands the
+      // target to that canonical form, so the injected seam must observe the
+      // exact resolved paths while the ordinary target argument is preserved.
+      const resolvedTarget = realpathSync(target);
+      const marker = join(resolvedTarget, ".rossovia-namespace-migration.json");
+      writeJson(marker, {
+        version: "rosso.namespace-migration.v1",
+        sourceHome: realpathSync(source),
+        targetHome: resolvedTarget,
+      });
+      const markerBytes = readFileSync(marker, "utf8");
+      const stageName = `.rossovia-namespace-migration.json.stage-${randomUUID()}`;
+      const stagePath = join(resolvedTarget, stageName);
+      writeJson(stagePath, {
+        version: "rosso.namespace-migration.v1",
+        sourceHome: realpathSync(source),
+        targetHome: resolvedTarget,
+      });
+      const stageBytes = readFileSync(stagePath, "utf8");
+
+      const io = new RecordingIo();
+      const extraStage = join(resolvedTarget, `.rossovia-namespace-migration.json.stage-${randomUUID()}`);
+      const extraStageBytes = `${JSON.stringify({
+        version: "rosso.namespace-migration.v1",
+        sourceHome: realpathSync(source),
+        targetHome: resolvedTarget,
+      }, null, 2)}\n`;
+      // The addition lands after the admission enumeration but before the
+      // under-owner clear: a second stage of the same transaction appears
+      // during the first stage's admission read, so the side effect runs
+      // inside the seam predicate at that exact read instead of eagerly
+      // before the migration starts (which the admission enumeration would
+      // observe as an ambiguous second stage instead).
+      io.readOverrides.push({
+        when: (path, call) => {
+          if (path !== stagePath || call !== 0) return false;
+          if (scenario === "added") writeFileSync(extraStage, extraStageBytes, "utf8");
+          return true;
+        },
+        content: stageBytes,
+      });
+      if (scenario === "replaced") {
+        // The replacement lands at the exact attribution read of the
+        // under-owner clear (call 0 is the admission read).
+        io.readOverrides.push({
+          when: (path, call) => path === stagePath && call === 1,
+          content: "replaced-stage-bytes",
+        });
+      }
+      const failure = transitionError(() => {
+        migrateLegacyHome(target, source, io);
+      });
+      if (scenario === "replaced") {
+        expect(failure.message).toContain("was replaced since this transaction admitted the target");
+      } else {
+        expect(failure.message).toContain("appeared at");
+      }
+      expect(failure.message).toContain("never deleted or replaced automatically");
+      // Nothing was removed or mutated: the retained marker, the admitted
+      // stage, the injected stage, and the canonical pair are all untouched,
+      // and the registration owner was released.
+      expect(readFileSync(marker, "utf8")).toBe(markerBytes);
+      expect(readFileSync(stagePath, "utf8")).toBe(stageBytes);
+      if (scenario === "added") expect(readFileSync(extraStage, "utf8")).toBe(extraStageBytes);
+      expect(existsSync(join(resolvedTarget, "manifest.json"))).toBe(false);
+      expect(existsSync(join(resolvedTarget, "config", "projects.json"))).toBe(false);
+      expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
+    }
+  });
+
+  test("the initial marker admission is no-clobber: a foreign marker appearing after enumeration is never overwritten", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-migration-no-clobber-admission-"));
+    temporaryRoots.push(root);
+    const migrated = join(root, "migrated");
+    createRepository(migrated, "https://example.com/lidessen/migration.git");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    writeJson(join(source, "manifest.json"), {
+      version: "atthis.home.v1",
+      namespace: "atthis",
+      createdAt: "2026-07-18T00:00:00Z",
+    });
+    writeJson(join(source, "config", "projects.json"), {
+      version: "atthis.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.com/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    });
+    writeJson(join(source, "state", "workspaces.json"), {
+      version: "atthis.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: migrated }],
+    });
+    writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
+    mkdirSync(target, { recursive: true });
+    // mkdtemp may return an alias path (for example /var, whose canonical
+    // realpath is /private/var on macOS). migrateLegacyHome expands the
+    // target to that canonical form, so the injected seam must observe the
+    // exact resolved paths while the ordinary target argument is preserved.
+    const resolvedTarget = realpathSync(target);
+    const marker = join(resolvedTarget, ".rossovia-namespace-migration.json");
+    const foreignBytes = `${JSON.stringify({
+      version: "rosso.namespace-migration.v1",
+      sourceHome: "/foreign/legacy-atthis",
+      targetHome: resolvedTarget,
+    }, null, 2)}\n`;
+
+    // The seam injects a foreign marker at the exact no-clobber probe of the
+    // initial admission: the probe reads the marker path for the first time
+    // immediately before the rename and must observe the foreign owner
+    // instead of absence, so the admission fails closed without renaming
+    // over it.
+    const io = new RecordingIo();
+    io.readOverrides.push({
+      when: (path, call) => {
+        if (path !== marker || call !== 0) return false;
+        // The foreign marker must be written at the exact no-clobber probe
+        // read (the first read of the marker path), not eagerly before the
+        // migration starts: an eager write would be seen by the admission
+        // enumeration and fail as an unrelated transaction instead of
+        // exercising the no-clobber admission the seam must prove.
+        writeFileSync(marker, foreignBytes, "utf8");
+        return true;
+      },
+      content: foreignBytes,
+    });
+    const failure = transitionError(() => {
+      migrateLegacyHome(target, source, io);
+    });
+    expect(failure.message).toContain("the migration marker appeared");
+    expect(failure.message).toContain("another publisher owns it");
+    // The foreign marker was never renamed over, this caller's own unique
+    // stage was cleaned up, and nothing else was published into the target.
+    expect(readFileSync(marker, "utf8")).toBe(foreignBytes);
+    expect(existsSync(join(resolvedTarget, "manifest.json"))).toBe(false);
+    expect(existsSync(join(resolvedTarget, "config", "projects.json"))).toBe(false);
+    expect(readdirSync(resolvedTarget).filter((name) => name.startsWith(".rossovia-namespace-migration.json.stage-")))
+      .toEqual([]);
+    expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
   });
 
   test("post-rename verification failure restores workspaces before projects and leaves the previous pair", () => {
