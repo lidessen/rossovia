@@ -69,6 +69,49 @@ test("the former core root paths are physically absent, not tombstones or compat
   }
 });
 
+/**
+ * Active repository callers of the concrete AI SDK/Pi/provider surface.
+ * Each must import the declared `integrations/ai-sdk` Integration path and
+ * must not resolve any removed core root module. The Project Lens dogfood
+ * runtime is the active experiment caller: it constructs the validation
+ * model and the concrete driver for its authorized DeepSeek
+ * focus-selection Cell.
+ */
+const ACTIVE_CALLERS = [
+  "operations/workbench/test/ui-task-actions.test.ts",
+  "operations/workbench/test/task-run.test.ts",
+  "operations/autonomy/test/worker-policy.test.ts",
+  "operations/autonomy/src/delegate-loop.ts",
+  "experiments/human-agent-visualization/project-lens-runtime.ts",
+] as const;
+
+const ISLAND_SPECIFIER = "packages/work-cell/src/integrations/ai-sdk";
+
+test("active repository callers resolve the declared Integration path, never the removed core root paths", async () => {
+  const repositoryRoot = resolve(import.meta.dir, "../../..");
+  const banned = REMOVED_ROOT_MODULES.map((module) =>
+    `packages/work-cell/src/${module.replace(/\.ts$/, "")}`,
+  );
+  for (const caller of ACTIVE_CALLERS) {
+    const source = await readFile(resolve(repositoryRoot, caller), "utf8");
+    expect(source, `${caller} must import the declared Integration path`)
+      .toContain(ISLAND_SPECIFIER);
+    for (const specifier of banned) {
+      if (source.includes(specifier)) {
+        throw new Error(`${caller} must not import ${specifier}`);
+      }
+    }
+  }
+  // The experiment caller's two concrete imports (AiSdkValidationDriver,
+  // createValidationModel) resolve from the island barrel.
+  const islandIndex = await readFile(
+    resolve(srcRoot, "integrations/ai-sdk/index.ts"),
+    "utf8",
+  );
+  expect(islandIndex).toContain("export * from \"./ai-sdk-driver\"");
+  expect(islandIndex).toContain("export * from \"./validation-model\"");
+});
+
 test("the package export surface declares the Integration path instead of the removed root paths", async () => {
   const index = await readFile(resolve(srcRoot, "index.ts"), "utf8");
   expect(index).toContain("export * from \"./integrations/ai-sdk\"");

@@ -9,8 +9,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CellInput } from "../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../packages/work-cell/src/ai-sdk-driver";
-import { createValidationModel } from "../../packages/work-cell/src/validation-model";
+import {
+  AiSdkValidationDriver,
+  createValidationModel,
+} from "../../packages/work-cell/src/integrations/ai-sdk";
 import { executionAuthorizationClaimPath } from "../../operations/workbench/src/execution-authorization-claim";
 import {
   MissionExecutionProposalSchema,
