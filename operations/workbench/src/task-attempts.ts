@@ -502,9 +502,18 @@ export function readStrictTaskAttemptEvidence(
         return "CellInput workerId does not match its execution profile identity";
       }
       // The immutable input profile's reasoning effort must relate to the
-      // attempt record with exact optional-value equality: an input that
-      // adds, drops, or changes the requested effort is invalid evidence.
-      if (candidate.executionProfile?.reasoningEffort !== attemptRecord.reasoningEffort) {
+      // attempt record with exact optional-value equality for
+      // current/profile-bearing worker-bound evidence: a profile-bearing
+      // input that adds, drops, or changes the requested effort is invalid
+      // evidence. Legitimate historical v1 attempts may retain attempt-level
+      // reasoning effort while their immutable CellInput carries no
+      // worker-bound execution profile; those records stay available without
+      // the relation, while a contradictory profile-bearing current record
+      // still fails closed.
+      if (
+        candidate.executionProfile !== undefined
+        && candidate.executionProfile.reasoningEffort !== attemptRecord.reasoningEffort
+      ) {
         return "CellInput execution profile reasoning effort does not match the attempt record";
       }
       const requestWorktree = attemptRecord.worktree;

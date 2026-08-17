@@ -383,6 +383,83 @@ function legacyMaxSteps20Attempt(
   return attempt;
 }
 
+interface HistoricalV1ReasoningAttemptFixture {
+  attemptId: string;
+  directory: string;
+  attemptBytes: string;
+  inputBytes: string;
+  leasePath: string;
+  leaseContent: string;
+}
+
+/**
+ * One retained historical v1 attempt family: the attempt record retains
+ * attempt-level reasoning effort while its immutable CellInput carries no
+ * workerId and no executionProfile (the pre-profile lowering shape). The
+ * exact dead-owner O3 claim makes the family reconcileable.
+ */
+function historicalV1ReasoningAttempt(
+  fixture_: Fixture,
+  taskId: string,
+  pid: number,
+): HistoricalV1ReasoningAttemptFixture {
+  const attemptId = randomUUID();
+  const directory = join(fixture_.home, "state", "task-attempts", attemptId);
+  mkdirSync(directory, { recursive: true });
+  const inputRef = `state/task-attempts/${attemptId}/cell-input.json`;
+  const finalRecordRef = `state/task-attempts/${attemptId}/cell-input.run.json`;
+  const attemptBytes = `${JSON.stringify({
+    version: "rosso.task-run-attempt.v1",
+    taskId,
+    taskRevision: 1,
+    sourceRevision: 1,
+    attemptId,
+    inputRef,
+    finalRecordRef,
+    driver: "opencode-cli",
+    model: "opencode/go",
+    reasoningEffort: "high",
+    status: "started",
+    startedAt: "2026-08-12T12:00:00.000Z",
+  }, null, 2)}\n`;
+  const inputBytes = `${JSON.stringify({
+    id: `workbench-task-${taskId}-attempt-${attemptId}`,
+    intent: "Implement the exact bounded change",
+    workspace: {
+      root: realpathSync(fixture_.worktree),
+      readPaths: ["."],
+      writePaths: ["."],
+      excludePaths: [],
+      allowedCommands: [],
+    },
+    instructions: [
+      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["The requested behavior is observable"],
+    budget: { maxDurationMs: 1_800_000 },
+  }, null, 2)}\n`;
+  writeFileSync(join(directory, "attempt.json"), attemptBytes);
+  writeFileSync(join(directory, "cell-input.json"), inputBytes);
+  const gitDirectoryRaw = git(fixture_.worktree, "rev-parse", "--git-dir");
+  const gitDirectory = realpathSync(
+    isAbsolute(gitDirectoryRaw) ? gitDirectoryRaw : join(fixture_.worktree, gitDirectoryRaw),
+  );
+  const leasePath = join(gitDirectory, "rossovia-task-run.lock");
+  const leaseContent = `${JSON.stringify({
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree: realpathSync(fixture_.worktree),
+    taskId,
+    attemptId,
+    pid,
+    acquiredAt: "2026-08-12T12:00:00.000Z",
+  }, null, 2)}\n`;
+  writeFileSync(leasePath, leaseContent, { flag: "wx" });
+  return { attemptId, directory, attemptBytes, inputBytes, leasePath, leaseContent };
+}
+
 describe("task attempt reconciliation", () => {
   test("reconciles an interrupted attempt with a dead owner, preserving evidence and enabling a fresh run", async () => {
     const current = fixture();
@@ -2884,6 +2961,97 @@ describe("legacy default maxSteps attempt evidence", () => {
     expect(evidence.standing).toBe("available");
     expect(evidence.input?.budget.maxSteps).toBeUndefined();
     expect(evidence.finalRecord?.input.budget.maxSteps).toBeUndefined();
+  });
+});
+
+describe("historical v1 reasoning-effort attempt evidence", () => {
+  test("keeps a historical v1 attempt with attempt-level reasoning effort and no input execution profile available and reconcileable", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = historicalV1ReasoningAttempt(current, created.task.id, deadPid());
+
+    // The old record must remain available: the attempt retains its
+    // attempt-level reasoning effort while the immutable CellInput carries
+    // no worker-bound execution profile to relate it to.
+    const evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.attempt?.reasoningEffort).toBe("high");
+    expect(evidence.attempt?.workerId).toBeUndefined();
+    expect(evidence.input?.workerId).toBeUndefined();
+    expect(evidence.input?.executionProfile).toBeUndefined();
+
+    // Reconcile compatibility: the exact dead-owner claim is reconciled to
+    // the truthful interrupted runner-failed outcome and released.
+    const result = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(result).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    // The historical bytes are never rewritten by the compatibility read.
+    expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
+  });
+
+  test("a contradictory profile-bearing current record fails closed while exact profile-bearing equality restores the family", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = historicalV1ReasoningAttempt(current, created.task.id, deadPid());
+    const inputPath = join(attempt.directory, "cell-input.json");
+    const input = JSON.parse(readFileSync(inputPath, "utf8"));
+
+    // A contradictory profile-bearing current record: the immutable input
+    // gains a worker-bound execution profile whose reasoning effort differs
+    // from the retained attempt-level effort — strict evidence fails closed
+    // and never reconciles.
+    writeFileSync(inputPath, `${JSON.stringify({
+      ...input,
+      workerId: "test-worker",
+      executionProfile: {
+        id: "test-worker",
+        version: "execution-profile.v1",
+        provider: "opencode",
+        model: "opencode/go",
+        reasoningEffort: "medium",
+        parallelism: "serial",
+      },
+    }, null, 2)}\n`);
+    let evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("reasoning effort");
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("retains invalid evidence and cannot be reconciled");
+    expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+    // The failed-closed read never touches the exact claim.
+    expect(readFileSync(attempt.leasePath, "utf8")).toBe(attempt.leaseContent);
+
+    // Exact optional-value equality on a profile-bearing current record
+    // restores the available family: the O2 relation is unchanged whenever
+    // the immutable input carries a worker-bound execution profile.
+    writeFileSync(inputPath, `${JSON.stringify({
+      ...input,
+      workerId: "test-worker",
+      executionProfile: {
+        id: "test-worker",
+        version: "execution-profile.v1",
+        provider: "opencode",
+        model: "opencode/go",
+        reasoningEffort: "high",
+        parallelism: "serial",
+      },
+    }, null, 2)}\n`);
+    evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.input?.workerId).toBe("test-worker");
+    expect(evidence.input?.executionProfile?.reasoningEffort).toBe("high");
+    expect(evidence.attempt?.reasoningEffort).toBe("high");
   });
 });
 
