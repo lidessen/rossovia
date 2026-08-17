@@ -45,6 +45,9 @@ import {
 import {
   worktreeWriterLeasePath,
 } from "../src/orchestration/worktree-writer";
+import {
+  readStrictTaskAttemptEvidence,
+} from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
 
@@ -754,6 +757,38 @@ describe("O2 reconciliation and restart", () => {
     });
     expect(readFileSync(join(current.home, settlementRef), "utf8")).toBe(settlementBytes);
     expect(runStanding(current.home, fabricated.runId).standing).toBe("terminal");
+  });
+
+  test("first-settlement reconcile derives the outcome only from the strict post-write family", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const fabricated = fabricatedStartedRun(current, created.task.id, deadPid());
+    const input = cellInputFor(fabricated.runId, current.worktree, created.task.id);
+    writeFileSync(
+      join(fabricated.directory, "cell-input.run.json"),
+      `${JSON.stringify(validRecord(input, { runId: "post-write-recovered-run" }), null, 2)}\n`,
+    );
+
+    const reconciled = reconcileRun(current.home, fabricated.runId);
+    // A stale pre-write snapshot carries no settlement and would project an
+    // undefined terminal outcome; the outcome must be defined and exactly
+    // match the strictly re-read retained family after the shared settlement
+    // write.
+    expect(reconciled.outcome).toBeDefined();
+    expect(reconciled.outcome).toMatchObject({
+      runId: fabricated.runId,
+      taskId: created.task.id,
+      status: "recorded",
+      workCellRunId: "post-write-recovered-run",
+      cellStatus: "passed",
+      cleanup: "released",
+    });
+    const retained = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(retained.standing).toBe("available");
+    expect(retained.settlement?.status).toBe(reconciled.outcome.status);
+    expect(retained.settlement?.workCellRunId).toBe(reconciled.outcome.workCellRunId);
+    expect(retained.settlement?.settledAt).toBeDefined();
+    expect(existsSync(fabricated.leasePath)).toBeFalse();
   });
 
   test("reconcile derives the shared settlement from a retained owner final and refuses a live owner", () => {

@@ -829,7 +829,9 @@ export interface ReconcileRunDependencies {
 /**
  * Idempotent owner maintenance for one Run. Reconciliation starts no Cell,
  * replays no effect, and mutates no Task. It derives the terminal outcome
- * only from the canonical evidence family:
+ * only from the canonical evidence family — after a shared settlement write
+ * the exact family is strictly re-read and required valid with the expected
+ * settlement relation before any release or outcome derivation:
  * - a retained exact settlement plus a retained exact claim retries only the
  *   exact O3 release after proving the recorded owner absent (and reports a
  *   terminal outcome with `cleanup: "retained"` when the release still fails);
@@ -919,7 +921,19 @@ export function reconcileRun(
         "interrupted before a final Work Cell record was retained; reconciled by the Run owner",
     };
   taskRunHelpers().writeTaskRunSettlement(refs, settlementInput);
-  return reconcileSettledRun(runId, evidence, worktree, refs, dependencies);
+  // The shared settlement write is durable, but the pre-write evidence
+  // snapshot still carries no settlement and must never derive the terminal
+  // outcome. Strictly re-read the exact attempt family and require it to be
+  // available and valid with the expected settlement relation before any
+  // exact O3 release or outcome derivation happens.
+  const settledEvidence = readStrictTaskAttemptEvidence(home, runId);
+  if (settledEvidence.standing !== "available" || settledEvidence.settlement === undefined) {
+    throw new ReconcileRunRefusal(
+      "invalid",
+      `Run ${runId} retained no readable valid settlement after the shared settlement write; reconcile fails closed`,
+    );
+  }
+  return reconcileSettledRun(runId, settledEvidence, worktree, refs, dependencies);
 }
 
 function reconcileSettledRun(
@@ -929,7 +943,17 @@ function reconcileSettledRun(
   refs: RunEvidenceRefs,
   dependencies: ReconcileRunDependencies,
 ): ReconcileRunResult {
-  const attempt = evidence.attempt!;
+  if (evidence.attempt === undefined || evidence.settlement === undefined) {
+    // A settled reconciliation derives its terminal outcome only from the
+    // exact attempt record and the durable settlement together; without both,
+    // no truthful outcome exists and the reconciliation fails closed instead
+    // of projecting an undefined terminal outcome.
+    throw new ReconcileRunRefusal(
+      "invalid",
+      `Run ${runId} retains no usable attempt record and settlement for settled reconciliation; reconcile fails closed`,
+    );
+  }
+  const attempt = evidence.attempt;
   const inspected = inspectRetainedWorktreeWriterLease({
     worktree,
     taskId: attempt.taskId,
