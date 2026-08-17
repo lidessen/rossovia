@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T01:10:25Z",
+  "updatedAt": "2026-08-17T04:06:53Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -252,7 +252,21 @@
         "goal:rossovia-daily-workspace-entry-stage2-o2"
       ],
       "status": "open"
+    },
+    {
+      "id": "c1-fixed-cell-envelope",
+      "parent": "o2-run-lifecycle",
+      "kind": "implementation",
+      "purpose": "Remove the unowned programmatic budget-approval protocol from the Work Cell core so C1-C3 enforce only one immutable caller-selected execution envelope, cancellation, mechanical finalization, and no orchestration policy.",
+      "returnCondition": "Return with the accepted fixed-envelope Work Cell boundary: no model-authored budget request or approval callback in C1-C3, explicit maxSteps remains optional with no implicit default, maxDuration/caller cancellation remain enforced, one driver invocation and at most one final are unchanged, production consumer absence is proven, focused/full Work Cell plus O2 compatibility/typecheck/diff checks are green, and no provider/Swarm/Cell-ID/UI/Task acceptance migration is bundled.",
+      "sources": [
+        "goal:rossovia-daily-workspace-entry",
+        "decision:055-rossovia-runtime-module-ownership",
+        "migration:stage3-standalone-work-cell",
+        "design-session:2026-08-16-rossovia-runtime-module-review"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "o2-run-lifecycle"
+  "currentFocus": "c1-fixed-cell-envelope"
 }
