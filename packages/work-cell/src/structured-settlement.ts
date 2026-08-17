@@ -25,7 +25,10 @@ export async function settleStructuredOutput(options: {
    * The shared monotonic step allowance of the enclosing Cell. Every
    * settlement provider step consumes one unit and the settlement never
    * starts an attempt when no step remains; settlement usage is attribution
-   * only and never extends the allowance.
+   * only and never extends the allowance. An omitted maxSteps installs no
+   * step-count ceiling and no settlement-attempt ceiling either: attempts
+   * continue until the output is accepted, constrained only by
+   * maxDurationMs, caller cancellation, and provider outcome.
    */
   stepAllowance: StepAllowance;
 }): Promise<StructuredSettlementResult> {
@@ -39,10 +42,19 @@ export async function settleStructuredOutput(options: {
     `Retained investigation evidence:\n${options.retainedEvidence}`,
   ].join("\n\n");
 
-  for (let attempt = 1; attempt <= 2 && output === undefined; attempt += 1) {
+  // No undeclared attempt ceiling exists: with maxSteps omitted the
+  // settlement retries until the output is accepted or a provider/adapter
+  // failure ends it with its causal error; maxDurationMs and the caller's
+  // abort signal remain the only outer bounds. With an explicit maxSteps,
+  // every attempt consumes the same shared, monotonic, non-extendable
+  // allowance at step start, so the number of attempts can never exceed the
+  // caller-selected remaining steps.
+  for (let attempt = 1; output === undefined; attempt += 1) {
     // The explicit maxSteps allowance is shared, monotonic, and
     // non-extendable: a settlement attempt never starts when no provider
-    // step remains, so one remaining step permits at most one attempt.
+    // step remains, so one remaining step permits at most one attempt. An
+    // omitted maxSteps leaves `remaining` undefined and this precheck never
+    // fires.
     if (options.stepAllowance.remaining === 0) {
       lastError = stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract cannot be settled");
       options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
@@ -54,7 +66,7 @@ export async function settleStructuredOutput(options: {
         "You are the structured settlement phase after a completed investigation.",
         "Do not investigate, add facts, or return prose. Project only the retained evidence into the caller's output contract.",
         "Finish only by calling emit_structured_output exactly once.",
-        ...(attempt === 2
+        ...(attempt > 1
           ? ["The prior settlement attempt did not produce an accepted payload. Call emit_structured_output now with the smallest schema-valid projection."]
           : []),
       ].join("\n"),
@@ -108,17 +120,18 @@ export async function settleStructuredOutput(options: {
         options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
       }
     } catch (error) {
-      // An actual provider or adapter failure keeps its real causal error even
-      // when its onStepStart consumed the final allowed step: the throw is
-      // never relabeled as step-budget exhaustion merely because the shared
-      // allowance is now exhausted. Only a normally completed attempt with no
-      // accepted output may report the canonical exhaustion wording. When no
-      // step remains no further attempt could start anyway, so the loop ends
-      // here and retains the causal error instead of letting the next
-      // precheck overwrite it.
+      // A thrown agent failure is a provider or adapter outcome (network,
+      // API, or abort), never the normally completed no-output case handled
+      // above: it ends settlement with its real causal error instead of
+      // being retried into invisibility, whether or not the shared allowance
+      // is now exhausted. The throw is never relabeled as step-budget
+      // exhaustion merely because its onStepStart consumed the final allowed
+      // step; only a normally completed attempt with no accepted output may
+      // report the canonical exhaustion wording. Ending here also keeps the
+      // next precheck from overwriting the causal error.
       lastError = error instanceof Error ? error.message : String(error);
       options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
-      if (options.stepAllowance.exhausted) break;
+      break;
     }
   }
 

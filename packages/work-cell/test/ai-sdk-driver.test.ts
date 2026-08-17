@@ -1408,6 +1408,121 @@ test("a settlement provider throw after the final allowed step keeps its real ca
   });
 });
 
+test("an omitted maxSteps installs no settlement-attempt ceiling and a later attempt settles the output", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      // Main execution ends naturally on the first call; the next two
+      // settlement attempts complete normally without calling the schema
+      // tool, and only the third attempt emits the accepted payload. With
+      // maxSteps omitted there is no step-count stop condition and no hidden
+      // two-attempt settlement cap.
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      if (calls <= 3) return response([{ type: "text", text: "Still no settlement tool call." }], "stop");
+      if (calls === 4) return response([{
+        type: "tool-call",
+        toolCallId: "settle-third-attempt",
+        toolName: "emit_structured_output",
+        input: JSON.stringify({ decision: "P04" }),
+      }], "tool-calls");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-third-attempt",
+    intent: "Prove an omitted maxSteps imposes no settlement-attempt ceiling.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The third settlement attempt settles the output."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("passed");
+  expect(record.output).toEqual({ decision: "P04" });
+  expect(record.error).toBeUndefined();
+  // Main execution plus exactly three settlement attempts: no hidden
+  // attempt cap stopped the settlement after the second failed attempt.
+  expect(calls).toBe(4);
+  const failedAttempts = record.trace.filter((event) => event.type === "structured.settlement.attempt.failed");
+  expect(failedAttempts.map((event) => (event.data as { attempt: number }).attempt)).toEqual([1, 2]);
+  expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(true);
+  expect(record.usage).toEqual({ inputTokens: 4, outputTokens: 4, totalTokens: 8, cachedInputTokens: 0 });
+  expect(record.usageByPhase.settlement).toEqual({ inputTokens: 3, outputTokens: 3, totalTokens: 6, cachedInputTokens: 0 });
+});
+
+test("an omitted maxSteps settlement retains a real provider error as its causal outcome", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // The first settlement attempt completes normally without the schema
+      // tool: that non-compliance is retried because no step ceiling exists.
+      if (calls === 2) return response([{ type: "text", text: "Not a settlement tool call." }], "stop");
+      // The second attempt's provider call throws: a provider outcome ends
+      // settlement with its real causal error, never retried into
+      // invisibility and never relabeled as step-budget exhaustion.
+      throw new Error("provider transport failed during settlement");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-provider-error",
+    intent: "Prove a provider error remains causal when maxSteps is omitted.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The settlement provider error is retained as the causal outcome."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("failed");
+  expect(record.error).toBe("provider transport failed during settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // The provider throw ended settlement: no third provider call ever starts.
+  expect(calls).toBe(3);
+  const failedAttempts = record.trace.filter((event) => event.type === "structured.settlement.attempt.failed");
+  expect(failedAttempts).toHaveLength(2);
+  expect(failedAttempts[1]?.data).toEqual({
+    attempt: 2,
+    error: "provider transport failed during settlement",
+  });
+  expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(false);
+});
+
 test("stops the main loop after one structured output step following a terminal call", async () => {
   const root = await fixture();
   let calls = 0;
