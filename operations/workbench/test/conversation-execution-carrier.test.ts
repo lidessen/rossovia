@@ -19,10 +19,12 @@ import { registerProject } from "../src/register";
 import { createPrincipalTask, loadPrincipalTasks } from "../src/tasks";
 import { showPrincipalTaskAttempts } from "../src/task-attempts";
 import { attemptLeaseStanding, reconcilePrincipalTaskAttempt } from "../src/task-run";
+import { createRunRequestRecord, runStanding } from "../src/orchestration/run";
 import {
   carrierHydrationFromEvidence,
   carrierStandingWithoutHandle,
   createConversationExecutionCarrierRegistry,
+  runStopRequester,
   type ConversationExecutionCarrierRegistry,
 } from "../src/conversation/execution-carrier";
 import {
@@ -186,6 +188,27 @@ function fakeCatalog(card = fakeCard(), createDriver: () => CellDriver = fastDri
   return new WorkerCatalog([{ card, createDriver }]);
 }
 
+function countingCatalog(createDriver: () => CellDriver): {
+  catalog: WorkerCatalog;
+  invocations: () => number;
+} {
+  let invocationCount = 0;
+  const catalog = new WorkerCatalog([{
+    card: fakeCard(),
+    createDriver: () => {
+      const driver = createDriver();
+      return {
+        descriptor: driver.descriptor,
+        async run(input, context) {
+          invocationCount += 1;
+          return driver.run(input, context);
+        },
+      };
+    },
+  }]);
+  return { catalog, invocations: () => invocationCount };
+}
+
 interface CarrierParts {
   registry: ConversationExecutionCarrierRegistry;
   host: ReturnType<typeof createConversationTaskOperationHost>;
@@ -340,7 +363,7 @@ describe("conversation execution carrier start", () => {
       registry.carrier(carrierId)!.liveness().state === "settled", "duplicate delivery settlement");
   });
 
-  test("a second action for the same Task is refused by the exact Worktree lease while a carrier runs", async () => {
+  test("a second action for the same Task settles without a Cell when the exact Worktree claim is occupied", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
     const receipt = await host.executeOperation({
@@ -352,14 +375,16 @@ describe("conversation execution carrier start", () => {
     const carrierId = receipt.carrierId!;
 
     const second = { conversationId: randomUUID(), turnId: randomUUID(), actionId: randomUUID() };
-    try {
-      host.executeOperation({ ...second, operation: continueOperation(current) });
-      throw new Error("expected the overlapping lease to be refused");
-    } catch (error) {
-      expect(error).toBeInstanceOf(ConversationOperationHostError);
-      expect((error as ConversationOperationHostError).code).toBe("lease-conflict");
-    }
-    expect(readAttemptDirectories(current.home)).toEqual([carrierId]);
+    const secondReceipt = await host.executeOperation({ ...second, operation: continueOperation(current) });
+    const secondCarrier = registry.startedCarrier(second.conversationId, second.actionId)!;
+    await until(() => secondCarrier.liveness().state !== "live", "overlapping Run refusal");
+    const secondStanding = secondCarrier.liveness();
+    expect(secondStanding.state).toBe("settled");
+    if (secondStanding.state !== "settled") throw new Error("expected settled refusal");
+    expect(secondStanding.settlement.status).toBe("runner-failed");
+    expect(existsSync(join(attemptDirectory(current, secondReceipt.carrierId!), "cell-input.json"))).toBe(false);
+    expect(registry.carrier(carrierId)!.liveness().state).toBe("live");
+    expect(readAttemptDirectories(current.home).sort()).toEqual([carrierId, secondReceipt.carrierId!].sort());
     registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
     await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
   });
@@ -533,13 +558,13 @@ describe("conversation execution carrier stop", () => {
 
     const controlFile = readJson(join(attemptDirectory(current, carrierId), "control.json")) as Record<string, unknown>;
     expect(controlFile.control).toBe("stop");
-    expect(controlFile.carrierId).toBe(carrierId);
+    expect(controlFile.runId).toBe(carrierId);
     expect(controlFile.sourceRef).toBe(taskActionSourceRef(control.conversationId, control.actionId));
-    expect(controlFile.requestedBy).toEqual({
+    expect(controlFile.requestedBy).toBe(runStopRequester({
       conversationId: control.conversationId,
       turnId: control.turnId,
       actionId: control.actionId,
-    });
+    }));
     const settlement = readJson(join(attemptDirectory(current, carrierId), "settlement.json")) as Record<string, unknown>;
     expect(settlement.status).toBe("control-stopped");
     expect(settlement.controlRef).toBe(`state/task-attempts/${carrierId}/control.json`);
@@ -617,7 +642,7 @@ describe("conversation execution carrier stop", () => {
     }
     const controlFile = readJson(join(attemptDirectory(current, carrierId), "control.json")) as Record<string, unknown>;
     expect(controlFile.sourceRef).toBe(taskActionSourceRef(stopA.conversationId, stopA.actionId));
-    expect(controlFile.requestedBy).toMatchObject({ actionId: stopA.actionId });
+    expect(controlFile.requestedBy).toBe(runStopRequester(stopA));
 
     // Exact replay of the same stop action reuses the same durable receipt.
     const replay = await host.executeOperation(stopA);
@@ -664,7 +689,7 @@ describe("conversation execution carrier stop", () => {
       host.executeOperation(retry);
 
       const controlFile = readJson(controlPath) as Record<string, unknown>;
-      expect(controlFile.requestedBy).toMatchObject({ actionId: retry.actionId });
+      expect(controlFile.requestedBy).toBe(runStopRequester(retry));
       expect(controlFile.sourceRef).toBe(taskActionSourceRef(retry.conversationId, retry.actionId));
       expect(
         readdirSync(attemptDirectory(current, carrierId)).filter((entry) => entry === "control.json"),
@@ -843,7 +868,7 @@ describe("conversation execution carrier restart evidence selection", () => {
       .toBeUndefined();
   });
 
-  test("duplicate-correlation ambiguity fails closed with no projection and never selects by directory or UUID order", async () => {
+  test("direct action Run identity stays authoritative beside ambiguous legacy correlation", async () => {
     const current = fixture();
     const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
     const receipt = await host.executeOperation({
@@ -870,13 +895,13 @@ describe("conversation execution carrier restart evidence selection", () => {
       finalRecordRef: `state/task-attempts/${duplicateId}/cell-input.run.json`,
     }, null, 2)}\n`);
 
-    // Two families now retain the exact correlation: fail closed with no
-    // projection, never a UUID-order winner and never a foreign identity.
+    // The legacy directory scan remains ambiguous, but the new adapter never
+    // scans for a new-format action: actionId is the direct Run identity.
     expect(carrierHydrationFromEvidence(current.home, exact)).toBeUndefined();
     const restarted = createConversationExecutionCarrierRegistry(current.home, {
       catalog: fakeCatalog(fakeCard(), slowDriver),
     });
-    expect(restarted.hydrateCarrier(exact)).toBeUndefined();
+    expect(restarted.hydrateCarrier(exact)?.identity.carrierId).toBe(carrierId);
 
     // Removing the duplicate restores the one exact family.
     rmSync(duplicateDirectory, { recursive: true, force: true });
@@ -896,7 +921,7 @@ describe("conversation execution carrier reconciliation", () => {
     const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
     const carrierId = receipt.carrierId!;
 
-    const found = host.findCanonicalReceipt({ conversationId, actionId, operation });
+    const found = host.findCanonicalReceipt({ conversationId, turnId, actionId, operation });
     expect(found.standing).toBe("settled");
     if (found.standing !== "settled") throw new Error("expected settled");
     expect(found.receipt.taskId).toBe(current.taskId);
@@ -908,9 +933,10 @@ describe("conversation execution carrier reconciliation", () => {
 
   test("reports provable absence for a continue action that never started", () => {
     const current = fixture();
-    const { host, conversationId, actionId } = carrierParts(current);
+    const { host, conversationId, turnId, actionId } = carrierParts(current);
     expect(host.findCanonicalReceipt({
       conversationId,
+      turnId,
       actionId,
       operation: continueOperation(current),
     })).toEqual({ standing: "absent" });
@@ -938,6 +964,7 @@ describe("conversation execution carrier reconciliation", () => {
 
     const found = host.findCanonicalReceipt({
       conversationId: control.conversationId,
+      turnId: control.turnId,
       actionId: control.actionId,
       operation: control.operation,
     });
@@ -958,7 +985,7 @@ describe("conversation execution carrier reconciliation", () => {
 
     // The transport-level reconcile path: settled receipt found, then a
     // guarded retry would still hit the exact (turnId, actionId) mapping.
-    const found = host.findCanonicalReceipt({ conversationId, actionId, operation });
+    const found = host.findCanonicalReceipt({ conversationId, turnId, actionId, operation });
     expect(found.standing).toBe("settled");
     try {
       host.executeOperation({ conversationId, turnId, actionId, operation });
@@ -1028,7 +1055,7 @@ describe("conversation execution carrier unresolved terminal evidence", () => {
     expect(liveness.state).toBe("unresolved");
     if (liveness.state !== "unresolved") throw new Error("expected unresolved");
     expect(liveness.settlement.status).toBe("unresolved");
-    expect(liveness.settlement.error).toContain("terminal evidence retention failed");
+    expect(liveness.settlement.error).toContain("retains invalid evidence");
     // No invented durable receipt and no lease release without a settlement.
     expect(readFileSync(join(attemptDirectory(current, carrierId), "settlement.json"), "utf8")).toBe("{}\n");
     expect(existsSync(leasePath(current))).toBe(true);
@@ -1036,7 +1063,7 @@ describe("conversation execution carrier unresolved terminal evidence", () => {
       carrierId,
       control: "stop",
       actor: { conversationId, turnId, actionId },
-    })).toThrow("is not live; stop has no effect");
+    })).toThrow("retains invalid evidence; the stop cannot be verified");
   });
 
   test("a lease release failure keeps the carrier unresolved with the durable settlement retained", async () => {
@@ -1058,7 +1085,7 @@ describe("conversation execution carrier unresolved terminal evidence", () => {
     const liveness = carrier.liveness();
     expect(liveness.state).toBe("unresolved");
     if (liveness.state !== "unresolved") throw new Error("expected unresolved");
-    expect(liveness.settlement.error).toContain("lease could not be released");
+    expect(liveness.settlement.error).toContain("writer claim was not released");
     const settlement = readJson(join(attemptDirectory(current, carrierId), "settlement.json")) as Record<string, unknown>;
     expect(settlement.status).toBe("recorded");
     expect(existsSync(leasePath(current))).toBe(true);
@@ -1126,7 +1153,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     }).buildProjection(conversationId);
     expect(projection.carriers).toEqual([{ id: carrierId, state: "unknown" }]);
 
-    const found = host.findCanonicalReceipt({ conversationId, actionId, operation });
+    const found = host.findCanonicalReceipt({ conversationId, turnId, actionId, operation });
     expect(found.standing).toBe("uninspectable");
   });
 
@@ -1170,7 +1197,7 @@ describe("conversation execution carrier strict evidence standing", () => {
       });
       throw new Error("expected the unretained reconcile-required carrier to be unknown");
     } catch (error) {
-      expect((error as ConversationOperationHostError).code).toBe("carrier-unknown");
+      expect((error as ConversationOperationHostError).code).toBe("carrier-not-live");
     }
 
     // Once the exact dead-owner lease is reconciled, the same restart
@@ -1217,15 +1244,20 @@ describe("conversation execution carrier strict evidence standing", () => {
     for (const tamper of [
       { workerId: "another-worker" },
       { taskId: randomUUID() },
-      { carrierId: randomUUID() },
+      { runId: randomUUID() },
       { attemptRef: "state/task-attempts/another/attempt.json" },
       { settlementRef: "state/task-attempts/another/settlement.json" },
       { worktree: join(current.root, "another-worktree") },
-      { requestedBy: { conversationId: randomUUID(), turnId: control.turnId, actionId: control.actionId } },
+      { requestedBy: runStopRequester({
+        conversationId: randomUUID(),
+        turnId: control.turnId,
+        actionId: control.actionId,
+      }) },
     ]) {
       writeFileSync(controlPath, `${JSON.stringify({ ...original, ...tamper }, null, 2)}\n`);
       const found = host.findCanonicalReceipt({
         conversationId: control.conversationId,
+        turnId: control.turnId,
         actionId: control.actionId,
         operation: control.operation,
       });
@@ -1234,6 +1266,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     writeFileSync(controlPath, `${JSON.stringify(original, null, 2)}\n`);
     const found = host.findCanonicalReceipt({
       conversationId: control.conversationId,
+      turnId: control.turnId,
       actionId: control.actionId,
       operation: control.operation,
     });
@@ -1263,6 +1296,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     const otherCarrierId = randomUUID();
     const missing = host.findCanonicalReceipt({
       conversationId,
+      turnId,
       actionId: randomUUID(),
       operation: { kind: "work_control", carrierId: otherCarrierId, control: "stop" },
     });
@@ -1271,17 +1305,23 @@ describe("conversation execution carrier strict evidence standing", () => {
     // A different committed action's receipt: provable absence for this one.
     const controlPath = join(attemptDirectory(current, carrierId), "control.json");
     const original = JSON.parse(readFileSync(controlPath, "utf8"));
-    const otherSourceRef = taskActionSourceRef(conversationId, randomUUID());
+    const otherActionId = randomUUID();
+    const otherSourceRef = taskActionSourceRef(conversationId, otherActionId);
     writeFileSync(
       controlPath,
       `${JSON.stringify({
         ...original,
         sourceRef: otherSourceRef,
-        requestedBy: { ...original.requestedBy, actionId: randomUUID() },
+        requestedBy: runStopRequester({
+          conversationId,
+          turnId: control.turnId,
+          actionId: otherActionId,
+        }),
       }, null, 2)}\n`,
     );
     const differentAction = host.findCanonicalReceipt({
       conversationId: control.conversationId,
+      turnId: control.turnId,
       actionId: control.actionId,
       operation: control.operation,
     });
@@ -1292,6 +1332,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     writeFileSync(controlPath, "{not-json\n");
     const garbage = host.findCanonicalReceipt({
       conversationId: control.conversationId,
+      turnId: control.turnId,
       actionId: control.actionId,
       operation: control.operation,
     });
@@ -1302,6 +1343,7 @@ describe("conversation execution carrier strict evidence standing", () => {
     writeFileSync(join(attemptDirectory(current, carrierId), "settlement.json"), "{not-json\n");
     const invalidEvidence = host.findCanonicalReceipt({
       conversationId: control.conversationId,
+      turnId: control.turnId,
       actionId: control.actionId,
       operation: control.operation,
     });
@@ -1524,5 +1566,234 @@ describe("conversation context projection", () => {
     expect(terminal.carriers).toEqual([
       { id: carrierId, state: "control-stopped", taskId: current.taskId, projectId: current.projectId },
     ]);
+  });
+});
+
+describe("canonical Run adapter stories", () => {
+  test("actionId is the only Run identity: publish precedes mutation, identical replay converges, and changed correlation conflicts", async () => {
+    const current = fixture();
+    const { catalog, invocations } = countingCatalog(fastDriver);
+    const registry = createConversationExecutionCarrierRegistry(current.home, { catalog });
+    const host = createConversationTaskOperationHost(current.home, { carrierRegistry: registry });
+    const conversationId = randomUUID();
+    const turnId = randomUUID();
+    const actionId = randomUUID();
+    const operation = continueOperation(current);
+    const receipt = await host.executeOperation({ conversationId, turnId, actionId, operation });
+
+    expect(receipt.carrierId).toBe(actionId);
+    const attempt = readJson(join(attemptDirectory(current, actionId), "attempt.json")) as Record<string, unknown>;
+    expect(attempt).toMatchObject({
+      attemptId: actionId,
+      correlation: {
+        conversationId,
+        turnId,
+        actionId,
+        sourceRef: taskActionSourceRef(conversationId, actionId),
+      },
+    });
+    expect(typeof attempt.requestDigest).toBe("string");
+    expect("carrierId" in attempt).toBe(false);
+    await until(() => registry.carrier(actionId)!.liveness().state === "settled", "first Run terminal");
+    expect(invocations()).toBe(1);
+
+    const replayed = createConversationExecutionCarrierRegistry(current.home, { catalog });
+    const replayedHost = createConversationTaskOperationHost(current.home, { carrierRegistry: replayed });
+    expect((await replayedHost.executeOperation({ conversationId, turnId, actionId, operation })).carrierId)
+      .toBe(actionId);
+    expect(invocations()).toBe(1);
+
+    try {
+      replayedHost.executeOperation({
+        conversationId,
+        turnId: randomUUID(),
+        actionId,
+        operation,
+      });
+      throw new Error("expected changed causal correlation to conflict");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConversationOperationHostError);
+      expect((error as ConversationOperationHostError).code).toBe("carrier-duplicate");
+    }
+    expect(invocations()).toBe(1);
+    expect(readAttemptDirectories(current.home)).toEqual([actionId]);
+    expect(existsSync(join(attemptDirectory(current, actionId), "control.json"))).toBe(false);
+
+    // An already-held O3 claim proves the adapter published the immutable
+    // request first: the distinct Run settles refusal with an attempt record,
+    // no CellInput, and zero Cell invocations.
+    const blocked = fixture();
+    writeExactLeaseBytes(blocked, blocked.taskId, randomUUID(), process.pid);
+    const blockedCatalog = countingCatalog(fastDriver);
+    const blockedRegistry = createConversationExecutionCarrierRegistry(blocked.home, {
+      catalog: blockedCatalog.catalog,
+    });
+    const blockedHost = createConversationTaskOperationHost(blocked.home, {
+      carrierRegistry: blockedRegistry,
+    });
+    const blockedActionId = randomUUID();
+    const blockedReceipt = await blockedHost.executeOperation({
+      conversationId: randomUUID(),
+      turnId: randomUUID(),
+      actionId: blockedActionId,
+      operation: continueOperation(blocked),
+    });
+    expect(blockedReceipt.carrierId).toBe(blockedActionId);
+    await until(() => blockedRegistry.carrier(blockedActionId)!.liveness().state !== "live", "O3 refusal");
+    expect(existsSync(join(attemptDirectory(blocked, blockedActionId), "attempt.json"))).toBe(true);
+    expect(existsSync(join(attemptDirectory(blocked, blockedActionId), "cell-input.json"))).toBe(false);
+    expect(blockedCatalog.invocations()).toBe(0);
+  });
+
+  test("canonical Run stop and standing own exact replay, conflict, terminal reconnect, and non-accepting Task state", async () => {
+    const current = fixture();
+    const { catalog } = countingCatalog(slowDriver);
+    const registry = createConversationExecutionCarrierRegistry(current.home, { catalog });
+    const host = createConversationTaskOperationHost(current.home, { carrierRegistry: registry });
+    const conversationId = randomUUID();
+    const turnId = randomUUID();
+    const actionId = randomUUID();
+    const receipt = await host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    await until(() => registry.carrier(carrierId)!.liveness().state === "live", "live Run");
+
+    expect(() => host.executeOperation({
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control", carrierId: randomUUID(), control: "stop" },
+    })).toThrow();
+
+    const stop = {
+      conversationId,
+      turnId: randomUUID(),
+      actionId: randomUUID(),
+      operation: { kind: "work_control" as const, carrierId, control: "stop" as const },
+    };
+    const first = await host.executeOperation(stop);
+    expect((await host.executeOperation(stop)).evidenceRefs).toEqual(first.evidenceRefs);
+    try {
+      host.executeOperation({
+        conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+        operation: stop.operation,
+      });
+      throw new Error("expected a different causal tuple to conflict");
+    } catch (error) {
+      expect((error as ConversationOperationHostError).code).toBe("control-conflict");
+    }
+    const control = readJson(join(attemptDirectory(current, carrierId), "control.json")) as Record<string, unknown>;
+    expect(control).toMatchObject({
+      version: "rosso.run-control-receipt.v1",
+      runId: carrierId,
+      requestedBy: runStopRequester(stop),
+      sourceRef: taskActionSourceRef(conversationId, stop.actionId),
+    });
+    expect("carrierId" in control).toBe(false);
+
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "stopped Run terminal");
+    const restarted = createConversationExecutionCarrierRegistry(current.home, { catalog });
+    const exact = {
+      conversationId,
+      turnId,
+      actionId,
+      sourceRef: taskActionSourceRef(conversationId, actionId),
+    };
+    expect(restarted.hydrateCarrier(exact)).toMatchObject({
+      standing: "terminal",
+      identity: { carrierId },
+      settlement: { status: "control-stopped" },
+    });
+    expect(() => createConversationTaskOperationHost(current.home, { carrierRegistry: restarted })
+      .executeOperation({
+        conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+        operation: stop.operation,
+      })).toThrow();
+    const projected = await createConversationContextProvider(current.home, {
+      carrierRegistry: restarted,
+    }).buildProjection(conversationId);
+    expect(projected.carriers).toEqual([
+      { id: carrierId, state: "control-stopped", taskId: current.taskId, projectId: current.projectId },
+    ]);
+    const task = loadPrincipalTasks(current.home).tasks.find((candidate) => candidate.id === current.taskId)!;
+    expect(task.lifecycle).toBe("open");
+    expect(task.nextActor).toBe("agent");
+    expect(task.resultClaims).toHaveLength(0);
+  });
+
+  test("journal-only identity has no effect and a published no-final Run advances only through canonical reconciliation", async () => {
+    const current = fixture();
+    const { catalog, invocations } = countingCatalog(fastDriver);
+    const conversationId = randomUUID();
+    const turnId = randomUUID();
+    const actionId = randomUUID();
+    const operation = continueOperation(current);
+    const restarted = createConversationExecutionCarrierRegistry(current.home, { catalog });
+    const restartedHost = createConversationTaskOperationHost(current.home, { carrierRegistry: restarted });
+
+    expect(restartedHost.findCanonicalReceipt({ conversationId, turnId, actionId, operation }))
+      .toEqual({ standing: "absent" });
+    expect(restarted.hydrateCarrier({
+      conversationId,
+      turnId,
+      actionId,
+      sourceRef: taskActionSourceRef(conversationId, actionId),
+    })).toBeUndefined();
+    expect(invocations()).toBe(0);
+    expect(readAttemptDirectories(current.home)).toHaveLength(0);
+
+    createRunRequestRecord(current.home, {
+      requestId: actionId,
+      taskId: current.taskId,
+      taskRevision: current.taskRevision,
+      sourceRevision: current.sourceRevision,
+      workerId: FAKE_WORKER_ID,
+      execution: { driver: "ai-sdk-v7", model: FAKE_MODEL, reasoningEffort: "max" },
+      worktree: realpathSync(current.worktree),
+      correlation: {
+        conversationId,
+        turnId,
+        actionId,
+        sourceRef: taskActionSourceRef(conversationId, actionId),
+      },
+    });
+    writeExactLeaseBytes(current, current.taskId, actionId, deadPid());
+    const exact = {
+      conversationId,
+      turnId,
+      actionId,
+      sourceRef: taskActionSourceRef(conversationId, actionId),
+    };
+    expect(restarted.hydrateCarrier(exact)).toMatchObject({
+      standing: "unknown",
+      identity: { carrierId: actionId },
+    });
+    expect(runStanding(current.home, actionId).standing).toBe("unresolved");
+    expect((await restartedHost.executeOperation({ conversationId, turnId, actionId, operation })).carrierId)
+      .toBe(actionId);
+    expect(invocations()).toBe(0);
+    expect(restartedHost.findCanonicalReceipt({ conversationId, turnId, actionId, operation }).standing)
+      .toBe("settled");
+
+    const reconciled = reconcilePrincipalTaskAttempt(current.home, {
+      id: current.taskId,
+      attemptId: actionId,
+    });
+    expect(reconciled.status).toBe("runner-failed");
+    expect(runStanding(current.home, actionId).standing).toBe("terminal");
+    expect(restarted.hydrateCarrier(exact)).toMatchObject({
+      standing: "terminal",
+      identity: { carrierId: actionId },
+      settlement: { status: "runner-failed" },
+    });
+    expect(invocations()).toBe(0);
   });
 });

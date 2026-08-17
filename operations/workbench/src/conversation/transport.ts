@@ -1227,8 +1227,12 @@ export class ConversationSocketRuntime {
    * action's causal reference: an exact match settles the retained receipt;
    * an uninspectable owner is `action.uncertain`; a provable absence under
    * the current source is retried exactly once through the same guarded
-   * effect, so a committed mutation is never repeated and an absent one is
-   * never claimed.
+   * effect for Task mutations, so a committed mutation is never repeated and
+   * an absent one is never claimed. A committed `task_continue` is the one
+   * exception: the conversation never executes from the journal — a
+   * journaled continue with no published Run is failed visibly with no work
+   * started, and a published Run (with or without a final) is reconciled
+   * from its canonical receipt and never replayed or restarted.
    */
   private async reconcileAction(
     conversationId: string,
@@ -1243,6 +1247,7 @@ export class ConversationSocketRuntime {
     }
     const lookup = this.operationHost.findCanonicalReceipt({
       conversationId,
+      turnId: requested.data.turnId,
       actionId: requested.data.actionId,
       operation: requested.data.operation,
     });
@@ -1257,6 +1262,19 @@ export class ConversationSocketRuntime {
       await this.journalActionTerminal(conversationId, requested, {
         kind: "uncertain",
         reason: lookup.reason,
+      });
+      return;
+    }
+    if (requested.data.operation.kind === "task_continue") {
+      // A journaled task_continue with no published Run must never execute
+      // during reconciliation: no automatic start, no replay. A published Run
+      // is reconciled through its canonical receipt above; only the Run owner
+      // may inspect or reconcile a published Run without a final.
+      await this.journalActionTerminal(conversationId, requested, {
+        kind: "failed",
+        reason:
+          "the committed task_continue retains no canonical published Run; "
+          + "reconciliation never starts work for a journal-only action",
       });
       return;
     }

@@ -431,6 +431,25 @@ describe("O2 Run request identity", () => {
       lowerCellInput: lowerFor(current, created.task.id, request.requestId),
       execute: new RecordingExecutor().execute,
     })).rejects.toThrow("retains no readable durable request record");
+
+    const retained = fixture();
+    const retainedTask = agentTask(retained);
+    const retainedRequest = makeRequest(retained, retainedTask.task.id);
+    const published = createRunRequestRecord(retained.home, retainedRequest);
+    const publishedRecord = JSON.parse(readFileSync(published.refs.attemptPath, "utf8"));
+    writeFileSync(published.refs.attemptPath, `${JSON.stringify({
+      ...publishedRecord,
+      model: "tampered/model",
+    }, null, 2)}\n`);
+    const executor = new RecordingExecutor();
+    await expect(runOrdinaryTaskRun(retained.home, retainedRequest, {
+      prePublished: true,
+      card: testCard(),
+      lowerCellInput: lowerFor(retained, retainedTask.task.id, retainedRequest.requestId),
+      execute: executor.execute,
+    })).rejects.toBeInstanceOf(RunRequestConflictError);
+    expect(executor.invocations).toHaveLength(0);
+    expect(existsSync(published.refs.inputPath)).toBeFalse();
   });
 });
 

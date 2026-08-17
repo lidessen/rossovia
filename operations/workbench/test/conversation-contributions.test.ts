@@ -941,15 +941,19 @@ describe("conversation temporary contributions", () => {
       operation: overlapping as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     })).rejects.toThrowError(ContributionError);
 
-    // A task_continue carrier on the same Worktree is refused by the same lease.
+    // A task_continue publishes its canonical Run request before O3. The
+    // occupied shared claim then settles that Run runner-failed with zero
+    // Cell invocation; the existing contribution remains the sole live
+    // effectful owner and its lifecycle is unchanged.
     const carrierRegistry = createConversationExecutionCarrierRegistry(fixture_.home, {
       catalog: fakeCatalog(slowContributionDriver),
     });
     const carrierHost = createConversationTaskOperationHost(fixture_.home, { carrierRegistry });
-    expect(() => carrierHost.executeOperation({
+    const carrierActionId = randomUUID();
+    const carrierReceipt = await carrierHost.executeOperation({
       conversationId,
       turnId: randomUUID(),
-      actionId: randomUUID(),
+      actionId: carrierActionId,
       operation: {
         kind: "task_continue",
         taskId: fixture_.taskId,
@@ -961,7 +965,22 @@ describe("conversation temporary contributions", () => {
         worktreePath: fixture_.worktree,
         expectedWorktreeHead: fixture_.worktreeHead,
       },
-    })).toThrow();
+    });
+    expect(carrierReceipt.carrierId).toBe(carrierActionId);
+    const refusedCarrier = carrierRegistry.carrier(carrierActionId)!;
+    await waitFor(() => refusedCarrier.liveness().state !== "live", "carrier O3 refusal settles");
+    const refusedStanding = refusedCarrier.liveness();
+    expect(refusedStanding.state).toBe("settled");
+    if (refusedStanding.state !== "settled") throw new Error("expected settled Run refusal");
+    expect(refusedStanding.settlement.status).toBe("runner-failed");
+    expect(existsSync(join(
+      fixture_.home,
+      "state",
+      "task-attempts",
+      carrierActionId,
+      "cell-input.json",
+    ))).toBe(false);
+    expect(registry.contribution(receipt.batchId, "writer-one")!.liveness().state).toBe("live");
 
     // A read-only contribution may still overlap the effectful writer.
     const readOnly = spawnOperation({ key: "reader-one", effectKind: "read-only" });

@@ -75,6 +75,13 @@ export const RunRequestSchema = z.object({
       removed: z.array(z.string()),
     }).strict(),
   }).strict().optional(),
+  /** Exact journal causality when the accepted request came from Conversation. */
+  correlation: z.object({
+    conversationId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    actionId: z.string().uuid(),
+    sourceRef: z.string().min(1),
+  }).strict().optional(),
 }).strict();
 
 export type RunRequest = z.infer<typeof RunRequestSchema>;
@@ -153,6 +160,7 @@ export function canonicalRunRequestJson(request: RunRequest): string {
       : {}),
     worktree: request.worktree,
     ...(request.continuation !== undefined ? { continuation: request.continuation } : {}),
+    ...(request.correlation !== undefined ? { correlation: request.correlation } : {}),
   });
 }
 
@@ -166,6 +174,12 @@ export function runRequestDigest(request: RunRequest): string {
  * an identical replay (same identity, same request digest) converges on the
  * retained Run; a different body under the same identity throws
  * `RunRequestConflictError`; an unreadable retained record fails closed.
+ *
+ * A conversation-owned Run (the ordinary `task_continue` path, whose
+ * committed action UUID is the Run identity) includes its exact
+ * journal-owned causal correlation in the canonical request and digest.
+ * Replaying the UUID from a different conversation or turn therefore
+ * conflicts instead of converging on foreign work.
  */
 export function createRunRequestRecord(
   home: string,
@@ -216,6 +230,7 @@ export function createRunRequestRecord(
       status: "started",
       startedAt: new Date().toISOString(),
       requestDigest: digest,
+      ...(request.correlation === undefined ? {} : { correlation: request.correlation }),
     });
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
@@ -245,13 +260,60 @@ function convergeOrConflict(
       `Run ${request.requestId} retains a different durable request under the same identity`,
     );
   }
-  if (typeof record.requestDigest === "string" && record.requestDigest === digest) {
+  const retainedRequest = retainedRunRequest(record);
+  if (
+    retainedRequest !== undefined
+    && typeof record.requestDigest === "string"
+    && record.requestDigest === digest
+    && record.requestDigest === runRequestDigest(retainedRequest)
+  ) {
     return { standing: "converged", refs, digest };
   }
   throw new RunRequestConflictError(
     request.requestId,
     `Run ${request.requestId} retains a different request body under the same identity; identical replay is refused`,
   );
+}
+
+/** Reconstruct the exact canonical request from the retained request record. */
+function retainedRunRequest(record: Record<string, unknown>): RunRequest | undefined {
+  const parsed = RunRequestSchema.safeParse({
+    requestId: record.attemptId,
+    taskId: record.taskId,
+    taskRevision: record.taskRevision,
+    sourceRevision: record.sourceRevision,
+    workerId: record.workerId,
+    execution: {
+      driver: record.driver,
+      model: record.model,
+      ...(typeof record.reasoningEffort === "string"
+        ? { reasoningEffort: record.reasoningEffort }
+        : {}),
+    },
+    worktree: record.worktree,
+    ...(record.continuation === undefined ? {} : { continuation: record.continuation }),
+    ...(record.correlation === undefined ? {} : { correlation: record.correlation }),
+  });
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Strictly re-read a synchronously published request before O2 proceeds.
+ * Caller-supplied refs or digests are never trusted: the canonical evidence
+ * path is derived from the Run identity, and both the retained body and its
+ * stored digest must equal the accepted request.
+ */
+function readPublishedRunRequestRecord(home: string, request: RunRequest): RunRequestRecordStanding {
+  const refs = taskRunHelpers().attemptEvidence(home, request.requestId);
+  if (!existsSync(refs.attemptPath)) {
+    throw new RunRequestConflictError(
+      request.requestId,
+      `Run ${request.requestId} has no retained pre-published request record`,
+    );
+  }
+  const digest = runRequestDigest(request);
+  const retained = convergeOrConflict(request, digest, refs);
+  return { standing: "created", refs: retained.refs, digest: retained.digest };
 }
 
 /** In-process live control handles; durable truth stays in the evidence family. */
@@ -443,6 +505,15 @@ export type RunFinalization =
 export interface OrdinaryRunDependencies {
   /** Test seam invoked after durable request creation and before O3 acquisition. */
   readonly beforeLeaseAcquire?: () => void;
+  /**
+   * When the caller already durably published the exact Run request record
+   * BEFORE any O3 acquisition or mutable preparation (the synchronous
+   * publication boundary of a conversation-owned Run), the owner proceeds
+   * from that retained record instead of publishing again. O2 derives its
+   * path and digest, strictly re-reads the retained body, and refuses any
+   * mismatch with `RunRequestConflictError`.
+   */
+  readonly prePublished?: true;
   readonly acquireLease?: (worktree: string, owner: WorktreeWriterOwnerIdentity) => WorktreeWriterLease;
   readonly releaseLease?: (lease: WorktreeWriterLease) => void;
   /** Host revalidation after the O3 claim; throws on any drift. */
@@ -479,7 +550,12 @@ export async function runOrdinaryTaskRun(
   if (dependencies.lowerCellInput === undefined) {
     throw new Error("runOrdinaryTaskRun requires a CellInput lowerer");
   }
-  const created = createRunRequestRecord(home, request);
+  let created: RunRequestRecordStanding;
+  if (dependencies.prePublished === true) {
+    created = readPublishedRunRequestRecord(home, request);
+  } else {
+    created = createRunRequestRecord(home, request);
+  }
   if (created.standing === "converged") {
     return convergedRunResult(home, request);
   }

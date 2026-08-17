@@ -405,6 +405,7 @@ describe("ConversationContextProvider", () => {
 
     const found = host.findCanonicalReceipt({
       conversationId,
+      turnId: randomUUID(),
       actionId,
       operation: {
         kind: "task_create",
