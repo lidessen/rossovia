@@ -36,6 +36,10 @@ function digest(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function digestBytes(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function migrateRecord(value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
   const record = { ...(value as Record<string, unknown>) };
@@ -219,6 +223,13 @@ const MigrationMarkerSchema = z.object({
   version: z.literal("rosso.namespace-migration.v1"),
   sourceHome: z.string().min(1),
   targetHome: z.string().min(1),
+  // Recorded by the migration immediately before its durable canonical pair
+  // commit: the sha256 of the exact projects and workspaces bytes about to
+  // be published. A resumed migration uses them to prove which canonical
+  // state its own interrupted attempt committed and which states a register
+  // or attach published after the target was exposed.
+  committedProjectsDigest: z.string().length(64).optional(),
+  committedWorkspacesDigest: z.string().length(64).optional(),
 }).strict();
 
 function clearMigrationTarget(target: string): void {
@@ -242,7 +253,70 @@ function clearMigrationTarget(target: string): void {
   }
 }
 
-function prepareMigrationTarget(source: string, target: string, io: RegistrationIo): { marker: string; release: () => void } {
+function registrationExposedError(target: string): Error {
+  return new Error(
+    `a registration succeeded in the rossovia target after the interrupted migration exposed it: ${target}. ` +
+    "The migration refuses to clear or replace that canonical registration state. " +
+    "Finish or revert the newer registration explicitly before retrying migration, so no successful " +
+    "registration is silently lost.",
+  );
+}
+
+/**
+ * Under the held registration owner, verify the exact canonical pair before
+ * the interrupted target is cleared. The only states the migration's own
+ * interrupted attempt can have left are admitted: no canonical admission yet,
+ * the empty pair a concurrent initialization published during the exposure,
+ * the projects-only subset of the recorded durable commit (a crash between
+ * the two renames), or the exact recorded committed pair. Anything else
+ * proves a register or attach succeeded after the exposure — the migration
+ * fails closed instead of clearing or replacing that successful registration
+ * with the fabricated empty previous bytes of its durable commit.
+ */
+function verifyTargetCanonicalPairBeforeClear(
+  target: string,
+  // MigrationMarkerSchema.parse produces optional digest fields whose present
+  // type includes undefined; under exactOptionalPropertyTypes the helper's
+  // boundary must accept that exact view. The logic below deliberately treats
+  // an absent and an explicitly undefined digest identically.
+  marker: { committedProjectsDigest?: string | undefined; committedWorkspacesDigest?: string | undefined },
+): void {
+  const projectsPath = canonicalProjectsPath(target);
+  const workspacesPath = canonicalWorkspacesPath(target);
+  const projectsPresent = existsSync(projectsPath);
+  const workspacesPresent = existsSync(workspacesPath);
+  if (!projectsPresent && !workspacesPresent) return;
+  if (!projectsPresent || !workspacesPresent) {
+    // Partial admission. Only this migration's own durable commit can leave
+    // projects without workspaces (register and attach require both files),
+    // and a concurrent initialization can leave the empty projects subset.
+    const admittedSubset = projectsPresent && !workspacesPresent
+      && (readFileSync(projectsPath, "utf8") === emptyCanonicalProjectsBytes()
+        || (marker.committedProjectsDigest !== undefined
+          && digest(projectsPath) === marker.committedProjectsDigest));
+    if (admittedSubset) return;
+    throw registrationExposedError(target);
+  }
+  const projectsBytes = readFileSync(projectsPath, "utf8");
+  const workspacesBytes = readFileSync(workspacesPath, "utf8");
+  // The empty pair a concurrent init published carries no registration, so
+  // the migration may replace it.
+  if (projectsBytes === emptyCanonicalProjectsBytes() && workspacesBytes === emptyCanonicalWorkspacesBytes()) return;
+  if (marker.committedProjectsDigest === undefined || marker.committedWorkspacesDigest === undefined) {
+    // A non-empty pair without recorded committed bytes can only have been
+    // published by a registration after the exposure.
+    throw registrationExposedError(target);
+  }
+  if (digest(projectsPath) === marker.committedProjectsDigest
+    && digest(workspacesPath) === marker.committedWorkspacesDigest) return;
+  throw registrationExposedError(target);
+}
+
+function prepareMigrationTarget(
+  source: string,
+  target: string,
+  io: RegistrationIo,
+): { marker: string; markerValue: { version: string; sourceHome: string; targetHome: string }; release: () => void } {
   const marker = join(target, migrationMarkerName);
   const markerValue = {
     version: "rosso.namespace-migration.v1",
@@ -257,37 +331,50 @@ function prepareMigrationTarget(source: string, target: string, io: Registration
       if (retained.sourceHome !== source || retained.targetHome !== target) {
         throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
       }
-      // Serialize the clear of the interrupted target under the registration
-      // owner boundary, so no register transition can observe or write the
-      // canonical pair while the migration rewrites it.
-      const release = acquireRegistrationLock(target, io);
-      try {
-        // Re-read the marker under ownership immediately before any clear:
-        // a transition may have completed while this migration waited, and a
-        // stale pre-lock decision must never erase its success.
-        if (!existsSync(marker)) {
-          throw new Error(`rossovia workbench target migration marker disappeared: ${target}`);
-        }
-        const current = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
-        if (current.sourceHome !== source || current.targetHome !== target) {
-          throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
-        }
-        clearMigrationTarget(target);
-        saveJson(marker, markerValue);
-      } catch (error: unknown) {
-        release();
-        throw error;
-      }
-      return { marker, release };
     } else if (readdirSync(target).length > 0) {
       throw new Error(`rossovia workbench target home already exists: ${target}`);
     }
   } else {
     mkdirSync(target, { recursive: true });
   }
-  saveJson(marker, markerValue);
+  // Publish the marker before taking the lock so a later migration can
+  // recognize the interrupted transaction. The canonical pair is never
+  // touched here, and the exposure race is re-checked under the lock below.
+  if (!existsSync(marker)) saveJson(marker, markerValue);
   const release = acquireRegistrationLock(target, io);
-  return { marker, release };
+  try {
+    // Re-make the decision on the authoritative state under the registration
+    // owner. A register that succeeded while the target was exposed has
+    // already committed its pair; the migration must never clear or replace
+    // it, so the exact canonical state is verified immediately before the
+    // clear and the durable pair commit that follows under the same owner.
+    if (existsSync(marker)) {
+      const current = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+      if (current.sourceHome !== source || current.targetHome !== target) {
+        throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
+      }
+      verifyTargetCanonicalPairBeforeClear(target, current);
+      clearMigrationTarget(target);
+      saveJson(marker, markerValue);
+    } else {
+      // The marker published above is gone: another migration completed the
+      // target while this one waited, or the marker was removed manually.
+      if (existsSync(join(target, "manifest.json"))) {
+        throw new Error(`rossovia workbench target home already exists: ${target}`);
+      }
+      if (existsSync(canonicalProjectsPath(target)) || existsSync(canonicalWorkspacesPath(target))) {
+        throw new Error(
+          `the rossovia target received canonical registration state while the migration prepared it: ${target}. ` +
+          "Reconcile the target explicitly before retrying migration, so no successful registration is silently replaced.",
+        );
+      }
+      saveJson(marker, markerValue);
+    }
+    return { marker, markerValue, release };
+  } catch (error: unknown) {
+    release();
+    throw error;
+  }
 }
 
 function migrateCanonicalPair(source: string): { projects: Projects; workspaces: Workspaces } {
@@ -383,7 +470,7 @@ export function migrateLegacyHome(
   const sourceManifestDigest = digest(sourceManifest);
   const sourceProjectsDigest = digest(sourceProjects);
   let verifiedProjectId: string | null = null;
-  const { marker, release } = prepareMigrationTarget(source, target, io);
+  const { marker, markerValue, release } = prepareMigrationTarget(source, target, io);
   try {
     copyLegacyHome(source, target);
     migrateNamespaceFiles(target);
@@ -397,6 +484,16 @@ export function migrateLegacyHome(
     // claimed migration success receives the same canonical-pair admission
     // as register and attach.
     const pair = migrateCanonicalPair(source);
+    // Record the exact committed bytes in the retained marker before the
+    // durable publication: a resumed migration can then prove which
+    // canonical state its own interrupted attempt committed and reject any
+    // state a register or attach published after the exposure, instead of
+    // clearing or replacing it with the fabricated empty previous bytes.
+    saveJson(marker, {
+      ...markerValue,
+      committedProjectsDigest: digestBytes(serializeState(pair.projects)),
+      committedWorkspacesDigest: digestBytes(serializeState(pair.workspaces)),
+    });
     commitCanonicalPair(
       target,
       pair.projects,

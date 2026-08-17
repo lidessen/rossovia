@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -36,7 +36,7 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function createRepository(path: string): void {
+function createRepository(path: string, remote = "https://example.test/lidessen/migration.git"): void {
   mkdirSync(path, { recursive: true });
   git(path, "init");
   git(path, "config", "user.name", "Rossovia Test");
@@ -44,7 +44,7 @@ function createRepository(path: string): void {
   writeFileSync(join(path, "README.md"), "# Fixture\n");
   git(path, "add", "README.md");
   git(path, "commit", "-m", "initial");
-  git(path, "remote", "add", "origin", "https://example.test/lidessen/migration.git");
+  git(path, "remote", "add", "origin", remote);
 }
 
 function createLegacyHome(home: string, repository: string, machinePreferences: unknown[] = []): void {
@@ -99,6 +99,45 @@ function createLegacyHome(home: string, repository: string, machinePreferences: 
     projectId: null,
     recordDigest: "0".repeat(64),
   })}\n`, "utf8");
+}
+
+/**
+ * A target that reproduces exactly what a crashed migration attempt leaves
+ * after its durable canonical pair commit: the retained marker with the
+ * recorded committed bytes, the initialized manifest and roots, and the
+ * committed canonical pair. The recorded digests are computed over the exact
+ * bytes on disk, which is the same evidence the production resume check uses.
+ */
+function writeExposedMigrationTarget(source: string, target: string, workspacePath: string): void {
+  writeJson(join(target, "manifest.json"), {
+    version: "rosso.home.v1",
+    namespace: "rosso",
+    createdAt: "2026-07-18T00:00:00Z",
+  });
+  writeJson(join(target, "state", "roots.json"), { version: "rosso.roots.v1", roots: [] });
+  writeJson(join(target, "config", "projects.json"), {
+    version: "rosso.projects.v1",
+    projects: [{
+      id: "repository:migration",
+      repository: "https://example.test/lidessen/migration.git",
+      aliases: ["migration"],
+    }],
+  });
+  writeJson(join(target, "state", "workspaces.json"), {
+    version: "rosso.workspaces.v1",
+    workspaces: [{ projectId: "repository:migration", path: workspacePath }],
+  });
+  writeJson(join(target, ".rossovia-namespace-migration.json"), {
+    version: "rosso.namespace-migration.v1",
+    sourceHome: realpathSync(source),
+    targetHome: realpathSync(target),
+    committedProjectsDigest: createHash("sha256")
+      .update(readFileSync(join(target, "config", "projects.json")))
+      .digest("hex"),
+    committedWorkspacesDigest: createHash("sha256")
+      .update(readFileSync(join(target, "state", "workspaces.json")))
+      .digest("hex"),
+  });
 }
 
 /** A legacy source plus a target that already holds one live registration
@@ -195,6 +234,119 @@ describe("legacy namespace migration", () => {
     expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
     expect(existsSync(`${target}.namespace-migration.tmp`)).toBe(false);
     expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
+  });
+
+  test("resumes an interrupted migration whose marker records the committed pair bytes", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-resume-recorded-pair-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    writeExposedMigrationTarget(source, target, repository);
+
+    const migrated = workbench(target, "migrate", "--from-home", source);
+    expect(migrated.exitCode).toBe(0);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    const projects = JSON.parse(readFileSync(join(target, "config", "projects.json"), "utf8")) as {
+      projects: Array<{ id: string }>;
+    };
+    expect(projects.projects.map((project) => project.id)).toEqual(["repository:migration"]);
+    expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
+  });
+
+  test("rejects and preserves a registration that succeeded after the interrupted migration exposed the target", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-exposure-register-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const second = join(root, "second");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    createRepository(second, "https://example.test/lidessen/second.git");
+    // The exposure: a crashed migration attempt already committed the
+    // migrated pair, recorded its committed bytes in the marker, and
+    // initialized the home before it died.
+    writeExposedMigrationTarget(source, target, repository);
+
+    // The registration begins after the exposure and succeeds fully.
+    const registered = workbench(target, "register", second, "--id", "repository:second", "--alias", "second");
+    expect(registered.exitCode, registered.stderr).toBe(0);
+    const projectsAfterRegister = readFileSync(join(target, "config", "projects.json"), "utf8");
+    const workspacesAfterRegister = readFileSync(join(target, "state", "workspaces.json"), "utf8");
+
+    // The resumed migration must fail visibly instead of clearing or
+    // replacing the newer registration: no silent lost update.
+    const migrated = workbench(target, "migrate", "--from-home", source);
+    expect(migrated.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(migrated.stderr).toContain(
+      "rossovia: a registration succeeded in the rossovia target after the interrupted migration exposed it",
+    );
+    expect(migrated.stderr).toContain("no successful registration is silently lost");
+    expect(migrated.stderr).not.toContain("for usage");
+
+    // The successful registration was neither cleared nor replaced, and the
+    // target stays explicitly retryable through the retained marker.
+    const projects = JSON.parse(readFileSync(join(target, "config", "projects.json"), "utf8")) as {
+      projects: Array<{ id: string }>;
+    };
+    expect(projects.projects.map((project) => project.id)).toEqual(["repository:migration", "repository:second"]);
+    const workspaces = JSON.parse(readFileSync(join(target, "state", "workspaces.json"), "utf8")) as {
+      workspaces: Array<{ projectId: string }>;
+    };
+    expect(workspaces.workspaces.map((workspace) => workspace.projectId)).toEqual(
+      ["repository:migration", "repository:second"],
+    );
+    expect(readFileSync(join(target, "config", "projects.json"), "utf8")).toBe(projectsAfterRegister);
+    expect(readFileSync(join(target, "state", "workspaces.json"), "utf8")).toBe(workspacesAfterRegister);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
+    expect(workbench(target, "resolve", "second").exitCode).toBe(0);
+  });
+
+  test("rejects and preserves a registration that succeeded after the initial marker exposure", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-initial-exposure-register-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const second = join(root, "second");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    createRepository(second, "https://example.test/lidessen/second.git");
+    // The initial exposure: exactly what a starting migration publishes
+    // before it takes the registration owner — the target directory plus the
+    // migration marker, before any canonical state exists.
+    mkdirSync(target, { recursive: true });
+    writeJson(join(target, ".rossovia-namespace-migration.json"), {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: realpathSync(source),
+      targetHome: realpathSync(target),
+    });
+
+    // A concurrent initialization and registration win the exposure window
+    // and publish the canonical pair before the migration proceeds.
+    const initialized = workbench(target, "init");
+    expect(initialized.exitCode, initialized.stderr).toBe(0);
+    const registered = workbench(target, "register", second, "--id", "repository:second", "--alias", "second");
+    expect(registered.exitCode, registered.stderr).toBe(0);
+    const projectsAfterRegister = readFileSync(join(target, "config", "projects.json"), "utf8");
+
+    const migrated = workbench(target, "migrate", "--from-home", source);
+    expect(migrated.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(migrated.stderr).toContain(
+      "rossovia: a registration succeeded in the rossovia target after the interrupted migration exposed it",
+    );
+    expect(migrated.stderr).not.toContain("for usage");
+
+    const projects = JSON.parse(readFileSync(join(target, "config", "projects.json"), "utf8")) as {
+      projects: Array<{ id: string }>;
+    };
+    expect(projects.projects.map((project) => project.id)).toEqual(["repository:second"]);
+    expect(readFileSync(join(target, "config", "projects.json"), "utf8")).toBe(projectsAfterRegister);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
+    expect(workbench(target, "resolve", "second").exitCode).toBe(0);
   });
 
   test("recovers an empty target after marker publication was denied", () => {

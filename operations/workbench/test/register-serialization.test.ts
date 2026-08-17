@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -16,7 +17,13 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
-import type { HomeSources } from "../src/home";
+import {
+  exclusivePublish,
+  initializeHome,
+  type ExclusivePublishOps,
+  type HomeIo,
+  type HomeSources,
+} from "../src/home";
 import { migrateLegacyHome } from "../src/migration";
 import { nodeRegistrationIo, transitionRegistration, type RegistrationIo } from "../src/registration";
 
@@ -1146,5 +1153,154 @@ describe("registration transition durability and rollback seam", () => {
     expect(projects(home).projects.map((entry) => entry.id)).toEqual(["repository:retained-release"]);
     expect(readFileSync(`${lock}.recovery`, "utf8")).toBe(primitiveBefore);
     expect(existsSync(lock)).toBe(true);
+  });
+});
+
+describe("exclusive canonical publication never admits partial JSON", () => {
+  test("a failure after the stage claim leaves the canonical path untouched, a retry publishes the complete file, and a winner is never clobbered", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-exclusive-publication-"));
+    temporaryRoots.push(root);
+    // mkdtemp may return an alias path (for example /var, whose canonical
+    // realpath is /private/var on macOS). initializeHome resolves the home
+    // through expandPath, which realpaths the nearest existing ancestor, so
+    // the injected seam observes stage paths under the canonical form.
+    // Derive the home from the canonical root so projectsPath matches the
+    // exact unique stage path the seam sees, never the aliased form.
+    const home = join(realpathSync(root), "home");
+    const projectsPath = join(home, "config", "projects.json");
+    const operations: string[] = [];
+    let injection: "write" | "link" | undefined = "write";
+    // exclusivePublish never writes the final canonical path directly: it
+    // claims a unique sibling stage `${path}.${uuid}.tmp` first. The injected
+    // write failure must therefore match the exact unique projects stage
+    // path, never the final projectsPath.
+    const isProjectsStage = (path: string): boolean =>
+      path !== projectsPath && path.startsWith(`${projectsPath}.`) && path.endsWith(".tmp");
+    const ops: ExclusivePublishOps = {
+      writeFile(path, data) {
+        operations.push(`write:${path}`);
+        if (isProjectsStage(path) && injection === "write") {
+          injection = "link";
+          // Simulate an EIO after a partial stage write: only the stage can
+          // ever carry partial bytes, never the canonical path.
+          writeFileSync(path, data.slice(0, Math.floor(data.length / 2)), "utf8");
+          throw new Error("injected partial stage write failure");
+        }
+        writeFileSync(path, data, "utf8");
+      },
+      fsyncFile(path) {
+        operations.push(`fsync:${path}`);
+      },
+      link(source, destination) {
+        operations.push(`link:${source}->${destination}`);
+        if (destination === projectsPath && injection === "link") {
+          injection = undefined;
+          // The stage is fully written and fsynced; the atomic no-replace
+          // publication fails after the claim.
+          throw new Error("injected publication failure");
+        }
+        linkSync(source, destination);
+      },
+      remove(path) {
+        operations.push(`remove:${path}`);
+        rmSync(path, { force: true });
+      },
+    };
+    const io: HomeIo = {
+      createFileExclusive: (path, data) => exclusivePublish(path, data, ops),
+    };
+    const capture = (callback: () => void): Error => {
+      let thrown: unknown;
+      try {
+        callback();
+      } catch (error: unknown) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      return thrown as Error;
+    };
+
+    // The exact unique stage path of the failed first claim, observed through
+    // the seam's write operations (the claim throws before it can return it).
+    const failedStage = (): string => {
+      const operation = operations.find((entry) =>
+        entry.startsWith(`write:${projectsPath}.`) && entry.endsWith(".tmp"));
+      expect(operation).toBeDefined();
+      return operation!.slice("write:".length);
+    };
+    const stageLeftovers = (): string[] =>
+      readdirSync(dirname(projectsPath)).filter((name) => name.endsWith(".tmp"));
+
+    // First claim: the stage write fails mid-write. The canonical projects
+    // path never appears and only this caller's own unique stage is removed,
+    // so no partial bytes are ever visible at the canonical path.
+    let failure = capture(() => initializeHome(home, io));
+    expect(failure.message).toContain("cannot persist Rossovia state");
+    expect(existsSync(projectsPath)).toBe(false);
+    expect(stageLeftovers()).toEqual([]);
+    const firstStage = failedStage();
+    expect(operations).toContain(`remove:${firstStage}`);
+
+    // Second claim: the stage is fully written and fsynced, then the atomic
+    // no-replace publication fails after the claim. The canonical path is
+    // still absent and this caller's second unique stage is likewise
+    // removed, so no partial JSON was ever admitted.
+    failure = capture(() => initializeHome(home, io));
+    expect(failure.message).toContain("cannot persist Rossovia state");
+    expect(existsSync(projectsPath)).toBe(false);
+    expect(stageLeftovers()).toEqual([]);
+
+    // The retry publishes the complete canonical file through the same seam.
+    const initialized = initializeHome(home, io);
+    expect(initialized.writeAccess).toBe("verified");
+    expect(JSON.parse(readFileSync(projectsPath, "utf8"))).toEqual({
+      version: "rosso.projects.v1",
+      projects: [],
+    });
+
+    // The successful publication observed the exact stage order: the full
+    // write, then the fsync, then the atomic no-replace link, and only then
+    // the removal of the caller's own stage. Two link attempts were made:
+    // the injected failed one (recorded before its throw, never published)
+    // and the later successful one, so the last attempted link is the
+    // publication that must satisfy the order.
+    const published = operations.filter((operation) =>
+      operation.startsWith("link:") && operation.endsWith(`->${projectsPath}`));
+    expect(published.length).toBe(2);
+    const failedLink = published[0] ?? "";
+    const successfulLink = published[1] ?? "";
+    expect(failedLink).not.toBe(successfulLink);
+    // The failed link's own unique stage was removed by the publication's
+    // cleanup, and that attempt never published the canonical path.
+    const failedStagePath = failedLink.slice("link:".length, failedLink.indexOf("->"));
+    expect(operations).toContain(`remove:${failedStagePath}`);
+    const stage = successfulLink.slice("link:".length, successfulLink.indexOf("->"));
+    const stageWrite = operations.indexOf(`write:${stage}`);
+    const stageFsync = operations.indexOf(`fsync:${stage}`);
+    const stageLink = operations.indexOf(`link:${stage}->${projectsPath}`);
+    const stageRemove = operations.indexOf(`remove:${stage}`);
+    expect(stageWrite).toBeGreaterThanOrEqual(0);
+    expect(stageFsync).toBeGreaterThan(stageWrite);
+    expect(stageLink).toBeGreaterThan(stageFsync);
+    expect(stageRemove).toBeGreaterThan(stageLink);
+    // Cleanup only ever removed unique stages, never the canonical paths.
+    for (const operation of operations.filter((entry) => entry.startsWith("remove:"))) {
+      expect(operation.endsWith(".tmp")).toBe(true);
+    }
+
+    // A winner already holding the canonical path is never clobbered: the
+    // atomic no-replace publication fails with EEXIST and the existing
+    // complete bytes are preserved untouched.
+    const winner = {
+      version: "rosso.projects.v1",
+      projects: [{ id: "repository:winner", repository: "https://example.com/winner.git", aliases: ["winner"] }],
+    };
+    writeFileSync(projectsPath, `${JSON.stringify(winner, null, 2)}\n`, "utf8");
+    const winnerBytes = readFileSync(projectsPath, "utf8");
+    const rerun = initializeHome(home, io);
+    expect(rerun.writeAccess).toBe("verified");
+    expect(readFileSync(projectsPath, "utf8")).toBe(winnerBytes);
+    expect(JSON.parse(readFileSync(projectsPath, "utf8"))).toEqual(winner);
+    expect(readdirSync(join(home, "config")).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 });

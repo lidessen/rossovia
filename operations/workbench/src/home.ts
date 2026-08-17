@@ -1,5 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { z } from "zod";
 import {
@@ -39,21 +50,88 @@ const homeDirectories = ["config", "state", "receipts", "cache"];
 
 /**
  * The injectable initialization seam for home creation. The production
- * default performs the exclusive O_EXCL creation that makes initialization
- * no-clobber: a file published by another transition (a migration winner or
- * a serialized registration) is never overwritten, because the creation
- * either creates the missing initial state atomically or fails with EEXIST
- * and leaves the existing bytes untouched. Tests inject a recording or
- * barrier implementation at this exact boundary; no production code reads
- * test-only environment variables and ordinary initializeHome behavior is
- * unchanged.
+ * default is an exclusive no-clobber publication: the full payload is
+ * staged, fsynced, and admitted with one atomic no-replace link, so a file
+ * published by another transition (a migration winner or a serialized
+ * registration) is never overwritten — the creation either publishes the
+ * missing initial state atomically or fails with EEXIST and leaves the
+ * existing bytes untouched, and no partial bytes are ever visible at the
+ * canonical path. Tests inject a recording or barrier implementation at this
+ * exact boundary; no production code reads test-only environment variables
+ * and ordinary initializeHome behavior is unchanged.
  */
 export interface HomeIo {
   createFileExclusive(path: string, data: string): void;
 }
 
+/**
+ * The low-level operations behind one exclusive no-clobber publication. The
+ * production default is the synchronous Node filesystem; tests inject a
+ * fault-recording implementation to prove that a canonical file is never
+ * admitted with partial bytes and that a winner already published at the
+ * canonical path is never clobbered.
+ */
+export interface ExclusivePublishOps {
+  writeFile(path: string, data: string): void;
+  fsyncFile(path: string): void;
+  link(source: string, destination: string): void;
+  remove(path: string): void;
+}
+
+export const nodeExclusivePublishOps: ExclusivePublishOps = {
+  writeFile: (path, data) => writeFileSync(path, data, "utf8"),
+  fsyncFile: (path) => {
+    const descriptor = openSync(path, "r+");
+    try {
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+  },
+  link: (source, destination) => linkSync(source, destination),
+  remove: (path) => rmSync(path, { force: true }),
+};
+
+/**
+ * Publish `data` at `path` only if `path` does not exist, without ever
+ * exposing partial bytes there. The full payload is written to a unique stage
+ * in the same directory, fsynced, and then admitted with one atomic
+ * no-replace link; if another creator already owns the path, the link fails
+ * with EEXIST and the existing bytes are left untouched. Cleanup removes only
+ * this caller's own unique stage — never the final path or another owner's
+ * file — so a failed publication leaves the canonical path exactly as it was
+ * observed: absent, or holding the winner's complete bytes.
+ */
+export function exclusivePublish(
+  path: string,
+  data: string,
+  ops: ExclusivePublishOps = nodeExclusivePublishOps,
+): void {
+  const stage = `${path}.${randomUUID()}.tmp`;
+  try {
+    ops.writeFile(stage, data);
+    ops.fsyncFile(stage);
+    ops.link(stage, path);
+  } catch (error: unknown) {
+    try {
+      ops.remove(stage);
+    } catch {
+      // Preserve the publication failure. The stage name is unique and the
+      // canonical path was never written directly.
+    }
+    throw error;
+  }
+  // The canonical path now has its own link; removing the stage cannot
+  // affect the published entry.
+  try {
+    ops.remove(stage);
+  } catch {
+    // A leftover unique stage is inert; the published entry is complete.
+  }
+}
+
 export const nodeHomeIo: HomeIo = {
-  createFileExclusive: (path, data) => writeFileSync(path, data, { encoding: "utf8", flag: "wx" }),
+  createFileExclusive: (path, data) => exclusivePublish(path, data),
 };
 
 export function resolveHome(homeArgument?: string): string {
