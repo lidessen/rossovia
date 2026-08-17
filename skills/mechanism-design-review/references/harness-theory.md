@@ -128,6 +128,58 @@ This claim boundary parallels the established distinction between verification
 against requirements and validation for intended use
 ([NASA Systems Engineering Handbook](https://www.nasa.gov/wp-content/uploads/2018/09/nasa_systems_engineering_handbook_0.pdf)).
 
+## Select tests for the current uncertainty
+
+A test is a feedback and evidence instrument, not a progress counter. It is
+worth running or retaining when its result can change the next engineering
+decision, prevent costly rework, or protect a settled high-consequence
+relation. Its assertion establishes only its explicit decidable predicate;
+semantic fitness still belongs to review and adoption still belongs to the
+acceptance owner.
+
+[`task-shaping`](../../task-shaping/SKILL.md) owns the work unit, whole
+obligation, and reconstruction relation that give the test a subject.
+[`practice-cycle`](../../practice-cycle/SKILL.md) uses the observation to choose
+a changed next practice. Testing owns neither relation: it must not narrow the
+Task into its predicate or turn one result into an automatic next action. If
+pass and fail would change nothing and no settled relation needs guarding, the
+test has little current feedback value.
+
+Treat phase as the local standing of the subject, not a project state machine:
+
+- during **exploration**, use the smallest test that discriminates the proposed
+  direction from a plausible wrong one;
+- during **stabilization**, retain causal regressions for observed failures and
+  add focused boundary or compatibility evidence around load-bearing public
+  relations;
+- during **integration**, test identity, ordering, capability, evidence, and
+  effects at the real seam rather than duplicating component suites; and
+- during **release hardening**, expand fault, restart, concurrency, recovery,
+  and regression coverage in proportion to consequence and supported operating
+conditions.
+
+Choose qualitatively by information gained and consequence avoided against
+authoring, running, diagnosing, maintaining, fixture-coupling, and Agent
+continuation cost. This is not a score. A cheap nondiscriminating assertion is
+noise; an expensive causal boundary probe can be the minimum valid move for an
+irreversible effect.
+
+A small slice can often begin with one forward case, one known boundary
+discriminator, and one compatibility relation. This is an information-seeking
+heuristic, not a universal count. Early exhaustive suites can freeze a
+provisional representation, make a green guess look like product evidence,
+create brittle fixtures, and consume later continuations repairing tests for a
+discarded direction.
+
+Do not postpone a load-bearing boundary merely because the rest of the design
+is exploratory. Reopen and deepen testing when an observed effect escapes
+containment; concurrency, crash, untrusted input, or irreversibility enters the
+supported path; an atomicity, idempotency, quiescence, or authority assumption
+fails; or the observer cannot see the property it claims to protect. Reproduce
+the smallest causal case, repair its owner, retain that regression, and widen
+only where shared cause or consequence earns more coverage. This is not a
+mandatory preflight or test lifecycle.
+
 ## Derive action from effects
 
 Keep the public action surface small:

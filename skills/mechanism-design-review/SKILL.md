@@ -214,6 +214,17 @@ itself prove that the product or design is good. Enforce this distinction
 through existing result, review, and acceptance owners rather than adding a
 universal review queue or retry controller.
 
+When a proposal uses test volume as evidence of progress or demands broad fault
+coverage before its object and boundary have stabilized, use the
+[phase-appropriate testing relation](references/harness-theory.md#select-tests-for-the-current-uncertainty).
+Choose tests for the current uncertainty and consequence: a smallest
+discriminator during exploration, causal regression and public-boundary
+evidence during stabilization, seam evidence during integration, and broader
+fault coverage during release hardening. Treat one forward case, one known
+boundary discriminator, and one compatibility relation as a possible starting
+probe, never a required count. Safety-critical effect boundaries remain strict
+from the first effectful probe.
+
 As a bounded design probe, ask an unfamiliar Agent to classify representative
 cases without teaching it an exception table. If it repeatedly confuses verbs
 or invents new ones, derive the difference from target, input identity, effect
