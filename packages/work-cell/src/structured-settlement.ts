@@ -133,9 +133,13 @@ export async function settleStructuredOutput(options: {
         await yieldEventLoopCheckpoint();
         if (options.context.signal.aborted) {
           // The run ends with the original abort reason instead of starting
-          // another provider call or inventing step-budget exhaustion.
+          // another provider call or inventing step-budget exhaustion. The
+          // enclosing runCell rejected through runWithSignal at the abort and
+          // already emitted cell.error and cell.finished with this same causal
+          // reason, so this branch keeps the reason only: emitting an
+          // attempt-failed event here would mutate the returned trace and
+          // notify live observers after the immutable Cell final.
           lastError = abortReasonMessage(options.context.signal);
-          options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
           break;
         }
         lastError = "emit_structured_output was not accepted";

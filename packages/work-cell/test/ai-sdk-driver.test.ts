@@ -1633,6 +1633,35 @@ test("an omitted maxSteps settlement observes caller cancellation between immedi
   // checkpoint the loop would begin the next provider call before the queued
   // macrotask could run.
   expect(calls).toBe(3);
+  // Trace finalization: the aborted settlement attempt keeps its causal
+  // reason internally but never emits an attempt-failed event after the
+  // enclosing run already emitted cell.error and cell.finished. Only the
+  // normally completed unsatisfied first attempt carries its own event; the
+  // original abort reason appears in the final Cell error, not in a
+  // settlement event appended after the immutable final.
+  const failedAttempts = record.trace.filter(
+    (event) => event.type === "structured.settlement.attempt.failed",
+  );
+  expect(failedAttempts).toHaveLength(1);
+  expect(failedAttempts[0]?.data).toEqual({ attempt: 1, error: "emit_structured_output was not accepted" });
+  // No event appears after cell.finished: the immutable Cell final is the
+  // last retained event in the returned trace.
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(finishedIndex).toBeGreaterThanOrEqual(0);
+  expect(finishedIndex).toBe(record.trace.length - 1);
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  // Deterministic macrotask barrier: after runCell returns, the returned
+  // trace bytes remain unchanged even though the suspended settlement
+  // continuation resumes on a later event-loop tick. Two setImmediate yields
+  // are the exact barrier the post-checkpoint branch would need to cross; no
+  // sleep-based mechanism is used.
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  // The original caller reason remains the causal outcome across the barrier.
+  expect(record.error).toBe("caller cancelled the noncompliant settlement");
+  expect(calls).toBe(3);
 });
 
 test("stops the main loop after one structured output step following a terminal call", async () => {
