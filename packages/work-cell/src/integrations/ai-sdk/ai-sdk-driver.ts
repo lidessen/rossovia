@@ -20,6 +20,7 @@ import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import { TaskStore } from "../../task-store";
 import {
+  createCellToolDefinitions,
   createHostTools,
   EXECUTION_TOOL_NAMES,
   terminalActionRequired,
@@ -62,6 +63,8 @@ interface MaterializedAgentResult {
 
 export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
+  /** Declared cell-tool capability: the AI SDK adapter translates the neutral tool surface. */
+  readonly supportsCellTools: true = true;
   protected readonly model;
   private readonly structuredOutputMode: "inline" | "tool-settlement";
   private readonly taskToolSet: NonNullable<AiSdkDriverOptions["taskToolSet"]>;
@@ -85,6 +88,11 @@ export class AiSdkValidationDriver implements CellDriver {
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
     const tasks = TaskStore.fromSeeds(input.tasks, input.id);
+    // `DriverContext.cellTools` is already the gated `CellToolSurface`; its
+    // neutral definitions live directly at `context.cellTools.tools`. The
+    // core (runCell) owns the injected-tool retained-evidence projection:
+    // this adapter emits its ordinary step/tool evidence and the core drops
+    // Integration-originated events for injected-tool runs.
     context.emit("task.tools.projected", {
       taskToolSet: this.taskToolSet,
       tools: taskToolNames(this.taskToolSet),
@@ -615,8 +623,21 @@ export class AiSdkValidationDriver implements CellDriver {
       actionBlocked: () => terminalOnly() ? terminalActionRequired() : undefined,
       decorateWriteResult: (result, hostContext) => this.decorateSuccessfulWriteResult(result, hostContext),
     });
+    const terminalNames = (input.terminalTools ?? []).map((terminal) => terminal.name);
     return {
       ...tools,
+      // Caller-injected cell tools translate the same neutral port; a name
+      // that conflicts with the active host/task/terminal surface or a
+      // non-object-root schema is rejected here, before any provider
+      // dispatch, and the action closure applies to them exactly like host
+      // tools.
+      ...(context.cellTools
+        ? createCellToolDefinitions({
+            surface: context.cellTools,
+            reservedNames: [...Object.keys(tools), ...terminalNames],
+            actionBlocked: () => terminalOnly() ? terminalActionRequired() : undefined,
+          })
+        : {}),
       ...Object.fromEntries((input.terminalTools ?? []).map((terminal) => [terminal.name, tool({
         description: terminal.description,
         inputSchema: z.fromJSONSchema(terminal.inputSchema),

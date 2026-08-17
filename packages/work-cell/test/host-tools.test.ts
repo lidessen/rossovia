@@ -9,15 +9,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CellInputSchema, type CellInput } from "../src/contracts";
-import type { DriverContext } from "../src/driver";
+import { CellInputSchema, type CellInput, type CellRunRecord } from "../src/contracts";
+import type { CellDriver, DriverContext } from "../src/driver";
 import { Workspace, createLocalHost } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
 import { runCell } from "../src/run-cell";
+import type { CellTool, CellToolExecutionContext, CellToolInputSchema, CellToolSet } from "../src/tool-port";
 import {
   createHostTools,
   EXECUTION_TOOL_NAMES,
 } from "../src/integrations/ai-sdk/host-tools";
+import { AiSdkValidationDriver } from "../src/integrations/ai-sdk/ai-sdk-driver";
 import { createWorkspaceEditTool } from "../src/integrations/ai-sdk/workspace-edit";
 import { HarnessAgent } from "@ai-sdk/harness/agent";
 import { createPi, type PiHarnessSettings } from "@ai-sdk/harness-pi";
@@ -1250,5 +1252,1181 @@ describe("workspace create/new-file evidence", () => {
     writeFileSync(join(root, "kept.md"), "original\n");
     await expect(workspace.createText("kept.md", "replaced\n")).rejects.toThrow();
     expect(readFileSync(join(root, "kept.md"), "utf8")).toBe("original\n");
+  });
+});
+
+describe("caller-injected cell tool translation", () => {
+  function cellToolCell(root: string, extra: Partial<CellInput> = {}): CellInput {
+    return CellInputSchema.parse({
+      id: "cell-tool-translation-fixture",
+      intent: "Prove the caller-injected cell tool port.",
+      workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Use only the injected tool."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["The injected tool surface behaves exactly."],
+      budget: { maxSteps: 4, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+      ...extra,
+    });
+  }
+
+  function modelResponse(
+    content: LanguageModelV3GenerateResult["content"],
+    finish: "stop" | "tool-calls",
+  ): LanguageModelV3GenerateResult {
+    return {
+      content,
+      finishReason: { unified: finish, raw: finish },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+      warnings: [],
+    };
+  }
+
+  /** The one neutral fixture shared by both adapter halves. */
+  function neutralFixtureTool(
+    log: Array<{ input: unknown; context: CellToolExecutionContext }>,
+  ): CellTool {
+    return {
+      description: "Return the supplied text reversed.",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+        additionalProperties: false,
+      },
+      async execute(input: unknown, context: CellToolExecutionContext) {
+        log.push({ input, context });
+        const text = (input as { text?: unknown }).text;
+        return { inverted: typeof text === "string" ? [...text].reverse().join("") : "" };
+      },
+    };
+  }
+
+  /**
+   * The whole allowed retained surface for a Cell with injected tools: an
+   * injected tool name may be retained only in the sorted
+   * cell.tools.projected list and as data.name of a cell.tool.settled
+   * triplet; an exact injected toolCallId may be retained only as
+   * data.toolCallId of a cell.tool.settled triplet; injected input/result
+   * values never enter any trace/raw/provider surface. The mechanical check
+   * is recursive exact scalar and object-key equality — never substring or
+   * regex phrase guessing — so an unrelated trace string (for example a
+   * retained runId UUID) can never trip it. The allowed events are first
+   * asserted by exact structure, so no sentinel can hide in an unexpected
+   * position inside them.
+   */
+  function expectBoundedInjectedRetention(
+    record: CellRunRecord,
+    injectedNames: string[],
+    injectedCallIds: string[],
+    injectedPayloads: string[],
+  ): void {
+    const coreOwnedTraceTypes = new Set([
+      "cell.started",
+      "cell.observer.failed",
+      "cell.capability_mismatch",
+      "cell.prepared",
+      "cell.tools.projected",
+      "cell.tool.settled",
+      "terminal.contract.violation",
+      "cell.error",
+      "cell.finished",
+    ]);
+    const nameSet = new Set(injectedNames);
+    const callIdSet = new Set(injectedCallIds);
+    const payloadSet = new Set(injectedPayloads);
+    const fail = (context: string, detail: string): never => {
+      throw new Error(`bounded injected retention violated at ${context}: ${detail}`);
+    };
+    const walk = (value: unknown, context: string): void => {
+      if (typeof value === "string") {
+        if (payloadSet.has(value)) fail(context, `injected payload retained as an exact scalar: ${value}`);
+        if (nameSet.has(value)) {
+          fail(context, `injected tool name retained outside cell.tools.projected/cell.tool.settled: ${value}`);
+        }
+        if (callIdSet.has(value)) {
+          fail(context, `injected toolCallId retained outside cell.tool.settled: ${value}`);
+        }
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((entry, index) => walk(entry, `${context}[${index}]`));
+        return;
+      }
+      if (value !== null && typeof value === "object") {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          if (payloadSet.has(key)) fail(context, `injected payload retained as an exact object key: ${key}`);
+          if (nameSet.has(key)) fail(context, `injected tool name retained as an exact object key: ${key}`);
+          if (callIdSet.has(key)) fail(context, `injected toolCallId retained as an exact object key: ${key}`);
+          walk(child, `${context}.${key}`);
+        }
+      }
+    };
+
+    const settledOutcomes = new Set(["fulfilled", "rejected", "refused"]);
+    let projectedEvents = 0;
+    for (const event of record.trace) {
+      // The retained trace boundary is structural, not payload-sensitive:
+      // no Integration-originated event may cross it even when a particular
+      // fixture happens not to echo an injected sentinel.
+      expect(coreOwnedTraceTypes.has(event.type)).toBeTrue();
+      if (event.type === "cell.tools.projected") {
+        projectedEvents += 1;
+        // Exact structure: the retained projection is exactly the sorted
+        // granted names and nothing else.
+        expect(event.data).toEqual({ tools: [...injectedNames].sort() });
+        continue;
+      }
+      if (event.type === "cell.tool.settled") {
+        // Exact structure: per invocation only name, exact toolCallId, and
+        // settled outcome — never input, result, or an extra key.
+        const data = event.data as Record<string, unknown>;
+        expect(Object.keys(data).sort()).toEqual(["name", "outcome", "toolCallId"]);
+        expect(nameSet.has(data.name as string)).toBeTrue();
+        expect(callIdSet.has(data.toolCallId as string)).toBeTrue();
+        expect(settledOutcomes.has(data.outcome as string)).toBeTrue();
+        continue;
+      }
+      walk(event, `trace event ${event.type}`);
+    }
+    // Exactly one projection per injected-tool run: the bounded names are
+    // retained there and nowhere else.
+    expect(projectedEvents).toBe(1);
+
+    // The raw/provider surfaces are walked in full: an injected-tool run
+    // omits raw provider steps and provider metadata, so no injected name,
+    // exact call id, input, or result can cross through them.
+    walk(record.driver, "driver");
+    walk(record.rawSteps, "rawSteps");
+    walk(record.error, "error");
+    expect(record.executionObservation.sessionId).toBeUndefined();
+    expect(record.executionObservation.providerFingerprint).toBeUndefined();
+    expect(record.executionObservation.providerFingerprintStanding).toEqual({
+      standing: "unavailable",
+      reason: "an injected-tool run retains no provider metadata; no provider fingerprint could be observed",
+    });
+    if (record.preparation !== undefined) {
+      walk(record.preparation.rawSteps, "preparation.rawSteps");
+      walk(record.preparation.evidence, "preparation.evidence");
+    }
+  }
+
+  /** Exact scalar presence — value equality only, never substring matching. */
+  function containsExactScalar(value: unknown, target: string): boolean {
+    if (typeof value === "string") return value === target;
+    if (Array.isArray(value)) return value.some((entry) => containsExactScalar(entry, target));
+    if (value !== null && typeof value === "object") {
+      return Object.values(value as Record<string, unknown>)
+        .some((entry) => containsExactScalar(entry, target));
+    }
+    return false;
+  }
+
+  const aiSdkDriver = (model: unknown, modelName: string) => {
+    const driver = new AiSdkValidationDriver({
+      route: [{
+        provider: "deepseek" as const,
+        credential: { source: "env" as const, name: "DEEPSEEK_TEST_KEY" },
+      }],
+      deepSeekApiKey: "not-used",
+      model: modelName,
+    });
+    Object.defineProperty(driver, "model", { value: model });
+    return driver;
+  };
+
+  const deepSeekPiCellToolDriver = (
+    harness: HarnessV1<ToolSet>,
+    extra: { toolEffectHandoff?: () => Promise<void> } = {},
+  ) => new PiHarnessCellDriver({
+    route: [{
+      provider: "deepseek" as const,
+      credential: { source: "env" as const, name: "DEEPSEEK_API_KEY" },
+      model: "deepseek-v4-pro",
+    }],
+    environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+    harness,
+    ...(extra.toolEffectHandoff ? { toolEffectHandoff: extra.toolEffectHandoff } : {}),
+  });
+
+  test("one neutral fixture keeps its name, schema, input, exact toolCallId, result, and caller execute through the AI SDK and Pi drivers — with the Pi effect handoff, action closure, and the core-owned retained-evidence projection over settlement and provider-failure sentinels", async () => {
+    const { root } = await fixture();
+    const input = cellToolCell(root);
+    // Long unique explicit input/result/call-id sentinels: every absence
+    // check below compares exact values, and short probe strings once
+    // produced a stochastic false positive when a retained runId UUID
+    // happened to contain "cba" as a substring.
+    const INPUT_SENTINEL = "injected-input-never-retained-x7k2m9q4v1b8n3z5c6";
+    const RESULT_SENTINEL = [...INPUT_SENTINEL].reverse().join("");
+    const AI_SDK_CALL_ID = "injected-tool-call-ai-sdk-a1s2d3f4g5h6j7k8";
+    const AI_SDK_WRITE_CALL_ID = "injected-tool-call-ai-sdk-write-q2w3e4r5t6y7u8";
+    const PI_CALL_ID = "injected-tool-call-pi-z9x8c7v6b5n4m3a2";
+    const PI_LATE_CALL_ID = "injected-tool-call-pi-late-p0o9i8u7y6t5r4e3";
+    const OBSERVER_CALL_ID = "injected-tool-call-observer-k9j8h7g6f5d4s3";
+    const OBSERVER_FORGED_NAME = "observer_forged_tool_n8m7b6v5c4x3z2";
+    const OBSERVER_FORGED_CALL_ID = "observer-forged-call-id-q1w2e3r4t5y6u7";
+
+    // AI SDK half: the same fixture translates through the ToolLoopAgent path.
+    const aiSdkLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const writeFileLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    let calls = 0;
+    let translatedTools: unknown;
+    let finalRequest: unknown;
+    const model = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        calls += 1;
+        if (calls === 1) {
+          translatedTools = options.tools;
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: AI_SDK_CALL_ID,
+            toolName: "invert_fixture",
+            input: JSON.stringify({ text: INPUT_SENTINEL }),
+          }], "tool-calls");
+        }
+        if (calls === 2) {
+          // An injected tool borrowing an inactive built-in name: write_file
+          // is a valid name here because the Cell has no write surface, but
+          // its arbitrary input must never be interpreted as a host payload.
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: AI_SDK_WRITE_CALL_ID,
+            toolName: "write_file",
+            input: JSON.stringify({ path: "docs/leak.md", content: "INJECTED_INPUT_SECRET" }),
+          }], "tool-calls");
+        }
+        finalRequest = options;
+        return modelResponse([{ type: "text", text: "The inversion was delivered." }], "stop");
+      },
+    });
+    const aiSdkRecord = await runCell(input, aiSdkDriver(model, "mock-cell-tool-parity"), {
+      host: createLocalHost(),
+      tools: {
+        invert_fixture: neutralFixtureTool(aiSdkLog),
+        // An inactive built-in name carried by an injected tool: the Cell has
+        // no write surface, so the name is valid, yet the generic
+        // agent.tool.* events must never treat its input as a host payload.
+        write_file: {
+          description: "An injected tool that borrows an inactive built-in name.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" }, content: { type: "string" } },
+            required: ["path", "content"],
+            additionalProperties: false,
+          },
+          execute: async (writeInput: unknown, context: CellToolExecutionContext) => {
+            writeFileLog.push({ input: writeInput, context });
+            return { handled: true };
+          },
+        },
+        // Declared and never called; proves the sorted-name projection.
+        alpha_marker: {
+          description: "Never called; proves the sorted projection.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => ({ value: "unused" }),
+        },
+      },
+    });
+
+    expect(aiSdkRecord.status).toBe("passed");
+    // Sorted authorized names, projected before dispatch.
+    expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["alpha_marker", "invert_fixture", "write_file"] },
+    }));
+    // The translated model-facing schema is the neutral fixture schema.
+    const translated = (translatedTools as Array<{ name: string; inputSchema?: unknown }> | undefined)
+      ?.find((candidate) => candidate.name === "invert_fixture");
+    expect(translated?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    });
+    // Exact input, exact provider toolCallId, and the settled result crossed
+    // back into the next provider step verbatim.
+    expect(aiSdkLog).toHaveLength(1);
+    expect(aiSdkLog[0]?.input).toEqual({ text: INPUT_SENTINEL });
+    expect(aiSdkLog[0]?.context).toMatchObject({ toolCallId: AI_SDK_CALL_ID });
+    expect(aiSdkLog[0]?.context.signal.aborted).toBe(false);
+    // The inverted result crossed back into the next provider step as an
+    // exact scalar — value equality only, never substring matching.
+    expect(containsExactScalar(finalRequest, RESULT_SENTINEL)).toBe(true);
+    // The inactive built-in-name injected tool ran as the injected port: the
+    // exact arbitrary input and exact toolCallId crossed to the caller
+    // implementation, and its settled bounded evidence is retained.
+    expect(writeFileLog).toHaveLength(1);
+    expect(writeFileLog[0]?.input).toEqual({ path: "docs/leak.md", content: "INJECTED_INPUT_SECRET" });
+    expect(writeFileLog[0]?.context).toMatchObject({ toolCallId: AI_SDK_WRITE_CALL_ID });
+    expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: AI_SDK_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "write_file", toolCallId: AI_SDK_WRITE_CALL_ID, outcome: "fulfilled" },
+    }));
+    // Injected invocations carry no generic agent.tool.started/finished
+    // events: the core-owned projection drops every Integration-originated
+    // trace event for an injected-tool run, so the injected write_file's
+    // arbitrary input is never interpreted as a host payload target and no
+    // callId/duration/outcome duplicate appears. cell.tool.settled stays the
+    // sole retained per-invocation evidence.
+    expect(aiSdkRecord.trace.filter((event) =>
+      event.type === "agent.tool.started" || event.type === "agent.tool.finished")).toEqual([]);
+    // The core-owned projection retains no driver step events at all:
+    // agent.step.started/finished — including the SDK performance object and
+    // its toolExecutionMs map keyed by the exact injected call id — never
+    // reach the trace for an injected-tool run.
+    expect(aiSdkRecord.trace.some((event) => event.type.startsWith("agent."))).toBe(false);
+    // Total retained-evidence redaction: an injected-tool run omits the raw
+    // provider steps entirely (they can echo injected inputs or results)
+    // while normalized usage and the bounded events remain. The exact
+    // scalar/key absence of every injected input/result is asserted by the
+    // bounded retention helper below, never by substring matching.
+    expect(aiSdkRecord.rawSteps).toEqual([]);
+    expect(aiSdkRecord.usage.totalTokens).toBe(6);
+    expect(calls).toBe(3);
+    // toolExecutionMs travels in the payload sentinels below, so the
+    // bounded retention helper also proves that exact key never reaches any
+    // trace/raw/provider surface.
+    // The whole allowed retained surface, asserted mechanically: no injected
+    // name outside cell.tools.projected/cell.tool.settled, no exact injected
+    // call id outside cell.tool.settled, and no injected input/result in any
+    // trace/raw/provider surface.
+    expectBoundedInjectedRetention(
+      aiSdkRecord,
+      ["alpha_marker", "invert_fixture", "write_file"],
+      [AI_SDK_CALL_ID, AI_SDK_WRITE_CALL_ID],
+      [
+        "INJECTED_INPUT_SECRET",
+        "docs/leak.md",
+        "handled",
+        "toolExecutionMs",
+        INPUT_SENTINEL,
+        RESULT_SENTINEL,
+      ],
+    );
+
+    // Core observer isolation: caller observation receives an independent
+    // event value. Mutating projected/settled evidence cannot rewrite the
+    // retained trace, and an exception echoing the exact call id is reduced
+    // to a stable category before cell.observer.failed is retained.
+    let observerMutationAttempted = false;
+    const observerLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const observerDriver: CellDriver = {
+      descriptor: { adapter: "observer-isolation", provider: "deterministic", model: "fixture" },
+      supportsCellTools: true,
+      async run(_input, context) {
+        await context.cellTools?.execute(
+          "invert_fixture",
+          { text: INPUT_SENTINEL },
+          OBSERVER_CALL_ID,
+        );
+        return {
+          terminalToolsCalled: [],
+          finalText: "Observer isolation held.",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+          rawSteps: [],
+        };
+      },
+    };
+    const observerRecord = await runCell(input, observerDriver, {
+      host: createLocalHost(),
+      onTrace(event) {
+        if (event.type === "cell.tools.projected") {
+          observerMutationAttempted = true;
+          (event.data as { tools: string[] }).tools.push(OBSERVER_FORGED_NAME);
+        }
+        if (event.type === "cell.tool.settled"
+          && (event.data as { toolCallId?: unknown }).toolCallId === OBSERVER_CALL_ID) {
+          Object.assign(event.data as Record<string, unknown>, {
+            toolCallId: OBSERVER_FORGED_CALL_ID,
+            outcome: "forged",
+            input: INPUT_SENTINEL,
+          });
+          throw new Error(OBSERVER_CALL_ID);
+        }
+      },
+      tools: { invert_fixture: neutralFixtureTool(observerLog) },
+    });
+    expect(observerRecord.status).toBe("passed");
+    expect(observerMutationAttempted).toBeTrue();
+    expect(observerRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["invert_fixture"] },
+    }));
+    expect(observerRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: OBSERVER_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(observerRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.observer.failed",
+      data: { error: "the trace observer failed during an injected-tool run" },
+    }));
+    expect(observerLog).toHaveLength(1);
+    expectBoundedInjectedRetention(
+      observerRecord,
+      ["invert_fixture"],
+      [OBSERVER_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL, OBSERVER_FORGED_NAME, OBSERVER_FORGED_CALL_ID],
+    );
+
+    // AI SDK outputSchema settlement: the shared settlement helper emits its
+    // step evidence through the driver context and echoes the injected
+    // sentinels exactly like the counterexample probes (settlement tool-call
+    // evidence and provider metadata). The core-owned projection must retain
+    // none of it while the semantic structured output and normalized usage
+    // stay.
+    const SETTLE_OUTPUT_SENTINEL = "settlement-output-sentinel-w5e6r7t8y9u0i1o2p3";
+    const SETTLE_CALL_ID = "settlement-tool-call-a1z2x3c4v5b6n7m8";
+    let settlementCalls = 0;
+    const settlementModel = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        settlementCalls += 1;
+        if (settlementCalls === 1) {
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: AI_SDK_CALL_ID,
+            toolName: "invert_fixture",
+            input: JSON.stringify({ text: INPUT_SENTINEL }),
+          }], "tool-calls");
+        }
+        if (settlementCalls === 2) {
+          return modelResponse([{ type: "text", text: "Investigation settled." }], "stop");
+        }
+        expect((options.tools as Array<{ name: string }> | undefined)
+          ?.map((candidate) => candidate.name)).toEqual(["emit_structured_output"]);
+        return {
+          ...modelResponse([{
+            type: "tool-call",
+            toolCallId: SETTLE_CALL_ID,
+            toolName: "emit_structured_output",
+            input: JSON.stringify({ decision: SETTLE_OUTPUT_SENTINEL }),
+          }], "tool-calls"),
+          providerMetadata: {
+            mock: {
+              echoedInput: INPUT_SENTINEL,
+              echoedResult: RESULT_SENTINEL,
+              echoedCallId: SETTLE_CALL_ID,
+            },
+          },
+        };
+      },
+    });
+    const settlementLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const settlementRecord = await runCell(cellToolCell(root, {
+      outputSchema: {
+        type: "object",
+        properties: { decision: { type: "string" } },
+        required: ["decision"],
+        additionalProperties: false,
+      },
+    }), aiSdkDriver(settlementModel, "mock-cell-tool-settlement"), {
+      host: createLocalHost(),
+      tools: { invert_fixture: neutralFixtureTool(settlementLog) },
+    });
+    expect(settlementRecord.status).toBe("passed");
+    // The semantic structured output survives the projection verbatim; the
+    // normalized usage survives too, split across execution and settlement.
+    expect(settlementRecord.output).toEqual({ decision: SETTLE_OUTPUT_SENTINEL });
+    expect(settlementRecord.usage).toEqual({
+      inputTokens: 3,
+      outputTokens: 3,
+      totalTokens: 6,
+      cachedInputTokens: 0,
+    });
+    expect(settlementRecord.usageByPhase.settlement).toEqual({
+      inputTokens: 1,
+      outputTokens: 1,
+      totalTokens: 2,
+      cachedInputTokens: 0,
+    });
+    // No settlement event (its step evidence carries the echoed sentinels),
+    // no agent event, and no raw provider step is retained; the projection
+    // then still keeps the bounded settled triplet and the projected names.
+    expect(settlementRecord.trace.some((event) => event.type.startsWith("structured.settlement"))).toBe(false);
+    expect(settlementRecord.trace.some((event) => event.type.startsWith("agent."))).toBe(false);
+    expect(settlementRecord.rawSteps).toEqual([]);
+    expect(settlementLog).toHaveLength(1);
+    expect(settlementCalls).toBe(3);
+    expectBoundedInjectedRetention(
+      settlementRecord,
+      ["invert_fixture"],
+      [AI_SDK_CALL_ID, SETTLE_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL, SETTLE_OUTPUT_SENTINEL, "echoedInput", "echoedResult", "echoedCallId"],
+    );
+
+    // Provider-error sentinel: a provider failure whose message carries the
+    // exact injected input sentinel must never retain raw provider text; the
+    // Cell projects the caught failure to one stable status-based category
+    // while normalized usage and the bounded settled evidence stay.
+    let errorCalls = 0;
+    const failingModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        errorCalls += 1;
+        if (errorCalls === 1) {
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: AI_SDK_CALL_ID,
+            toolName: "invert_fixture",
+            input: JSON.stringify({ text: INPUT_SENTINEL }),
+          }], "tool-calls");
+        }
+        throw new Error(`provider failure while serving the injected input: ${INPUT_SENTINEL}`);
+      },
+    });
+    const errorLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const errorRecord = await runCell(cellToolCell(root), aiSdkDriver(failingModel, "mock-cell-tool-provider-error"), {
+      host: createLocalHost(),
+      tools: { invert_fixture: neutralFixtureTool(errorLog) },
+    });
+    expect(errorRecord.status).toBe("failed");
+    expect(errorRecord.error).toBe("the provider or driver failed during this run");
+    expect(errorCalls).toBe(2);
+    expect(errorRecord.usage.totalTokens).toBe(2);
+    expect(errorRecord.rawSteps).toEqual([]);
+    expect(errorRecord.trace.some((event) => event.type.startsWith("agent."))).toBe(false);
+    // The fulfilled invocation evidence precedes the projected cell.error
+    // and the immutable final; nothing follows the final.
+    expect(errorRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: AI_SDK_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(errorRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.error",
+      data: { status: "failed", error: "the provider or driver failed during this run" },
+    }));
+    const errorFinishedIndex = errorRecord.trace.findIndex((event) => event.type === "cell.finished");
+    expect(errorFinishedIndex).toBe(errorRecord.trace.length - 1);
+    expectBoundedInjectedRetention(
+      errorRecord,
+      ["invert_fixture"],
+      [AI_SDK_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL],
+    );
+
+    // Pi half: the same neutral fixture through the harness driver, with the
+    // causal tool-effect handoff and the post-terminal action closure in one
+    // run. The successful call proves exact forward substitution; the declared
+    // terminal action then closes the phase, and the late injected call is
+    // refused before the caller implementation can run.
+    const piLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
+    const harness = scriptedHarness(async ({ emit, waitForToolResult }) => {
+      emit({ type: "stream-start", warnings: [] });
+      emit({
+        type: "tool-call",
+        toolCallId: PI_CALL_ID,
+        toolName: "invert_fixture",
+        input: JSON.stringify({ text: INPUT_SENTINEL }),
+        providerExecuted: false,
+      });
+      await waitForToolResult(1);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "tool-call",
+        toolCallId: "terminal-pi",
+        toolName: "finish_work",
+        input: "{}",
+        providerExecuted: false,
+      });
+      await waitForToolResult(2);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "tool-call",
+        toolCallId: PI_LATE_CALL_ID,
+        toolName: "invert_fixture",
+        input: JSON.stringify({ text: INPUT_SENTINEL }),
+        providerExecuted: false,
+      });
+      await waitForToolResult(3);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "finish",
+        finishReason: STOP_REASON,
+        totalUsage: {
+          inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 3, text: 3, reasoning: 0 },
+        },
+        // A provider-shaped echo of the injected call's input and result:
+        // the injected-aware retained-evidence projection must never retain
+        // it in the trace or the final rawSteps.
+        providerMetadata: { injectedEcho: { input: INPUT_SENTINEL, result: RESULT_SENTINEL } },
+      });
+    }, toolResults);
+    const piInput = cellToolCell(root, {
+      terminalTools: [{
+        name: "finish_work",
+        description: "Finish the bounded work.",
+        inputSchema: { type: "object", additionalProperties: false },
+      }],
+    });
+    let handoffCalls = 0;
+    const piRecord = await runCell(piInput, deepSeekPiCellToolDriver(harness, {
+      toolEffectHandoff: async () => {
+        handoffCalls += 1;
+      },
+    }), {
+      host: createLocalHost(),
+      tools: { invert_fixture: neutralFixtureTool(piLog) },
+    });
+
+    expect(piRecord.status).toBe("passed");
+    expect(piRecord.verification.terminal.called).toEqual(["finish_work"]);
+    // Exact forward substitution: the same fixture keeps its input and exact
+    // toolCallId, and its result crossed the harness tool boundary verbatim.
+    expect(piLog).toHaveLength(1);
+    expect(piLog[0]?.input).toEqual({ text: INPUT_SENTINEL });
+    expect(piLog[0]?.context).toMatchObject({ toolCallId: PI_CALL_ID });
+    expect(toolResults).toHaveLength(3);
+    expect(toolResults[0]).toEqual({ toolCallId: PI_CALL_ID, output: { inverted: RESULT_SENTINEL } });
+    // The injected tool crossed the causal event-loop handoff like every host tool.
+    expect(handoffCalls).toBeGreaterThanOrEqual(1);
+    expect(piRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: PI_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(piRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["invert_fixture"] },
+    }));
+    // The action closure refused the late post-terminal call before the
+    // caller implementation could run: an invocation refused is retained as
+    // exact bounded evidence — { name, toolCallId, outcome: "refused" } —
+    // never as an absent event, and the model still received the ordinary
+    // blocked observation.
+    expect(piLog).toHaveLength(1);
+    expect(toolResults[2]?.output).toMatchObject({ accepted: false });
+    expect(piRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: PI_LATE_CALL_ID, outcome: "refused" },
+    }));
+    // Total retained-evidence redaction: the core-owned projection drops
+    // every Integration-originated trace event for the injected-tool run —
+    // the generic started/finished events (including the post-closure
+    // refused call and the declared terminal tool), the step events, and the
+    // harness tool-surface projection alike — while normalized usage and the
+    // bounded events remain. The exact scalar/key absence of the injected
+    // input/result and the echoed provider metadata is asserted by the
+    // bounded retention helper below, never by substring matching.
+    const piGenericToolNames = piRecord.trace
+      .filter((event) => event.type === "agent.tool.started" || event.type === "agent.tool.finished")
+      .map((event) => (event.data as { name?: unknown }).name);
+    expect(piGenericToolNames).toEqual([]);
+    expect(piRecord.trace.some((event) => event.type.startsWith("agent."))).toBe(false);
+    expect(piRecord.trace.some((event) => event.type.startsWith("harness."))).toBe(false);
+    expect(piRecord.trace.some((event) => event.type === "terminal.tool.called")).toBe(false);
+    expect(piRecord.rawSteps).toEqual([]);
+    expect(piRecord.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
+
+    // Pi outputSchema settlement: the shared settlement helper emits its
+    // step evidence through the driver context, and both the harness finish
+    // and the settlement provider metadata echo the injected sentinels. The
+    // core-owned projection drops every Integration-originated event while
+    // the semantic structured output and normalized usage stay.
+    const piSettlementResults: Array<{ toolCallId: string; output: unknown }> = [];
+    const piSettlementHarness = scriptedHarness(async ({ emit, waitForToolResult }) => {
+      emit({ type: "stream-start", warnings: [] });
+      emit({
+        type: "tool-call",
+        toolCallId: PI_CALL_ID,
+        toolName: "invert_fixture",
+        input: JSON.stringify({ text: INPUT_SENTINEL }),
+        providerExecuted: false,
+      });
+      await waitForToolResult(1);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      emit({
+        type: "finish",
+        finishReason: STOP_REASON,
+        totalUsage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 1, text: 1, reasoning: 0 },
+        },
+        providerMetadata: {
+          mock: { echoedInput: INPUT_SENTINEL, echoedResult: RESULT_SENTINEL, echoedCallId: PI_CALL_ID },
+        },
+      });
+    }, piSettlementResults);
+    let piSettlementCalls = 0;
+    const piSettlementModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        piSettlementCalls += 1;
+        return {
+          ...modelResponse([{
+            type: "tool-call",
+            toolCallId: SETTLE_CALL_ID,
+            toolName: "emit_structured_output",
+            input: JSON.stringify({ decision: SETTLE_OUTPUT_SENTINEL }),
+          }], "tool-calls"),
+          providerMetadata: {
+            mock: { echoedInput: INPUT_SENTINEL, echoedResult: RESULT_SENTINEL, echoedCallId: SETTLE_CALL_ID },
+          },
+        };
+      },
+    });
+    const piSettlementDriver = deepSeekPiCellToolDriver(piSettlementHarness);
+    Object.defineProperty(piSettlementDriver, "model", { value: piSettlementModel });
+    const piSettlementLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const piSettlementInput = cellToolCell(root, {
+      outputSchema: {
+        type: "object",
+        properties: { decision: { type: "string" } },
+        required: ["decision"],
+        additionalProperties: false,
+      },
+    });
+    const piSettlementRecord = await runCell(piSettlementInput, piSettlementDriver, {
+      host: createLocalHost(),
+      tools: { invert_fixture: neutralFixtureTool(piSettlementLog) },
+    });
+    expect(piSettlementRecord.status).toBe("passed");
+    // The semantic structured output and normalized usage survive verbatim.
+    expect(piSettlementRecord.output).toEqual({ decision: SETTLE_OUTPUT_SENTINEL });
+    expect(piSettlementRecord.usage.totalTokens).toBe(4);
+    // No settlement, agent, or harness event and no raw provider step is
+    // retained: the settlement step evidence carried the echoed sentinels.
+    expect(piSettlementRecord.trace.some((event) => event.type.startsWith("structured.settlement"))).toBe(false);
+    expect(piSettlementRecord.trace.some((event) => event.type.startsWith("agent."))).toBe(false);
+    expect(piSettlementRecord.trace.some((event) => event.type.startsWith("harness."))).toBe(false);
+    expect(piSettlementRecord.rawSteps).toEqual([]);
+    expect(piSettlementLog).toHaveLength(1);
+    expect(piSettlementCalls).toBe(1);
+    expectBoundedInjectedRetention(
+      piSettlementRecord,
+      ["invert_fixture"],
+      [PI_CALL_ID, SETTLE_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL, SETTLE_OUTPUT_SENTINEL, "echoedInput", "echoedResult", "echoedCallId"],
+    );
+
+    // The whole allowed retained surface, asserted mechanically: no injected
+    // name outside cell.tools.projected/cell.tool.settled, no exact injected
+    // call id outside cell.tool.settled, and no injected input/result or
+    // provider-metadata echo in any trace/raw/provider surface.
+    expectBoundedInjectedRetention(
+      piRecord,
+      ["invert_fixture"],
+      [PI_CALL_ID, PI_LATE_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL, "injectedEcho"],
+    );
+  });
+
+  test("omitting tools leaves the old surface and final unchanged, and every nonempty injection outside the declared support boundary fails closed before provider dispatch", async () => {
+    const { root } = await fixture();
+
+    // Baseline: the exact old runCell call with no tools. The model-facing
+    // surface is the old host/task/terminal surface, the final is unchanged,
+    // and no cell-tool event appears.
+    let toolNames: string[] = [];
+    const baselineModel = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        toolNames = options.tools?.map((candidate) => candidate.name) ?? [];
+        return modelResponse([{
+          type: "tool-call",
+          toolCallId: "terminal-plain",
+          toolName: "finish_work",
+          input: "{}",
+        }], "tool-calls");
+      },
+    });
+    const terminalInput = cellToolCell(root, {
+      terminalTools: [{
+        name: "finish_work",
+        description: "Finish the bounded work.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      }],
+    });
+    const baseline = await runCell(terminalInput, aiSdkDriver(baselineModel, "mock-unchanged-surface"), {
+      host: createLocalHost(),
+    });
+    expect(baseline.status).toBe("passed");
+    expect(baseline.verification.terminal.called).toEqual(["finish_work"]);
+    expect(toolNames).toEqual(["task_list", "task_get", "task_create", "task_update", "finish_work"]);
+    expect(baseline.finalText).toContain("Terminal contract satisfied during execution through finish_work");
+    expect(baseline.trace.some((event) => event.type.startsWith("cell.tools"))).toBe(false);
+    expect(baseline.trace.some((event) => event.type === "cell.tool.settled")).toBe(false);
+
+    // A nonempty set with a driver that does not declare supportsCellTools
+    // fails closed as capability_mismatch before dispatch.
+    let dispatched = false;
+    const plainDriver: CellDriver = {
+      descriptor: { adapter: "no-cell-tools", provider: "deterministic", model: "fixture" },
+      async run() {
+        dispatched = true;
+        throw new Error("driver must not start");
+      },
+    };
+    const unsupportedTools: CellToolSet = {
+      plain_probe: {
+        description: "Refused by the unsupported driver.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never" }),
+      },
+    };
+    const unsupported = await runCell(cellToolCell(root), plainDriver, {
+      host: createLocalHost(),
+      tools: unsupportedTools,
+    });
+    expect(unsupported.status).toBe("capability_mismatch");
+    expect(unsupported.error).toContain("does not declare supportsCellTools");
+    expect(unsupported.error).toContain("plain_probe");
+    expect(dispatched).toBe(false);
+
+    // A provider-neutral driver may directly await and propagate a caller
+    // tool rejection without an adapter-specific CellExecutionError wrapper.
+    // The core must still retain only the rejected settled triplet and a
+    // stable status category, never caller-controlled error text.
+    const REJECTION_SECRET = "caller-tool-rejection-secret-r4t5y6u7i8o9";
+    const REJECTION_CALL_ID = "caller-tool-rejection-call-a9s8d7f6g5h4";
+    const rejectionDriver: CellDriver = {
+      descriptor: { adapter: "neutral-rejection", provider: "deterministic", model: "fixture" },
+      supportsCellTools: true,
+      async run(_input, context) {
+        await context.cellTools?.execute("reject_probe", {}, REJECTION_CALL_ID);
+        throw new Error("the rejection must stop the driver");
+      },
+    };
+    const rejected = await runCell(cellToolCell(root), rejectionDriver, {
+      host: createLocalHost(),
+      tools: {
+        reject_probe: {
+          description: "Reject with caller-controlled text.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => {
+            throw new Error(REJECTION_SECRET);
+          },
+        },
+      },
+    });
+    expect(rejected.status).toBe("failed");
+    expect(rejected.error).toBe("the provider or driver failed during this run");
+    expect(rejected.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "reject_probe", toolCallId: REJECTION_CALL_ID, outcome: "rejected" },
+    }));
+    expectBoundedInjectedRetention(
+      rejected,
+      ["reject_probe"],
+      [REJECTION_CALL_ID],
+      [REJECTION_SECRET],
+    );
+
+    // The driver identity used by retained evidence is also bound before the
+    // first await. A provider-neutral driver can observe a tool result and
+    // mutate its own descriptor object, but that live object cannot rewrite
+    // cell.started, pricing/revision evidence, or the final descriptor.
+    const DESCRIPTOR_INPUT = "descriptor-input-secret-k1l2m3n4b5v6";
+    const DESCRIPTOR_RESULT = "descriptor-result-secret-z9y8x7w6v5";
+    const DESCRIPTOR_CALL_ID = "descriptor-call-id-p0o9i8u7y6";
+    const mutableDescriptor = {
+      adapter: "descriptor-snapshot",
+      provider: "deterministic",
+      model: "fixture",
+      pricing: {
+        inputPerMillionUsd: 1,
+        outputPerMillionUsd: 2,
+        source: "fixture-pricing",
+        revision: "original-revision",
+      },
+    };
+    const descriptorLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const descriptorDriver: CellDriver = {
+      descriptor: mutableDescriptor,
+      supportsCellTools: true,
+      async run(_input, context) {
+        const result = await context.cellTools?.execute(
+          "descriptor_probe",
+          { value: DESCRIPTOR_INPUT },
+          DESCRIPTOR_CALL_ID,
+        ) as { value: string };
+        mutableDescriptor.model = result.value;
+        mutableDescriptor.provider = DESCRIPTOR_CALL_ID;
+        mutableDescriptor.pricing.revision = DESCRIPTOR_INPUT;
+        return {
+          terminalToolsCalled: [],
+          finalText: "Descriptor snapshot held.",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+          rawSteps: [],
+        };
+      },
+    };
+    const descriptorRecord = await runCell(cellToolCell(root), descriptorDriver, {
+      host: createLocalHost(),
+      tools: {
+        descriptor_probe: {
+          description: "Return a result used to attack the live driver descriptor.",
+          inputSchema: {
+            type: "object",
+            properties: { value: { type: "string" } },
+            required: ["value"],
+            additionalProperties: false,
+          },
+          execute: async (descriptorInput, context) => {
+            descriptorLog.push({ input: descriptorInput, context });
+            return { value: DESCRIPTOR_RESULT };
+          },
+        },
+      },
+    });
+    expect(descriptorRecord.status).toBe("passed");
+    expect(mutableDescriptor).toMatchObject({
+      provider: DESCRIPTOR_CALL_ID,
+      model: DESCRIPTOR_RESULT,
+      pricing: { revision: DESCRIPTOR_INPUT },
+    });
+    expect(descriptorRecord.driver).toEqual({
+      adapter: "descriptor-snapshot",
+      provider: "deterministic",
+      model: "fixture",
+      pricing: {
+        inputPerMillionUsd: 1,
+        outputPerMillionUsd: 2,
+        source: "fixture-pricing",
+        revision: "original-revision",
+      },
+    });
+    expect(descriptorRecord.executionObservation.priceRevision).toBe("original-revision");
+    expect(descriptorRecord.trace[0]).toEqual(expect.objectContaining({
+      type: "cell.started",
+      data: expect.objectContaining({ driver: descriptorRecord.driver }),
+    }));
+    expect(descriptorLog).toHaveLength(1);
+    expect(descriptorLog[0]?.input).toEqual({ value: DESCRIPTOR_INPUT });
+    expect(descriptorLog[0]?.context.toolCallId).toBe(DESCRIPTOR_CALL_ID);
+    expectBoundedInjectedRetention(
+      descriptorRecord,
+      ["descriptor_probe"],
+      [DESCRIPTOR_CALL_ID],
+      [DESCRIPTOR_INPUT, DESCRIPTOR_RESULT],
+    );
+
+    // The per-execution tool snapshot is bound synchronously before runCell's
+    // first await: mutating the caller's set after the run began — adding a
+    // name, replacing execute, rewriting the schema — can never change the
+    // model-visible surface or executable authority of the running Cell.
+    interface MutableCellToolDefinition {
+      description: string;
+      inputSchema: CellToolInputSchema;
+      execute: CellTool["execute"];
+    }
+    const boundExecuteLog: unknown[] = [];
+    const mutableDefinition: MutableCellToolDefinition = {
+      description: "The original bound definition.",
+      inputSchema: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        additionalProperties: false,
+      },
+      execute: async (probeInput: unknown) => {
+        boundExecuteLog.push(probeInput);
+        return { from: "original" };
+      },
+    };
+    const callerOwned = { mutable_probe: mutableDefinition } as unknown as CellToolSet;
+    let poisonedCalls = 0;
+    let translatedMutableSchema: unknown;
+    let mutableSecondRequest: unknown;
+    let mutableCalls = 0;
+    const mutableModel = new MockLanguageModelV3({
+      doGenerate: async (options) => {
+        mutableCalls += 1;
+        if (mutableCalls === 1) {
+          translatedMutableSchema = (
+            options.tools as Array<{ name: string; inputSchema?: unknown }> | undefined
+          )?.find((candidate) => candidate.name === "mutable_probe")?.inputSchema;
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: "mutable-call",
+            toolName: "mutable_probe",
+            input: JSON.stringify({ text: "abc" }),
+          }], "tool-calls");
+        }
+        mutableSecondRequest = options;
+        return modelResponse([{ type: "text", text: "The bound snapshot held." }], "stop");
+      },
+    });
+    const mutableRunning = runCell(cellToolCell(root), aiSdkDriver(mutableModel, "mock-bound-snapshot"), {
+      host: createLocalHost(),
+      tools: callerOwned,
+    });
+    // runCell's synchronous prefix has already bound the snapshot when this
+    // line runs; every mutation below lands after the binding.
+    (callerOwned as unknown as Record<string, MutableCellToolDefinition>)["added_later"] = {
+      description: "Added after the snapshot was bound.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      execute: async () => ({ from: "later" }),
+    };
+    mutableDefinition.execute = async () => {
+      poisonedCalls += 1;
+      return { from: "poisoned" };
+    };
+    mutableDefinition.inputSchema = {
+      type: "object",
+      properties: { text: { type: "number" } },
+      additionalProperties: false,
+    };
+    const mutableRecord = await mutableRunning;
+
+    expect(mutableRecord.status).toBe("passed");
+    // The projection is exactly the bound snapshot's granted names: the name
+    // added after the run began never reached the driver.
+    expect(mutableRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["mutable_probe"] },
+    }));
+    // The model-visible schema is the frozen bound copy: the caller's later
+    // schema rewrite never reached the translation.
+    expect(translatedMutableSchema).toMatchObject({
+      type: "object",
+      properties: { text: { type: "string" } },
+    });
+    // The executable authority is the bound execute reference: the original
+    // implementation ran with the exact input and its result crossed back to
+    // the next provider step; the replacement was never invoked.
+    expect(boundExecuteLog).toEqual([{ text: "abc" }]);
+    expect(poisonedCalls).toBe(0);
+    expect(JSON.stringify(mutableSecondRequest)).toContain("original");
+    expect(JSON.stringify(mutableSecondRequest)).not.toContain("poisoned");
+    expect(mutableRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "mutable_probe", toolCallId: "mutable-call", outcome: "fulfilled" },
+    }));
+
+    // Invalid names and non-object-root schemas are rejected by the neutral
+    // contract before any provider dispatch.
+    let invalidDispatchCalls = 0;
+    const invalidModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        invalidDispatchCalls += 1;
+        throw new Error("model dispatch should not occur");
+      },
+    });
+    const protoOnlyTools = {
+      ["__proto__"]: {
+        description: "Invalid own prototype-shaped name.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never" }),
+      },
+    } as unknown as CellToolSet;
+    expect(Object.hasOwn(protoOnlyTools, "__proto__")).toBeTrue();
+    const protoOnly = await runCell(
+      cellToolCell(root),
+      aiSdkDriver(invalidModel, "mock-invalid-prototype-cell-tool"),
+      { host: createLocalHost(), tools: protoOnlyTools },
+    );
+    expect(protoOnly.status).toBe("failed");
+    expect(protoOnly.error).toBe("the provider or driver failed during this run");
+    expect(invalidDispatchCalls).toBe(0);
+
+    const invalidTools = {
+      "Bad-Name": {
+        description: "Invalid name shape.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never" }),
+      },
+      bad_schema: {
+        description: "Non-object-root schema.",
+        inputSchema: { type: "string" },
+        execute: async () => ({ value: "never" }),
+      },
+    } as unknown as CellToolSet;
+    const invalid = await runCell(cellToolCell(root), aiSdkDriver(invalidModel, "mock-invalid-cell-tool"), {
+      host: createLocalHost(),
+      tools: invalidTools,
+    });
+    expect(invalid.status).toBe("failed");
+    expect(invalid.error).toBe("the provider or driver failed during this run");
+    expect(invalidDispatchCalls).toBe(0);
+
+    // Active host, task, and declared terminal name collisions fail closed
+    // before provider dispatch: read_file is active under the read scope,
+    // task_create under the default manage Task authority, and finish_work is
+    // the declared terminal tool.
+    for (const name of ["read_file", "task_create", "finish_work"] as const) {
+      let dispatchCalls = 0;
+      const collisionModel = new MockLanguageModelV3({
+        doGenerate: async () => {
+          dispatchCalls += 1;
+          throw new Error("model dispatch should not occur");
+        },
+      });
+      const collisionTools: CellToolSet = {
+        [name]: {
+          description: "Ambiguous execution surface collision.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => ({ value: "never" }),
+        },
+      };
+      const collisionRecord = await runCell(cellToolCell(root, {
+        // A read scope makes read_file part of the active host surface;
+        // task_create is active under the default manage Task authority.
+        workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+        terminalTools: [{
+          name: "finish_work",
+          description: "Finish the bounded work.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        }],
+      }), aiSdkDriver(collisionModel, `mock-cell-conflict-${name}`), {
+        host: createLocalHost(),
+        tools: collisionTools,
+      });
+
+      expect(collisionRecord.status).toBe("failed");
+      expect(collisionRecord.error).toBe("the provider or driver failed during this run");
+      expect(dispatchCalls).toBe(0);
+    }
+
+    // The core-owned refuse operation enforces the same immutable snapshot
+    // membership guard as execute: an unknown name fails closed before any
+    // cell.tool.settled evidence is emitted, while a granted name still
+    // retains the bounded refused triplet.
+    const FORGED_REFUSE_NAME = "forged_not_granted";
+    const FORGED_REFUSE_CALL_ID = "forged-refuse-call-id-a1b2c3d4e5";
+    const VALID_REFUSE_CALL_ID = "valid-refuse-call-id-z9y8x7w6v5";
+    const guardTools: CellToolSet = {
+      actually_granted: {
+        description: "A granted tool whose refused evidence may be retained.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never executed for refusal" }),
+      },
+    };
+    const guardDriver: CellDriver = {
+      descriptor: { adapter: "refuse-guard", provider: "deterministic", model: "fixture" },
+      supportsCellTools: true,
+      async run(_input, context) {
+        await expect(context.cellTools!.refuse(FORGED_REFUSE_NAME, FORGED_REFUSE_CALL_ID))
+          .rejects.toThrow(`unknown cell tool: ${FORGED_REFUSE_NAME}`);
+        await context.cellTools!.refuse("actually_granted", VALID_REFUSE_CALL_ID);
+        return {
+          terminalToolsCalled: [],
+          finalText: "Refuse guard held.",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+          rawSteps: [],
+        };
+      },
+    };
+    const guardRecord = await runCell(cellToolCell(root), guardDriver, {
+      host: createLocalHost(),
+      tools: guardTools,
+    });
+    expect(guardRecord.status).toBe("passed");
+    expect(guardRecord.trace).not.toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: FORGED_REFUSE_NAME, toolCallId: FORGED_REFUSE_CALL_ID, outcome: "refused" },
+    }));
+    expect(guardRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "actually_granted", toolCallId: VALID_REFUSE_CALL_ID, outcome: "refused" },
+    }));
+    expectBoundedInjectedRetention(
+      guardRecord,
+      ["actually_granted"],
+      [VALID_REFUSE_CALL_ID],
+      [FORGED_REFUSE_NAME, FORGED_REFUSE_CALL_ID],
+    );
   });
 });

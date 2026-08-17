@@ -17,6 +17,13 @@ import {
 import type { CellDriver } from "./driver";
 import { CellExecutionError, TerminalContractError, traceEvent } from "./driver";
 import type { CellHost, HostWorkspace } from "./host-port";
+import {
+  cellToolContractErrors,
+  type CellTool,
+  type CellToolSet,
+  type CellToolSettledOutcome,
+  type CellToolSurface,
+} from "./tool-port";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
 
@@ -32,6 +39,15 @@ export interface RunCellOptions {
   preparation?: CellPreparation;
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
   onTrace?: (event: TraceEvent) => void;
+  /**
+   * Optional caller-injected, provider-neutral, non-serializable model-visible
+   * tool set. The tools live outside `CellInput` because their implementations
+   * are caller closures; the Cell retains only the sorted authorized names
+   * and, per invocation, the name, exact toolCallId, and settled outcome. A
+   * non-empty set requires a driver that declares the earned
+   * `supportsCellTools: true` capability.
+   */
+  tools?: CellToolSet;
 }
 
 export async function runCell(
@@ -40,6 +56,25 @@ export async function runCell(
   options: RunCellOptions,
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
+  // Bind one immutable per-execution tool capability snapshot synchronously,
+  // before runCell's first await: the granted names plus each definition's
+  // description, object-root input schema, and execute reference are copied
+  // into a Cell-owned deep-frozen snapshot. Later caller or driver mutation
+  // of the supplied set cannot change the model-visible schema or executable
+  // authority, and the caller's object is never mutated.
+  const boundCellTools = options.tools === undefined
+    ? undefined
+    : bindCellToolSnapshot(options.tools);
+  const hasInjectedCellTools = boundCellTools !== undefined
+    && Object.keys(boundCellTools).length > 0;
+  // An injected-tool run retains one synchronous driver identity snapshot:
+  // a driver that later observes tool data cannot rewrite cell.started,
+  // pricing/revision evidence, or the final descriptor through its own live
+  // object. No-tool runs keep the historical descriptor reference behavior.
+  const retainedDriverDescriptor = hasInjectedCellTools
+    ? deepFreeze(structuredClone(driver.descriptor))
+    : driver.descriptor;
+  const supportsCellTools = driver.supportsCellTools === true;
   // A terminal-only Cell completes on its single allowed step: the accepted
   // terminal action is the final step and no separate output step exists.
   // Only a Cell that also declares a structured output contract needs a
@@ -66,16 +101,24 @@ export async function runCell(
     if (terminal) traceSealed = true;
     if (!observerActive) return;
     try {
-      options.onTrace?.(event);
+      // A live observer is observation-only. For an injected-tool run it
+      // receives an isolated event value: mutating caller code can never
+      // rewrite the retained projected names or settled invocation triplet.
+      options.onTrace?.(hasInjectedCellTools ? structuredClone(event) : event);
     } catch (error) {
       observerActive = false;
       if (traceSealed) return;
       trace.push(traceEvent("cell.observer.failed", {
-        error: error instanceof Error ? error.message : String(error),
+        // Observer text can echo the exact event it just received. Keep a
+        // stable category for injected-tool runs so names, call ids, inputs,
+        // and results cannot re-enter core evidence through the failure path.
+        error: hasInjectedCellTools
+          ? "the trace observer failed during an injected-tool run"
+          : error instanceof Error ? error.message : String(error),
       }));
     }
   };
-  emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
+  emit("cell.started", { runId, cellId: input.id, driver: retainedDriverDescriptor });
   // The host port is caller-injected: only the supplied implementation may
   // grant filesystem, command, snapshot, and artifact effects. A CellInput
   // capability declaration never opens a host surface on its own.
@@ -92,17 +135,33 @@ export async function runCell(
   const before = await workspace.snapshot();
   const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+  // Caller-injected cell tools cross the same C2 admission/termination
+  // boundary as host effects: after the gate closes no new tool call starts,
+  // every admitted call is joined before the final, and each execute promise
+  // covers the call's full effect and its settled evidence. The caller's
+  // implementation receives the Cell's exact combined signal. Only the
+  // synchronously bound immutable snapshot is validated, projected, and
+  // dispatched.
+  const injectedCellTools = boundCellTools ?? {};
+  const cellToolGate = hasInjectedCellTools
+    ? gateCellTools(injectedCellTools, emit, signal)
+    : undefined;
   // Close the host-effect admission gate synchronously from an abort
   // listener registered before the driver starts: during synchronous
   // AbortSignal dispatch a driver abort listener could otherwise start a
   // new workspace write before the rejection path reaches the outer catch.
   // The listener is removed as soon as the driver settles without aborting;
   // the close-and-drain final boundary below stays authoritative.
-  const closeAdmissionOnAbort = () => admission.close();
+  const closeAdmissionOnAbort = () => {
+    admission.close();
+    cellToolGate?.close();
+  };
   signal.addEventListener("abort", closeAdmissionOnAbort);
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
+  const cellToolsUnsupported = hasInjectedCellTools && !supportsCellTools;
+  const injectedToolNames = () => Object.keys(injectedCellTools).sort();
 
   let status: CellTerminalStatus = "failed";
   let error: string | undefined;
@@ -118,15 +177,38 @@ export async function runCell(
   let artifacts: ArtifactRecord[] = [];
   let after: Awaited<ReturnType<HostWorkspace["snapshot"]>> | undefined;
 
-  if (missingCapabilities.length > 0) {
+  if (missingCapabilities.length > 0 || cellToolsUnsupported) {
     status = "capability_mismatch";
-    error = `missing capabilities: ${missingCapabilities.join(", ")}`;
-    emit("cell.capability_mismatch", { missingCapabilities });
+    error = [
+      ...(missingCapabilities.length > 0 ? [`missing capabilities: ${missingCapabilities.join(", ")}`] : []),
+      ...(cellToolsUnsupported
+        ? [`the supplied driver does not declare supportsCellTools; refusing to dispatch cell tools: ${injectedToolNames().join(", ")}`]
+        : []),
+    ].join("; ");
+    emit("cell.capability_mismatch", {
+      ...(missingCapabilities.length > 0 ? { missingCapabilities } : {}),
+      ...(cellToolsUnsupported ? { cellTools: injectedToolNames() } : {}),
+    });
   } else {
     try {
+      // Neutral contract validation before dispatch: injected tools must
+      // carry valid names, object-root schemas, executable implementations,
+      // and no conflict with declared terminal tools. A name-keyed set cannot
+      // carry a duplicate name. Active host/task-surface conflicts are
+      // rejected by each driver before any provider dispatch.
+      const cellToolErrors = Object.keys(injectedCellTools).length > 0
+        ? cellToolContractErrors(
+            injectedCellTools,
+            input.terminalTools?.map((terminal) => terminal.name) ?? [],
+          )
+        : [];
+      if (cellToolErrors.length > 0) {
+        throw new Error(cellToolErrors.join("; "));
+      }
       const context = {
         workspace: admission.workspace,
         signal,
+        ...(cellToolGate ? { cellTools: cellToolGate.surface } : {}),
         liveObservation: observerActive,
         observeUsage(usage: CellUsage, phase?: "execution" | "settlement") {
           observedExecutionUsage = addUsage(observedExecutionUsage, usage);
@@ -135,6 +217,15 @@ export async function runCell(
           }
         },
         emit(type: string, data: unknown) {
+          // One core-owned retained-evidence projection for an injected-tool
+          // run: no Integration-originated trace event is retained or
+          // forwarded through the driver boundary. The core-owned evidence —
+          // cell.started, cell.prepared, cell.tools.projected,
+          // cell.tool.settled, cell.capability_mismatch, cell.error, and
+          // cell.finished — is emitted through the core's own emit path and
+          // stays. Runs without injected tools forward every driver event
+          // unchanged.
+          if (cellToolGate !== undefined) return;
           emit(type, data);
         },
       };
@@ -142,6 +233,13 @@ export async function runCell(
         emit("cell.prepared", {
           adapter: options.preparation.adapter,
           usage: options.preparation.usage,
+        });
+      }
+      if (cellToolGate) {
+        // The actually authorized caller-injected tool surface, projected
+        // before dispatch with sorted names.
+        emit("cell.tools.projected", {
+          tools: Object.keys(cellToolGate.surface.tools).sort(),
         });
       }
       // One canonical pre-driver CellInput is the caller contract. Terminal,
@@ -160,7 +258,9 @@ export async function runCell(
       // join every already-admitted effect before verification and the
       // workspace snapshot, so the final record reflects only settled effects.
       admission.close();
+      cellToolGate?.close();
       await admission.drain();
+      await cellToolGate?.drain();
       const terminalTools = input.terminalTools ?? [];
       const terminalResult = verifyTerminalContract(
         terminalTools.map((terminal) => terminal.name),
@@ -214,7 +314,6 @@ export async function runCell(
         status = "passed";
       }
     } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
       if (caught instanceof CellExecutionError) {
         failureUsage = caught.usage;
         failureSettlementUsage = caught.settlementUsage ?? observedSettlementUsage;
@@ -225,6 +324,16 @@ export async function runCell(
       if (signal.aborted) status = "cancelled";
       else if (caught instanceof TerminalContractError) status = "protocol_error";
       else status = "failed";
+      // For any run with a nonempty bound injected-tool set, every caught
+      // failure is projected to one stable status-based category before
+      // cell.error and the final. A provider-neutral driver may propagate a
+      // caller tool's raw rejection without wrapping it as CellExecutionError;
+      // the core boundary cannot make safe retention depend on an adapter
+      // convention. Typed execution errors still contribute observed usage
+      // above. Runs without injected tools keep their historical raw error.
+      error = hasInjectedCellTools
+        ? stableCellFailureMessage(status)
+        : caught instanceof Error ? caught.message : String(caught);
       emit("cell.error", { status, error });
     }
   }
@@ -235,7 +344,9 @@ export async function runCell(
   // quiescence cannot be proved the Cell returns no final at all, leaving
   // the existing no-final/unresolved/claim-retained O2 standing untouched.
   admission.close();
+  cellToolGate?.close();
   await admission.drain();
+  await cellToolGate?.drain();
   after ??= await workspace.snapshot();
   const finishedAt = new Date();
   const usage = addUsage(
@@ -250,15 +361,31 @@ export async function runCell(
   const executionUsage = settlementUsage
     ? subtractUsage(aggregateDriverUsage, settlementUsage)
     : aggregateDriverUsage;
-  const estimate = estimateCost(usage, driver.descriptor.pricing);
+  const estimate = estimateCost(usage, retainedDriverDescriptor.pricing);
   // Observation is sealed as the terminal event is appended, before its
   // observer runs: neither a stray tool completion nor a late driver
   // callback can append to the retained trace after cell.finished.
   emit("cell.finished", { status, usage }, true);
 
-  const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
-  const sessionId = observedSessionId(driverResult?.providerMetadata);
-  const fingerprintEvidence = providerFingerprintEvidence(driverResult?.providerMetadata);
+  const priceRevision = input.executionProfile?.priceRevision ?? retainedDriverDescriptor.pricing?.revision;
+  // For an injected-tool run provider metadata is treated as unavailable:
+  // neither a provider session id nor a provider fingerprint enters the
+  // execution observation, because provider metadata can echo injected tool
+  // inputs or results. The explicit unavailable standing stays truthful.
+  const sessionId = cellToolGate === undefined
+    ? observedSessionId(driverResult?.providerMetadata)
+    : undefined;
+  const fingerprintEvidence: {
+    value?: string;
+    standing: ProviderFingerprintStanding;
+  } = cellToolGate === undefined
+    ? providerFingerprintEvidence(driverResult?.providerMetadata)
+    : {
+        standing: {
+          standing: "unavailable",
+          reason: "an injected-tool run retains no provider metadata; no provider fingerprint could be observed",
+        },
+      };
   const executionObservation: CellRunRecord["executionObservation"] = {
     ...(sessionId ? { sessionId } : {}),
     ...(input.workEstimate ? { workEstimateId: input.workEstimate.id } : {}),
@@ -274,7 +401,7 @@ export async function runCell(
     version: WORK_CELL_RECORD_VERSION,
     runId,
     cellId: input.id,
-    driver: driver.descriptor,
+    driver: retainedDriverDescriptor,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),
@@ -301,9 +428,12 @@ export async function runCell(
     executionObservation,
     ...(estimate ? { estimatedCostUsd: estimate.value, estimateBasis: estimate.basis } : {}),
     trace,
+    // For an injected-tool run the final rawSteps omit the driver execution
+    // steps entirely: raw provider steps can echo injected tool inputs or
+    // results. Caller-supplied preparation steps (not driver steps) stay.
     rawSteps: [
       ...(options.preparation ? [{ phase: "preparation", adapter: options.preparation.adapter, steps: options.preparation.rawSteps }] : []),
-      ...(driverResult ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
+      ...(driverResult && cellToolGate === undefined ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
     ],
     ...(error ? { error } : {}),
   };
@@ -370,6 +500,99 @@ function gateHostEffects(workspace: HostWorkspace): HostEffectAdmission {
       // Join the currently admitted effects exactly once; effects admitted
       // after close are impossible, and settled effects release themselves
       // from the set.
+      await Promise.allSettled([...pending]);
+    },
+  };
+}
+
+interface CellToolAdmission {
+  /** The gated neutral surface the driver receives through `DriverContext.cellTools`. */
+  readonly surface: CellToolSurface;
+  /** Close the admission gate: any new tool call is refused without executing the caller implementation. */
+  close(): void;
+  /** Resolve once every already-admitted tool call has settled with its evidence retained. */
+  drain(): Promise<void>;
+}
+
+/**
+ * The Cell-owned admission gate over caller-injected cell tools. Each
+ * invocation crosses the gate exactly like a host effect: after the gate
+ * closes (driver settlement, failure, or cancellation) new calls are refused
+ * before the caller's implementation can run, and every admitted call is
+ * joined before the immutable final, so no tool effect or settled evidence
+ * can outlive the returned record. The execute promise returned to the model
+ * loop covers the call's full effect and its retained evidence: it resolves
+ * only after the caller's implementation settles and the bounded
+ * `cell.tool.settled` event — exactly `{ name, toolCallId, outcome }`, never
+ * input, result, or implementation identity — is appended to the trace. The
+ * caller implementation receives the Cell's exact combined execution signal
+ * so cancellation stays observable to in-flight calls. The surface is frozen
+ * against driver mutation, and `refuse` retains the same bounded evidence
+ * for a model-issued invocation denied before caller execution (for example
+ * after terminal action closure) without ever invoking the caller
+ * implementation.
+ */
+function gateCellTools(
+  tools: CellToolSet,
+  emit: (type: string, data: unknown) => void,
+  signal: AbortSignal,
+): CellToolAdmission {
+  let closed = false;
+  const pending = new Set<Promise<unknown>>();
+  const settled = (name: string, toolCallId: string, outcome: CellToolSettledOutcome) => {
+    emit("cell.tool.settled", { name, toolCallId, outcome });
+  };
+  const execute = (name: string, input: unknown, toolCallId: string): Promise<unknown> => {
+    const tool = tools[name];
+    if (tool === undefined) {
+      return Promise.reject(new Error(`unknown cell tool: ${name}`));
+    }
+    if (closed) {
+      settled(name, toolCallId, "refused");
+      return Promise.reject(
+        new Error("the Cell tool admission gate is closed; no new tool calls may start"),
+      );
+    }
+    const effect = Promise.resolve().then(() =>
+      tool.execute(input, { signal, toolCallId }),
+    );
+    pending.add(effect);
+    const covered = effect.then(
+      (result) => {
+        settled(name, toolCallId, "fulfilled");
+        return result;
+      },
+      (error) => {
+        settled(name, toolCallId, "rejected");
+        throw error;
+      },
+    );
+    covered.then(
+      () => pending.delete(effect),
+      () => pending.delete(effect),
+    );
+    return covered;
+  };
+  const refuse = (name: string, toolCallId: string): Promise<void> => {
+    // The same immutable snapshot membership guard as execute: an unknown
+    // name is an invocation refused before any evidence is emitted.
+    if (tools[name] === undefined) {
+      return Promise.reject(new Error(`unknown cell tool: ${name}`));
+    }
+    // One core-owned refusal: the invocation is denied before the caller
+    // implementation can run and its bounded settled evidence is retained.
+    settled(name, toolCallId, "refused");
+    return Promise.resolve();
+  };
+  return {
+    surface: Object.freeze({ tools, execute, refuse }),
+    close() {
+      closed = true;
+    },
+    async drain() {
+      // Join the currently admitted calls exactly once; calls admitted after
+      // close are impossible. When a caller implementation never settles,
+      // this join never resolves and the Cell truthfully produces no final.
       await Promise.allSettled([...pending]);
     },
   };
@@ -455,6 +678,36 @@ function disposableCellInput(input: CellInput): CellInput {
   return deepFreeze(structuredClone(input));
 }
 
+/**
+ * Bind one immutable per-execution tool capability snapshot. The granted
+ * names plus each definition's description, object-root input schema, and
+ * execute reference are copied into a Cell-owned deep-frozen snapshot, so a
+ * caller or driver mutation after the binding can never change the
+ * model-visible schema or executable authority. The caller's object is
+ * never mutated.
+ */
+function bindCellToolSnapshot(tools: CellToolSet): CellToolSet {
+  // A name-safe map preserves every own enumerable caller key literally.
+  // In particular, assigning `__proto__` to an ordinary object would mutate
+  // its prototype and erase the key before neutral name validation.
+  const snapshot = Object.create(null) as Record<string, CellTool>;
+  for (const name of Object.keys(tools)) {
+    const definition = tools[name];
+    if (definition === undefined) {
+      // Retained only so the neutral contract reports the missing
+      // definition with its existing message.
+      snapshot[name] = undefined as unknown as CellTool;
+      continue;
+    }
+    snapshot[name] = Object.freeze({
+      description: definition.description,
+      inputSchema: deepFreeze(structuredClone(definition.inputSchema)),
+      execute: definition.execute,
+    });
+  }
+  return Object.freeze(snapshot);
+}
+
 function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== "object") return value;
   const object = value as Record<string, unknown>;
@@ -504,6 +757,22 @@ async function verifyArtifacts(
 
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+}
+
+/**
+ * The stable status-based category retained for a caught driver/provider
+ * failure in an injected-tool run. Raw provider or adapter error text is
+ * never retained; the Cell keeps only the truthful terminal-status category.
+ */
+function stableCellFailureMessage(status: CellTerminalStatus): string {
+  switch (status) {
+    case "cancelled":
+      return "the Cell run was cancelled before completion";
+    case "protocol_error":
+      return "the declared terminal contract ended violated";
+    default:
+      return "the provider or driver failed during this run";
+  }
 }
 
 function observedSessionId(providerMetadata: unknown): string | undefined {
