@@ -381,6 +381,123 @@ This separation parallels the established distinction between verifying
 conformance to requirements and validating fitness for intended use
 ([NASA Systems Engineering Handbook](https://www.nasa.gov/wp-content/uploads/2018/09/nasa_systems_engineering_handbook_0.pdf)).
 
+## Engineering tests as phase-appropriate feedback
+
+An engineering test is an intervention into uncertainty about a named subject.
+It arranges conditions, observes a result, and compares that result with an
+explicit predicate so the engineer can either change the next action or retain
+evidence for a relation that has become worth protecting. Its value is not the
+number of cases written or passed. Its value is the uncertainty, rework, or
+consequence it removes relative to the cost of authoring, running, diagnosing,
+maintaining, and carrying it through later Agent continuations.
+
+This makes testing part of the engineering learning loop, not a separate
+ceremony performed after implementation. A test can help discover
+whether a design direction is viable, localize an observed failure, preserve a
+settled contract, prove that independently built parts compose, or reduce
+release risk. Those purposes require different evidence. Treating them as one
+ever-growing regression suite makes the suite look like progress even when it
+is only preserving yesterday's assumptions.
+
+The relevant phase is a local epistemic relation, not a project-wide maturity
+label or lifecycle state. A provider adapter may already need release-hardening
+while the user interaction that calls it remains exploratory. Work can also
+move backward when evidence invalidates a premise. No runtime, registry, or
+mandatory test workflow is implied by these distinctions.
+
+[`task-shaping`](../../skills/task-shaping/SKILL.md) supplies the subject of the
+test: the whole obligation, the local work unit, its boundary, and the evidence
+relation by which results can be reconstructed. The test must not silently
+redefine that unit or reduce its semantic acceptance to an assertion. The
+[`practice-cycle`](../../skills/practice-cycle/SKILL.md) consumes the observed
+result and decides which changed practice, if any, should follow. The test does
+not own that next action. If pass and fail would lead to the same decision and
+the assertion does not guard a settled relation, the test currently has little
+feedback value; defer it or state the different evidence purpose it serves.
+
+| Current relation | What remains uncertain | Useful test movement | Typical excess |
+| --- | --- | --- | --- |
+| **Exploration and formation** | whether the object, interface, or treatment is the right direction | run the smallest discriminator that can separate the candidate from a plausible wrong direction; prefer a short causal probe and revise freely | enumerating every branch of a representation that is still likely to change |
+| **Stabilization** | whether the chosen relation survives observed failures and preserves its public neighbors | retain regressions for discovered causes; add focused boundary and compatibility checks around load-bearing contracts | turning every imaginable edge into permanent inventory without a failure, consequence, or contract that makes it relevant |
+| **Integration** | whether separately plausible parts preserve identity, ordering, capability, evidence, and effects when composed | test the relation at the real seam and one representative end-to-end path; fake only what is outside the subject of the claim | duplicating each component's internal suite or calling isolated passes integration evidence |
+| **Release hardening** | whether residual faults under the intended operating profile have unacceptable consequence | expand regression, restart, concurrency, degraded-dependency, recovery, and compatibility coverage in proportion to consequence and change surface | treating exhaustive-looking coverage as proof of product fitness or freedom from unknown failures |
+
+Selection is therefore a qualitative information-cost judgment, not a score:
+prefer the probe whose distinguishable outcomes remove the most
+decision-relevant uncertainty or consequence for its authoring, execution,
+diagnosis, maintenance, fixture-coupling, and continuation cost. A cheap test
+that cannot change a decision is still noise; an expensive boundary test may be
+the minimum valid move when it protects an irreversible effect.
+
+One useful starting probe for a small new slice is **one forward case, one known
+boundary discriminator, and one compatibility relation**. The forward case
+shows that the proposed path can work. The boundary case separates it from the
+observed or load-bearing failure that would invalidate the direction. The
+compatibility case shows that a neighboring relation intentionally left
+unchanged still holds. This is a heuristic for producing information early,
+not a required count: one causal reproduction may be enough for a repair, while
+a consequential protocol change may need several discriminators before its
+direction is credible.
+
+### Why exhaustive testing is often premature
+
+Every durable test fixes an observation boundary, inputs, expected behavior,
+and usually some representation of the implementation. When those relations
+are provisional, a broad suite can create four kinds of false progress:
+
+- it makes a green encoding of the current guess look like evidence that the
+  guess is the right product or architecture;
+- it couples fixtures and assertions to an interface that discovery still
+  needs permission to change;
+- it enlarges the edit, diagnosis, and maintenance surface, so later work
+  spends continuations repairing tests for discarded assumptions; and
+- it dilutes a discriminating failure among incidental failures, consuming the
+  Agent's bounded attention without improving the next decision.
+
+The alternative is not “test later” or “trust the Agent.” It is to buy the
+next decision with the smallest credible evidence, then let observed failures,
+settled contracts, integration relations, and consequence earn additional
+coverage. An exploratory probe may be discarded when its premise disappears.
+Promote it to a durable regression when it protects a relation that future
+changes could otherwise break without timely observation.
+
+### Evidence scope does not expand with the suite
+
+Tests remain mechanical conformance even when there are thousands of them. The
+raw trace, bytes, exit status, or timing is observation; the assertion says
+whether that observation satisfies the encoded predicate. Neither establishes
+that an open-ended Agent answer is relevant, an architecture is wise, or the
+Principal should adopt the result. Those claims require source-aware independent
+semantic review and the Principal or designated acceptance owner.
+
+Agent and model evaluations follow the same boundary. A repeated task sample
+can support a scoped empirical claim about an execution profile, especially
+when it has a comparison and preserved raw outputs. It does not become a
+deterministic product-quality gate by asserting preferred wording or by
+collapsing reviewer judgment into a pass rate. Conversely, when a semantic
+requirement has genuinely been reduced to a governed decidable contract,
+automate that part and state the predicate narrowly.
+
+### Safety-critical reopening
+
+Phase-appropriate testing does not defer hard safety. Credentials and
+disclosure, destructive or irreversible effects, concurrent effect ownership,
+irreversible acceptance, and causal identity for replay are load-bearing from
+the first effectful probe. If a candidate can cross one of those boundaries,
+the initial discriminator must exercise the boundary rather than merely the
+happy path.
+
+Reopen the affected design and expand its evidence when a representative
+observation shows an effect escaping containment; a new concurrency, crash,
+untrusted-caller, or irreversible-effect condition enters the supported path;
+an assumption about atomicity, idempotency, quiescence, or authority is
+disproved; or the current observer cannot see the property it claims to
+protect. Contain the affected effect path, reproduce the smallest causal case,
+repair the owning boundary, and retain a regression for that cause. Expand to
+adjacent fault classes only where shared causality or consequence justifies it.
+This rule reopens work from evidence and consequence, not from an unlimited
+list of imaginable failures, and it creates no global test gate.
+
 ### Why deterministic gates cannot prove semantic quality
 
 Deterministic code is exact only about a property that has been explicitly and

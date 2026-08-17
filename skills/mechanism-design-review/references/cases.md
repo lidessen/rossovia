@@ -129,3 +129,37 @@ orphan writer can survive and block safe automatic release
 
 **Reopen when.** A focused probe demonstrates detached effects, an unreachable
 owner without a reliable death signal, or a need for bounded automatic recovery.
+
+## Case 6 — Test breadth during an unsettled runtime slice
+
+**Identity.** The proposed object is evidence for one new optional runtime
+boundary, not a release certification system. A test can establish the encoded
+forward, boundary, or compatibility predicate; it does not establish that the
+new interface is the final architecture or that the resulting Agent work is
+semantically good.
+
+**Origin.** The interface and ownership relation are still being discovered,
+but a proposed plan begins with an exhaustive fault matrix. Most of those tests
+would freeze provisional request shapes and fixtures before representative use
+has shown which failures matter. At the same time, exact Worktree writer
+ownership is already an accepted hard boundary, so an observed post-terminal
+write cannot be deferred as ordinary hardening
+([runtime ownership](../../../design/decisions/055-rossovia-runtime-module-ownership.md),
+[terminal contract](../../../design/decisions/033-work-cell-terminal-contract.md)).
+
+**Destination.** Advance the slice with the smallest evidence that can reject
+the direction: ordinarily a forward path, the known or load-bearing boundary,
+and a compatibility relation with the unchanged caller. If a causal probe
+shows cancellation returning a final while an admitted effect can still write,
+contain that path, repair the effect owner, and retain the focused regression
+before releasing writer ownership. Add broader restart, concurrency, and fault
+coverage when the relation stabilizes or when shared cause and consequence make
+those cases decision-relevant.
+
+**Treatment.** `simplify` the early test plan; do not create a coverage gate or
+test-phase lifecycle. Preserve the strict safety regression because it protects
+an already load-bearing invariant, not because every edge must be anticipated.
+
+**Reopen when.** A new supported effect channel can bypass the repaired owner,
+the runtime enters process-loss or concurrent-writer conditions, or a release
+claim needs evidence from the intended operating profile.

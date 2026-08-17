@@ -100,10 +100,22 @@ without verification.
 
 ### Select tests for decision value, not assertion count
 
-Before adding or retaining a test, name all four parts in one short sentence:
+Choose evidence for the relation that exists now. During exploration, use the
+smallest probe that can reject a proposed direction. As the relation stabilizes,
+retain regressions for observed causes and focused boundary or compatibility
+checks for public contracts. At integration, prove the real seam between parts.
+For release hardening, expand fault and regression coverage in proportion to
+consequence and supported operating conditions. These are local judgments, not
+required stages or test counts. When a candidate can cross a load-bearing
+safety boundary, the first effectful probe must exercise that boundary.
+
+Before adding or retaining a test, be able to explain in one short sentence:
 the behavior claim, the realistic defect it would expose, the decision that
-would change if it failed, and the smallest observation that can expose it. If
-one is missing, the test is not yet justified.
+would change if it failed, and the smallest observation that can expose it.
+This is a reasoning prompt, not a required form. If the result cannot change a
+decision or protect a settled relation, the test has little current value.
+A host project may supply a fuller phase-appropriate harness testing theory;
+use it to refine this judgment when present, but do not require it.
 
 - Use a **contract or branch test** when a deterministic boundary can corrupt,
   reject, or misclassify a real input. Test the public outcome or retained
@@ -133,7 +145,7 @@ test when a stronger end-to-end scenario already makes the same failure visible.
   the behavioral gaps that methodology skills assume but do not teach.
 - Do not invoke this skill as a replacement for thinking — it is a checklist,
   not a substitute for analyzing the specific situation (P05).
-- Do not turn this gate into a mandatory test plan or a ban on unit tests. The
+- Do not turn this guidance into a mandatory test plan or a ban on unit tests. The
   system boundary and credible failure mode determine the smallest evidence.
 - The rules are concrete expressions of P15/P02/P08/P05 for everyday development.
   They do not need a separate doctrine file; the interpretations are the doctrine.

@@ -18,6 +18,7 @@ survive misunderstanding, concurrency, interruption, or process loss.
 | Question | Source |
 |---|---|
 | What is Agent harness engineering, and how do task transformation, attention, evidence, effects, and temporary organization fit together? | [Harness theory](THEORY.md) |
+| How should test breadth change from exploration through stabilization, integration, and release hardening without becoming a new gate? | [Phase-appropriate engineering tests](THEORY.md#engineering-tests-as-phase-appropriate-feedback) |
 | Which runtime module owns Project/Task state, Runs, Worktree writer exclusion, Cell execution, external protocols, and presentation? | [Runtime ownership Decision 055](../decisions/055-rossovia-runtime-module-ownership.md) |
 | How is the current implementation moving toward that ownership model without a big-bang rewrite? | [Runtime ownership migration](../organization/rossovia-runtime-ownership-migration.md) |
 | How should an Agent review a proposed harness mechanism without creating another admission system? | [`mechanism-design-review`](../../skills/mechanism-design-review/SKILL.md) |

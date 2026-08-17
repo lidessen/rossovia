@@ -153,6 +153,33 @@ revise the theory's distinctions rather than append another vocabulary rule.
 is not an independent evaluator run, transfer evidence, proof of causal
 expression effect, or a runtime gate.
 
+## Authoring fixture — Phase-appropriate engineering tests
+
+**Purpose.** Check that the testing relation changes coverage with uncertainty
+and consequence rather than selecting either “minimal tests” or “exhaustive
+tests” as a universal rule. This is a worked coherence fixture, not behavior or
+transfer evidence.
+
+| Current subject | Decision-relevant uncertainty | Derived evidence movement |
+| --- | --- | --- |
+| A new optional tool port whose request shape is still provisional | whether the host can inject one tool without changing callers that inject none | begin with a forward use, a known capability rejection, and no-tool compatibility; do not enumerate every provider and transport failure yet |
+| Cancellation has been observed to return a terminal result before one admitted host effect finishes | whether the exact effect boundary and final evidence remain truthful | contain the affected path, reproduce the causal late effect, repair and retain that regression, and exercise adjacent effect channels only where they share the same owner or escape route |
+| The same runtime relation is now a release candidate for restart and concurrent Worktree use | whether supported production disturbances can violate recovery or single-writer ownership | expand restart, process-loss, concurrency, recovery, and regression coverage under the intended profile; component happy paths alone are no longer sufficient |
+
+**Coherence condition.** The first subject is allowed to advance without an
+exhaustive matrix, the second cannot invoke “early phase” to defer a proven hard
+boundary, and the third cannot invoke the original small probe as release
+evidence. In every row, mechanical results retain their scoped claim and do not
+replace semantic review or Principal acceptance.
+
+**Disconfirming observation.** The method prescribes the same suite breadth
+after uncertainty, supported conditions, or consequence changes; or it needs a
+mandatory phase state, score, or coverage threshold to reach the three results.
+
+**Standing.** This fixture demonstrates internal derivation only. A future
+blinded evaluator must choose evidence for unfamiliar subjects without seeing
+these expected movements before portability is claimed.
+
 ## Pending evaluation — Blinded theory transfer
 
 **Standing:** `transfer-unverified`.
@@ -178,6 +205,15 @@ environment, capability, and return relations across direct work and two
 temporary multi-Run organizations. Needing a new role type, lifecycle, or team
 state merely to express one topology is a failure; a performance benefit is a
 different empirical claim.
+
+To test the phase-appropriate extension, present one unfamiliar engineering
+subject at three different local standings: a provisional direction, an
+observed load-bearing failure, and a release candidate under named operating
+conditions. Keep the semantic objective fixed and hide the expected test
+movements. Transfer fails if the evaluator prescribes the same breadth for all
+three, turns the phases into lifecycle state, treats a test pass as semantic
+acceptance, or cannot explain which outcome changes the next practice and what
+cost the additional evidence incurs.
 
 Task shaping, context delivery, and delegation topology remain outside this
 Skill's evaluation. A future evaluator may recognize those as upstream
