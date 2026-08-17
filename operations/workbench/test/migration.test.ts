@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
@@ -254,6 +254,253 @@ describe("legacy namespace migration", () => {
     };
     expect(projects.projects.map((project) => project.id)).toEqual(["repository:migration"]);
     expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
+  });
+
+  test("resumes a commit crash where a no-clobber init preserved the migrated projects beside empty workspaces", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-init-empty-workspaces-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    // The exact crash state: the digest marker was durably published, the
+    // canonical projects rename succeeded, and the workspaces rename never
+    // happened. An unlocked no-clobber init then preserved those projects
+    // and published only the missing byte-exact canonical empty workspaces.
+    const migratedProjectsBytes = `${JSON.stringify({
+      version: "rosso.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.test/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    }, null, 2)}\n`;
+    const migratedWorkspacesBytes = `${JSON.stringify({
+      version: "rosso.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: repository }],
+    }, null, 2)}\n`;
+    mkdirSync(target, { recursive: true });
+    writeJson(join(target, ".rossovia-namespace-migration.json"), {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: realpathSync(source),
+      targetHome: realpathSync(target),
+      committedProjectsDigest: createHash("sha256").update(migratedProjectsBytes).digest("hex"),
+      committedWorkspacesDigest: createHash("sha256").update(migratedWorkspacesBytes).digest("hex"),
+    });
+    mkdirSync(join(target, "config"), { recursive: true });
+    writeFileSync(join(target, "config", "projects.json"), migratedProjectsBytes, "utf8");
+
+    const initialized = workbench(target, "init");
+    expect(initialized.exitCode, initialized.stderr).toBe(0);
+    expect(readFileSync(join(target, "config", "projects.json"), "utf8")).toBe(migratedProjectsBytes);
+    expect(JSON.parse(readFileSync(join(target, "state", "workspaces.json"), "utf8"))).toEqual({
+      version: "rosso.workspaces.v1",
+      workspaces: [],
+    });
+
+    // The resumed migration admits the migration-owned subset under the
+    // retained matching marker and completes the interrupted transaction.
+    const migrated = workbench(target, "migrate", "--from-home", source);
+    expect(migrated.exitCode, migrated.stderr).toBe(0);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    const projects = JSON.parse(readFileSync(join(target, "config", "projects.json"), "utf8")) as {
+      projects: Array<{ id: string }>;
+    };
+    expect(projects.projects.map((project) => project.id)).toEqual(["repository:migration"]);
+    const workspaces = JSON.parse(readFileSync(join(target, "state", "workspaces.json"), "utf8")) as {
+      workspaces: Array<{ projectId: string; path: string }>;
+    };
+    expect(workspaces.workspaces).toEqual([{ projectId: "repository:migration", path: repository }]);
+    expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
+  });
+
+  test("refuses a recorded projects digest beside nonempty mismatched workspaces as a later-registration conflict", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-init-nonempty-workspaces-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    // The migration's own committed projects digest matches, but the
+    // workspaces are nonempty and were rebound (a later attach) — only the
+    // byte-exact canonical empty workspaces form the admitted migration-owned
+    // subset, so this must fail closed as a later registration instead of
+    // being cleared and replaced.
+    const migratedProjectsBytes = `${JSON.stringify({
+      version: "rosso.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.test/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    }, null, 2)}\n`;
+    mkdirSync(target, { recursive: true });
+    writeJson(join(target, ".rossovia-namespace-migration.json"), {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: realpathSync(source),
+      targetHome: realpathSync(target),
+      committedProjectsDigest: createHash("sha256").update(migratedProjectsBytes).digest("hex"),
+      committedWorkspacesDigest: createHash("sha256").update(
+        `${JSON.stringify({
+          version: "rosso.workspaces.v1",
+          workspaces: [{ projectId: "repository:migration", path: repository }],
+        }, null, 2)}\n`,
+      ).digest("hex"),
+    });
+    mkdirSync(join(target, "config"), { recursive: true });
+    writeFileSync(join(target, "config", "projects.json"), migratedProjectsBytes, "utf8");
+    writeJson(join(target, "state", "workspaces.json"), {
+      version: "rosso.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: join(root, "rebound") }],
+    });
+    const projectsBefore = readFileSync(join(target, "config", "projects.json"), "utf8");
+    const workspacesBefore = readFileSync(join(target, "state", "workspaces.json"), "utf8");
+
+    const migrated = workbench(target, "migrate", "--from-home", source);
+    expect(migrated.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(migrated.stderr).toContain(
+      "rossovia: a registration succeeded in the rossovia target after the interrupted migration exposed it",
+    );
+    expect(migrated.stderr).not.toContain("for usage");
+    // The later workspace state was neither cleared nor replaced, and the
+    // target stays explicitly retryable through the retained marker.
+    expect(readFileSync(join(target, "config", "projects.json"), "utf8")).toBe(projectsBefore);
+    expect(readFileSync(join(target, "state", "workspaces.json"), "utf8")).toBe(workspacesBefore);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
+  });
+
+  test("recovers a complete marker stage retained by a publication terminated before its rename", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-marker-stage-retry-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    // The exact pre-rename termination state: the complete marker payload
+    // was written and fsynced to its unique reserved stage, but the rename
+    // onto the marker path never happened. Nothing else exists in the
+    // target, which the generic nonempty-target refusal must not reject.
+    mkdirSync(target, { recursive: true });
+    const stage = join(target, `.rossovia-namespace-migration.json.stage-${randomUUID()}`);
+    writeJson(stage, {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: realpathSync(source),
+      targetHome: realpathSync(target),
+    });
+
+    const migrated = workbench(target, "migrate", "--from-home", source);
+    expect(migrated.exitCode, migrated.stderr).toBe(0);
+    // The matching stage was recognized and left inert for the fresh marker
+    // publication; it was removed under the registration owner by the
+    // ordinary target clearing, never by a read-then-delete recovery.
+    expect(existsSync(stage)).toBe(false);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(readdirSync(target).filter((name) => name.startsWith(".rossovia-namespace-migration.json."))).toEqual([]);
+    expect(workbench(target, "resolve", "migration").exitCode).toBe(0);
+  });
+
+  test("fails closed on a malformed or incomplete marker stage without touching it", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-marker-stage-malformed-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    mkdirSync(target, { recursive: true });
+    const stage = join(target, `.rossovia-namespace-migration.json.stage-${randomUUID()}`);
+    writeFileSync(stage, "incomplete", "utf8");
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: rossovia workbench target contains a malformed or incomplete migration marker stage");
+    expect(rejected.stderr).not.toContain("for usage");
+    // The malformed stage was never deleted or replaced, and nothing else
+    // was published into the target.
+    expect(readFileSync(stage, "utf8")).toBe("incomplete");
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+  });
+
+  test("fails closed on a complete marker stage that belongs to another transaction", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-marker-stage-unrelated-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    mkdirSync(target, { recursive: true });
+    const stage = join(target, `.rossovia-namespace-migration.json.stage-${randomUUID()}`);
+    writeJson(stage, {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: "/unrelated/legacy-atthis",
+      targetHome: realpathSync(target),
+    });
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: rossovia workbench target contains an unrelated migration transaction stage");
+    expect(rejected.stderr).not.toContain("for usage");
+    // The unrelated stage was never deleted or replaced, and nothing else
+    // was published into the target.
+    expect(existsSync(stage)).toBe(true);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+  });
+
+  test("fails closed on multiple marker stages instead of guessing one", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-marker-stage-ambiguous-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    mkdirSync(target, { recursive: true });
+    for (let index = 0; index < 2; index += 1) {
+      writeJson(join(target, `.rossovia-namespace-migration.json.stage-${randomUUID()}`), {
+        version: "rosso.namespace-migration.v1",
+        sourceHome: realpathSync(source),
+        targetHome: realpathSync(target),
+      });
+    }
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: rossovia workbench target contains multiple migration marker stages");
+    expect(rejected.stderr).not.toContain("for usage");
+    // Neither stage was deleted or promoted, and nothing else was published
+    // into the target.
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+    expect(readdirSync(target).filter((name) => name.startsWith(".rossovia-namespace-migration.json.stage-"))).toHaveLength(2);
+  });
+
+  test("rejects a legacy source carrying a reserved migration marker or marker-stage path before any target mutation", () => {
+    for (const reservedName of [
+      ".rossovia-namespace-migration.json",
+      ".rossovia-namespace-migration.json.stage-01234567-89ab-cdef-0123-456789abcdef",
+      ".rossovia-namespace-migration.json.stale-01234567-89ab-cdef-0123-456789abcdef",
+    ]) {
+      const { source, target, liveLock } = reservedNamespaceFixture("rossovia-reserved-marker-namespace-");
+      writeFileSync(join(source, reservedName), "reserved-bytes", "utf8");
+
+      const rejected = workbench(target, "migrate", "--from-home", source);
+      expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+      expect(rejected.stderr).toContain("rossovia: legacy source contains a reserved Rossovia migration marker path");
+      expect(rejected.stderr).toContain(reservedName);
+      expect(rejected.stderr).not.toContain("for usage");
+      // The rejection happened before any target mutation: the live owner
+      // token is untouched and no marker or copied manifest was written.
+      expect(readFileSync(join(target, "state", "registration.lock"), "utf8")).toBe(liveLock);
+      expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+      expect(existsSync(join(target, "manifest.json"))).toBe(false);
+      expect(readFileSync(join(source, reservedName), "utf8")).toBe("reserved-bytes");
+    }
   });
 
   test("rejects and preserves a registration that succeeded after the interrupted migration exposed the target", () => {
