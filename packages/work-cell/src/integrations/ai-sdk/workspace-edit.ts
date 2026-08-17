@@ -1,6 +1,6 @@
 import { createEditTool } from "@earendil-works/pi-coding-agent";
 import { isAbsolute, relative, sep } from "node:path";
-import type { Workspace } from "./workspace";
+import type { HostWorkspace } from "../../host-port";
 
 /**
  * One Workspace-owned, scope-bound exact batch edit boundary backed by Pi's
@@ -12,7 +12,7 @@ import type { Workspace } from "./workspace";
  * reach outside the workspace even when Pi resolves it.
  */
 export function createWorkspaceEditTool(
-  workspace: Workspace,
+  workspace: HostWorkspace,
 ): ReturnType<typeof createEditTool> {
   return createEditTool(workspace.root, {
     operations: {

@@ -4,13 +4,13 @@ import { dirname, resolve } from "node:path";
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { CellUsage } from "../contracts";
-import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
+import { normalizeAiSdkUsage as normalizeUsage } from "../integrations/ai-sdk/ai-sdk-usage";
 import {
   createValidationModel,
   requireValidationConfiguration,
   validationModelName,
   validationProviderName,
-} from "../validation-model";
+} from "../integrations/ai-sdk/validation-model";
 
 (globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
 

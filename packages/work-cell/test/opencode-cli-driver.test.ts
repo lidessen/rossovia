@@ -16,6 +16,7 @@ import {
   type OpenCodeCliServerAdapter,
   type OpenCodeCliServerHandle,
 } from "../src/opencode-cli-driver";
+import { createLocalHost } from "../src/workspace";
 
 const temporaryRoots: string[] = [];
 
@@ -299,7 +300,7 @@ describe("OpenCode CLI driver", () => {
       serverAdapter: server.adapter,
     });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.finalText).toBe("Todos seeded.");
@@ -327,7 +328,7 @@ describe("OpenCode CLI driver", () => {
     const input = cellInput(root);
     input.tasks = [{ subject: "Adopt the todos", description: "Adopt the todos through todowrite." }];
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("verification_failed");
     expect(record.verification.tasks).toMatchObject({ passed: false, pending: 1 });
@@ -360,7 +361,7 @@ describe("OpenCode CLI driver", () => {
       return success("ses_fixture");
     }), { serverAdapter: server.adapter });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
@@ -397,7 +398,7 @@ describe("OpenCode CLI driver", () => {
       return success("ses_fixture");
     }), { serverAdapter: server.adapter });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("verification_failed");
     expect(record.verification.tasks).toMatchObject({ passed: false, inProgress: 1 });
@@ -423,7 +424,7 @@ describe("OpenCode CLI driver", () => {
       return success("resume-123");
     }), { serverAdapter: server.adapter, sessionId: "resume-123" });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.verification.tasks).toMatchObject({ passed: true, completed: 1 });
@@ -459,7 +460,7 @@ describe("OpenCode CLI driver", () => {
       return success("ses_fixture");
     }), { serverAdapter: server.adapter });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("verification_failed");
     expect(record.tasks).toEqual([]);
@@ -493,7 +494,7 @@ describe("OpenCode CLI driver", () => {
       return success("ses_fixture");
     }), { serverAdapter: server.adapter });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("failed");
     expect(record.error).toBe("OpenCode final todo projection returned invalid status at position 0: done");
@@ -518,7 +519,7 @@ describe("OpenCode CLI driver", () => {
       return success("ses_fixture");
     }), { serverAdapter: server.adapter });
 
-    const record = await runCell(input, driver);
+    const record = await runCell(input, driver, { host: createLocalHost() });
 
     expect(record.status).toBe("failed");
     expect(record.error).toBe("OpenCode final todo projection returned a missing or empty todo at position 0");
@@ -725,6 +726,7 @@ describe("OpenCode CLI driver", () => {
     const liveTrace = createLiveTraceFile(join(root, "cell-input.json"), () => {});
     const startedAt = performance.now();
     const run = runCell(input, realDriver(root, executable), {
+      host: createLocalHost(),
       onTrace(event) {
         observed.push(event);
         liveTrace.observe(event);
@@ -777,6 +779,7 @@ describe("OpenCode CLI driver", () => {
     ]);
     const observed: TraceEvent[] = [];
     const record = await runCell(cellInput(root), realDriver(root, executable), {
+      host: createLocalHost(),
       onTrace: (event) => observed.push(event),
     });
 
@@ -802,6 +805,7 @@ describe("OpenCode CLI driver", () => {
     ]);
     const observed: TraceEvent[] = [];
     const record = await runCell(cellInput(root), realDriver(root, executable), {
+      host: createLocalHost(),
       onTrace: (event) => observed.push(event),
     });
 
@@ -836,6 +840,7 @@ describe("OpenCode CLI driver", () => {
     input.budget.maxCommandOutputBytes = 8;
     const observed: TraceEvent[] = [];
     const record = await runCell(input, realDriver(root, executable), {
+      host: createLocalHost(),
       onTrace: (event) => observed.push(event),
     });
 
@@ -870,7 +875,7 @@ describe("OpenCode CLI driver", () => {
     const input = cellInput(root);
     input.budget.maxCommandOutputBytes = 128;
 
-    const record = await runCell(input, realDriver(root, executable));
+    const record = await runCell(input, realDriver(root, executable), { host: createLocalHost() });
 
     expect(record.status).toBe("passed");
     expect(record.finalText).toBe("Complete.");
@@ -900,6 +905,7 @@ describe("OpenCode CLI driver", () => {
     ], 19);
     const observed: TraceEvent[] = [];
     const record = await runCell(cellInput(root), realDriver(root, executable), {
+      host: createLocalHost(),
       onTrace: (event) => observed.push(event),
     });
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CellInput, ExecutionProfile } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../../../packages/work-cell/src/driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import { digest } from "../src/canonical-json";
 import {
@@ -54,7 +55,7 @@ test("a verifier receives only source material and submits evidence without adva
     proposal,
     workspaceRoot: root,
     executionProfile: profile("verifier-v1"),
-  }, { driver });
+  }, { driver, host: createLocalHost() });
 
   expect(result.kind).toBe("verified");
   if (result.kind !== "verified") throw new Error("expected verified reconciliation");
@@ -133,7 +134,10 @@ test("a verifier cannot verify the wrong proposal branch or inspect mismatched s
     executionProfile: profile("verifier-v1"),
   };
 
-  const result = await verifyMissionReconciliation(request, { driver: wrongBranch });
+  const result = await verifyMissionReconciliation(request, {
+    driver: wrongBranch,
+    host: createLocalHost(),
+  });
   expect(result.kind).toBe("unsettled");
   if (result.kind !== "unsettled") throw new Error("expected unsettled verification");
   expect(result.reason).toContain("no valid terminal payload");
@@ -143,7 +147,10 @@ test("a verifier cannot verify the wrong proposal branch or inspect mismatched s
     materialFindings: ["The proposal is linked to another input."],
     nextProbe: "Supply the matching input.",
   });
-  await expect(verifyMissionReconciliation({ ...request, input: other }, { driver: unused }))
+  await expect(verifyMissionReconciliation({ ...request, input: other }, {
+    driver: unused,
+    host: createLocalHost(),
+  }))
     .rejects.toThrow("does not match the supplied Mission input");
   expect(unused.calls).toBe(0);
 });
@@ -183,7 +190,7 @@ test("a correction verifier may propose a changed statement while a continue ver
     proposal,
     workspaceRoot: root,
     executionProfile: profile("verifier-v1"),
-  }, { driver });
+  }, { driver, host: createLocalHost() });
 
   expect(result.kind).toBe("verified");
   if (result.kind !== "verified") throw new Error("expected verified correction");
@@ -262,7 +269,7 @@ test("the independent verifier rejects mechanical control before running", async
     proposal,
     workspaceRoot: root,
     executionProfile: profile("verifier-v1"),
-  }, { driver })).rejects.toThrow(
+  }, { driver, host: createLocalHost() })).rejects.toThrow(
     "mechanical control and cannot enter semantic reconciliation",
   );
   expect(driver.calls).toBe(0);
@@ -335,7 +342,7 @@ async function proposed(
     input,
     workspaceRoot: root,
     executionProfile: profile("proposer-v1"),
-  }, { driver: new ProposalDriver(decision) });
+  }, { driver: new ProposalDriver(decision), host: createLocalHost() });
   if (result.kind !== "proposed") throw new Error("expected reconciliation proposal");
   return result.proposal;
 }

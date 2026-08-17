@@ -5,7 +5,7 @@ import {
   DeepSeekInferencePolicySchema,
   createDeepSeekModel,
   type DeepSeekInferencePolicy,
-} from "../../../packages/work-cell/src/providers/deepseek";
+} from "../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek";
 import {
   ChildResultRequestSchema,
   ContributionControlOperationSchema,

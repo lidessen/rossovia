@@ -1,5 +1,3 @@
-import { jsonSchema } from "ai";
-import type { JSONSchema7 } from "@ai-sdk/provider";
 import { z } from "zod";
 import type { OutputSchema } from "./contracts";
 
@@ -10,16 +8,17 @@ export interface OutputValidation {
 
 export interface CompiledOutputSchema {
   validate(value: unknown): OutputValidation;
-  forAiSdk(): ReturnType<typeof jsonSchema>;
 }
 
 /**
- * Compile the one public output definition once. The same Zod validator backs
- * the SDK adapter and run settlement, so a provider cannot turn schema
- * guidance into an unchecked claim.
+ * Compile the one public output definition once. The neutral Zod validator
+ * backs run-cell final verification and every non-SDK driver; the AI SDK
+ * `jsonSchema` transport form lives at the declared Integration boundary
+ * (`integrations/ai-sdk/output-schema`) so this core module carries no
+ * `ai` / `@ai-sdk` dependency.
  */
 export function compileOutputSchema(schema: OutputSchema): CompiledOutputSchema {
-  const validator = z.fromJSONSchema(schema as JSONSchema7);
+  const validator = z.fromJSONSchema(schema as never);
   const check = (value: unknown): OutputValidation => {
     const result = validator.safeParse(value);
     return {
@@ -29,13 +28,5 @@ export function compileOutputSchema(schema: OutputSchema): CompiledOutputSchema 
   };
   return {
     validate: check,
-    forAiSdk: () => jsonSchema(schema as JSONSchema7, {
-      validate(value) {
-        const result = check(value);
-        return result.passed
-          ? { success: true, value }
-          : { success: false, error: new Error(result.errors.join("; ")) };
-      },
-    }),
   };
 }

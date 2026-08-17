@@ -1,4 +1,4 @@
-import type { DriverDescriptor } from "./contracts";
+import type { DriverDescriptor } from "../../contracts";
 import { createRoutedLanguageModel, type ModelRouteTarget } from "./model-route";
 import {
   loadProviderProfile,

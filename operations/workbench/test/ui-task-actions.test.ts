@@ -15,7 +15,7 @@ import {
   CellRunRecordSchema,
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
-import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integrations/ai-sdk";
 import {
   authorizeExecution,
   executionAuthorizationReceiptPath,
@@ -147,7 +147,13 @@ function retainedAttemptExecutor(): TaskCellExecutor {
           cachedInputTokens: 0,
         },
       },
-      executionObservation: { sessionId: "session-ui-attempt" },
+      executionObservation: {
+        sessionId: "session-ui-attempt",
+        providerFingerprintStanding: {
+          standing: "unavailable",
+          reason: "deterministic UI projection fixture executor retains no provider metadata",
+        },
+      },
       trace: [],
       rawSteps: [],
     }) as unknown as CellRunRecord;

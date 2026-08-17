@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { CellInput, CellUsage } from "../src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
 import { runSwarm, SWARM_INPUT_VERSION } from "../src/swarm";
+import { createLocalHost } from "../src/workspace";
 import { WORKER_CARD_VERSION, WorkerCatalog, type WorkerCard } from "../src/worker-catalog";
 
 const roots: string[] = [];
@@ -53,7 +54,7 @@ test("each mixed-worker Cell resolves its selected driver and keeps executionPro
     id: "mixed-workers",
     concurrency: 2,
     cells: inputs,
-  }, (input) => catalog.createDriver(input));
+  }, (input) => catalog.createDriver(input), createLocalHost());
 
   expect(run.outcomes.map((outcome) => outcome.kind === "settled"
     ? [outcome.record.input.workerId, outcome.record.driver.provider, outcome.record.driver.model, outcome.record.input.executionProfile?.id]

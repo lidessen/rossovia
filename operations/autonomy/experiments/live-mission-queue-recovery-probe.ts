@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExecutionProfile } from "../../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import type { MissionInputReceipt } from "../src/mission-input";
 import {
@@ -157,7 +158,7 @@ async function reconcile(timeline: FileMissionTimeline, input: MissionInputRecei
     input,
     workspaceRoot: resolve(import.meta.dir, "../../.."),
     executionProfile: profile(proposer, `proposal-${input.watermark}`),
-  }, { driver: proposer });
+  }, { driver: proposer, host: createLocalHost() });
   if (proposalResult.kind !== "proposed") {
     throw new Error(`proposal ${input.inputId} did not settle: ${proposalResult.reason}`);
   }
@@ -171,7 +172,7 @@ async function reconcile(timeline: FileMissionTimeline, input: MissionInputRecei
     proposal: proposalResult.proposal,
     workspaceRoot: resolve(import.meta.dir, "../../.."),
     executionProfile: profile(verifier, `verification-${input.watermark}`),
-  }, { driver: verifier });
+  }, { driver: verifier, host: createLocalHost() });
   if (verificationResult.kind !== "verified") {
     throw new Error(`verification ${input.inputId} did not settle: ${verificationResult.reason}`);
   }

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExecutionProfile } from "../../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import {
   type MissionInputReceipt,
@@ -90,7 +91,7 @@ try {
     input,
     workspaceRoot: resolve(import.meta.dir, "../../.."),
     executionProfile: profile(proposer, "proposal"),
-  }, { driver: proposer });
+  }, { driver: proposer, host: createLocalHost() });
   if (proposalResult.kind !== "proposed") {
     throw new Error(`live reconciliation proposal did not settle: ${proposalResult.reason}`);
   }
@@ -104,7 +105,7 @@ try {
     proposal: proposalResult.proposal,
     workspaceRoot: resolve(import.meta.dir, "../../.."),
     executionProfile: profile(verifier, "verification"),
-  }, { driver: verifier });
+  }, { driver: verifier, host: createLocalHost() });
   if (verificationResult.kind !== "verified") {
     throw new Error(`live reconciliation verification did not settle: ${verificationResult.reason}`);
   }

@@ -13,129 +13,41 @@ import {
   type CellPreparation,
   type TraceEvent,
   type ProviderFingerprintStanding,
-  BudgetApprovalResultSchema,
-  type BudgetApprovalResult,
-  type BudgetRequest,
 } from "./contracts";
 import type { CellDriver } from "./driver";
-import { CellExecutionError, traceEvent } from "./driver";
-import { Workspace } from "./workspace";
+import { CellExecutionError, TerminalContractError, traceEvent } from "./driver";
+import type { CellHost, HostWorkspace } from "./host-port";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
 
 export interface RunCellOptions {
+  /**
+   * The one injected host port. The caller supplies the implementation that
+   * opens the workspace capability surface for this run; the core never
+   * constructs a concrete filesystem, reads the process environment, or
+   * starts a process on its own.
+   */
+  host: CellHost;
   signal?: AbortSignal;
   preparation?: CellPreparation;
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
   onTrace?: (event: TraceEvent) => void;
-  /** Host policy for a model-authored soft work-budget increase request. */
-  budgetApproval?: (
-    request: BudgetRequest,
-    context: { signal: AbortSignal },
-  ) => BudgetApprovalResult | Promise<BudgetApprovalResult>;
-  /** Duration unavailable to production and created only for settlement. */
-  settlementReserveMs?: number;
-  /** One non-extendable hard duration limit for the whole run. */
-  hardLimitMs?: number;
-}
-
-class SoftBudgetControl {
-  private phaseValue: "production" | "decision" | "settlement" = "production";
-  private completedStepsValue = 0;
-  private softStepLimit: number;
-  private softDurationLimitMs: number;
-  private skipCompletedControlStep = false;
-
-  constructor(private readonly options: {
-    cellId: string;
-    startedAtMs: number;
-    initialSteps: number;
-    initialDurationMs: number;
-    approve: NonNullable<RunCellOptions["budgetApproval"]>;
-    signal: AbortSignal;
-  }) {
-    this.softStepLimit = options.initialSteps;
-    this.softDurationLimitMs = options.initialDurationMs;
-  }
-
-  get phase() {
-    return this.phaseValue;
-  }
-
-  completedStep(): boolean {
-    if (this.phaseValue !== "production") return false;
-    if (this.skipCompletedControlStep) {
-      this.skipCompletedControlStep = false;
-      return false;
-    }
-    this.completedStepsValue += 1;
-    const elapsedMs = Math.max(0, Date.now() - this.options.startedAtMs);
-    if (this.completedStepsValue < this.softStepLimit && elapsedMs < this.softDurationLimitMs) return false;
-    this.phaseValue = "decision";
-    return true;
-  }
-
-  settleNow(): void {
-    if (this.phaseValue !== "decision") throw new Error("settle_now requires a soft-budget decision point");
-    this.phaseValue = "settlement";
-  }
-
-  async requestBudget(
-    value: Omit<BudgetRequest, "cellId" | "completedSteps" | "elapsedMs">,
-  ): Promise<{ request: BudgetRequest; result: BudgetApprovalResult }> {
-    if (this.phaseValue !== "decision") throw new Error("request_budget requires a soft-budget decision point");
-    const request: BudgetRequest = {
-      cellId: this.options.cellId,
-      ...value,
-      completedSteps: this.completedStepsValue,
-      elapsedMs: Math.max(0, Date.now() - this.options.startedAtMs),
-    };
-    let result: BudgetApprovalResult;
-    try {
-      const approval = await runWithSignal(
-        () => Promise.resolve(this.options.approve(request, { signal: this.options.signal })),
-        this.options.signal,
-      );
-      result = BudgetApprovalResultSchema.parse(approval);
-    } catch (error) {
-      result = {
-        decision: "deny",
-        reason: `budget approval failed closed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-    if (result.decision === "allow") {
-      this.softStepLimit += request.additionalSteps;
-      this.softDurationLimitMs += request.additionalDurationMs;
-      this.phaseValue = "production";
-      this.skipCompletedControlStep = true;
-    } else {
-      this.phaseValue = "settlement";
-    }
-    return { request, result };
-  }
 }
 
 export async function runCell(
   unparsedInput: unknown,
   driver: CellDriver,
-  options: RunCellOptions = {},
+  options: RunCellOptions,
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
-  const budgetApprovalEnabled = options.budgetApproval !== undefined;
-  if (budgetApprovalEnabled && driver.budgetControl !== "completed-step-v1") {
-    throw new Error(`driver ${driver.descriptor.adapter} does not support completed-step budget control`);
-  }
-  if (budgetApprovalEnabled && (!options.settlementReserveMs || !options.hardLimitMs)) {
-    throw new Error("budgetApproval requires positive settlementReserveMs and hardLimitMs");
-  }
-  if (budgetApprovalEnabled && input.budget.maxSteps === undefined) {
-    throw new Error("budgetApproval requires an explicit finite maxSteps policy on the Cell input");
-  }
-  if (budgetApprovalEnabled && options.hardLimitMs! < input.budget.maxDurationMs) {
-    throw new Error("hardLimitMs must cover the initial Cell duration and cannot be extended");
-  }
-  if (!budgetApprovalEnabled && input.budget.maxSteps !== undefined
-    && input.terminalTools?.length && input.budget.maxSteps < 2) {
+  // A terminal-only Cell completes on its single allowed step: the accepted
+  // terminal action is the final step and no separate output step exists.
+  // Only a Cell that also declares a structured output contract needs a
+  // second step for the final output.
+  if (input.budget.maxSteps !== undefined
+    && input.terminalTools?.length && input.outputSchema && input.budget.maxSteps < 2) {
+    // Reached only when a structured-output contract needs a second step for
+    // the final output; the exact public wording is unchanged for callers.
     throw new Error("terminal tools require at least two steps: one terminal action and one final output");
   }
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
@@ -157,32 +69,13 @@ export async function runCell(
     }
   };
   emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
-  const workspace = await Workspace.create(input.workspace, input.budget);
+  // The host port is caller-injected: only the supplied implementation may
+  // grant filesystem, command, snapshot, and artifact effects. A CellInput
+  // capability declaration never opens a host surface on its own.
+  const workspace = await options.host.createWorkspace(input.workspace, input.budget);
   const before = await workspace.snapshot();
-  const hardTimeoutMs = budgetApprovalEnabled
-    ? options.hardLimitMs!
-    : input.budget.maxDurationMs;
-  const timeoutSignal = AbortSignal.timeout(hardTimeoutMs);
+  const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-  let reserveSignal: AbortSignal | undefined;
-  const settlementSignal = () => {
-    if (!budgetApprovalEnabled) return signal;
-    reserveSignal ??= AbortSignal.any([
-      signal,
-      AbortSignal.timeout(options.settlementReserveMs!),
-    ]);
-    return reserveSignal;
-  };
-  const budgetControl = options.budgetApproval && input.budget.maxSteps !== undefined
-    ? new SoftBudgetControl({
-        cellId: input.id,
-        startedAtMs: startedAt.getTime(),
-        initialSteps: input.budget.maxSteps,
-        initialDurationMs: input.budget.maxDurationMs,
-        approve: options.budgetApproval,
-        signal,
-      })
-    : undefined;
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
@@ -199,7 +92,7 @@ export async function runCell(
   let artifactVerification: ArtifactVerification | undefined;
   let taskVerification: TaskVerification | undefined;
   let artifacts: ArtifactRecord[] = [];
-  let after: Awaited<ReturnType<Workspace["snapshot"]>> | undefined;
+  let after: Awaited<ReturnType<HostWorkspace["snapshot"]>> | undefined;
 
   if (missingCapabilities.length > 0) {
     status = "capability_mismatch";
@@ -217,8 +110,6 @@ export async function runCell(
             observedSettlementUsage = addUsage(observedSettlementUsage ?? emptyUsage(), usage);
           }
         },
-        ...(budgetControl ? { budgetControl } : {}),
-        settlementSignal,
         emit(type: string, data: unknown) {
           emit(type, data);
         },
@@ -229,7 +120,11 @@ export async function runCell(
           usage: options.preparation.usage,
         });
       }
-      driverResult = await runWithSignal(() => driver.run(input, context), signal);
+      // One canonical pre-driver CellInput is the caller contract. Terminal,
+      // task, artifact, and output verification plus the final record derive
+      // only from that canonical value; the supplied driver receives an
+      // isolated immutable parsed copy it can never rewrite.
+      driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
       const terminalTools = input.terminalTools ?? [];
       const terminalResult = verifyTerminalContract(
         terminalTools.map((terminal) => terminal.name),
@@ -292,6 +187,7 @@ export async function runCell(
         failureSettlementUsage = observedSettlementUsage;
       }
       if (signal.aborted) status = "cancelled";
+      else if (caught instanceof TerminalContractError) status = "protocol_error";
       else status = "failed";
       emit("cell.error", { status, error });
     }
@@ -436,6 +332,24 @@ function verifyTerminalContract(required: string[], called: string[]) {
   };
 }
 
+/**
+ * The supplied driver receives an isolated, deeply frozen parsed copy of the
+ * canonical CellInput: a malicious or buggy driver can read the caller
+ * contract freely, but any mutation attempt fails on the copy instead of
+ * reaching the canonical value that verification and the final record derive
+ * from.
+ */
+function disposableCellInput(input: CellInput): CellInput {
+  return deepFreeze(structuredClone(input));
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  const object = value as Record<string, unknown>;
+  for (const key of Object.keys(object)) deepFreeze(object[key]);
+  return Object.freeze(object) as T;
+}
+
 function runWithSignal<T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (signal.aborted) {
@@ -453,7 +367,7 @@ function runWithSignal<T>(start: () => Promise<T>, signal: AbortSignal): Promise
 
 async function verifyArtifacts(
   input: CellInput,
-  workspace: Workspace,
+  workspace: HostWorkspace,
   diff: CellRunRecord["workspaceDiff"],
 ): Promise<{ artifacts: ArtifactRecord[]; verification: ArtifactVerification }> {
   if (!input.artifacts?.length) return { artifacts: [], verification: { passed: true, errors: [] } };

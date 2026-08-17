@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CellInputSchema, type CellUsage } from "../../contracts";
-import type { Workspace } from "../../workspace";
+import type { HostWorkspace } from "../../host-port";
 
 export const DnaSchema = z.object({
   baseInstructions: z.string().min(1),
@@ -83,7 +83,7 @@ export interface GeneSelectionResult {
   providerMetadata?: unknown;
 }
 
-export async function loadGenome(input: SequenceCellInput, workspace: Workspace): Promise<Genome> {
+export async function loadGenome(input: SequenceCellInput, workspace: HostWorkspace): Promise<Genome> {
   const sequencePath = input.genome.sequencePath;
   const source = await workspace.readText(sequencePath);
   const genes = source
@@ -104,7 +104,7 @@ export async function loadGenome(input: SequenceCellInput, workspace: Workspace)
 
 export async function expressGenome(
   input: SequenceCellInput,
-  workspace: Workspace,
+  workspace: HostWorkspace,
   genome: Genome,
   proposed: GeneExpression,
 ): Promise<ExpressedGenome> {
