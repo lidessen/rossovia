@@ -574,6 +574,11 @@ function gateCellTools(
     return covered;
   };
   const refuse = (name: string, toolCallId: string): Promise<void> => {
+    // The same immutable snapshot membership guard as execute: an unknown
+    // name is an invocation refused before any evidence is emitted.
+    if (tools[name] === undefined) {
+      return Promise.reject(new Error(`unknown cell tool: ${name}`));
+    }
     // One core-owned refusal: the invocation is denied before the caller
     // implementation can run and its bounded settled evidence is retained.
     settled(name, toolCallId, "refused");

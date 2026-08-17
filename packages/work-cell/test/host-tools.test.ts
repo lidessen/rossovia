@@ -2379,5 +2379,54 @@ describe("caller-injected cell tool translation", () => {
       expect(collisionRecord.error).toBe("the provider or driver failed during this run");
       expect(dispatchCalls).toBe(0);
     }
+
+    // The core-owned refuse operation enforces the same immutable snapshot
+    // membership guard as execute: an unknown name fails closed before any
+    // cell.tool.settled evidence is emitted, while a granted name still
+    // retains the bounded refused triplet.
+    const FORGED_REFUSE_NAME = "forged_not_granted";
+    const FORGED_REFUSE_CALL_ID = "forged-refuse-call-id-a1b2c3d4e5";
+    const VALID_REFUSE_CALL_ID = "valid-refuse-call-id-z9y8x7w6v5";
+    const guardTools: CellToolSet = {
+      actually_granted: {
+        description: "A granted tool whose refused evidence may be retained.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never executed for refusal" }),
+      },
+    };
+    const guardDriver: CellDriver = {
+      descriptor: { adapter: "refuse-guard", provider: "deterministic", model: "fixture" },
+      supportsCellTools: true,
+      async run(_input, context) {
+        await expect(context.cellTools!.refuse(FORGED_REFUSE_NAME, FORGED_REFUSE_CALL_ID))
+          .rejects.toThrow(`unknown cell tool: ${FORGED_REFUSE_NAME}`);
+        await context.cellTools!.refuse("actually_granted", VALID_REFUSE_CALL_ID);
+        return {
+          terminalToolsCalled: [],
+          finalText: "Refuse guard held.",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+          rawSteps: [],
+        };
+      },
+    };
+    const guardRecord = await runCell(cellToolCell(root), guardDriver, {
+      host: createLocalHost(),
+      tools: guardTools,
+    });
+    expect(guardRecord.status).toBe("passed");
+    expect(guardRecord.trace).not.toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: FORGED_REFUSE_NAME, toolCallId: FORGED_REFUSE_CALL_ID, outcome: "refused" },
+    }));
+    expect(guardRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "actually_granted", toolCallId: VALID_REFUSE_CALL_ID, outcome: "refused" },
+    }));
+    expectBoundedInjectedRetention(
+      guardRecord,
+      ["actually_granted"],
+      [VALID_REFUSE_CALL_ID],
+      [FORGED_REFUSE_NAME, FORGED_REFUSE_CALL_ID],
+    );
   });
 });
