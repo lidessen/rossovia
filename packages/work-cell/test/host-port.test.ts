@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Budget, CellInput, WorkspacePolicy } from "../src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
+import type { CellHost } from "../src/host-port";
 import { FilteredHost, FakeHost } from "../src/fake-host";
 import { createLocalHost } from "../src/workspace";
 import { runCell } from "../src/run-cell";
@@ -284,6 +285,161 @@ describe("fake-host deterministic command and root parity", () => {
       .rejects.toThrow("workspace.root must be absolute");
     await expect(createLocalHost().createWorkspace(policy, budget))
       .rejects.toThrow("workspace.root must be absolute");
+  });
+});
+
+describe("cancellation quiescence and the host-effect admission gate", () => {
+  class CapturingReportDriver implements CellDriver {
+    readonly descriptor = { adapter: "capturing-report", provider: "deterministic", model: "fixture" };
+    savedContext: DriverContext | undefined;
+
+    async run(_input: CellInput, context: DriverContext): Promise<DriverResult> {
+      this.savedContext = context;
+      const source = await context.workspace.readText("docs/source.md");
+      await context.workspace.writeText("docs/report.md", `# Report\n${source}`);
+      return {
+        terminalToolsCalled: [],
+        finalText: "report written",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+        rawSteps: [],
+      };
+    }
+  }
+
+  class AbortWithInFlightWriteDriver implements CellDriver {
+    readonly descriptor = { adapter: "abort-in-flight-write", provider: "deterministic", model: "fixture" };
+    savedContext: DriverContext | undefined;
+    abortListenerWrite: Promise<void> | undefined;
+
+    async run(_input: CellInput, context: DriverContext): Promise<DriverResult> {
+      this.savedContext = context;
+      // Admit one host effect and leave it in flight: the driver never
+      // awaits it, mirroring an admitted effect still live when
+      // cancellation lands.
+      void context.workspace.writeText("docs/late.md", "# Late\n");
+      return await new Promise<DriverResult>((_resolve, reject) => {
+        context.signal.addEventListener("abort", () => {
+          // During synchronous AbortSignal dispatch this listener starts a
+          // brand-new workspace write. The admission gate must already be
+          // closed by runCell's earlier-registered abort listener, so the
+          // write is refused and no file can land after return.
+          this.abortListenerWrite = context.workspace.writeText("docs/aborted-new.md", "# New\n");
+          reject(context.signal.reason);
+        }, { once: true });
+      });
+    }
+  }
+
+  test("a normally admitted host effect reaches the final record and the gate closes after the driver settles", async () => {
+    const fake = new FakeHost("/fake-admission");
+    fake.seed("docs/source.md", "grounded\n");
+    const input = writableCell("/fake-admission", "admission");
+    const driver = new CapturingReportDriver();
+
+    const record = await runCell(input, driver, { host: fake });
+
+    expect(record.status).toBe("passed");
+    expect(record.workspaceDiff).toEqual({ added: ["docs/report.md"], changed: [], removed: [] });
+    expect(record.artifacts).toEqual([{
+      path: "docs/report.md",
+      bytes: Buffer.byteLength("# Report\ngrounded\n"),
+      sha256: expect.any(String),
+    }]);
+    // The driver settled: the admission gate is closed, so no new
+    // model-visible host effect can start after the final record.
+    await expect(driver.savedContext!.workspace.writeText("docs/late.md", "late"))
+      .rejects.toThrow("host-effect admission gate");
+    // The final trace ends at the sealed terminal event.
+    expect(record.trace[record.trace.length - 1]!.type).toBe("cell.finished");
+  });
+
+  test("a cancellation probe proves a late write cannot occur after return and the trace is sealed", async () => {
+    const fake = new FakeHost("/fake-cancel");
+    let writeStarted: (() => void) | undefined;
+    let releaseWrite: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { writeStarted = resolve; });
+    const deferredHost: CellHost = {
+      async createWorkspace(policy, budget) {
+        const base = await fake.createWorkspace(policy, budget);
+        return {
+          ...base,
+          async writeText(path: string, content: string) {
+            writeStarted?.();
+            await new Promise<void>((resolve) => { releaseWrite = resolve; });
+            return base.writeText(path, content);
+          },
+        };
+      },
+    };
+    const input = writableCell("/fake-cancel", "cancel");
+    delete input.artifacts;
+    const controller = new AbortController();
+    const driver = new AbortWithInFlightWriteDriver();
+
+    // The trace observer fails exactly on the terminal event: sealing must
+    // be literal, so the observer failure cannot append cell.observer.failed
+    // after cell.finished.
+    const running = runCell(input, driver, {
+      host: deferredHost,
+      signal: controller.signal,
+      onTrace(event) {
+        if (event.type === "cell.finished") throw new Error("observer failure at terminal event");
+      },
+    });
+    // The write is admitted and its underlying effect is in flight.
+    await started;
+    controller.abort(new Error("caller cancellation"));
+    // The driver's abort listener attempted a new write during synchronous
+    // AbortSignal dispatch: the gate was already closed, so that promise
+    // rejects and no file lands after return. The expectation is attached
+    // before any await so the rejection is observed immediately.
+    const abortedWrite = expect(driver.abortListenerWrite!).rejects.toThrow("host-effect admission gate");
+    // The admitted write settles; the Cell joins it before the final.
+    releaseWrite!();
+    const record = await running;
+    await abortedWrite;
+
+    expect(record.status).toBe("cancelled");
+    expect(record.error).toBe("caller cancellation");
+    const workspace = await fake.createWorkspace(input.workspace, input.budget);
+    await expect(workspace.readText("docs/aborted-new.md")).rejects.toThrow("file does not exist");
+    // The admitted in-flight effect was joined before the snapshot: the
+    // final truthfully retains it and nothing can land after return.
+    expect(record.workspaceDiff).toEqual({ added: ["docs/late.md"], changed: [], removed: [] });
+    await expect(workspace.readText("docs/late.md")).resolves.toBe("# Late\n");
+    // After the final returned, the closed gate refuses every new
+    // model-visible host effect.
+    await expect(driver.savedContext!.workspace.writeText("docs/after.md", "after"))
+      .rejects.toThrow("host-effect admission gate");
+    await expect(workspace.readText("docs/after.md")).rejects.toThrow("file does not exist");
+    // Observation is sealed as the terminal event is appended, before its
+    // observer ran: the observer failure on cell.finished leaves no
+    // cell.observer.failed after the terminal event, and nothing appends
+    // through the driver's retained emit handle either.
+    const lastEvent = record.trace[record.trace.length - 1]!;
+    expect(lastEvent.type).toBe("cell.finished");
+    expect(record.trace.some((event) => event.type === "cell.observer.failed")).toBe(false);
+    const traceLength = record.trace.length;
+    driver.savedContext!.emit("late.tool.event", { marker: true });
+    expect(record.trace.length).toBe(traceLength);
+    expect(record.trace.some((event) => event.type === "late.tool.event")).toBe(false);
+  });
+
+  test("an unchanged O2-style caller call settles the same record through the injected host", async () => {
+    const fake = new FakeHost("/fake-compat");
+    fake.seed("docs/source.md", "grounded\n");
+    const input = writableCell("/fake-compat", "compat");
+
+    // The exact unchanged call shape the O2 ordinary path uses:
+    // runCell(cellInput, driver, { host }) with no additional options.
+    const record = await runCell(input, new CapturingReportDriver(), { host: fake });
+
+    expect(record.status).toBe("passed");
+    expect(record.finalText).toBe("report written");
+    expect(record.trace[0]!.type).toBe("cell.started");
+    expect(record.trace[record.trace.length - 1]!.type).toBe("cell.finished");
+    expect(record.usage.totalTokens).toBe(2);
+    expect(record.workspaceDiff).toEqual({ added: ["docs/report.md"], changed: [], removed: [] });
   });
 });
 

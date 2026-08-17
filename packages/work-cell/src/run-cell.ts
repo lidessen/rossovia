@@ -55,14 +55,21 @@ export async function runCell(
   const startedAt = new Date();
   const trace: TraceEvent[] = [];
   let observerActive = options.onTrace !== undefined;
-  const emit = (type: string, data: unknown) => {
+  let traceSealed = false;
+  const emit = (type: string, data: unknown, terminal = false) => {
+    if (traceSealed) return;
     const event = traceEvent(type, data);
     trace.push(event);
+    // The terminal event seals observation as it is appended, before its
+    // observer is invoked: an observer failure on cell.finished can never
+    // append cell.observer.failed after the terminal event.
+    if (terminal) traceSealed = true;
     if (!observerActive) return;
     try {
       options.onTrace?.(event);
     } catch (error) {
       observerActive = false;
+      if (traceSealed) return;
       trace.push(traceEvent("cell.observer.failed", {
         error: error instanceof Error ? error.message : String(error),
       }));
@@ -73,9 +80,26 @@ export async function runCell(
   // grant filesystem, command, snapshot, and artifact effects. A CellInput
   // capability declaration never opens a host surface on its own.
   const workspace = await options.host.createWorkspace(input.workspace, input.budget);
+  // The Cell owns one host-effect admission gate around the injected
+  // workspace. Every model-visible mutating effect — writes, exclusive
+  // creates, and commands — is admitted through it. After the driver settles
+  // (completion, failure, or cancellation) the gate closes so new effects
+  // fail, and every already-admitted effect is joined before the workspace
+  // snapshot and the immutable final: no host effect can remain live past
+  // the returned record. The neutral port contract is unchanged; the
+  // injected adapter never sees the gate.
+  const admission = gateHostEffects(workspace);
   const before = await workspace.snapshot();
   const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+  // Close the host-effect admission gate synchronously from an abort
+  // listener registered before the driver starts: during synchronous
+  // AbortSignal dispatch a driver abort listener could otherwise start a
+  // new workspace write before the rejection path reaches the outer catch.
+  // The listener is removed as soon as the driver settles without aborting;
+  // the close-and-drain final boundary below stays authoritative.
+  const closeAdmissionOnAbort = () => admission.close();
+  signal.addEventListener("abort", closeAdmissionOnAbort);
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
@@ -101,7 +125,7 @@ export async function runCell(
   } else {
     try {
       const context = {
-        workspace,
+        workspace: admission.workspace,
         signal,
         liveObservation: observerActive,
         observeUsage(usage: CellUsage, phase?: "execution" | "settlement") {
@@ -124,7 +148,19 @@ export async function runCell(
       // task, artifact, and output verification plus the final record derive
       // only from that canonical value; the supplied driver receives an
       // isolated immutable parsed copy it can never rewrite.
-      driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
+      try {
+        driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
+      } finally {
+        // The driver settled without aborting: the synchronous gate-close
+        // listener has no further role and is removed before the
+        // close-and-drain boundary below.
+        signal.removeEventListener("abort", closeAdmissionOnAbort);
+      }
+      // The driver settled normally: close the host-effect admission gate and
+      // join every already-admitted effect before verification and the
+      // workspace snapshot, so the final record reflects only settled effects.
+      admission.close();
+      await admission.drain();
       const terminalTools = input.terminalTools ?? [];
       const terminalResult = verifyTerminalContract(
         terminalTools.map((terminal) => terminal.name),
@@ -193,6 +229,13 @@ export async function runCell(
     }
   }
 
+  // Whatever settled the driver — completion, failure, or cancellation — the
+  // host-effect admission gate closes and every already-admitted effect is
+  // joined before the workspace snapshot and the immutable final. When
+  // quiescence cannot be proved the Cell returns no final at all, leaving
+  // the existing no-final/unresolved/claim-retained O2 standing untouched.
+  admission.close();
+  await admission.drain();
   after ??= await workspace.snapshot();
   const finishedAt = new Date();
   const usage = addUsage(
@@ -208,7 +251,10 @@ export async function runCell(
     ? subtractUsage(aggregateDriverUsage, settlementUsage)
     : aggregateDriverUsage;
   const estimate = estimateCost(usage, driver.descriptor.pricing);
-  emit("cell.finished", { status, usage });
+  // Observation is sealed as the terminal event is appended, before its
+  // observer runs: neither a stray tool completion nor a late driver
+  // callback can append to the retained trace after cell.finished.
+  emit("cell.finished", { status, usage }, true);
 
   const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
   const sessionId = observedSessionId(driverResult?.providerMetadata);
@@ -260,6 +306,72 @@ export async function runCell(
       ...(driverResult ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
     ],
     ...(error ? { error } : {}),
+  };
+}
+
+interface HostEffectAdmission {
+  /** The gated workspace the driver and its host tools receive. */
+  readonly workspace: HostWorkspace;
+  /** Close the admission gate: any new mutating host effect fails immediately. */
+  close(): void;
+  /** Resolve once every already-admitted host effect has settled. */
+  drain(): Promise<void>;
+}
+
+/**
+ * The Cell-owned host-effect admission gate over the caller-injected
+ * workspace. Mutating operations — writeText, createText, and runCommand —
+ * are admitted through this wrapper; every other port operation delegates
+ * unchanged. Once closed, already-admitted effects settle through their own
+ * bounded behavior (writes complete or fail; commands carry their own
+ * timeout plus the Cell abort signal) and `drain` joins them all. The
+ * neutral port contract is unchanged: this is a Cell-side wrapper, and the
+ * injected adapter never sees the gate.
+ */
+function gateHostEffects(workspace: HostWorkspace): HostEffectAdmission {
+  let closed = false;
+  const pending = new Set<Promise<unknown>>();
+  const admit = <T>(start: () => Promise<T>): Promise<T> => {
+    if (closed) {
+      return Promise.reject(
+        new Error("the Cell host-effect admission gate is closed; no new host effects may start"),
+      );
+    }
+    const effect = Promise.resolve().then(start);
+    pending.add(effect);
+    const release = () => {
+      pending.delete(effect);
+    };
+    effect.then(release, release);
+    return effect;
+  };
+  return {
+    workspace: {
+      root: workspace.root,
+      canRead: workspace.canRead,
+      canWrite: workspace.canWrite,
+      canRunCommands: workspace.canRunCommands,
+      listFiles: (path, maxEntries) => workspace.listFiles(path, maxEntries),
+      readText: (path, startLine, endLine) => workspace.readText(path, startLine, endLine),
+      readBinary: (path) => workspace.readBinary(path),
+      writeText: (path, content) => admit(() => workspace.writeText(path, content)),
+      createText: (path, content) => admit(() => workspace.createText(path, content)),
+      assertEditable: (path) => workspace.assertEditable(path),
+      describeArtifact: (path) => workspace.describeArtifact(path),
+      runCommand: (argv, cwd, timeoutMs, signal) =>
+        admit(() => workspace.runCommand(argv, cwd, timeoutMs, signal)),
+      snapshot: () => workspace.snapshot(),
+      diff: (before, after) => workspace.diff(before, after),
+    },
+    close() {
+      closed = true;
+    },
+    async drain() {
+      // Join the currently admitted effects exactly once; effects admitted
+      // after close are impossible, and settled effects release themselves
+      // from the set.
+      await Promise.allSettled([...pending]);
+    },
   };
 }
 
