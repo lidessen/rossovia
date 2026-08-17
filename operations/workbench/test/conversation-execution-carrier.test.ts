@@ -20,6 +20,7 @@ import { createPrincipalTask, loadPrincipalTasks } from "../src/tasks";
 import { showPrincipalTaskAttempts } from "../src/task-attempts";
 import { attemptLeaseStanding, reconcilePrincipalTaskAttempt } from "../src/task-run";
 import {
+  carrierHydrationFromEvidence,
   carrierStandingWithoutHandle,
   createConversationExecutionCarrierRegistry,
   type ConversationExecutionCarrierRegistry,
@@ -764,6 +765,126 @@ describe("conversation execution carrier reconnect truthfulness", () => {
     expect(after.carriers).toEqual([
       { id: carrierId, state: "control-stopped", taskId: current.taskId, projectId: current.projectId },
     ]);
+  });
+});
+
+describe("conversation execution carrier restart evidence selection", () => {
+  test("the full journal-owned correlation must match exactly: turn, action, conversation, and sourceRef mismatches yield no projection", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+    const receipt = await host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    const sourceRef = taskActionSourceRef(conversationId, actionId);
+    const exact = { conversationId, turnId, actionId, sourceRef };
+    const otherActionId = randomUUID();
+    const partialOrMismatched = [
+      { ...exact, turnId: randomUUID() },
+      { ...exact, actionId: otherActionId, sourceRef: taskActionSourceRef(conversationId, otherActionId) },
+      { ...exact, sourceRef: "conversation:foreign:action:foreign" },
+      { ...exact, conversationId: randomUUID() },
+    ];
+    for (const correlation of partialOrMismatched) {
+      expect(carrierHydrationFromEvidence(current.home, correlation))
+        .toBeUndefined();
+    }
+    // The retained-handle path of the same registry applies the identical
+    // full correlation: the exact sourceRef equals the deterministic
+    // taskActionSourceRef for this conversation/action, so only the exact
+    // correlation projects the retained live handle, and every identity or
+    // sourceRef mismatch — including a foreign sourceRef beside the exact
+    // conversation/turn/action — fails closed with no live or terminal
+    // projection and no stop affordance.
+    expect(registry.hydrateCarrier(exact)).toMatchObject({
+      standing: "live",
+      identity: { carrierId },
+    });
+    for (const correlation of partialOrMismatched) {
+      expect(registry.hydrateCarrier(correlation)).toBeUndefined();
+    }
+
+    // Only the one exact family projects: unknown (no terminal settlement),
+    // never live, with the exact owner-backed identity.
+    const hydration = carrierHydrationFromEvidence(current.home, exact);
+    expect(hydration).toBeDefined();
+    if (hydration === undefined) throw new Error("expected the exact family to hydrate");
+    expect(hydration.standing).toBe("unknown");
+    expect(hydration.identity).toEqual({
+      carrierId,
+      conversationId,
+      turnId,
+      actionId,
+      taskId: current.taskId,
+      attemptId: carrierId,
+      workerId: FAKE_WORKER_ID,
+      worktree: registry.carrier(carrierId)!.identity.worktree,
+    });
+    // A fresh registry instance (server restart) selects the same exact family.
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(fakeCard(), slowDriver),
+    });
+    expect(restarted.hydrateCarrier(exact)?.identity.carrierId).toBe(carrierId);
+    expect(restarted.hydrateCarrier({ ...exact, turnId: randomUUID() })).toBeUndefined();
+
+    registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+    // The settled retained handle obeys the same full correlation: the exact
+    // correlation projects the terminal standing, and a mismatched sourceRef
+    // still fails closed with no projection and no stop affordance.
+    expect(registry.hydrateCarrier(exact)).toMatchObject({
+      standing: "terminal",
+      identity: { carrierId },
+    });
+    expect(registry.hydrateCarrier({ ...exact, sourceRef: "conversation:foreign:action:foreign" }))
+      .toBeUndefined();
+  });
+
+  test("duplicate-correlation ambiguity fails closed with no projection and never selects by directory or UUID order", async () => {
+    const current = fixture();
+    const { registry, host, conversationId, turnId, actionId } = carrierParts(current, slowDriver);
+    const receipt = await host.executeOperation({
+      conversationId,
+      turnId,
+      actionId,
+      operation: continueOperation(current),
+    });
+    const carrierId = receipt.carrierId!;
+    const exact = { conversationId, turnId, actionId, sourceRef: taskActionSourceRef(conversationId, actionId) };
+    expect(carrierHydrationFromEvidence(current.home, exact)?.identity.carrierId)
+      .toBe(carrierId);
+
+    // A second attempt directory retaining the exact same full correlation:
+    // duplicate-correlation ambiguity, not an orderable family.
+    const duplicateId = randomUUID();
+    const original = readJson(join(attemptDirectory(current, carrierId), "attempt.json")) as Record<string, unknown>;
+    const duplicateDirectory = attemptDirectory(current, duplicateId);
+    mkdirSync(duplicateDirectory, { recursive: true });
+    writeFileSync(join(duplicateDirectory, "attempt.json"), `${JSON.stringify({
+      ...original,
+      attemptId: duplicateId,
+      inputRef: `state/task-attempts/${duplicateId}/cell-input.json`,
+      finalRecordRef: `state/task-attempts/${duplicateId}/cell-input.run.json`,
+    }, null, 2)}\n`);
+
+    // Two families now retain the exact correlation: fail closed with no
+    // projection, never a UUID-order winner and never a foreign identity.
+    expect(carrierHydrationFromEvidence(current.home, exact)).toBeUndefined();
+    const restarted = createConversationExecutionCarrierRegistry(current.home, {
+      catalog: fakeCatalog(fakeCard(), slowDriver),
+    });
+    expect(restarted.hydrateCarrier(exact)).toBeUndefined();
+
+    // Removing the duplicate restores the one exact family.
+    rmSync(duplicateDirectory, { recursive: true, force: true });
+    expect(carrierHydrationFromEvidence(current.home, exact)?.identity.carrierId)
+      .toBe(carrierId);
+
+    registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
+    await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
   });
 });
 
