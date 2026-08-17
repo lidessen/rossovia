@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T22:40:27Z",
+  "updatedAt": "2026-08-17T16:35:11Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -229,7 +229,20 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "PR #131 integrated exact candidate 74f8c5c4806a412ad658f17dfc0724fa80043252 as normal merge c95c067709d176d9a883be6aa84cbbf46fee9de8: ordinary Tasks no longer receive an implicit maxSteps limit; finite maxSteps remains an explicit opt-in policy, and only the exact historical raw-omitted/final-20 evidence relation is normalized for strict compatibility. Duration, cancellation, usage, trace, lease, attempt, terminal settlement, and Task authority remain bounded and unchanged. Final two-project DeepSeek browser dogfood, GLM/Harness trials, Principal Task acceptance, and whole Mission completion remain pending."
+    },
+    {
+      "id": "s1-cell-tool-port",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Add the optional provider-neutral caller-injected Cell tool port and AI SDK/Pi adapter translation on the exact reviewed combined runtime baseline without adding sub-worker or orchestration semantics.",
+      "returnCondition": "Return with one clean bounded S1 implementation commit from b83011d: neutral optional CellToolSet, sorted projected names and per-call bounded evidence, shared C2 abort/quiescence/finalization semantics, fail-closed adapter support/collision/schema behavior, the three phase-appropriate test stories, Work Cell full/typecheck/dependency/diff checks, fresh independent exact-head review, and no sub_worker, child Run, O2/O3, Task, retry, policy, Principal acceptance, Mission settlement, or remote integration.",
+      "sources": [
+        "conversation:active-goal#s1-cell-tool-port",
+        "task-shape:/root/shape_s1_cell_tool_port@b83011d72ce4d2bc41df7837ad100cf2bbabe5f6",
+        "review:/root/review_s1_cell_tool_shape"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "s1-cell-tool-port"
 }
