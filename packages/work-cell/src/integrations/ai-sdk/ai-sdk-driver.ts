@@ -226,6 +226,14 @@ export class AiSdkValidationDriver implements CellDriver {
           });
         },
         onToolExecutionStart: ({ callId, toolCall }) => {
+          // Injected cell-tool invocations retain only the canonical bounded
+          // cell.tool.settled evidence: the generic started/finished events
+          // are suppressed for them, so an injected name (for example
+          // write_file with no active write surface) can never be interpreted
+          // as a host payload target and no callId/duration/outcome
+          // duplication enters the trace. Host/task/terminal calls keep the
+          // ordinary generic events.
+          if (injectedCellToolNames?.has(toolCall.toolName)) return;
           context.emit("agent.tool.started", {
             callId,
             id: toolCall.toolCallId,
@@ -234,6 +242,7 @@ export class AiSdkValidationDriver implements CellDriver {
           });
         },
         onToolExecutionEnd: ({ callId, toolCall, toolExecutionMs, toolOutput }) => {
+          if (injectedCellToolNames?.has(toolCall.toolName)) return;
           context.emit("agent.tool.finished", {
             callId,
             id: toolCall.toolCallId,

@@ -261,6 +261,9 @@ export class PiHarnessCellDriver implements CellDriver {
     // normalized usage and the bounded cell.tool.* events are preserved.
     // Runs without injected tools are unchanged.
     const injectedCellToolsPresent = context.cellTools !== undefined;
+    const injectedCellToolNames = context.cellTools
+      ? new Set(Object.keys(context.cellTools.tools))
+      : undefined;
     context.emit("task.tools.projected", {
       taskToolSet: this.taskToolSet,
       tools: taskToolNames(this.taskToolSet),
@@ -409,6 +412,7 @@ export class PiHarnessCellDriver implements CellDriver {
         context,
         acceptStep: () => stepBudgetExhaustedAt === undefined,
         retainProviderMetadata: !injectedCellToolsPresent,
+        injectedCellToolNames,
         observeUsage: (usage) => {
           observedUsage = addUsage(observedUsage, usage);
           context.observeUsage(usage, "execution");
@@ -663,6 +667,13 @@ function createHarnessStreamObserver(options: {
   onStepFinished(finishReason: string, stepHadToolActivity: boolean): void;
   /** Provider metadata is never retained into the trace for an injected-tool run. */
   retainProviderMetadata: boolean;
+  /**
+   * Injected cell-tool invocations retain only the canonical bounded
+   * cell.tool.settled evidence: the generic agent.tool.started/finished
+   * events are suppressed for these names while their activity keeps
+   * counting toward the step budget.
+   */
+  injectedCellToolNames: ReadonlySet<string> | undefined;
 }): (chunk: unknown) => void {
   const { context } = options;
   let stepNumber = 0;
@@ -686,6 +697,12 @@ function createHarnessStreamObserver(options: {
     if (type === "tool-call") {
       stepHadToolActivity = true;
       const name = typeof value.toolName === "string" ? value.toolName : "unknown";
+      // An injected tool name is never interpreted as a host payload target:
+      // the generic started/finished events are suppressed for injected
+      // invocations (cell.tool.settled stays the sole per-invocation
+      // evidence), while the step-budget accounting above keeps counting
+      // their activity exactly like a host tool call.
+      if (options.injectedCellToolNames?.has(name)) return;
       context.emit("agent.tool.started", {
         id: typeof value.toolCallId === "string" ? value.toolCallId : undefined,
         name,
@@ -695,9 +712,11 @@ function createHarnessStreamObserver(options: {
     }
     if (type === "tool-result") {
       stepHadToolActivity = true;
+      const name = typeof value.toolName === "string" ? value.toolName : "unknown";
+      if (options.injectedCellToolNames?.has(name)) return;
       context.emit("agent.tool.finished", {
         id: typeof value.toolCallId === "string" ? value.toolCallId : undefined,
-        name: typeof value.toolName === "string" ? value.toolName : "unknown",
+        name,
         outcome: value.isError === true ? "tool-error" : "tool-result",
       });
       return;

@@ -1339,9 +1339,10 @@ describe("caller-injected cell tool translation", () => {
 
     // AI SDK half: the same fixture translates through the ToolLoopAgent path.
     const aiSdkLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const writeFileLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
     let calls = 0;
     let translatedTools: unknown;
-    let secondRequest: unknown;
+    let finalRequest: unknown;
     const model = new MockLanguageModelV3({
       doGenerate: async (options) => {
         calls += 1;
@@ -1354,7 +1355,18 @@ describe("caller-injected cell tool translation", () => {
             input: JSON.stringify({ text: "abc" }),
           }], "tool-calls");
         }
-        secondRequest = options;
+        if (calls === 2) {
+          // An injected tool borrowing an inactive built-in name: write_file
+          // is a valid name here because the Cell has no write surface, but
+          // its arbitrary input must never be interpreted as a host payload.
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: "ai-sdk-write-call",
+            toolName: "write_file",
+            input: JSON.stringify({ path: "docs/leak.md", content: "INJECTED_INPUT_SECRET" }),
+          }], "tool-calls");
+        }
+        finalRequest = options;
         return modelResponse([{ type: "text", text: "The inversion was delivered." }], "stop");
       },
     });
@@ -1362,7 +1374,23 @@ describe("caller-injected cell tool translation", () => {
       host: createLocalHost(),
       tools: {
         invert_fixture: neutralFixtureTool(aiSdkLog),
-        // Declared second and never called; proves the sorted-name projection.
+        // An inactive built-in name carried by an injected tool: the Cell has
+        // no write surface, so the name is valid, yet the generic
+        // agent.tool.* events must never treat its input as a host payload.
+        write_file: {
+          description: "An injected tool that borrows an inactive built-in name.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" }, content: { type: "string" } },
+            required: ["path", "content"],
+            additionalProperties: false,
+          },
+          execute: async (writeInput: unknown, context: CellToolExecutionContext) => {
+            writeFileLog.push({ input: writeInput, context });
+            return { handled: true };
+          },
+        },
+        // Declared and never called; proves the sorted-name projection.
         alpha_marker: {
           description: "Never called; proves the sorted projection.",
           inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -1375,7 +1403,7 @@ describe("caller-injected cell tool translation", () => {
     // Sorted authorized names, projected before dispatch.
     expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tools.projected",
-      data: { tools: ["alpha_marker", "invert_fixture"] },
+      data: { tools: ["alpha_marker", "invert_fixture", "write_file"] },
     }));
     // The translated model-facing schema is the neutral fixture schema.
     const translated = (translatedTools as Array<{ name: string; inputSchema?: unknown }> | undefined)
@@ -1391,21 +1419,40 @@ describe("caller-injected cell tool translation", () => {
     expect(aiSdkLog[0]?.input).toEqual({ text: "abc" });
     expect(aiSdkLog[0]?.context).toMatchObject({ toolCallId: "ai-sdk-call-1" });
     expect(aiSdkLog[0]?.context.signal.aborted).toBe(false);
-    expect(JSON.stringify(secondRequest)).toContain("cba");
+    expect(JSON.stringify(finalRequest)).toContain("cba");
+    // The inactive built-in-name injected tool ran as the injected port: the
+    // exact arbitrary input and exact toolCallId crossed to the caller
+    // implementation, and its settled bounded evidence is retained.
+    expect(writeFileLog).toHaveLength(1);
+    expect(writeFileLog[0]?.input).toEqual({ path: "docs/leak.md", content: "INJECTED_INPUT_SECRET" });
+    expect(writeFileLog[0]?.context).toMatchObject({ toolCallId: "ai-sdk-write-call" });
     expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tool.settled",
       data: { name: "invert_fixture", toolCallId: "ai-sdk-call-1", outcome: "fulfilled" },
     }));
+    expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "write_file", toolCallId: "ai-sdk-write-call", outcome: "fulfilled" },
+    }));
+    // Injected invocations carry no generic agent.tool.started/finished
+    // events: cell.tool.settled is the sole retained per-invocation evidence,
+    // so the injected write_file's arbitrary input is never interpreted as a
+    // host payload target and no callId/duration/outcome duplicate appears.
+    expect(aiSdkRecord.trace.filter((event) =>
+      event.type === "agent.tool.started" || event.type === "agent.tool.finished")).toEqual([]);
     // Per-invocation retention is exactly name, exact toolCallId, and settled
-    // outcome: the trace never copies the injected tool's input or result.
+    // outcome: the trace never copies any injected tool's input or result.
+    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("INJECTED_INPUT_SECRET");
+    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("docs/leak.md");
+    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("handled");
     expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("abc");
     expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("cba");
     // Total retained-evidence redaction: an injected-tool run omits the raw
     // provider steps entirely (they can echo injected inputs or results)
     // while normalized usage and the bounded events remain.
     expect(aiSdkRecord.rawSteps).toEqual([{ phase: "execution", steps: [] }]);
-    expect(aiSdkRecord.usage.totalTokens).toBe(4);
-    expect(calls).toBe(2);
+    expect(aiSdkRecord.usage.totalTokens).toBe(6);
+    expect(calls).toBe(3);
 
     // Pi half: the same neutral fixture through the harness driver, with the
     // causal tool-effect handoff and the post-terminal action closure in one
@@ -1510,6 +1557,15 @@ describe("caller-injected cell tool translation", () => {
     expect(JSON.stringify(piRecord.trace)).not.toContain("abc");
     expect(JSON.stringify(piRecord.trace)).not.toContain("cba");
     expect(JSON.stringify(piRecord.trace)).not.toContain("injectedEcho");
+    // The Pi adapter suppresses the generic started/finished events for
+    // injected tool names exactly like the AI SDK adapter — including the
+    // post-closure refused call — while the declared terminal tool keeps its
+    // ordinary generic events.
+    const piGenericToolNames = piRecord.trace
+      .filter((event) => event.type === "agent.tool.started" || event.type === "agent.tool.finished")
+      .map((event) => (event.data as { name?: unknown }).name);
+    expect(piGenericToolNames).not.toContain("invert_fixture");
+    expect(piGenericToolNames).toContain("finish_work");
     expect(piRecord.rawSteps).toEqual([{ phase: "execution", steps: [] }]);
     expect(piRecord.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
   });

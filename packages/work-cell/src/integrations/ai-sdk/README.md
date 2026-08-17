@@ -81,9 +81,14 @@ For an injected-tool run each adapter applies one fail-closed
 retained-evidence projection: step-level injected entries are removed from
 tool evidence, provider metadata never enters the trace, and the final
 rawSteps and providerMetadata are omitted entirely, because raw provider
-steps and metadata can echo injected inputs or results. Normalized usage and
-the bounded `cell.tool.*` events are preserved; runs without injected tools
-are byte/behavior compatible.
+steps and metadata can echo injected inputs or results. Both adapters also
+suppress the generic `agent.tool.started`/`agent.tool.finished` events for
+injected tool names — an injected name (for example `write_file` with no
+active write surface) can never be interpreted as a host payload target —
+while Pi keeps counting their activity for the step budget. `cell.tool.settled`
+stays the sole retained per-invocation evidence. Normalized usage and the
+bounded `cell.tool.*` events are preserved; runs without injected tools are
+byte/behavior compatible.
 
 ## Still owned elsewhere (host/process adapters, I2 scope)
 
