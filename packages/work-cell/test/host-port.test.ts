@@ -632,10 +632,9 @@ describe("caller-injected cell tools and the C2 admission boundary", () => {
     const record = await recordPromise;
 
     expect(record.status).toBe("cancelled");
-    // The caller's own abort reason is not a driver/provider failure and
-    // keeps its exact message; raw provider text would be projected to a
-    // stable status-based category instead.
-    expect(record.error).toBe("caller cancelled the probe");
+    // Any caught failure on an injected-tool run uses the core-owned stable
+    // status category; caller/provider text cannot re-enter the final.
+    expect(record.error).toBe("the Cell run was cancelled before completion");
     expect(observedSignals[0]?.aborted).toBeTrue();
     expect(executedInputs).toEqual([{ phase: "admitted" }]);
     // Both the settled admitted evidence and the boundary refusal precede the

@@ -2075,6 +2075,45 @@ describe("caller-injected cell tool translation", () => {
     expect(unsupported.error).toContain("plain_probe");
     expect(dispatched).toBe(false);
 
+    // A provider-neutral driver may directly await and propagate a caller
+    // tool rejection without an adapter-specific CellExecutionError wrapper.
+    // The core must still retain only the rejected settled triplet and a
+    // stable status category, never caller-controlled error text.
+    const REJECTION_SECRET = "caller-tool-rejection-secret-r4t5y6u7i8o9";
+    const REJECTION_CALL_ID = "caller-tool-rejection-call-a9s8d7f6g5h4";
+    const rejectionDriver: CellDriver = {
+      descriptor: { adapter: "neutral-rejection", provider: "deterministic", model: "fixture" },
+      supportsCellTools: true,
+      async run(_input, context) {
+        await context.cellTools?.execute("reject_probe", {}, REJECTION_CALL_ID);
+        throw new Error("the rejection must stop the driver");
+      },
+    };
+    const rejected = await runCell(cellToolCell(root), rejectionDriver, {
+      host: createLocalHost(),
+      tools: {
+        reject_probe: {
+          description: "Reject with caller-controlled text.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => {
+            throw new Error(REJECTION_SECRET);
+          },
+        },
+      },
+    });
+    expect(rejected.status).toBe("failed");
+    expect(rejected.error).toBe("the provider or driver failed during this run");
+    expect(rejected.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "reject_probe", toolCallId: REJECTION_CALL_ID, outcome: "rejected" },
+    }));
+    expectBoundedInjectedRetention(
+      rejected,
+      ["reject_probe"],
+      [REJECTION_CALL_ID],
+      [REJECTION_SECRET],
+    );
+
     // The per-execution tool snapshot is bound synchronously before runCell's
     // first await: mutating the caller's set after the run began — adding a
     // name, replacing execute, rewriting the schema — can never change the
@@ -2176,12 +2215,24 @@ describe("caller-injected cell tool translation", () => {
         throw new Error("model dispatch should not occur");
       },
     });
-    const invalidTools = {
+    const protoOnlyTools = {
       ["__proto__"]: {
         description: "Invalid own prototype-shaped name.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
         execute: async () => ({ value: "never" }),
       },
+    } as unknown as CellToolSet;
+    expect(Object.hasOwn(protoOnlyTools, "__proto__")).toBeTrue();
+    const protoOnly = await runCell(
+      cellToolCell(root),
+      aiSdkDriver(invalidModel, "mock-invalid-prototype-cell-tool"),
+      { host: createLocalHost(), tools: protoOnlyTools },
+    );
+    expect(protoOnly.status).toBe("failed");
+    expect(protoOnly.error).toBe("the provider or driver failed during this run");
+    expect(invalidDispatchCalls).toBe(0);
+
+    const invalidTools = {
       "Bad-Name": {
         description: "Invalid name shape.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -2193,15 +2244,12 @@ describe("caller-injected cell tool translation", () => {
         execute: async () => ({ value: "never" }),
       },
     } as unknown as CellToolSet;
-    expect(Object.hasOwn(invalidTools, "__proto__")).toBeTrue();
     const invalid = await runCell(cellToolCell(root), aiSdkDriver(invalidModel, "mock-invalid-cell-tool"), {
       host: createLocalHost(),
       tools: invalidTools,
     });
     expect(invalid.status).toBe("failed");
-    expect(invalid.error).toContain("cell tool names use lowercase snake_case: __proto__");
-    expect(invalid.error).toContain("cell tool names use lowercase snake_case: Bad-Name");
-    expect(invalid.error).toContain("cell tool bad_schema requires an object-root input schema");
+    expect(invalid.error).toBe("the provider or driver failed during this run");
     expect(invalidDispatchCalls).toBe(0);
 
     // Active host, task, and declared terminal name collisions fail closed
@@ -2238,15 +2286,7 @@ describe("caller-injected cell tool translation", () => {
       });
 
       expect(collisionRecord.status).toBe("failed");
-      if (name === "finish_work") {
-        expect(collisionRecord.error).toContain(
-          "cell tool name conflicts with a declared terminal tool: finish_work",
-        );
-      } else {
-        expect(collisionRecord.error).toContain(
-          `cell tool names conflict with the active execution tool surface: ${name}`,
-        );
-      }
+      expect(collisionRecord.error).toBe("the provider or driver failed during this run");
       expect(dispatchCalls).toBe(0);
     }
   });

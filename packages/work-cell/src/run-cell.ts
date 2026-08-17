@@ -159,11 +159,6 @@ export async function runCell(
   let status: CellTerminalStatus = "failed";
   let error: string | undefined;
   let driverResult: Awaited<ReturnType<CellDriver["run"]>> | undefined;
-  // True once the provider was actually dispatched. Core contract
-  // validation failures before dispatch keep their exact messages; a
-  // caught driver/provider failure after dispatch is projected to one
-  // stable status-based category for an injected-tool run.
-  let driverDispatched = false;
   let failureUsage = emptyUsage();
   let failureSettlementUsage: CellUsage | undefined;
   let observedExecutionUsage = emptyUsage();
@@ -245,7 +240,6 @@ export async function runCell(
       // only from that canonical value; the supplied driver receives an
       // isolated immutable parsed copy it can never rewrite.
       try {
-        driverDispatched = true;
         driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
       } finally {
         // The driver settled without aborting: the synchronous gate-close
@@ -323,14 +317,14 @@ export async function runCell(
       if (signal.aborted) status = "cancelled";
       else if (caught instanceof TerminalContractError) status = "protocol_error";
       else status = "failed";
-      // For an injected-tool run a caught driver/provider failure is
-      // projected to one stable status-based category before cell.error and
-      // the final: the CellExecutionError/TerminalContractError carriers can
-      // hold raw provider or adapter error text that echoes injected tool
-      // inputs or results, and that text is never retained. Plain errors —
-      // core contract validation and adapter fail-closed contract text,
-      // including the caller's own abort reason — keep their exact messages.
-      error = cellToolGate !== undefined && driverDispatched && caught instanceof CellExecutionError
+      // For any run with a nonempty bound injected-tool set, every caught
+      // failure is projected to one stable status-based category before
+      // cell.error and the final. A provider-neutral driver may propagate a
+      // caller tool's raw rejection without wrapping it as CellExecutionError;
+      // the core boundary cannot make safe retention depend on an adapter
+      // convention. Typed execution errors still contribute observed usage
+      // above. Runs without injected tools keep their historical raw error.
+      error = hasInjectedCellTools
         ? stableCellFailureMessage(status)
         : caught instanceof Error ? caught.message : String(caught);
       emit("cell.error", { status, error });
