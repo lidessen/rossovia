@@ -4,6 +4,7 @@ import {
   ConversationConflictError,
   ConversationEventSchema,
   ConversationIdSchema,
+  taskActionSourceRef,
   type ActionRequestedEvent,
   type ConversationEvent,
 } from "./contracts";
@@ -267,16 +268,22 @@ export interface ConversationSocketRuntimeOptions {
  * `FileConversationJournal` instance from its construction boundary, keeps
  * the current Workbench server the sole journal writer, and delivers durable
  * journal events plus provisional deltas to every socket of a conversation.
- * On upgrade it replays durable events after the cursor, then subscribes the
- * socket to live events; events appended during replay are buffered and
- * flushed without duplication. Only `journal.event` advances the cursor.
- * After replay and reconciliation, each committed task_continue action's
- * exact carrier standing is re-derived from the retained carrier handle or
- * the canonical attempt/final/settlement evidence and hydrated as one
- * per-socket `carrier.standing` frame: a retained live handle restores the
- * exact stop affordance, and terminal/unknown evidence restores
- * non-stoppable standing/history. Hydration is read-only and never replayed
- * or broadcast, so a reconnect can never duplicate an effect or frame.
+ * On upgrade each socket runs one strictly ordered per-socket boundary —
+ * reconcile, durable replay, owner hydration, then live: unsettled actions
+ * settle against the canonical owners, all durable events after the cursor
+ * (including ones appended during the read) replay in exact journal order,
+ * then each committed task_continue action's exact carrier standing is
+ * re-derived from the retained carrier handle or the canonical
+ * attempt/final/settlement evidence and hydrated as one per-socket
+ * `carrier.standing` frame, and only then do buffered provisional frames
+ * flow and the socket go live. A retained live handle restores the exact
+ * stop affordance; terminal/unknown evidence restores non-stoppable
+ * standing/history. A carrier that settles inside the replay/hydration
+ * window therefore produces exactly one authoritative terminal projection:
+ * the hydration standing, with the duplicate buffered `carrier.terminal`
+ * suppressed and no `projection.changed` delivered before the hydration
+ * boundary. Hydration is read-only and never replayed or broadcast, so a
+ * reconnect can never duplicate an effect or frame.
  *
  * Each accepted Principal message is receipted exactly once, then run through
  * the injected turn owner: the durable `coordinator.turn-started` (with the
@@ -416,11 +423,19 @@ export class ConversationSocketRuntime {
       this.reconnectEntry(entry));
   }
 
-  /** One socket's exact reconnect sequence: reconcile, replay, hydrate. */
+  /** One socket's exact reconnect sequence: reconcile, replay, hydrate, live. */
   private async reconnectEntry(entry: SocketEntry): Promise<void> {
     await this.reconcileConversation(entry.conversationId);
     await this.replay(entry);
-    await this.hydrateConversationCarriers(entry);
+    // The owner-backed hydration runs strictly after durable replay and
+    // strictly before the live boundary: every provisional broadcast
+    // (carrier.terminal, projection.changed) stays buffered until goLive,
+    // and a terminal standing hydration suppresses the duplicate buffered
+    // carrier.terminal so a settlement inside the replay/hydration window
+    // yields exactly one authoritative terminal projection.
+    const hydratedTerminalKeys = new Set<string>();
+    await this.hydrateConversationCarriers(entry, hydratedTerminalKeys);
+    this.goLive(entry, hydratedTerminalKeys);
   }
 
   /**
@@ -437,7 +452,10 @@ export class ConversationSocketRuntime {
    * terminal/unknown standing/history without stale client memory, without
    * any mutation, and without a duplicated broadcast frame.
    */
-  private async hydrateConversationCarriers(entry: SocketEntry): Promise<void> {
+  private async hydrateConversationCarriers(
+    entry: SocketEntry,
+    hydratedTerminalKeys: Set<string>,
+  ): Promise<void> {
     if (this.carrierRegistry === undefined) return;
     const { conversationId } = entry;
     let events: readonly ConversationEvent[];
@@ -453,18 +471,36 @@ export class ConversationSocketRuntime {
       if (event.type !== "action.requested" || event.data.kind !== "task_continue") {
         continue;
       }
+      // Only actions already delivered by this socket's durable replay are
+      // hydrated, so a standing frame can never precede its causal journal
+      // event; an action appended after the replay read is delivered by the
+      // buffered-durable flush and never gets a guessed standing here.
+      if (event.sequence > entry.replayedUpTo) continue;
       const action = event.data;
       let hydration: CarrierHydration | undefined;
       try {
         hydration = this.carrierRegistry.hydrateCarrier({
           conversationId,
+          turnId: action.turnId,
           actionId: action.actionId,
+          sourceRef: taskActionSourceRef(conversationId, action.actionId),
         });
       } catch {
         // An owner read failure hydrates nothing: no live guess, no effect.
         continue;
       }
       if (hydration === undefined) continue;
+      if (hydration.standing === "terminal") {
+        // The one authoritative terminal projection of this boundary: the
+        // buffered carrier.terminal broadcast of the same exact carrier is
+        // suppressed at the live boundary so a settlement inside the
+        // replay/hydration window never yields a duplicate terminal frame.
+        hydratedTerminalKeys.add(terminalProjectionKey(
+          action.turnId,
+          action.actionId,
+          hydration.identity.carrierId,
+        ));
+      }
       entry.ws.send(JSON.stringify(carrierStandingFrame({
         turnId: action.turnId,
         messageId: action.messageId,
@@ -488,13 +524,12 @@ export class ConversationSocketRuntime {
         entry.ws.send(JSON.stringify(journalEventFrame(event)));
         entry.replayedUpTo = event.sequence;
       }
-      for (const frame of entry.buffer) {
-        if (entry.closed) return;
-        if (frame.type === "journal.event" && frame.event.sequence <= entry.replayedUpTo) continue;
-        entry.ws.send(JSON.stringify(frame));
-      }
-      entry.buffer = [];
-      entry.phase = "live";
+      // Durable events appended after the read began were buffered; deliver
+      // them now, still inside the durable replay phase and strictly before
+      // the hydration boundary, in exact journal order without duplication.
+      // The socket stays replaying: no buffered provisional frame can
+      // precede hydration.
+      this.flushBufferedDurable(entry);
     } catch (error: unknown) {
       if (entry.closed) return;
       entry.ws.send(JSON.stringify(protocolErrorFrame(
@@ -503,6 +538,56 @@ export class ConversationSocketRuntime {
       )));
       entry.ws.close(1011, "conversation journal read failed");
     }
+  }
+
+  /** Deliver buffered durable journal events in exact sequence order, deduplicated. */
+  private flushBufferedDurable(entry: SocketEntry): void {
+    const remaining: ServerFrame[] = [];
+    for (const frame of entry.buffer) {
+      if (entry.closed) return;
+      if (frame.type !== "journal.event") {
+        remaining.push(frame);
+        continue;
+      }
+      if (frame.event.sequence <= entry.replayedUpTo) continue;
+      entry.ws.send(JSON.stringify(frame));
+      entry.replayedUpTo = frame.event.sequence;
+    }
+    entry.buffer = remaining;
+  }
+
+  /**
+   * The exact live boundary of one socket, strictly after durable replay and
+   * owner hydration: durable events buffered after the replay read are
+   * delivered first (in journal order, deduplicated), then provisional
+   * frames in their buffered arrival order — except a `carrier.terminal`
+   * frame whose exact carrier hydration already projected the one
+   * authoritative terminal standing, which is suppressed so a terminal
+   * settlement inside the replay/hydration window produces exactly one
+   * terminal projection. Only then does the socket go live, so no
+   * provisional frame — and in particular no `projection.changed` — can ever
+   * precede the hydration boundary.
+   */
+  private goLive(entry: SocketEntry, hydratedTerminalKeys: ReadonlySet<string>): void {
+    if (entry.closed) return;
+    this.flushBufferedDurable(entry);
+    if (entry.closed) return;
+    const buffered = entry.buffer;
+    entry.buffer = [];
+    for (const frame of buffered) {
+      if (entry.closed) return;
+      if (
+        frame.type === "carrier.terminal"
+        && hydratedTerminalKeys.has(terminalProjectionKey(
+          frame.turnId,
+          frame.actionId,
+          frame.carrierId,
+        ))
+      ) continue;
+      entry.ws.send(JSON.stringify(frame));
+    }
+    if (entry.closed) return;
+    entry.phase = "live";
   }
 
   private onMessage(ws: Bun.ServerWebSocket<ConversationSocketData>, message: string | Buffer<ArrayBuffer>): void {
@@ -1401,6 +1486,11 @@ export class ActionRequestJournalError extends Error {
     super(message);
     this.name = "ActionRequestJournalError";
   }
+}
+
+/** The exact (turn, action, carrier) identity key of one terminal projection. */
+function terminalProjectionKey(turnId: string, actionId: string, carrierId: string): string {
+  return `${turnId}\u0000${actionId}\u0000${carrierId}`;
 }
 
 function isActionTerminalEvent(

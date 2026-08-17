@@ -1154,6 +1154,7 @@ async function startOperationServer(
   operationHost?: ConversationOperationHost,
   projectionProvider?: ConversationContextProvider,
   carrierRegistry?: ConversationExecutionCarrierRegistry,
+  replayDelayMs = 0,
 ): Promise<{
   runtime: ConversationSocketRuntime;
   server: Bun.Server<ConversationSocketData>;
@@ -1161,6 +1162,7 @@ async function startOperationServer(
 }> {
   const runtime = new ConversationSocketRuntime(root, {
     turnOwner: owner,
+    replayDelayMs,
     ...(operationHost === undefined ? {} : { operationHost }),
     ...(projectionProvider === undefined ? {} : { projectionProvider }),
     ...(carrierRegistry === undefined ? {} : { carrierRegistry }),
@@ -1729,7 +1731,9 @@ interface FakeCarrierRegistry {
   /** Mirrors the production registry: retained handle liveness, else the canonical evidence family. */
   hydrateCarrier(input: {
     readonly conversationId: string;
+    readonly turnId: string;
     readonly actionId: string;
+    readonly sourceRef: string;
   }): CarrierHydration | undefined;
   /** Home the evidence-backed hydration (no retained handle) reads from. */
   evidenceHome: string;
@@ -1798,18 +1802,21 @@ function fakeCarrierRegistry(options: { startable?: boolean } = {}): FakeCarrier
       const carrierId = started.get(`${input.conversationId}\u0000${input.actionId}`);
       if (carrierId !== undefined) {
         const handle = handles.get(carrierId);
-        if (handle !== undefined) {
+        // The exact retained handle contributes its standing only when its
+        // identity satisfies the full journal-owned correlation.
+        if (handle !== undefined && handle.identity.turnId === input.turnId) {
           const liveness = handle.liveness();
           return liveness.state === "live"
             ? { standing: "live", identity: handle.identity }
             : { standing: "terminal", identity: handle.identity, settlement: liveness.settlement };
         }
       }
-      return carrierHydrationFromEvidence(
-        registry.evidenceHome,
-        input.conversationId,
-        input.actionId,
-      );
+      return carrierHydrationFromEvidence(registry.evidenceHome, {
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+        sourceRef: input.sourceRef,
+      });
     },
     handles,
     started,
@@ -1821,12 +1828,22 @@ function fakeCarrierRegistry(options: { startable?: boolean } = {}): FakeCarrier
 /**
  * One deterministic host that starts a fake carrier for a task_continue and
  * applies work_control stops through the fake registry: the exact surface
- * the terminal-carrier transport tests need.
+ * the terminal-carrier transport tests need. Every executed operation is
+ * recorded so tests can prove hydration and replay never re-enter an effect.
  */
-function continueControlHost(registry: FakeCarrierRegistry): ConversationOperationHost {
+function continueControlHost(
+  registry: FakeCarrierRegistry,
+  options: { trace?: string[] } = {},
+): ConversationOperationHost & {
+  executed: Array<{ conversationId: string; actionId: string; operation: ConversationOperation }>;
+} {
+  const executed: Array<{ conversationId: string; actionId: string; operation: ConversationOperation }> = [];
   return {
     home: "/tmp/fake-continue-control-host",
+    executed,
     executeOperation(input) {
+      options.trace?.push("effect");
+      executed.push(input);
       const operation = input.operation;
       if (operation.kind === "task_continue") {
         const receipt = registry.startCarrier({
@@ -2884,6 +2901,145 @@ describe("conversation socket reconnect carrier hydration", () => {
       expect(terminalIndex).toBeGreaterThan(standingIndex);
       expect(reconnected.messages.filter((frame) => frame.type === "carrier.terminal")).toHaveLength(1);
     } finally {
+      reconnected.ws.close();
+      server.stop(true);
+    }
+  });
+
+  test("a retained carrier settling inside the replay window hydrates one authoritative terminal projection with no duplicate frame, no pre-boundary projection.changed, and no re-executed effect", async () => {
+    const root = tempRoot();
+    const registry = fakeCarrierRegistry({ startable: true });
+    const host = continueControlHost(registry);
+    const { runtime, server, socketUrl } = await startOperationServer(
+      root,
+      scriptedOwner([operationScript("Continuing the fixture task.", CONTINUE_OPERATION)]),
+      host,
+      undefined,
+      registry,
+      /* replayDelayMs */ 120,
+    );
+    const conversationId = randomUUID();
+    const first = await connect(socketUrl(conversationId, -1));
+    try {
+      submit(first, randomUUID(), "continue the fixture task");
+      await waitFor(() => first.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.settled"), "the continue action settles");
+      const events = await runtime.journal.readEvents(conversationId);
+      const requested = events.find((event) => event.type === "action.requested");
+      if (requested === undefined || requested.type !== "action.requested") {
+        throw new Error("expected the task_continue action.requested");
+      }
+      const carrier = registry.startedCarrier(conversationId, requested.data.actionId);
+      if (carrier === undefined) throw new Error("expected a retained carrier");
+      expect(carrier.liveness()).toEqual({ state: "live" });
+      first.ws.close();
+    } finally {
+      first.ws.close();
+    }
+    expect(host.executed).toHaveLength(1);
+
+    // Settle the retained live carrier deterministically inside the
+    // reconnecting socket's replay window: the settlement fires the moment
+    // the delayed durable replay read begins, while the socket is still in
+    // its replaying phase and long before hydration.
+    const events = await runtime.journal.readEvents(conversationId);
+    const requested = events.find((event) => event.type === "action.requested");
+    if (requested === undefined || requested.type !== "action.requested") {
+      throw new Error("expected the task_continue action.requested");
+    }
+    const target = { turnId: requested.data.turnId, messageId: requested.data.messageId, actionId: requested.data.actionId };
+    const carrier = registry.startedCarrier(conversationId, target.actionId);
+    if (carrier === undefined) throw new Error("expected a retained carrier");
+    const originalReadEventsAfter = runtime.journal.readEventsAfter.bind(runtime.journal);
+    let settledDuringReplay = false;
+    runtime.journal.readEventsAfter = (id: string, cursor: number) => {
+      if (!settledDuringReplay) {
+        settledDuringReplay = true;
+        carrier.settle({
+          status: "recorded",
+          evidenceRefs: [
+            `workbench:state/task-attempts/${carrier.identity.carrierId}/settlement.json`,
+            `workbench:state/task-attempts/${carrier.identity.carrierId}/cell-input.run.json`,
+          ],
+          cellStatus: "passed",
+        });
+      }
+      return originalReadEventsAfter(id, cursor);
+    };
+
+    const reconnected = await connect(socketUrl(conversationId, -1));
+    try {
+      await waitFor(() => reconnected.messages.some((frame) =>
+        frame.type === "carrier.standing" && frame.standing === "terminal"),
+        "the authoritative terminal hydration standing");
+      await waitFor(() => reconnected.messages.some((frame) =>
+        frame.type === "projection.changed"), "the projection refresh after the hydration boundary");
+
+      const standings = standingFrames(reconnected.messages);
+      expect(standings).toHaveLength(1);
+      expect(standings[0]).toEqual({
+        type: "carrier.standing",
+        standing: "terminal",
+        turnId: target.turnId,
+        messageId: target.messageId,
+        actionId: target.actionId,
+        carrierId: carrier.identity.carrierId,
+        taskId: "fixture-task",
+        attemptId: carrier.identity.carrierId,
+        status: "recorded",
+        cellStatus: "passed",
+        evidenceRefs: [
+          `workbench:state/task-attempts/${carrier.identity.carrierId}/settlement.json`,
+          `workbench:state/task-attempts/${carrier.identity.carrierId}/cell-input.run.json`,
+        ],
+      });
+      // Exactly one authoritative terminal projection: the buffered
+      // carrier.terminal broadcast of the settle-during-replay is suppressed
+      // as a duplicate of the hydration standing, never a second frame.
+      expect(reconnected.messages.filter((frame) => frame.type === "carrier.terminal")).toEqual([]);
+      const standingIndex = reconnected.messages.findIndex((frame) => frame.type === "carrier.standing");
+      const projectionIndex = reconnected.messages.findIndex((frame) => frame.type === "projection.changed");
+      const journalIndex = reconnected.messages.findLastIndex((frame) => frame.type === "journal.event");
+      // The hydration boundary follows every replayed durable event.
+      expect(journalIndex).toBeGreaterThanOrEqual(0);
+      expect(standingIndex).toBeGreaterThan(journalIndex);
+      // No projection.changed before the hydration boundary; the refresh is
+      // delivered exactly once, strictly after the standing.
+      expect(projectionIndex).toBeGreaterThan(standingIndex);
+      expect(reconnected.messages.filter((frame) => frame.type === "projection.changed")).toHaveLength(1);
+      // The durable replay stays complete and ordered; nothing was dropped.
+      // The full typed task_continue turn journals five durable events before
+      // the later rejected stop: message.received, coordinator.turn-started,
+      // action.requested, action.settled, and the coordinator terminal event.
+      expect(durableSequences(reconnected.messages)).toEqual([0, 1, 2, 3, 4]);
+      // No duplicate effect: the settle re-executed nothing, no control ran,
+      // and the journal gained no event.
+      expect(host.executed).toHaveLength(1);
+      expect(registry.controls).toHaveLength(0);
+      expect(carrier.stops).toHaveLength(0);
+      expect(await runtime.journal.readEvents(conversationId)).toHaveLength(5);
+
+      // The now-terminal carrier's stop affordance is gone and the exact
+      // strict stop still fails closed with zero carrier effect.
+      workControlFrame(reconnected, {
+        turnId: target.turnId,
+        actionId: target.actionId,
+        carrierId: carrier.identity.carrierId,
+        control: "stop",
+      });
+      await waitFor(() => reconnected.messages.some((frame) =>
+        frame.type === "journal.event" && frame.event.type === "action.failed"
+          && frame.event.data.actionId !== target.actionId), "the terminal stop fails durably");
+      const failure = reconnected.messages.find((frame) =>
+        frame.type === "journal.event"
+          && frame.event.type === "action.failed"
+          && frame.event.data.actionId !== target.actionId);
+      expect(failure?.type === "journal.event" && failure.event.type === "action.failed"
+        ? failure.event.data.reason
+        : undefined).toContain("already settled");
+      expect(carrier.stops).toHaveLength(0);
+    } finally {
+      runtime.journal.readEventsAfter = originalReadEventsAfter;
       reconnected.ws.close();
       server.stop(true);
     }

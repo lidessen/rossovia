@@ -24,6 +24,7 @@ import {
 } from "../task-run";
 import {
   readStrictTaskAttemptEvidence,
+  type ParsedTaskRunAttempt,
   type ParsedTaskRunSettlement,
   type StrictTaskAttemptEvidence,
 } from "../task-attempts";
@@ -195,16 +196,24 @@ export interface ConversationExecutionCarrierRegistry {
   /**
    * Re-derive the exact owner-backed standing of the carrier started by one
    * committed task_continue action, for reconnect hydration after durable
-   * replay/reconciliation. A retained runtime handle contributes its live or
-   * terminal liveness; with no retained handle the canonical attempt
-   * evidence family is searched for the action's exact durable correlation
-   * and projected as terminal or unknown — never live. Undefined when no
-   * carrier evidence exists for the action. Read-only: no start, stop,
-   * reconciliation, or mutation is performed.
+   * replay/reconciliation. The action's full journal-owned correlation —
+   * conversation, turn, action, and the deterministic causal sourceRef — is
+   * required: a retained runtime handle contributes its live or terminal
+   * liveness only when its exact identity satisfies the same correlation,
+   * and with no retained handle the canonical attempt evidence family must
+   * match the full correlation exactly. Zero, partial, or multiple matching
+   * attempt families fail closed as no projection, so no foreign Task or
+   * attempt identity is ever attached and no family is ever selected by
+   * directory or UUID order. Projected terminal or unknown standing is
+   * never live. Undefined when no exact carrier evidence exists for the
+   * action. Read-only: no start, stop, reconciliation, or mutation is
+   * performed.
    */
   hydrateCarrier(input: {
     readonly conversationId: string;
+    readonly turnId: string;
     readonly actionId: string;
+    readonly sourceRef: string;
   }): CarrierHydration | undefined;
 }
 
@@ -377,20 +386,28 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
 
   hydrateCarrier(input: {
     readonly conversationId: string;
+    readonly turnId: string;
     readonly actionId: string;
+    readonly sourceRef: string;
   }): CarrierHydration | undefined {
     const attemptId = this.startedByCommittedAction.get(
       committedActionKey(input.conversationId, input.actionId),
     );
     if (attemptId !== undefined) {
       const handle = this.handles.get(attemptId);
-      if (handle !== undefined) return hydrationFromHandle(handle);
+      // The retained handle contributes its standing only when its exact
+      // identity satisfies the full journal-owned correlation; a turn
+      // mismatch is a partial match and must never hydrate a foreign handle.
+      if (handle !== undefined && handle.identity.turnId === input.turnId) {
+        return hydrationFromHandle(handle);
+      }
     }
-    return carrierHydrationFromEvidence(
-      this.home,
-      input.conversationId,
-      input.actionId,
-    );
+    return carrierHydrationFromEvidence(this.home, {
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      actionId: input.actionId,
+      sourceRef: input.sourceRef,
+    });
   }
 
   private prepareCarrierRun(operation: TaskContinueOperation): PreparedPrincipalTaskRun {
@@ -906,56 +923,75 @@ function hydrationFromHandle(handle: ConversationCarrierHandle): CarrierHydratio
 /**
  * Re-derive the standing of one committed task_continue action from the
  * canonical attempt evidence family when this process retains no runtime
- * handle (server reload/restart). The exact durable correlation retained on
- * the immutable attempt record selects the attempt; its strict evidence is
- * then projected terminal only when the settlement is valid and its exact
- * lease release succeeded — otherwise unknown, never live, never a new
- * effect. Undefined when no attempt retains the action's correlation.
+ * handle (server reload/restart). The action's full journal-owned
+ * correlation — conversation, turn, action, and the deterministic causal
+ * sourceRef — selects the exact attempt family: every field must match the
+ * immutable attempt record's retained correlation. Zero, partial, or
+ * multiple matching attempt families fail closed as no projection, so no
+ * selection is ever made by directory or UUID order and no foreign Task or
+ * attempt identity is ever attached to the journal action. A single exact
+ * family's strict evidence is then projected terminal only when the
+ * settlement is valid and its exact lease release succeeded — otherwise
+ * unknown, never live, never a new effect. Undefined when no attempt
+ * retains the action's full correlation.
  */
 export function carrierHydrationFromEvidence(
   home: string,
-  conversationId: string,
-  actionId: string,
+  correlation: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+    readonly sourceRef: string;
+  },
 ): CarrierHydration | undefined {
+  const matches: Array<{ attemptId: string; attempt: ParsedTaskRunAttempt }> = [];
   for (const attemptId of listAttemptDirectories(home)) {
     const evidence = readStrictTaskAttemptEvidence(home, attemptId);
     const attempt = evidence.attempt;
     if (attempt === undefined) continue;
-    const correlation = attempt.correlation;
+    const attemptCorrelation = attempt.correlation;
     if (
-      correlation === undefined
-      || correlation.conversationId !== conversationId
-      || correlation.actionId !== actionId
+      attemptCorrelation === undefined
+      || attemptCorrelation.conversationId !== correlation.conversationId
+      || attemptCorrelation.turnId !== correlation.turnId
+      || attemptCorrelation.actionId !== correlation.actionId
+      || attemptCorrelation.sourceRef !== correlation.sourceRef
     ) continue;
-    const identity: ConversationCarrierIdentity = {
-      carrierId: attemptId,
-      conversationId,
-      turnId: correlation.turnId,
-      actionId,
-      taskId: attempt.taskId,
-      attemptId,
-      workerId: attempt.workerId ?? "",
-      worktree: evidence.input?.workspace.root ?? "",
-    };
-    const withoutHandle = carrierStandingWithoutHandle(home, attemptId);
-    if (withoutHandle.kind === "settled" && evidence.settlement !== undefined) {
-      return {
-        standing: "terminal",
-        identity,
-        settlement: terminalSettlementFromEvidence(
-          evidence.settlement,
-          evidence,
-        ),
-      };
-    }
-    const reason = evidence.standing === "invalid"
-      ? `attempt evidence is invalid and cannot settle standing: ${evidence.error ?? "invalid evidence"}`
-      : withoutHandle.kind === "settled"
-        ? "the attempt settled but its terminal settlement could not be re-read"
-        : "the attempt has no valid terminal settlement and liveness cannot be claimed";
-    return { standing: "unknown", identity, reason };
+    matches.push({ attemptId, attempt });
   }
-  return undefined;
+  // Fail closed unless exactly one attempt family retains the full
+  // correlation: never select by directory or UUID order, never attach a
+  // foreign attempt identity to the journal action.
+  if (matches.length !== 1) return undefined;
+  const { attemptId, attempt } = matches[0]!;
+  const evidence = readStrictTaskAttemptEvidence(home, attemptId);
+  const identity: ConversationCarrierIdentity = {
+    carrierId: attemptId,
+    conversationId: correlation.conversationId,
+    turnId: correlation.turnId,
+    actionId: correlation.actionId,
+    taskId: attempt.taskId,
+    attemptId,
+    workerId: attempt.workerId ?? "",
+    worktree: evidence.input?.workspace.root ?? "",
+  };
+  const withoutHandle = carrierStandingWithoutHandle(home, attemptId);
+  if (withoutHandle.kind === "settled" && evidence.settlement !== undefined) {
+    return {
+      standing: "terminal",
+      identity,
+      settlement: terminalSettlementFromEvidence(
+        evidence.settlement,
+        evidence,
+      ),
+    };
+  }
+  const reason = evidence.standing === "invalid"
+    ? `attempt evidence is invalid and cannot settle standing: ${evidence.error ?? "invalid evidence"}`
+    : withoutHandle.kind === "settled"
+      ? "the attempt settled but its terminal settlement could not be re-read"
+      : "the attempt has no valid terminal settlement and liveness cannot be claimed";
+  return { standing: "unknown", identity, reason };
 }
 
 /**
