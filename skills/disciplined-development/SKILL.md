@@ -106,8 +106,8 @@ retain regressions for observed causes and focused boundary or compatibility
 checks for public contracts. At integration, prove the real seam between parts.
 For release hardening, expand fault and regression coverage in proportion to
 consequence and supported operating conditions. These are local judgments, not
-required stages or test counts; a load-bearing safety boundary may need strict
-evidence from the first effectful probe.
+required stages or test counts. When a candidate can cross a load-bearing
+safety boundary, the first effectful probe must exercise that boundary.
 
 Before adding or retaining a test, be able to explain in one short sentence:
 the behavior claim, the realistic defect it would expose, the decision that
