@@ -252,13 +252,6 @@ export interface ConversationExecutionCarrierOptions {
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
-  /**
-   * Test-only crash boundary invoked synchronously after the immutable Run
-   * request record is published and before writer acquisition or any
-   * mutable preparation: at this boundary the Run record exists while no
-   * writer claim and no CellInput exist.
-   */
-  readonly onRunRequestPublished?: (runId: string) => void;
 }
 
 export function createConversationExecutionCarrierRegistry(
@@ -267,7 +260,7 @@ export function createConversationExecutionCarrierRegistry(
 ): ConversationExecutionCarrierRegistry {
   const home = resolveHome(homeArgument);
   const catalog = options.catalog ?? currentCatalog(options.environment ?? process.env);
-  return new WorkbenchConversationCarrierRegistry(home, catalog, options);
+  return new WorkbenchConversationCarrierRegistry(home, catalog);
 }
 
 class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarrierRegistry {
@@ -277,16 +270,10 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
   private readonly runControlRegistry = new RunControlRegistry();
   private readonly handles = new Map<string, TaskRunCellCarrier>();
   private readonly startedByCommittedAction = new Map<string, string>();
-  private readonly onRunRequestPublished: ((runId: string) => void) | undefined;
 
-  constructor(
-    home: string,
-    catalog: WorkerCatalog,
-    options: ConversationExecutionCarrierOptions,
-  ) {
+  constructor(home: string, catalog: WorkerCatalog) {
     this.home = home;
     this.catalog = catalog;
-    this.onRunRequestPublished = options.onRunRequestPublished;
   }
 
   startCarrier(input: {
@@ -332,16 +319,16 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
       workerId: resolved.card.id,
       execution: resolved.execution,
       worktree: resolved.worktree,
-    };
-    const correlation = {
-      conversationId: input.conversationId,
-      turnId: input.turnId,
-      actionId: input.actionId,
-      sourceRef: taskActionSourceRef(input.conversationId, input.actionId),
+      correlation: {
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+        sourceRef: taskActionSourceRef(input.conversationId, input.actionId),
+      },
     };
     let published: RunRequestRecordStanding;
     try {
-      published = createRunRequestRecord(this.home, request, correlation);
+      published = createRunRequestRecord(this.home, request);
     } catch (error) {
       if (error instanceof RunRequestConflictError) {
         throw new ConversationCarrierError(
@@ -361,12 +348,6 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
       // and its terminal outcome is reconciled only by the canonical Run
       // owner.
       return this.convergedCarrierReceipt(input.actionId);
-    }
-
-    if (this.onRunRequestPublished !== undefined) {
-      // Test crash boundary: the immutable Run request is durably published
-      // while no writer claim and no CellInput exist yet.
-      this.onRunRequestPublished(input.actionId);
     }
 
     const identity: ConversationCarrierIdentity = {
@@ -395,7 +376,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     // presentation handle owns no controller, no execution, no
     // finalization, no lease, and no receipt.
     const runPromise = runOrdinaryTaskRun(this.home, request, {
-      prePublished: published,
+      prePublished: true,
       registry: this.runControlRegistry,
       card: resolved.card,
       revalidate: () => {
@@ -923,11 +904,14 @@ function settlementFromRunStanding(standing: RunStanding, runId: string): Carrie
 
 /** One released terminal Run outcome projected onto the carrier settlement surface. */
 function settlementFromRunOutcome(outcome: RunTerminalOutcome): CarrierSettlement {
+  // Strict Run evidence validation guarantees a retained cellStatus equals
+  // the exact final record status; narrow the schema string at this adapter.
+  const cellStatus = outcome.cellStatus as CellRunRecord["status"] | undefined;
   if (outcome.status === "recorded") {
     return {
       status: "recorded",
       evidenceRefs: [outcome.refs.settlementRef, outcome.refs.finalRecordRef],
-      ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+      ...(cellStatus === undefined ? {} : { cellStatus }),
     };
   }
   if (outcome.status === "control-stopped") {
@@ -936,14 +920,14 @@ function settlementFromRunOutcome(outcome: RunTerminalOutcome): CarrierSettlemen
       evidenceRefs: outcome.controlRef === undefined
         ? [outcome.refs.settlementRef]
         : [outcome.controlRef, outcome.refs.settlementRef],
-      ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+      ...(cellStatus === undefined ? {} : { cellStatus }),
       ...(outcome.error === undefined ? {} : { error: outcome.error }),
     };
   }
   return {
     status: "runner-failed",
     evidenceRefs: [outcome.refs.settlementRef],
-    ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+    ...(cellStatus === undefined ? {} : { cellStatus }),
     ...(outcome.error === undefined ? {} : { error: outcome.error }),
   };
 }
@@ -1002,6 +986,13 @@ function hydrationFromRunStanding(
       standing: "unknown",
       identity,
       reason: "the Run retains no terminal settlement; liveness cannot be claimed",
+    };
+  }
+  if (standing.standing === "unavailable") {
+    return {
+      standing: "unknown",
+      identity,
+      reason: "the Run retains no durable request record",
     };
   }
   const outcome = standing.outcome;

@@ -21,6 +21,7 @@ import {
   ConversationCarrierError,
   listAttemptDirectories,
   runStopRequester,
+  type CarrierControlReceipt,
   type ConversationExecutionCarrierRegistry,
 } from "./execution-carrier";
 import {
@@ -118,7 +119,7 @@ export interface ConversationOperationHost {
   /** Crash reconciliation: search the canonical Task owner for the action's causal reference. */
   findCanonicalReceipt(input: {
     readonly conversationId: string;
-    readonly turnId: string;
+    readonly turnId?: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
   }): CanonicalReceiptLookup;
@@ -230,17 +231,32 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
 
   findCanonicalReceipt(input: {
     readonly conversationId: string;
-    readonly turnId: string;
+    readonly turnId?: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
   }): CanonicalReceiptLookup {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
     const operation = input.operation;
     if (operation.kind === "task_continue") {
-      return this.findContinueReceipt(input);
+      if (input.turnId === undefined) {
+        return { standing: "uninspectable", reason: "task_continue reconciliation requires its exact turn identity" };
+      }
+      return this.findContinueReceipt({
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+      });
     }
     if (operation.kind === "work_control") {
-      return this.findControlReceipt(input);
+      if (input.turnId === undefined) {
+        return { standing: "uninspectable", reason: "work_control reconciliation requires its exact turn identity" };
+      }
+      return this.findControlReceipt({
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+        operation,
+      });
     }
     if (operation.kind === "contribution_spawn") {
       return this.findContributionSpawnReceipt(input.conversationId, sourceRef);
@@ -407,7 +423,12 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     if (standing.standing !== "unavailable") {
       const evidence = readStrictTaskAttemptEvidence(this.home, input.actionId);
       const correlation = evidence.attempt?.correlation;
-      if (correlation?.sourceRef === sourceRef) {
+      if (
+        correlation?.conversationId === input.conversationId
+        && correlation.turnId === input.turnId
+        && correlation.actionId === input.actionId
+        && correlation.sourceRef === sourceRef
+      ) {
         if (evidence.standing !== "available" || evidence.attempt === undefined) {
           return {
             standing: "uninspectable",
@@ -441,7 +462,12 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     for (const attemptId of listAttemptDirectories(this.home)) {
       const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
       const correlation = evidence.attempt?.correlation;
-      if (correlation?.sourceRef !== sourceRef) continue;
+      if (
+        correlation?.conversationId !== input.conversationId
+        || correlation.turnId !== input.turnId
+        || correlation.actionId !== input.actionId
+        || correlation.sourceRef !== sourceRef
+      ) continue;
       if (evidence.standing !== "available") {
         return {
           standing: "uninspectable",
