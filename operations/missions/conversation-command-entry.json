@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T07:14:01Z",
+  "updatedAt": "2026-08-17T08:45:08Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -279,7 +279,19 @@
         "goal:rossovia-independent-workspace-entry#stage3-c2"
       ],
       "status": "open"
+    },
+    {
+      "id": "i1-ai-sdk-integration-boundary",
+      "parent": "c2-capability-host-boundary",
+      "kind": "implementation",
+      "purpose": "把 Vercel AI SDK、Harness/Pi、DeepSeek/Kimi/OpenCode-Go provider 协议与 AI SDK tool/settlement wiring 收进明确 Integration island，同时保持 Work Cell C1-C3、O2/O3、worker policy 和全部可观察行为不变",
+      "returnCondition": "AI SDK/Pi/provider concrete imports 与 quirks 只存在于 declared Integration paths；Work Cell core 只依赖中立 driver/host/final contracts；现有 production、experiment、CLI callers 和 focused/full/typecheck/substitution checks 全绿；没有 compatibility shim、第二 driver lifecycle 或 provider policy drift",
+      "sources": [
+        "decision:055-rossovia-runtime-module-ownership#stage4",
+        "goal:rossovia-independent-workspace-entry#integration-isolation"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "c2-capability-host-boundary"
+  "currentFocus": "i1-ai-sdk-integration-boundary"
 }
