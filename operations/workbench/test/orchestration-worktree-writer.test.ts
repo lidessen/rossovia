@@ -353,6 +353,12 @@ describe("O3 Worktree writer mechanism", () => {
       "the retained task-run lease Worktree does not match the task's current bound Worktree",
     );
 
+    // Every refusal assertion above ran against deliberately written claims.
+    // Remove the last mismatched claim so the final successful acquire
+    // exercises the exact retained-owner read over a genuinely acquired
+    // claim instead of being refused by the retained mismatched bytes.
+    rmSync(leasePath);
+
     const lease = acquireWorktreeWriterLease(worktree, owner);
     const retained = readWorktreeWriterLease(leasePath, expected);
     expect(retained.pid).toBe(process.pid);

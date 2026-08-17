@@ -1607,7 +1607,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     },
     actionKey: string,
     batchId: string,
-    lease: TaskRunLease | undefined,
+    lease: WorktreeWriterLease | undefined,
     delegate: DelegateBatchHandle | undefined,
     error: unknown,
   ): Promise<ContributionError> {
@@ -1639,7 +1639,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     this.handles.delete(batchId);
     if (lease !== undefined) {
       try {
-        releaseWorktreeLease(lease);
+        releaseWorktreeWriterLease(lease);
       } catch (releaseError) {
         // The exact lease release failed AFTER the delegate settled: the
         // spawn reservation — the durable exact lease binding published
