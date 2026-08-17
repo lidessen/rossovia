@@ -65,6 +65,8 @@ export async function runCell(
   const boundCellTools = options.tools === undefined
     ? undefined
     : bindCellToolSnapshot(options.tools);
+  const hasInjectedCellTools = boundCellTools !== undefined
+    && Object.keys(boundCellTools).length > 0;
   // A terminal-only Cell completes on its single allowed step: the accepted
   // terminal action is the final step and no separate output step exists.
   // Only a Cell that also declares a structured output contract needs a
@@ -91,12 +93,20 @@ export async function runCell(
     if (terminal) traceSealed = true;
     if (!observerActive) return;
     try {
-      options.onTrace?.(event);
+      // A live observer is observation-only. For an injected-tool run it
+      // receives an isolated event value: mutating caller code can never
+      // rewrite the retained projected names or settled invocation triplet.
+      options.onTrace?.(hasInjectedCellTools ? structuredClone(event) : event);
     } catch (error) {
       observerActive = false;
       if (traceSealed) return;
       trace.push(traceEvent("cell.observer.failed", {
-        error: error instanceof Error ? error.message : String(error),
+        // Observer text can echo the exact event it just received. Keep a
+        // stable category for injected-tool runs so names, call ids, inputs,
+        // and results cannot re-enter core evidence through the failure path.
+        error: hasInjectedCellTools
+          ? "the trace observer failed during an injected-tool run"
+          : error instanceof Error ? error.message : String(error),
       }));
     }
   };
@@ -125,7 +135,7 @@ export async function runCell(
   // synchronously bound immutable snapshot is validated, projected, and
   // dispatched.
   const injectedCellTools = boundCellTools ?? {};
-  const cellToolGate = Object.keys(injectedCellTools).length > 0
+  const cellToolGate = hasInjectedCellTools
     ? gateCellTools(injectedCellTools, emit, signal)
     : undefined;
   // Close the host-effect admission gate synchronously from an abort
@@ -671,7 +681,10 @@ function disposableCellInput(input: CellInput): CellInput {
  * never mutated.
  */
 function bindCellToolSnapshot(tools: CellToolSet): CellToolSet {
-  const snapshot: Record<string, CellTool> = {};
+  // A name-safe map preserves every own enumerable caller key literally.
+  // In particular, assigning `__proto__` to an ordinary object would mutate
+  // its prototype and erase the key before neutral name validation.
+  const snapshot = Object.create(null) as Record<string, CellTool>;
   for (const name of Object.keys(tools)) {
     const definition = tools[name];
     if (definition === undefined) {

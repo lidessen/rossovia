@@ -1465,6 +1465,9 @@ describe("caller-injected cell tool translation", () => {
     const AI_SDK_WRITE_CALL_ID = "injected-tool-call-ai-sdk-write-q2w3e4r5t6y7u8";
     const PI_CALL_ID = "injected-tool-call-pi-z9x8c7v6b5n4m3a2";
     const PI_LATE_CALL_ID = "injected-tool-call-pi-late-p0o9i8u7y6t5r4e3";
+    const OBSERVER_CALL_ID = "injected-tool-call-observer-k9j8h7g6f5d4s3";
+    const OBSERVER_FORGED_NAME = "observer_forged_tool_n8m7b6v5c4x3z2";
+    const OBSERVER_FORGED_CALL_ID = "observer-forged-call-id-q1w2e3r4t5y6u7";
 
     // AI SDK half: the same fixture translates through the ToolLoopAgent path.
     const aiSdkLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
@@ -1597,7 +1600,78 @@ describe("caller-injected cell tool translation", () => {
       aiSdkRecord,
       ["alpha_marker", "invert_fixture", "write_file"],
       [AI_SDK_CALL_ID, AI_SDK_WRITE_CALL_ID],
-      ["INJECTED_INPUT_SECRET", "docs/leak.md", "handled", "toolExecutionMs", INPUT_SENTINEL, RESULT_SENTINEL],
+      [
+        "INJECTED_INPUT_SECRET",
+        "docs/leak.md",
+        "handled",
+        "toolExecutionMs",
+        INPUT_SENTINEL,
+        RESULT_SENTINEL,
+      ],
+    );
+
+    // Core observer isolation: caller observation receives an independent
+    // event value. Mutating projected/settled evidence cannot rewrite the
+    // retained trace, and an exception echoing the exact call id is reduced
+    // to a stable category before cell.observer.failed is retained.
+    let observerMutationAttempted = false;
+    const observerLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const observerDriver: CellDriver = {
+      descriptor: { adapter: "observer-isolation", provider: "deterministic", model: "fixture" },
+      supportsCellTools: true,
+      async run(_input, context) {
+        await context.cellTools?.execute(
+          "invert_fixture",
+          { text: INPUT_SENTINEL },
+          OBSERVER_CALL_ID,
+        );
+        return {
+          terminalToolsCalled: [],
+          finalText: "Observer isolation held.",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+          rawSteps: [],
+        };
+      },
+    };
+    const observerRecord = await runCell(input, observerDriver, {
+      host: createLocalHost(),
+      onTrace(event) {
+        if (event.type === "cell.tools.projected") {
+          observerMutationAttempted = true;
+          (event.data as { tools: string[] }).tools.push(OBSERVER_FORGED_NAME);
+        }
+        if (event.type === "cell.tool.settled"
+          && (event.data as { toolCallId?: unknown }).toolCallId === OBSERVER_CALL_ID) {
+          Object.assign(event.data as Record<string, unknown>, {
+            toolCallId: OBSERVER_FORGED_CALL_ID,
+            outcome: "forged",
+            input: INPUT_SENTINEL,
+          });
+          throw new Error(OBSERVER_CALL_ID);
+        }
+      },
+      tools: { invert_fixture: neutralFixtureTool(observerLog) },
+    });
+    expect(observerRecord.status).toBe("passed");
+    expect(observerMutationAttempted).toBeTrue();
+    expect(observerRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["invert_fixture"] },
+    }));
+    expect(observerRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: OBSERVER_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(observerRecord.trace).toContainEqual(expect.objectContaining({
+      type: "cell.observer.failed",
+      data: { error: "the trace observer failed during an injected-tool run" },
+    }));
+    expect(observerLog).toHaveLength(1);
+    expectBoundedInjectedRetention(
+      observerRecord,
+      ["invert_fixture"],
+      [OBSERVER_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL, OBSERVER_FORGED_NAME, OBSERVER_FORGED_CALL_ID],
     );
 
     // AI SDK outputSchema settlement: the shared settlement helper emits its
@@ -2103,6 +2177,11 @@ describe("caller-injected cell tool translation", () => {
       },
     });
     const invalidTools = {
+      ["__proto__"]: {
+        description: "Invalid own prototype-shaped name.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        execute: async () => ({ value: "never" }),
+      },
       "Bad-Name": {
         description: "Invalid name shape.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
@@ -2114,11 +2193,13 @@ describe("caller-injected cell tool translation", () => {
         execute: async () => ({ value: "never" }),
       },
     } as unknown as CellToolSet;
+    expect(Object.hasOwn(invalidTools, "__proto__")).toBeTrue();
     const invalid = await runCell(cellToolCell(root), aiSdkDriver(invalidModel, "mock-invalid-cell-tool"), {
       host: createLocalHost(),
       tools: invalidTools,
     });
     expect(invalid.status).toBe("failed");
+    expect(invalid.error).toContain("cell tool names use lowercase snake_case: __proto__");
     expect(invalid.error).toContain("cell tool names use lowercase snake_case: Bad-Name");
     expect(invalid.error).toContain("cell tool bad_schema requires an object-root input schema");
     expect(invalidDispatchCalls).toBe(0);
