@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T08:45:08Z",
+  "updatedAt": "2026-08-17T10:57:09Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -291,7 +291,20 @@
         "goal:rossovia-independent-workspace-entry#integration-isolation"
       ],
       "status": "open"
+    },
+    {
+      "id": "i2-git-worktree-metadata-port",
+      "parent": "i1-ai-sdk-integration-boundary",
+      "kind": "implementation",
+      "purpose": "Isolate O3 Git metadata discovery behind a neutral Integration port while preserving O3 lease ownership and all observable writer semantics.",
+      "returnCondition": "Return with a clean exact implementation commit: neutral GitWorktreeMetadataPort canonicalGitDirectory(worktree) contract; concrete Integration adapter owning git rev-parse protocol, error semantics, path resolution, and realpath; O3 worktree writer consuming the injected port while retaining lease filename/path join, schema, bytes, no-clobber, byte-match release, inspection/recovery/process-absence, and existing free-function caller behavior; fake-port full O3 flow in non-Git temp directories; real primary and linked Worktree adapter probes plus explicit nonrepository failure; no raw Git process or argv under orchestration; O2 and Task behavior unchanged; focused/full Workbench tests, typecheck, diff-check, and independent exact-head review green; no I2b Task-run Git observation, O2 realpath, generic lease/repository/plugin/registry/lifecycle/policy/cache, Work Cell/provider/Presentation/Task schema, publication, merge, Mission settlement, or Principal acceptance.",
+      "sources": [
+        "decision:055-rossovia-runtime-module-ownership#module-map",
+        "goal:rossovia-independent-workspace-entry#stage4-i2",
+        "parent:i1-ai-sdk-integration-boundary@ab18fa068f678cbda9ee258497f1a67956127ca2"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "i1-ai-sdk-integration-boundary"
+  "currentFocus": "i2-git-worktree-metadata-port"
 }
