@@ -320,6 +320,11 @@ function fabricatedStartedRun(
     pid,
     acquiredAt: "2026-08-16T12:00:00.000Z",
   }, null, 2)}\n`;
+  // Isolate the fabricated claim: one exact Worktree holds one exclusive
+  // claim, so any earlier fabricated claim at the same canonical path is
+  // removed first; the no-clobber write then still fails closed if a real
+  // exact claim exists underneath.
+  if (existsSync(leasePath)) rmSync(leasePath);
   writeFileSync(leasePath, leaseContent, { flag: "wx" });
   return { runId, directory, leasePath, leaseContent };
 }

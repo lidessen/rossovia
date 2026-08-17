@@ -171,6 +171,11 @@ export function createRunRequestRecord(
   const digest = runRequestDigest(request);
   const refs = taskRunHelpers().attemptEvidence(home, request.requestId);
   const directory = dirname(refs.attemptPath);
+  // Before any per-Run directory is created, create only the existing shared
+  // attempts parent; the per-Run directory itself stays an atomic no-clobber
+  // create so an identical replay converges on the retained Run and a
+  // different body under the same identity conflicts.
+  mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
   try {
     mkdirSync(directory, { recursive: false });
   } catch (error) {
@@ -522,7 +527,13 @@ export async function runOrdinaryTaskRun(
           // failed. The Run outcome is terminal while cleanup remains
           // reconcile-required: the two standings are independent.
           const evidence = readStrictTaskAttemptEvidence(home, request.requestId);
-          const outcome = terminalOutcomeFromEvidence(evidence, request.requestId, "retained", finalization.error);
+          const outcome = terminalOutcomeFromEvidence(
+            refs,
+            evidence,
+            request.requestId,
+            "retained",
+            finalization.error,
+          );
           if (outcome === undefined) throw new Error(finalization.error);
           return { standing: "terminal", outcome };
         }
@@ -603,14 +614,18 @@ function convergedRunResult(home: string, request: RunRequest): RunResult {
       + `${evidence.standing === "invalid" ? evidence.error ?? "invalid" : "unavailable"}`,
     );
   }
+  // The full canonical refs (paths plus stable refs) stay the retained
+  // evidence surface of one Run; the strict reader's ref-only projection is
+  // never substituted where the exact path fields are required.
+  const refs = taskRunHelpers().attemptEvidence(home, request.requestId);
   const cleanup = evidenceCleanupStanding(evidence, request.requestId);
   if (evidence.settlement !== undefined) {
-    const outcome = terminalOutcomeFromEvidence(evidence, request.requestId, cleanup);
+    const outcome = terminalOutcomeFromEvidence(refs, evidence, request.requestId, cleanup);
     if (outcome !== undefined) return { standing: "terminal", outcome };
   }
   return {
     standing: "unresolved",
-    refs: evidence.refs,
+    refs,
     error:
       `the identical request converges on Run ${request.requestId} without a retained terminal settlement; liveness is unknown`,
   };
@@ -644,7 +659,16 @@ function defaultRunFinalize(input: RunFinalizationInput): RunFinalization {
     lease: input.lease,
     outcome: input.outcome,
     ...(input.controlRef !== undefined ? { controlRef: input.controlRef } : {}),
-    execution: input.execution,
+    // The exact execution identity is rebuilt with the absent reasoning
+    // effort omitted (never passed as undefined) so the requested identity
+    // stays assignable to the shared finalization's exact type.
+    execution: {
+      driver: input.execution.driver,
+      model: input.execution.model,
+      ...(input.execution.reasoningEffort !== undefined
+        ? { reasoningEffort: input.execution.reasoningEffort }
+        : {}),
+    },
     card: input.card as never,
   });
 }
@@ -694,18 +718,22 @@ export type RunStanding =
 export function runStanding(home: string, runId: string): RunStanding {
   const evidence = readStrictTaskAttemptEvidence(home, runId);
   if (evidence.standing === "unavailable") return { standing: "unavailable" };
+  // The full canonical refs (paths plus stable refs) are retained on every
+  // inspectable standing; the strict reader's ref-only projection is never
+  // substituted where the exact path fields are required.
+  const refs = taskRunHelpers().attemptEvidence(home, runId);
   if (evidence.standing === "invalid") {
-    return { standing: "invalid", error: evidence.error ?? "invalid evidence", refs: evidence.refs };
+    return { standing: "invalid", error: evidence.error ?? "invalid evidence", refs };
   }
   const cleanup = evidenceCleanupStanding(evidence, runId);
   if (evidence.settlement !== undefined) {
-    const outcome = terminalOutcomeFromEvidence(evidence, runId, cleanup);
+    const outcome = terminalOutcomeFromEvidence(refs, evidence, runId, cleanup);
     if (outcome !== undefined) return { standing: "terminal", outcome };
   }
   const attempt = evidence.attempt!;
   return {
     standing: "unresolved",
-    refs: evidence.refs,
+    refs,
     cleanup,
     attempt: {
       taskId: attempt.taskId,
@@ -745,6 +773,7 @@ function evidenceCleanupStanding(
 }
 
 function terminalOutcomeFromEvidence(
+  refs: RunEvidenceRefs,
   evidence: StrictTaskAttemptEvidence,
   runId: string,
   cleanup: RunCleanupStanding,
@@ -764,7 +793,7 @@ function terminalOutcomeFromEvidence(
     ...(settlement.error !== undefined ? { error: settlement.error } : {}),
     cleanup,
     ...(cleanupError !== undefined ? { cleanupError } : {}),
-    refs: evidence.refs,
+    refs,
     ...(evidence.finalRecord !== undefined ? { finalRecord: evidence.finalRecord } : {}),
   };
 }
@@ -827,6 +856,10 @@ export function reconcileRun(
     );
   }
   const attempt = evidence.attempt!;
+  // The full canonical refs (paths plus stable refs) are retained for every
+  // settlement write and outcome; the strict reader's ref-only projection is
+  // never substituted where the exact path fields are required.
+  const refs = taskRunHelpers().attemptEvidence(home, runId);
   if (evidence.input === undefined) {
     throw new ReconcileRunRefusal(
       "unreadable-input",
@@ -844,7 +877,7 @@ export function reconcileRun(
   }
 
   if (evidence.settlement !== undefined) {
-    return reconcileSettledRun(runId, evidence, worktree, dependencies);
+    return reconcileSettledRun(runId, evidence, worktree, refs, dependencies);
   }
 
   const inspected = inspectRetainedWorktreeWriterLease({
@@ -885,14 +918,15 @@ export function reconcileRun(
       error:
         "interrupted before a final Work Cell record was retained; reconciled by the Run owner",
     };
-  taskRunHelpers().writeTaskRunSettlement(evidence.refs, settlementInput);
-  return reconcileSettledRun(runId, evidence, worktree, dependencies);
+  taskRunHelpers().writeTaskRunSettlement(refs, settlementInput);
+  return reconcileSettledRun(runId, evidence, worktree, refs, dependencies);
 }
 
 function reconcileSettledRun(
   runId: string,
   evidence: StrictTaskAttemptEvidence,
   worktree: string,
+  refs: RunEvidenceRefs,
   dependencies: ReconcileRunDependencies,
 ): ReconcileRunResult {
   const attempt = evidence.attempt!;
@@ -906,7 +940,7 @@ function reconcileSettledRun(
     // Worktree): idempotent convergence without any mutation.
     return {
       runId,
-      outcome: terminalOutcomeFromEvidence(evidence, runId, "released")!,
+      outcome: terminalOutcomeFromEvidence(refs, evidence, runId, "released")!,
     };
   }
   if (inspected.standing === "invalid") {
@@ -926,12 +960,12 @@ function reconcileSettledRun(
     // reconcile-required and continues to block another writer.
     return {
       runId,
-      outcome: terminalOutcomeFromEvidence(evidence, runId, "retained", errorMessage(error))!,
+      outcome: terminalOutcomeFromEvidence(refs, evidence, runId, "retained", errorMessage(error))!,
     };
   }
   return {
     runId,
-    outcome: terminalOutcomeFromEvidence(evidence, runId, "released")!,
+    outcome: terminalOutcomeFromEvidence(refs, evidence, runId, "released")!,
   };
 }
 

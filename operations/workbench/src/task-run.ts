@@ -646,7 +646,10 @@ export async function runPrincipalTask(
     ...(continuation === undefined ? {} : { continuation }),
   };
   const result = await runOrdinaryTaskRun(home, request, {
-    beforeLeaseAcquire: dependencies.beforeLeaseAcquire,
+    // The pre-claim seam is omitted when absent: never passed as undefined.
+    ...(dependencies.beforeLeaseAcquire === undefined
+      ? {}
+      : { beforeLeaseAcquire: dependencies.beforeLeaseAcquire }),
     card,
     revalidate: () => {
       verifyTaskSnapshotAfterLease(home, observed);
