@@ -30,6 +30,10 @@ import {
 // remain part of the current task-run export surface as bounded
 // compatibility aliases over the canonical O3 owner.
 export { canonicalGitDirectory, isProcessDefinitelyAbsent };
+import {
+  runOrdinaryTaskRun,
+  type RunRequest,
+} from "./orchestration/run";
 import { runCommand } from "./process";
 import {
   readStrictTaskAttemptEvidence,
@@ -616,8 +620,12 @@ function validateFinalRecord(
 }
 
 /**
- * Run one ordinary task attempt through the one shared catalog-backed Task
- * Cell owner. The CLI dispatch is asynchronous in-process; it never spawns an
+ * Run one ordinary task through the one canonical O2 Run owner
+ * (`orchestration/run.ts`) over the existing attempt evidence family: one
+ * durable Run identity before O3 acquisition, at most one unchanged Work
+ * Cell through the shared catalog-backed executor, and one truthful terminal
+ * settlement in the canonical final record -> settlement -> lease release
+ * order. The CLI dispatch is asynchronous in-process; it never spawns an
  * opencode-cli harness process.
  */
 export async function runPrincipalTask(
@@ -625,94 +633,79 @@ export async function runPrincipalTask(
   arguments_: TaskRunArguments,
   dependencies: TaskRunDependencies = {},
 ): Promise<TaskRunResult> {
-  const prepared = preparePrincipalTaskRun(homeArgument, arguments_, dependencies);
-  const { home, task, observed, worktree, attemptId, lease, execution, continuation } = prepared;
-  let finalized = false;
-  let attempt: (AttemptEvidence & { expectedCellInput: CellInput }) | undefined;
-  try {
-    attempt = createAttempt(
-      home,
-      task,
-      observed.sourceRevision,
-      attemptId,
-      worktree,
-      arguments_.workerId,
-      prepared.card,
-      execution,
-      continuation,
-    );
-    const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
-    let outcome: TaskCellOutcome;
-    try {
-      const record = await executor({
-        catalog: dependencies.catalog ?? currentCatalog(),
-        cellInput: attempt.expectedCellInput,
-      });
-      outcome = { status: "final", record };
-    } catch (error) {
-      outcome = { status: "failed", error: errorMessage(error) };
-    }
-    const finalization = finalizeTaskAttempt({
-      attempt,
-      expectedInput: attempt.expectedCellInput,
-      task: { id: task.id, revision: task.revision },
-      attemptId,
-      lease,
-      outcome,
-      execution,
-      card: prepared.card,
-    });
-    finalized = true;
-    if (finalization.status === "unresolved") {
-      throw new Error(finalization.error);
-    }
-    if (finalization.settlement.status !== "recorded") {
-      throw new Error(
-        `the Work Cell run settled with status ${finalization.finalRecord?.status ?? "unknown"}; `
-        + `the attempt settlement is ${finalization.settlement.status}`
-        + `${finalization.settlement.error !== undefined ? `: ${finalization.settlement.error}` : ""}`,
-      );
-    }
-    const finalRecord = finalization.finalRecord!;
-    return {
-      version: "rosso.task-run-result.v1",
-      taskId: task.id,
-      taskRevision: task.revision,
-      sourceRevision: observed.sourceRevision,
-      attemptId,
-      inputRef: attempt.inputRef,
-      finalRecordRef: attempt.finalRecordRef,
-      attemptRef: attempt.attemptRef,
-      settlementRef: attempt.settlementRef,
-      workCellRunId: finalRecord.runId,
-      cellStatus: finalRecord.status,
-      ...(finalRecord.executionObservation.sessionId
-        ? { sessionId: finalRecord.executionObservation.sessionId }
-        : {}),
-      semanticAcceptance: "not-evaluated",
-    };
-  } catch (error: unknown) {
-    if (!finalized && attempt !== undefined && existsSync(attempt.attemptPath) && !existsSync(attempt.settlementPath)) {
-      try {
-        writeTaskRunSettlement(attempt, {
-          taskId: task.id,
-          taskRevision: task.revision,
-          attemptId,
-          status: "runner-failed",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      } catch {
-        // The original failure stays primary; a fallback settlement write
-        // that still cannot succeed is the same visible retention failure.
+  const resolved = resolveOrdinaryTaskRun(homeArgument, arguments_, dependencies);
+  const { home, task, observed, worktree, execution, continuation, card, projectId } = resolved;
+  const request: RunRequest = {
+    requestId: randomUUID(),
+    taskId: task.id,
+    taskRevision: task.revision,
+    sourceRevision: observed.sourceRevision,
+    workerId: card.id,
+    execution,
+    worktree,
+    ...(continuation === undefined ? {} : { continuation }),
+  };
+  const result = await runOrdinaryTaskRun(home, request, {
+    beforeLeaseAcquire: dependencies.beforeLeaseAcquire,
+    card,
+    revalidate: () => {
+      verifyTaskSnapshotAfterLease(home, observed);
+      verifyCurrentBinding(home, projectId, worktree);
+      if (continuation !== undefined) {
+        verifyContinuationDiff(worktree, continuation.workspaceDiff);
+      } else {
+        verifyCleanStatus(worktree);
       }
-    }
-    throw error;
-  } finally {
-    // The shared finalization owns the canonical settlement -> lease release
-    // order. The lease is released here only when finalization never ran;
-    // an unresolved finalization keeps the exact lease for reconcile-attempt.
-    if (!finalized) releaseWorktreeLease(lease);
+    },
+    lowerCellInput: () => buildTaskCellInput(task, worktree, card.id, card, request.requestId),
+    execute: async (cellInput, options) => {
+      const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
+      return executor({
+        catalog: dependencies.catalog ?? currentCatalog(),
+        cellInput,
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    },
+  });
+  if (result.standing === "unresolved") {
+    throw new Error(result.error);
   }
+  const outcome = result.outcome;
+  if (outcome.cleanup !== "released") {
+    // The durable settlement exists while the exact O3 release failed: the
+    // terminal outcome is retained and reconcile-attempt retries only the
+    // release, exactly as the historical unresolved finalization.
+    throw new Error(
+      outcome.cleanupError
+      ?? "the durable settlement was retained but the task-run lease could not be released; "
+        + "task reconcile-attempt can retry the exact finalization",
+    );
+  }
+  if (outcome.status !== "recorded") {
+    throw new Error(
+      `the Work Cell run settled with status ${outcome.finalRecord?.status ?? "unknown"}; `
+      + `the attempt settlement is ${outcome.status}`
+      + `${outcome.error !== undefined ? `: ${outcome.error}` : ""}`,
+    );
+  }
+  const finalRecord = outcome.finalRecord!;
+  return {
+    version: "rosso.task-run-result.v1",
+    taskId: task.id,
+    taskRevision: task.revision,
+    sourceRevision: observed.sourceRevision,
+    attemptId: request.requestId,
+    inputRef: outcome.refs.inputRef,
+    finalRecordRef: outcome.refs.finalRecordRef,
+    attemptRef: outcome.refs.attemptRef,
+    settlementRef: outcome.refs.settlementRef,
+    workCellRunId: finalRecord.runId,
+    cellStatus: finalRecord.status,
+    ...(finalRecord.executionObservation.sessionId
+      ? { sessionId: finalRecord.executionObservation.sessionId }
+      : {}),
+    semanticAcceptance: "not-evaluated",
+  };
 }
 
 function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRunRecord> {
@@ -726,11 +719,11 @@ function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRun
 }
 
 /**
- * The synchronous guarded preparation every ordinary task run performs before
- * any execution effect: exact worker resolution, canonical Task re-read,
- * project/binding checks, the exact observed Worktree and its current head,
- * the atomic Worktree lease, a fresh Task snapshot verification, and the
- * clean/continuation Worktree status check. A conversation-owned asynchronous
+ * The synchronous guarded preparation every ordinary task run performs
+ * before any durable Run identity or execution effect: exact worker
+ * resolution, canonical Task re-read, project/binding checks, the exact
+ * observed Worktree and its current head, and the exact prior-attempt
+ * lineage for a requested continuation. A conversation-owned asynchronous
  * catalog carrier reuses the same evidence family and lease through these
  * pieces instead of a parallel task-run database.
  */
@@ -755,6 +748,65 @@ export function preparePrincipalTaskRun(
   arguments_: TaskRunArguments,
   dependencies: TaskRunDependencies = {},
 ): PreparedPrincipalTaskRun {
+  const resolved = resolveOrdinaryTaskRun(homeArgument, arguments_, dependencies);
+  const attemptId = randomUUID();
+
+  dependencies.beforeLeaseAcquire?.();
+  const lease = acquireWorktreeLease(resolved.worktree, resolved.task.id, attemptId);
+  try {
+    verifyTaskSnapshotAfterLease(resolved.home, resolved.observed);
+    verifyCurrentBinding(resolved.home, resolved.projectId, resolved.worktree);
+    if (resolved.continuation !== undefined) {
+      verifyContinuationDiff(resolved.worktree, resolved.continuation.workspaceDiff);
+    } else {
+      verifyCleanStatus(resolved.worktree);
+    }
+    return {
+      home: resolved.home,
+      card: resolved.card,
+      execution: resolved.execution,
+      observed: resolved.observed,
+      task: resolved.task,
+      worktree: resolved.worktree,
+      attemptId,
+      lease,
+      ...(resolved.continuation === undefined ? {} : { continuation: resolved.continuation }),
+    };
+  } catch (error) {
+    releaseWorktreeLease(lease);
+    throw error;
+  }
+}
+
+/**
+ * The shared read-only acceptance of one ordinary task run, performed before
+ * any durable Run identity: exact worker resolution, the canonical Task
+ * re-read and lifecycle/binding checks, the exact observed Worktree with its
+ * current head, and the exact prior-attempt lineage walk for a requested
+ * continuation. No durable write and no O3 claim happens here; the O2 owner
+ * creates the durable Run request record only after this acceptance, and
+ * before O3 acquisition.
+ */
+interface ResolvedOrdinaryTaskRun {
+  readonly home: string;
+  readonly card: WorkerCard;
+  readonly execution: TaskRunExecution;
+  readonly observed: ReturnType<typeof showPrincipalTask>;
+  readonly task: ReturnType<typeof showPrincipalTask>["task"];
+  readonly projectId: string;
+  readonly worktree: string;
+  /** Exact prior-attempt lineage for a stateless continuation, when requested. */
+  readonly continuation?: {
+    continuedFromAttemptId: string;
+    workspaceDiff: CellRunRecord["workspaceDiff"];
+  };
+}
+
+function resolveOrdinaryTaskRun(
+  homeArgument: string | undefined,
+  arguments_: TaskRunArguments,
+  dependencies: TaskRunDependencies,
+): ResolvedOrdinaryTaskRun {
   validatePolicy(arguments_);
   const home = resolveHome(homeArgument);
   const card = resolveWorkerCard(arguments_.workerId, dependencies);
@@ -773,45 +825,29 @@ export function preparePrincipalTaskRun(
     throw new Error(`task ${task.id} must be bound to an existing project Worktree before it can run`);
   }
 
+  const projectId = task.binding.projectId;
   const worktree = resolveBoundWorktree(
     home,
-    task.binding.projectId,
+    projectId,
     task.binding.worktreePath,
   );
   const worktreeHead = requiredGit(["rev-parse", "HEAD"], worktree);
   if (!/^[0-9a-f]{40}$/u.test(worktreeHead)) {
     throw new Error(`the bound Worktree's current head cannot be read: ${worktree}`);
   }
-  const attemptId = randomUUID();
-
-  dependencies.beforeLeaseAcquire?.();
-  const lease = acquireWorktreeLease(worktree, task.id, attemptId);
-  try {
-    verifyTaskSnapshotAfterLease(home, observed);
-    verifyCurrentBinding(home, task.binding.projectId, worktree);
-    const continuation = arguments_.continueFromAttemptId
-      ? continuationEvidence(home, task.id, worktree, arguments_.continueFromAttemptId, execution)
-      : undefined;
-    if (continuation !== undefined) {
-      verifyContinuationDiff(worktree, continuation.workspaceDiff);
-    } else {
-      verifyCleanStatus(worktree);
-    }
-    return {
-      home,
-      card,
-      execution,
-      observed,
-      task,
-      worktree,
-      attemptId,
-      lease,
-      ...(continuation === undefined ? {} : { continuation }),
-    };
-  } catch (error) {
-    releaseWorktreeLease(lease);
-    throw error;
-  }
+  const continuation = arguments_.continueFromAttemptId
+    ? continuationEvidence(home, task.id, worktree, arguments_.continueFromAttemptId, execution)
+    : undefined;
+  return {
+    home,
+    card,
+    execution,
+    observed,
+    task,
+    projectId,
+    worktree,
+    ...(continuation === undefined ? {} : { continuation }),
+  };
 }
 
 /**
@@ -1007,31 +1043,7 @@ export function createAttempt(
   correlation?: AttemptCorrelation,
 ): AttemptEvidence & { expectedCellInput: CellInput } {
   const attempt = attemptEvidence(home, attemptId);
-  const cellInput = {
-    id: `workbench-task-${task.id}-attempt-${attemptId}`,
-    workerId,
-    executionProfile: worker.executionProfile,
-    intent: task.objective,
-    workspace: {
-      root: worktree,
-      readPaths: ["."],
-      writePaths: ["."],
-      excludePaths: ordinaryOpenCodeExcludes(worktree),
-      allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
-    },
-    instructions: [
-      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
-      ...task.corrections.map((correction) => correction.statement),
-    ],
-    capabilities: [],
-    context: [],
-    capabilitiesRequired: [],
-    acceptance: task.acceptance,
-    ...(task.todos.length > 0
-      ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }
-      : {}),
-    budget: { maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS },
-  };
+  const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId);
   const expectedCellInput = workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
   mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
   mkdirSync(join(home, "state", "task-attempts", attemptId), { recursive: false });
@@ -1063,6 +1075,58 @@ export function createAttempt(
     startedAt: new Date().toISOString(),
   });
   return { ...attempt, expectedCellInput };
+}
+
+/**
+ * The shared ordinary lowering of one accepted Task snapshot into the
+ * immutable CellInput: exact worker identity and execution profile, task
+ * objective and corrections as instructions, acceptance, todos when present,
+ * the exact Worktree policy, and the emergency duration envelope. The O2
+ * ordinary path and the conversation-owned carrier lower the same shape.
+ */
+export function buildTaskCellInput(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  workerId: string,
+  worker: WorkerCard,
+  attemptId: string,
+): CellInput {
+  const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId);
+  return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
+}
+
+function taskCellInputObject(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  workerId: string,
+  worker: WorkerCard,
+  attemptId: string,
+): Record<string, unknown> {
+  return {
+    id: `workbench-task-${task.id}-attempt-${attemptId}`,
+    workerId,
+    executionProfile: worker.executionProfile,
+    intent: task.objective,
+    workspace: {
+      root: worktree,
+      readPaths: ["."],
+      writePaths: ["."],
+      excludePaths: ordinaryOpenCodeExcludes(worktree),
+      allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
+    },
+    instructions: [
+      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
+      ...task.corrections.map((correction) => correction.statement),
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: task.acceptance,
+    ...(task.todos.length > 0
+      ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }
+      : {}),
+    budget: { maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS },
+  };
 }
 
 export function attemptEvidence(home: string, attemptId: string): AttemptEvidence {

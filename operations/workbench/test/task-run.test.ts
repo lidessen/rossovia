@@ -1806,11 +1806,16 @@ describe("task run public boundary", () => {
 
     await expect(runTestTask(current.home, arguments_, overlapping.execute)).resolves.toBeTruthy();
     expect(inner.requests).toHaveLength(0);
-    expect(existsSync(join(otherHome, "state", "task-attempts"))).toBeFalse();
+    // The refused inner Run keeps one durable pre-Cell terminal outcome in its
+    // own home; the outer writer's claim is never touched.
+    const innerProjections = showPrincipalTaskAttempts(otherHome, otherTask.task.id);
+    expect(innerProjections).toHaveLength(1);
+    expect(innerProjections[0]).toMatchObject({ status: "runner-failed" });
+    expect(innerProjections[0]).not.toHaveProperty("cellStatus");
     await expect(runTestTask(current.home, arguments_, new FakeCellExecutor().execute)).resolves.toBeTruthy();
   });
 
-  test("rechecks cleanliness after lease acquisition before creating attempt evidence", async () => {
+  test("retains the durable Run request before O3 and settles a truthful pre-Cell refusal on dirty recheck", async () => {
     const current = fixture();
     const created = agentTask(current);
     const executor = new FakeCellExecutor();
@@ -1826,7 +1831,15 @@ describe("task run public boundary", () => {
       },
     })).rejects.toThrow("task Worktree is not clean");
     expect(executor.requests).toHaveLength(0);
-    expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+    // The accepted request's durable Run record exists before O3 acquisition;
+    // the refusal settles a truthful runner-failed terminal outcome with zero
+    // Cell invocations and the exact claim released.
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(1);
+    expect(projections[0]).toMatchObject({ status: "runner-failed" });
+    expect(projections[0]).not.toHaveProperty("cellStatus");
+    expect(projections[0]).not.toHaveProperty("observedSession");
+    expect(attemptLeaseStanding(current.home, created.task.id, projections[0]!.attemptId)).toBe("released");
 
     rmSync(join(current.worktree, "became-dirty.txt"));
     await expect(runTestTask(current.home, {
@@ -1895,7 +1908,13 @@ describe("task run public boundary", () => {
         `task ${created.task.id} changed before attempt creation after the task-run lease was acquired`,
       );
       expect(executor.requests).toHaveLength(0);
-      expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+      // The accepted request retains one durable Run with a truthful pre-Cell
+      // terminal outcome; the exact claim is released and no Cell was invoked.
+      const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+      expect(projections).toHaveLength(1);
+      expect(projections[0]).toMatchObject({ status: "runner-failed" });
+      expect(projections[0]).not.toHaveProperty("cellStatus");
+      expect(attemptLeaseStanding(current.home, created.task.id, projections[0]!.attemptId)).toBe("released");
     }
   });
 
