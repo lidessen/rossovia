@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T00:01:01Z",
+  "updatedAt": "2026-08-17T01:10:25Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -241,7 +241,18 @@
         "design/organization/rossovia-runtime-ownership-migration.md"
       ],
       "status": "open"
+    },
+    {
+      "id": "o2-run-lifecycle",
+      "parent": "o3-writer-owner",
+      "kind": "implementation",
+      "purpose": "Establish the canonical O2 Run owner over the existing ordinary Task-attempt evidence family and migrate only ordinary task run, without changing Work Cell, Integrations, conversation, Mission, contribution, Swarm, UI, O3 bytes, or Task acceptance.",
+      "returnCondition": "Return with a clean exact implementation commit; one durable Run identity before O3 or mutable preparation; zero or one Cell; truthful pre-Cell, no-final, and terminal outcome; exact live stop; independent O3 cleanup standing; readable historical v1 attempts and continuation; focused and full checks; independent review-ready evidence; and no second lifecycle store or dual terminal authority.",
+      "sources": [
+        "goal:rossovia-daily-workspace-entry-stage2-o2"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "o3-writer-owner"
+  "currentFocus": "o2-run-lifecycle"
 }
