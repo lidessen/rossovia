@@ -17,10 +17,12 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import type { HomeSources } from "../src/home";
+import { migrateLegacyHome } from "../src/migration";
 import { nodeRegistrationIo, transitionRegistration, type RegistrationIo } from "../src/registration";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const launcher = join(repositoryRoot, "operations", "workbench", "rossovia");
+const initExclusiveCreateHolder = join(import.meta.dir, "init-exclusive-create-holder.ts");
 const lockName = "registration.lock";
 const temporaryRoots: string[] = [];
 
@@ -87,17 +89,124 @@ function fixture(): { root: string; home: string } {
   return { root, home };
 }
 
+/** A legacy Atthis home fixture plus a bulk of namespace files that keeps a
+ * migration busy long enough for a concurrent launcher to be started while
+ * the migration still holds the registration lock. */
+function writeLegacySource(source: string, workspacePath: string): void {
+  writeJson(join(source, "manifest.json"), {
+    version: "atthis.home.v1",
+    namespace: "atthis",
+    createdAt: "2026-07-18T00:00:00Z",
+  });
+  writeJson(join(source, "config", "projects.json"), {
+    version: "atthis.projects.v1",
+    projects: [{
+      id: "repository:migration",
+      repository: "https://example.com/lidessen/migration.git",
+      aliases: ["migration"],
+    }],
+  });
+  writeJson(join(source, "state", "workspaces.json"), {
+    version: "atthis.workspaces.v1",
+    workspaces: [{ projectId: "repository:migration", path: workspacePath }],
+  });
+  writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
+  writeJson(join(source, "cache", "workspaces.json"), {
+    version: "atthis.workspace-index.v1",
+    generatedAt: "2026-07-18T00:00:00Z",
+    entries: [],
+  });
+  for (let index = 0; index < 400; index += 1) {
+    writeJson(join(source, "cache", "bulk", `entry-${index}.json`), {
+      version: "atthis.cache-entry.v1",
+      namespace: "atthis",
+      index,
+    });
+  }
+}
+
+/** Wait until the migration has durably published the complete canonical
+ * pair to the migrated namespace. The pair is published through the shared
+ * durable commit under the registration owner before the manifest is
+ * initialized, so observing the manifest plus the committed workspaces
+ * proves the publication and initialization passes are finished: the
+ * canonical pair reads are then stable even while the migration still holds
+ * the registration lock during verification. */
+async function waitForMigratedCanonicalPair(target: string): Promise<void> {
+  const parsedVersion = (path: string): unknown => {
+    try {
+      return (JSON.parse(readFileSync(path, "utf8")) as { version?: unknown }).version;
+    } catch {
+      return undefined;
+    }
+  };
+  const deadline = Date.now() + 5000;
+  while (Date.now() <= deadline) {
+    if (
+      parsedVersion(join(target, "manifest.json")) === "rosso.home.v1"
+      && parsedVersion(join(target, "state", "workspaces.json")) === "rosso.workspaces.v1"
+    ) {
+      return;
+    }
+    await Bun.sleep(10);
+  }
+  expect(parsedVersion(join(target, "manifest.json"))).toBe("rosso.home.v1");
+  expect(parsedVersion(join(target, "state", "workspaces.json"))).toBe("rosso.workspaces.v1");
+}
+
+async function collectCommandResult(process: {
+  exited: Promise<number>;
+  stdout: ReadableStream<Uint8Array>;
+  stderr: ReadableStream<Uint8Array>;
+}): Promise<CommandResult> {
+  return {
+    exitCode: await process.exited,
+    stdout: await new Response(process.stdout).text(),
+    stderr: await new Response(process.stderr).text(),
+  };
+}
+
+async function waitForPath(path: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() <= deadline) {
+    if (existsSync(path)) return;
+    await Bun.sleep(10);
+  }
+  expect(existsSync(path)).toBe(true);
+}
+
 function lockPath(home: string): string {
   return join(home, "state", lockName);
 }
 
-function writeLockOwner(home: string, pid: number): void {
-  writeFileSync(lockPath(home), `${JSON.stringify({
+function recoveryPath(home: string): string {
+  return `${lockPath(home)}.recovery`;
+}
+
+function lockOwnerBytes(pid: number): string {
+  return `${JSON.stringify({
     version: "rosso.registration-lock.v1",
     pid,
     owner: randomUUID(),
     acquiredAt: new Date().toISOString(),
-  }, null, 2)}\n`, "utf8");
+  }, null, 2)}\n`;
+}
+
+function writeLockOwner(home: string, pid: number): string {
+  const serialized = lockOwnerBytes(pid);
+  writeFileSync(lockPath(home), serialized, "utf8");
+  return serialized;
+}
+
+function writeRecoveryOwner(home: string, pid: number): string {
+  const serialized = lockOwnerBytes(pid);
+  writeFileSync(recoveryPath(home), serialized, "utf8");
+  return serialized;
+}
+
+/** A pid that is guaranteed to be verifiably dead before the caller proceeds. */
+function deadPid(): number {
+  return Bun.spawnSync([process.execPath, "-e", "process.exit(0)"]).pid;
 }
 
 interface ProjectRecord {
@@ -462,48 +571,109 @@ describe("Rossovia register serialization through the ordinary launcher", () => 
     expect(transitionLeftovers(home)).toEqual([]);
   });
 
-  test("two recoverers of one stale lock never rename a replacement live lock", async () => {
+  test("two truly concurrent recoverers of one stale lock both succeed and retain the merged pair", async () => {
     const { root, home } = fixture();
     const alpha = join(root, "projects", "alpha");
     const beta = join(root, "projects", "beta");
     createRepository(alpha, "https://example.com/p7-alpha.git");
     createRepository(beta, "https://example.com/p7-beta.git");
-    const holder = Bun.spawn([process.execPath, "-e", "process.exit(0)"]);
-    writeLockOwner(home, holder.pid);
-    await holder.exited;
+    writeLockOwner(home, deadPid());
 
-    // Hold both recoverers at the same observation point: each publishes a
-    // ready marker after reading the stale lock and before touching the path,
-    // and the go marker releases both at once.
-    const barrier = join(root, "barrier");
-    mkdirSync(barrier, { recursive: true });
-    const processes = [
+    const results = await concurrentCli([
       ["--home", home, "register", alpha, "--id", "p7-recovery-alpha", "--alias", "alpha"],
       ["--home", home, "register", beta, "--id", "p7-recovery-beta", "--alias", "beta"],
-    ].map((args) => Bun.spawn([launcher, ...args], {
-      cwd: repositoryRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, ROSSO_REGISTRATION_TEST_HOOK_DIR: barrier },
-    }));
-    const deadline = Date.now() + 5000;
-    while (readdirSync(barrier).filter((name) => name.startsWith("ready-stale-recovery-")).length < 2) {
-      if (Date.now() > deadline) break;
-      await Bun.sleep(25);
-    }
-    expect(readdirSync(barrier).filter((name) => name.startsWith("ready-stale-recovery-")).length).toBe(2);
-    writeFileSync(join(barrier, "go-stale-recovery"), "", "utf8");
-    const results = await Promise.all(processes.map(async (process) => ({
-      exitCode: await process.exited,
-      stdout: await new Response(process.stdout).text(),
-      stderr: await new Response(process.stderr).text(),
-    })));
+    ]);
     for (const result of results) expect(result.exitCode, result.stderr).toBe(0);
 
     expect(sortedProjectIds(home)).toEqual(["p7-recovery-alpha", "p7-recovery-beta"]);
     expect(sortedWorkspaces(home)).toEqual([
       { projectId: "p7-recovery-alpha", path: realpathSync(alpha) },
       { projectId: "p7-recovery-beta", path: realpathSync(beta) },
+    ]);
+    expect(transitionLeftovers(home)).toEqual([]);
+  });
+
+  test("recoverers never rename or remove a replacement live lock", async () => {
+    const { root, home } = fixture();
+    const alpha = join(root, "projects", "alpha");
+    const beta = join(root, "projects", "beta");
+    createRepository(alpha, "https://example.com/p7-alpha.git");
+    createRepository(beta, "https://example.com/p7-beta.git");
+    writeLockOwner(home, deadPid());
+
+    // The test process holds the recovery primitive as a live owner, so both
+    // recoverers are parked at the primitive right after observing the stale
+    // lock and before either can touch the lock path. This is a real process
+    // boundary: no production code reads a test barrier.
+    writeRecoveryOwner(home, process.pid);
+    const alphaProcess = Bun.spawn(
+      [launcher, "--home", home, "register", alpha, "--id", "p7-replacement-alpha", "--alias", "alpha"],
+      { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    const betaProcess = Bun.spawn(
+      [launcher, "--home", home, "register", beta, "--id", "p7-replacement-beta", "--alias", "beta"],
+      { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    await Bun.sleep(300);
+    // While both recoverers hold the stale observation, replace the lock with
+    // a live owner and release the primitive barrier.
+    const replacement = writeLockOwner(home, process.pid);
+    rmSync(recoveryPath(home), { force: true });
+
+    const collect = async (process: typeof alphaProcess): Promise<CommandResult> => ({
+      exitCode: await process.exited,
+      stdout: await new Response(process.stdout).text(),
+      stderr: await new Response(process.stderr).text(),
+    });
+    // A tuple-shaped collection proves the exact two-result cardinality for
+    // Promise.all, so both results are defined without index assertions.
+    const [alphaResult, betaResult] = await Promise.all([
+      collect(alphaProcess),
+      collect(betaProcess),
+    ] as const);
+    for (const result of [alphaResult, betaResult]) {
+      assertStateFailure(result);
+      expect(result.stderr).toMatch(/another (registration|recoverer) is in progress/);
+      expect(result.stderr).toContain(`owner pid ${process.pid}`);
+    }
+
+    // The replacement live lock was never renamed, tombstoned, or removed,
+    // and no registration was written over it.
+    expect(readFileSync(lockPath(home), "utf8")).toBe(replacement);
+    expect(sortedProjectIds(home)).toEqual([]);
+    expect(workspaces(home).workspaces).toEqual([]);
+    const leftovers = transitionLeftovers(home).filter((name) => name !== lockName);
+    expect(leftovers).toEqual([]);
+  });
+
+  test("a crash-retained recovery primitive fails closed with reconcile-required and is never auto-removed", () => {
+    const { root, home } = fixture();
+    const repository = join(root, "repository");
+    createRepository(repository, "https://example.com/register-retained.git");
+    writeLockOwner(home, deadPid());
+    writeRecoveryOwner(home, deadPid());
+    const primitiveBefore = readFileSync(recoveryPath(home), "utf8");
+    const lockBefore = readFileSync(lockPath(home), "utf8");
+
+    const registered = cli(["--home", home, "register", repository, "--id", "repository:retained", "--alias", "retained"]);
+    assertStateFailure(registered);
+    expect(registered.stderr).toContain("registration recovery primitive");
+    expect(registered.stderr).toContain("is crash-retained");
+    expect(registered.stderr).toContain("Reconcile it explicitly");
+    expect(registered.stdout).toBe("");
+    // Neither the retained primitive nor the stale lock was touched.
+    expect(readFileSync(recoveryPath(home), "utf8")).toBe(primitiveBefore);
+    expect(readFileSync(lockPath(home), "utf8")).toBe(lockBefore);
+    expect(sortedProjectIds(home)).toEqual([]);
+
+    // Explicit reconciliation unblocks the stale-lock recovery on the next
+    // invocation, and that registration then succeeds and releases cleanly.
+    rmSync(recoveryPath(home), { force: true });
+    const recovered = cli(["--home", home, "register", repository, "--id", "repository:retained", "--alias", "retained"]);
+    expect(recovered.exitCode, recovered.stderr).toBe(0);
+    expect(sortedProjectIds(home)).toEqual(["repository:retained"]);
+    expect(sortedWorkspaces(home)).toEqual([
+      { projectId: "repository:retained", path: realpathSync(repository) },
     ]);
     expect(transitionLeftovers(home)).toEqual([]);
   });
@@ -517,61 +687,32 @@ describe("Rossovia register serialization through the ordinary launcher", () => 
     createRepository(second, "https://example.com/lidessen/second.git");
     const source = join(root, "legacy-atthis");
     const target = join(root, "rossovia");
-    writeJson(join(source, "manifest.json"), {
-      version: "atthis.home.v1",
-      namespace: "atthis",
-      createdAt: "2026-07-18T00:00:00Z",
-    });
-    writeJson(join(source, "config", "projects.json"), {
-      version: "atthis.projects.v1",
-      projects: [{
-        id: "repository:migration",
-        repository: "https://example.com/lidessen/migration.git",
-        aliases: ["migration"],
-      }],
-    });
-    writeJson(join(source, "state", "workspaces.json"), {
-      version: "atthis.workspaces.v1",
-      workspaces: [{ projectId: "repository:migration", path: migrated }],
-    });
-    writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
-    writeJson(join(source, "cache", "workspaces.json"), {
-      version: "atthis.workspace-index.v1",
-      generatedAt: "2026-07-18T00:00:00Z",
-      entries: [],
-    });
+    writeLegacySource(source, migrated);
 
-    // The barrier pauses the migration after it committed the target home but
-    // while it still holds the registration lock, then releases it only after
-    // the register transition is already contending for the same lock.
-    const barrier = join(root, "barrier");
-    mkdirSync(barrier, { recursive: true });
+    // Start the migration first and observe it through real process
+    // boundaries only: once the migration has durably rewritten the canonical
+    // pair (after which the target pair reads are stable) it may still hold
+    // the registration lock, so the register transition launched now contends
+    // for the same owner instead of reading a partial home.
     const migration = Bun.spawn([launcher, "--home", target, "migrate", "--from-home", source], {
       cwd: repositoryRoot,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, ROSSO_MIGRATION_TEST_HOOK_DIR: barrier },
     });
-    const deadline = Date.now() + 5000;
-    while (!existsSync(join(barrier, "ready-verify"))) {
-      if (Date.now() > deadline) break;
-      await Bun.sleep(25);
-    }
-    expect(existsSync(join(barrier, "ready-verify"))).toBe(true);
+    await waitForMigratedCanonicalPair(target);
 
     const registration = Bun.spawn(
       [launcher, "--home", target, "register", second, "--id", "repository:second", "--alias", "second"],
       { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
     );
-    writeFileSync(join(barrier, "go-verify"), "", "utf8");
-    // A tuple-shaped collection proves the exact two-result cardinality for
-    // Promise.all, so both results are defined for the assertions below even
-    // under noUncheckedIndexedAccess.
     const collect = async (process: typeof migration): Promise<CommandResult> => ({
       exitCode: await process.exited,
       stdout: await new Response(process.stdout).text(),
       stderr: await new Response(process.stderr).text(),
     });
+    // A tuple-shaped collection proves the exact two-result cardinality for
+    // Promise.all, so both results are defined for the assertions below even
+    // under noUncheckedIndexedAccess.
     const [migratedResult, registeredResult] = await Promise.all([
       collect(migration),
       collect(registration),
@@ -588,12 +729,78 @@ describe("Rossovia register serialization through the ordinary launcher", () => 
     const listing = JSON.parse(cli(["--home", target, "project", "list"]).stdout) as { complete: boolean };
     expect(listing.complete).toBe(true);
   });
+
+  test("init held at an exclusive creation cannot overwrite the migration winner's canonical pair", async () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-init-migration-race-"));
+    temporaryRoots.push(root);
+    const migrated = join(root, "migrated");
+    createRepository(migrated, "https://example.com/lidessen/migration.git");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    writeLegacySource(source, migrated);
+    // The target carries a matching migration marker, so the migration takes
+    // its serialized retry path and clears the partial target that init
+    // published before the race, instead of refusing the existing home.
+    mkdirSync(target, { recursive: true });
+    writeJson(join(target, ".rossovia-namespace-migration.json"), {
+      version: "rosso.namespace-migration.v1",
+      sourceHome: realpathSync(source),
+      targetHome: realpathSync(target),
+    });
+
+    const barrier = join(root, "init-observed");
+    const release = join(root, "init-release");
+    // The holder compares the seam path literally, so it must match the
+    // realpath form initializeHome resolves through expandPath.
+    const projectsPath = join(realpathSync(target), "config", "projects.json");
+    const holder = Bun.spawn(
+      [process.execPath, initExclusiveCreateHolder, target, projectsPath, barrier, release],
+      { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
+    );
+    let heldResult: CommandResult | undefined;
+    try {
+      // Deterministic barrier: the holder writes the barrier only after the
+      // exclusive creation of the canonical projects file has been reached
+      // and the path has been observed absent — before the creation attempt.
+      // An existsSync-then-save initialization would act on this stale
+      // observation and overwrite the winner published below; the exclusive
+      // creation cannot.
+      await waitForPath(barrier);
+      expect(readFileSync(barrier, "utf8")).toBe("absent");
+      const migration = cli(["--home", target, "migrate", "--from-home", source]);
+      expect(migration.exitCode, migration.stderr).toBe(0);
+      writeFileSync(release, "released", "utf8");
+      heldResult = await collectCommandResult(holder);
+      expect(heldResult.exitCode, heldResult.stderr).toBe(0);
+    } finally {
+      // Never leave the holder parked behind the barrier on a failed
+      // assertion: release it and drain its output before rethrowing.
+      if (heldResult === undefined) {
+        writeFileSync(release, "released", "utf8");
+        await collectCommandResult(holder);
+      }
+    }
+
+    // The migration winner's canonical pair survived the stale-observation
+    // exclusive creation: the empty init pair was never written over it.
+    expect(sortedProjectIds(target)).toEqual(["repository:migration"]);
+    expect(sortedWorkspaces(target)).toEqual([
+      { projectId: "repository:migration", path: migrated },
+    ]);
+    expect((JSON.parse(readFileSync(join(target, "manifest.json"), "utf8")) as { version: string }).version)
+      .toBe("rosso.home.v1");
+    const listing = JSON.parse(cli(["--home", target, "project", "list"]).stdout) as { complete: boolean };
+    expect(listing.complete).toBe(true);
+    expect(transitionLeftovers(target)).toEqual([]);
+  });
 });
 
 class RecordingIo implements RegistrationIo {
   readonly operations: string[] = [];
   readonly corruptReadPaths = new Set<string>();
   readonly failWrites: Array<{ when: (path: string) => boolean; code: string }> = [];
+  readonly readOverrides: Array<{ when: (path: string, call: number) => boolean; content: string }> = [];
+  private readonly readCounts = new Map<string, number>();
 
   mkdir(path: string): void {
     this.operations.push(`mkdir:${path}`);
@@ -619,7 +826,12 @@ class RecordingIo implements RegistrationIo {
 
   readFile(path: string): string {
     this.operations.push(`read:${path}`);
+    const call = this.readCounts.get(path) ?? 0;
+    this.readCounts.set(path, call + 1);
     if (this.corruptReadPaths.has(path)) return "{ corrupted";
+    for (const override of this.readOverrides) {
+      if (override.when(path, call)) return override.content;
+    }
     return readFileSync(path, "utf8");
   }
 
@@ -675,7 +887,7 @@ describe("registration transition durability and rollback seam", () => {
     return thrown as Error;
   }
 
-  test("stages and fsyncs both files before rename and syncs parent directories after", () => {
+  test("publishes the durably synced projects entry before staging the workspace entry", () => {
     const { home } = fixture();
     const resolvedHome = realpathSync(home);
     const io = new RecordingIo();
@@ -684,6 +896,8 @@ describe("registration transition durability and rollback seam", () => {
 
     const projectsPath = join(resolvedHome, "config", "projects.json");
     const workspacesPath = join(resolvedHome, "state", "workspaces.json");
+    const configDirectory = dirname(projectsPath);
+    const stateDirectory = dirname(workspacesPath);
     const operations = io.operations;
     const operationIndex = (operation: string): number => {
       const index = operations.indexOf(operation);
@@ -699,19 +913,108 @@ describe("registration transition durability and rollback seam", () => {
     const projectsStage = stageOf(projectsPath);
     const workspacesStage = stageOf(workspacesPath);
 
+    // The exact observable durable subset order: the projects stage is
+    // written, fsynced, renamed, and the config directory fsynced before the
+    // workspaces stage is even written; then the workspaces stage is fsynced,
+    // renamed, and the state directory fsynced before the committed bytes are
+    // verified. (The old both-renames-before-directory-sync order would fail
+    // the fsync-dir:config before rename:workspaces assertion below.)
     expect(operationIndex(`write:${projectsStage}`)).toBeLessThan(operationIndex(`fsync-file:${projectsStage}`));
-    expect(operationIndex(`write:${workspacesStage}`)).toBeLessThan(operationIndex(`fsync-file:${workspacesStage}`));
     expect(operationIndex(`fsync-file:${projectsStage}`)).toBeLessThan(operationIndex(`rename:${projectsStage}->${projectsPath}`));
+    expect(operationIndex(`rename:${projectsStage}->${projectsPath}`)).toBeLessThan(operationIndex(`fsync-dir:${configDirectory}`));
+    expect(operationIndex(`fsync-dir:${configDirectory}`)).toBeLessThan(operationIndex(`write:${workspacesStage}`));
+    expect(operationIndex(`write:${workspacesStage}`)).toBeLessThan(operationIndex(`fsync-file:${workspacesStage}`));
     expect(operationIndex(`fsync-file:${workspacesStage}`)).toBeLessThan(operationIndex(`rename:${workspacesStage}->${workspacesPath}`));
-    expect(operationIndex(`rename:${projectsStage}->${projectsPath}`)).toBeLessThan(operationIndex(`rename:${workspacesStage}->${workspacesPath}`));
-    expect(operationIndex(`rename:${workspacesStage}->${workspacesPath}`)).toBeLessThan(operationIndex(`fsync-dir:${dirname(projectsPath)}`));
-    expect(operationIndex(`rename:${workspacesStage}->${workspacesPath}`)).toBeLessThan(operationIndex(`fsync-dir:${dirname(workspacesPath)}`));
-    expect(operationIndex(`fsync-dir:${dirname(workspacesPath)}`)).toBeLessThan(operationIndex(`read:${projectsPath}`));
+    expect(operationIndex(`rename:${workspacesStage}->${workspacesPath}`)).toBeLessThan(operationIndex(`fsync-dir:${stateDirectory}`));
+    expect(operationIndex(`fsync-dir:${stateDirectory}`)).toBeLessThan(operationIndex(`read:${projectsPath}`));
     expect(operationIndex(`read:${projectsPath}`)).toBeLessThan(operationIndex(`read:${workspacesPath}`));
 
     expect(projects(home).projects.map((entry) => entry.id)).toEqual(["repository:order"]);
     expect(existsSync(join(resolvedHome, "state", "registration.lock"))).toBe(false);
     expect(transitionLeftovers(home)).toEqual([]);
+  });
+
+  test("migration publishes its validated canonical pair through the shared durable commit under the held owner", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-migration-seam-"));
+    temporaryRoots.push(root);
+    const migrated = join(root, "migrated");
+    createRepository(migrated, "https://example.com/lidessen/migration.git");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    writeJson(join(source, "manifest.json"), {
+      version: "atthis.home.v1",
+      namespace: "atthis",
+      createdAt: "2026-07-18T00:00:00Z",
+    });
+    writeJson(join(source, "config", "projects.json"), {
+      version: "atthis.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.com/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    });
+    writeJson(join(source, "state", "workspaces.json"), {
+      version: "atthis.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: migrated }],
+    });
+    writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
+
+    const io = new RecordingIo();
+    const result = migrateLegacyHome(target, source, io);
+    expect(result.migrated).toBe(true);
+    expect(result.verifiedProjectId).toBe("repository:migration");
+
+    const resolvedTarget = realpathSync(target);
+    const projectsPath = join(resolvedTarget, "config", "projects.json");
+    const workspacesPath = join(resolvedTarget, "state", "workspaces.json");
+    const configDirectory = dirname(projectsPath);
+    const stateDirectory = dirname(workspacesPath);
+    const operations = io.operations;
+    const operationIndex = (operation: string): number => {
+      const index = operations.indexOf(operation);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    const stageOf = (path: string): string => {
+      const operation = operations.find((entry) =>
+        entry.startsWith("write:") && entry.includes(`${path}.`) && entry.endsWith(".tmp"));
+      expect(operation).toBeDefined();
+      return operation!.slice("write:".length);
+    };
+    const projectsStage = stageOf(projectsPath);
+    const workspacesStage = stageOf(workspacesPath);
+
+    // The registration owner was acquired through the seam, and the exact
+    // shared durable subset order admits the migrated pair: projects staged,
+    // fsynced, renamed, and the config directory fsynced before the
+    // workspaces stage is even written; then the workspaces staged, fsynced,
+    // renamed, and the state directory fsynced before the committed bytes
+    // are verified. The lock is released through the seam afterwards.
+    expect(operations.some((operation) =>
+      operation.startsWith("create-exclusive:") && operation.endsWith(join("state", lockName)))).toBe(true);
+    const lockAcquisition = operations.findIndex((operation) =>
+      operation.startsWith("create-exclusive:") && operation.endsWith(join("state", lockName)));
+    expect(lockAcquisition).toBeGreaterThanOrEqual(0);
+    expect(lockAcquisition).toBeLessThan(operationIndex(`write:${projectsStage}`));
+    expect(operationIndex(`write:${projectsStage}`)).toBeLessThan(operationIndex(`fsync-file:${projectsStage}`));
+    expect(operationIndex(`fsync-file:${projectsStage}`)).toBeLessThan(operationIndex(`rename:${projectsStage}->${projectsPath}`));
+    expect(operationIndex(`rename:${projectsStage}->${projectsPath}`)).toBeLessThan(operationIndex(`fsync-dir:${configDirectory}`));
+    expect(operationIndex(`fsync-dir:${configDirectory}`)).toBeLessThan(operationIndex(`write:${workspacesStage}`));
+    expect(operationIndex(`write:${workspacesStage}`)).toBeLessThan(operationIndex(`fsync-file:${workspacesStage}`));
+    expect(operationIndex(`fsync-file:${workspacesStage}`)).toBeLessThan(operationIndex(`rename:${workspacesStage}->${workspacesPath}`));
+    expect(operationIndex(`rename:${workspacesStage}->${workspacesPath}`)).toBeLessThan(operationIndex(`fsync-dir:${stateDirectory}`));
+    expect(operationIndex(`fsync-dir:${stateDirectory}`)).toBeLessThan(operationIndex(`read:${projectsPath}`));
+    expect(operationIndex(`read:${projectsPath}`)).toBeLessThan(operationIndex(`read:${workspacesPath}`));
+    expect(operations.some((operation) =>
+      operation.startsWith("remove:") && operation.endsWith(join("state", lockName)))).toBe(true);
+
+    expect(sortedProjectIds(target)).toEqual(["repository:migration"]);
+    expect(sortedWorkspaces(target)).toEqual([
+      { projectId: "repository:migration", path: migrated },
+    ]);
+    expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
+    expect(transitionLeftovers(target)).toEqual([]);
   });
 
   test("post-rename verification failure restores workspaces before projects and leaves the previous pair", () => {
@@ -785,5 +1088,63 @@ describe("registration transition durability and rollback seam", () => {
 
     expect(existsSync(join(resolvedHome, "state", "registration.lock"))).toBe(false);
     expect(transitionLeftovers(home)).toEqual([]);
+  });
+
+  test("a replacement live owner observed between the stale read and recovery is never renamed or removed", () => {
+    const { home } = fixture();
+    const resolvedHome = realpathSync(home);
+    const lock = join(resolvedHome, "state", "registration.lock");
+    writeLockOwner(home, deadPid());
+    const replacement = lockOwnerBytes(process.pid);
+
+    // The seam injects a replacement live owner at the exact read-then-act
+    // window: after the transition has observed the dead-owner bytes but
+    // before the serialized recovery re-inspects the lock path.
+    const io = new RecordingIo();
+    let injected = false;
+    io.readOverrides.push({
+      when: (path, call) => {
+        if (path !== lock || call < 1) return false;
+        if (!injected) {
+          writeFileSync(lock, replacement, "utf8");
+          injected = true;
+        }
+        return true;
+      },
+      content: replacement,
+    });
+    const failure = transitionError(() => {
+      inProcessRegister(home, "repository:contended-replacement", "https://example.com/contended.git", io);
+    });
+    expect(failure.message).toContain("another registration is in progress");
+    expect(failure.message).toContain(`owner pid ${process.pid}`);
+
+    // The replacement lock was never renamed, tombstoned, or removed, and the
+    // recovery primitive was released without touching the lock path.
+    expect(io.operations.some((operation) =>
+      operation.startsWith(`rename:${lock}`) || operation === `remove:${lock}`)).toBe(false);
+    expect(readFileSync(lock, "utf8")).toBe(replacement);
+    expect(existsSync(`${lock}.recovery`)).toBe(false);
+  });
+
+  test("a release blocked by a crash-retained primitive never claims success", () => {
+    const { home } = fixture();
+    const resolvedHome = realpathSync(home);
+    const lock = join(resolvedHome, "state", "registration.lock");
+    writeRecoveryOwner(home, deadPid());
+    const primitiveBefore = readFileSync(`${lock}.recovery`, "utf8");
+
+    const failure = transitionError(() => {
+      inProcessRegister(home, "repository:retained-release", "https://example.com/retained-release.git");
+    });
+    expect(failure.message).toContain("registration recovery primitive");
+    expect(failure.message).toContain("is crash-retained");
+    expect(failure.message).toContain("Reconcile it explicitly");
+    // The committed pair reached the canonical surfaces, but no success was
+    // claimed while the lock cleanup is indeterminate, and the retained
+    // primitive was never auto-removed.
+    expect(projects(home).projects.map((entry) => entry.id)).toEqual(["repository:retained-release"]);
+    expect(readFileSync(`${lock}.recovery`, "utf8")).toBe(primitiveBefore);
+    expect(existsSync(lock)).toBe(true);
   });
 });

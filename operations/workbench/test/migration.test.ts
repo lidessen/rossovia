@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -98,6 +99,33 @@ function createLegacyHome(home: string, repository: string, machinePreferences: 
     projectId: null,
     recordDigest: "0".repeat(64),
   })}\n`, "utf8");
+}
+
+/** A legacy source plus a target that already holds one live registration
+ * owner token, so a reserved-path rejection can prove the live owner and the
+ * whole target are untouched. */
+function reservedNamespaceFixture(prefix: string): {
+  root: string;
+  source: string;
+  target: string;
+  liveLock: string;
+} {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  temporaryRoots.push(root);
+  const repository = join(root, "repository");
+  const source = join(root, "legacy-atthis");
+  const target = join(root, "rossovia");
+  createRepository(repository);
+  createLegacyHome(source, repository);
+  mkdirSync(join(target, "state"), { recursive: true });
+  const liveLock = `${JSON.stringify({
+    version: "rosso.registration-lock.v1",
+    pid: process.pid,
+    owner: randomUUID(),
+    acquiredAt: new Date().toISOString(),
+  }, null, 2)}\n`;
+  writeFileSync(join(target, "state", "registration.lock"), liveLock, "utf8");
+  return { root, source, target, liveLock };
 }
 
 describe("legacy namespace migration", () => {
@@ -234,6 +262,96 @@ describe("legacy namespace migration", () => {
     expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
     expect(rejected.stderr).toContain("rossovia: legacy machine preference receipts require explicit environment reconciliation");
     expect(rejected.stderr).not.toContain("for usage");
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+  });
+
+  test("rejects a legacy source carrying a registration.lock file before any target mutation", () => {
+    const { source, target, liveLock } = reservedNamespaceFixture("rossovia-reserved-lock-file-");
+    writeFileSync(join(source, "state", "registration.lock"), "stale-lock-bytes", "utf8");
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: legacy source contains a reserved Rossovia registration lock path");
+    expect(rejected.stderr).toContain("registration.lock");
+    expect(rejected.stderr).not.toContain("for usage");
+    // The rejection happened before any target mutation: the live owner token
+    // is untouched and no marker or copied manifest was written.
+    expect(readFileSync(join(target, "state", "registration.lock"), "utf8")).toBe(liveLock);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+    expect(readFileSync(join(source, "state", "registration.lock"), "utf8")).toBe("stale-lock-bytes");
+  });
+
+  test("rejects a legacy source carrying a registration.lock.recovery file before any target mutation", () => {
+    const { source, target, liveLock } = reservedNamespaceFixture("rossovia-reserved-lock-recovery-");
+    writeFileSync(join(source, "state", "registration.lock.recovery"), "stale-recovery-bytes", "utf8");
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: legacy source contains a reserved Rossovia registration lock path");
+    expect(rejected.stderr).toContain("registration.lock.recovery");
+    expect(rejected.stderr).not.toContain("for usage");
+    expect(readFileSync(join(target, "state", "registration.lock"), "utf8")).toBe(liveLock);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+    expect(readFileSync(join(source, "state", "registration.lock.recovery"), "utf8")).toBe("stale-recovery-bytes");
+  });
+
+  test("rejects a legacy source carrying a registration.lock tombstone before any target mutation", () => {
+    const { source, target, liveLock } = reservedNamespaceFixture("rossovia-reserved-lock-tombstone-");
+    const tombstone = "registration.lock.stale-01234567-89ab-cdef-0123-456789abcdef";
+    writeFileSync(join(source, "state", tombstone), "tombstone", "utf8");
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("rossovia: legacy source contains a reserved Rossovia registration lock path");
+    expect(rejected.stderr).toContain(tombstone);
+    expect(rejected.stderr).not.toContain("for usage");
+    expect(readFileSync(join(target, "state", "registration.lock"), "utf8")).toBe(liveLock);
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+    expect(existsSync(join(target, "manifest.json"))).toBe(false);
+    expect(readFileSync(join(source, "state", tombstone), "utf8")).toBe("tombstone");
+  });
+
+  test("rejects a legacy source with a reserved registration lock directory", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-reserved-lock-directory-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    mkdirSync(join(source, "state", "registration.lock"), { recursive: true });
+    writeFileSync(join(source, "state", "registration.lock", "descendant"), "x", "utf8");
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("legacy source contains a reserved Rossovia registration lock path");
+    expect(rejected.stderr).toContain("registration.lock");
+    expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(false);
+  });
+
+  test("rejects a legacy pair whose workspace references a project absent from the migrated projects state", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-ghost-workspace-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "repository");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    createRepository(repository);
+    createLegacyHome(source, repository);
+    writeJson(join(source, "state", "workspaces.json"), {
+      version: "atthis.workspaces.v1",
+      workspaces: [{ projectId: "repository:ghost", path: repository }],
+    });
+
+    const rejected = workbench(target, "migrate", "--from-home", source);
+    expect(rejected.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(rejected.stderr).toContain("registration pair is inconsistent");
+    expect(rejected.stderr).toContain("references project repository:ghost");
+    expect(rejected.stderr).not.toContain("for usage");
+    // The migration failed after the target rewrite, so the marker is
+    // retained and the failed migration stays explicitly retryable.
     expect(existsSync(join(target, ".rossovia-namespace-migration.json"))).toBe(true);
     expect(existsSync(join(target, "manifest.json"))).toBe(false);
   });

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
-  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
@@ -37,15 +36,23 @@ import {
  * moves the stale lock only when the path still contains the exact observed
  * dead-owner bytes, and a successful transition releases the lock only when
  * the path still contains its own token — so recovery can never rename or
- * remove a replacement live lock. A live or unknown owner fails closed after
- * a bounded wait, so contention, a crashed transition, or a malformed lock is
- * always visible — never a silent lost update.
+ * remove a replacement live lock. The recovery primitive itself is strictly
+ * transient: it is created O_EXCL and removed only by the exact token owner.
+ * A primitive retained by a crashed holder is never auto-removed (a second
+ * observer could otherwise delete a replacement live primitive); it fails
+ * closed with an explicit reconcile-required error. Release failures are
+ * surfaced, so a success is never claimed while ownership cleanup is
+ * indeterminate.
  *
- * A claimed success is crash-durable: both canonical files are staged,
- * fsynced, renamed atomically, and their parent directory entries are synced
- * before the committed bytes are verified and success is reported. Failure
- * paths restore the pair workspaces-before-projects, which keeps the
- * workspace→project invariant true at every intermediate state.
+ * A claimed success is crash-durable and subset-safe: the canonical
+ * projects entry is staged, fsynced, renamed, and its config directory is
+ * fsynced before the matching workspace entry is even staged; only then are
+ * the workspaces renamed and the state directory fsynced, and the committed
+ * bytes are verified before success is reported. A crash therefore never
+ * leaves a workspace entry referencing a project whose durable publication
+ * is unsynced. Failure paths restore the pair workspaces-before-projects,
+ * which keeps the workspace→project invariant true at every intermediate
+ * state.
  */
 
 const registrationLockVersion = "rosso.registration-lock.v1";
@@ -71,7 +78,9 @@ interface RegistrationLockOwner {
  * The injectable filesystem seam for one registration transition. The
  * production default is the synchronous Node filesystem; tests inject a
  * recording implementation to prove operation order (stage, fsync, rename,
- * parent-directory sync) and to simulate verification or rollback failures.
+ * parent-directory sync) and to simulate verification, rollback, or
+ * replacement-owner failures. No production code reads test-only
+ * environment variables; every controllable boundary is this seam.
  */
 export interface RegistrationIo {
   mkdir(path: string): void;
@@ -111,32 +120,6 @@ export const nodeRegistrationIo: RegistrationIo = {
     }
   },
 };
-
-const registrationTestHookDirectory = process.env.ROSSO_REGISTRATION_TEST_HOOK_DIR;
-
-/**
- * Test-only barrier instrumentation: when ROSSO_REGISTRATION_TEST_HOOK_DIR is
- * set, a transition that has just observed a verifiably dead lock publishes a
- * unique ready marker and waits (bounded) for the matching go marker before
- * touching the lock path. This lets a regression hold two recoverers at the
- * same observation point. Unset in production, this is a no-op.
- */
-function registrationTestHook(phase: string): void {
-  const directory = registrationTestHookDirectory;
-  if (!directory) return;
-  const ready = join(directory, `ready-${phase}-${randomUUID()}`);
-  const proceed = join(directory, `go-${phase}`);
-  try {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(ready, "", "utf8");
-  } catch {
-    return;
-  }
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (existsSync(proceed)) return;
-    Bun.sleepSync(registrationLockWaitMilliseconds);
-  }
-}
 
 function serializeJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -180,10 +163,13 @@ interface ContendedLockObservation {
 /**
  * The recovery serialization primitive: a sidecar exclusive file that
  * serializes stale-lock recovery and lock release. Holders create it with
- * O_EXCL and remove only their own token, so two recoverers cannot both move
- * the same path, and a release cannot delete a lock that was replaced after
- * its own observation. A verifiably dead holder's primitive is removed only
- * when its exact observed bytes are still present.
+ * O_EXCL and remove only their own exact token, so two recoverers cannot
+ * both move the same path, and a release cannot delete a lock that was
+ * replaced after its own observation. The primitive is strictly transient:
+ * a live holder is waited for, while a primitive retained by a verifiably
+ * dead holder is never auto-removed (a second observer could otherwise
+ * delete a replacement live primitive) — it fails closed with an explicit
+ * reconcile-required error instead.
  */
 function withRecoveryPrimitive(lockPath: string, io: RegistrationIo, fn: () => void): void {
   const recoveryPath = `${lockPath}.recovery`;
@@ -229,19 +215,12 @@ function withRecoveryPrimitive(lockPath: string, io: RegistrationIo, fn: () => v
         Bun.sleepSync(registrationLockWaitMilliseconds);
         continue;
       }
-      // The holder is verifiably dead: remove only the exact observed bytes.
-      try {
-        if (io.readFile(recoveryPath) === observed) {
-          io.remove(recoveryPath);
-          continue;
-        }
-      } catch (readError: unknown) {
-        if (errorCode(readError) === "ENOENT") continue;
-        throw new Error(
-          `cannot re-inspect the Rossovia registration recovery primitive at ${recoveryPath}: ${errorMessage(readError)}`,
-        );
-      }
-      Bun.sleepSync(registrationLockWaitMilliseconds);
+      // The holder is verifiably dead and the primitive is crash-retained:
+      // fail closed instead of deleting a path this caller does not own.
+      throw new Error(
+        `registration recovery primitive at ${recoveryPath} is crash-retained (owner pid ${holder.pid} is dead). ` +
+        "Reconcile it explicitly by removing that exact file before retrying registration.",
+      );
     }
   }
   if (!acquired) {
@@ -252,13 +231,40 @@ function withRecoveryPrimitive(lockPath: string, io: RegistrationIo, fn: () => v
   }
   try {
     fn();
-  } finally {
+  } catch (error: unknown) {
+    // Preserve the wrapped failure; attempt cleanup but never mask it.
     try {
       if (io.readFile(recoveryPath) === serialized) io.remove(recoveryPath);
     } catch {
-      // Preserve the wrapped outcome; a stale primitive is recovered by the
-      // next holder once this owner is verifiably dead.
+      // A retained primitive fails closed for the next holder.
     }
+    throw error;
+  }
+  // Remove only this caller's exact token. A replaced, unreadable, or
+  // unremovable primitive is an indeterminate cleanup: surface it instead of
+  // claiming a success whose ownership cleanup cannot be confirmed.
+  let current: string | undefined;
+  let cleanupError: unknown;
+  try {
+    current = io.readFile(recoveryPath);
+  } catch (error: unknown) {
+    cleanupError = error;
+  }
+  if (current !== undefined && current !== serialized) {
+    cleanupError = new Error(`the recovery primitive at ${recoveryPath} no longer holds this caller's token`);
+  }
+  if (current === serialized) {
+    try {
+      io.remove(recoveryPath);
+    } catch (error: unknown) {
+      cleanupError = error;
+    }
+  }
+  if (cleanupError !== undefined) {
+    throw new Error(
+      `cannot release the Rossovia registration recovery primitive at ${recoveryPath}: ${errorMessage(cleanupError)}. ` +
+      "Reconcile the retained file explicitly before retrying registration.",
+    );
   }
 }
 
@@ -338,7 +344,6 @@ function observeContendedLock(lockPath: string, io: RegistrationIo): ContendedLo
   }
   const current = owner!;
   if (isLiveProcess(current.pid)) return { recovered: false, pid: current.pid };
-  registrationTestHook("stale-recovery");
   if (removeStaleRegistrationLock(lockPath, raw, io)) return { recovered: true };
   // The lock was replaced while this observation was pending: never rename
   // or remove a lock we did not observe. Report the replacement so the
@@ -351,20 +356,40 @@ function observeContendedLock(lockPath: string, io: RegistrationIo): ContendedLo
   }
 }
 
+/**
+ * Release the held lock only when the path still contains this caller's exact
+ * token, under the recovery primitive. A lock already gone needs no release;
+ * a replaced, unreadable, or unremovable lock is an indeterminate cleanup and
+ * the failure is surfaced so a success is never claimed while the ownership
+ * state of the lock is unknown.
+ */
 function releaseRegistrationLock(lockPath: string, owner: RegistrationLockOwner, io: RegistrationIo): void {
-  try {
-    withRecoveryPrimitive(lockPath, io, () => {
-      try {
-        // Release only when the path still contains this caller's token: a
-        // lock recovered or replaced after our observation is never removed.
-        if (io.readFile(lockPath) === serializeJson(owner)) io.remove(lockPath);
-      } catch {
-        // The lock is already gone or unreadable: nothing to release.
-      }
-    });
-  } catch {
-    // Preserve the registration outcome; a stale lock is recovered by the
-    // next transition once this owner is verifiably dead.
+  const serialized = serializeJson(owner);
+  let cleanupError: unknown;
+  withRecoveryPrimitive(lockPath, io, () => {
+    let current: string;
+    try {
+      current = io.readFile(lockPath);
+    } catch (error: unknown) {
+      if (errorCode(error) === "ENOENT") return; // Already released: nothing to remove.
+      cleanupError = new Error(`cannot inspect the lock during release: ${errorMessage(error)}`);
+      return;
+    }
+    if (current !== serialized) {
+      cleanupError = new Error(`the lock no longer holds this transition's owner token`);
+      return;
+    }
+    try {
+      io.remove(lockPath);
+    } catch (error: unknown) {
+      cleanupError = new Error(`cannot remove the lock: ${errorMessage(error)}`);
+    }
+  });
+  if (cleanupError !== undefined) {
+    throw new Error(
+      `Rossovia registration lock release is indeterminate at ${lockPath}: ${errorMessage(cleanupError)}. ` +
+      "Reconcile the retained lock files explicitly before retrying registration.",
+    );
   }
 }
 
@@ -467,14 +492,24 @@ function restoreRegistrationPair(
 }
 
 /**
- * Commit the validated pair through staged atomic renames. Both stages are
- * written and fsynced before the first rename, both canonical parent
- * directories are fsynced after the renames, and the committed bytes are
- * verified under the lock before any success is claimed. Every failure path
- * restores the pair workspaces-before-projects, which keeps the
+ * Commit the validated pair through staged atomic renames with a durable
+ * subset order: the canonical projects entry is staged and fsynced, renamed,
+ * and its config directory entry fsynced before the matching workspace entry
+ * is even staged; only then is the workspaces stage fsynced, renamed, and the
+ * state directory fsynced. A crash at any point therefore never leaves a
+ * workspace entry referencing a project whose durable publication is unsynced.
+ * The committed bytes are verified before any success is claimed, and every
+ * failure path restores the pair workspaces-before-projects, which keeps the
  * workspace→project invariant true at every intermediate state.
+ *
+ * This is the one durable canonical-pair admission shared by every transition
+ * owner. Register and attach call it inside {@link transitionRegistration};
+ * migration calls it directly while it already holds the registration owner,
+ * so no caller ever acquires a second lock and the same
+ * projects-rename → config-fsync → workspaces-rename → state-fsync order
+ * admits every claimed success.
  */
-function commitRegistrationPair(
+export function commitCanonicalPair(
   home: string,
   projects: Projects,
   workspaces: Workspaces,
@@ -486,8 +521,6 @@ function commitRegistrationPair(
   const workspacesPath = join(home, "state", "workspaces.json");
   const projectsSerialized = serializeJson(projects);
   const workspacesSerialized = serializeJson(workspaces);
-  // Stage both canonical files before the first atomic rename, so any staging
-  // write failure leaves the committed pair untouched.
   const projectsStage = `${projectsPath}.${randomUUID()}.tmp`;
   const workspacesStage = `${workspacesPath}.${randomUUID()}.tmp`;
   let projectsReplaced = false;
@@ -496,16 +529,19 @@ function commitRegistrationPair(
     io.mkdir(dirname(projectsPath));
     io.writeFile(projectsStage, projectsSerialized);
     io.fsyncFile(projectsStage);
+    io.rename(projectsStage, projectsPath);
+    projectsReplaced = true;
+    // Publish and durably sync the canonical projects entry before the
+    // matching workspace entry can be observed: a crash after this point can
+    // only expose projects, never a workspace referencing unsynced projects.
+    io.fsyncDirectory(dirname(projectsPath));
     io.mkdir(dirname(workspacesPath));
     io.writeFile(workspacesStage, workspacesSerialized);
     io.fsyncFile(workspacesStage);
-    io.rename(projectsStage, projectsPath);
-    projectsReplaced = true;
     io.rename(workspacesStage, workspacesPath);
     workspacesReplaced = true;
-    // Sync the parent directory entries so a crash cannot lose the renames
-    // that a reported success depends on.
-    io.fsyncDirectory(dirname(projectsPath));
+    // Sync the state directory entry so a crash cannot lose the workspaces
+    // rename that a reported success depends on.
     io.fsyncDirectory(dirname(workspacesPath));
   } catch (error: unknown) {
     removeProbe(projectsStage, io);
@@ -556,7 +592,9 @@ function commitRegistrationPair(
  * fresh home read happens strictly under the lock, so two concurrent
  * transitions merge instead of overwriting one another. The validated pair is
  * committed through staged atomic renames and verified byte-for-byte before
- * the transition returns, and the lock is released on every path.
+ * the transition returns. The lock release runs on every path, and an
+ * indeterminate release (a replaced, unreadable, or crash-retained ownership
+ * surface) surfaces as a failure instead of a claimed success.
  */
 export function transitionRegistration<T>(
   homeArgument: string | undefined,
@@ -575,7 +613,7 @@ export function transitionRegistration<T>(
     validateProjects(current.projects);
     validateWorkspaces(current.workspaces);
     validateRegistrationPair(current.projects, current.workspaces);
-    commitRegistrationPair(home, current.projects, current.workspaces, previousProjects, previousWorkspaces, io);
+    commitCanonicalPair(home, current.projects, current.workspaces, previousProjects, previousWorkspaces, io);
     return result;
   } finally {
     release();

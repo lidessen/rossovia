@@ -12,10 +12,24 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { PreferenceReceiptSchema, PreferencesSchema } from "./contracts";
-import { initializeHome, loadHome, saveJson, workspaceFor } from "./home";
+import {
+  PreferenceReceiptSchema,
+  PreferencesSchema,
+  ProjectsSchema,
+  WorkspacesSchema,
+  type Projects,
+  type Workspaces,
+} from "./contracts";
+import { initializeHome, loadHome, saveJson, validateProjects, validateWorkspaces, workspaceFor } from "./home";
 import { expandPath } from "./paths";
-import { acquireRegistrationLock, registrationLockName } from "./registration";
+import {
+  acquireRegistrationLock,
+  commitCanonicalPair,
+  nodeRegistrationIo,
+  registrationLockName,
+  validateRegistrationPair,
+  type RegistrationIo,
+} from "./registration";
 import { observeWorkspace } from "./workspace";
 
 function digest(path: string): string {
@@ -47,8 +61,25 @@ function filesBelow(root: string): string[] {
   return files.sort();
 }
 
+/** The exact canonical pair paths, relative to one home root. */
+function canonicalProjectsPath(home: string): string {
+  return join(home, "config", "projects.json");
+}
+
+function canonicalWorkspacesPath(home: string): string {
+  return join(home, "state", "workspaces.json");
+}
+
+function isCanonicalPairPath(home: string, path: string): boolean {
+  return path === canonicalProjectsPath(home) || path === canonicalWorkspacesPath(home);
+}
+
 function migrateNamespaceFiles(home: string): void {
   for (const path of filesBelow(home)) {
+    // The canonical pair is never namespace-rewritten in place: it is
+    // migrated, parsed, and validated as one in-memory pair and then
+    // published through the shared durable commit under the held owner.
+    if (isCanonicalPairPath(home, path)) continue;
     if (path.endsWith(".json")) {
       const current = JSON.parse(readFileSync(path, "utf8"));
       const migrated = migrateRecord(current);
@@ -89,6 +120,32 @@ function validateLegacySource(source: string): void {
   if (manifest.namespace !== "atthis") throw new Error("legacy manifest namespace must be atthis");
   const projects = readObject(join(source, "config", "projects.json"));
   if (projects.version !== "atthis.projects.v1") throw new Error("legacy projects version must be atthis.projects.v1");
+}
+
+/**
+ * The reserved registration namespace the migration must never import from a
+ * legacy source: the live registration lock, its recovery primitive, and any
+ * reserved descendant, tombstone, or stage under the same names. Copying any
+ * of these could replace the target's live owner boundary mid-transition, so
+ * the whole namespace is rejected before the target is mutated at all, and
+ * the live owner token in the target is provably left untouched.
+ */
+function assertLegacySourceReservedClear(source: string): void {
+  const reserved = (name: string): boolean =>
+    name === registrationLockName || name.startsWith(`${registrationLockName}.`);
+  const pending = [source];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (reserved(entry.name)) {
+        throw new Error(
+          `legacy source contains a reserved Rossovia registration lock path: ${join(current, entry.name)}. ` +
+          "Remove it from the legacy source explicitly before migration.",
+        );
+      }
+      if (entry.isDirectory() && !entry.isSymbolicLink()) pending.push(join(current, entry.name));
+    }
+  }
 }
 
 function reconcileObsoleteMachinePreferences(home: string): void {
@@ -169,11 +226,13 @@ function clearMigrationTarget(target: string): void {
     if (entry.name === migrationMarkerName) continue;
     const path = join(target, entry.name);
     if (entry.name === "state") {
-      // The caller holds the registration lock inside state/: preserve it so
-      // the owner boundary stays continuous across the rewrite.
+      // The caller holds the registration lock inside state/: preserve the
+      // whole reserved lock/recovery/tombstone namespace so the owner
+      // boundary stays continuous across the rewrite and a crash-retained
+      // recovery primitive is never silently deleted by the migration.
       if (entry.isDirectory()) {
         for (const child of readdirSync(path, { withFileTypes: true })) {
-          if (child.name === registrationLockName) continue;
+          if (child.name === registrationLockName || child.name.startsWith(`${registrationLockName}.`)) continue;
           rmSync(join(path, child.name), { recursive: true, force: true });
         }
       }
@@ -183,7 +242,7 @@ function clearMigrationTarget(target: string): void {
   }
 }
 
-function prepareMigrationTarget(source: string, target: string): { marker: string; release: () => void } {
+function prepareMigrationTarget(source: string, target: string, io: RegistrationIo): { marker: string; release: () => void } {
   const marker = join(target, migrationMarkerName);
   const markerValue = {
     version: "rosso.namespace-migration.v1",
@@ -192,15 +251,27 @@ function prepareMigrationTarget(source: string, target: string): { marker: strin
   };
   if (existsSync(target)) {
     if (existsSync(marker)) {
-      const interrupted = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
-      if (interrupted.sourceHome !== source || interrupted.targetHome !== target) {
+      // The first read only decides whether the retained marker belongs to
+      // this transaction; the authoritative decision happens under the lock.
+      const retained = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+      if (retained.sourceHome !== source || retained.targetHome !== target) {
         throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
       }
       // Serialize the clear of the interrupted target under the registration
       // owner boundary, so no register transition can observe or write the
       // canonical pair while the migration rewrites it.
-      const release = acquireRegistrationLock(target);
+      const release = acquireRegistrationLock(target, io);
       try {
+        // Re-read the marker under ownership immediately before any clear:
+        // a transition may have completed while this migration waited, and a
+        // stale pre-lock decision must never erase its success.
+        if (!existsSync(marker)) {
+          throw new Error(`rossovia workbench target migration marker disappeared: ${target}`);
+        }
+        const current = MigrationMarkerSchema.parse(JSON.parse(readFileSync(marker, "utf8")));
+        if (current.sourceHome !== source || current.targetHome !== target) {
+          throw new Error(`rossovia workbench target contains an unrelated migration transaction: ${target}`);
+        }
         clearMigrationTarget(target);
         saveJson(marker, markerValue);
       } catch (error: unknown) {
@@ -215,47 +286,76 @@ function prepareMigrationTarget(source: string, target: string): { marker: strin
     mkdirSync(target, { recursive: true });
   }
   saveJson(marker, markerValue);
-  const release = acquireRegistrationLock(target);
+  const release = acquireRegistrationLock(target, io);
   return { marker, release };
+}
+
+function migrateCanonicalPair(source: string): { projects: Projects; workspaces: Workspaces } {
+  const projectsEnvelope = migrateRecord(readObject(canonicalProjectsPath(source))) as Record<string, unknown>;
+  const projectsValue = ProjectsSchema.parse({
+    ...projectsEnvelope,
+    projects: Array.isArray(projectsEnvelope.projects)
+      ? (projectsEnvelope.projects as unknown[]).map((entry) => migrateRecord(entry))
+      : projectsEnvelope.projects,
+  });
+  // A legacy source without a workspaces file carries no workspace mappings;
+  // the pair then behaves exactly like an empty legacy pair and the later
+  // verification reports the missing workspace instead of inventing one.
+  const workspacesEnvelope: Record<string, unknown> = existsSync(canonicalWorkspacesPath(source))
+    ? (migrateRecord(readObject(canonicalWorkspacesPath(source))) as Record<string, unknown>)
+    : { version: "rosso.workspaces.v1", workspaces: [] as unknown[] };
+  const workspacesValue = WorkspacesSchema.parse({
+    ...workspacesEnvelope,
+    workspaces: Array.isArray(workspacesEnvelope.workspaces)
+      ? (workspacesEnvelope.workspaces as unknown[]).map((entry) => migrateRecord(entry))
+      : workspacesEnvelope.workspaces,
+  });
+  const projects = validateProjects(projectsValue);
+  const workspaces = validateWorkspaces(workspacesValue);
+  // The complete canonical pair is validated as one pair before anything is
+  // published: a legacy workspace referencing a project absent from the
+  // migrated projects state fails the migration instead of surviving as a
+  // ghost workspace in a claimed success.
+  validateRegistrationPair(projects, workspaces);
+  return { projects, workspaces };
+}
+
+function serializeState(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function emptyCanonicalProjectsBytes(): string {
+  return serializeState({ version: "rosso.projects.v1", projects: [] });
+}
+
+function emptyCanonicalWorkspacesBytes(): string {
+  return serializeState({ version: "rosso.workspaces.v1", workspaces: [] });
 }
 
 function copyLegacyHome(source: string, target: string): void {
   if (existsSync(join(source, migrationMarkerName))) {
     throw new Error(`legacy source contains reserved migration marker: ${migrationMarkerName}`);
   }
+  // The canonical pair is excluded from the recursive publication entirely:
+  // it is migrated, parsed, and validated as one in-memory pair and then
+  // published under the held registration owner through the shared durable
+  // commit, so no recursive copy or in-place rewrite can ever bypass the
+  // canonical-pair admission used by register and attach.
+  const excluded = new Set([canonicalProjectsPath(source), canonicalWorkspacesPath(source)]);
   for (const entry of readdirSync(source, { withFileTypes: true })) {
-    cpSync(join(source, entry.name), join(target, entry.name), { recursive: true, dereference: false });
+    cpSync(join(source, entry.name), join(target, entry.name), {
+      recursive: true,
+      dereference: false,
+      filter: (path) => !excluded.has(path),
+    });
   }
 }
 
-const migrationTestHookDirectory = process.env.ROSSO_MIGRATION_TEST_HOOK_DIR;
-
-/**
- * Test-only barrier instrumentation: when ROSSO_MIGRATION_TEST_HOOK_DIR is
- * set, a migration that has just committed the target home publishes a ready
- * marker and waits (bounded) for the matching go marker before continuing,
- * still holding the registration lock. This lets the concurrency regression
- * run a register transition against the same home while the migration is
- * mid-flight. Unset in production, this is a no-op.
- */
-function migrationTestHook(phase: string): void {
-  const directory = migrationTestHookDirectory;
-  if (!directory) return;
-  const ready = join(directory, `ready-${phase}`);
-  const proceed = join(directory, `go-${phase}`);
-  try {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(ready, "", "utf8");
-  } catch {
-    return;
-  }
-  for (let attempt = 0; attempt < 400; attempt += 1) {
-    if (existsSync(proceed)) return;
-    Bun.sleepSync(25);
-  }
-}
-
-export function migrateLegacyHome(homeArgument?: string, fromHomeArgument?: string): {
+export function migrateLegacyHome(
+  homeArgument?: string,
+  fromHomeArgument?: string,
+  io: RegistrationIo = nodeRegistrationIo,
+): {
   migrated: true;
   sourceHome: string;
   targetHome: string;
@@ -276,18 +376,39 @@ export function migrateLegacyHome(homeArgument?: string, fromHomeArgument?: stri
     }
   }
   validateLegacySource(source);
+  // Reject the reserved registration lock/recovery/tombstone namespace in the
+  // legacy source before any target mutation, so the live owner token held by
+  // a concurrent or resumed migration can never be overwritten by the copy.
+  assertLegacySourceReservedClear(source);
   const sourceManifestDigest = digest(sourceManifest);
   const sourceProjectsDigest = digest(sourceProjects);
   let verifiedProjectId: string | null = null;
-  const { marker, release } = prepareMigrationTarget(source, target);
+  const { marker, release } = prepareMigrationTarget(source, target, io);
   try {
     copyLegacyHome(source, target);
     migrateNamespaceFiles(target);
     reconcileLegacyPreferenceReceipts(target);
     reconcileObsoleteMachinePreferences(target);
+    // Migrate, parse, and validate the complete canonical pair as one
+    // in-memory pair, then publish it under the registration owner already
+    // held by this migration through the exact shared durable commit
+    // mechanism (projects-rename → config-fsync → workspaces-rename →
+    // state-fsync plus byte verification). No second lock is acquired, and a
+    // claimed migration success receives the same canonical-pair admission
+    // as register and attach.
+    const pair = migrateCanonicalPair(source);
+    commitCanonicalPair(
+      target,
+      pair.projects,
+      pair.workspaces,
+      emptyCanonicalProjectsBytes(),
+      emptyCanonicalWorkspacesBytes(),
+      io,
+    );
     initializeHome(target);
-    migrationTestHook("verify");
     const current = loadHome(target);
+    // The committed pair is re-checked under the held owner before success.
+    validateRegistrationPair(current.projects, current.workspaces);
     const verificationErrors: string[] = [];
     for (const project of current.projects.projects) {
       try {

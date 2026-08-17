@@ -37,6 +37,25 @@ export interface InitializedHome {
 
 const homeDirectories = ["config", "state", "receipts", "cache"];
 
+/**
+ * The injectable initialization seam for home creation. The production
+ * default performs the exclusive O_EXCL creation that makes initialization
+ * no-clobber: a file published by another transition (a migration winner or
+ * a serialized registration) is never overwritten, because the creation
+ * either creates the missing initial state atomically or fails with EEXIST
+ * and leaves the existing bytes untouched. Tests inject a recording or
+ * barrier implementation at this exact boundary; no production code reads
+ * test-only environment variables and ordinary initializeHome behavior is
+ * unchanged.
+ */
+export interface HomeIo {
+  createFileExclusive(path: string, data: string): void;
+}
+
+export const nodeHomeIo: HomeIo = {
+  createFileExclusive: (path, data) => writeFileSync(path, data, { encoding: "utf8", flag: "wx" }),
+};
+
 export function resolveHome(homeArgument?: string): string {
   return expandPath(homeArgument ?? process.env.ROSSO_HOME ?? "~/.rosso");
 }
@@ -182,17 +201,41 @@ function now(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+function errorCode(error: unknown): string | undefined {
+  if (error === null || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function ensureJson<Schema extends z.ZodType>(
   path: string,
   schema: Schema,
   initial: z.input<Schema>,
   validate: (value: z.infer<Schema>) => z.infer<Schema> = (value) => value,
+  io: HomeIo = nodeHomeIo,
 ): z.infer<Schema> {
-  if (!existsSync(path)) saveJson(path, initial);
+  // No-clobber exclusive creation: initialization can never overwrite a file
+  // another transition (for example a migration winner or a serialized
+  // registration) has already published. O_EXCL either creates the missing
+  // initial state atomically or fails with EEXIST and leaves the existing
+  // bytes untouched, so a concurrent creator simply wins and this caller
+  // loads and validates the winner's content.
+  const serialized = `${JSON.stringify(initial, null, 2)}\n`;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    io.createFileExclusive(path, serialized);
+  } catch (error: unknown) {
+    if (errorCode(error) !== "EEXIST") {
+      throw new Error(
+        `cannot persist Rossovia state at ${path}: ${error instanceof Error ? error.message : String(error)}. `
+        + "The current runtime must grant write access to this exact state location.",
+      );
+    }
+  }
   return validate(loadJson(path, schema));
 }
 
-export function initializeHome(homeArgument?: string): InitializedHome {
+export function initializeHome(homeArgument?: string, io: HomeIo = nodeHomeIo): InitializedHome {
   const home = resolveHome(homeArgument);
   prepareHomeDirectories(home);
   verifyHomeWrite(home);
@@ -200,37 +243,37 @@ export function initializeHome(homeArgument?: string): InitializedHome {
     version: "rosso.home.v1",
     namespace: "rosso",
     createdAt: now(),
-  });
+  }, (value) => value, io);
   ensureJson(join(home, "config", "projects.json"), ProjectsSchema, {
     version: "rosso.projects.v1",
     projects: [],
-  }, validateProjects);
+  }, validateProjects, io);
   ensureJson(join(home, "state", "workspaces.json"), WorkspacesSchema, {
     version: "rosso.workspaces.v1",
     workspaces: [],
-  }, validateWorkspaces);
+  }, validateWorkspaces, io);
   const roots = ensureJson(join(home, "state", "roots.json"), RootsSchema, {
     version: "rosso.roots.v1",
     roots: [],
-  }, validateRoots);
+  }, validateRoots, io);
   ensureJson(join(home, "config", "preferences.json"), PreferencesSchema, {
     version: "rosso.preferences.v1",
     preferences: [],
-  }, (value) => validatePreferences(value, "user preferences"));
+  }, (value) => validatePreferences(value, "user preferences"), io);
   ensureJson(join(home, "state", "tasks.json"), PrincipalTasksSchema, {
     version: "rosso.principal-tasks.v1",
     sourceRevision: 0,
     tasks: [],
-  });
+  }, (value) => value, io);
   ensureJson(join(home, "config", "setup.json"), SetupSelectionSchema, {
     version: "rosso.setup-selection.v1",
     selections: [],
-  });
+  }, (value) => value, io);
   const index = ensureJson(join(home, "cache", "workspaces.json"), WorkspaceIndexSchema, {
     version: "rosso.workspace-index.v1",
     generatedAt: now(),
     entries: [],
-  }, validateIndex);
+  }, validateIndex, io);
   return { home, roots, index, writeAccess: "verified" };
 }
 
