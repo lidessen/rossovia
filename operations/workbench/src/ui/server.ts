@@ -319,16 +319,13 @@ export function createWorkbenchRequestHandler(
 
 if (import.meta.main) {
   const options = parseArguments(process.argv.slice(2));
-  const client = new AutonomyCliClient(
-    resolveHome(options.home),
-    autonomyCli,
-  );
-  // One resolved home for the whole production entry: an explicit --home
-  // keeps its exact semantics, and the default Rossovia home is normalized
-  // into the request-handler options so every snapshot and result owner
-  // (attempt projections, verified-result submission, acceptance) reads the
-  // same home the clients/registries already resolved.
+  // One concrete home resolution for the whole production entry: an explicit
+  // --home keeps its exact semantics, and the default Rossovia home is
+  // normalized exactly once and shared by the autonomy client, carrier and
+  // contribution registries, the request handler, every snapshot/attempt
+  // projection, and every Task action authority.
   const home = resolveHome(options.home);
+  const client = new AutonomyCliClient(home, autonomyCli);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
