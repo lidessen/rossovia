@@ -642,6 +642,99 @@ describe("O2 Run outcomes", () => {
     }
   });
 
+  test("binds the request reasoning effort to the lowered execution profile before persistence or execution", async () => {
+    const cases: Array<{
+      request: (current: Fixture, taskId: string) => RunRequest;
+      lower: (current: Fixture, request: RunRequest) => CellInput;
+      error: string;
+    }> = [
+      {
+        // The request asks for an effort the lowered profile omits.
+        request: (current, taskId) => makeRequest(current, taskId, {
+          execution: { driver: "ai-sdk-v7", model: "test/model", reasoningEffort: "high" },
+        }),
+        lower: (current, request) => cellInputFor(request.requestId, current.worktree, request.taskId),
+        error: "reasoning effort unset does not match the accepted Run request reasoning effort high",
+      },
+      {
+        // The request asks for an effort the lowered profile changes.
+        request: (current, taskId) => makeRequest(current, taskId, {
+          execution: { driver: "ai-sdk-v7", model: "test/model", reasoningEffort: "high" },
+        }),
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return {
+            ...input,
+            executionProfile: { ...input.executionProfile!, reasoningEffort: "medium" },
+          } as CellInput;
+        },
+        error: "reasoning effort medium does not match the accepted Run request reasoning effort high",
+      },
+      {
+        // The lowered profile adds an effort the request never asked for.
+        request: (current, taskId) => makeRequest(current, taskId),
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return {
+            ...input,
+            executionProfile: { ...input.executionProfile!, reasoningEffort: "high" },
+          } as CellInput;
+        },
+        error: "reasoning effort high does not match the accepted Run request reasoning effort unset",
+      },
+    ];
+
+    for (const candidate of cases) {
+      const current = fixture();
+      const created = agentTask(current);
+      const request = candidate.request(current, created.task.id);
+      const executor = new RecordingExecutor();
+      await expect(runOrdinaryTaskRun(current.home, request, {
+        card: testCard(),
+        lowerCellInput: () => candidate.lower(current, request),
+        execute: executor.execute,
+      })).rejects.toThrow(candidate.error);
+      expect(executor.invocations).toHaveLength(0);
+      const standing = runStanding(current.home, request.requestId);
+      expect(standing.standing).toBe("terminal");
+      const outcome = terminalStanding(standing);
+      expect(outcome).toMatchObject({ status: "runner-failed", cleanup: "released" });
+      expect(outcome.error).toContain("reasoning effort");
+      expect(outcome).not.toHaveProperty("workCellRunId");
+      expect(outcome).not.toHaveProperty("finalRecord");
+      // The mismatched input was never persisted: the refusal is pre-Cell
+      // and pre-preparation with no invented evidence.
+      expect(existsSync(join(current.home, outcome.refs.inputRef))).toBeFalse();
+      expect(existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)))).toBeFalse();
+    }
+
+    // Exact optional-value equality on both sides executes exactly one Cell
+    // and records; the strict family retains the effort on both surfaces.
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id, {
+      execution: { driver: "ai-sdk-v7", model: "test/model", reasoningEffort: "high" },
+    });
+    const executor = new RecordingExecutor();
+    const result = await runOrdinaryTaskRun(current.home, request, {
+      card: testCard(),
+      lowerCellInput: () => {
+        const input = cellInputFor(request.requestId, current.worktree, created.task.id);
+        return {
+          ...input,
+          executionProfile: { ...input.executionProfile!, reasoningEffort: "high" },
+        } as CellInput;
+      },
+      execute: executor.execute,
+    });
+    expect(terminalRun(result)).toMatchObject({ status: "recorded", cleanup: "released" });
+    expect(executor.invocations).toHaveLength(1);
+    const retained = readStrictTaskAttemptEvidence(current.home, request.requestId);
+    expect(retained.standing).toBe("available");
+    expect(retained.attempt?.reasoningEffort).toBe("high");
+    expect(retained.input?.executionProfile?.reasoningEffort).toBe("high");
+  });
+
   test("returned terminal results derive only from the strict post-finalization family read", async () => {
     const current = fixture();
     const created = agentTask(current);
@@ -775,7 +868,7 @@ describe("O2 exact live stop", () => {
     );
   });
 
-  test("stop conflicts for a distinct requester and reuses the exact receipt only for the identical requester", async () => {
+  test("stop conflicts for a distinct requester or source and reuses the exact receipt only for the identical requester and source", async () => {
     const current = fixture();
     const created = agentTask(current);
     const request = makeRequest(current, created.task.id);
@@ -811,8 +904,28 @@ describe("O2 exact live stop", () => {
       () => stopRun(current.home, request.requestId, stopRequest("actor-2"), registry),
       "different",
     );
+    // The same actor with a different causal source conflicts: the full
+    // causal request identity — runId, requestedBy, AND sourceRef — must
+    // match before the retained receipt is replayed.
+    expectStopRefusal(
+      () => stopRun(current.home, request.requestId, {
+        control: "stop",
+        requestedBy: "actor-1",
+        sourceRef: "test:another-stop",
+      }, registry),
+      "different",
+    );
+    // The conflicting stops never replaced the retained receipt.
+    const retainedBytes = readFileSync(join(current.home, receipt.receiptRef), "utf8");
+    expect(JSON.parse(retainedBytes)).toMatchObject({
+      runId: request.requestId,
+      requestedBy: "actor-1",
+      sourceRef: "test:stop",
+    });
+    // Exact same actor and exact same source replays the retained receipt.
     const replayed = stopRun(current.home, request.requestId, stopRequest("actor-1"), registry);
     expect(replayed.receiptRef).toBe(receipt.receiptRef);
+    expect(readFileSync(join(current.home, receipt.receiptRef), "utf8")).toBe(retainedBytes);
     const result = await runPromise;
     expect(terminalRun(result)).toMatchObject({ status: "control-stopped", controlRef: receipt.receiptRef });
   });
@@ -941,6 +1054,48 @@ describe("O2 reconciliation and restart", () => {
     expect(runStanding(current.home, request.requestId).standing).toBe("terminal");
   });
 
+  test("the strict family reader requires exact optional reasoning-effort equality between the attempt record and its immutable input profile", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const fabricated = fabricatedStartedRun(current, created.task.id, deadPid());
+    const inputPath = join(fabricated.directory, "cell-input.json");
+    const attemptPath = join(fabricated.directory, "attempt.json");
+
+    // Baseline: both sides omit the effort, so exact optional equality holds.
+    let evidence = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(evidence.standing).toBe("available");
+
+    // The attempt record claims an effort the immutable input profile omits.
+    const attempt = JSON.parse(readFileSync(attemptPath, "utf8"));
+    writeFileSync(attemptPath, `${JSON.stringify({ ...attempt, reasoningEffort: "high" }, null, 2)}\n`);
+    evidence = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("reasoning effort");
+    expect(runStanding(current.home, fabricated.runId).standing).toBe("invalid");
+    expectReconcileRefusal(() => reconcileRun(current.home, fabricated.runId), "invalid");
+    // The failed-closed read never touches the exact claim.
+    expect(readFileSync(fabricated.leasePath, "utf8")).toBe(fabricated.leaseContent);
+
+    // The immutable input profile claims an effort the attempt record omits.
+    const input = JSON.parse(readFileSync(inputPath, "utf8"));
+    writeFileSync(attemptPath, `${JSON.stringify(attempt, null, 2)}\n`);
+    writeFileSync(inputPath, `${JSON.stringify({
+      ...input,
+      executionProfile: { ...input.executionProfile, reasoningEffort: "high" },
+    }, null, 2)}\n`);
+    evidence = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("reasoning effort");
+    expect(runStanding(current.home, fabricated.runId).standing).toBe("invalid");
+
+    // Exact optional equality on both sides restores the available family.
+    writeFileSync(attemptPath, `${JSON.stringify({ ...attempt, reasoningEffort: "high" }, null, 2)}\n`);
+    evidence = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.attempt?.reasoningEffort).toBe("high");
+    expect(evidence.input?.executionProfile?.reasoningEffort).toBe("high");
+  });
+
   test("a durable stop receipt with a retained cancelled final reconciles control-stopped without redispatching control", () => {
     const current = fixture();
     const created = agentTask(current);
@@ -1039,6 +1194,67 @@ describe("O2 reconciliation and restart", () => {
     expectReconcileRefusal(() => reconcileRun(current.home, fabricated.runId), "invalid");
     // The failed-closed reconciliation never touches the exact claim.
     expect(readFileSync(fabricated.leasePath, "utf8")).toBe(fabricated.leaseContent);
+  });
+
+  test("a tampered historical carrier control receipt fails closed and never reconciles control-stopped", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const fabricated = fabricatedStartedRun(current, created.task.id, deadPid());
+    const input = cellInputFor(fabricated.runId, current.worktree, created.task.id);
+    writeFileSync(
+      join(fabricated.directory, "cell-input.run.json"),
+      `${JSON.stringify({
+        ...validRecord(input, { runId: "stopped-run" }),
+        status: "cancelled",
+      }, null, 2)}\n`,
+    );
+    const controlPath = join(fabricated.directory, "control.json");
+    const carrierReceipt = {
+      version: "rosso.task-run-control-receipt.v1",
+      control: "stop",
+      carrierId: fabricated.runId,
+      taskId: created.task.id,
+      attemptId: fabricated.runId,
+      workerId: "test-worker",
+      worktree: realpathSync(current.worktree),
+      sourceRef: "test:carrier-stop",
+      requestedBy: {
+        conversationId: randomUUID(),
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+      },
+      requestedAt: "2026-08-16T12:00:00.000Z",
+      attemptRef: `state/task-attempts/${fabricated.runId}/attempt.json`,
+      settlementRef: `state/task-attempts/${fabricated.runId}/settlement.json`,
+    };
+
+    // Exact positive: the historical carrier shape with its explicit
+    // attemptId reconciles control-stopped without redispatching control.
+    writeFileSync(controlPath, `${JSON.stringify(carrierReceipt, null, 2)}\n`);
+    const reconciled = reconcileRun(current.home, fabricated.runId);
+    expect(reconciled.outcome).toMatchObject({
+      runId: fabricated.runId,
+      taskId: created.task.id,
+      status: "control-stopped",
+      controlRef: `state/task-attempts/${fabricated.runId}/control.json`,
+      workCellRunId: "stopped-run",
+      cellStatus: "cancelled",
+      cleanup: "released",
+    });
+    expect(existsSync(fabricated.leasePath)).toBeFalse();
+
+    // Counterexample: the explicit attemptId points at another evidence
+    // directory while carrierId still matches — strict shared evidence fails
+    // closed and the tampered receipt never reconciles control-stopped.
+    writeFileSync(
+      controlPath,
+      `${JSON.stringify({ ...carrierReceipt, attemptId: randomUUID() }, null, 2)}\n`,
+    );
+    const evidence = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("control receipt attempt id does not match");
+    expect(runStanding(current.home, fabricated.runId).standing).toBe("invalid");
+    expectReconcileRefusal(() => reconcileRun(current.home, fabricated.runId), "invalid");
   });
 
   test("malformed or mismatched control receipt evidence fails closed and is never settled", () => {

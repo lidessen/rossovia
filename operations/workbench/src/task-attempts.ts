@@ -501,6 +501,12 @@ export function readStrictTaskAttemptEvidence(
       ) {
         return "CellInput workerId does not match its execution profile identity";
       }
+      // The immutable input profile's reasoning effort must relate to the
+      // attempt record with exact optional-value equality: an input that
+      // adds, drops, or changes the requested effort is invalid evidence.
+      if (candidate.executionProfile?.reasoningEffort !== attemptRecord.reasoningEffort) {
+        return "CellInput execution profile reasoning effort does not match the attempt record";
+      }
       const requestWorktree = attemptRecord.worktree;
       if (requestWorktree !== undefined) {
         const rootError = attemptWorktreeInputRootError(requestWorktree, candidate.workspace.root);
@@ -783,6 +789,14 @@ function controlReceiptIdentityError(
   const recordedRunId = "runId" in candidate ? candidate.runId : candidate.carrierId;
   if (recordedRunId !== attemptId) {
     return "control receipt run identity does not match its evidence directory";
+  }
+  // The historical carrier control receipt shape carries an explicit
+  // attemptId in addition to its carrier identity: strict shared evidence
+  // requires that explicit attemptId to equal the evidence-directory
+  // attemptId as well, so a tampered receipt fails closed and never
+  // reconciles control-stopped.
+  if ("attemptId" in candidate && candidate.attemptId !== attemptId) {
+    return "control receipt attempt id does not match its evidence directory";
   }
   if (candidate.attemptRef !== refs.attemptRef) {
     return "control receipt attempt ref does not match its stable evidence ref";

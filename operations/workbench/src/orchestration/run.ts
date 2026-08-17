@@ -326,7 +326,8 @@ export type { RunControlReceipt } from "../task-attempts";
  * abort is dispatched; a failed write changes nothing. Unknown, invalid,
  * already-settled, and non-live (no runtime handle, no terminal settlement)
  * Runs are refused; an existing receipt is reused only for the identical
- * requester and a distinct requester conflicts.
+ * requester AND exact causal source, and a distinct requester or a
+ * same-actor different source conflicts.
  */
 export function stopRun(
   home: string,
@@ -381,13 +382,22 @@ export function stopRun(
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
     const retained = readRetainedControlReceipt(receiptPath);
-    if (retained !== undefined && retained.runId === runId && retained.requestedBy === control.requestedBy) {
+    // Exact receipt replay compares the full causal request identity already
+    // owned by the stop request: the Run id, the requester, AND the exact
+    // source reference. Same actor with a different source conflicts; only
+    // the exact same source replays the retained receipt.
+    if (
+      retained !== undefined
+      && retained.runId === runId
+      && retained.requestedBy === control.requestedBy
+      && retained.sourceRef === control.sourceRef
+    ) {
       const receiptRef = taskRunHelpers().evidenceRef(home, receiptPath);
       return { runId, control: "stop", receiptRef, settlementRef: retained.settlementRef };
     }
     throw new RunStopRefusal(
       "different",
-      `Run ${runId} already has a durable control receipt from another requester; a distinct stop cannot be applied`,
+      `Run ${runId} already has a durable control receipt from a different requester or source; a distinct stop cannot be applied`,
     );
   }
   const receiptRef = taskRunHelpers().evidenceRef(home, receiptPath);
@@ -734,6 +744,15 @@ function validateLoweredCellInput(
   if (profile.model !== request.execution.model) {
     throw new Error(
       `lowered CellInput execution model ${profile.model} does not match the accepted Run request model ${request.execution.model}`,
+    );
+  }
+  // The requested reasoning effort binds to the lowered execution profile
+  // with exact optional-value equality BEFORE the input is persisted or
+  // executed: a profile that adds, drops, or changes the effort is a
+  // truthful pre-Cell failure with zero Cell invocations.
+  if (profile.reasoningEffort !== request.execution.reasoningEffort) {
+    throw new Error(
+      `lowered CellInput reasoning effort ${profile.reasoningEffort ?? "unset"} does not match the accepted Run request reasoning effort ${request.execution.reasoningEffort ?? "unset"}`,
     );
   }
   let observedRoot: string;
