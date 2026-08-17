@@ -506,7 +506,17 @@ export class PiHarnessCellDriver implements CellDriver {
           );
         }
         output = settlement.output;
-        context.emit("structured.settlement.finished", { mode: "tool-settlement" });
+        // A valid emit_structured_output call can arrive after the caller
+        // cancelled while this settlement attempt was still in flight: the tool
+        // execute assigns the accepted output, so the shared helper resolves
+        // through every output-undefined and catch guard. The enclosing runCell
+        // already emitted the immutable Cell final (cell.error then
+        // cell.finished) with the original caller reason, so the accepted-output
+        // completion stays causal only to that finalized cancellation and no
+        // settlement event is emitted after the final.
+        if (!context.signal.aborted) {
+          context.emit("structured.settlement.finished", { mode: "tool-settlement" });
+        }
       }
       const settlementUsage = settlement
         ? addUsage(observedSettlementUsage, settlement.usage)

@@ -1842,6 +1842,108 @@ test("a normally resolving in-flight settlement step after caller cancellation n
   expect(calls).toBe(2);
 });
 
+test("an accepted structured output arriving after caller cancellation never emits settlement completion after the Cell final", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      // The settlement provider call stays in flight; the caller aborts and
+      // the provider still completes the step with a valid
+      // emit_structured_output tool call. The tool execute assigns the
+      // accepted output, so the shared helper resolves through every
+      // output-undefined and catch guard; the accepted-output completion
+      // stays causal only to the already-finalized cancellation and the
+      // driver must not emit structured.settlement.finished after the
+      // immutable Cell final. The cancellation is queued as a macrotask only
+      // after the settlement step is really in flight, never fired
+      // synchronously inside the provider callback.
+      return new Promise<LanguageModelV3GenerateResult>((resolve) => {
+        setImmediate(() => {
+          controller.abort(new Error("caller cancelled the in-flight settlement"));
+          resolve(response([{
+            type: "tool-call",
+            toolCallId: "settle-after-abort",
+            toolName: "emit_structured_output",
+            input: JSON.stringify({ decision: "P04" }),
+          }], "tool-calls"));
+        });
+      });
+    },
+    // A live onTrace observer selects the streaming main path; the simulated
+    // stream covers only the deterministic main execution step.
+    doStream: async () => {
+      calls += 1;
+      return simulatedMainInvestigationStream();
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+  const observed: Array<{ type: string; data: unknown }> = [];
+
+  const record = await runCell({
+    id: "in-flight-settlement-accepted-output-abort",
+    intent: "Prove an accepted output after caller cancellation never emits settlement completion after the Cell final.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The original caller reason stays causal and no settlement completion follows the final."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, {
+    // The caller cancellation is part of the Cell envelope under test: the
+    // same controller.signal aborts runWithSignal, so the accepted-output
+    // completion is observed as a post-abort provider completion instead of
+    // an ordinary successful settlement.
+    signal: controller.signal,
+    onTrace: (event) => observed.push({ type: event.type, data: event.data }),
+  });
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // Exactly two provider calls ran: the main execution step and the in-flight
+  // settlement step that accepted the output only after the cancellation; no
+  // third call ever starts.
+  expect(calls).toBe(2);
+  // The accepted output existed, but the already-finalized Cell standing
+  // never emits a settlement completion: only the started event appears.
+  expect(record.trace.filter((event) => event.type.startsWith("structured.settlement"))
+    .map((event) => event.type)).toEqual(["structured.settlement.started"]);
+  // Both the retained trace and the live-observed sequence end at the
+  // immutable Cell final and nothing follows it.
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  expect(observed.at(-1)?.type).toBe("cell.finished");
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+  const observedFinishedIndex = observed.findIndex((event) => event.type === "cell.finished");
+  expect(observed.slice(observedFinishedIndex + 1)).toEqual([]);
+  // Deterministic macrotask barriers for the suspended settlement
+  // continuation (accepted output -> driver completion emission) to settle:
+  // the returned and observed bytes stay byte-identical and the caller
+  // reason stays causal.
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  const observedBytesAtReturn = JSON.stringify(observed);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  expect(JSON.stringify(observed)).toBe(observedBytesAtReturn);
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(calls).toBe(2);
+});
+
 test("a normally completing final allowed settlement step after caller cancellation keeps the caller reason without emitting exhaustion", async () => {
   const root = await fixture();
   let calls = 0;

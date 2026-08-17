@@ -32,6 +32,7 @@ import type {
   HarnessV1PromptTurnOptions,
   HarnessV1SandboxProvider,
 } from "@ai-sdk/harness";
+import type { LanguageModelV3GenerateResult } from "@ai-sdk/provider";
 import { MockLanguageModelV3 } from "ai/test";
 import type { ToolSet } from "ai";
 
@@ -973,6 +974,86 @@ describe("Pi harness structured settlement shares the explicit step allowance", 
 
     const result = await driver.run(input, driverContext(workspace));
     expect(result.output).toEqual({ decision: "P04" });
+    expect(settlementCalls).toBe(1);
+  });
+
+  test("an accepted structured output arriving after caller cancellation never emits settlement completion after the Cell final", async () => {
+    let settlementCalls = 0;
+    const controller = new AbortController();
+    const settlementModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        settlementCalls += 1;
+        // The settlement provider call stays in flight; the caller aborts
+        // and the provider still completes the step with a valid
+        // emit_structured_output tool call. The tool execute assigns the
+        // accepted output, so the shared helper resolves through every
+        // output-undefined and catch guard; the Pi driver must not emit
+        // structured.settlement.finished after runCell already emitted the
+        // immutable Cell final with the original caller reason. The
+        // cancellation is queued as a macrotask only after the settlement
+        // step is really in flight, never fired synchronously inside the
+        // provider callback.
+        return new Promise<LanguageModelV3GenerateResult>((resolve) => {
+          setImmediate(() => {
+            controller.abort(new Error("caller cancelled the in-flight settlement"));
+            resolve({
+              content: [{
+                type: "tool-call",
+                toolCallId: "settle-pi-after-abort",
+                toolName: "emit_structured_output",
+                input: JSON.stringify({ decision: "P04" }),
+              }],
+              finishReason: { unified: "tool-calls", raw: "tool-calls" },
+              usage: V4_USAGE,
+              warnings: [],
+            });
+          });
+        });
+      },
+    });
+    const { input } = await settlementFixture();
+    const driver = deepSeekPiDriver(oneStepHarness());
+    Object.defineProperty(driver, "model", { value: settlementModel });
+    const observed: Array<{ type: string; data: unknown }> = [];
+
+    const record = await runCell(input, driver, {
+      // The caller cancellation is part of the Cell envelope under test: the
+      // same controller.signal aborts runWithSignal, so the accepted-output
+      // completion is observed as a post-abort provider completion instead
+      // of an ordinary successful settlement.
+      signal: controller.signal,
+      onTrace: (event) => observed.push({ type: event.type, data: event.data }),
+    });
+
+    expect(record.status).toBe("cancelled");
+    expect(record.error).toBe("caller cancelled the in-flight settlement");
+    expect(record.error).not.toContain("step budget exhausted");
+    // Exactly one main harness step and one settlement provider call ran; no
+    // further settlement attempt ever starts.
+    expect(settlementCalls).toBe(1);
+    // The accepted output existed, but the already-finalized Cell standing
+    // never emits a settlement completion: only the started event appears.
+    expect(record.trace.filter((event) => event.type.startsWith("structured.settlement"))
+      .map((event) => event.type)).toEqual(["structured.settlement.started"]);
+    // Both the retained trace and the live-observed sequence end at the
+    // immutable Cell final and nothing follows it.
+    expect(record.trace.at(-1)?.type).toBe("cell.finished");
+    expect(observed.at(-1)?.type).toBe("cell.finished");
+    const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+    expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+    const observedFinishedIndex = observed.findIndex((event) => event.type === "cell.finished");
+    expect(observed.slice(observedFinishedIndex + 1)).toEqual([]);
+    // Deterministic macrotask barriers for the suspended settlement
+    // continuation (accepted output -> Pi driver completion emission) to
+    // settle: the returned and observed bytes stay byte-identical and the
+    // caller reason stays causal.
+    const traceBytesAtReturn = JSON.stringify(record.trace);
+    const observedBytesAtReturn = JSON.stringify(observed);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+    expect(JSON.stringify(observed)).toBe(observedBytesAtReturn);
+    expect(record.error).toBe("caller cancelled the in-flight settlement");
     expect(settlementCalls).toBe(1);
   });
 });

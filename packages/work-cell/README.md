@@ -486,7 +486,11 @@ completed unsatisfied settlement attempt the settlement yields one event-loop
 checkpoint, so `maxDurationMs` and caller cancellation stay observable even
 against an immediately-resolving noncompliant provider; a cancelled run ends
 with the original abort reason instead of starting another provider call or
-inventing step-budget exhaustion.
+inventing step-budget exhaustion. A settlement completion event is emitted
+only while the run is still live: an accepted structured output that arrives
+after the caller cancelled an in-flight settlement attempt stays causal only
+to that already-finalized cancellation and never emits
+`structured.settlement.finished` after the immutable Cell final.
 Settlement usage remains usage attribution only: it is never
 extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
 budget boundary: it ends the run with a `cancelled` standing that keeps the
