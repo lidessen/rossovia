@@ -157,4 +157,25 @@ describe("GitWorktreeMetadataPort integration adapter", () => {
       stderr: "",
     }))).toBe(realpathSync(gitDir));
   });
+
+  test("refuses a signal-terminated invocation with partial non-empty stdout instead of accepting it as a valid git-dir", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-git-worktree-signal-"));
+    temporaryRoots.push(root);
+    const subject = join(root, "subject");
+    const gitDir = join(subject, ".git");
+    mkdirSync(gitDir, { recursive: true });
+
+    // A signal-terminated git process has status null and no spawn error,
+    // but can leave partial non-empty stdout behind. A null status is never
+    // an implicit exit zero: the adapter must refuse with truthful signal
+    // detail before the partial output could resolve. The real `.git`
+    // directory exists, so accepting the partial stdout would have returned
+    // the exact resolved path instead of rejecting it.
+    expect(() => gitRevParseGitDirectory(subject, invoked({
+      status: null,
+      signal: "SIGTERM",
+      stdout: ".git\n",
+      stderr: "",
+    }))).toThrow(/terminated by signal SIGTERM/);
+  });
 });
