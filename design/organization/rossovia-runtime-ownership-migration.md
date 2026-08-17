@@ -124,16 +124,26 @@ called by Orchestration or directly by an experiment without upward knowledge.
   evidence, and final contracts as C1–C3;
 - inject filesystem, process, model, and tool capabilities instead of reading
   Workbench or Orchestration state;
-- keep provider selection and orchestration budgets outside the Cell while
-  enforcing an explicit caller-selected envelope when present;
+- keep model catalogs, provider selection, cross-Run allocation and aggregation,
+  extension approval, and total-budget policy outside the Cell; Orchestration
+  may route an extension request and enforce the explicit authority owner's
+  decision, but does not gain that approval authority merely by allocating
+  resources; carry the already-resolved execution binding and immutable
+  per-Cell envelope into the Cell, enforce the limits the host can actually
+  enforce, and retain normalized per-Cell usage and attributable cost standing
+  in the final;
 - preserve at most one driver invocation and at most one final; and
 - rename or adapt current Cell `runId` concepts where needed so they cannot be
   confused with O2 Run identity.
 
 **Exit evidence:** standalone prompt/model/tool experiments work in an isolated
-workspace; an Orchestration caller and an experiment caller use the same Cell
-contract; a substituted driver does not change C1–C3; package and dependency
-inspection finds no upward Workbench, Mission, or conversation dependency.
+workspace; an Orchestration caller and an experiment caller create equivalently
+bound Cell invocations that retain invocation-specific usage/cost observations
+through the same contract, schema, semantics, and standing; no equality of
+stochastic values or shared Cell identity is required; a substituted driver
+does not change C1–C3; subscription, mixed-route, or missing provider cost
+remains explicit rather than becoming zero; package and dependency inspection
+finds no upward Workbench, Mission, or conversation dependency.
 
 ## Stage 4 — Isolate Integrations from mechanism and policy
 
@@ -142,11 +152,15 @@ an adapter or policy, not W1, O2/O3, or C1–C3.
 
 **Work:**
 
-- move model/provider protocols, Pi and Vercel AI SDK quirks, Git/workspace
-  operations, host tools, runtime launchers, setup observations, and Codex,
-  Claude, Cursor, or other host bindings behind declared ports;
-- keep worker catalog, provider choice, budgets, and defaults in Orchestration
-  policy rather than Integration mechanism;
+- move model/provider protocols, Pi and Vercel AI SDK quirks, time-versioned
+  pricing and provider-usage normalization, Git/workspace operations, host
+  tools, runtime launchers, setup observations, and Codex, Claude, Cursor, or
+  other host bindings behind declared ports;
+- keep worker catalog, provider choice, allocation, cross-Run spend aggregation,
+  authorized allocation, extension-request routing, enforcement of the explicit
+  authority owner's extension decision, and defaults in Orchestration policy
+  rather than Integration mechanism; pass only the resolved execution binding
+  and explicit per-Cell envelope to Work Cell;
 - quarantine compatibility and research adapters outside normal startup; and
 - use the substitution probe from the root project guidance to detect leaked
   provider identifiers, endpoint shapes, and current preferences.

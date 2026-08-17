@@ -62,6 +62,20 @@ chart. If a new task topology requires new lifecycle state only to describe
 that as a mechanism smell and route actual task shape or delegation topology to
 their owners.
 
+Model and resource facts have different standings at different owners.
+Integration owns provider protocol and time-versioned pricing semantics;
+Orchestration selects a resolved execution profile, allocates and aggregates
+across Runs, routes extension requests to the explicit authority owner, and
+enforces that owner's decision; Work Cell receives the resolved binding and
+immutable per-Cell execution envelope, enforces what its host can enforce, and
+records normalized usage and an attributable cost observation in its final. A
+Cell does not select its own model, approve or extend its own envelope, maintain
+a cross-Run ledger, or treat an unavailable subscription or mixed-route
+marginal cost as zero. Direct and Orchestration callers create equivalently
+bound Cell invocations whose invocation-specific observations use the same
+evidence contract and standing; they need not share identity or report equal
+usage and cost values.
+
 ## Three axes, one design judgment
 
 Constrain task transformation through three axes: attention architecture under

@@ -166,6 +166,41 @@ inquiry/review organization without adding a new lifecycle or role type. This
 is an architectural substitution test, not proof that any particular topology
 improves performance. A real performance claim still needs matched practice.
 
+### Resource binding, usage, and budget authority
+
+Model and cost information cross several owners without giving each owner the
+same authority. Integration observes provider availability, implements the
+provider protocol, and supplies time-versioned pricing semantics when the
+provider exposes an attributable form. Orchestration selects one resolved
+execution profile for the work, allocates the caller's resource envelope,
+aggregates observations across Runs, and returns any extension or material
+tradeoff to its authority owner. Work Cell receives that resolved binding and
+immutable per-Cell envelope, enforces the limits that its host and driver can
+actually enforce, and records normalized usage plus an attributable cost
+observation in the Cell final. The Cell does not choose its own model, extend
+its envelope, maintain a cross-Run ledger, or interpret a provider's commercial
+policy.
+
+This distinction preserves standalone experimentation. A direct experiment and
+an Orchestration-owned Run can create equivalently bound Cell invocations with
+the same model binding, driver, workspace, capabilities, and envelope. Each
+invocation records its own usage and cost observation through the same evidence
+contract, schema, semantics, and standing; stochastic executions are not
+expected to produce equal values or share one Cell identity. The difference is
+who formed and authorized the work, not what a Cell final means. A subscription,
+mixed route, missing usage report, or unattributable invoice remains an explicit
+unavailable or estimated cost standing; it is never converted to zero merely
+because the Cell cannot assign a marginal dollar amount.
+
+An execution envelope is not a budget approval system. Duration, optional step
+limits, output bounds, or other enforceable per-Cell constraints can live at the
+execution boundary. Model catalogs, fallback order, total Mission spend,
+whether another Run may start, and whether more budget is approved require
+relations outside one Cell. A substitution probe should change a provider or
+pricing adapter without changing Cell-core semantics, and should change the
+Run allocation policy without changing how one already-bound Cell records its
+execution.
+
 ### Three task-engineering illustrations
 
 These are authoring fixtures, not evidence that an unfamiliar Agent can
