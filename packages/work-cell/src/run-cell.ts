@@ -15,7 +15,7 @@ import {
   type ProviderFingerprintStanding,
 } from "./contracts";
 import type { CellDriver } from "./driver";
-import { CellExecutionError, traceEvent } from "./driver";
+import { CellExecutionError, TerminalContractError, traceEvent } from "./driver";
 import { Workspace } from "./workspace";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
@@ -167,6 +167,7 @@ export async function runCell(
         failureSettlementUsage = observedSettlementUsage;
       }
       if (signal.aborted) status = "cancelled";
+      else if (caught instanceof TerminalContractError) status = "protocol_error";
       else status = "failed";
       emit("cell.error", { status, error });
     }

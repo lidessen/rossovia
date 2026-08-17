@@ -166,7 +166,11 @@ A completed step that carried tool activity aborts the run before step
 `maxSteps + 1` can begin; a tool-free terminal response on the final allowed
 step completes naturally. The exhaustion count freezes at that accepted
 boundary: an inferred Pi finish emitted while the abort settles is neither
-counted nor retained as another completed step. When Pi exposes its aggregate
+counted nor retained as another completed step. The explicit `maxSteps` is one
+shared, monotonic, non-extendable allowance: the structured settlement phase
+consumes the same remaining steps as the main turn and never starts when none
+remains, so total model steps across both phases never exceed the caller's
+bound. When Pi exposes its aggregate
 session counters on this failure path, they supersede zero or partial
 inferred-step usage rather than being added to the same model work. An
 omitted `maxSteps` installs no step-count stop condition: the model continues
@@ -335,9 +339,24 @@ there is no `resultContract` or review-pack wrapper:
 ```
 
 `terminalTools` dynamically become callable tools and require one declared tool
-to be called exactly once. Without `outputSchema`, that call ends the model loop;
-with `outputSchema`, one tool-free step may still produce the independent
-logical result. Terminal names must be unique, and a driver must reject names
+to be called exactly once. Without `outputSchema`, that call ends the model loop.
+With `outputSchema`, the terminal and output contracts stay separate. On an
+inline structured-output route, when terminal tools and inline output are both
+declared, the main execution phase may end naturally or stop right after an
+accepted terminal tool — it never requires the final structured output before
+the terminal contract is satisfied, and its instructions defer that output to
+the existing closure phase. The closure phase then produces the independent
+logical result: terminal recovery followed by the final output when the main
+loop ended without the terminal, and only the final output step when the
+terminal was already accepted — the output-only closure states that the
+terminal is already satisfied, exposes no tools, and requests only the final
+structured output. A Cell with inline output but no terminal tools keeps the
+single-agent inline path. Both closure forms consume the same shared
+`maxSteps` allowance. Tool-settlement routes (providers without native
+structured output) retain their separate settlement path: they finish the
+main loop and any terminal recovery first, then project the retained evidence
+through the private schema tool under the same allowance. Terminal names must be unique, and a
+driver must reject names
 that collide with its ordinary execution tools before dispatch. The terminal
 input remains trace evidence and is not silently
 treated as that result. `outputSchema` validates the final logical result. `artifacts`
@@ -382,7 +401,13 @@ ordinary investigation without response-format pressure, then uses a private
 schema tool to project the retained evidence. The internal tool is not added to
 `terminalTools`; the caller still declares one output contract and Work Cell
 still validates it independently. Trace and usage expose the extra settlement
-phase instead of pretending it was one provider-native response.
+phase instead of pretending it was one provider-native response. The
+settlement phase consumes the same explicit `maxSteps` allowance as the main
+loop and terminal recovery: when no step remains it does not start, and the
+Cell fails truthfully instead of passing without the required output.
+Tool-settlement routes have no closure phase; this settlement path is their
+only structured-output phase. The closure phase described above exists only
+for the terminal plus inline-output mode.
 
 ## Work and budget boundary
 
@@ -415,11 +440,30 @@ into zero usage.
 `budget.maxSteps` is an optional explicit per-run/operator step policy. An
 omitted `maxSteps` means no step-count stop condition at all: the model may
 take as many steps as the work needs within the non-extendable duration
-budget. An explicit `maxSteps` stops the loop exactly at the declared step
-count; a terminal-tool Cell requires at least two steps (one terminal action
-and one final output). `budget.maxDurationMs` remains a hard timeout, not a
-soft budget boundary: it ends the run with a `cancelled` standing that keeps
-the already-observed usage, trace, and any mechanical final standing.
+budget. An explicit `maxSteps` is one shared, monotonic, non-extendable
+allowance consumed by every provider/model step — the main execution loop,
+the terminal-tool recovery phase, the terminal plus inline-output closure
+phase, and the structured-output settlement phase alike. The main loop stops
+exactly at the declared step count; when no step
+remains, no later phase starts and the Cell fails truthfully instead of
+passing without the required terminal tool or structured output. A tool-free
+final response on the last remaining step completes naturally with its
+required terminal/output standing: exhaustion never discards or relabels a
+step that already finished inside the allowance. A
+terminal-tool Cell requires at least two steps (one terminal action and one
+final output). Settlement usage remains usage attribution only: it is never
+extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
+budget boundary: it ends the run with a `cancelled` standing that keeps the
+already-observed usage, trace, and any mechanical final standing.
+
+Exhaustion reports one canonical sentence across the AI SDK and Pi drivers:
+`Work Cell step budget exhausted after N steps; <reason>`. An unsatisfied
+declared terminal contract — including one that the shared allowance ran out
+before satisfying, or a second terminal call — keeps the canonical
+`protocol_error` standing instead of a weakened ordinary failure. A Cell
+without declared terminal tools preserves the actual provider error even
+when the explicit allowance became exhausted: only a real unsatisfied
+declared terminal contract may report terminal-tool failure.
 
 ## Project interaction
 

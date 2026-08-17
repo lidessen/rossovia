@@ -1,7 +1,8 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import { ToolLoopAgent, hasToolCall, tool } from "ai";
 import type { CellUsage } from "./contracts";
-import type { DriverContext } from "./driver";
+import type { DriverContext, StepAllowance } from "./driver";
+import { stepBudgetExhaustedMessage } from "./driver";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import type { CompiledOutputSchema } from "./output-schema";
 
@@ -20,6 +21,13 @@ export async function settleStructuredOutput(options: {
   retainedEvidence: string;
   context: DriverContext;
   maxOutputTokens: number;
+  /**
+   * The shared monotonic step allowance of the enclosing Cell. Every
+   * settlement provider step consumes one unit and the settlement never
+   * starts an attempt when no step remains; settlement usage is attribution
+   * only and never extends the allowance.
+   */
+  stepAllowance: StepAllowance;
 }): Promise<StructuredSettlementResult> {
   let output: unknown;
   let usage = emptyUsage();
@@ -32,6 +40,14 @@ export async function settleStructuredOutput(options: {
   ].join("\n\n");
 
   for (let attempt = 1; attempt <= 2 && output === undefined; attempt += 1) {
+    // The explicit maxSteps allowance is shared, monotonic, and
+    // non-extendable: a settlement attempt never starts when no provider
+    // step remains, so one remaining step permits at most one attempt.
+    if (options.stepAllowance.remaining === 0) {
+      lastError = stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract cannot be settled");
+      options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
+      break;
+    }
     const agent = new ToolLoopAgent({
       model: options.model,
       instructions: [
@@ -55,7 +71,7 @@ export async function settleStructuredOutput(options: {
         }),
       },
       toolChoice: { type: "tool", toolName: "emit_structured_output" },
-      stopWhen: hasToolCall("emit_structured_output"),
+      stopWhen: [hasToolCall("emit_structured_output"), () => options.stepAllowance.exhausted],
       maxOutputTokens: options.maxOutputTokens,
       temperature: 0,
     });
@@ -63,6 +79,11 @@ export async function settleStructuredOutput(options: {
       const result = await agent.generate({
         prompt,
         abortSignal: options.context.signal,
+        onStepStart: () => {
+          // Consumed at step start so a step that fails under the forced
+          // tool choice still counts against the shared allowance.
+          options.stepAllowance.consume();
+        },
         onStepEnd: ({ usage: stepUsage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const observed = normalizeUsage(stepUsage, providerMetadata);
           usage = addUsage(usage, observed);
@@ -81,11 +102,15 @@ export async function settleStructuredOutput(options: {
       });
       rawSteps.push(...sanitizeSteps(result.steps));
       if (output === undefined) {
-        lastError = "emit_structured_output was not accepted";
+        lastError = options.stepAllowance.exhausted
+          ? stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract was not satisfied")
+          : "emit_structured_output was not accepted";
         options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
       }
     } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
+      lastError = options.stepAllowance.exhausted
+        ? stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract was not satisfied")
+        : error instanceof Error ? error.message : String(error);
       options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
     }
   }

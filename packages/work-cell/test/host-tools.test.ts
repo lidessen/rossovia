@@ -32,6 +32,7 @@ import type {
   HarnessV1PromptTurnOptions,
   HarnessV1SandboxProvider,
 } from "@ai-sdk/harness";
+import { MockLanguageModelV3 } from "ai/test";
 import type { ToolSet } from "ai";
 
 const temporaryRoots: string[] = [];
@@ -521,7 +522,7 @@ describe("Pi harness driver fail-closed mapping", () => {
         if (type === "agent.step.finished") completedSteps.push(data);
       },
     }))).rejects.toMatchObject({
-      message: "Work Cell step budget exhausted after 2 completed steps",
+      message: "Work Cell step budget exhausted after 2 steps; no provider step remains",
       usage: { inputTokens: 11, outputTokens: 5, totalTokens: 16, cachedInputTokens: 3 },
     });
     expect(emittedAbortTail).toBeTrue();
@@ -799,6 +800,95 @@ describe("Pi harness driver fail-closed mapping", () => {
       "the Pi harness resolved model deepseek-v4-flash but the worker execution "
       + "profile requires deepseek-v4-pro; refusing the mismatched adapter default",
     );
+  });
+});
+
+describe("Pi harness structured settlement shares the explicit step allowance", () => {
+  const settlementFixture = async () => {
+    const { workspace, input } = await fixture();
+    input.outputSchema = {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    };
+    input.budget.maxSteps = 2;
+    return { workspace, input };
+  };
+
+  const oneStepHarness = () => scriptedHarness(async ({ emit }) => {
+    emit({ type: "stream-start", warnings: [] });
+    emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+    emit({
+      type: "finish",
+      finishReason: STOP_REASON,
+      totalUsage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+    });
+  }, []);
+
+  const deepSeekPiDriver = (harness: HarnessV1<ToolSet>) => new PiHarnessCellDriver({
+    route: [{
+      provider: "deepseek",
+      credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+      model: "deepseek-v4-pro",
+    }],
+    environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+    harness,
+  });
+
+  test("one remaining step permits at most one settlement attempt and total steps never exceed maxSteps", async () => {
+    let settlementCalls = 0;
+    const settlementModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        settlementCalls += 1;
+        return {
+          content: [{ type: "text", text: "Not a settlement tool call." }],
+          finishReason: { unified: "stop", raw: "stop" },
+          usage: V4_USAGE,
+          warnings: [],
+        };
+      },
+    });
+    const { workspace, input } = await settlementFixture();
+    const driver = deepSeekPiDriver(oneStepHarness());
+    Object.defineProperty(driver, "model", { value: settlementModel });
+
+    await expect(driver.run(input, driverContext(workspace))).rejects.toMatchObject({
+      message: expect.stringContaining("Work Cell step budget exhausted"),
+    });
+    // The main harness turn consumed one step; the single remaining step
+    // allowed exactly one settlement attempt, never a second one.
+    expect(settlementCalls).toBe(1);
+  });
+
+  test("structured settlement completes inside the shared maxSteps allowance", async () => {
+    let settlementCalls = 0;
+    const settlementModel = new MockLanguageModelV3({
+      doGenerate: async () => {
+        settlementCalls += 1;
+        return {
+          content: [{
+            type: "tool-call",
+            toolCallId: "settle-pi-output",
+            toolName: "emit_structured_output",
+            input: JSON.stringify({ decision: "P04" }),
+          }],
+          finishReason: { unified: "tool-calls", raw: "tool-calls" },
+          usage: V4_USAGE,
+          warnings: [],
+        };
+      },
+    });
+    const { workspace, input } = await settlementFixture();
+    const driver = deepSeekPiDriver(oneStepHarness());
+    Object.defineProperty(driver, "model", { value: settlementModel });
+
+    const result = await driver.run(input, driverContext(workspace));
+    expect(result.output).toEqual({ decision: "P04" });
+    expect(settlementCalls).toBe(1);
   });
 });
 

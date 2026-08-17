@@ -15,6 +15,9 @@ import {
 } from "./contracts";
 import {
   CellExecutionError,
+  TerminalContractError,
+  createStepAllowance,
+  stepBudgetExhaustedMessage,
   type CellDriver,
   type DriverContext,
   type DriverResult,
@@ -343,6 +346,12 @@ export class PiHarnessCellDriver implements CellDriver {
 
     let observedUsage: CellUsage = emptyUsage();
     let observedSettlementUsage: CellUsage = emptyUsage();
+    // One shared monotonic, non-extendable explicit step allowance for every
+    // provider/model step: the harness main turn and the structured
+    // settlement consume the same count. An omitted maxSteps installs no
+    // step-count ceiling, so only maxDurationMs and the caller's abort signal
+    // remain.
+    const stepAllowance = createStepAllowance(input.budget.maxSteps);
     const session = await agent.createSession();
     let harnessSessionId: string | undefined;
     const stepBudgetAbort = new AbortController();
@@ -381,12 +390,14 @@ export class PiHarnessCellDriver implements CellDriver {
         },
         onStepFinished: (_finishReason, stepHadToolActivity) => {
           completedSteps += 1;
+          stepAllowance.consume();
           // The immutable step budget is enforced from actual tool activity,
           // never from the harness finish label. A tool-free terminal response
-          // on the final allowed step completes naturally.
+          // on the final allowed step completes naturally. Recovery and
+          // settlement phases (when they exist) continue from the same
+          // remaining allowance; no later phase starts when none remains.
           if (
-            input.budget.maxSteps !== undefined
-            && completedSteps >= input.budget.maxSteps
+            stepAllowance.exhausted
             && stepHadToolActivity
           ) {
             // Freeze the exact accepted-step count before aborting. Pi emits
@@ -394,7 +405,7 @@ export class PiHarnessCellDriver implements CellDriver {
             // not another completed provider step.
             stepBudgetExhaustedAt = completedSteps;
             stepBudgetAbort.abort(new Error(
-              `Work Cell step budget exhausted after ${stepBudgetExhaustedAt} completed steps`,
+              stepBudgetExhaustedMessage(stepBudgetExhaustedAt, "no provider step remains"),
             ));
           }
         },
@@ -411,7 +422,7 @@ export class PiHarnessCellDriver implements CellDriver {
         // than being added to it.
         if (aggregateUsage?.totalTokens) observedUsage = aggregateUsage;
         throw new CellExecutionError(
-          `Work Cell step budget exhausted after ${stepBudgetExhaustedAt} completed steps`,
+          stepBudgetExhaustedMessage(stepBudgetExhaustedAt, "no provider step remains"),
           observedUsage,
           observedSettlementUsage,
         );
@@ -428,7 +439,7 @@ export class PiHarnessCellDriver implements CellDriver {
       // materialized; never add both views of the same tokens.
       observedUsage = normalizedUsage.totalTokens > 0 ? normalizedUsage : observedUsage;
       if (terminalProtocolError) {
-        throw new CellExecutionError(terminalProtocolError, observedUsage, observedSettlementUsage);
+        throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
       }
       if (context.signal.aborted) {
         throw new CellExecutionError(
@@ -442,6 +453,16 @@ export class PiHarnessCellDriver implements CellDriver {
       let settlement: StructuredSettlementResult | undefined;
       let output: unknown;
       if (outputSchema) {
+        // The allowance is shared and non-extendable: structured settlement
+        // never starts when no provider step remains; the Cell fails
+        // truthfully instead of passing without the required output.
+        if (stepAllowance.remaining === 0) {
+          throw new CellExecutionError(
+            stepBudgetExhaustedMessage(stepAllowance.consumed, "the structured output contract cannot be settled"),
+            observedUsage,
+            observedSettlementUsage,
+          );
+        }
         context.emit("structured.settlement.started", { mode: "tool-settlement" });
         settlement = await settleStructuredOutput({
           model: this.model,
@@ -453,6 +474,7 @@ export class PiHarnessCellDriver implements CellDriver {
             .join("\n\n"),
           context,
           maxOutputTokens: MAX_AGENT_OUTPUT_TOKENS,
+          stepAllowance,
         });
         if (settlement.output === undefined) {
           const failedSettlementUsage = addUsage(observedSettlementUsage, settlement.usage);
@@ -486,7 +508,7 @@ export class PiHarnessCellDriver implements CellDriver {
     } catch (error) {
       if (error instanceof CellExecutionError) throw error;
       if (terminalProtocolError) {
-        throw new CellExecutionError(terminalProtocolError, observedUsage, observedSettlementUsage);
+        throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
       }
       throw new CellExecutionError(
         error instanceof Error ? error.message : String(error),
