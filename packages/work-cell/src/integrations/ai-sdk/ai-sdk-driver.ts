@@ -88,21 +88,11 @@ export class AiSdkValidationDriver implements CellDriver {
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
     const tasks = TaskStore.fromSeeds(input.tasks, input.id);
-    // Injected cell tools retain only name, exact toolCallId, and settled
-    // outcome per invocation. `DriverContext.cellTools` is already the gated
-    // `CellToolSurface`; its neutral definitions live directly at
-    // `context.cellTools.tools`. For an injected-tool run the adapter applies
-    // one fail-closed retained-evidence projection: injected entries are
-    // removed from step-level tool evidence, provider metadata is never
-    // retained into the trace, and the final rawSteps and providerMetadata
-    // are omitted entirely, because raw provider steps and metadata can echo
-    // injected inputs or results. Normalized usage and the bounded
-    // cell.tool.* events are preserved; runs without injected tools are
-    // unchanged.
-    const injectedCellToolsPresent = context.cellTools !== undefined;
-    const injectedCellToolNames = context.cellTools
-      ? new Set(Object.keys(context.cellTools.tools))
-      : undefined;
+    // `DriverContext.cellTools` is already the gated `CellToolSurface`; its
+    // neutral definitions live directly at `context.cellTools.tools`. The
+    // core (runCell) owns the injected-tool retained-evidence projection:
+    // this adapter emits its ordinary step/tool evidence and the core drops
+    // Integration-originated events for injected-tool runs.
     context.emit("task.tools.projected", {
       taskToolSet: this.taskToolSet,
       tools: taskToolNames(this.taskToolSet),
@@ -222,23 +212,10 @@ export class AiSdkValidationDriver implements CellDriver {
             provider,
             model: modelId,
             stepNumber,
-            // An injected tool name is retained only in cell.tools.projected
-            // and its cell.tool.settled triplet: injected names are removed
-            // from the step-level active-tool projection while
-            // host/task/terminal names are preserved. Runs without injected
-            // tools are unchanged.
-            activeTools: filterInjectedActiveTools(activeTools, injectedCellToolNames),
+            activeTools,
           });
         },
         onToolExecutionStart: ({ callId, toolCall }) => {
-          // Injected cell-tool invocations retain only the canonical bounded
-          // cell.tool.settled evidence: the generic started/finished events
-          // are suppressed for them, so an injected name (for example
-          // write_file with no active write surface) can never be interpreted
-          // as a host payload target and no callId/duration/outcome
-          // duplication enters the trace. Host/task/terminal calls keep the
-          // ordinary generic events.
-          if (injectedCellToolNames?.has(toolCall.toolName)) return;
           context.emit("agent.tool.started", {
             callId,
             id: toolCall.toolCallId,
@@ -247,7 +224,6 @@ export class AiSdkValidationDriver implements CellDriver {
           });
         },
         onToolExecutionEnd: ({ callId, toolCall, toolExecutionMs, toolOutput }) => {
-          if (injectedCellToolNames?.has(toolCall.toolName)) return;
           context.emit("agent.tool.finished", {
             callId,
             id: toolCall.toolCallId,
@@ -260,19 +236,14 @@ export class AiSdkValidationDriver implements CellDriver {
           const stepUsage = normalizeUsage(usage, providerMetadata);
           observedUsage = addUsage(observedUsage, stepUsage);
           context.observeUsage(stepUsage, "execution");
-          // The SDK performance object is omitted for an injected-tool run:
-          // its toolExecutionMs map is keyed by the exact tool call id, so
-          // retaining it would duplicate the bounded cell.tool.settled
-          // identity and add durations outside the required triplet. Runs
-          // without injected tools keep the ordinary performance evidence.
           context.emit("agent.step.finished", {
             finishReason,
-            ...(injectedCellToolsPresent ? {} : { performance: sanitize(performance) }),
-            ...(injectedCellToolsPresent ? {} : { providerMetadata: sanitize(providerMetadata) }),
+            performance: sanitize(performance),
+            providerMetadata: sanitize(providerMetadata),
             usage,
             cumulativeUsage: observedUsage,
-            toolCalls: sanitize(redactCellToolStepEvidence(toolCalls, injectedCellToolNames)),
-            toolResults: sanitize(redactCellToolStepEvidence(toolResults, injectedCellToolNames)),
+            toolCalls: sanitize(toolCalls),
+            toolResults: sanitize(toolResults),
           });
         },
       };
@@ -461,25 +432,19 @@ export class AiSdkValidationDriver implements CellDriver {
             // Only steps that began with the terminal contract still open are
             // actual terminal recovery; a step that began with the terminal
             // already accepted is the output-only closure step and carries its
-            // own truthful structured-output event. The same injected-aware
-            // projection applies to the closure step path: no SDK performance
-            // object is retained for an injected-tool run.
+            // own truthful structured-output event.
             context.emit(
               needsTerminalCarrier && !terminalSatisfiedBeforeStep
                 ? "terminal.recovery.step.finished"
                 : "structured.output.step.finished",
               {
                 finishReason,
-                ...(injectedCellToolsPresent ? {} : { performance: sanitize(performance) }),
-                ...(injectedCellToolsPresent ? {} : { providerMetadata: sanitize(providerMetadata) }),
+                performance: sanitize(performance),
+                providerMetadata: sanitize(providerMetadata),
                 usage,
                 cumulativeUsage: closureUsage,
-                // The same injected-aware redaction as the main step path:
-                // injected entries are removed from the closure step's
-                // toolCalls/toolResults evidence so caller-owned input and
-                // result values never enter the trace.
-                toolCalls: sanitize(redactCellToolStepEvidence(toolCalls, injectedCellToolNames)),
-                toolResults: sanitize(redactCellToolStepEvidence(toolResults, injectedCellToolNames)),
+                toolCalls: sanitize(toolCalls),
+                toolResults: sanitize(toolResults),
               },
             );
           },
@@ -612,20 +577,12 @@ export class AiSdkValidationDriver implements CellDriver {
       ...(output === undefined ? {} : { output }),
       usage,
       ...(settlementUsage.totalTokens > 0 ? { settlementUsage } : {}),
-      // Injected-aware fail-closed projection: raw provider steps and
-      // provider metadata can echo injected tool inputs or results, so both
-      // are omitted for an injected-tool run. Runs without injected tools
-      // keep the ordinary evidence.
-      rawSteps: injectedCellToolsPresent
-        ? []
-        : sanitize([
-            ...executionResult.steps,
-            ...(closureResult?.steps ?? []),
-            ...(settlement?.rawSteps ?? []),
-          ]) as unknown[],
-      ...(injectedCellToolsPresent
-        ? {}
-        : { providerMetadata: sanitize(executionResult.providerMetadata) }),
+      rawSteps: sanitize([
+        ...executionResult.steps,
+        ...(closureResult?.steps ?? []),
+        ...(settlement?.rawSteps ?? []),
+      ]) as unknown[],
+      providerMetadata: sanitize(executionResult.providerMetadata),
     };
   }
 
@@ -698,40 +655,6 @@ function terminalToolChoice(names: string[]) {
   return names.length === 1
     ? { type: "tool" as const, toolName: names[0]! }
     : "required" as const;
-}
-
-/**
- * The allowed retained surface for an injected tool name is exactly the
- * sorted cell.tools.projected list and its cell.tool.settled triplet:
- * injected names are removed from the step-level active-tool projection
- * while host/task/terminal names are preserved. Runs without injected tools
- * pass the value through unchanged.
- */
-function filterInjectedActiveTools(
-  activeTools: unknown,
-  injectedCellToolNames: ReadonlySet<string> | undefined,
-): unknown {
-  if (injectedCellToolNames === undefined || !Array.isArray(activeTools)) return activeTools;
-  return activeTools.filter((name) =>
-    typeof name !== "string" || !injectedCellToolNames.has(name));
-}
-
-/**
- * Per-invocation cell tool retention is exactly name, exact toolCallId, and
- * settled outcome: injected-tool entries are removed from the step-level
- * toolCalls/toolResults evidence so caller-owned input and result values
- * never enter the trace. Runs without injected tools keep the ordinary
- * step evidence unchanged.
- */
-function redactCellToolStepEvidence<T>(
-  entries: readonly T[],
-  injectedCellToolNames: ReadonlySet<string> | undefined,
-): readonly T[] {
-  if (injectedCellToolNames === undefined) return entries;
-  return entries.filter((entry) => {
-    const name = (entry as { toolName?: unknown }).toolName;
-    return typeof name !== "string" || !injectedCellToolNames.has(name);
-  });
 }
 
 function finalOutputStep(

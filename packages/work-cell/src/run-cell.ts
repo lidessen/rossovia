@@ -149,6 +149,11 @@ export async function runCell(
   let status: CellTerminalStatus = "failed";
   let error: string | undefined;
   let driverResult: Awaited<ReturnType<CellDriver["run"]>> | undefined;
+  // True once the provider was actually dispatched. Core contract
+  // validation failures before dispatch keep their exact messages; a
+  // caught driver/provider failure after dispatch is projected to one
+  // stable status-based category for an injected-tool run.
+  let driverDispatched = false;
   let failureUsage = emptyUsage();
   let failureSettlementUsage: CellUsage | undefined;
   let observedExecutionUsage = emptyUsage();
@@ -200,6 +205,15 @@ export async function runCell(
           }
         },
         emit(type: string, data: unknown) {
+          // One core-owned retained-evidence projection for an injected-tool
+          // run: no Integration-originated trace event is retained or
+          // forwarded through the driver boundary. The core-owned evidence —
+          // cell.started, cell.prepared, cell.tools.projected,
+          // cell.tool.settled, cell.capability_mismatch, cell.error, and
+          // cell.finished — is emitted through the core's own emit path and
+          // stays. Runs without injected tools forward every driver event
+          // unchanged.
+          if (cellToolGate !== undefined) return;
           emit(type, data);
         },
       };
@@ -221,6 +235,7 @@ export async function runCell(
       // only from that canonical value; the supplied driver receives an
       // isolated immutable parsed copy it can never rewrite.
       try {
+        driverDispatched = true;
         driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
       } finally {
         // The driver settled without aborting: the synchronous gate-close
@@ -288,7 +303,6 @@ export async function runCell(
         status = "passed";
       }
     } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
       if (caught instanceof CellExecutionError) {
         failureUsage = caught.usage;
         failureSettlementUsage = caught.settlementUsage ?? observedSettlementUsage;
@@ -299,6 +313,16 @@ export async function runCell(
       if (signal.aborted) status = "cancelled";
       else if (caught instanceof TerminalContractError) status = "protocol_error";
       else status = "failed";
+      // For an injected-tool run a caught driver/provider failure is
+      // projected to one stable status-based category before cell.error and
+      // the final: the CellExecutionError/TerminalContractError carriers can
+      // hold raw provider or adapter error text that echoes injected tool
+      // inputs or results, and that text is never retained. Plain errors —
+      // core contract validation and adapter fail-closed contract text,
+      // including the caller's own abort reason — keep their exact messages.
+      error = cellToolGate !== undefined && driverDispatched && caught instanceof CellExecutionError
+        ? stableCellFailureMessage(status)
+        : caught instanceof Error ? caught.message : String(caught);
       emit("cell.error", { status, error });
     }
   }
@@ -333,8 +357,24 @@ export async function runCell(
   emit("cell.finished", { status, usage }, true);
 
   const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
-  const sessionId = observedSessionId(driverResult?.providerMetadata);
-  const fingerprintEvidence = providerFingerprintEvidence(driverResult?.providerMetadata);
+  // For an injected-tool run provider metadata is treated as unavailable:
+  // neither a provider session id nor a provider fingerprint enters the
+  // execution observation, because provider metadata can echo injected tool
+  // inputs or results. The explicit unavailable standing stays truthful.
+  const sessionId = cellToolGate === undefined
+    ? observedSessionId(driverResult?.providerMetadata)
+    : undefined;
+  const fingerprintEvidence: {
+    value?: string;
+    standing: ProviderFingerprintStanding;
+  } = cellToolGate === undefined
+    ? providerFingerprintEvidence(driverResult?.providerMetadata)
+    : {
+        standing: {
+          standing: "unavailable",
+          reason: "an injected-tool run retains no provider metadata; no provider fingerprint could be observed",
+        },
+      };
   const executionObservation: CellRunRecord["executionObservation"] = {
     ...(sessionId ? { sessionId } : {}),
     ...(input.workEstimate ? { workEstimateId: input.workEstimate.id } : {}),
@@ -377,9 +417,12 @@ export async function runCell(
     executionObservation,
     ...(estimate ? { estimatedCostUsd: estimate.value, estimateBasis: estimate.basis } : {}),
     trace,
+    // For an injected-tool run the final rawSteps omit the driver execution
+    // steps entirely: raw provider steps can echo injected tool inputs or
+    // results. Caller-supplied preparation steps (not driver steps) stay.
     rawSteps: [
       ...(options.preparation ? [{ phase: "preparation", adapter: options.preparation.adapter, steps: options.preparation.rawSteps }] : []),
-      ...(driverResult ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
+      ...(driverResult && cellToolGate === undefined ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
     ],
     ...(error ? { error } : {}),
   };
@@ -695,6 +738,22 @@ async function verifyArtifacts(
 
 function emptyUsage(): CellUsage {
   return { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 };
+}
+
+/**
+ * The stable status-based category retained for a caught driver/provider
+ * failure in an injected-tool run. Raw provider or adapter error text is
+ * never retained; the Cell keeps only the truthful terminal-status category.
+ */
+function stableCellFailureMessage(status: CellTerminalStatus): string {
+  switch (status) {
+    case "cancelled":
+      return "the Cell run was cancelled before completion";
+    case "protocol_error":
+      return "the declared terminal contract ended violated";
+    default:
+      return "the provider or driver failed during this run";
+  }
 }
 
 function observedSessionId(providerMetadata: unknown): string | undefined {

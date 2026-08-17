@@ -255,15 +255,11 @@ export class PiHarnessCellDriver implements CellDriver {
   ): Promise<DriverResult> {
     const terminalToolsCalled = new Set<string>();
     const tasks = TaskStore.fromSeeds(input.tasks, input.id);
-    // Injected-aware fail-closed retained-evidence projection: for an
-    // injected-tool run the adapter retains no raw provider steps and no
-    // provider metadata (both can echo injected inputs or results), while
-    // normalized usage and the bounded cell.tool.* events are preserved.
-    // Runs without injected tools are unchanged.
-    const injectedCellToolsPresent = context.cellTools !== undefined;
-    const injectedCellToolNames = context.cellTools
-      ? new Set(Object.keys(context.cellTools.tools))
-      : undefined;
+    // `DriverContext.cellTools` is already the gated `CellToolSurface`; its
+    // neutral definitions live directly at `context.cellTools.tools`. The
+    // core (runCell) owns the injected-tool retained-evidence projection:
+    // this adapter emits its ordinary step/tool evidence and the core drops
+    // Integration-originated events for injected-tool runs.
     context.emit("task.tools.projected", {
       taskToolSet: this.taskToolSet,
       tools: taskToolNames(this.taskToolSet),
@@ -367,14 +363,7 @@ export class PiHarnessCellDriver implements CellDriver {
     });
     context.emit("harness.tool_surface.projected", {
       harnessId: this.harness.harnessId,
-      // An injected tool name is retained only in cell.tools.projected and
-      // its cell.tool.settled triplet: injected names are removed from the
-      // harness tool-surface projection while the host/task/terminal names
-      // stay visible exactly as before. The HarnessAgent itself still
-      // receives the full model-visible surface including injected tools.
-      tools: Object.keys(mergedTools).filter(
-        (name) => injectedCellToolNames === undefined || !injectedCellToolNames.has(name),
-      ),
+      tools: Object.keys(mergedTools),
       builtinToolFiltering: { mode: "allow", toolNames: [] },
     });
 
@@ -418,8 +407,6 @@ export class PiHarnessCellDriver implements CellDriver {
       const observeChunk = createHarnessStreamObserver({
         context,
         acceptStep: () => stepBudgetExhaustedAt === undefined,
-        retainProviderMetadata: !injectedCellToolsPresent,
-        injectedCellToolNames,
         observeUsage: (usage) => {
           observedUsage = addUsage(observedUsage, usage);
           context.observeUsage(usage, "execution");
@@ -473,13 +460,9 @@ export class PiHarnessCellDriver implements CellDriver {
             finalText: `Terminal contract satisfied during execution through ${calledNames.join(", ")}; no final text was generated.`,
             usage: observedUsage,
             rawSteps: [],
-            ...(injectedCellToolsPresent
-              ? {}
-              : {
-                  providerMetadata: {
-                    ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
-                  },
-                }),
+            providerMetadata: {
+              ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
+            },
           };
         }
         throw new CellExecutionError(
@@ -568,23 +551,13 @@ export class PiHarnessCellDriver implements CellDriver {
         ...(output === undefined ? {} : { output }),
         usage: settlement ? addUsage(normalizedUsage, settlement.usage) : normalizedUsage,
         ...(settlementUsage.totalTokens > 0 ? { settlementUsage } : {}),
-        // Injected-aware fail-closed projection: raw provider steps and
-        // provider metadata can echo injected tool inputs or results, so
-        // both are omitted for an injected-tool run. Runs without injected
-        // tools keep the ordinary evidence.
-        rawSteps: injectedCellToolsPresent
-          ? []
-          : sanitize([...steps, ...(settlement?.rawSteps ?? [])]) as unknown[],
-        ...(injectedCellToolsPresent
-          ? {}
-          : {
-              providerMetadata: {
-                ...asRecord(sanitize(providerMetadata)),
-                // Harness session identity is observation only; ordinary
-                // continuation remains exact prior-attempt lineage.
-                sessionId: harnessSessionId,
-              },
-            }),
+        rawSteps: sanitize([...steps, ...(settlement?.rawSteps ?? [])]) as unknown[],
+        providerMetadata: {
+          ...asRecord(sanitize(providerMetadata)),
+          // Harness session identity is observation only; ordinary
+          // continuation remains exact prior-attempt lineage.
+          sessionId: harnessSessionId,
+        },
       };
     } catch (error) {
       if (error instanceof CellExecutionError) throw error;
@@ -672,18 +645,8 @@ function createHarnessStreamObserver(options: {
   acceptStep(): boolean;
   observeUsage(usage: CellUsage): void;
   onStepFinished(finishReason: string, stepHadToolActivity: boolean): void;
-  /** Provider metadata is never retained into the trace for an injected-tool run. */
-  retainProviderMetadata: boolean;
-  /**
-   * Injected cell-tool invocations retain only the canonical bounded
-   * cell.tool.settled evidence: the generic agent.tool.started/finished
-   * events are suppressed for these names while their activity keeps
-   * counting toward the step budget.
-   */
-  injectedCellToolNames: ReadonlySet<string> | undefined;
 }): (chunk: unknown) => void {
   const { context } = options;
-  const injectedNames = options.injectedCellToolNames;
   let stepNumber = 0;
   let activeTools: string[] | undefined;
   let stepHadToolActivity = false;
@@ -693,17 +656,9 @@ function createHarnessStreamObserver(options: {
     if (type === "step-start") {
       stepNumber += 1;
       stepHadToolActivity = false;
-      const observedActiveTools = Array.isArray(value.activeTools) && value.activeTools.every(
+      activeTools = Array.isArray(value.activeTools) && value.activeTools.every(
         (item) => typeof item === "string",
       ) ? value.activeTools as string[] : undefined;
-      // An injected tool name is retained only in cell.tools.projected and
-      // its cell.tool.settled triplet: injected names are removed from the
-      // step-level active-tool projection, which both agent.step.started and
-      // agent.step.finished carry, while host/task/terminal names are
-      // preserved. The step-budget activity accounting is untouched.
-      activeTools = observedActiveTools === undefined || injectedNames === undefined
-        ? observedActiveTools
-        : observedActiveTools.filter((name) => !injectedNames.has(name));
       context.emit("agent.step.started", {
         stepNumber,
         activeTools,
@@ -713,12 +668,6 @@ function createHarnessStreamObserver(options: {
     if (type === "tool-call") {
       stepHadToolActivity = true;
       const name = typeof value.toolName === "string" ? value.toolName : "unknown";
-      // An injected tool name is never interpreted as a host payload target:
-      // the generic started/finished events are suppressed for injected
-      // invocations (cell.tool.settled stays the sole per-invocation
-      // evidence), while the step-budget accounting above keeps counting
-      // their activity exactly like a host tool call.
-      if (options.injectedCellToolNames?.has(name)) return;
       context.emit("agent.tool.started", {
         id: typeof value.toolCallId === "string" ? value.toolCallId : undefined,
         name,
@@ -729,7 +678,6 @@ function createHarnessStreamObserver(options: {
     if (type === "tool-result") {
       stepHadToolActivity = true;
       const name = typeof value.toolName === "string" ? value.toolName : "unknown";
-      if (options.injectedCellToolNames?.has(name)) return;
       context.emit("agent.tool.finished", {
         id: typeof value.toolCallId === "string" ? value.toolCallId : undefined,
         name,
@@ -761,7 +709,7 @@ function createHarnessStreamObserver(options: {
       context.emit("harness.turn.finished", {
         finishReason: normalizeFinishReason(value.finishReason),
         totalUsage: normalizeUsage(value.totalUsage),
-        ...(value.providerMetadata !== undefined && options.retainProviderMetadata
+        ...(value.providerMetadata !== undefined
           ? { providerMetadata: sanitize(value.providerMetadata) }
           : {}),
       });
