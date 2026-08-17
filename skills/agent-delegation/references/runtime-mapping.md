@@ -44,15 +44,20 @@ forms without dispatching the same work twice.
 | Input | self-contained delegation envelope | the same envelope passed to a sub-worker tool and lowered by its adapter into the child Run/Cell contract |
 | Effects | only effects granted to that child by the current harness | exact Run capability plus the runtime's writer/effect owner |
 | Progress | transient child messages or tool observations | owner-backed Run activity; unknown after lost liveness when evidence cannot reconstruct it |
-| Correction | follow up the same child only for a named gap inside its existing ownership | correct the owning Task/premise, then let the tool adapter authorize a new child Run with lineage |
+| Correction | follow up the same child only for a named gap inside its existing ownership | correct the owning Task/premise; the owning Agent decides whether to request a new child Run, and Orchestration authorizes and creates it with lineage |
 | Control | stop the exact native child when supported | stop the exact live Run through its lifecycle owner |
 | Return | child claim plus source/effect evidence | Run outcome and execution evidence returned as a bounded claim |
 | Review | a fresh non-producing child with isolated context | a separate read-only review Run or an equivalently independent native reviewer |
-| Acceptance | retained by Main or the human owner named by the whole | retained by the Workbench Task's Principal acceptance owner |
+| Acceptance | retained by the Principal or other acceptance owner named by the whole, never Main by delegation alone | retained by the Workbench Task's named Principal acceptance owner |
+| Usage | observed by the native harness at its available scope | Work Cell records per-invocation usage observations; Orchestration aggregates them across Runs |
+| Budget standing | retained by the whole's named authority owner | owned by Orchestration against the authorized allocation; neither Cell nor adapter changes it |
 
 The right column describes relations, not Rossovia command syntax. A concrete
-host adapter owns command names, identifiers, persistence, capacity, and retry
-behavior.
+host adapter owns only concrete protocol, command and schema translation,
+external identifiers and errors, and safe transport replay semantics.
+Orchestration owns Run authorization, identity, persistence, capacity,
+scheduling, lifecycle control, and recovery. The owning Agent decides whether
+a failed or corrected contribution warrants another attempt or new Run.
 
 ## Rossovia-class mapping
 
@@ -66,23 +71,31 @@ When Rossovia or another persistent runtime is already the requested owner:
    surface, inject one sub-worker delegation capability only when the current
    task topology needs it.
 3. Let the Main call that tool with a complete contribution envelope. The tool
-   adapter creates one explicit child Run, lowers the envelope into its bounded
-   Cell input, and returns an opaque child reference plus a compressed claim,
-   evidence, uncertainty, and terminal standing. It never returns acceptance or
-   transfers lifecycle ownership to the parent Cell. Progress and control, when
-   exposed, address the opaque reference through the same host capability; they
-   do not expose or duplicate the orchestration store.
+   adapter translates and submits the bounded request; Orchestration authorizes,
+   creates, and persists one explicit child Run, then lowers its immutable input
+   into a bounded Cell invocation. The capability returns an opaque child
+   reference plus a compressed claim, evidence, uncertainty, and terminal
+   standing. It never returns acceptance or transfers lifecycle ownership to
+   the parent Cell. Progress and control, when exposed, address the opaque
+   reference through the same host capability; they do not expose or duplicate
+   the orchestration store.
 4. Keep child lifecycle outside Work Cell. Orchestration owns child Run identity,
-   start, exact live control, terminal standing, recovery, and usage. The
-   Worktree writer owner serializes shared effectful work; parallel read-only
-   child Runs are not permission for parallel writers.
-5. Let the Main reconstruct returned child evidence and decide whether another
-   contribution is useful. Do not persist its temporary contribution graph as a
-   team object by default. A producer pass remains a claim; semantic review and
-   Principal acceptance keep their existing owners.
-6. A correction changes the Task or Run premise and normally leads to a new
-   child Run through the same tool adapter. Never implement automatic semantic
-   retry or silently reuse the old child Run identity.
+   start, capacity and scheduling, exact live control, terminal standing, and
+   recovery. Work Cell records invocation-specific usage observations;
+   Orchestration aggregates them across Runs and owns budget standing against
+   the authorized allocation. The Worktree writer owner serializes shared
+   effectful work; parallel read-only child Runs are not permission for parallel
+   writers.
+5. Let the Main reconstruct returned child evidence, decide whether another
+   contribution is useful, and produce the whole's final response. Do not persist
+   its temporary contribution graph as a team object by default. A producer pass
+   remains a claim; semantic review and the named Principal acceptance owner
+   keep their existing authority. Main synthesis never implies acceptance.
+6. A correction changes the Task or Run premise. The owning Agent decides
+   whether it warrants another attempt or a new child Run, then submits that
+   request through the same tool adapter for Orchestration authorization. Never
+   implement automatic semantic retry or silently reuse the old child Run
+   identity.
 
 The injected tool is an Integration/host capability, not a Work Cell mechanism.
 Its concrete schema and command names belong to the runtime adapter, but its
@@ -103,7 +116,8 @@ This is one injected capability, not permission for the model to invoke a
 Rossovia CLI, edit Workbench state, or construct Run records. A host may split
 start, observe, and control into separate tool operations when asynchronous
 execution requires it, but all operations address the same opaque child and
-the adapter preserves one Orchestration-owned lifecycle.
+the adapter preserves safe transport semantics around one lifecycle owned by
+Orchestration; it does not make lifecycle or retry decisions.
 
 ## Native-sub-agent mapping
 
