@@ -830,9 +830,11 @@ export function preparePrincipalTaskRun(
  * current head, and the exact prior-attempt lineage walk for a requested
  * continuation. No durable write and no O3 claim happens here; the O2 owner
  * creates the durable Run request record only after this acceptance, and
- * before O3 acquisition.
+ * before O3 acquisition. The conversation-owned ordinary carrier resolves
+ * the same fresh Task/source/project/Worktree selectors through this exact
+ * function so a refused action leaves no Run record and no claim.
  */
-interface ResolvedOrdinaryTaskRun {
+export interface ResolvedOrdinaryTaskRun {
   readonly home: string;
   readonly card: WorkerCard;
   readonly execution: TaskRunExecution;
@@ -847,7 +849,7 @@ interface ResolvedOrdinaryTaskRun {
   };
 }
 
-function resolveOrdinaryTaskRun(
+export function resolveOrdinaryTaskRun(
   homeArgument: string | undefined,
   arguments_: TaskRunArguments,
   dependencies: TaskRunDependencies,

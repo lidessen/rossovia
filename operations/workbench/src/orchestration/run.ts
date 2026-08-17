@@ -166,10 +166,22 @@ export function runRequestDigest(request: RunRequest): string {
  * an identical replay (same identity, same request digest) converges on the
  * retained Run; a different body under the same identity throws
  * `RunRequestConflictError`; an unreadable retained record fails closed.
+ *
+ * A conversation-owned Run (the ordinary `task_continue` path, whose
+ * committed action UUID is the Run identity) additionally retains the exact
+ * journal-owned causal correlation as attribution evidence on the record.
+ * The correlation is evidence only and is excluded from the canonical
+ * request digest, so it never loosens identical-replay convergence.
  */
 export function createRunRequestRecord(
   home: string,
   unparsedRequest: unknown,
+  correlation?: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+    readonly sourceRef: string;
+  },
 ): RunRequestRecordStanding {
   const request = RunRequestSchema.parse(unparsedRequest);
   const digest = runRequestDigest(request);
@@ -216,6 +228,7 @@ export function createRunRequestRecord(
       status: "started",
       startedAt: new Date().toISOString(),
       requestDigest: digest,
+      ...(correlation === undefined ? {} : { correlation }),
     });
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
@@ -443,6 +456,15 @@ export type RunFinalization =
 export interface OrdinaryRunDependencies {
   /** Test seam invoked after durable request creation and before O3 acquisition. */
   readonly beforeLeaseAcquire?: () => void;
+  /**
+   * When the caller already durably published the exact Run request record
+   * BEFORE any O3 acquisition or mutable preparation (the synchronous
+   * publication boundary of a conversation-owned Run), the owner proceeds
+   * from that retained record instead of publishing again. The supplied
+   * digest must equal the canonical digest of the accepted request;
+   * anything else is a `RunRequestConflictError`.
+   */
+  readonly prePublished?: { readonly refs: RunEvidenceRefs; readonly digest: string };
   readonly acquireLease?: (worktree: string, owner: WorktreeWriterOwnerIdentity) => WorktreeWriterLease;
   readonly releaseLease?: (lease: WorktreeWriterLease) => void;
   /** Host revalidation after the O3 claim; throws on any drift. */
@@ -479,7 +501,22 @@ export async function runOrdinaryTaskRun(
   if (dependencies.lowerCellInput === undefined) {
     throw new Error("runOrdinaryTaskRun requires a CellInput lowerer");
   }
-  const created = createRunRequestRecord(home, request);
+  let created: RunRequestRecordStanding;
+  if (dependencies.prePublished !== undefined) {
+    if (dependencies.prePublished.digest !== runRequestDigest(request)) {
+      throw new RunRequestConflictError(
+        request.requestId,
+        `Run ${request.requestId} proceeds from a pre-published request that does not match the accepted request body`,
+      );
+    }
+    created = {
+      standing: "created",
+      refs: dependencies.prePublished.refs,
+      digest: dependencies.prePublished.digest,
+    };
+  } else {
+    created = createRunRequestRecord(home, request);
+  }
   if (created.standing === "converged") {
     return convergedRunResult(home, request);
   }

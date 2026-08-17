@@ -1,28 +1,33 @@
 import { createRequire } from "node:module";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
-import type { CellInput, CellRunRecord, TraceEvent } from "../../../../packages/work-cell/src/contracts";
+import type { CellRunRecord, TraceEvent } from "../../../../packages/work-cell/src/contracts";
 import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
 import type { TaskContinueOperation } from "../../../autonomy/src/conversation-coordinator";
 import {
-  releaseWorktreeWriterLease,
-  type WorktreeWriterLease,
-} from "../orchestration/worktree-writer";
+  createRunRequestRecord,
+  RunControlRegistry,
+  RunRequestConflictError,
+  runOrdinaryTaskRun,
+  runStanding,
+  RunStopRefusal,
+  stopRun,
+  type RunRequest,
+  type RunRequestRecordStanding,
+  type RunResult,
+  type RunStanding,
+  type RunTerminalOutcome,
+} from "../orchestration/run";
 import {
-  attemptEvidence,
   attemptLeaseStanding,
-  createAttempt,
+  buildTaskCellInput,
   deriveTaskRunExecution,
-  evidenceRef,
   executeTaskCellRun,
-  finalizeTaskAttempt,
-  preparePrincipalTaskRun,
-  writeImmutableJson,
-  type AttemptCorrelation,
-  type PreparedPrincipalTaskRun,
-  type TaskAttemptFinalization,
-  type TaskRunExecution,
+  resolveOrdinaryTaskRun,
+  verifyCleanStatus,
+  verifyCurrentBinding,
+  verifyTaskSnapshotAfterLease,
+  type ResolvedOrdinaryTaskRun,
 } from "../task-run";
 import {
   readStrictTaskAttemptEvidence,
@@ -82,7 +87,10 @@ export type CarrierLiveness =
   | { readonly state: "unresolved"; readonly settlement: CarrierSettlement };
 
 export interface ConversationCarrierIdentity {
-  /** The exact retained carrier identity; equals the Task attempt id. */
+  /**
+   * The exact retained carrier identity: the committed task_continue action
+   * UUID, which is also the canonical Run identity and the Task attempt id.
+   */
   readonly carrierId: string;
   readonly conversationId: string;
   readonly turnId: string;
@@ -111,9 +119,10 @@ export interface ConversationCarrierHandle {
   onSettled(listener: (settlement: CarrierSettlement) => void): () => void;
   readonly settled: Promise<CarrierSettlement>;
   /**
-   * Stop only this exact retained carrier: the durable control receipt is
-   * written before the abort, and the abort is dispatched synchronously. The
-   * terminal attempt settlement follows as separate evidence.
+   * Stop only this exact retained carrier through the canonical Run control
+   * owner: the durable Run control receipt is written before the abort, and
+   * the abort is dispatched synchronously. The terminal attempt settlement
+   * follows as separate evidence.
    */
   stop(actor: {
     readonly conversationId: string;
@@ -122,14 +131,16 @@ export interface ConversationCarrierHandle {
   }): CarrierControlReceipt;
   /**
    * Bounded-retention diagnostic: after terminal settlement the carrier drops
-   * its listener sets and its retained CellInput/Task/lease payloads, so a
-   * settled handle keeps only its identity, terminal settlement, and evidence
-   * refs. Tests assert repeated settle stays bounded through this surface.
+   * its listener sets, and a settled handle keeps only its identity, terminal
+   * settlement, and evidence refs; the handle retains no CellInput, Task, or
+   * lease payload at any point because the canonical Run owner holds them.
+   * Tests assert repeated settle stays bounded through this surface.
    */
   retention(): { activityListeners: number; settledListeners: number; retainedPayloads: number };
 }
 
 export interface CarrierStartReceipt {
+  /** The canonical Run identity; equals the committed task_continue action UUID. */
   readonly carrierId: string;
   readonly taskId: string;
   readonly sourceRevision: number;
@@ -139,12 +150,12 @@ export interface CarrierStartReceipt {
 
 /**
  * The exact owner-backed standing one reconnect hydration re-derives for a
- * committed task_continue action: the retained runtime handle's live or
+ * committed task_continue action: the retained presentation handle's live or
  * terminal liveness, or — when this process retains no handle (a server
- * reload/restart) — the canonical attempt/final/settlement evidence family
- * matched by the attempt's durable correlation, projected as terminal or
- * unknown, never live. Hydration is read-only: it never starts, stops,
- * reconciles, or mutates any carrier or attempt evidence.
+ * reload/restart) — the canonical Run-owned standing (`runStanding`) of the
+ * Run whose identity equals the committed action, projected as terminal or
+ * truthful unknown, never live. Hydration is read-only: it never starts,
+ * stops, reconciles, or mutates any Run or attempt evidence.
  */
 export type CarrierHydration =
   | {
@@ -163,21 +174,34 @@ export type CarrierHydration =
   };
 
 /**
- * The in-memory registry of one Workbench server: the exact retained runtime
- * handles of conversation-owned asynchronous ordinary Task carriers. It owns
- * liveness only while the handle exists; a retained `started` attempt without
- * a matching handle is liveness unknown, never live. Durable facts stay in the
- * Task attempt, Work Cell record, settlement, and control receipt evidence;
- * nothing here becomes a second task or execution store.
+ * The conversation-owned adapter over the canonical O2 Run owner
+ * (`orchestration/run.ts`). The committed task_continue action UUID is the
+ * only canonical Run identity: the registry publishes the immutable Run
+ * request (with its exact journal-owned correlation) BEFORE writer
+ * acquisition and mutable preparation, then the existing Orchestration Run
+ * owner acquires at most one O3 writer claim, invokes at most one unchanged
+ * Work Cell, owns the exact live stop, the truthful terminal outcome, the
+ * read-only standing, and the idempotent reconciliation. The registry keeps
+ * only presentation handles plus the per-process action mapping: no
+ * AbortController, Work Cell invocation, finalization, writer lease, or
+ * control receipt is owned here, and nothing here becomes a second task or
+ * execution store. Durable facts stay in the Run request record, the
+ * immutable CellInput, the Work Cell final, the settlement, the Run control
+ * receipt, and the O3 claim in the Worktree Git metadata.
  */
 export interface ConversationExecutionCarrierRegistry {
   readonly home: string;
   /**
-   * Synchronously re-run the shared guarded task-run preparation and start at
-   * most one asynchronous carrier for one committed task_continue action. The
-   * exact durable (turnId, actionId) mapping refuses a second carrier for the
-   * same committed action. Throws `ConversationCarrierError` with no effect on
-   * any stale, unregistered, guessed, dirty, or mismatched selector.
+   * Synchronously re-resolve the exact Task/source/project/Worktree
+   * selectors, publish the immutable Run request for the committed action
+   * (runId == actionId) before writer acquisition, and start at most one
+   * asynchronous Run through the canonical O2 owner. The exact durable
+   * (turnId, actionId) mapping refuses a second carrier for the same
+   * committed action. An identical replay converges on the retained Run
+   * without a second Cell; a different request body under the same identity
+   * conflicts; any stale, unregistered, guessed, dirty, settled, or
+   * mismatched selector throws `ConversationCarrierError` with no Run record
+   * and no claim.
    */
   startCarrier(input: {
     readonly conversationId: string;
@@ -189,7 +213,13 @@ export interface ConversationExecutionCarrierRegistry {
   carriers(): readonly ConversationCarrierHandle[];
   /** The carrier started by one exact committed turn/action, when the runtime retained it. */
   startedCarrier(conversationId: string, actionId: string): ConversationCarrierHandle | undefined;
-  /** Apply one exact control to one exact retained carrier; throws on conflict or unknown liveness. */
+  /**
+   * Apply one exact live stop through the canonical Run control owner
+   * (`stopRun`): the durable Run control receipt is written before the
+   * abort, an identical causal tuple replays the retained receipt, and a
+   * distinct causal tuple, unknown Run, or terminal Run is refused with zero
+   * effect. The registry owns no controller.
+   */
   controlCarrier(input: {
     readonly carrierId: string;
     readonly control: "stop";
@@ -200,16 +230,15 @@ export interface ConversationExecutionCarrierRegistry {
    * committed task_continue action, for reconnect hydration after durable
    * replay/reconciliation. The action's full journal-owned correlation —
    * conversation, turn, action, and the deterministic causal sourceRef — is
-   * required: a retained runtime handle contributes its live or terminal
-   * liveness only when its exact identity satisfies the same correlation,
-   * and with no retained handle the canonical attempt evidence family must
-   * match the full correlation exactly. Zero, partial, or multiple matching
-   * attempt families fail closed as no projection, so no foreign Task or
-   * attempt identity is ever attached and no family is ever selected by
-   * directory or UUID order. Projected terminal or unknown standing is
-   * never live. Undefined when no exact carrier evidence exists for the
-   * action. Read-only: no start, stop, reconciliation, or mutation is
-   * performed.
+   * required: a retained presentation handle contributes its live or
+   * terminal liveness only when its exact identity satisfies the same
+   * correlation, and with no retained handle the canonical Run-owned
+   * standing (`runStanding`) of the Run whose identity equals the committed
+   * action is projected terminal only when the exact O3 release succeeded,
+   * else truthful unknown — never live. Historical pre-Run-identity attempt
+   * families fall back to the exact directory scan. Undefined when no exact
+   * Run evidence exists for the action. Read-only: no start, stop,
+   * reconciliation, or mutation is performed.
    */
   hydrateCarrier(input: {
     readonly conversationId: string;
@@ -223,6 +252,13 @@ export interface ConversationExecutionCarrierOptions {
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
+  /**
+   * Test-only crash boundary invoked synchronously after the immutable Run
+   * request record is published and before writer acquisition or any
+   * mutable preparation: at this boundary the Run record exists while no
+   * writer claim and no CellInput exist.
+   */
+  readonly onRunRequestPublished?: (runId: string) => void;
 }
 
 export function createConversationExecutionCarrierRegistry(
@@ -231,18 +267,26 @@ export function createConversationExecutionCarrierRegistry(
 ): ConversationExecutionCarrierRegistry {
   const home = resolveHome(homeArgument);
   const catalog = options.catalog ?? currentCatalog(options.environment ?? process.env);
-  return new WorkbenchConversationCarrierRegistry(home, catalog);
+  return new WorkbenchConversationCarrierRegistry(home, catalog, options);
 }
 
 class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarrierRegistry {
   readonly home: string;
   private readonly catalog: WorkerCatalog;
+  /** The canonical Run control registry the O2 owner registers live Runs into. */
+  private readonly runControlRegistry = new RunControlRegistry();
   private readonly handles = new Map<string, TaskRunCellCarrier>();
   private readonly startedByCommittedAction = new Map<string, string>();
+  private readonly onRunRequestPublished: ((runId: string) => void) | undefined;
 
-  constructor(home: string, catalog: WorkerCatalog) {
+  constructor(
+    home: string,
+    catalog: WorkerCatalog,
+    options: ConversationExecutionCarrierOptions,
+  ) {
     this.home = home;
     this.catalog = catalog;
+    this.onRunRequestPublished = options.onRunRequestPublished;
   }
 
   startCarrier(input: {
@@ -260,75 +304,186 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
       );
     }
 
-    // The same guarded preparation every ordinary task run performs: exact
-    // worker resolution, canonical Task/source re-read, project and bound
-    // Worktree revalidation with its current head, the atomic Worktree lease,
-    // a fresh Task snapshot verification, and the clean status check. Only the
-    // execution-form derivation and the catalog identity resolution are
-    // carrier-specific; the authority sequence is never duplicated here.
-    const prepared = this.prepareCarrierRun(input.operation);
-
-    const attemptId = prepared.attemptId;
+    // Fresh guarded read-only acceptance: the exact worker, Task/source
+    // revisions, registered project identity, current primary observation,
+    // bound Worktree path and head, and the clean status are re-read from
+    // their canonical owners before any durable Run identity or O3 claim. A
+    // stale, unregistered, guessed, settled, or dirty selector fails here
+    // with no effect: no Run record, no writer claim, no Cell.
+    const resolved = this.resolveCarrierRun(input.operation);
+    verifyExpectedRevisions(resolved, input.operation);
+    verifyExecutionSelectors(this.home, { task: resolved.task, worktree: resolved.worktree }, input.operation);
     try {
-      verifyExpectedRevisions(prepared, input.operation);
-      verifyExecutionSelectors(this.home, { task: prepared.task, worktree: prepared.worktree }, input.operation);
-      const correlation: AttemptCorrelation = {
-        conversationId: input.conversationId,
-        turnId: input.turnId,
-        actionId: input.actionId,
-        sourceRef: taskActionSourceRef(input.conversationId, input.actionId),
-      };
-      const attempt = createAttempt(
-        prepared.home,
-        prepared.task,
-        prepared.observed.sourceRevision,
-        attemptId,
-        prepared.worktree,
-        prepared.card.id,
-        prepared.card,
-        prepared.execution,
-        undefined,
-        correlation,
-      );
-      const carrier = new TaskRunCellCarrier({
-        home: prepared.home,
-        catalog: this.catalog,
-        identity: {
-          carrierId: attemptId,
-          conversationId: input.conversationId,
-          turnId: input.turnId,
-          actionId: input.actionId,
-          taskId: prepared.task.id,
-          attemptId,
-          workerId: prepared.card.id,
-          worktree: prepared.worktree,
-        },
-        cellInput: attempt.expectedCellInput,
-        attempt,
-        lease: prepared.lease,
-        task: prepared.task,
-        execution: prepared.execution,
-        card: prepared.card,
-      });
-      this.handles.set(attemptId, carrier);
-      this.startedByCommittedAction.set(actionKey, attemptId);
-      void carrier.run(attempt.expectedCellInput);
-      return {
-        carrierId: attemptId,
-        taskId: prepared.task.id,
-        sourceRevision: prepared.observed.sourceRevision,
-        taskRevision: prepared.task.revision,
-        evidenceRefs: [
-          attempt.attemptRef,
-          attempt.inputRef,
-          attempt.finalRecordRef,
-          attempt.settlementRef,
-        ],
-      };
+      verifyCleanStatus(resolved.worktree);
     } catch (error) {
-      releaseWorktreeWriterLease(prepared.lease);
       throw mapPreparationError(error);
     }
+
+    // The committed action UUID is the only canonical Run identity: one
+    // durable Run request over the existing attempt evidence family,
+    // published BEFORE writer acquisition and BEFORE any mutable
+    // preparation. The exact journal-owned correlation is retained as
+    // attribution evidence on the request record.
+    const request: RunRequest = {
+      requestId: input.actionId,
+      taskId: resolved.task.id,
+      taskRevision: resolved.task.revision,
+      sourceRevision: resolved.observed.sourceRevision,
+      workerId: resolved.card.id,
+      execution: resolved.execution,
+      worktree: resolved.worktree,
+    };
+    const correlation = {
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      actionId: input.actionId,
+      sourceRef: taskActionSourceRef(input.conversationId, input.actionId),
+    };
+    let published: RunRequestRecordStanding;
+    try {
+      published = createRunRequestRecord(this.home, request, correlation);
+    } catch (error) {
+      if (error instanceof RunRequestConflictError) {
+        throw new ConversationCarrierError(
+          "carrier-duplicate",
+          `action ${input.actionId} already retains a different Run request under the same identity; identical replay is refused: ${error.message}`,
+        );
+      }
+      throw mapPreparationError(error);
+    }
+
+    this.startedByCommittedAction.set(actionKey, input.actionId);
+
+    if (published.standing === "converged") {
+      // An identical replay converges on the retained Run: no second Cell is
+      // invoked and no second claim is acquired. A retained Run without a
+      // final is never restarted or replayed here; its standing is inspected
+      // and its terminal outcome is reconciled only by the canonical Run
+      // owner.
+      return this.convergedCarrierReceipt(input.actionId);
+    }
+
+    if (this.onRunRequestPublished !== undefined) {
+      // Test crash boundary: the immutable Run request is durably published
+      // while no writer claim and no CellInput exist yet.
+      this.onRunRequestPublished(input.actionId);
+    }
+
+    const identity: ConversationCarrierIdentity = {
+      carrierId: input.actionId,
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      actionId: input.actionId,
+      taskId: resolved.task.id,
+      attemptId: input.actionId,
+      workerId: resolved.card.id,
+      worktree: resolved.worktree,
+    };
+    const handle = new TaskRunCellCarrier({
+      identity,
+      stopOwner: (actor) => this.controlCarrier({
+        carrierId: input.actionId,
+        control: "stop",
+        actor,
+      }),
+    });
+    this.handles.set(input.actionId, handle);
+
+    // The canonical O2 Run owner executes the published Run: at most one O3
+    // writer claim, one immutable CellInput, one unchanged Work Cell, one
+    // truthful terminal outcome, and the exact live-stop registry entry. The
+    // presentation handle owns no controller, no execution, no
+    // finalization, no lease, and no receipt.
+    const runPromise = runOrdinaryTaskRun(this.home, request, {
+      prePublished: published,
+      registry: this.runControlRegistry,
+      card: resolved.card,
+      revalidate: () => {
+        // The same fresh selectors re-read after the exact claim: any drift
+        // settles a truthful pre-Cell failure with zero Cell invocations.
+        verifyTaskSnapshotAfterLease(this.home, resolved.observed);
+        verifyCurrentBinding(this.home, resolved.projectId, resolved.worktree);
+        verifyCleanStatus(resolved.worktree);
+        verifyExecutionSelectors(
+          this.home,
+          { task: resolved.task, worktree: resolved.worktree },
+          input.operation,
+        );
+      },
+      lowerCellInput: () => buildTaskCellInput(
+        resolved.task,
+        resolved.worktree,
+        resolved.card.id,
+        resolved.card,
+        input.actionId,
+      ),
+      execute: async (cellInput, options) => {
+        const outcome = await executeTaskCellRun(this.catalog, cellInput, {
+          host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          onTrace: (event) => handle.observeTrace(event),
+        });
+        if (outcome.status === "failed") throw new Error(outcome.error);
+        return outcome.record;
+      },
+    });
+    void this.consumeRun(handle, runPromise);
+    return {
+      carrierId: input.actionId,
+      taskId: resolved.task.id,
+      sourceRevision: resolved.observed.sourceRevision,
+      taskRevision: resolved.task.revision,
+      evidenceRefs: [
+        published.refs.attemptRef,
+        published.refs.inputRef,
+        published.refs.finalRecordRef,
+        published.refs.settlementRef,
+      ],
+    };
+  }
+
+  /**
+   * The terminal standing of one executed Run comes only from the canonical
+   * Run-owned standing read after the O2 owner finishes: terminal with the
+   * exact retained evidence when the O3 release succeeded, truthful
+   * unresolved otherwise. A pre-Cell refusal settles runner-failed through
+   * the owner and rethrows; the standing read stays the single terminal
+   * source.
+   */
+  private async consumeRun(handle: TaskRunCellCarrier, runPromise: Promise<RunResult>): Promise<void> {
+    try {
+      await runPromise;
+    } catch {
+      // The O2 owner settles pre-Cell refusals and rethrows the original
+      // error; the canonical standing below projects the retained outcome.
+    }
+    const standing = runStanding(this.home, handle.identity.carrierId);
+    handle.finishTerminal(settlementFromRunStanding(standing, handle.identity.carrierId));
+  }
+
+  /** The retained Run's own evidence projected as the converged start receipt. */
+  private convergedCarrierReceipt(actionId: string): CarrierStartReceipt {
+    const evidence = readStrictTaskAttemptEvidence(this.home, actionId);
+    if (evidence.standing !== "available" || evidence.attempt === undefined) {
+      throw new ConversationCarrierError(
+        "carrier-unknown",
+        `Run ${actionId} retains no usable evidence for identical replay convergence: `
+        + `${evidence.error ?? evidence.standing}`,
+      );
+    }
+    const attempt = evidence.attempt;
+    return {
+      carrierId: actionId,
+      taskId: attempt.taskId,
+      sourceRevision: attempt.sourceRevision,
+      taskRevision: attempt.taskRevision,
+      evidenceRefs: [
+        evidence.refs.attemptRef,
+        evidence.refs.inputRef,
+        evidence.refs.finalRecordRef,
+        evidence.refs.settlementRef,
+      ],
+    };
   }
 
   carrier(carrierId: string): ConversationCarrierHandle | undefined {
@@ -355,35 +510,26 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
         `control '${input.control}' is not owned by an ordinary Task carrier`,
       );
     }
-    const carrier = this.handles.get(input.carrierId);
-    if (carrier === undefined) {
-      const standing = carrierStandingWithoutHandle(this.home, input.carrierId);
-      if (standing.kind === "missing") {
-        throw new ConversationCarrierError(
-          "carrier-not-found",
-          `carrier ${input.carrierId} is not a retained ordinary Task carrier`,
-        );
-      }
-      if (standing.kind === "settled") {
-        throw new ConversationCarrierError(
-          "carrier-not-live",
-          `carrier ${input.carrierId} already settled with status ${standing.status}; stop has no effect`,
-        );
-      }
+    let receipt;
+    try {
+      receipt = stopRun(this.home, input.carrierId, {
+        control: "stop",
+        requestedBy: runStopRequester(input.actor),
+        sourceRef: taskActionSourceRef(input.actor.conversationId, input.actor.actionId),
+      }, this.runControlRegistry);
+    } catch (error) {
+      if (error instanceof RunStopRefusal) throw mapRunStopRefusal(error);
       throw new ConversationCarrierError(
         "carrier-unknown",
-        `carrier ${input.carrierId} has no retained runtime handle and no terminal settlement; `
-        + "liveness is unknown and the stop cannot be verified",
+        `the exact live stop for carrier ${input.carrierId} cannot be applied: ${errorMessage(error)}`,
       );
     }
-    const liveness = carrier.liveness();
-    if (liveness.state !== "live") {
-      throw new ConversationCarrierError(
-        "carrier-not-live",
-        `carrier ${input.carrierId} is not live; stop has no effect`,
-      );
-    }
-    return carrier.stop(input.actor);
+    return {
+      carrierId: input.carrierId,
+      control: "stop",
+      outcome: "settled",
+      evidenceRefs: [receipt.receiptRef, receipt.settlementRef],
+    };
   }
 
   hydrateCarrier(input: {
@@ -396,10 +542,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     // supplied sourceRef must equal the deterministic taskActionSourceRef
     // for the exact conversation/action before any retained-handle
     // liveness can be projected. A mismatched sourceRef fails closed with
-    // no live or terminal projection and no stop affordance. No legitimate
-    // attempt family can ever retain a foreign sourceRef, so this
-    // deterministic check fully covers the evidence path as well; nothing
-    // is re-read twice.
+    // no live or terminal projection and no stop affordance.
     if (input.sourceRef !== taskActionSourceRef(input.conversationId, input.actionId)) {
       return undefined;
     }
@@ -415,6 +558,28 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
         return hydrationFromHandle(handle);
       }
     }
+    // The canonical Run-owned standing for this committed action: the
+    // committed action UUID is the Run identity, so the exact retained
+    // attempt family is `state/task-attempts/<actionId>`.
+    const standing = runStanding(this.home, input.actionId);
+    if (standing.standing !== "unavailable") {
+      const evidence = readStrictTaskAttemptEvidence(this.home, input.actionId);
+      const correlation = evidence.attempt?.correlation;
+      if (
+        correlation !== undefined
+        && correlation.conversationId === input.conversationId
+        && correlation.turnId === input.turnId
+        && correlation.actionId === input.actionId
+        && correlation.sourceRef === input.sourceRef
+      ) {
+        return hydrationFromRunStanding(input, evidence, standing);
+      }
+      // A Run record exists at this exact action identity but its retained
+      // correlation does not match the full journal-owned correlation: fail
+      // closed, never attach a foreign Run and never select by order.
+      return undefined;
+    }
+    // Historical pre-Run-identity attempt families: the exact directory scan.
     return carrierHydrationFromEvidence(this.home, {
       conversationId: input.conversationId,
       turnId: input.turnId,
@@ -423,9 +588,10 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     });
   }
 
-  private prepareCarrierRun(operation: TaskContinueOperation): PreparedPrincipalTaskRun {
+  /** The fresh read-only acceptance of one continue: no durable write, no claim. */
+  private resolveCarrierRun(operation: TaskContinueOperation): ResolvedOrdinaryTaskRun {
     try {
-      return preparePrincipalTaskRun(
+      return resolveOrdinaryTaskRun(
         this.home,
         { id: operation.taskId, workerId: operation.workerId },
         {
@@ -458,21 +624,21 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
   }
 }
 
-/** The operation's expected selectors against the freshly prepared re-read. */
+/** The operation's expected selectors against the freshly resolved re-read. */
 function verifyExpectedRevisions(
-  prepared: PreparedPrincipalTaskRun,
+  resolved: ResolvedOrdinaryTaskRun,
   operation: TaskContinueOperation,
 ): void {
-  if (prepared.observed.sourceRevision !== operation.expectedSourceRevision) {
+  if (resolved.observed.sourceRevision !== operation.expectedSourceRevision) {
     throw new ConversationCarrierError(
       "stale-revision",
-      `task source revision is stale for the continue: expected ${operation.expectedSourceRevision}, current ${prepared.observed.sourceRevision}`,
+      `task source revision is stale for the continue: expected ${operation.expectedSourceRevision}, current ${resolved.observed.sourceRevision}`,
     );
   }
-  if (prepared.task.revision !== operation.expectedRevision) {
+  if (resolved.task.revision !== operation.expectedRevision) {
     throw new ConversationCarrierError(
       "stale-revision",
-      `task revision is stale for the continue: expected ${operation.expectedRevision}, current ${prepared.task.revision}`,
+      `task revision is stale for the continue: expected ${operation.expectedRevision}, current ${resolved.task.revision}`,
     );
   }
 }
@@ -576,55 +742,39 @@ export function verifyExecutionSelectors(
 }
 
 interface TaskRunCellCarrierInput {
-  readonly home: string;
-  readonly catalog: WorkerCatalog;
   readonly identity: ConversationCarrierIdentity;
-  readonly cellInput: CellInput;
-  readonly attempt: ReturnType<typeof attemptEvidence>;
-  readonly lease: WorktreeWriterLease;
-  readonly task: PrincipalTask;
-  /** The exact requested execution identity the retained final record must match. */
-  readonly execution: TaskRunExecution;
-  /** The catalog card that authorized the run. */
-  readonly card: WorkerCard;
-}
-
-class TaskRunCellCarrier implements ConversationCarrierHandle {
-  readonly identity: ConversationCarrierIdentity;
-  readonly settled: Promise<CarrierSettlement>;
-  private readonly home: string;
-  private readonly catalog: WorkerCatalog;
-  private readonly attempt: ReturnType<typeof attemptEvidence>;
-  private readonly execution: TaskRunExecution;
-  private readonly card: WorkerCard;
-  private cellInput: CellInput | undefined;
-  private lease: WorktreeWriterLease | undefined;
-  private task: PrincipalTask | undefined;
-  private readonly controller = new AbortController();
-  private readonly activityListeners = new Set<(activity: CarrierActivityDelta) => void>();
-  private readonly settledListeners = new Set<(settlement: CarrierSettlement) => void>();
-  private resolveSettled!: (settlement: CarrierSettlement) => void;
-  private runId?: string;
-  private settlement?: CarrierSettlement;
-  private stopRequested = false;
-  private controlReceiptPath?: string;
-  /** The exact controlling action identity of the requested stop, for exact-replay-only reuse. */
-  private stopRequest?: {
+  /** The canonical Run control owner this presentation handle delegates its exact stop to. */
+  readonly stopOwner: (actor: {
     readonly conversationId: string;
     readonly turnId: string;
     readonly actionId: string;
-  };
+  }) => CarrierControlReceipt;
+}
+
+/**
+ * The presentation handle of one conversation-owned Run. It owns no
+ * AbortController, no Work Cell invocation, no finalization, no writer
+ * lease, and no control receipt: the canonical O2 Run owner owns every one
+ * of those. The handle projects the owner-backed terminal settlement the
+ * registry derives from the canonical Run standing after the owner finishes,
+ * relays bounded trace activity while live, and delegates an exact stop to
+ * the canonical Run control owner. Bounded retention: a terminal handle
+ * keeps only its identity and terminal settlement and drops all listener
+ * closures.
+ */
+class TaskRunCellCarrier implements ConversationCarrierHandle {
+  readonly identity: ConversationCarrierIdentity;
+  readonly settled: Promise<CarrierSettlement>;
+  private readonly stopOwner: TaskRunCellCarrierInput["stopOwner"];
+  private readonly activityListeners = new Set<(activity: CarrierActivityDelta) => void>();
+  private readonly settledListeners = new Set<(settlement: CarrierSettlement) => void>();
+  private resolveSettled!: (settlement: CarrierSettlement) => void;
+  private settlement?: CarrierSettlement;
+  private runId?: string;
 
   constructor(input: TaskRunCellCarrierInput) {
-    this.home = input.home;
-    this.catalog = input.catalog;
     this.identity = input.identity;
-    this.cellInput = input.cellInput;
-    this.attempt = input.attempt;
-    this.lease = input.lease;
-    this.task = input.task;
-    this.execution = input.execution;
-    this.card = input.card;
+    this.stopOwner = input.stopOwner;
     this.settled = new Promise<CarrierSettlement>((resolve) => {
       this.resolveSettled = resolve;
     });
@@ -645,9 +795,9 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     return {
       activityListeners: this.activityListeners.size,
       settledListeners: this.settledListeners.size,
-      retainedPayloads: Number(this.cellInput !== undefined)
-        + Number(this.task !== undefined)
-        + Number(this.lease !== undefined),
+      // The handle retains no CellInput, Task, or lease payload: the
+      // canonical Run owner holds every execution payload.
+      retainedPayloads: 0,
     };
   }
 
@@ -671,135 +821,12 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     readonly turnId: string;
     readonly actionId: string;
   }): CarrierControlReceipt {
-    if (this.settlement !== undefined) {
-      throw new ConversationCarrierError(
-        "carrier-not-live",
-        `carrier ${this.identity.carrierId} already settled with status ${this.settlement.status}; stop has no effect`,
-      );
-    }
-    if (this.stopRequested) {
-      // Exact replay may reuse the durable receipt only for the same action
-      // identity; a distinct stop action must never adopt the first receipt.
-      const retained = this.stopRequest!;
-      if (
-        retained.conversationId === actor.conversationId
-        && retained.actionId === actor.actionId
-      ) {
-        return controlReceipt(this.identity.carrierId, [this.controlReceiptPath!, this.attempt.settlementRef]);
-      }
-      throw new ConversationCarrierError(
-        "control-conflict",
-        `carrier ${this.identity.carrierId} already has a requested stop from action ${retained.actionId} `
-        + `of conversation ${retained.conversationId}; a distinct stop action cannot be applied`,
-      );
-    }
-    // The durable control receipt is written before any handle state commits:
-    // a failed write changes nothing, so an exact or a new legal stop can
-    // retry, and exactly one durable receipt is ever produced.
-    const receiptPath = writeControlReceipt(this.home, this.attempt, this.identity, {
-      control: "stop",
-      actor,
-    });
-    this.stopRequested = true;
-    this.stopRequest = {
-      conversationId: actor.conversationId,
-      turnId: actor.turnId,
-      actionId: actor.actionId,
-    };
-    this.controlReceiptPath = receiptPath;
-    this.controller.abort(new DOMException("work_control stop", "AbortError"));
-    return controlReceipt(this.identity.carrierId, [receiptPath, this.attempt.settlementRef]);
+    // The canonical Run control owner applies the exact live stop and writes
+    // the durable Run receipt; this handle owns no controller and no receipt.
+    return this.stopOwner(actor);
   }
 
-  /**
-   * The asynchronous continuation launched by the registry after the durable
-   * attempt start. It runs through the one shared catalog-backed Task Cell
-   * owner (WorkerCatalog.createDriver -> runCell via executeTaskCellRun) and
-   * the one shared terminal finalization (finalizeTaskAttempt) in the
-   * canonical final record -> settlement -> lease release order. A retention
-   * failure or a failed lease release surfaces a visible `unresolved`
-   * standing with the exact lease retained so reconcile-attempt can retry the
-   * exact finalization; nothing here invents a runner-failed receipt. At
-   * terminal the carrier drops its listener sets and its retained
-   * CellInput/Task/lease payloads so settled handles stay bounded.
-   */
-  async run(input: CellInput): Promise<void> {
-    const outcome = await executeTaskCellRun(this.catalog, input, {
-      // The O2 carrier explicitly injects the local host adapter for its
-      // O3-authorized bound Worktree; runCell never opens one itself.
-      host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
-      signal: this.controller.signal,
-      onTrace: (event) => this.observeTrace(event),
-    });
-    const task = this.requiredTask();
-    let finalization: TaskAttemptFinalization;
-    try {
-      finalization = finalizeTaskAttempt({
-        attempt: this.attempt,
-        expectedInput: input,
-        task: { id: task.id, revision: task.revision },
-        attemptId: this.identity.attemptId,
-        lease: this.requiredLease(),
-        outcome,
-        ...(this.stopRequested ? { controlRef: this.requiredControlReceipt() } : {}),
-        execution: this.execution,
-        card: this.card,
-      });
-    } catch (error) {
-      // Durable settlement absence stays unresolved: never an invented
-      // runner-failed receipt. The lease is retained so reconcile-attempt can
-      // retry the exact finalization after the owner process is verifiably
-      // dead.
-      finalization = {
-        status: "unresolved",
-        error: `terminal evidence retention failed: ${errorMessage(error)}`,
-      };
-    }
-    const settlement = carrierSettlement(finalization, {
-      attempt: this.attempt,
-      ...(this.stopRequested ? { controlRef: this.requiredControlReceipt() } : {}),
-    });
-    this.finishTerminal(settlement);
-  }
-
-  private finishTerminal(settlement: CarrierSettlement): void {
-    this.settlement = settlement;
-    const settledListeners = [...this.settledListeners];
-    this.settledListeners.clear();
-    this.activityListeners.clear();
-    // Bounded runtime retention: a terminal handle keeps only its identity,
-    // terminal settlement, and evidence refs; the large CellInput/Task/lease
-    // payloads and all listener closures are dropped.
-    this.cellInput = undefined;
-    this.task = undefined;
-    this.lease = undefined;
-    this.resolveSettled(settlement);
-    for (const listener of settledListeners) listener(settlement);
-  }
-
-  private requiredTask(): PrincipalTask {
-    if (this.task === undefined) {
-      throw new Error(`carrier ${this.identity.carrierId} lost its retained Task before settlement`);
-    }
-    return this.task;
-  }
-
-  private requiredLease(): WorktreeWriterLease {
-    if (this.lease === undefined) {
-      throw new Error(`carrier ${this.identity.carrierId} lost its retained task-run lease before finalization`);
-    }
-    return this.lease;
-  }
-
-  private requiredControlReceipt(): string {
-    const controlRef = this.controlReceiptPath;
-    if (controlRef === undefined) {
-      throw new Error(`carrier ${this.identity.carrierId} was stopped without a durable control receipt`);
-    }
-    return controlRef;
-  }
-
-  private observeTrace(event: TraceEvent): void {
+  observeTrace(event: TraceEvent): void {
     if (event.type === "cell.started") {
       const data = asRecord(event.data);
       if (typeof data.runId === "string" && data.runId.length > 0) this.runId = data.runId;
@@ -808,6 +835,17 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     if (text === undefined) return;
     for (const listener of this.activityListeners) listener({ text });
   }
+
+  /** Terminal retention projected from the canonical Run standing; never mutated twice. */
+  finishTerminal(settlement: CarrierSettlement): void {
+    if (this.settlement !== undefined) return;
+    this.settlement = settlement;
+    const settledListeners = [...this.settledListeners];
+    this.settledListeners.clear();
+    this.activityListeners.clear();
+    this.resolveSettled(settlement);
+    for (const listener of settledListeners) listener(settlement);
+  }
 }
 
 /** The exact durable (conversation, action) identity key shared by every committed-action runtime mapping. */
@@ -815,113 +853,99 @@ export function committedActionKey(conversationId: string, actionId: string): st
   return `${conversationId}\u0000${actionId}`;
 }
 
-function controlReceipt(carrierId: string, evidenceRefs: readonly string[]): CarrierControlReceipt {
-  return { carrierId, control: "stop", outcome: "settled", evidenceRefs };
+/**
+ * The exact causal requester identity of one conversation-owned exact live
+ * stop, retained on the canonical Run control receipt: the committed
+ * work_control conversation/turn/action tuple of the controlling action. An
+ * identical causal tuple replays the retained receipt; a distinct tuple
+ * conflicts.
+ */
+export function runStopRequester(actor: {
+  readonly conversationId: string;
+  readonly turnId: string;
+  readonly actionId: string;
+}): string {
+  return `conversation:${actor.conversationId}:turn:${actor.turnId}:action:${actor.actionId}`;
+}
+
+/** One canonical Run control refusal projected onto the carrier error codes. */
+function mapRunStopRefusal(refusal: RunStopRefusal): ConversationCarrierError {
+  const code: ConversationCarrierErrorCode =
+    refusal.code === "unknown" ? "carrier-not-found"
+    : refusal.code === "invalid" ? "carrier-unknown"
+    : refusal.code === "settled" ? "carrier-not-live"
+    : refusal.code === "not-live" ? "carrier-unknown"
+    : "control-conflict";
+  return new ConversationCarrierError(code, refusal.message);
 }
 
 /**
- * Project the shared finalization result into the carrier's terminal
- * settlement surface. Every status keeps its exact durable evidence refs:
- * `recorded` cites the settlement and the retained final record,
- * `control-stopped` cites the durable control receipt and the settlement,
- * `runner-failed` cites the settlement, and `unresolved` cites the
- * settlement ref without inventing a receipt.
+ * One truthful terminal Run outcome projected onto the carrier settlement
+ * surface. Every status keeps its exact durable evidence refs: `recorded`
+ * cites the settlement and the retained final record, `control-stopped`
+ * cites the durable Run control receipt and the settlement, `runner-failed`
+ * cites the settlement. Nothing is invented for a terminal outcome whose
+ * exact O3 release did not succeed: that outcome projects unresolved and
+ * reconcile-required instead.
  */
-function carrierSettlement(
-  finalization: TaskAttemptFinalization,
-  options: { attempt: ReturnType<typeof attemptEvidence>; controlRef?: string },
-): CarrierSettlement {
-  if (finalization.status === "unresolved") {
+function settlementFromRunStanding(standing: RunStanding, runId: string): CarrierSettlement {
+  if (standing.standing === "terminal") {
+    const outcome = standing.outcome;
+    if (outcome.cleanup === "released") return settlementFromRunOutcome(outcome);
     return {
       status: "unresolved",
-      evidenceRefs: [options.attempt.settlementRef],
-      error: finalization.error,
+      evidenceRefs: [outcome.refs.settlementRef],
+      error:
+        "the durable settlement exists but the exact task-run writer claim was not released: "
+        + `${outcome.cleanupError ?? "retained"}; task reconcile-attempt can retry the exact release`,
     };
   }
-  const settlement = finalization.settlement;
-  if (settlement.status === "recorded") {
+  if (standing.standing === "invalid") {
+    return {
+      status: "unresolved",
+      evidenceRefs: [standing.refs.settlementRef],
+      error: `Run ${runId} retains invalid evidence: ${standing.error}`,
+    };
+  }
+  if (standing.standing === "unresolved") {
+    return {
+      status: "unresolved",
+      evidenceRefs: [standing.refs.settlementRef],
+      error: `Run ${runId} retained no terminal settlement; liveness cannot be claimed`,
+    };
+  }
+  return {
+    status: "unresolved",
+    evidenceRefs: [],
+    error: `Run ${runId} retains no durable request record`,
+  };
+}
+
+/** One released terminal Run outcome projected onto the carrier settlement surface. */
+function settlementFromRunOutcome(outcome: RunTerminalOutcome): CarrierSettlement {
+  if (outcome.status === "recorded") {
     return {
       status: "recorded",
-      evidenceRefs: [options.attempt.settlementRef, options.attempt.finalRecordRef],
-      cellStatus: settlement.cellStatus!,
+      evidenceRefs: [outcome.refs.settlementRef, outcome.refs.finalRecordRef],
+      ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
     };
   }
-  if (settlement.status === "control-stopped") {
+  if (outcome.status === "control-stopped") {
     return {
       status: "control-stopped",
-      evidenceRefs: [options.controlRef!, options.attempt.settlementRef],
-      ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
-      ...(settlement.error === undefined ? {} : { error: settlement.error }),
+      evidenceRefs: outcome.controlRef === undefined
+        ? [outcome.refs.settlementRef]
+        : [outcome.controlRef, outcome.refs.settlementRef],
+      ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+      ...(outcome.error === undefined ? {} : { error: outcome.error }),
     };
   }
   return {
     status: "runner-failed",
-    evidenceRefs: [options.attempt.settlementRef],
-    ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
-    ...(settlement.error === undefined ? {} : { error: settlement.error }),
+    evidenceRefs: [outcome.refs.settlementRef],
+    ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+    ...(outcome.error === undefined ? {} : { error: outcome.error }),
   };
-}
-
-/**
- * The strict durable control receipt shape written before an abort. A
- * reconciliation read that does not parse as this exact shape is never
- * settled as a control receipt.
- */
-export const TaskRunControlReceiptSchema = z.object({
-  version: z.literal("rosso.task-run-control-receipt.v1"),
-  control: z.literal("stop"),
-  carrierId: z.string().min(1),
-  taskId: z.string().min(1),
-  attemptId: z.string().min(1),
-  workerId: z.string().min(1),
-  worktree: z.string().min(1),
-  sourceRef: z.string().min(1),
-  requestedBy: z.object({
-    conversationId: z.string().uuid(),
-    turnId: z.string().uuid(),
-    actionId: z.string().uuid(),
-  }).strict(),
-  requestedAt: z.string().min(1),
-  attemptRef: z.string().min(1),
-  settlementRef: z.string().min(1),
-}).strict();
-
-/**
- * Durable control receipt written before the abort so a crash can never leave
- * a stop without its causal record. It references the exact carrier attempt
- * and the controlling turn/action; the terminal settlement is separate
- * evidence retained by the same attempt.
- */
-function writeControlReceipt(
-  home: string,
-  attempt: ReturnType<typeof attemptEvidence>,
-  identity: ConversationCarrierIdentity,
-  input: {
-    readonly control: "stop";
-    readonly actor: { readonly conversationId: string; readonly turnId: string; readonly actionId: string };
-  },
-): string {
-  const directory = join(home, "state", "task-attempts", identity.attemptId);
-  const path = join(directory, "control.json");
-  writeImmutableJson(path, {
-    version: "rosso.task-run-control-receipt.v1",
-    control: input.control,
-    carrierId: identity.carrierId,
-    taskId: identity.taskId,
-    attemptId: identity.attemptId,
-    workerId: identity.workerId,
-    worktree: identity.worktree,
-    sourceRef: taskActionSourceRef(input.actor.conversationId, input.actor.actionId),
-    requestedBy: {
-      conversationId: input.actor.conversationId,
-      turnId: input.actor.turnId,
-      actionId: input.actor.actionId,
-    },
-    requestedAt: new Date().toISOString(),
-    attemptRef: attempt.attemptRef,
-    settlementRef: attempt.settlementRef,
-  });
-  return evidenceRef(home, path);
 }
 
 /** The retained handle's exact liveness projected as a read-only hydration. */
@@ -934,6 +958,67 @@ function hydrationFromHandle(handle: ConversationCarrierHandle): CarrierHydratio
       identity: handle.identity,
       settlement: liveness.settlement,
     };
+}
+
+/**
+ * Project the canonical Run-owned standing of one committed task_continue
+ * action (runId == actionId) onto the reconnect hydration surface. A
+ * terminal standing is projected only when the exact O3 release succeeded;
+ * a terminal settlement beside a still-retained exact claim, an unsettled
+ * Run, or invalid Run evidence projects truthful unknown — never live, never
+ * a new effect. The identity comes from the exact retained attempt record,
+ * already gated by the full journal-owned correlation.
+ */
+function hydrationFromRunStanding(
+  correlation: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+    readonly sourceRef: string;
+  },
+  evidence: StrictTaskAttemptEvidence,
+  standing: RunStanding,
+): CarrierHydration {
+  const attempt = evidence.attempt!;
+  const identity: ConversationCarrierIdentity = {
+    carrierId: correlation.actionId,
+    conversationId: correlation.conversationId,
+    turnId: correlation.turnId,
+    actionId: correlation.actionId,
+    taskId: attempt.taskId,
+    attemptId: correlation.actionId,
+    workerId: attempt.workerId ?? "",
+    worktree: attempt.worktree ?? evidence.input?.workspace.root ?? "",
+  };
+  if (standing.standing === "invalid") {
+    return {
+      standing: "unknown",
+      identity,
+      reason: `Run evidence is invalid and cannot settle standing: ${standing.error}`,
+    };
+  }
+  if (standing.standing === "unresolved") {
+    return {
+      standing: "unknown",
+      identity,
+      reason: "the Run retains no terminal settlement; liveness cannot be claimed",
+    };
+  }
+  const outcome = standing.outcome;
+  if (outcome.cleanup !== "released") {
+    return {
+      standing: "unknown",
+      identity,
+      reason:
+        "the Run retains a terminal settlement but its exact writer claim was not released; "
+        + "reconcile the retained claim through the canonical Run owner before terminal standing is claimed",
+    };
+  }
+  return {
+    standing: "terminal",
+    identity,
+    settlement: settlementFromRunOutcome(outcome),
+  };
 }
 
 /**
