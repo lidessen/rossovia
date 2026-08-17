@@ -45,7 +45,8 @@ import { expandPath } from "../paths";
 import { observeWorkspace, requiredGit } from "../workspace";
 import {
   acquireWorktreeWriterLease,
-  isProcessDefinitelyAbsent,
+  inspectRetainedWorktreeWriterLease,
+  recoverRetainedWorktreeWriterLease,
   releaseWorktreeWriterLease,
   worktreeWriterLeasePath,
   type WorktreeWriterLease,
@@ -292,13 +293,14 @@ export interface ConversationContributionRegistry {
   }): ContributionControlReceipt;
   /**
    * The narrowly contribution-owned recovery owner for one exact retained
-   * task-run Worktree lease: it reuses the exact lease identity, PID
-   * liveness, byte-match, and release semantics and never forges Task
-   * attempt or Work Cell evidence. It recovers both a lock-only crash
-   * (lease acquired, contribution never started) and a receipt-backed
-   * terminal release failure; a live, unknown, mismatched, or unreadable
-   * owner is refused fail-closed, and an already-absent lease is
-   * not-retained, never re-acquired.
+   * task-run Worktree lease: it runs the exact identity, PID liveness,
+   * byte-match, and release semantics through the canonical O3 retained-
+   * claim inspection/recovery boundary and never forges Task attempt or
+   * Work Cell evidence. It recovers both a lock-only crash (lease
+   * acquired, contribution never started) and a receipt-backed terminal
+   * release failure; a live, unknown, mismatched, schema-invalid, or
+   * noncanonical-path owner is refused fail-closed and never deleted, and
+   * an already-absent canonical claim is not-retained, never re-acquired.
    */
   reconcileLease(input: {
     readonly conversationId: string;
@@ -1249,10 +1251,14 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    * The exact retained-lease recovery owner. The lease binding is read from
    * the durable spawn reservation (published before acquisition, so both a
    * lock-only crash and a receipt-backed terminal release failure retain the
-   * same exact identity); the current lease bytes must still match that
-   * identity and its owner process must be verifiably absent before the
-   * exact byte-match release runs. It never touches Task attempt or Work
-   * Cell evidence and never re-acquires or guesses a lease.
+   * same exact identity). The canonical O3 boundary derives the claim path
+   * from the binding's Worktree, verifies the recorded reservation path
+   * against it, validates the strict frozen schema plus the exact
+   * task/attempt/worktree identity, and byte-match releases only an exact
+   * claim whose owner process is verifiably absent. It never touches Task
+   * attempt or Work Cell evidence, never re-acquires or guesses a lease,
+   * and never deletes a different-owner, schema-invalid, or
+   * noncanonical-path claim.
    */
   reconcileLease(input: {
     readonly conversationId: string;
@@ -1280,63 +1286,27 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         reason: `contribution ${input.batchId}/${input.key} holds no effectful lease binding; nothing to recover`,
       };
     }
-    let raw: string;
-    try {
-      raw = readFileSync(binding.path, "utf8");
-    } catch (error) {
-      if (isMissing(error)) {
-        return {
-          outcome: "not-retained",
-          reason: `the exact lease ${binding.path} is already absent; the release already succeeded`,
-        };
-      }
-      return {
-        outcome: "refused",
-        reason: `the retained lease ${binding.path} cannot be read: ${errorMessage(error)}`,
-      };
+    const recovery = recoverRetainedWorktreeWriterLease({
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      recordedLeasePath: binding.path,
+    });
+    if (recovery.outcome === "released") {
+      return { outcome: "released", leasePath: recovery.leasePath };
     }
-    let value: unknown;
-    try {
-      value = JSON.parse(raw);
-    } catch {
-      return {
-        outcome: "refused",
-        reason: `the retained lease ${binding.path} does not carry the exact expected identity bytes`,
-      };
+    if (recovery.outcome === "absent") {
+      return { outcome: "not-retained", reason: recovery.reason };
     }
-    const record = asRecord(value);
-    if (
-      record.taskId !== binding.taskId
-      || record.attemptId !== binding.attemptId
-      || record.worktree !== binding.worktree
-    ) {
+    if (recovery.outcome === "different-owner") {
       return {
         outcome: "refused",
         reason:
-          `the retained lease ${binding.path} belongs to a different owner identity than `
+          `the retained lease ${recovery.leasePath} belongs to a different owner identity than `
           + `contribution ${input.batchId}/${input.key}; reconciliation fails closed`,
       };
     }
-    const pid = typeof record.pid === "number" && Number.isInteger(record.pid) && record.pid > 0
-      ? record.pid
-      : undefined;
-    if (pid === undefined || !isProcessDefinitelyAbsent(pid)) {
-      return {
-        outcome: "refused",
-        reason:
-          `the retained lease owner process ${pid === undefined ? "unknown" : pid} for `
-          + `contribution ${input.batchId}/${input.key} is still alive or cannot be proven absent; reconciliation fails closed`,
-      };
-    }
-    try {
-      releaseWorktreeWriterLease({ path: binding.path, content: raw });
-    } catch (error) {
-      return {
-        outcome: "refused",
-        reason: `the exact lease release for ${binding.path} failed: ${errorMessage(error)}`,
-      };
-    }
-    return { outcome: "released", leasePath: binding.path };
+    return { outcome: "refused", reason: recovery.reason };
   }
 
   /** The exact catalog identity for one selector; never a policy-catalog fallback. */
@@ -2422,27 +2392,30 @@ export function fsyncFileDurability(path: string): void {
 }
 
 /**
- * The standing of one spawn-receipt-retained exact lease: retained when the
- * lease file still exists and provably belongs to the same owner identity
- * (an unreadable file fails closed as retained), released when it is absent
- * or provably belongs to another owner.
+ * The standing of one spawn-receipt-retained exact lease, inspected through
+ * the canonical O3 retained-claim boundary: retained when the exact claim
+ * still holds the canonical path for this owner identity or the canonical
+ * inspection cannot prove release (fail-closed); released only when the
+ * canonical path is provably absent or provably carries another valid
+ * owner's claim. A wrong-version, missing-field, mismatched-worktree, or
+ * noncanonical-path claim is never accepted as released and is never
+ * deleted.
  */
 function contributionLeaseStanding(lease: {
   readonly path: string;
+  readonly worktree: string;
   readonly taskId: string;
   readonly attemptId: string;
 }): "retained" | "released" {
-  if (!existsSync(lease.path)) return "released";
-  let value: unknown;
-  try {
-    value = JSON.parse(readFileSync(lease.path, "utf8"));
-  } catch {
-    return "retained";
-  }
-  const record = asRecord(value);
-  return record.taskId === lease.taskId && record.attemptId === lease.attemptId
-    ? "retained"
-    : "released";
+  const inspected = inspectRetainedWorktreeWriterLease({
+    worktree: lease.worktree,
+    taskId: lease.taskId,
+    attemptId: lease.attemptId,
+    recordedLeasePath: lease.path,
+  });
+  return inspected.standing === "absent" || inspected.standing === "different-owner"
+    ? "released"
+    : "retained";
 }
 
 /** The owner pid of one exact O3 writer claim, when its content parses. */

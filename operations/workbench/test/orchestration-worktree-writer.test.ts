@@ -24,8 +24,10 @@ import { createPrincipalTask } from "../src/tasks";
 import {
   acquireWorktreeWriterLease,
   canonicalGitDirectory,
+  inspectRetainedWorktreeWriterLease,
   isProcessDefinitelyAbsent,
   readWorktreeWriterLease,
+  recoverRetainedWorktreeWriterLease,
   releaseWorktreeWriterLease,
   worktreeWriterLeasePath,
   WORKTREE_WRITER_LEASE_FILENAME,
@@ -364,6 +366,162 @@ describe("O3 Worktree writer mechanism", () => {
     expect(retained.pid).toBe(process.pid);
     expect(retained.raw).toBe(lease.content);
     releaseWorktreeWriterLease(lease);
+  });
+});
+
+describe("O3 retained-claim inspection and recovery boundary", () => {
+  test("classifies the retained claim as exact, absent, different-valid-owner, or invalid conservatively", () => {
+    const current = fixture();
+    const worktree = realpathSync(current.worktree);
+    const leasePath = worktreeWriterLeasePath(worktree);
+    const expected = { worktree, taskId: "task-owner", attemptId: randomUUID() };
+
+    // Absent before any claim exists at the canonical path.
+    expect(inspectRetainedWorktreeWriterLease(expected))
+      .toEqual({ standing: "absent", leasePath });
+
+    // Exact after an acquire for the same owner identity.
+    const lease = acquireWorktreeWriterLease(worktree, {
+      taskId: expected.taskId,
+      attemptId: expected.attemptId,
+    });
+    const exact = inspectRetainedWorktreeWriterLease(expected);
+    expect(exact.standing).toBe("exact");
+    if (exact.standing === "exact") {
+      expect(exact.leasePath).toBe(leasePath);
+      expect(exact.pid).toBe(process.pid);
+      expect(exact.raw).toBe(lease.content);
+    }
+
+    // A different but schema-valid owner is classified different-owner,
+    // never exact.
+    expect(inspectRetainedWorktreeWriterLease({ ...expected, attemptId: randomUUID() }))
+      .toEqual({ standing: "different-owner", leasePath });
+    releaseWorktreeWriterLease(lease);
+
+    const base = {
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree,
+      taskId: expected.taskId,
+      attemptId: expected.attemptId,
+      pid: process.pid,
+      acquiredAt: new Date().toISOString(),
+    };
+    const claim = (record: Record<string, unknown>): string =>
+      `${JSON.stringify(record, null, 2)}\n`;
+
+    // A wrong version, a missing field, a foreign Worktree, and
+    // unparseable bytes are all invalid — never exact, never
+    // different-owner, never absent.
+    writeFileSync(leasePath, claim({ ...base, version: "some-other.version" }));
+    expect(inspectRetainedWorktreeWriterLease(expected).standing).toBe("invalid");
+
+    writeFileSync(leasePath, claim({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree,
+      taskId: expected.taskId,
+      attemptId: expected.attemptId,
+      pid: process.pid,
+    }));
+    expect(inspectRetainedWorktreeWriterLease(expected).standing).toBe("invalid");
+
+    writeFileSync(leasePath, claim({ ...base, worktree: realpathSync(current.primary) }));
+    expect(inspectRetainedWorktreeWriterLease(expected).standing).toBe("invalid");
+
+    writeFileSync(leasePath, "not-json\n");
+    expect(inspectRetainedWorktreeWriterLease(expected).standing).toBe("invalid");
+
+    // A recorded noncanonical path fails the canonical derivation check
+    // even while an exact claim still occupies the canonical path.
+    writeFileSync(leasePath, claim(base));
+    const noncanonical = join(worktree, "somewhere-else.lock");
+    expect(inspectRetainedWorktreeWriterLease({ ...expected, recordedLeasePath: noncanonical }).standing)
+      .toBe("invalid");
+    rmSync(leasePath);
+  });
+
+  test("recovers only an exact dead-owner claim by byte-matched release and never deletes anything else", () => {
+    const current = fixture();
+    const worktree = realpathSync(current.worktree);
+    const leasePath = worktreeWriterLeasePath(worktree);
+    const expected = { worktree, taskId: "task-owner", attemptId: randomUUID() };
+    const claim = (record: Record<string, unknown>): string =>
+      `${JSON.stringify(record, null, 2)}\n`;
+    const base = {
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree,
+      taskId: expected.taskId,
+      attemptId: expected.attemptId,
+      acquiredAt: new Date().toISOString(),
+    };
+
+    // Absent is reported absent and never re-acquired.
+    const absent = recoverRetainedWorktreeWriterLease(expected);
+    expect(absent.outcome).toBe("absent");
+    expect(existsSync(leasePath)).toBeFalse();
+
+    // An exact claim with a live owner is refused with the claim retained.
+    const liveBytes = claim({ ...base, pid: process.pid });
+    writeFileSync(leasePath, liveBytes);
+    const live = recoverRetainedWorktreeWriterLease(expected);
+    expect(live.outcome).toBe("refused");
+    if (live.outcome === "refused") expect(live.reason).toContain("still alive");
+    expect(readFileSync(leasePath, "utf8")).toBe(liveBytes);
+
+    // An exact claim with a provably absent owner is released.
+    const deadBytes = claim({ ...base, pid: deadPid() });
+    writeFileSync(leasePath, deadBytes);
+    const released = recoverRetainedWorktreeWriterLease(expected);
+    expect(released.outcome).toBe("released");
+    expect(existsSync(leasePath)).toBeFalse();
+
+    // A wrong-version claim with matching identity is refused and never
+    // deleted.
+    const wrongVersion = claim({ ...base, version: "some-other.version", pid: deadPid() });
+    writeFileSync(leasePath, wrongVersion);
+    const wrongVersionRecovery = recoverRetainedWorktreeWriterLease(expected);
+    expect(wrongVersionRecovery.outcome).toBe("refused");
+    expect(readFileSync(leasePath, "utf8")).toBe(wrongVersion);
+
+    // A missing-field claim with matching identity is refused and never
+    // deleted.
+    const missingBytes = claim({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree,
+      taskId: expected.taskId,
+      attemptId: expected.attemptId,
+      pid: deadPid(),
+    });
+    writeFileSync(leasePath, missingBytes);
+    const missingRecovery = recoverRetainedWorktreeWriterLease(expected);
+    expect(missingRecovery.outcome).toBe("refused");
+    expect(readFileSync(leasePath, "utf8")).toBe(missingBytes);
+
+    // A different valid owner's claim is reported and never deleted.
+    const differentBytes = claim({
+      ...base,
+      attemptId: randomUUID(),
+      pid: deadPid(),
+    });
+    writeFileSync(leasePath, differentBytes);
+    const different = recoverRetainedWorktreeWriterLease(expected);
+    expect(different.outcome).toBe("different-owner");
+    expect(readFileSync(leasePath, "utf8")).toBe(differentBytes);
+
+    // A claim bound to a recorded noncanonical path is refused and the
+    // file at that path is never deleted.
+    const noncanonical = join(worktree, "noncanonical.lock");
+    const noncanonicalBytes = claim({ ...base, pid: deadPid() });
+    writeFileSync(noncanonical, noncanonicalBytes);
+    const noncanonicalRecovery = recoverRetainedWorktreeWriterLease({
+      ...expected,
+      recordedLeasePath: noncanonical,
+    });
+    expect(noncanonicalRecovery.outcome).toBe("refused");
+    expect(existsSync(noncanonical)).toBeTrue();
+    expect(readFileSync(noncanonical, "utf8")).toBe(noncanonicalBytes);
+    rmSync(noncanonical);
+    rmSync(leasePath);
   });
 });
 
