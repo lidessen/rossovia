@@ -166,9 +166,9 @@ relation, make selected boundaries salient, and name expected evidence; it
 cannot by itself supply a tool, grant an effect, establish the real workspace,
 create independent review, or confer acceptance. Write prompt content for the
 receiver. Omit parent lifecycle and module maps that do not change its action.
-When a project-specific term is necessary, define it at first use in one
-operational sentence: the object it denotes, its boundary, and why it matters
-now. A title or persona cannot substitute for a concrete object/action,
+When any necessary term could change action or return, define it at first use
+in one operational sentence: the object it denotes, its boundary, and why it
+matters now. A title or persona cannot substitute for a concrete object/action,
 downstream use, and non-goal relation.
 
 ### Ownership and assembly
@@ -208,7 +208,8 @@ do not encode it as a workflow:
 3. Bind the real workspace, model-visible tools, host capabilities, resource
    limits, effects, and stop behavior; do not promise unavailable operations.
 4. Make the decisive constraints salient now and leave recoverable detail on
-   demand, with necessary project terms defined operationally.
+   demand, with every necessary action- or return-changing term defined
+   operationally.
 5. State local observations and mechanical predicates separately from
    semantic-review and acceptance ownership, then require a return that carries
    conclusion, evidence, unknowns, changed effects, and downstream use.
@@ -216,17 +217,20 @@ do not encode it as a workflow:
    effect evidence, whole obligation, and retained decisions before using it as
    a premise.
 
-For a receiver-facing expression probe, give only the complete proposed
-environment to a fresh Agent and ask it to restate the object, relation to the
-whole, boundaries and allowed effects, non-goals, verification, and return. A
-request to explain an undeclared term is a comprehension failure. Compare with
-a jargon-heavy control when claiming improvement, and retain prompt/output
-noise plus corrective follow-ups. This tests comprehension, not task
-correctness: mechanical inspection confirms the declared surfaces exist, an
-independent source-aware reviewer judges semantic performance, and the named
-owner alone accepts. No matched fresh-Agent comparison has yet established
-portable benefit for this formulation; treat it as a forward probe until that
-evidence exists.
+For a receiver-facing expression probe, freeze the underlying task facts and
+obligations, use one carrier, and give a fresh Agent either the actual earlier
+prompt or the complete receiver-specific candidate. Ask it to restate the
+object, relation to the whole, boundaries and allowed effects, non-goals,
+verification, and return. A request to explain an undeclared term is a
+comprehension failure. The prompts may express the same work differently, so
+attribute any result to the complete working-environment expression rather than
+one clause. Retain prompt/output noise plus corrective follow-ups. This tests
+comprehension, not task correctness: mechanical inspection confirms the
+declared surfaces exist, an independent source-aware reviewer judges semantic
+performance, and the named owner alone accepts. Carrier transfer is a separate
+probe that sends the same complete candidate prompt unchanged through each
+carrier. No matched fresh-Agent comparison has yet established portable benefit
+for this formulation; treat it as a forward probe until that evidence exists.
 
 ## Agent differentiation and organization
 

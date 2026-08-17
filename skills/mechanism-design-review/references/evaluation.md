@@ -219,15 +219,25 @@ cost the additional evidence incurs.
 
 **Standing:** `transfer-unverified`; no arm has been run.
 
-Use one frozen, bounded review task and the same sources, tool capabilities,
-read/effect limits, verification request, and return contract in two prompt
-arms:
+Run two separate judgments.
 
-- the **jargon-heavy control** adds a job title, unexplained project
-  abbreviations, and the parent's runtime/module map; and
-- the **receiver-specific candidate** replaces those additions with only the
-  decision-relevant object/action, whole and downstream relation, explicit
-  non-goals, and operational definitions for necessary project terms.
+For the **working-environment expression comparison**, use one frozen, bounded
+review task and one carrier. Hold its underlying facts and obligations fixed:
+the requested result, sources and revisions, tool capabilities, read/effect
+limits, preserved constraints, verification obligations, decisions retained
+elsewhere, and evidence required in the return. Compare two complete prompts:
+
+- the **historical control** is the actual earlier job-title, unexplained-term,
+  and parent-runtime-map prompt, or a faithfully retained fixture of it; and
+- the **receiver-specific candidate** re-expresses the same work through the
+  decision-relevant object/action, overall and downstream relation, explicit
+  non-goals, and operational definitions for every necessary term that could
+  change action or return.
+
+The two arms need not share literal task-contract wording: re-expression is the
+candidate treatment. Attribute any result only to the complete
+working-environment expression, not to adding a contribution relation or
+removing a title in isolation.
 
 Give each complete prompt, without prior conversation, to a fresh Agent before
 execution. Ask it to restate the object, relation to the whole, read and effect
@@ -243,14 +253,30 @@ judges task fidelity, whole-relation preservation, non-goals, evidence quality,
 and hand-off reconstruction. The acceptance owner remains separate. Compare
 noise statements and correction turns as observations, not a score or gate.
 
-The candidate is not supported merely because it is shorter or can be
+The candidate expression is not supported merely because it is shorter or can be
 restated. It must preserve or improve execution and reconstruction while
 removing irrelevant context; a lost hard constraint, fabricated capability, or
 weaker effect boundary is a failure. Repeated comprehension failures after the
 candidate treatment reopen context delivery or prompt expression. Failures
 caused by absent tools or unenforced effects return to their runtime owners.
-Do not claim transfer until both arms have retained evidence under a named
-execution profile and an independent review disposition.
+
+For the separate **carrier-transfer comparison**, freeze the complete
+receiver-specific candidate prompt verbatim and send the same model-visible
+text through a native delegate and an injected sub-worker. Retain the submitted
+prompt and carrier evidence. Transport framing, child identity, progress, and
+recovery evidence may differ; task meaning, effects, evidence obligations,
+withheld decisions, and return semantics may not. Do not infer carrier transfer
+from the expression comparison or prompt improvement from carrier equivalence.
+
+If these are run as a 2x2 experiment, declare prompt expression and carrier as
+independent axes: compare historical versus candidate expression within each
+carrier, and compare the identical prompt variant across carriers. Do not claim
+literal task text was fixed while adding semantic content, and do not attribute
+an interaction to one axis without evidence.
+
+Do not claim expression improvement or carrier transfer until the corresponding
+comparison has retained evidence under a named execution profile and an
+independent review disposition.
 
 Task shaping, context delivery, and delegation topology remain outside this
 Skill's mechanism judgment. The working-environment probe may test whether the

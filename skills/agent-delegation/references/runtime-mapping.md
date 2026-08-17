@@ -9,7 +9,7 @@ owns. It does not define another lifecycle, queue, team schema, or scheduler.
 The portable unit is a **contribution contract**:
 
 ```text
-whole constraint
+requested overall outcome and constraints
   -> bounded work unit + sources + environment + effects
   -> one execution owner
   -> claim + evidence + uncertainty
@@ -109,7 +109,7 @@ When Rossovia or another persistent runtime is already the requested owner:
 
 The injected tool is an Integration/host capability, not a Work Cell mechanism.
 Its concrete schema and command names belong to the runtime adapter, but its
-semantic input must preserve the whole constraint, bounded contribution,
+semantic input must preserve the requested overall outcome, bounded contribution,
 sources, environment, effects, required evidence, stop signal, and withheld
 authority. A standalone Work Cell can receive another implementation of the
 same capability—or no delegation tool at all—without changing Cell core.
@@ -154,10 +154,14 @@ When the active harness exposes session-local sub-agents:
 5. Reconstruct each return into the Main obligation map before using it as a
    premise or presenting the whole result.
 
-## Portability probe
+## Prompt-expression and carrier-transfer probes
 
-Use one frozen task in four arms when evaluating the prompt relation and its
-carrier transfer:
+Keep two judgments separate. Prompt expression asks whether a receiver-specific
+prompt expresses the same underlying work more effectively. Carrier transfer
+asks whether one already complete prompt keeps its meaning when transported by
+different harnesses.
+
+Use this frozen task shape for either judgment:
 
 ```text
 Whole: one consequential change with two independent source investigations,
@@ -170,12 +174,28 @@ Expected semantic topology:
   Main synthesizes; reviewer does not accept
 ```
 
-Hold the method, exact task, and return contract fixed. For each carrier—native
-delegate and injected sub-worker—run one control prompt that adds only a title
-and one candidate prompt that instead states the concrete object/action,
-downstream use, and explicit non-goals. The title-only arm is an evaluation
-control, not an operating recommendation. Retain all four complete prompts and
-carrier evidence.
+For the **prompt-expression comparison**, hold the underlying task facts fixed:
+the requested result, sources and revisions, available capabilities, read and
+effect limits, preserved constraints, verification obligations, decisions kept
+elsewhere, and evidence required in the return. Use one carrier. Compare the
+actual earlier title/jargon/runtime-map prompt (or a faithful retained fixture)
+with the complete receiver-specific candidate. The two prompts may express and
+order those facts differently; do not claim their literal task-contract text is
+fixed or attribute the outcome to the contribution relation alone. The claim is
+limited to the complete working-environment expression. Retain both unedited
+prompts and their evidence.
+
+For the **carrier-transfer comparison**, freeze one complete candidate prompt
+verbatim and send that same model-visible text through the native delegate and
+the injected sub-worker. The adapter may translate transport framing, identity,
+and lifecycle evidence, but must not omit, add, or rewrite prompt semantics.
+Retain the exact submitted prompt and carrier evidence for both executions.
+
+If both judgments are run as a 2x2 experiment, treat prompt expression and
+carrier as independent axes. Compare earlier versus candidate expression within
+each carrier, and compare the identical prompt variant across carriers. An
+interaction between axes needs its own evidence; it cannot be reported as
+either a prompt-only or carrier-only effect.
 
 Before execution, give each complete prompt to a fresh Agent and ask it to
 restate only the object, boundary, allowed effects, non-goals, verification, and
@@ -191,14 +211,15 @@ separate from that semantic judgment and from named-owner acceptance.
 Across carriers, the work-unit cuts, effects, return claims, and acceptance
 owner must remain equivalent. Native child handles versus child Run IDs,
 progress evidence, and recovery behavior should differ because those belong to
-the harness. The probe fails if the injected carrier omits or rewrites the
-portable prompt parts, if the relational arm does not improve reconstruction or
-reduce corrective follow-ups enough to repay its added words, if Work Cell gains
-child lifecycle, if the persistent mapping adds role types or a second
-lifecycle, if the native mapping fabricates durable state, or if either mapping
-gives multiple writers the same effect. Until retained evidence exists from all
-four arms, describe Rossovia transfer and the relational-prompt advantage as
-forward contracts or pending probes, not observed results.
+the harness. The carrier probe fails if the injected carrier omits or rewrites
+the frozen prompt, if Work Cell gains child lifecycle, if the persistent mapping
+adds role types or a second lifecycle, if the native mapping fabricates durable
+state, or if either mapping gives multiple writers the same effect. The prompt
+probe fails when the candidate loses a fixed task fact or does not improve
+execution and reconstruction enough to repay its expression cost. Until each
+judgment has retained evidence, describe both Rossovia carrier transfer and the
+receiver-specific prompt advantage as forward contracts or pending probes, not
+observed results.
 
 ## Stop and reshape
 

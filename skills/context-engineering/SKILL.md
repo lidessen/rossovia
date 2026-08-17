@@ -86,8 +86,9 @@ domain owner. Delivery cannot repair absent doctrine or decide what is true.
    Keep hard constraints reachable at the moment they govern action; remove
    detail that does not change that action. Express the projection for its
    receiver: omit parent history and runtime maps that do not affect the named
-   action, and define a necessary project term at first use by the object it
-   denotes, its boundary, and why it matters now.
+   action. If any necessary term could change the receiver's action or return,
+   define it at first use by the object it denotes, its boundary, and why it
+   matters now.
 5. **Preserve ownership boundaries.** Route source content and acceptance to the
    domain owner, source/lifetime conflicts to `artifact-organization`, skill
    expression failures to `skill-engineering`, and vendor-specific mechanics to

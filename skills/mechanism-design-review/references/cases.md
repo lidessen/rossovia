@@ -185,8 +185,9 @@ portable method, and return contract
 **Destination.** Supply the minimum local world needed for action: governing
 sources and concepts, salient whole relation, actual workspace/tools/effects
 and stop conditions, and a reconstructible evidence return. Omit parent maps
-that cannot change the child action. Define a necessary project term by its
-object, boundary, and immediate relevance instead of assuming shared jargon.
+that cannot change the child action. Define every necessary term that could
+change action or return by its object, boundary, and immediate relevance instead
+of assuming shared jargon.
 
 **Treatment.** `simplify` the prompt and context projection. Do not add a role
 taxonomy, environment schema, prompt registry, or glossary gate. Keep actual

@@ -6,18 +6,19 @@ use the Main Agent's full `SKILL.md` as your operating prompt.
 Your prompt must supply, in order, any decision-relevant contribution relation,
 the portable method, an exact task contract, and a return contract. A title is
 not a contribution relation. Act from the concrete object, requested action,
-downstream use, and non-goals. If an unexplained project term changes what you
-would do, stop and name the ambiguity rather than guessing.
+downstream use, and non-goals. If any unexplained term would change what you do
+or return, stop and name the ambiguity rather than guessing.
 
-## Execute inside the envelope
+## Work within the supplied boundaries
 
-- Preserve the stated whole constraint; do not reinterpret the project goal.
+- Preserve the requested overall outcome and the constraints this contribution
+  must not weaken; do not reinterpret the project goal.
 - Read only the governing sources and task evidence needed for this
   contribution.
 - Modify only explicitly owned paths or effects. Treat an omitted write grant
   as read-only.
 - Prefer direct execution for an already local contribution. Form a smaller
-  delegation only when the supplied envelope makes that posture available,
+  delegation only when the task contract explicitly permits it,
   ordinary work reveals a genuinely independent sub-contribution, and you can
   name the attention, latency, isolation, or independent-evidence benefit.
   Keep every descendant inside the same or a narrower read, effect, evidence,
@@ -28,8 +29,8 @@ would do, stop and name the ambiguity rather than guessing.
   contribution relation only when it changes the child's attention or
   responsibility, carry forward the portable method, narrow the task and return
   contracts, and include the applicable execution constraints. Use `direct
-  only` by default. Open another delegation layer only when your received
-  envelope explicitly permits you to do so and the child envelope explicitly
+  only` by default. Open another delegation layer only when your task contract
+  explicitly permits you to do so and the child's task contract explicitly
   carries that narrower allowance; never make the child discover instructions
   or infer permission from tool availability.
 - Verify the local claim with the requested evidence or report why it is
@@ -54,14 +55,14 @@ Return only the compressed evidence Main needs:
 ```text
 Conclusion:
 Evidence: source refs, commands, tests, or changed artifact identity
-Source scope and lineage actually read:
-Exact source claims and their declared use: leads only | bounded premises under the envelope's conditions
+Sources actually read: file paths, URLs, or record IDs plus revision/version
+Source claims used: exact claim plus either `Main must recheck` or `may be relied on only when: <conditions>`
 Uncertainties:
-Judgment and acceptance retained by:
+Decisions not made here and who must make them:
 Hand-off: named downstream use of this result and decisions retained elsewhere
 Risks and unresolved relations:
 Changed paths or effects:
-Nested contributions: none | why used, inherited boundary, child evidence, and realized cost
+Nested contributions: none | why used, limits given to the child, child evidence, and realized cost
 Stop hit: no | yes with reason
 Suggested follow-up: only when a named gap remains
 ```

@@ -72,10 +72,10 @@ preflight:
 Judge the result as self-contained for action, decision-relevant,
 source-truthful, operationally real, effect-bounded, observable/reconstructible,
 and economical. Minimum-sufficient depends on this receiver and action; it does
-not mean maximum context or the shortest prompt. Define a necessary
-project-specific term at first use by the object it names, its boundary, and why
-it matters now. A title or persona does not replace object/action, downstream
-use, and non-goals.
+not mean maximum context or the shortest prompt. If any necessary term could
+change the receiver's action or return, define it at first use by the object it
+names, its boundary, and why it matters now. A title or persona does not replace
+object/action, downstream use, and non-goals.
 
 Keep ownership distributed rather than adding an environment owner:
 [`task-shaping`](../../task-shaping/SKILL.md) or the domain method forms the
@@ -93,12 +93,15 @@ role type, or new hierarchy follows.
 
 Reason from whole and unit to receiver information, then real capabilities and
 effects, then evidence and return; reconstruct in the reverse direction before
-admitting the result as a premise. For a non-mandatory expression probe, give a
-fresh Agent only the complete proposed environment and ask it to restate the
-object, whole relation, boundary and effects, non-goals, verification, and
-return. Needing a definition for an undeclared term is a comprehension failure,
-not evidence for a glossary mechanism. Compare with a jargon-heavy control only
-when claiming improvement. A successful restatement proves comprehension, not
+admitting the result as a premise. For a non-mandatory expression probe, freeze
+the underlying task facts and obligations, use one carrier, and give a fresh
+Agent either the actual earlier prompt or the complete receiver-specific
+candidate. Ask it to restate the object, whole relation, boundary and effects,
+non-goals, verification, and return. Needing a definition for an undeclared term
+is a comprehension failure, not evidence for a glossary mechanism. Attribute a
+result to the complete working-environment expression, not one added or removed
+clause. Test carrier transfer separately with the same complete candidate prompt
+unchanged across carriers. A successful restatement proves comprehension, not
 semantic correctness or acceptance.
 
 ## Differentiate work; do not hard-code the organization

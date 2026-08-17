@@ -104,8 +104,9 @@ refactoring boundaries, research questions, or project policy.
    `references/reviewer.md`—and inline all of its execution and return
    constraints into those last two parts. Do this for native, injected, and
    nested children; never make a child discover a Skill-relative path. Omit
-   parent and runtime internals that do not change the child's action. Define a
-   necessary project term at first use by its object, boundary, and relevance.
+   parent and runtime internals that do not change the child's action. If any
+   necessary term could change the child's action or return, define it at first
+   use by the object it names, its boundary, and why it matters here.
 4. **Map without changing meaning.** Read `references/runtime-mapping.md` when
    choosing between native delegates, a caller-injected sub-worker tool backed
    by explicit persistent Runs, or a bounded hybrid. Map one contribution to
@@ -134,10 +135,12 @@ refactoring boundaries, research questions, or project policy.
 
    Resolve disagreement against named sources and the frozen whole, never by
    vote or concatenation. Before using an exact claim from child-only sources
-   as a premise, record its source scope and lineage, the exact admitted claim,
-   remaining uncertainty, and who retains judgment. Without that relation,
-   treat the return as a lead to verify rather than silently discarding it or
-   promoting it to fact. Preserve dissent and `unverifiable` results.
+   as a premise, record the file, URL, or record actually read and its revision;
+   the exact source claim used; whether Main must recheck it or may rely on it
+   only under named conditions; remaining uncertainty; and who retains
+   judgment. Without that relation, treat the return as a lead to verify rather
+   than silently discarding it or promoting it to fact. Preserve dissent and
+   `unverifiable` results.
 8. **Keep claims and verification distinct.** A worker's successful return is
    a claim with evidence, not accepted fact. The Main Agent ensures appropriate
    verification occurs and retains the final response, but does not relabel a
@@ -172,7 +175,7 @@ refactoring boundaries, research questions, or project policy.
 - Parallel contributors must not own the same mutable effect or independently
   redefine one shared contract.
 - Prefer direct work for an already local contribution. A delegated worker may
-  re-delegate only when its envelope explicitly makes that posture available
+  re-delegate only when its task contract explicitly makes that posture available
   and a newly discovered bounded contribution has a concrete attention,
   latency, isolation, or independent-evidence benefit that can repay
   coordination cost. Keep granted effects and authority the same or narrower;
