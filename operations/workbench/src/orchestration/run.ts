@@ -6,6 +6,9 @@ import { z } from "zod";
 import type { CellInput, CellRunRecord } from "../../../../packages/work-cell/src/contracts";
 import {
   readStrictTaskAttemptEvidence,
+  RUN_CONTROL_RECEIPT_VERSION,
+  RunControlReceiptSchema,
+  type RunControlReceipt,
   type StrictTaskAttemptEvidence,
 } from "../task-attempts";
 import {
@@ -13,6 +16,7 @@ import {
   inspectRetainedWorktreeWriterLease,
   isProcessDefinitelyAbsent,
   releaseWorktreeWriterLease,
+  worktreeWriterLeasePath,
   type WorktreeWriterLease,
   type WorktreeWriterOwnerIdentity,
 } from "./worktree-writer";
@@ -191,6 +195,10 @@ export function createRunRequestRecord(
       attemptId: request.requestId,
       inputRef: refs.inputRef,
       finalRecordRef: refs.finalRecordRef,
+      // The exact canonical Worktree identity is retained BEFORE any O3
+      // writer-claim acquisition or mutable preparation, so an inputless
+      // Run can still reconcile the exact dead-owner claim.
+      worktree: canonicalWorktree(request.worktree),
       workerId: request.workerId,
       driver: request.execution.driver,
       model: request.execution.model,
@@ -310,23 +318,8 @@ export class RunStopRefusal extends Error {
   }
 }
 
-export const RUN_CONTROL_RECEIPT_VERSION = "rosso.run-control-receipt.v1" as const;
-
-export const RunControlReceiptSchema = z.object({
-  version: z.literal(RUN_CONTROL_RECEIPT_VERSION),
-  control: z.literal("stop"),
-  runId: z.string().uuid(),
-  taskId: z.string().min(1),
-  workerId: z.string().min(1),
-  worktree: z.string().min(1),
-  sourceRef: z.string().min(1),
-  requestedBy: z.string().min(1),
-  requestedAt: z.iso.datetime(),
-  attemptRef: z.string().min(1),
-  settlementRef: z.string().min(1),
-}).strict();
-
-export type RunControlReceipt = z.infer<typeof RunControlReceiptSchema>;
+export { RUN_CONTROL_RECEIPT_VERSION, RunControlReceiptSchema } from "../task-attempts";
+export type { RunControlReceipt } from "../task-attempts";
 
 /**
  * Stop one exact live Run. The durable control receipt is written BEFORE the
@@ -373,7 +366,10 @@ export function stopRun(
     runId,
     taskId: attempt.taskId,
     workerId: attempt.workerId ?? "",
-    worktree: evidence.input?.workspace.root ?? "",
+    // The exact request-owned Worktree identity retained before O3
+    // acquisition, with the immutable CellInput root as the historical
+    // fallback.
+    worktree: attempt.worktree ?? evidence.input?.workspace.root ?? "",
     sourceRef: control.sourceRef,
     requestedBy: control.requestedBy,
     requestedAt: new Date().toISOString(),
@@ -504,6 +500,11 @@ export async function runOrdinaryTaskRun(
       // immutable CellInput is retained before revalidation so a refused Run
       // keeps one exact inspectable input and zero Cell invocations.
       const cellInput = dependencies.lowerCellInput();
+      // The lowered CellInput is bound and validated against the accepted
+      // durable Run request and the exact O3 claim BEFORE it is persisted or
+      // executed: a mismatch settles a truthful pre-Cell failure, runs zero
+      // Cells, and releases the exact claim.
+      validateLoweredCellInput(cellInput, request, lease);
       taskRunHelpers().writeImmutableJson(refs.inputPath, cellInput);
       dependencies.revalidate?.();
       if (registry !== undefined) registry.register(request.requestId, controller);
@@ -539,16 +540,30 @@ export async function runOrdinaryTaskRun(
         }
         throw new Error(finalization.error);
       }
-      return {
-        standing: "terminal",
-        outcome: terminalOutcome(
-          request,
+      // The terminal result derives only from a strict post-finalization
+      // read of the exact attempt family, never from an in-memory projection
+      // the strict owner could later reject.
+      const retainedEvidence = readStrictTaskAttemptEvidence(home, request.requestId);
+      if (
+        retainedEvidence.standing === "available"
+        && retainedEvidence.settlement !== undefined
+      ) {
+        const retainedOutcome = terminalOutcomeFromEvidence(
           refs,
-          finalization.settlement,
-          "released",
-          undefined,
-          finalization.finalRecord,
-        ),
+          retainedEvidence,
+          request.requestId,
+          evidenceCleanupStanding(retainedEvidence, request.requestId),
+        );
+        if (retainedOutcome !== undefined) {
+          return { standing: "terminal", outcome: retainedOutcome };
+        }
+      }
+      return {
+        standing: "unresolved",
+        refs,
+        error:
+          `Run ${request.requestId} retained a settlement but its terminal evidence was rejected `
+          + "by the strict attempt-family read; no truthful terminal outcome is projected",
       };
     } catch (error) {
       // Any post-claim failure before the shared finalization ran: retain the
@@ -673,28 +688,103 @@ function defaultRunFinalize(input: RunFinalizationInput): RunFinalization {
   });
 }
 
-function terminalOutcome(
+/**
+ * The exact canonical Worktree identity retained by a durable Run request:
+ * the resolved root when it exists, else the request's recorded path (which
+ * every later read re-resolves and fails closed on).
+ */
+function canonicalWorktree(root: string): string {
+  try {
+    return realpathSync(root);
+  } catch {
+    return root;
+  }
+}
+
+/**
+ * Bind and validate one lowered CellInput against the accepted durable Run
+ * request and the exact O3 claim BEFORE it is persisted or executed: the
+ * Task/Run-derived Cell identity, the worker and execution profile, the
+ * canonical workspace root, and the exact claim path. A mismatch settles a
+ * truthful pre-Cell failure with zero Cell invocations and no invented
+ * evidence.
+ */
+function validateLoweredCellInput(
+  cellInput: CellInput,
   request: RunRequest,
-  refs: RunEvidenceRefs,
-  settlement: RunSettlementFields,
-  cleanup: RunCleanupStanding,
-  cleanupError: string | undefined,
-  finalRecord: CellRunRecord | undefined,
-): RunTerminalOutcome {
-  return {
-    runId: request.requestId,
-    taskId: request.taskId,
-    taskRevision: request.taskRevision,
-    status: settlement.status,
-    ...(settlement.workCellRunId !== undefined ? { workCellRunId: settlement.workCellRunId } : {}),
-    ...(settlement.cellStatus !== undefined ? { cellStatus: settlement.cellStatus } : {}),
-    ...(settlement.controlRef !== undefined ? { controlRef: settlement.controlRef } : {}),
-    ...(settlement.error !== undefined ? { error: settlement.error } : {}),
-    cleanup,
-    ...(cleanupError !== undefined ? { cleanupError } : {}),
-    refs,
-    ...(finalRecord !== undefined ? { finalRecord } : {}),
-  };
+  lease: WorktreeWriterLease,
+): void {
+  const expectedCellId = `workbench-task-${request.taskId}-attempt-${request.requestId}`;
+  if (cellInput.id !== expectedCellId) {
+    throw new Error(
+      `lowered CellInput id ${cellInput.id} does not bind the exact Run-derived Cell identity ${expectedCellId}`,
+    );
+  }
+  if (cellInput.workerId !== request.workerId) {
+    throw new Error(
+      `lowered CellInput worker ${cellInput.workerId ?? "unset"} does not match the accepted Run request worker ${request.workerId}`,
+    );
+  }
+  const profile = cellInput.executionProfile;
+  if (profile === undefined || profile.id !== request.workerId) {
+    throw new Error(
+      `lowered CellInput execution profile ${profile?.id ?? "unset"} does not match the accepted Run request worker ${request.workerId}`,
+    );
+  }
+  if (profile.model !== request.execution.model) {
+    throw new Error(
+      `lowered CellInput execution model ${profile.model} does not match the accepted Run request model ${request.execution.model}`,
+    );
+  }
+  let observedRoot: string;
+  try {
+    observedRoot = realpathSync(cellInput.workspace.root);
+  } catch {
+    throw new Error(`lowered CellInput workspace root cannot be resolved: ${cellInput.workspace.root}`);
+  }
+  let expectedRoot: string;
+  try {
+    expectedRoot = realpathSync(request.worktree);
+  } catch {
+    throw new Error(`the accepted Run request Worktree cannot be resolved: ${request.worktree}`);
+  }
+  if (observedRoot !== expectedRoot) {
+    throw new Error(
+      `lowered CellInput workspace root ${observedRoot} does not match the accepted Run request Worktree ${expectedRoot}`,
+    );
+  }
+  if (lease.path !== worktreeWriterLeasePath(request.worktree)) {
+    throw new Error(
+      `the exact O3 writer claim ${lease.path} does not bind the accepted Run request Worktree`,
+    );
+  }
+}
+
+/** The exact claim-owner Worktree of one reconciled Run: request-owned first, else the immutable input root. */
+function reconcileRunWorktree(
+  runId: string,
+  evidence: StrictTaskAttemptEvidence,
+): string {
+  const attempt = evidence.attempt!;
+  if (attempt.worktree !== undefined) {
+    try {
+      return realpathSync(attempt.worktree);
+    } catch {
+      throw new ReconcileRunRefusal(
+        "unreadable-input",
+        `Run ${runId} request-owned Worktree identity cannot be resolved: ${attempt.worktree}`,
+      );
+    }
+  }
+  const input = evidence.input!;
+  try {
+    return realpathSync(input.workspace.root);
+  } catch {
+    throw new ReconcileRunRefusal(
+      "unreadable-input",
+      `Run ${runId} CellInput workspace root cannot be resolved: ${input.workspace.root}`,
+    );
+  }
 }
 
 /**
@@ -748,11 +838,15 @@ function evidenceCleanupStanding(
   runId: string,
 ): RunCleanupStanding {
   const attempt = evidence.attempt;
-  const input = evidence.input;
-  if (attempt === undefined || input === undefined) return "uninspectable";
+  if (attempt === undefined) return "uninspectable";
+  // The request-owned Worktree identity retained before O3 acquisition is the
+  // standing source for an inputless Run; historical families fall back to
+  // the immutable CellInput workspace root.
+  const root = evidence.input?.workspace.root ?? attempt.worktree;
+  if (root === undefined) return "uninspectable";
   let worktree: string;
   try {
-    worktree = realpathSync(input.workspace.root);
+    worktree = realpathSync(root);
   } catch {
     return "uninspectable";
   }
@@ -808,6 +902,8 @@ export class ReconcileRunRefusal extends Error {
       | "unproven-owner"
       | "invalid-lease",
     message: string,
+    /** The recorded claim owner process when `owner-live` refuses the reconciliation. */
+    readonly pid?: number,
   ) {
     super(message);
     this.name = "ReconcileRunRefusal";
@@ -862,21 +958,16 @@ export function reconcileRun(
   // settlement write and outcome; the strict reader's ref-only projection is
   // never substituted where the exact path fields are required.
   const refs = taskRunHelpers().attemptEvidence(home, runId);
-  if (evidence.input === undefined) {
+  if (evidence.input === undefined && attempt.worktree === undefined) {
     throw new ReconcileRunRefusal(
       "unreadable-input",
-      `Run ${runId} has no readable immutable CellInput: ${evidence.refs.inputRef}`,
+      `Run ${runId} has no readable immutable CellInput or request-owned Worktree identity: ${refs.inputRef}`,
     );
   }
-  let worktree: string;
-  try {
-    worktree = realpathSync(evidence.input.workspace.root);
-  } catch {
-    throw new ReconcileRunRefusal(
-      "unreadable-input",
-      `Run ${runId} CellInput workspace root cannot be resolved: ${evidence.input.workspace.root}`,
-    );
-  }
+  // The exact Worktree identity for the retained claim comes from the
+  // request-owned attempt field (retained before O3 acquisition) when it
+  // exists, else from the strict immutable CellInput's workspace root.
+  const worktree = reconcileRunWorktree(runId, evidence);
 
   if (evidence.settlement !== undefined) {
     return reconcileSettledRun(runId, evidence, worktree, refs, dependencies);
@@ -903,23 +994,38 @@ export function reconcileRun(
     throw new ReconcileRunRefusal(
       "owner-live",
       `Run ${runId} writer-claim owner process ${inspected.pid} is still alive or cannot be proven absent; reconciliation fails closed`,
+      inspected.pid,
     );
   }
-  const settlementInput = evidence.finalRecord !== undefined
-    ? taskRunHelpers().finalRecordSettlementInput(
-      attempt.taskId,
-      attempt.taskRevision,
-      runId,
-      evidence.finalRecord,
-    )
-    : {
+  const settlementInput = evidence.control !== undefined
+    ? {
       taskId: attempt.taskId,
       taskRevision: attempt.taskRevision,
       attemptId: runId,
-      status: "runner-failed" as const,
-      error:
-        "interrupted before a final Work Cell record was retained; reconciled by the Run owner",
-    };
+      status: "control-stopped" as const,
+      controlRef: evidence.controlRef,
+      ...(evidence.finalRecord === undefined
+        ? {}
+        : {
+          workCellRunId: evidence.finalRecord.runId,
+          cellStatus: evidence.finalRecord.status,
+        }),
+    }
+    : evidence.finalRecord !== undefined
+      ? taskRunHelpers().finalRecordSettlementInput(
+        attempt.taskId,
+        attempt.taskRevision,
+        runId,
+        evidence.finalRecord,
+      )
+      : {
+        taskId: attempt.taskId,
+        taskRevision: attempt.taskRevision,
+        attemptId: runId,
+        status: "runner-failed" as const,
+        error:
+          "interrupted before a final Work Cell record was retained; reconciled by the Run owner",
+      };
   taskRunHelpers().writeTaskRunSettlement(refs, settlementInput);
   // The shared settlement write is durable, but the pre-write evidence
   // snapshot still carries no settlement and must never derive the terminal
@@ -974,6 +1080,7 @@ function reconcileSettledRun(
     throw new ReconcileRunRefusal(
       "owner-live",
       `Run ${runId} writer-claim owner process ${inspected.pid} is still alive or cannot be proven absent; reconciliation fails closed`,
+      inspected.pid,
     );
   }
   dependencies.beforeLeaseRelease?.();

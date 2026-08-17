@@ -147,7 +147,13 @@ function retainedAttemptExecutor(): TaskCellExecutor {
           cachedInputTokens: 0,
         },
       },
-      executionObservation: { sessionId: "session-ui-attempt" },
+      executionObservation: {
+        sessionId: "session-ui-attempt",
+        providerFingerprintStanding: {
+          standing: "unavailable",
+          reason: "deterministic UI projection fixture executor retains no provider metadata",
+        },
+      },
       trace: [],
       rawSteps: [],
     }) as unknown as CellRunRecord;

@@ -599,7 +599,7 @@ describe("task attempt reconciliation", () => {
     expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
   });
 
-  test("a second reconciliation after success fails closed without touching retained evidence", () => {
+  test("a second reconciliation after success converges idempotently without touching retained evidence", () => {
     const current = fixture();
     const created = agentTask(current);
     const attempt = interruptedAttempt(current, created.task.id, deadPid());
@@ -609,10 +609,19 @@ describe("task attempt reconciliation", () => {
     });
     const settlementBytes = readFileSync(join(current.home, first.settlementRef), "utf8");
 
-    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+    // O2 reconciliation is idempotent owner maintenance: the exact release
+    // already succeeded, so the retry converges on the retained outcome and
+    // mutates nothing.
+    const second = reconcilePrincipalTaskAttempt(current.home, {
       id: created.task.id,
       attemptId: attempt.attemptId,
-    })).toThrow("has no retained task-run lease");
+    });
+    expect(second).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
     expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
     expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
     expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
@@ -644,17 +653,21 @@ describe("task attempt reconciliation", () => {
     expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
     expect(existsSync(attempt.leasePath)).toBeFalse();
 
-    // The still-exact settlement with a changed lease identity fails closed.
+    // A schema-valid claim for a different owner proves the exact claim was
+    // already released: O2 reconciliation converges on the retained outcome
+    // and never touches the foreign claim.
     writeFileSync(attempt.leasePath, attempt.leaseContent, { flag: "wx" });
     const bytes = JSON.parse(readFileSync(attempt.leasePath, "utf8"));
     bytes.attemptId = randomUUID();
     writeFileSync(attempt.leasePath, `${JSON.stringify(bytes, null, 2)}\n`);
-    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+    const converged = reconcilePrincipalTaskAttempt(current.home, {
       id: created.task.id,
       attemptId: attempt.attemptId,
-    })).toThrow("belongs to attempt");
+    });
+    expect(converged.status).toBe("runner-failed");
     expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
-    expect(existsSync(attempt.leasePath)).toBeTrue();
+    // The different-owner claim is preserved exactly.
+    expect(readFileSync(attempt.leasePath, "utf8")).toBe(`${JSON.stringify(bytes, null, 2)}\n`);
   });
 
   test("derives the shared normal settlement from a retained final record without a settlement", async () => {
@@ -901,6 +914,51 @@ describe("task attempt reconciliation", () => {
       status: "runner-failed",
     });
     expect(existsSync(attempt.leasePath)).toBeFalse();
+  });
+
+  test("the CLI reconciles through the O2 owner idempotently with the legacy result shape", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+
+    const first = taskCliWithOutput(
+      current.home,
+      "reconcile-attempt",
+      created.task.id,
+      "--attempt",
+      attempt.attemptId,
+    );
+    expect(first.exitCode).toBe(0);
+    const firstJson = JSON.parse(first.stdout);
+    expect(firstJson).toMatchObject({
+      version: "rosso.task-attempt-reconcile.v1",
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      settlementRef: `state/task-attempts/${attempt.attemptId}/settlement.json`,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    const settlementBytes = readFileSync(join(current.home, firstJson.settlementRef), "utf8");
+
+    // The identical CLI reconciliation converges idempotently: no throw, no
+    // settlement mutation, and no retained evidence change.
+    const second = taskCliWithOutput(
+      current.home,
+      "reconcile-attempt",
+      created.task.id,
+      "--attempt",
+      attempt.attemptId,
+    );
+    expect(second.exitCode).toBe(0);
+    expect(JSON.parse(second.stdout)).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+    });
+    expect(readFileSync(join(current.home, firstJson.settlementRef), "utf8")).toBe(settlementBytes);
+    expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
   });
 });
 

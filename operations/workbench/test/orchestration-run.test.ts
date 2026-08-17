@@ -26,6 +26,7 @@ import {
   releaseWorktreeLease,
 } from "../src/task-run";
 import {
+  createRunRequestRecord,
   ReconcileRunRefusal,
   reconcileRun,
   RunControlRegistry,
@@ -463,13 +464,15 @@ describe("O2 Run outcomes", () => {
     expect(outcome).not.toHaveProperty("finalRecord");
     expect(existsSync(join(current.home, outcome.refs.finalRecordRef))).toBeFalse();
 
-    // The refusal never blocked a later fresh Run.
+    // The refusal never blocked a later fresh Run: the fresh request lowers
+    // a CellInput whose Run-derived id matches the fresh Run identity.
+    const retryRunId = randomUUID();
     const retry = await runOrdinaryTaskRun(current.home, {
       ...request,
-      requestId: randomUUID(),
+      requestId: retryRunId,
     }, {
       card: testCard(),
-      lowerCellInput: lowerFor(current, created.task.id, request.requestId),
+      lowerCellInput: lowerFor(current, created.task.id, retryRunId),
       execute: executor.execute,
     });
     expect(terminalRun(retry).status).toBe("recorded");
@@ -569,6 +572,101 @@ describe("O2 Run outcomes", () => {
     });
     expect(outcome.finalRecord?.runId).toBe("failed-run");
     expect(existsSync(join(current.home, outcome.refs.finalRecordRef))).toBeTrue();
+  });
+
+  test("a lowered CellInput that does not bind the accepted request settles a truthful pre-Cell failure with zero Cells", async () => {
+    const cases: Array<{
+      lower: (current: Fixture, request: RunRequest) => CellInput;
+      error: string;
+    }> = [
+      {
+        // Wrong Run-derived Cell identity: lowered for another Run id.
+        lower: (current, request) =>
+          cellInputFor(randomUUID(), current.worktree, request.taskId),
+        error: "does not bind the exact Run-derived Cell identity",
+      },
+      {
+        // Wrong worker identity.
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return { ...input, workerId: "another-worker" } as CellInput;
+        },
+        error: "does not match the accepted Run request worker",
+      },
+      {
+        // Wrong execution profile model.
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return {
+            ...input,
+            executionProfile: { ...input.executionProfile!, model: "test/another" },
+          } as CellInput;
+        },
+        error: "does not match the accepted Run request model",
+      },
+      {
+        // Wrong canonical workspace root.
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return {
+            ...input,
+            workspace: { ...input.workspace, root: realpathSync(current.primary) },
+          } as CellInput;
+        },
+        error: "does not match the accepted Run request Worktree",
+      },
+    ];
+
+    for (const candidate of cases) {
+      const current = fixture();
+      const created = agentTask(current);
+      const request = makeRequest(current, created.task.id);
+      const executor = new RecordingExecutor();
+      await expect(runOrdinaryTaskRun(current.home, request, {
+        card: testCard(),
+        lowerCellInput: () => candidate.lower(current, request),
+        execute: executor.execute,
+      })).rejects.toThrow(candidate.error);
+      expect(executor.invocations).toHaveLength(0);
+      const standing = runStanding(current.home, request.requestId);
+      expect(standing.standing).toBe("terminal");
+      const outcome = terminalStanding(standing);
+      expect(outcome).toMatchObject({ status: "runner-failed", cleanup: "released" });
+      expect(outcome.error).toContain(candidate.error);
+      expect(outcome).not.toHaveProperty("workCellRunId");
+      expect(outcome).not.toHaveProperty("finalRecord");
+      // The mismatched input was never persisted: the refusal is pre-Cell
+      // and pre-preparation with no invented evidence.
+      expect(existsSync(join(current.home, outcome.refs.inputRef))).toBeFalse();
+      expect(existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)))).toBeFalse();
+    }
+  });
+
+  test("returned terminal results derive only from the strict post-finalization family read", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id);
+    const result = await runOrdinaryTaskRun(current.home, request, {
+      card: testCard(),
+      lowerCellInput: lowerFor(current, created.task.id, request.requestId),
+      execute: async (input) => {
+        const record = validRecord(input, { runId: "unfingerprinted-run" });
+        // The executor returns a record that passes the shared finalization's
+        // identity checks but is rejected by the strict attempt-family owner
+        // (an AI SDK final without a truthful provider fingerprint standing).
+        delete record.executionObservation.providerFingerprintStanding;
+        return record;
+      },
+    });
+    // The durable settlement exists on disk, but no projection is returned
+    // that the strict owner later rejects: the standing is unresolved.
+    expect(result.standing).toBe("unresolved");
+    if (result.standing !== "unresolved") throw new Error("expected unresolved standing");
+    expect(result.error).toContain("rejected by the strict attempt-family read");
+    const settlementPath = join(current.home, "state", "task-attempts", request.requestId, "settlement.json");
+    expect(existsSync(settlementPath)).toBeTrue();
+    expect(existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)))).toBeFalse();
+    expect(runStanding(current.home, request.requestId).standing).toBe("invalid");
   });
 });
 
@@ -789,6 +887,209 @@ describe("O2 reconciliation and restart", () => {
     expect(retained.settlement?.workCellRunId).toBe(reconciled.outcome.workCellRunId);
     expect(retained.settlement?.settledAt).toBeDefined();
     expect(existsSync(fabricated.leasePath)).toBeFalse();
+  });
+
+  test("process loss after O3 acquisition before CellInput retention reconciles from the request-owned Worktree identity", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id);
+    const createdRecord = createRunRequestRecord(current.home, request);
+    expect(createdRecord.standing).toBe("created");
+    // The durable request retains the exact canonical Worktree identity
+    // before any O3 acquisition or mutable preparation.
+    const retainedAttempt = JSON.parse(
+      readFileSync(join(current.home, createdRecord.refs.attemptRef), "utf8"),
+    ) as Record<string, unknown>;
+    expect(retainedAttempt.worktree).toBe(realpathSync(current.worktree));
+    expect(existsSync(join(current.home, createdRecord.refs.inputRef))).toBeFalse();
+
+    // Fabricate the exact dead-owner claim exactly as O3 acquisition would
+    // have written it: the process died after the claim but before the
+    // CellInput was retained.
+    const gitDirectoryRaw = git(current.worktree, "rev-parse", "--git-dir");
+    const gitDirectory = realpathSync(
+      isAbsolute(gitDirectoryRaw) ? gitDirectoryRaw : join(current.worktree, gitDirectoryRaw),
+    );
+    const leasePath = join(gitDirectory, "rossovia-task-run.lock");
+    const leaseContent = `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: realpathSync(current.worktree),
+      taskId: created.task.id,
+      attemptId: request.requestId,
+      pid: deadPid(),
+      acquiredAt: "2026-08-16T12:00:00.000Z",
+    }, null, 2)}\n`;
+    writeFileSync(leasePath, leaseContent, { flag: "wx" });
+
+    const before = runStanding(current.home, request.requestId);
+    expect(before.standing).toBe("unresolved");
+    if (before.standing !== "unresolved") throw new Error("expected unresolved standing");
+    expect(before.cleanup).toBe("retained");
+
+    // Reconciliation locates the exact dead-owner claim from the
+    // request-owned identity alone (no CellInput exists) and settles the
+    // truthful interrupted runner-failed outcome.
+    const reconciled = reconcileRun(current.home, request.requestId);
+    expect(reconciled.outcome).toMatchObject({
+      runId: request.requestId,
+      taskId: created.task.id,
+      status: "runner-failed",
+      cleanup: "released",
+    });
+    expect(reconciled.outcome.error).toContain("interrupted before a final Work Cell record");
+    expect(existsSync(leasePath)).toBeFalse();
+    expect(runStanding(current.home, request.requestId).standing).toBe("terminal");
+  });
+
+  test("a durable stop receipt with a retained cancelled final reconciles control-stopped without redispatching control", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const fabricated = fabricatedStartedRun(current, created.task.id, deadPid());
+    const input = cellInputFor(fabricated.runId, current.worktree, created.task.id);
+    writeFileSync(
+      join(fabricated.directory, "cell-input.run.json"),
+      `${JSON.stringify({
+        ...validRecord(input, { runId: "stopped-run" }),
+        status: "cancelled",
+      }, null, 2)}\n`,
+    );
+    const controlRef = `state/task-attempts/${fabricated.runId}/control.json`;
+    writeFileSync(join(fabricated.directory, "control.json"), `${JSON.stringify({
+      version: "rosso.run-control-receipt.v1",
+      control: "stop",
+      runId: fabricated.runId,
+      taskId: created.task.id,
+      workerId: "test-worker",
+      worktree: realpathSync(current.worktree),
+      sourceRef: "test:stop-crash",
+      requestedBy: "actor-1",
+      requestedAt: "2026-08-16T12:00:00.000Z",
+      attemptRef: `state/task-attempts/${fabricated.runId}/attempt.json`,
+      settlementRef: `state/task-attempts/${fabricated.runId}/settlement.json`,
+    }, null, 2)}\n`);
+
+    // A durable stop receipt plus a retained cancelled final, no settlement:
+    // liveness unknown but the causal stop is retained.
+    const before = runStanding(current.home, fabricated.runId);
+    expect(before.standing).toBe("unresolved");
+    if (before.standing !== "unresolved") throw new Error("expected unresolved standing");
+    expect(before.cleanup).toBe("retained");
+
+    // Restart reconciliation derives control-stopped from the exact receipt
+    // and final without redispatching any control and without replay.
+    const reconciled = reconcileRun(current.home, fabricated.runId);
+    expect(reconciled.outcome).toMatchObject({
+      runId: fabricated.runId,
+      taskId: created.task.id,
+      status: "control-stopped",
+      controlRef,
+      workCellRunId: "stopped-run",
+      cellStatus: "cancelled",
+      cleanup: "released",
+    });
+    expect(existsSync(fabricated.leasePath)).toBeFalse();
+    // The retained receipt and cancelled final are untouched by reconciliation.
+    expect(readFileSync(join(fabricated.directory, "control.json"), "utf8")).toContain('"runId"');
+    expect(existsSync(join(fabricated.directory, "cell-input.run.json"))).toBeTrue();
+    const settlement = JSON.parse(
+      readFileSync(join(fabricated.directory, "settlement.json"), "utf8"),
+    );
+    expect(settlement).toMatchObject({
+      status: "control-stopped",
+      controlRef,
+      workCellRunId: "stopped-run",
+      cellStatus: "cancelled",
+    });
+    const standing = runStanding(current.home, fabricated.runId);
+    expect(standing.standing).toBe("terminal");
+    expect(terminalStanding(standing)).toMatchObject({ status: "control-stopped", controlRef });
+  });
+
+  test("a control-stopped settlement without its exact receipt is invalid and fails closed", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const fabricated = fabricatedStartedRun(current, created.task.id, deadPid());
+    const input = cellInputFor(fabricated.runId, current.worktree, created.task.id);
+    writeFileSync(
+      join(fabricated.directory, "cell-input.run.json"),
+      `${JSON.stringify({
+        ...validRecord(input, { runId: "stopped-run" }),
+        status: "cancelled",
+      }, null, 2)}\n`,
+    );
+    // A control-stopped settlement that names a receipt that was never
+    // retained is invalid evidence, never a terminal outcome.
+    writeFileSync(join(fabricated.directory, "settlement.json"), `${JSON.stringify({
+      version: "rosso.task-run-settlement.v1",
+      taskId: created.task.id,
+      taskRevision: 1,
+      attemptId: fabricated.runId,
+      inputRef: `state/task-attempts/${fabricated.runId}/cell-input.json`,
+      finalRecordRef: `state/task-attempts/${fabricated.runId}/cell-input.run.json`,
+      status: "control-stopped",
+      controlRef: `state/task-attempts/${fabricated.runId}/control.json`,
+      semanticAcceptance: "not-evaluated",
+      settledAt: "2026-08-16T12:00:00.000Z",
+    }, null, 2)}\n`);
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, fabricated.runId);
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("control");
+    expect(runStanding(current.home, fabricated.runId).standing).toBe("invalid");
+    expectReconcileRefusal(() => reconcileRun(current.home, fabricated.runId), "invalid");
+    // The failed-closed reconciliation never touches the exact claim.
+    expect(readFileSync(fabricated.leasePath, "utf8")).toBe(fabricated.leaseContent);
+  });
+
+  test("malformed or mismatched control receipt evidence fails closed and is never settled", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const fabricated = fabricatedStartedRun(current, created.task.id, deadPid());
+    const input = cellInputFor(fabricated.runId, current.worktree, created.task.id);
+    writeFileSync(
+      join(fabricated.directory, "cell-input.run.json"),
+      `${JSON.stringify({
+        ...validRecord(input, { runId: "stopped-run" }),
+        status: "cancelled",
+      }, null, 2)}\n`,
+    );
+    const controlPath = join(fabricated.directory, "control.json");
+    const receipt = {
+      version: "rosso.run-control-receipt.v1",
+      control: "stop",
+      runId: fabricated.runId,
+      taskId: created.task.id,
+      workerId: "test-worker",
+      worktree: realpathSync(current.worktree),
+      sourceRef: "test:stop-crash",
+      requestedBy: "actor-1",
+      requestedAt: "2026-08-16T12:00:00.000Z",
+      attemptRef: `state/task-attempts/${fabricated.runId}/attempt.json`,
+      settlementRef: `state/task-attempts/${fabricated.runId}/settlement.json`,
+    };
+    writeFileSync(controlPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    const reconciled = reconcileRun(current.home, fabricated.runId);
+    expect(reconciled.outcome.status).toBe("control-stopped");
+    const original = JSON.parse(readFileSync(controlPath, "utf8"));
+
+    // A mismatched Run identity fails closed.
+    writeFileSync(controlPath, `${JSON.stringify({ ...original, runId: randomUUID() }, null, 2)}\n`);
+    expect(runStanding(current.home, fabricated.runId).standing).toBe("invalid");
+    expectReconcileRefusal(() => reconcileRun(current.home, fabricated.runId), "invalid");
+    // Malformed bytes fail closed.
+    writeFileSync(controlPath, "{not-json\n");
+    expect(runStanding(current.home, fabricated.runId).standing).toBe("invalid");
+    expectReconcileRefusal(() => reconcileRun(current.home, fabricated.runId), "invalid");
+
+    // The exact receipt restores the terminal control-stopped standing.
+    writeFileSync(controlPath, `${JSON.stringify(original, null, 2)}\n`);
+    const standing = runStanding(current.home, fabricated.runId);
+    expect(standing.standing).toBe("terminal");
+    expect(terminalStanding(standing)).toMatchObject({
+      status: "control-stopped",
+      cleanup: "released",
+      controlRef: `state/task-attempts/${fabricated.runId}/control.json`,
+    });
   });
 
   test("reconcile derives the shared settlement from a retained owner final and refuses a live owner", () => {

@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import type { CellInput, CellRunRecord } from "../../../packages/work-cell/src/contracts";
@@ -20,6 +20,15 @@ const TaskRunAttemptSchema = z.object({
   attemptId: TaskAttemptIdSchema,
   inputRef: z.string().min(1),
   finalRecordRef: z.string().min(1),
+  /**
+   * The exact canonical Worktree identity retained by the O2 Run request
+   * BEFORE any O3 writer-claim acquisition or mutable preparation. This
+   * O2-owned request field lets a new-format inputless Run reconcile the
+   * exact dead-owner claim from the request identity alone; historical
+   * attempt records lacking it remain readable and fail closed for that
+   * recovery.
+   */
+  worktree: z.string().min(1).optional(),
   workerId: z.string().min(1).optional(),
   driver: z.string().min(1),
   model: z.string().min(1),
@@ -71,6 +80,61 @@ const TaskRunSettlementSchema = z.object({
   cellStatus: z.string().min(1).optional(),
   error: z.string().min(1).optional(),
 }).passthrough();
+
+/**
+ * The exact O2 stop control receipt version written by the O2 `stopRun`
+ * owner (`orchestration/run.ts`). The conversation-owned carrier writes the
+ * same file with its own frozen carrier shape (see below); both are strict
+ * Run evidence with exact Run/task/worktree/request/settlement cross-links.
+ */
+export const RUN_CONTROL_RECEIPT_VERSION = "rosso.run-control-receipt.v1" as const;
+
+/** The exact O2 stop receipt shape: `runId` names the Run identity. */
+export const RunControlReceiptSchema = z.object({
+  version: z.literal(RUN_CONTROL_RECEIPT_VERSION),
+  control: z.literal("stop"),
+  runId: z.string().uuid(),
+  taskId: z.string().min(1),
+  workerId: z.string().min(1),
+  worktree: z.string().min(1),
+  sourceRef: z.string().min(1),
+  requestedBy: z.string().min(1),
+  requestedAt: z.iso.datetime(),
+  attemptRef: z.string().min(1),
+  settlementRef: z.string().min(1),
+}).strict();
+
+export type RunControlReceipt = z.infer<typeof RunControlReceiptSchema>;
+
+/** The conversation-owned carrier stop receipt shape: `carrierId` names the attempt. */
+const CarrierControlReceiptSchema = z.object({
+  version: z.literal("rosso.task-run-control-receipt.v1"),
+  control: z.literal("stop"),
+  carrierId: z.string().uuid(),
+  taskId: z.string().min(1),
+  attemptId: z.string().min(1),
+  workerId: z.string().min(1),
+  worktree: z.string().min(1),
+  sourceRef: z.string().min(1),
+  requestedBy: z.object({
+    conversationId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    actionId: z.string().uuid(),
+  }).strict(),
+  requestedAt: z.string().min(1),
+  attemptRef: z.string().min(1),
+  settlementRef: z.string().min(1),
+}).strict();
+
+export type CarrierControlReceipt = z.infer<typeof CarrierControlReceiptSchema>;
+
+/** The union of every existing durable control receipt evidence shape. */
+export type ControlReceiptEvidence = RunControlReceipt | CarrierControlReceipt;
+
+const ControlReceiptEvidenceSchema = z.union([
+  RunControlReceiptSchema,
+  CarrierControlReceiptSchema,
+]);
 
 export type ParsedTaskRunAttempt = z.infer<typeof TaskRunAttemptSchema>;
 export type ParsedTaskRunSettlement = z.infer<typeof TaskRunSettlementSchema>;
@@ -351,16 +415,17 @@ function evidenceRef(home: string, path: string): string {
 /**
  * One strict read of an attempt directory's whole evidence family: the
  * immutable attempt record (including its optional conversation correlation),
- * the immutable CellInput, the retained Work Cell final record, and the
- * append-only settlement, each validated against its exact schema and the
- * stable directory refs. The standing is `available` only when every present
- * source parses and matches its owner; `invalid` when any present source is
- * malformed or mismatched (such evidence can never settle anything);
- * `unavailable` when the attempt record itself is missing. Callers that need
- * terminal status must require standing `available` plus a validated
- * settlement; an invalid or absent settlement projects unknown, never
- * settled. This is the single strict owner-backed reader for carrier
- * standing, projections, and receipt reconciliation.
+ * the immutable CellInput, the retained Work Cell final record, the durable
+ * control receipt when one exists, and the append-only settlement, each
+ * validated against its exact schema and the stable directory refs. The
+ * standing is `available` only when every present source parses and matches
+ * its owner; `invalid` when any present source is malformed or mismatched
+ * (such evidence can never settle anything); `unavailable` when the attempt
+ * record itself is missing. Callers that need terminal status must require
+ * standing `available` plus a validated settlement; an invalid or absent
+ * settlement projects unknown, never settled. This is the single strict
+ * owner-backed reader for carrier standing, projections, and receipt
+ * reconciliation.
  */
 export interface StrictTaskAttemptEvidence {
   readonly standing: "available" | "unavailable" | "invalid";
@@ -368,7 +433,11 @@ export interface StrictTaskAttemptEvidence {
   readonly attempt?: ParsedTaskRunAttempt;
   readonly input?: CellInput;
   readonly finalRecord?: CellRunRecord;
+  /** The exact retained control receipt, validated against the family cross-links. */
+  readonly control?: ControlReceiptEvidence;
   readonly settlement?: ParsedTaskRunSettlement;
+  /** The exact canonical control receipt ref of this attempt family. */
+  readonly controlRef: string;
   readonly refs: {
     inputRef: string;
     attemptRef: string;
@@ -383,9 +452,12 @@ export function readStrictTaskAttemptEvidence(
 ): StrictTaskAttemptEvidence {
   const home = resolveHome(homeArgument);
   const refs = attemptRefs(home, attemptId);
+  // The durable control receipt is strict Run evidence at its exact canonical
+  // ref inside the attempt directory.
+  const controlRef = evidenceRef(home, join(dirname(join(home, refs.attemptRef)), "control.json"));
   const attemptJson = readJson(join(home, refs.attemptRef));
   if (attemptJson.standing === "unavailable") {
-    return { standing: "unavailable", refs };
+    return { standing: "unavailable", refs, controlRef };
   }
   const attempt = parseEvidence(attemptJson, TaskRunAttemptSchema, (candidate) => {
     if (candidate.attemptId !== attemptId) return "attempt id does not match its evidence directory";
@@ -400,6 +472,7 @@ export function readStrictTaskAttemptEvidence(
       standing: "invalid",
       error: attempt.standing.standing === "invalid" ? attempt.standing.error : "attempt evidence is unavailable",
       refs,
+      controlRef,
     };
   }
   const attemptRecord = attempt.value;
@@ -427,6 +500,11 @@ export function readStrictTaskAttemptEvidence(
         && candidate.workerId !== candidate.executionProfile.id
       ) {
         return "CellInput workerId does not match its execution profile identity";
+      }
+      const requestWorktree = attemptRecord.worktree;
+      if (requestWorktree !== undefined) {
+        const rootError = attemptWorktreeInputRootError(requestWorktree, candidate.workspace.root);
+        if (rootError !== undefined) return rootError;
       }
       return undefined;
     });
@@ -481,6 +559,20 @@ export function readStrictTaskAttemptEvidence(
     }
   }
 
+  const controlJson = readJson(join(home, controlRef));
+  let control: ControlReceiptEvidence | undefined;
+  if (controlJson.standing === "invalid") {
+    invalid.push(`control receipt is malformed: ${controlJson.error ?? "invalid JSON"}`);
+  } else if (controlJson.standing === "available") {
+    const parsed = parseEvidence(controlJson, ControlReceiptEvidenceSchema, (candidate) =>
+      controlReceiptIdentityError(candidate, attemptRecord, attemptId, refs, input));
+    if (parsed.value === undefined) {
+      invalid.push(`control receipt is invalid: ${parsed.standing.standing === "invalid" ? parsed.standing.error : "unavailable"}`);
+    } else {
+      control = parsed.value;
+    }
+  }
+
   const settlementJson = readJson(join(home, refs.settlementRef));
   let settlement: ParsedTaskRunSettlement | undefined;
   if (settlementJson.standing === "invalid") {
@@ -496,7 +588,7 @@ export function readStrictTaskAttemptEvidence(
       if (candidate.taskRevision !== attemptRecord.taskRevision) {
         return "settlement task revision does not match the attempt record";
       }
-      const relation = settlementFinalRelationError(candidate, finalRecord);
+      const relation = settlementFinalRelationError(candidate, finalRecord, control, controlRef);
       if (relation !== undefined) return relation;
       return undefined;
     });
@@ -510,15 +602,17 @@ export function readStrictTaskAttemptEvidence(
   if (invalid.length > 0) {
     // The valid attempt record stays attributable so callers can project the
     // carrier as unknown/uninspectable; the standing still never settles.
-    return { standing: "invalid", error: invalid.join("; "), attempt: attemptRecord, refs };
+    return { standing: "invalid", error: invalid.join("; "), attempt: attemptRecord, refs, controlRef };
   }
   return {
     standing: "available",
     attempt: attemptRecord,
     ...(input === undefined ? {} : { input }),
     ...(finalRecord === undefined ? {} : { finalRecord }),
+    ...(control === undefined ? {} : { control }),
     ...(settlement === undefined ? {} : { settlement }),
     refs,
+    controlRef,
   };
 }
 
@@ -584,20 +678,39 @@ function aiSdkFamilyFingerprintStandingError(
 }
 
 /**
- * The exact settlement↔final relation: terminal claims must match the
+ * The exact settlement↔final↔control relation: terminal claims must match the
  * retained owner final, and each status admits only its permitted shape.
  * `recorded` requires the exact passed final; `runner-failed` admits a
  * non-passed final (with matching run/cell evidence and error) or no final
  * (with no terminal claims); `control-stopped` requires its durable control
- * receipt and, when the final exists, matching claims. Contradictions are
- * invalid/uninspectable evidence.
+ * receipt and, when the final exists, matching claims. The durable control
+ * receipt is strict Run evidence: a settlement carrying a control ref must be
+ * control-stopped with the exact receipt of this attempt family, a retained
+ * exact receipt must be carried by the terminal settlement, and a
+ * control-stopped settlement without its exact receipt is invalid.
+ * Contradictions are invalid/uninspectable evidence.
  */
 function settlementFinalRelationError(
   settlement: ParsedTaskRunSettlement,
   final: CellRunRecord | undefined,
+  control: ControlReceiptEvidence | undefined,
+  controlRef: string,
 ): string | undefined {
   const runId = settlement.workCellRunId;
   const cellStatus = settlement.cellStatus;
+  if (settlement.controlRef !== undefined) {
+    if (settlement.status !== "control-stopped") {
+      return "a settlement carrying a control receipt must be control-stopped";
+    }
+    if (settlement.controlRef !== controlRef) {
+      return "settlement control ref does not match the exact retained control receipt";
+    }
+    if (control === undefined) {
+      return "control-stopped settlement requires its exact retained control receipt";
+    }
+  } else if (control !== undefined) {
+    return "the retained control receipt is not carried by the terminal settlement";
+  }
   if (runId === undefined && cellStatus !== undefined) {
     return "settlement carries a cell status without its Work Cell run id";
   }
@@ -646,4 +759,88 @@ function settlementFinalRelationError(
     return undefined;
   }
   return undefined;
+}
+
+/**
+ * The exact cross-links one retained control receipt must satisfy against
+ * its owning attempt family: the Run/carrier identity, the task attribution,
+ * the worker attribution, the attempt/settlement refs, and the canonical
+ * Worktree (the request-owned identity first, else the immutable CellInput
+ * workspace root). Any mismatch fails closed as invalid evidence.
+ */
+function controlReceiptIdentityError(
+  candidate: ControlReceiptEvidence,
+  attemptRecord: ParsedTaskRunAttempt,
+  attemptId: string,
+  refs: {
+    inputRef: string;
+    attemptRef: string;
+    finalRecordRef: string;
+    settlementRef: string;
+  },
+  input: CellInput | undefined,
+): string | undefined {
+  const recordedRunId = "runId" in candidate ? candidate.runId : candidate.carrierId;
+  if (recordedRunId !== attemptId) {
+    return "control receipt run identity does not match its evidence directory";
+  }
+  if (candidate.attemptRef !== refs.attemptRef) {
+    return "control receipt attempt ref does not match its stable evidence ref";
+  }
+  if (candidate.settlementRef !== refs.settlementRef) {
+    return "control receipt settlement ref does not match its stable evidence ref";
+  }
+  if (candidate.taskId !== attemptRecord.taskId) {
+    return "control receipt task id does not match the attempt record";
+  }
+  if (attemptRecord.workerId !== undefined && candidate.workerId !== attemptRecord.workerId) {
+    return "control receipt worker id does not match the attempt record";
+  }
+  const expectedRoot = attemptRecord.worktree ?? input?.workspace.root;
+  if (expectedRoot === undefined) {
+    return "control receipt Worktree cannot be verified without a request-owned Worktree identity or immutable CellInput";
+  }
+  let observedRoot: string;
+  try {
+    observedRoot = realpathSync(candidate.worktree);
+  } catch {
+    return `control receipt Worktree cannot be resolved: ${candidate.worktree}`;
+  }
+  let expectedCanonical: string;
+  try {
+    expectedCanonical = realpathSync(expectedRoot);
+  } catch {
+    return `the expected Worktree identity cannot be resolved: ${expectedRoot}`;
+  }
+  if (observedRoot !== expectedCanonical) {
+    return `control receipt Worktree ${candidate.worktree} does not match the exact request-owned Worktree ${expectedCanonical}`;
+  }
+  return undefined;
+}
+
+/**
+ * The exact request↔input Worktree cross-link: when the O2 request record
+ * retains its canonical Worktree identity and the immutable CellInput also
+ * exists, the two must resolve to the same canonical root. Historical records
+ * without the request-owned field skip the check.
+ */
+function attemptWorktreeInputRootError(
+  requestWorktree: string,
+  inputRoot: string,
+): string | undefined {
+  let expectedRoot: string;
+  try {
+    expectedRoot = realpathSync(requestWorktree);
+  } catch {
+    return "the request-owned Worktree identity cannot be resolved";
+  }
+  let observedRoot: string;
+  try {
+    observedRoot = realpathSync(inputRoot);
+  } catch {
+    return "the immutable CellInput workspace root cannot be resolved";
+  }
+  return observedRoot === expectedRoot
+    ? undefined
+    : "immutable CellInput workspace root does not match the request-owned Worktree identity";
 }

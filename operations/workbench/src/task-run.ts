@@ -31,15 +31,22 @@ import {
 // compatibility aliases over the canonical O3 owner.
 export { canonicalGitDirectory, isProcessDefinitelyAbsent };
 import {
+  reconcileRun,
+  // Runtime value import: the compatibility adapter below uses
+  // `instanceof ReconcileRunRefusal` to translate typed O2 reconciliation
+  // refusals into the frozen historical observable messages.
+  ReconcileRunRefusal,
   runOrdinaryTaskRun,
+  type ReconcileRunResult,
   type RunRequest,
+  type RunTerminalOutcome,
 } from "./orchestration/run";
 import { runCommand } from "./process";
 import {
   readStrictTaskAttemptEvidence,
   TaskAttemptIdSchema,
   type ParsedTaskRunAttempt,
-  type ParsedTaskRunSettlement,
+  type StrictTaskAttemptEvidence,
   type TaskRunSettlementStatus,
 } from "./task-attempts";
 import { showPrincipalTask } from "./tasks";
@@ -188,17 +195,26 @@ export function finalRecordSettlementInput(
 }
 
 /**
- * Reconcile one crash-retained ordinary task attempt whose owner process is
- * verifiably dead. The command re-reads the strict attempt evidence family
- * (immutable attempt record, CellInput, final record, settlement) and the
- * exact task/attempt/worktree lease bytes in the bound Worktree's Git
- * metadata, and fails closed on a live or unknown owner, mismatched identity,
- * changed or missing lease, or invalid evidence. Three exact finalizations
- * exist, and each releases the still-exact lease only after a durable
- * settlement exists:
+ * Reconcile one crash-retained ordinary task attempt through the canonical
+ * O2 Run owner (`reconcileRun`). This function is the Task-selector and
+ * result-shape compatibility adapter over the canonical owner: it validates
+ * the exact Task attribution and the legacy attempt-id shape, translates the
+ * typed O2 reconciliation refusals into the frozen historical messages, and
+ * re-projects the O2 terminal outcome into the legacy
+ * `rosso.task-attempt-reconcile.v1` result shape. It never independently
+ * writes a settlement and never releases an O3 claim: every durable mutation
+ * and every exact lease release happen inside the canonical owner, which
+ * re-reads the strict attempt family (request record, CellInput, final
+ * record, control receipt, settlement) and the exact task/attempt/worktree
+ * claim bytes in the bound Worktree's Git metadata, and fails closed on a
+ * live or unknown owner, mismatched identity, changed or missing lease, or
+ * invalid evidence. Three exact finalizations exist, and each releases the
+ * still-exact lease only after a durable settlement exists:
  * - an existing exact settlement plus a still-exact dead-owner lease retries
  *   only the lease release (idempotent finalization of a crash between
  *   settlement write and release);
+ * - a durable stop receipt (with or without a retained cancelled final)
+ *   derives the `control-stopped` settlement without redispatching control;
  * - a real owner final record without a settlement validates the final
  *   record against the immutable input and derives the shared normal
  *   settlement from it;
@@ -231,65 +247,90 @@ export function reconcilePrincipalTaskAttempt(
   if (attemptRecord.taskId !== task.id) {
     throw new Error(`attempt ${arguments_.attemptId} belongs to task ${attemptRecord.taskId}, not the requested task ${task.id}`);
   }
-  const input = evidence.input;
-  if (input === undefined) {
+  let result: ReconcileRunResult;
+  try {
+    result = reconcileRun(home, arguments_.attemptId);
+  } catch (error: unknown) {
+    if (error instanceof ReconcileRunRefusal) {
+      throwLegacyReconcileRefusal(
+        error,
+        home,
+        arguments_,
+        attempt,
+        attemptRecord,
+        evidence,
+      );
+    }
+    throw error;
+  }
+  return reconcileResult(attempt, attemptRecord, result.outcome);
+}
+
+/**
+ * Translate one typed O2 reconciliation refusal into the frozen historical
+ * observable messages. `unproven-owner` and `invalid-lease` refusals are
+ * translated through the exact O3 retained-claim read, which inspects only
+ * and never writes or releases the claim.
+ */
+function throwLegacyReconcileRefusal(
+  refusal: ReconcileRunRefusal,
+  home: string,
+  arguments_: TaskAttemptReconcileArguments,
+  attempt: AttemptEvidence,
+  attemptRecord: ParsedTaskRunAttempt,
+  evidence: StrictTaskAttemptEvidence,
+): never {
+  if (refusal.code === "unknown") {
+    throw new Error(`attempt ${arguments_.attemptId} has no retained attempt evidence: ${attempt.attemptPath}`);
+  }
+  if (refusal.code === "invalid") {
+    throw new Error(
+      `attempt ${arguments_.attemptId} retains invalid evidence and cannot be reconciled: ${refusal.message}`,
+    );
+  }
+  if (refusal.code === "unreadable-input") {
     throw new Error(`attempt ${arguments_.attemptId} has no readable immutable CellInput: ${attempt.inputPath}`);
   }
-  // The exact lease location is the strict immutable CellInput's workspace
-  // root, never the Task's current rebindable worktreePath: a legal X→Y Task
-  // rebind neither hides nor redirects attempt A's retained exact lease in X.
-  const worktree = reconcileCellInputWorkspace(input, arguments_.attemptId);
-
-  const leasePath = worktreeWriterLeasePath(worktree);
-
-  if (evidence.settlement !== undefined) {
-    // Exact retry finalization: the durable settlement was already produced
-    // for this attempt; only the still-exact dead-owner lease remains.
-    const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
-    assertReconcileOwnerDead(retained.pid, arguments_.attemptId);
-    releaseWorktreeLease({ path: leasePath, content: retained.raw });
-    return reconcileResult(attempt, attemptRecord, evidence.settlement);
-  }
-
-  let settlementInput: TaskRunSettlementInput;
-  if (evidence.finalRecord !== undefined) {
-    settlementInput = finalRecordSettlementInput(
-      task.id,
-      attemptRecord.taskRevision,
-      arguments_.attemptId,
-      evidence.finalRecord,
+  if (refusal.code === "owner-live") {
+    throw new Error(
+      `the task-run lease owner process ${refusal.pid ?? "unknown"} for attempt ${arguments_.attemptId} `
+      + "is still alive or owned elsewhere; reconciliation fails closed",
     );
-  } else {
-    settlementInput = {
-      taskId: task.id,
-      taskRevision: attemptRecord.taskRevision,
-      attemptId: arguments_.attemptId,
-      status: "runner-failed",
-      error: "interrupted before a final Work Cell record was retained; reconciled by task reconcile-attempt",
-    };
   }
+  if (refusal.code === "unproven-owner" || refusal.code === "invalid-lease") {
+    const worktree = reconcileLegacyWorktree(home, arguments_.attemptId, attemptRecord, evidence);
+    readRetainedTaskRunLease(
+      worktreeWriterLeasePath(worktree),
+      attemptRecord.taskId,
+      arguments_.attemptId,
+      worktree,
+    );
+  }
+  throw new Error(refusal.message);
+}
 
-  const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
-  assertReconcileOwnerDead(retained.pid, arguments_.attemptId);
-  writeTaskRunSettlement(attempt, settlementInput);
-  releaseWorktreeLease({ path: leasePath, content: retained.raw });
-  return reconcileResult(attempt, attemptRecord, {
-    status: settlementInput.status,
-    ...(settlementInput.workCellRunId === undefined ? {} : { workCellRunId: settlementInput.workCellRunId }),
-    ...(settlementInput.cellStatus === undefined ? {} : { cellStatus: settlementInput.cellStatus }),
-    ...(settlementInput.error === undefined ? {} : { error: settlementInput.error }),
-  });
+/** The exact claim-owner Worktree for the legacy refusal translation. */
+function reconcileLegacyWorktree(
+  home: string,
+  attemptId: string,
+  attemptRecord: ParsedTaskRunAttempt,
+  evidence: StrictTaskAttemptEvidence,
+): string {
+  const root = attemptRecord.worktree ?? evidence.input?.workspace.root;
+  if (root === undefined) {
+    throw new Error(`attempt ${attemptId} has no readable immutable CellInput: ${attemptEvidence(home, attemptId).inputPath}`);
+  }
+  try {
+    return realpathSync(root);
+  } catch {
+    throw new Error(`attempt ${attemptId} CellInput workspace root cannot be resolved: ${root}`);
+  }
 }
 
 function reconcileResult(
   attempt: AttemptEvidence,
   attemptRecord: ParsedTaskRunAttempt,
-  settlement: ParsedTaskRunSettlement | {
-    readonly status: TaskRunSettlementStatus;
-    readonly workCellRunId?: string | undefined;
-    readonly cellStatus?: string | undefined;
-    readonly error?: string | undefined;
-  },
+  outcome: RunTerminalOutcome,
 ): TaskAttemptReconcileResult {
   return {
     version: "rosso.task-attempt-reconcile.v1",
@@ -297,21 +338,11 @@ function reconcileResult(
     taskRevision: attemptRecord.taskRevision,
     attemptId: attemptRecord.attemptId,
     settlementRef: attempt.settlementRef,
-    status: settlement.status,
-    ...(settlement.workCellRunId === undefined ? {} : { workCellRunId: settlement.workCellRunId }),
-    ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
-    ...(settlement.error === undefined ? {} : { error: settlement.error }),
+    status: outcome.status,
+    ...(outcome.workCellRunId === undefined ? {} : { workCellRunId: outcome.workCellRunId }),
+    ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+    ...(outcome.error === undefined ? {} : { error: outcome.error }),
   };
-}
-
-function reconcileCellInputWorkspace(input: CellInput, attemptId: string): string {
-  let observedRoot: string;
-  try {
-    observedRoot = realpathSync(input.workspace.root);
-  } catch {
-    throw new Error(`attempt ${attemptId} CellInput workspace root cannot be resolved: ${input.workspace.root}`);
-  }
-  return observedRoot;
 }
 
 /**
@@ -326,15 +357,6 @@ function readRetainedTaskRunLease(
   worktree: string,
 ): { pid: number; raw: string } {
   return readWorktreeWriterLease(leasePath, { taskId, attemptId, worktree });
-}
-
-function assertReconcileOwnerDead(pid: number, attemptId: string): void {
-  if (!isProcessDefinitelyAbsent(pid)) {
-    throw new Error(
-      `the task-run lease owner process ${pid} for attempt ${attemptId} `
-      + "is still alive or owned elsewhere; reconciliation fails closed",
-    );
-  }
 }
 
 /**
