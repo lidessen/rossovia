@@ -43,7 +43,7 @@ with the actual object, actors, constraints, and acceptance owner. Runtimes and
 adapters execute that already-formed work; their successful operation cannot
 promote their own policy or result into an upper source.
 
-The [Agent harness theory](organization/agent-harness-theory.md) is the
+The [Agent harness theory](harness/) is the
 project-level derivative that treats harness design as Agent-facing task
 engineering: reconstructing, re-expressing, environmentalizing, partitioning,
 and recomposing work under bounded attention, evidence, effect, and authority

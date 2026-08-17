@@ -306,7 +306,7 @@ and Task; Orchestration owns Main-Agent interpretation, Run lifecycle, and the
 shared-Worktree single writer; Work Cell owns one bounded execution and its
 mechanical evidence; Integrations own foreign protocols; Presentation only
 projects facts. See [Decision 055](../decisions/055-rossovia-runtime-module-ownership.md)
-and the [migration map](rossovia-runtime-ownership-migration.md). A module can
+and the [migration map](../organization/rossovia-runtime-ownership-migration.md). A module can
 be physically moved during migration without moving the fact or authority it
 does not own.
 

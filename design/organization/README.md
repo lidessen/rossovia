@@ -1,7 +1,9 @@
 # Organization sessions
 
 Organization campaign records. The stable organization is in
-[design/DESIGN.md](../DESIGN.md); this directory is not a second source.
+[design/DESIGN.md](../DESIGN.md), and the stable
+[Agent harness theory](../harness/) has its own visible design entry; this
+directory is not a second source.
 
 The runtime module review has been promoted into
 [Decision 055](../decisions/055-rossovia-runtime-module-ownership.md). The

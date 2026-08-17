@@ -29,9 +29,11 @@ ethical boundary is liberation rather than extraction: human and AI capability
 must not be organized as an unaccountable source of exploitation.
 
 Start from the [founding mandate](design/FOUNDING-MANDATE.md) to understand why
-the project exists, the [operating protocol](design/operations/OPERATING-PROTOCOL.md)
-to see how human-authorized work proceeds, or the active skills below to use a
-specific method.
+the project exists, the [Agent harness theory](design/harness/) to understand
+how Rossovia turns human work into disciplined Agent-executable units, the
+[operating protocol](design/operations/OPERATING-PROTOCOL.md) to see how
+human-authorized work proceeds, or the active skills below to use a specific
+method.
 
 ## Ways to use Rossovia
 
@@ -140,6 +142,7 @@ inferred memory never becomes active preference without human confirmation.
 | [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
+| [`design/harness/`](design/harness/) | the visible project-level map and coherent theory of Agent-oriented task engineering | a second Principle canon, runtime authority, or empirical proof by itself |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
 | [`chronicle/`](chronicle/) | provenance-preserving observation receipts and correction chains | claims, decisions, or a universal activity log |
 | [`operations/missions/`](operations/missions/) | return obligations for active multi-session missions | a backlog, scheduler, or Git history duplicate |
