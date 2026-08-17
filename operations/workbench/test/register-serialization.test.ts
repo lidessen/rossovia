@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -806,6 +806,7 @@ class RecordingIo implements RegistrationIo {
   readonly operations: string[] = [];
   readonly corruptReadPaths = new Set<string>();
   readonly failWrites: Array<{ when: (path: string) => boolean; code: string }> = [];
+  readonly failRenames: Array<{ when: (source: string, destination: string) => boolean; message: string }> = [];
   readonly readOverrides: Array<{ when: (path: string, call: number) => boolean; content: string }> = [];
   private readonly readCounts = new Map<string, number>();
 
@@ -844,6 +845,9 @@ class RecordingIo implements RegistrationIo {
 
   rename(source: string, destination: string): void {
     this.operations.push(`rename:${source}->${destination}`);
+    for (const failure of this.failRenames) {
+      if (failure.when(source, destination)) throw new Error(failure.message);
+    }
     renameSync(source, destination);
   }
 
@@ -1016,6 +1020,147 @@ describe("registration transition durability and rollback seam", () => {
     expect(operations.some((operation) =>
       operation.startsWith("remove:") && operation.endsWith(join("state", lockName)))).toBe(true);
 
+    expect(sortedProjectIds(target)).toEqual(["repository:migration"]);
+    expect(sortedWorkspaces(target)).toEqual([
+      { projectId: "repository:migration", path: migrated },
+    ]);
+    expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
+    expect(transitionLeftovers(target)).toEqual([]);
+  });
+
+  test("migration durably publishes its digest marker before the canonical projects rename and a retry recognizes the migration-owned pair", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-migration-marker-durability-"));
+    temporaryRoots.push(root);
+    const migrated = join(root, "migrated");
+    createRepository(migrated, "https://example.com/lidessen/migration.git");
+    const source = join(root, "legacy-atthis");
+    const target = join(root, "rossovia");
+    writeJson(join(source, "manifest.json"), {
+      version: "atthis.home.v1",
+      namespace: "atthis",
+      createdAt: "2026-07-18T00:00:00Z",
+    });
+    writeJson(join(source, "config", "projects.json"), {
+      version: "atthis.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.com/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    });
+    writeJson(join(source, "state", "workspaces.json"), {
+      version: "atthis.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: migrated }],
+    });
+    writeJson(join(source, "state", "roots.json"), { version: "atthis.roots.v1", roots: [] });
+
+    const io = new RecordingIo();
+    // The target directory must exist before its canonical realpath can be
+    // observed; prepareMigrationTarget treats an existing empty target the
+    // same as a fresh one.
+    mkdirSync(target, { recursive: true });
+    const resolvedTarget = realpathSync(target);
+    const marker = join(resolvedTarget, ".rossovia-namespace-migration.json");
+    const projectsPath = join(resolvedTarget, "config", "projects.json");
+    const workspacesPath = join(resolvedTarget, "state", "workspaces.json");
+    // Crash-window injection: the canonical projects rename fails exactly
+    // once, as a power loss would at any point after the digest marker
+    // publication. The digest marker must already be fully and durably
+    // published before that rename is even attempted.
+    let renameFaultsRemaining = 1;
+    io.failRenames.push({
+      when: (renameSource, destination) => {
+        if (destination !== projectsPath || renameFaultsRemaining === 0) return false;
+        renameFaultsRemaining -= 1;
+        return true;
+      },
+      message: "injected power loss before the projects publication",
+    });
+    const failure = transitionError(() => {
+      migrateLegacyHome(target, source, io);
+    });
+    expect(failure.message).toContain("cannot persist the Rossovia registration pair");
+    expect(failure.message).toContain("injected power loss before the projects publication");
+
+    // The exact observable durable order: the digest marker stage is written,
+    // fsynced, renamed onto the marker path, and the home directory entry is
+    // fsynced before the canonical projects rename is attempted. A crash at
+    // the injected point therefore cannot lose or revert the digest marker
+    // while the canonical pair publication proceeds.
+    const operations = io.operations;
+    const markerRenames = operations
+      .map((operation, index) => ({ operation, index }))
+      .filter(({ operation }) => operation.startsWith("rename:") && operation.endsWith(`->${marker}`));
+    // One durable publication before the lock, the reset after the clear,
+    // and the digest-carrying publication before the pair commit.
+    expect(markerRenames.length).toBe(3);
+    const digestMarkerRename = markerRenames[markerRenames.length - 1]!;
+    const digestStage = digestMarkerRename.operation.slice(
+      "rename:".length,
+      digestMarkerRename.operation.indexOf("->"),
+    );
+    const projectsRenames = operations
+      .map((operation, index) => ({ operation, index }))
+      .filter(({ operation }) => operation.startsWith("rename:") && operation.endsWith(`->${projectsPath}`));
+    expect(projectsRenames.length).toBe(1);
+    const projectsRenameIndex = projectsRenames[0]!.index;
+    const indexOf = (operation: string): number => {
+      const index = operations.indexOf(operation);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return index;
+    };
+    expect(indexOf(`write:${digestStage}`)).toBeLessThan(indexOf(`fsync-file:${digestStage}`));
+    expect(indexOf(`fsync-file:${digestStage}`)).toBeLessThan(digestMarkerRename.index);
+    expect(digestMarkerRename.index).toBeLessThan(projectsRenameIndex);
+    // The home directory entry is fsynced after the digest rename and before
+    // the canonical projects rename becomes observable.
+    const homeFsyncAfterDigestRename = operations
+      .map((operation, index) => ({ operation, index }))
+      .filter(({ operation, index }) =>
+        operation === `fsync-dir:${resolvedTarget}` && index > digestMarkerRename.index);
+    expect(homeFsyncAfterDigestRename.length).toBeGreaterThanOrEqual(1);
+    expect(homeFsyncAfterDigestRename[0]!.index).toBeLessThan(projectsRenameIndex);
+
+    // After the injected crash the digest marker is fully published on disk:
+    // the committed canonical-pair bytes are recorded even though no
+    // projects rename ever succeeded.
+    const markerOnDisk = JSON.parse(readFileSync(marker, "utf8")) as {
+      committedProjectsDigest: string;
+      committedWorkspacesDigest: string;
+    };
+    expect(markerOnDisk.committedProjectsDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(markerOnDisk.committedWorkspacesDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(existsSync(projectsPath)).toBe(false);
+    expect(existsSync(workspacesPath)).toBe(false);
+    // The failed attempt cleared its retryable target and released the lock.
+    expect(existsSync(join(resolvedTarget, "state", lockName))).toBe(false);
+
+    // The other crash window: the durably synced pair was committed while a
+    // non-durable marker publication could have been lost or reverted.
+    // Publish the exact migration-owned pair the recorded digests describe
+    // and prove the resumed migration recognizes its own committed state
+    // instead of misclassifying it as a later successful registration.
+    writeJson(projectsPath, {
+      version: "rosso.projects.v1",
+      projects: [{
+        id: "repository:migration",
+        repository: "https://example.com/lidessen/migration.git",
+        aliases: ["migration"],
+      }],
+    });
+    writeJson(workspacesPath, {
+      version: "rosso.workspaces.v1",
+      workspaces: [{ projectId: "repository:migration", path: migrated }],
+    });
+    expect(createHash("sha256").update(readFileSync(projectsPath)).digest("hex"))
+      .toBe(markerOnDisk.committedProjectsDigest);
+    expect(createHash("sha256").update(readFileSync(workspacesPath)).digest("hex"))
+      .toBe(markerOnDisk.committedWorkspacesDigest);
+
+    const resumed = migrateLegacyHome(target, source);
+    expect(resumed.migrated).toBe(true);
+    expect(resumed.verifiedProjectId).toBe("repository:migration");
+    expect(existsSync(marker)).toBe(false);
     expect(sortedProjectIds(target)).toEqual(["repository:migration"]);
     expect(sortedWorkspaces(target)).toEqual([
       { projectId: "repository:migration", path: migrated },

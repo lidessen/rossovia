@@ -1,16 +1,15 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import {
   PreferenceReceiptSchema,
@@ -20,7 +19,7 @@ import {
   type Projects,
   type Workspaces,
 } from "./contracts";
-import { initializeHome, loadHome, saveJson, validateProjects, validateWorkspaces, workspaceFor } from "./home";
+import { initializeHome, loadHome, validateProjects, validateWorkspaces, workspaceFor } from "./home";
 import { expandPath } from "./paths";
 import {
   acquireRegistrationLock,
@@ -312,6 +311,44 @@ function verifyTargetCanonicalPairBeforeClear(
   throw registrationExposedError(target);
 }
 
+/**
+ * Publish one load-bearing migration marker publication durably through the
+ * injected registration I/O seam: the complete payload is written to a
+ * unique same-directory stage, the stage file is fsynced, the stage is
+ * atomically renamed onto the marker path, and the marker's parent directory
+ * entry is fsynced before the call returns. The digest marker recording the
+ * committed canonical-pair bytes must be durable before the canonical
+ * projects rename can become observable: otherwise a power loss could retain
+ * the durably synced canonical pair while losing or reverting the digest
+ * marker, and a resumed migration would misclassify its own committed pair
+ * as a later successful registration and refuse to complete the retryable
+ * transaction. Every marker publication (the initial exposure marker, the
+ * post-clear reset, and the digest marker) goes through this one helper;
+ * unrelated JSON writes keep their existing non-durable publication path.
+ */
+function publishMigrationMarker(marker: string, value: unknown, io: RegistrationIo): void {
+  const serialized = `${JSON.stringify(value, null, 2)}\n`;
+  const stage = `${marker}.${randomUUID()}.tmp`;
+  try {
+    io.mkdir(dirname(marker));
+    io.writeFile(stage, serialized);
+    io.fsyncFile(stage);
+    io.rename(stage, marker);
+    io.fsyncDirectory(dirname(marker));
+  } catch (error: unknown) {
+    try {
+      io.remove(stage);
+    } catch {
+      // Preserve the publication failure. The stage name is unique and the
+      // marker path was never written directly.
+    }
+    throw new Error(
+      `cannot persist Rossovia state at ${marker}: ${error instanceof Error ? error.message : String(error)}. `
+      + "The current runtime must grant write access to this exact state location.",
+    );
+  }
+}
+
 function prepareMigrationTarget(
   source: string,
   target: string,
@@ -340,7 +377,7 @@ function prepareMigrationTarget(
   // Publish the marker before taking the lock so a later migration can
   // recognize the interrupted transaction. The canonical pair is never
   // touched here, and the exposure race is re-checked under the lock below.
-  if (!existsSync(marker)) saveJson(marker, markerValue);
+  if (!existsSync(marker)) publishMigrationMarker(marker, markerValue, io);
   const release = acquireRegistrationLock(target, io);
   try {
     // Re-make the decision on the authoritative state under the registration
@@ -355,7 +392,7 @@ function prepareMigrationTarget(
       }
       verifyTargetCanonicalPairBeforeClear(target, current);
       clearMigrationTarget(target);
-      saveJson(marker, markerValue);
+      publishMigrationMarker(marker, markerValue, io);
     } else {
       // The marker published above is gone: another migration completed the
       // target while this one waited, or the marker was removed manually.
@@ -368,7 +405,7 @@ function prepareMigrationTarget(
           "Reconcile the target explicitly before retrying migration, so no successful registration is silently replaced.",
         );
       }
-      saveJson(marker, markerValue);
+      publishMigrationMarker(marker, markerValue, io);
     }
     return { marker, markerValue, release };
   } catch (error: unknown) {
@@ -484,16 +521,19 @@ export function migrateLegacyHome(
     // claimed migration success receives the same canonical-pair admission
     // as register and attach.
     const pair = migrateCanonicalPair(source);
-    // Record the exact committed bytes in the retained marker before the
-    // durable publication: a resumed migration can then prove which
-    // canonical state its own interrupted attempt committed and reject any
-    // state a register or attach published after the exposure, instead of
-    // clearing or replacing it with the fabricated empty previous bytes.
-    saveJson(marker, {
+    // Record the exact committed bytes in the retained marker through the
+    // durable marker publication before the durable canonical pair commit:
+    // the digest marker is fully written, fsynced, renamed, and its home
+    // directory entry fsynced before any canonical projects rename becomes
+    // observable, so a resumed migration can always prove which canonical
+    // state its own interrupted attempt committed and reject any state a
+    // register or attach published after the exposure, instead of clearing
+    // or replacing it with the fabricated empty previous bytes.
+    publishMigrationMarker(marker, {
       ...markerValue,
       committedProjectsDigest: digestBytes(serializeState(pair.projects)),
       committedWorkspacesDigest: digestBytes(serializeState(pair.workspaces)),
-    });
+    }, io);
     commitCanonicalPair(
       target,
       pair.projects,
