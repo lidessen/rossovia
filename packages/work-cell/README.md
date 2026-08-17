@@ -411,7 +411,10 @@ still validates it independently. Trace and usage expose the extra settlement
 phase instead of pretending it was one provider-native response. The
 settlement phase consumes the same explicit `maxSteps` allowance as the main
 loop and terminal recovery: when no step remains it does not start, and the
-Cell fails truthfully instead of passing without the required output.
+Cell fails truthfully instead of passing without the required output. A
+settlement provider or adapter failure after its step consumed the final
+allowance keeps its real causal error; only a normally completed unsatisfied
+attempt reports the canonical step-budget exhaustion wording.
 Tool-settlement routes have no closure phase; this settlement path is their
 only structured-output phase. The closure phase described above exists only
 for the terminal plus inline-output mode.
@@ -465,6 +468,11 @@ or adapter failure after the final allowance is consumed keeps its real causal
 error even when declared terminal tools remain unsatisfied: terminal-contract
 exhaustion is classified only from a normally completed or explicitly
 step-stopped unsatisfied loop, never from an arbitrary provider throw.
+A structured-settlement provider or adapter throw after its step consumed the
+final allowance keeps that same real causal error: the settlement reports
+step-budget exhaustion only when an attempt completes normally without an
+accepted output, never when the settlement call itself failed, and no further
+settlement attempt starts when no step remains.
 Settlement usage remains usage attribution only: it is never
 extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
 budget boundary: it ends the run with a `cancelled` standing that keeps the

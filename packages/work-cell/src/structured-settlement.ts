@@ -108,10 +108,17 @@ export async function settleStructuredOutput(options: {
         options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
       }
     } catch (error) {
-      lastError = options.stepAllowance.exhausted
-        ? stepBudgetExhaustedMessage(options.stepAllowance.consumed, "the structured output contract was not satisfied")
-        : error instanceof Error ? error.message : String(error);
+      // An actual provider or adapter failure keeps its real causal error even
+      // when its onStepStart consumed the final allowed step: the throw is
+      // never relabeled as step-budget exhaustion merely because the shared
+      // allowance is now exhausted. Only a normally completed attempt with no
+      // accepted output may report the canonical exhaustion wording. When no
+      // step remains no further attempt could start anyway, so the loop ends
+      // here and retains the causal error instead of letting the next
+      // precheck overwrite it.
+      lastError = error instanceof Error ? error.message : String(error);
       options.context.emit("structured.settlement.attempt.failed", { attempt, error: lastError });
+      if (options.stepAllowance.exhausted) break;
     }
   }
 

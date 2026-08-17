@@ -1344,6 +1344,70 @@ test("one remaining step permits at most one structured settlement attempt", asy
   });
 });
 
+test("a settlement provider throw after the final allowed step keeps its real causal error", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      // Main execution ends naturally on the first allowed step, consuming
+      // one of the two explicit steps.
+      if (calls === 1) {
+        return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      }
+      // The second and final allowed step is the settlement provider call:
+      // it throws after its onStepStart consumed the shared allowance. The
+      // actual thrown error must be retained; it is never relabeled as
+      // step-budget exhaustion merely because the allowance is now exhausted.
+      throw new Error("provider transport failed");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "settlement-provider-error-at-bound",
+    intent: "Prove a settlement provider throw keeps its causal error at the allowance bound.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The settlement provider error is retained."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxSteps: 2, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  // Main execution consumed one of the two allowed steps; settlement started
+  // and consumed the second, then its provider call threw. The final Cell
+  // failure retains that exact causal error and does not report step-budget
+  // exhaustion, and no third provider call ever starts.
+  expect(record.status).toBe("failed");
+  expect(record.error).toBe("provider transport failed");
+  expect(record.error).not.toContain("step budget exhausted");
+  expect(calls).toBe(2);
+  expect(record.usage.totalTokens).toBe(2);
+  expect(record.trace.some((event) => event.type === "structured.settlement.started")).toBe(true);
+  expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(false);
+  // Exactly one settlement attempt ran: the throw happened after the final
+  // allowed step was consumed, so the loop ended there instead of starting a
+  // second attempt that could not run anyway.
+  const failedAttempts = record.trace.filter((event) => event.type === "structured.settlement.attempt.failed");
+  expect(failedAttempts).toHaveLength(1);
+  expect(failedAttempts[0]?.data).toEqual({
+    attempt: 1,
+    error: "provider transport failed",
+  });
+});
+
 test("stops the main loop after one structured output step following a terminal call", async () => {
   const root = await fixture();
   let calls = 0;
