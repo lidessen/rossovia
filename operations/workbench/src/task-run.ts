@@ -4,13 +4,11 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { z } from "zod";
 import type {
   CellInput,
   CellRunRecord,
@@ -18,6 +16,20 @@ import type {
 } from "../../../packages/work-cell/src/contracts";
 import type { WorkerCard, WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
 import { loadHome, resolveHome, workspaceFor } from "./home";
+import {
+  acquireWorktreeWriterLease,
+  canonicalGitDirectory,
+  isProcessDefinitelyAbsent,
+  readWorktreeWriterLease,
+  releaseWorktreeWriterLease,
+  worktreeWriterLeasePath,
+  WorktreeWriterLeaseSchema,
+  type WorktreeWriterLease,
+} from "./orchestration/worktree-writer";
+// The exact Git metadata location and the owner-process absence observation
+// remain part of the current task-run export surface as bounded
+// compatibility aliases over the canonical O3 owner.
+export { canonicalGitDirectory, isProcessDefinitelyAbsent };
 import { runCommand } from "./process";
 import {
   readStrictTaskAttemptEvidence,
@@ -141,17 +153,6 @@ export interface TaskAttemptReconcileResult {
   error?: string;
 }
 
-const TASK_RUN_LEASE_VERSION = "rosso.task-run-worktree-lease.v1" as const;
-
-const TaskRunWorktreeLeaseSchema = z.object({
-  version: z.literal(TASK_RUN_LEASE_VERSION),
-  worktree: z.string().min(1),
-  taskId: z.string().min(1),
-  attemptId: z.string().min(1),
-  pid: z.number().int().positive(),
-  acquiredAt: z.string().min(1),
-});
-
 /**
  * The shared normal settlement derivation for one validated owner-backed
  * Work Cell final record: a passed run records normally, any other terminal
@@ -235,7 +236,7 @@ export function reconcilePrincipalTaskAttempt(
   // rebind neither hides nor redirects attempt A's retained exact lease in X.
   const worktree = reconcileCellInputWorkspace(input, arguments_.attemptId);
 
-  const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
+  const leasePath = worktreeWriterLeasePath(worktree);
 
   if (evidence.settlement !== undefined) {
     // Exact retry finalization: the durable settlement was already produced
@@ -310,55 +311,17 @@ function reconcileCellInputWorkspace(input: CellInput, attemptId: string): strin
 }
 
 /**
- * Reconcile reads the strict attempt evidence family: shape, cell/input
- * identity, driver/model form, and the embedded immutable CellInput identity
- * were already validated by the strict evidence reader; nothing here copies
- * or forges evidence.
+ * Compatibility reader over the canonical O3 writer-claim validation:
+ * reconcile reads the retained claim through the exact O3 owner identity
+ * check; the observable refusal messages are the frozen O3 surface.
  */
-
 function readRetainedTaskRunLease(
   leasePath: string,
   taskId: string,
   attemptId: string,
   worktree: string,
 ): { pid: number; raw: string } {
-  let raw: string;
-  try {
-    raw = readFileSync(leasePath, "utf8");
-  } catch {
-    throw new Error(`attempt ${attemptId} has no retained task-run lease in the bound Worktree: ${leasePath}`);
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error(
-      `the retained task-run lease for attempt ${attemptId} does not carry the exact expected identity bytes: ${leasePath}`,
-    );
-  }
-  const parsed = TaskRunWorktreeLeaseSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(
-      `the retained task-run lease for attempt ${attemptId} does not carry the exact expected identity bytes: ${leasePath}`,
-    );
-  }
-  const lease = parsed.data;
-  if (lease.taskId !== taskId) {
-    throw new Error(`the retained task-run lease belongs to task ${lease.taskId}, not the requested task ${taskId}`);
-  }
-  if (lease.attemptId !== attemptId) {
-    throw new Error(`the retained task-run lease belongs to attempt ${lease.attemptId}, not the requested attempt ${attemptId}`);
-  }
-  let observedWorktree: string;
-  try {
-    observedWorktree = realpathSync(lease.worktree);
-  } catch {
-    throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
-  }
-  if (observedWorktree !== worktree) {
-    throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
-  }
-  return { pid: lease.pid, raw };
+  return readWorktreeWriterLease(leasePath, { taskId, attemptId, worktree });
 }
 
 function assertReconcileOwnerDead(pid: number, attemptId: string): void {
@@ -370,23 +333,14 @@ function assertReconcileOwnerDead(pid: number, attemptId: string): void {
   }
 }
 
-/** One lease owner process is provably absent only when its pid no longer resolves. */
-export function isProcessDefinitelyAbsent(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (error) {
-    return typeof error === "object" && error !== null && "code" in error
-      && (error as { code?: unknown }).code === "ESRCH";
-  }
-}
-
 /**
  * The shared owner-backed relation between one attempt and the exact
  * retained task-run lease, located from the strict immutable attempt
  * CellInput's workspace root — never from the Task's current rebindable
  * worktreePath, so a legal X→Y Task rebind neither hides nor redirects
- * attempt A's retained exact lease in X. `retained` means the exact lease
+ * attempt A's retained exact lease in X. The lease location, schema, and
+ * owner identity now come from the canonical O3 worktree-writer owner.
+ * `retained` means the exact lease
  * file still exists for this attempt's owner identity (or exists but cannot
  * be proven to belong to a different attempt); `released` means the lease
  * file is absent or provably belongs to another attempt; `uninspectable`
@@ -413,7 +367,7 @@ export function attemptLeaseStanding(
   let leasePath: string;
   try {
     const worktree = realpathSync(input.workspace.root);
-    leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
+    leasePath = worktreeWriterLeasePath(worktree);
   } catch {
     return "uninspectable";
   }
@@ -424,7 +378,7 @@ export function attemptLeaseStanding(
   } catch {
     return "retained";
   }
-  const parsed = TaskRunWorktreeLeaseSchema.safeParse(value);
+  const parsed = WorktreeWriterLeaseSchema.safeParse(value);
   if (!parsed.success) return "retained";
   if (parsed.data.taskId !== taskId || parsed.data.attemptId !== attemptId) {
     return "released";
@@ -996,37 +950,25 @@ function gitVisiblePaths(worktree: string): Set<string> {
   return paths;
 }
 
-export interface TaskRunLease {
-  path: string;
-  content: string;
-}
+/**
+ * Bounded compatibility alias for the canonical O3 writer-claim type. The
+ * authoritative owner is the O3 worktree-writer module; this name remains
+ * only so current task-run consumers keep compiling, and it grants no new
+ * writer authority.
+ */
+export type TaskRunLease = WorktreeWriterLease;
 
+/**
+ * Bounded compatibility alias over the canonical O3 writer-claim acquire.
+ * Ordinary Task runs acquire the exact O3 claim; the historical signature
+ * and refusal message are retained byte-for-byte.
+ */
 export function acquireWorktreeLease(
   worktree: string,
   taskId: string,
   attemptId: string,
 ): TaskRunLease {
-  const gitDirectory = canonicalGitDirectory(worktree);
-  const path = join(gitDirectory, "rossovia-task-run.lock");
-  const content = `${JSON.stringify({
-    version: "rosso.task-run-worktree-lease.v1",
-    worktree,
-    taskId,
-    attemptId,
-    pid: process.pid,
-    acquiredAt: new Date().toISOString(),
-  }, null, 2)}\n`;
-  try {
-    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    if (isAlreadyExists(error)) {
-      throw new Error(
-        `task Worktree already has an active task-run lease: ${worktree}; lease: ${path}`,
-      );
-    }
-    throw error;
-  }
-  return { path, content };
+  return acquireWorktreeWriterLease(worktree, { taskId, attemptId });
 }
 
 export interface AttemptEvidence {
@@ -1180,12 +1122,6 @@ export function writeTaskRunSettlement(
   });
 }
 
-/** The exact resolved Git metadata directory one Worktree lease binds to. */
-export function canonicalGitDirectory(worktree: string): string {
-  const raw = requiredGit(["rev-parse", "--git-dir"], worktree);
-  return realpathSync(isAbsolute(raw) ? raw : resolve(worktree, raw));
-}
-
 export function ordinaryOpenCodeExcludes(worktree: string): string[] {
   const tracked = (requiredGit(["ls-files", "-z"], worktree) ?? "")
     .split("\0")
@@ -1195,11 +1131,12 @@ export function ordinaryOpenCodeExcludes(worktree: string): string[] {
   );
 }
 
+/**
+ * Bounded compatibility alias over the canonical O3 writer-claim release:
+ * the exact byte-match refusal and removal stay the frozen O3 surface.
+ */
 export function releaseWorktreeLease(lease: TaskRunLease): void {
-  if (readFileSync(lease.path, "utf8") !== lease.content) {
-    throw new Error(`task-run lease ownership changed before release: ${lease.path}`);
-  }
-  rmSync(lease.path);
+  releaseWorktreeWriterLease(lease);
 }
 
 
@@ -1227,10 +1164,6 @@ function currentCatalog(environment: NodeJS.ProcessEnv = process.env): WorkerCat
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
 function validatePolicy(arguments_: TaskRunArguments): void {

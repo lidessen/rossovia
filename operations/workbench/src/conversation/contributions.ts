@@ -44,16 +44,18 @@ import {
 import { expandPath } from "../paths";
 import { observeWorkspace, requiredGit } from "../workspace";
 import {
-  acquireWorktreeLease,
-  canonicalGitDirectory,
-  evidenceRef,
+  acquireWorktreeWriterLease,
   isProcessDefinitelyAbsent,
+  releaseWorktreeWriterLease,
+  worktreeWriterLeasePath,
+  type WorktreeWriterLease,
+} from "../orchestration/worktree-writer";
+import {
+  evidenceRef,
   ordinaryOpenCodeExcludes,
   ORDINARY_TASK_MAX_DURATION_MS,
-  releaseWorktreeLease,
   verifyCleanStatus,
   writeImmutableJson,
-  type TaskRunLease,
 } from "../task-run";
 import { digest, taskActionSourceRef } from "./contracts";
 import { FileConversationJournal } from "./journal";
@@ -752,15 +754,18 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       this.onReservationPublished();
     }
 
-    let lease: TaskRunLease | undefined;
+    let lease: WorktreeWriterLease | undefined;
     if (operation.effectKind === "effectful") {
       try {
-        // Only the reservation winner may acquire the shared task-run
-        // Worktree lease: one Task/Worktree permits at most one effectful
+        // Only the reservation winner may acquire the shared O3 Worktree
+        // writer claim: one Task/Worktree permits at most one effectful
         // execution owner, whether a task_continue carrier or a temporary
         // contribution, and overlapping writers are refused by the same
         // atomic owner evidence.
-        lease = acquireWorktreeLease(worktree, task.id, batchId);
+        lease = acquireWorktreeWriterLease(worktree, {
+          taskId: task.id,
+          attemptId: batchId,
+        });
       } catch (error) {
         // The reservation lost the exact writer lock: retract the
         // just-published reservation so the refused action leaves no claimed
@@ -1324,7 +1329,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       };
     }
     try {
-      releaseWorktreeLease({ path: binding.path, content: raw });
+      releaseWorktreeWriterLease({ path: binding.path, content: raw });
     } catch (error) {
       return {
         outcome: "refused",
@@ -1758,7 +1763,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       ...(input.effectKind === "effectful"
         ? {
             lease: {
-              path: join(canonicalGitDirectory(input.worktree), "rossovia-task-run.lock"),
+              path: worktreeWriterLeasePath(input.worktree),
               worktree: input.worktree,
               taskId: input.task.id,
               attemptId: input.batchId,
@@ -1920,7 +1925,7 @@ class WorkbenchContributionHandle implements ContributionHandle {
   readonly signal: AbortSignal;
   private readonly home: string;
   private readonly controller = new AbortController();
-  private lease: TaskRunLease | undefined;
+  private lease: WorktreeWriterLease | undefined;
   private readonly activityListeners = new Set<(activity: { text: string }) => void>();
   private readonly settledListeners = new Set<(settlement: ContributionSettlement) => void>();
   private resolveSettled!: (settlement: ContributionSettlement) => void;
@@ -1936,7 +1941,7 @@ class WorkbenchContributionHandle implements ContributionHandle {
     readonly identity: ContributionIdentity;
     readonly home: string;
     readonly spawnRef: string;
-    readonly lease?: TaskRunLease;
+    readonly lease?: WorktreeWriterLease;
   }) {
     this.identity = input.identity;
     this.home = input.home;
@@ -2046,7 +2051,7 @@ class WorkbenchContributionHandle implements ContributionHandle {
     if (this.lease !== undefined) {
       const retainedLease = this.lease;
       try {
-        releaseWorktreeLease(retainedLease);
+        releaseWorktreeWriterLease(retainedLease);
         this.lease = undefined;
       } catch (error) {
         const pid = leaseOwnerPid(retainedLease);
@@ -2440,8 +2445,8 @@ function contributionLeaseStanding(lease: {
     : "released";
 }
 
-/** The owner pid of one exact lease, when its content parses. */
-function leaseOwnerPid(lease: TaskRunLease): number | undefined {
+/** The owner pid of one exact O3 writer claim, when its content parses. */
+function leaseOwnerPid(lease: WorktreeWriterLease): number | undefined {
   try {
     const pid = asRecord(JSON.parse(lease.content)).pid;
     return typeof pid === "number" ? pid : undefined;

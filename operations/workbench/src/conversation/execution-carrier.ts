@@ -6,6 +6,10 @@ import type { CellInput, CellRunRecord, TraceEvent } from "../../../../packages/
 import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
 import type { TaskContinueOperation } from "../../../autonomy/src/conversation-coordinator";
 import {
+  releaseWorktreeWriterLease,
+  type WorktreeWriterLease,
+} from "../orchestration/worktree-writer";
+import {
   attemptEvidence,
   attemptLeaseStanding,
   createAttempt,
@@ -14,13 +18,11 @@ import {
   executeTaskCellRun,
   finalizeTaskAttempt,
   preparePrincipalTaskRun,
-  releaseWorktreeLease,
   writeImmutableJson,
   type AttemptCorrelation,
   type PreparedPrincipalTaskRun,
   type TaskAttemptFinalization,
   type TaskRunExecution,
-  type TaskRunLease,
 } from "../task-run";
 import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { PrincipalTaskError } from "../tasks";
@@ -272,7 +274,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
         ],
       };
     } catch (error) {
-      releaseWorktreeLease(prepared.lease);
+      releaseWorktreeWriterLease(prepared.lease);
       throw mapPreparationError(error);
     }
   }
@@ -490,7 +492,7 @@ interface TaskRunCellCarrierInput {
   readonly identity: ConversationCarrierIdentity;
   readonly cellInput: CellInput;
   readonly attempt: ReturnType<typeof attemptEvidence>;
-  readonly lease: TaskRunLease;
+  readonly lease: WorktreeWriterLease;
   readonly task: PrincipalTask;
   /** The exact requested execution identity the retained final record must match. */
   readonly execution: TaskRunExecution;
@@ -507,7 +509,7 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
   private readonly execution: TaskRunExecution;
   private readonly card: WorkerCard;
   private cellInput: CellInput | undefined;
-  private lease: TaskRunLease | undefined;
+  private lease: WorktreeWriterLease | undefined;
   private task: PrincipalTask | undefined;
   private readonly controller = new AbortController();
   private readonly activityListeners = new Set<(activity: CarrierActivityDelta) => void>();
@@ -690,7 +692,7 @@ class TaskRunCellCarrier implements ConversationCarrierHandle {
     return this.task;
   }
 
-  private requiredLease(): TaskRunLease {
+  private requiredLease(): WorktreeWriterLease {
     if (this.lease === undefined) {
       throw new Error(`carrier ${this.identity.carrierId} lost its retained task-run lease before finalization`);
     }
