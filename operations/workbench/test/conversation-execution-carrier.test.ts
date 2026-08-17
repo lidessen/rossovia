@@ -792,9 +792,20 @@ describe("conversation execution carrier restart evidence selection", () => {
       expect(carrierHydrationFromEvidence(current.home, correlation))
         .toBeUndefined();
     }
-    // The retained-handle path of the same registry refuses a partial turn
-    // too: the handle is never hydrated under a foreign turn identity.
-    expect(registry.hydrateCarrier({ ...exact, turnId: randomUUID() })).toBeUndefined();
+    // The retained-handle path of the same registry applies the identical
+    // full correlation: the exact sourceRef equals the deterministic
+    // taskActionSourceRef for this conversation/action, so only the exact
+    // correlation projects the retained live handle, and every identity or
+    // sourceRef mismatch — including a foreign sourceRef beside the exact
+    // conversation/turn/action — fails closed with no live or terminal
+    // projection and no stop affordance.
+    expect(registry.hydrateCarrier(exact)).toMatchObject({
+      standing: "live",
+      identity: { carrierId },
+    });
+    for (const correlation of partialOrMismatched) {
+      expect(registry.hydrateCarrier(correlation)).toBeUndefined();
+    }
 
     // Only the one exact family projects: unknown (no terminal settlement),
     // never live, with the exact owner-backed identity.
@@ -821,6 +832,15 @@ describe("conversation execution carrier restart evidence selection", () => {
 
     registry.carrier(carrierId)!.stop({ conversationId, turnId, actionId });
     await until(() => registry.carrier(carrierId)!.liveness().state === "settled", "settlement");
+    // The settled retained handle obeys the same full correlation: the exact
+    // correlation projects the terminal standing, and a mismatched sourceRef
+    // still fails closed with no projection and no stop affordance.
+    expect(registry.hydrateCarrier(exact)).toMatchObject({
+      standing: "terminal",
+      identity: { carrierId },
+    });
+    expect(registry.hydrateCarrier({ ...exact, sourceRef: "conversation:foreign:action:foreign" }))
+      .toBeUndefined();
   });
 
   test("duplicate-correlation ambiguity fails closed with no projection and never selects by directory or UUID order", async () => {

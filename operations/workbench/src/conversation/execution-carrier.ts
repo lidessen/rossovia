@@ -390,6 +390,17 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     readonly actionId: string;
     readonly sourceRef: string;
   }): CarrierHydration | undefined {
+    // The full journal-owned correlation gates every projection path: the
+    // supplied sourceRef must equal the deterministic taskActionSourceRef
+    // for the exact conversation/action before any retained-handle
+    // liveness can be projected. A mismatched sourceRef fails closed with
+    // no live or terminal projection and no stop affordance. No legitimate
+    // attempt family can ever retain a foreign sourceRef, so this
+    // deterministic check fully covers the evidence path as well; nothing
+    // is re-read twice.
+    if (input.sourceRef !== taskActionSourceRef(input.conversationId, input.actionId)) {
+      return undefined;
+    }
     const attemptId = this.startedByCommittedAction.get(
       committedActionKey(input.conversationId, input.actionId),
     );
