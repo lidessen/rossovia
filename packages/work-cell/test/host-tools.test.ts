@@ -1017,6 +1017,7 @@ describe("Pi harness structured settlement shares the explicit step allowance", 
     const observed: Array<{ type: string; data: unknown }> = [];
 
     const record = await runCell(input, driver, {
+      host: createLocalHost(),
       // The caller cancellation is part of the Cell envelope under test: the
       // same controller.signal aborts runWithSignal, so the accepted-output
       // completion is observed as a post-abort provider completion instead
