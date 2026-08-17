@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T16:35:11Z",
+  "updatedAt": "2026-08-17T22:37:59Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -242,7 +242,34 @@
         "review:/root/review_s1_cell_tool_shape"
       ],
       "status": "open"
+    },
+    {
+      "id": "foreground-signal-canonical-stop",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Translate the first SIGINT or SIGTERM received by an ordinary foreground task run into the existing canonical O2 stopRun path without creating another controller, lifecycle, or durable control owner.",
+      "returnCondition": "Return with one clean bounded implementation commit from f7c670d6354bb7b9eda69c9ebd2f990e9169dff7: O2 publishes its registered live control before execution; the foreground adapter retains only temporary listeners, one pending pre-live signal, one registry and live Run identity, and one exactly-once guard; canonical stopRun durably records control before abort; admitted Work Cell effects quiesce before control-stopped finalization and O3 release; focused foreground-signals/orchestration-run/task-run/conversation-carrier, Workbench typecheck and diff-check, then one full Workbench run are green; fresh independent exact-head Kimi review is READY; no Work Cell, worker, conversation, Mission documentation, help, persistent control, second registry/controller/lease/lifecycle, retry/reconcile action, cross-process, provider, exit-code policy, Task acceptance, Mission settlement, publication, or merge change.",
+      "sources": [
+        "decision:055-rossovia-runtime-module-ownership#O2-O3",
+        "migration:rossovia-runtime-ownership#stage-2",
+        "parent:f7c670d6354bb7b9eda69c9ebd2f990e9169dff7/tree96fd2368f4048e3d77f6f4184ed890aad17c506e",
+        "principal-request:foreground-signal-to-canonical-stop"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "daily-single-run-e2e",
+      "parent": "foreground-signal-canonical-stop",
+      "kind": "review",
+      "purpose": "Use the exact reviewed foreground-stop composition as the active local line for one representative single-Run daily-loop proof while retaining product, Task, Mission, and Principal acceptance boundaries.",
+      "returnCondition": "Return only after one exact clean integration head and one representative single-Run daily-loop proof establish normal execution, first foreground SIGINT or SIGTERM translation through canonical O2 stop, Work Cell quiescence before control-stopped finalization and O3 release, reconnect and result truth, and attributable verification; otherwise remain open with the exact blocker. Do not accept or settle any Task or Mission branch, publish, push, open a PR, merge to main, or clean reviewed worktrees.",
+      "sources": [
+        "candidate:7b90fdb387dece21f96cf796a89395eaac983485/tree2e360f53ad3ab92df444cffe430712e8a10a1f64",
+        "parent:f7c670d6354bb7b9eda69c9ebd2f990e9169dff7",
+        "principal:daily-single-run-e2e"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "s1-cell-tool-port"
+  "currentFocus": "daily-single-run-e2e"
 }
