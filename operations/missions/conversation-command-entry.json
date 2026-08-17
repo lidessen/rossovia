@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T04:06:53Z",
+  "updatedAt": "2026-08-17T07:14:01Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -266,7 +266,20 @@
         "design-session:2026-08-16-rossovia-runtime-module-review"
       ],
       "status": "open"
+    },
+    {
+      "id": "c2-capability-host-boundary",
+      "parent": "c1-fixed-cell-envelope",
+      "kind": "implementation",
+      "purpose": "Make C2 the only enforceable route from a Cell driver to bounded host effects by injecting a neutral caller-supplied workspace and capability port instead of constructing filesystem and process authority inside runCell.",
+      "returnCondition": "Return with one clean bounded C2 candidate: runCell no longer constructs concrete filesystem or Bun process authority; a neutral host workspace port is injected by trusted callers; the local filesystem and process implementation is an adapter; fake-host and real-workspace substitution probes prove identical C1 and C3 behavior; production O2 and direct experiment callers explicitly supply the host; self-declared capability labels grant no effect; Work Cell focused/full plus O2 compatibility and typechecks are green; no provider, O3, Presentation, semantic acceptance, Cell identity, orchestration, Swarm, retry, approval, or new lifecycle change.",
+      "sources": [
+        "decision:055#c2-capability-and-workspace-boundary",
+        "plan:rossovia-runtime-ownership-migration#stage-3",
+        "goal:rossovia-independent-workspace-entry#stage3-c2"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "c1-fixed-cell-envelope"
+  "currentFocus": "c2-capability-host-boundary"
 }
