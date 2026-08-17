@@ -81,12 +81,23 @@ For an injected-tool run each adapter applies one fail-closed
 retained-evidence projection: step-level injected entries are removed from
 tool evidence, provider metadata never enters the trace, and the final
 rawSteps and providerMetadata are omitted entirely, because raw provider
-steps and metadata can echo injected inputs or results. Both adapters also
+steps and metadata can echo injected inputs or results. The AI SDK adapter
+also omits the SDK performance object from `agent.step.finished` (including
+the closure step path): its `toolExecutionMs` map is keyed by the exact tool
+call id, so retaining it would duplicate the bounded triplet and add
+durations outside it. Both adapters also
 suppress the generic `agent.tool.started`/`agent.tool.finished` events for
 injected tool names — an injected name (for example `write_file` with no
 active write surface) can never be interpreted as a host payload target —
 while Pi keeps counting their activity for the step budget. `cell.tool.settled`
-stays the sole retained per-invocation evidence. Normalized usage and the
+stays the sole retained per-invocation evidence. Step-level active-tool
+projections obey the same invariant: injected names are removed from the AI
+SDK `agent.step.started` activeTools, the AI SDK closure-step
+`toolCalls`/`toolResults` carry the same redaction as main steps, and the Pi
+adapter removes injected names from `agent.step.started`/`agent.step.finished`
+activeTools and from the `harness.tool_surface.projected` list while
+host/task/terminal names stay visible; Pi carries no performance field and
+none is added. Normalized usage and the
 bounded `cell.tool.*` events are preserved; runs without injected tools are
 byte/behavior compatible.
 

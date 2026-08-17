@@ -222,7 +222,12 @@ export class AiSdkValidationDriver implements CellDriver {
             provider,
             model: modelId,
             stepNumber,
-            activeTools,
+            // An injected tool name is retained only in cell.tools.projected
+            // and its cell.tool.settled triplet: injected names are removed
+            // from the step-level active-tool projection while
+            // host/task/terminal names are preserved. Runs without injected
+            // tools are unchanged.
+            activeTools: filterInjectedActiveTools(activeTools, injectedCellToolNames),
           });
         },
         onToolExecutionStart: ({ callId, toolCall }) => {
@@ -255,9 +260,14 @@ export class AiSdkValidationDriver implements CellDriver {
           const stepUsage = normalizeUsage(usage, providerMetadata);
           observedUsage = addUsage(observedUsage, stepUsage);
           context.observeUsage(stepUsage, "execution");
+          // The SDK performance object is omitted for an injected-tool run:
+          // its toolExecutionMs map is keyed by the exact tool call id, so
+          // retaining it would duplicate the bounded cell.tool.settled
+          // identity and add durations outside the required triplet. Runs
+          // without injected tools keep the ordinary performance evidence.
           context.emit("agent.step.finished", {
             finishReason,
-            performance: sanitize(performance),
+            ...(injectedCellToolsPresent ? {} : { performance: sanitize(performance) }),
             ...(injectedCellToolsPresent ? {} : { providerMetadata: sanitize(providerMetadata) }),
             usage,
             cumulativeUsage: observedUsage,
@@ -451,19 +461,25 @@ export class AiSdkValidationDriver implements CellDriver {
             // Only steps that began with the terminal contract still open are
             // actual terminal recovery; a step that began with the terminal
             // already accepted is the output-only closure step and carries its
-            // own truthful structured-output event.
+            // own truthful structured-output event. The same injected-aware
+            // projection applies to the closure step path: no SDK performance
+            // object is retained for an injected-tool run.
             context.emit(
               needsTerminalCarrier && !terminalSatisfiedBeforeStep
                 ? "terminal.recovery.step.finished"
                 : "structured.output.step.finished",
               {
                 finishReason,
-                performance: sanitize(performance),
+                ...(injectedCellToolsPresent ? {} : { performance: sanitize(performance) }),
                 ...(injectedCellToolsPresent ? {} : { providerMetadata: sanitize(providerMetadata) }),
                 usage,
                 cumulativeUsage: closureUsage,
-                toolCalls: sanitize(toolCalls),
-                toolResults: sanitize(toolResults),
+                // The same injected-aware redaction as the main step path:
+                // injected entries are removed from the closure step's
+                // toolCalls/toolResults evidence so caller-owned input and
+                // result values never enter the trace.
+                toolCalls: sanitize(redactCellToolStepEvidence(toolCalls, injectedCellToolNames)),
+                toolResults: sanitize(redactCellToolStepEvidence(toolResults, injectedCellToolNames)),
               },
             );
           },
@@ -682,6 +698,22 @@ function terminalToolChoice(names: string[]) {
   return names.length === 1
     ? { type: "tool" as const, toolName: names[0]! }
     : "required" as const;
+}
+
+/**
+ * The allowed retained surface for an injected tool name is exactly the
+ * sorted cell.tools.projected list and its cell.tool.settled triplet:
+ * injected names are removed from the step-level active-tool projection
+ * while host/task/terminal names are preserved. Runs without injected tools
+ * pass the value through unchanged.
+ */
+function filterInjectedActiveTools(
+  activeTools: unknown,
+  injectedCellToolNames: ReadonlySet<string> | undefined,
+): unknown {
+  if (injectedCellToolNames === undefined || !Array.isArray(activeTools)) return activeTools;
+  return activeTools.filter((name) =>
+    typeof name !== "string" || !injectedCellToolNames.has(name));
 }
 
 /**

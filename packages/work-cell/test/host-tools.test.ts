@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CellInputSchema, type CellInput } from "../src/contracts";
+import { CellInputSchema, type CellInput, type CellRunRecord } from "../src/contracts";
 import type { CellDriver, DriverContext } from "../src/driver";
 import { Workspace, createLocalHost } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
@@ -1306,6 +1306,103 @@ describe("caller-injected cell tool translation", () => {
     };
   }
 
+  /**
+   * The whole allowed retained surface for a Cell with injected tools: an
+   * injected tool name may be retained only in the sorted
+   * cell.tools.projected list and as data.name of a cell.tool.settled
+   * triplet; an exact injected toolCallId may be retained only as
+   * data.toolCallId of a cell.tool.settled triplet; injected input/result
+   * values never enter any trace/raw/provider surface. The mechanical check
+   * is recursive exact scalar and object-key equality — never substring or
+   * regex phrase guessing — so an unrelated trace string (for example a
+   * retained runId UUID) can never trip it. The allowed events are first
+   * asserted by exact structure, so no sentinel can hide in an unexpected
+   * position inside them.
+   */
+  function expectBoundedInjectedRetention(
+    record: CellRunRecord,
+    injectedNames: string[],
+    injectedCallIds: string[],
+    injectedPayloads: string[],
+  ): void {
+    const nameSet = new Set(injectedNames);
+    const callIdSet = new Set(injectedCallIds);
+    const payloadSet = new Set(injectedPayloads);
+    const fail = (context: string, detail: string): never => {
+      throw new Error(`bounded injected retention violated at ${context}: ${detail}`);
+    };
+    const walk = (value: unknown, context: string): void => {
+      if (typeof value === "string") {
+        if (payloadSet.has(value)) fail(context, `injected payload retained as an exact scalar: ${value}`);
+        if (nameSet.has(value)) {
+          fail(context, `injected tool name retained outside cell.tools.projected/cell.tool.settled: ${value}`);
+        }
+        if (callIdSet.has(value)) {
+          fail(context, `injected toolCallId retained outside cell.tool.settled: ${value}`);
+        }
+        return;
+      }
+      if (Array.isArray(value)) {
+        value.forEach((entry, index) => walk(entry, `${context}[${index}]`));
+        return;
+      }
+      if (value !== null && typeof value === "object") {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          if (payloadSet.has(key)) fail(context, `injected payload retained as an exact object key: ${key}`);
+          if (nameSet.has(key)) fail(context, `injected tool name retained as an exact object key: ${key}`);
+          if (callIdSet.has(key)) fail(context, `injected toolCallId retained as an exact object key: ${key}`);
+          walk(child, `${context}.${key}`);
+        }
+      }
+    };
+
+    const settledOutcomes = new Set(["fulfilled", "rejected", "refused"]);
+    let projectedEvents = 0;
+    for (const event of record.trace) {
+      if (event.type === "cell.tools.projected") {
+        projectedEvents += 1;
+        // Exact structure: the retained projection is exactly the sorted
+        // granted names and nothing else.
+        expect(event.data).toEqual({ tools: [...injectedNames].sort() });
+        continue;
+      }
+      if (event.type === "cell.tool.settled") {
+        // Exact structure: per invocation only name, exact toolCallId, and
+        // settled outcome — never input, result, or an extra key.
+        const data = event.data as Record<string, unknown>;
+        expect(Object.keys(data).sort()).toEqual(["name", "outcome", "toolCallId"]);
+        expect(nameSet.has(data.name as string)).toBeTrue();
+        expect(callIdSet.has(data.toolCallId as string)).toBeTrue();
+        expect(settledOutcomes.has(data.outcome as string)).toBeTrue();
+        continue;
+      }
+      walk(event, `trace event ${event.type}`);
+    }
+    // Exactly one projection per injected-tool run: the bounded names are
+    // retained there and nowhere else.
+    expect(projectedEvents).toBe(1);
+
+    // The raw/provider surfaces are walked in full: an injected-tool run
+    // omits raw provider steps and provider metadata, so no injected name,
+    // exact call id, input, or result can cross through them.
+    walk(record.rawSteps, "rawSteps");
+    if (record.preparation !== undefined) {
+      walk(record.preparation.rawSteps, "preparation.rawSteps");
+      walk(record.preparation.evidence, "preparation.evidence");
+    }
+  }
+
+  /** Exact scalar presence — value equality only, never substring matching. */
+  function containsExactScalar(value: unknown, target: string): boolean {
+    if (typeof value === "string") return value === target;
+    if (Array.isArray(value)) return value.some((entry) => containsExactScalar(entry, target));
+    if (value !== null && typeof value === "object") {
+      return Object.values(value as Record<string, unknown>)
+        .some((entry) => containsExactScalar(entry, target));
+    }
+    return false;
+  }
+
   const aiSdkDriver = (model: unknown, modelName: string) => {
     const driver = new AiSdkValidationDriver({
       route: [{
@@ -1336,6 +1433,16 @@ describe("caller-injected cell tool translation", () => {
   test("one neutral fixture keeps its name, schema, input, exact toolCallId, result, and caller execute through the AI SDK and Pi drivers, with the Pi effect handoff and action closure", async () => {
     const { root } = await fixture();
     const input = cellToolCell(root);
+    // Long unique explicit input/result/call-id sentinels: every absence
+    // check below compares exact values, and short probe strings once
+    // produced a stochastic false positive when a retained runId UUID
+    // happened to contain "cba" as a substring.
+    const INPUT_SENTINEL = "injected-input-never-retained-x7k2m9q4v1b8n3z5c6";
+    const RESULT_SENTINEL = [...INPUT_SENTINEL].reverse().join("");
+    const AI_SDK_CALL_ID = "injected-tool-call-ai-sdk-a1s2d3f4g5h6j7k8";
+    const AI_SDK_WRITE_CALL_ID = "injected-tool-call-ai-sdk-write-q2w3e4r5t6y7u8";
+    const PI_CALL_ID = "injected-tool-call-pi-z9x8c7v6b5n4m3a2";
+    const PI_LATE_CALL_ID = "injected-tool-call-pi-late-p0o9i8u7y6t5r4e3";
 
     // AI SDK half: the same fixture translates through the ToolLoopAgent path.
     const aiSdkLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
@@ -1350,9 +1457,9 @@ describe("caller-injected cell tool translation", () => {
           translatedTools = options.tools;
           return modelResponse([{
             type: "tool-call",
-            toolCallId: "ai-sdk-call-1",
+            toolCallId: AI_SDK_CALL_ID,
             toolName: "invert_fixture",
-            input: JSON.stringify({ text: "abc" }),
+            input: JSON.stringify({ text: INPUT_SENTINEL }),
           }], "tool-calls");
         }
         if (calls === 2) {
@@ -1361,7 +1468,7 @@ describe("caller-injected cell tool translation", () => {
           // its arbitrary input must never be interpreted as a host payload.
           return modelResponse([{
             type: "tool-call",
-            toolCallId: "ai-sdk-write-call",
+            toolCallId: AI_SDK_WRITE_CALL_ID,
             toolName: "write_file",
             input: JSON.stringify({ path: "docs/leak.md", content: "INJECTED_INPUT_SECRET" }),
           }], "tool-calls");
@@ -1416,23 +1523,25 @@ describe("caller-injected cell tool translation", () => {
     // Exact input, exact provider toolCallId, and the settled result crossed
     // back into the next provider step verbatim.
     expect(aiSdkLog).toHaveLength(1);
-    expect(aiSdkLog[0]?.input).toEqual({ text: "abc" });
-    expect(aiSdkLog[0]?.context).toMatchObject({ toolCallId: "ai-sdk-call-1" });
+    expect(aiSdkLog[0]?.input).toEqual({ text: INPUT_SENTINEL });
+    expect(aiSdkLog[0]?.context).toMatchObject({ toolCallId: AI_SDK_CALL_ID });
     expect(aiSdkLog[0]?.context.signal.aborted).toBe(false);
-    expect(JSON.stringify(finalRequest)).toContain("cba");
+    // The inverted result crossed back into the next provider step as an
+    // exact scalar — value equality only, never substring matching.
+    expect(containsExactScalar(finalRequest, RESULT_SENTINEL)).toBe(true);
     // The inactive built-in-name injected tool ran as the injected port: the
     // exact arbitrary input and exact toolCallId crossed to the caller
     // implementation, and its settled bounded evidence is retained.
     expect(writeFileLog).toHaveLength(1);
     expect(writeFileLog[0]?.input).toEqual({ path: "docs/leak.md", content: "INJECTED_INPUT_SECRET" });
-    expect(writeFileLog[0]?.context).toMatchObject({ toolCallId: "ai-sdk-write-call" });
+    expect(writeFileLog[0]?.context).toMatchObject({ toolCallId: AI_SDK_WRITE_CALL_ID });
     expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tool.settled",
-      data: { name: "invert_fixture", toolCallId: "ai-sdk-call-1", outcome: "fulfilled" },
+      data: { name: "invert_fixture", toolCallId: AI_SDK_CALL_ID, outcome: "fulfilled" },
     }));
     expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tool.settled",
-      data: { name: "write_file", toolCallId: "ai-sdk-write-call", outcome: "fulfilled" },
+      data: { name: "write_file", toolCallId: AI_SDK_WRITE_CALL_ID, outcome: "fulfilled" },
     }));
     // Injected invocations carry no generic agent.tool.started/finished
     // events: cell.tool.settled is the sole retained per-invocation evidence,
@@ -1440,19 +1549,39 @@ describe("caller-injected cell tool translation", () => {
     // host payload target and no callId/duration/outcome duplicate appears.
     expect(aiSdkRecord.trace.filter((event) =>
       event.type === "agent.tool.started" || event.type === "agent.tool.finished")).toEqual([]);
-    // Per-invocation retention is exactly name, exact toolCallId, and settled
-    // outcome: the trace never copies any injected tool's input or result.
-    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("INJECTED_INPUT_SECRET");
-    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("docs/leak.md");
-    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("handled");
-    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("abc");
-    expect(JSON.stringify(aiSdkRecord.trace)).not.toContain("cba");
     // Total retained-evidence redaction: an injected-tool run omits the raw
     // provider steps entirely (they can echo injected inputs or results)
-    // while normalized usage and the bounded events remain.
+    // while normalized usage and the bounded events remain. The exact
+    // scalar/key absence of every injected input/result is asserted by the
+    // bounded retention helper below, never by substring matching.
     expect(aiSdkRecord.rawSteps).toEqual([{ phase: "execution", steps: [] }]);
     expect(aiSdkRecord.usage.totalTokens).toBe(6);
     expect(calls).toBe(3);
+    // The SDK performance object is omitted for injected-tool runs:
+    // toolExecutionMs is keyed by the exact injected call id and would
+    // duplicate the bounded cell.tool.settled identity plus a duration
+    // outside the required triplet, so agent.step.finished retains no
+    // performance and no toolExecutionMs entry ever reaches the trace.
+    const stepFinishedEvents = aiSdkRecord.trace.filter(
+      (event) => event.type === "agent.step.finished",
+    );
+    expect(stepFinishedEvents.length).toBeGreaterThan(0);
+    for (const event of stepFinishedEvents) {
+      expect((event.data as Record<string, unknown>).performance).toBeUndefined();
+    }
+    // toolExecutionMs travels in the payload sentinels below, so the
+    // bounded retention helper also proves that exact key never reaches any
+    // trace/raw/provider surface.
+    // The whole allowed retained surface, asserted mechanically: no injected
+    // name outside cell.tools.projected/cell.tool.settled, no exact injected
+    // call id outside cell.tool.settled, and no injected input/result in any
+    // trace/raw/provider surface.
+    expectBoundedInjectedRetention(
+      aiSdkRecord,
+      ["alpha_marker", "invert_fixture", "write_file"],
+      [AI_SDK_CALL_ID, AI_SDK_WRITE_CALL_ID],
+      ["INJECTED_INPUT_SECRET", "docs/leak.md", "handled", "toolExecutionMs", INPUT_SENTINEL, RESULT_SENTINEL],
+    );
 
     // Pi half: the same neutral fixture through the harness driver, with the
     // causal tool-effect handoff and the post-terminal action closure in one
@@ -1465,9 +1594,9 @@ describe("caller-injected cell tool translation", () => {
       emit({ type: "stream-start", warnings: [] });
       emit({
         type: "tool-call",
-        toolCallId: "pi-call-1",
+        toolCallId: PI_CALL_ID,
         toolName: "invert_fixture",
-        input: JSON.stringify({ text: "abc" }),
+        input: JSON.stringify({ text: INPUT_SENTINEL }),
         providerExecuted: false,
       });
       await waitForToolResult(1);
@@ -1483,9 +1612,9 @@ describe("caller-injected cell tool translation", () => {
       emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
       emit({
         type: "tool-call",
-        toolCallId: "late-invert",
+        toolCallId: PI_LATE_CALL_ID,
         toolName: "invert_fixture",
-        input: JSON.stringify({ text: "abc" }),
+        input: JSON.stringify({ text: INPUT_SENTINEL }),
         providerExecuted: false,
       });
       await waitForToolResult(3);
@@ -1500,7 +1629,7 @@ describe("caller-injected cell tool translation", () => {
         // A provider-shaped echo of the injected call's input and result:
         // the injected-aware retained-evidence projection must never retain
         // it in the trace or the final rawSteps.
-        providerMetadata: { injectedEcho: { input: "abc", result: "cba" } },
+        providerMetadata: { injectedEcho: { input: INPUT_SENTINEL, result: RESULT_SENTINEL } },
       });
     }, toolResults);
     const piInput = cellToolCell(root, {
@@ -1525,15 +1654,15 @@ describe("caller-injected cell tool translation", () => {
     // Exact forward substitution: the same fixture keeps its input and exact
     // toolCallId, and its result crossed the harness tool boundary verbatim.
     expect(piLog).toHaveLength(1);
-    expect(piLog[0]?.input).toEqual({ text: "abc" });
-    expect(piLog[0]?.context).toMatchObject({ toolCallId: "pi-call-1" });
+    expect(piLog[0]?.input).toEqual({ text: INPUT_SENTINEL });
+    expect(piLog[0]?.context).toMatchObject({ toolCallId: PI_CALL_ID });
     expect(toolResults).toHaveLength(3);
-    expect(toolResults[0]).toEqual({ toolCallId: "pi-call-1", output: { inverted: "cba" } });
+    expect(toolResults[0]).toEqual({ toolCallId: PI_CALL_ID, output: { inverted: RESULT_SENTINEL } });
     // The injected tool crossed the causal event-loop handoff like every host tool.
     expect(handoffCalls).toBeGreaterThanOrEqual(1);
     expect(piRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tool.settled",
-      data: { name: "invert_fixture", toolCallId: "pi-call-1", outcome: "fulfilled" },
+      data: { name: "invert_fixture", toolCallId: PI_CALL_ID, outcome: "fulfilled" },
     }));
     expect(piRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tools.projected",
@@ -1548,15 +1677,12 @@ describe("caller-injected cell tool translation", () => {
     expect(toolResults[2]?.output).toMatchObject({ accepted: false });
     expect(piRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tool.settled",
-      data: { name: "invert_fixture", toolCallId: "late-invert", outcome: "refused" },
+      data: { name: "invert_fixture", toolCallId: PI_LATE_CALL_ID, outcome: "refused" },
     }));
-    // Total retained-evidence redaction: the Pi trace never copies the
-    // injected tool's input or result or the provider metadata that echoed
-    // them, the final rawSteps are omitted for the injected-tool run, and
-    // normalized usage remains.
-    expect(JSON.stringify(piRecord.trace)).not.toContain("abc");
-    expect(JSON.stringify(piRecord.trace)).not.toContain("cba");
-    expect(JSON.stringify(piRecord.trace)).not.toContain("injectedEcho");
+    // Total retained-evidence redaction: the final rawSteps are omitted for
+    // the injected-tool run and normalized usage remains. The exact
+    // scalar/key absence of the injected input/result and the echoed
+    // provider metadata is asserted by the bounded retention helper below.
     // The Pi adapter suppresses the generic started/finished events for
     // injected tool names exactly like the AI SDK adapter — including the
     // post-closure refused call — while the declared terminal tool keeps its
@@ -1568,6 +1694,30 @@ describe("caller-injected cell tool translation", () => {
     expect(piGenericToolNames).toContain("finish_work");
     expect(piRecord.rawSteps).toEqual([{ phase: "execution", steps: [] }]);
     expect(piRecord.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
+    // The raw harness stream emits no step-start parts here (step-start is
+    // not a valid HarnessV1 stream part): the retained step events are
+    // proven to exist, and the bounded retention helper below walks every
+    // actual agent.step.started/finished event per event, asserting that no
+    // injected name appears as an exact scalar or key.
+    const piStepEvents = piRecord.trace.filter((event) =>
+      event.type === "agent.step.started" || event.type === "agent.step.finished");
+    expect(piStepEvents.length).toBeGreaterThan(0);
+    // The harness tool-surface projection removes only the injected name:
+    // the active host/task/terminal names stay visible exactly as before.
+    const piSurfaceProjection = piRecord.trace.find((event) =>
+      event.type === "harness.tool_surface.projected");
+    expect((piSurfaceProjection?.data as { tools?: string[] }).tools)
+      .toEqual(["task_list", "task_get", "task_create", "task_update", "finish_work"]);
+    // The whole allowed retained surface, asserted mechanically: no injected
+    // name outside cell.tools.projected/cell.tool.settled, no exact injected
+    // call id outside cell.tool.settled, and no injected input/result or
+    // provider-metadata echo in any trace/raw/provider surface.
+    expectBoundedInjectedRetention(
+      piRecord,
+      ["invert_fixture"],
+      [PI_CALL_ID, PI_LATE_CALL_ID],
+      [INPUT_SENTINEL, RESULT_SENTINEL, "injectedEcho"],
+    );
   });
 
   test("omitting tools leaves the old surface and final unchanged, and every nonempty injection outside the declared support boundary fails closed before provider dispatch", async () => {

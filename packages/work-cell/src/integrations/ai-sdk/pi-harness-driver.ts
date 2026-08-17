@@ -367,7 +367,14 @@ export class PiHarnessCellDriver implements CellDriver {
     });
     context.emit("harness.tool_surface.projected", {
       harnessId: this.harness.harnessId,
-      tools: Object.keys(mergedTools),
+      // An injected tool name is retained only in cell.tools.projected and
+      // its cell.tool.settled triplet: injected names are removed from the
+      // harness tool-surface projection while the host/task/terminal names
+      // stay visible exactly as before. The HarnessAgent itself still
+      // receives the full model-visible surface including injected tools.
+      tools: Object.keys(mergedTools).filter(
+        (name) => injectedCellToolNames === undefined || !injectedCellToolNames.has(name),
+      ),
       builtinToolFiltering: { mode: "allow", toolNames: [] },
     });
 
@@ -676,6 +683,7 @@ function createHarnessStreamObserver(options: {
   injectedCellToolNames: ReadonlySet<string> | undefined;
 }): (chunk: unknown) => void {
   const { context } = options;
+  const injectedNames = options.injectedCellToolNames;
   let stepNumber = 0;
   let activeTools: string[] | undefined;
   let stepHadToolActivity = false;
@@ -685,9 +693,17 @@ function createHarnessStreamObserver(options: {
     if (type === "step-start") {
       stepNumber += 1;
       stepHadToolActivity = false;
-      activeTools = Array.isArray(value.activeTools) && value.activeTools.every(
+      const observedActiveTools = Array.isArray(value.activeTools) && value.activeTools.every(
         (item) => typeof item === "string",
       ) ? value.activeTools as string[] : undefined;
+      // An injected tool name is retained only in cell.tools.projected and
+      // its cell.tool.settled triplet: injected names are removed from the
+      // step-level active-tool projection, which both agent.step.started and
+      // agent.step.finished carry, while host/task/terminal names are
+      // preserved. The step-budget activity accounting is untouched.
+      activeTools = observedActiveTools === undefined || injectedNames === undefined
+        ? observedActiveTools
+        : observedActiveTools.filter((name) => !injectedNames.has(name));
       context.emit("agent.step.started", {
         stepNumber,
         activeTools,
