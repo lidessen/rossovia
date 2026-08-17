@@ -67,6 +67,14 @@ export async function runCell(
     : bindCellToolSnapshot(options.tools);
   const hasInjectedCellTools = boundCellTools !== undefined
     && Object.keys(boundCellTools).length > 0;
+  // An injected-tool run retains one synchronous driver identity snapshot:
+  // a driver that later observes tool data cannot rewrite cell.started,
+  // pricing/revision evidence, or the final descriptor through its own live
+  // object. No-tool runs keep the historical descriptor reference behavior.
+  const retainedDriverDescriptor = hasInjectedCellTools
+    ? deepFreeze(structuredClone(driver.descriptor))
+    : driver.descriptor;
+  const supportsCellTools = driver.supportsCellTools === true;
   // A terminal-only Cell completes on its single allowed step: the accepted
   // terminal action is the final step and no separate output step exists.
   // Only a Cell that also declares a structured output contract needs a
@@ -110,7 +118,7 @@ export async function runCell(
       }));
     }
   };
-  emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
+  emit("cell.started", { runId, cellId: input.id, driver: retainedDriverDescriptor });
   // The host port is caller-injected: only the supplied implementation may
   // grant filesystem, command, snapshot, and artifact effects. A CellInput
   // capability declaration never opens a host surface on its own.
@@ -152,8 +160,7 @@ export async function runCell(
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
-  const cellToolsUnsupported = Object.keys(injectedCellTools).length > 0
-    && driver.supportsCellTools !== true;
+  const cellToolsUnsupported = hasInjectedCellTools && !supportsCellTools;
   const injectedToolNames = () => Object.keys(injectedCellTools).sort();
 
   let status: CellTerminalStatus = "failed";
@@ -354,13 +361,13 @@ export async function runCell(
   const executionUsage = settlementUsage
     ? subtractUsage(aggregateDriverUsage, settlementUsage)
     : aggregateDriverUsage;
-  const estimate = estimateCost(usage, driver.descriptor.pricing);
+  const estimate = estimateCost(usage, retainedDriverDescriptor.pricing);
   // Observation is sealed as the terminal event is appended, before its
   // observer runs: neither a stray tool completion nor a late driver
   // callback can append to the retained trace after cell.finished.
   emit("cell.finished", { status, usage }, true);
 
-  const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
+  const priceRevision = input.executionProfile?.priceRevision ?? retainedDriverDescriptor.pricing?.revision;
   // For an injected-tool run provider metadata is treated as unavailable:
   // neither a provider session id nor a provider fingerprint enters the
   // execution observation, because provider metadata can echo injected tool
@@ -394,7 +401,7 @@ export async function runCell(
     version: WORK_CELL_RECORD_VERSION,
     runId,
     cellId: input.id,
-    driver: driver.descriptor,
+    driver: retainedDriverDescriptor,
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     durationMs: finishedAt.getTime() - startedAt.getTime(),

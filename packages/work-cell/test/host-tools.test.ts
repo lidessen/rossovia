@@ -1400,6 +1400,7 @@ describe("caller-injected cell tool translation", () => {
     // The raw/provider surfaces are walked in full: an injected-tool run
     // omits raw provider steps and provider metadata, so no injected name,
     // exact call id, input, or result can cross through them.
+    walk(record.driver, "driver");
     walk(record.rawSteps, "rawSteps");
     walk(record.error, "error");
     expect(record.executionObservation.sessionId).toBeUndefined();
@@ -2112,6 +2113,95 @@ describe("caller-injected cell tool translation", () => {
       ["reject_probe"],
       [REJECTION_CALL_ID],
       [REJECTION_SECRET],
+    );
+
+    // The driver identity used by retained evidence is also bound before the
+    // first await. A provider-neutral driver can observe a tool result and
+    // mutate its own descriptor object, but that live object cannot rewrite
+    // cell.started, pricing/revision evidence, or the final descriptor.
+    const DESCRIPTOR_INPUT = "descriptor-input-secret-k1l2m3n4b5v6";
+    const DESCRIPTOR_RESULT = "descriptor-result-secret-z9y8x7w6v5";
+    const DESCRIPTOR_CALL_ID = "descriptor-call-id-p0o9i8u7y6";
+    const mutableDescriptor = {
+      adapter: "descriptor-snapshot",
+      provider: "deterministic",
+      model: "fixture",
+      pricing: {
+        inputPerMillionUsd: 1,
+        outputPerMillionUsd: 2,
+        source: "fixture-pricing",
+        revision: "original-revision",
+      },
+    };
+    const descriptorLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    const descriptorDriver: CellDriver = {
+      descriptor: mutableDescriptor,
+      supportsCellTools: true,
+      async run(_input, context) {
+        const result = await context.cellTools?.execute(
+          "descriptor_probe",
+          { value: DESCRIPTOR_INPUT },
+          DESCRIPTOR_CALL_ID,
+        ) as { value: string };
+        mutableDescriptor.model = result.value;
+        mutableDescriptor.provider = DESCRIPTOR_CALL_ID;
+        mutableDescriptor.pricing.revision = DESCRIPTOR_INPUT;
+        return {
+          terminalToolsCalled: [],
+          finalText: "Descriptor snapshot held.",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+          rawSteps: [],
+        };
+      },
+    };
+    const descriptorRecord = await runCell(cellToolCell(root), descriptorDriver, {
+      host: createLocalHost(),
+      tools: {
+        descriptor_probe: {
+          description: "Return a result used to attack the live driver descriptor.",
+          inputSchema: {
+            type: "object",
+            properties: { value: { type: "string" } },
+            required: ["value"],
+            additionalProperties: false,
+          },
+          execute: async (descriptorInput, context) => {
+            descriptorLog.push({ input: descriptorInput, context });
+            return { value: DESCRIPTOR_RESULT };
+          },
+        },
+      },
+    });
+    expect(descriptorRecord.status).toBe("passed");
+    expect(mutableDescriptor).toMatchObject({
+      provider: DESCRIPTOR_CALL_ID,
+      model: DESCRIPTOR_RESULT,
+      pricing: { revision: DESCRIPTOR_INPUT },
+    });
+    expect(descriptorRecord.driver).toEqual({
+      adapter: "descriptor-snapshot",
+      provider: "deterministic",
+      model: "fixture",
+      pricing: {
+        inputPerMillionUsd: 1,
+        outputPerMillionUsd: 2,
+        source: "fixture-pricing",
+        revision: "original-revision",
+      },
+    });
+    expect(descriptorRecord.executionObservation.priceRevision).toBe("original-revision");
+    expect(descriptorRecord.trace[0]).toEqual(expect.objectContaining({
+      type: "cell.started",
+      data: expect.objectContaining({ driver: descriptorRecord.driver }),
+    }));
+    expect(descriptorLog).toHaveLength(1);
+    expect(descriptorLog[0]?.input).toEqual({ value: DESCRIPTOR_INPUT });
+    expect(descriptorLog[0]?.context.toolCallId).toBe(DESCRIPTOR_CALL_ID);
+    expectBoundedInjectedRetention(
+      descriptorRecord,
+      ["descriptor_probe"],
+      [DESCRIPTOR_CALL_ID],
+      [DESCRIPTOR_INPUT, DESCRIPTOR_RESULT],
     );
 
     // The per-execution tool snapshot is bound synchronously before runCell's
