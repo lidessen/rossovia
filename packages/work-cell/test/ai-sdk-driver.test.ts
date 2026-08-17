@@ -1426,6 +1426,608 @@ test("a settlement provider throw after the final allowed step keeps its real ca
   });
 });
 
+test("an omitted maxSteps installs no settlement-attempt ceiling and a later attempt settles the output", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      // Main execution ends naturally on the first call; the next two
+      // settlement attempts complete normally without calling the schema
+      // tool, and only the third attempt emits the accepted payload. With
+      // maxSteps omitted there is no step-count stop condition and no hidden
+      // two-attempt settlement cap.
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      if (calls <= 3) return response([{ type: "text", text: "Still no settlement tool call." }], "stop");
+      if (calls === 4) return response([{
+        type: "tool-call",
+        toolCallId: "settle-third-attempt",
+        toolName: "emit_structured_output",
+        input: JSON.stringify({ decision: "P04" }),
+      }], "tool-calls");
+      throw new Error(`unexpected mock call ${calls}`);
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-third-attempt",
+    intent: "Prove an omitted maxSteps imposes no settlement-attempt ceiling.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The third settlement attempt settles the output."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("passed");
+  expect(record.output).toEqual({ decision: "P04" });
+  expect(record.error).toBeUndefined();
+  // Main execution plus exactly three settlement attempts: no hidden
+  // attempt cap stopped the settlement after the second failed attempt.
+  expect(calls).toBe(4);
+  const failedAttempts = record.trace.filter((event) => event.type === "structured.settlement.attempt.failed");
+  expect(failedAttempts.map((event) => (event.data as { attempt: number }).attempt)).toEqual([1, 2]);
+  expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(true);
+  expect(record.usage).toEqual({ inputTokens: 4, outputTokens: 4, totalTokens: 8, cachedInputTokens: 0 });
+  expect(record.usageByPhase.settlement).toEqual({ inputTokens: 3, outputTokens: 3, totalTokens: 6, cachedInputTokens: 0 });
+});
+
+test("an omitted maxSteps settlement retains a real provider error as its causal outcome", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // The first settlement attempt completes normally without the schema
+      // tool: that non-compliance is retried because no step ceiling exists.
+      if (calls === 2) return response([{ type: "text", text: "Not a settlement tool call." }], "stop");
+      // The second attempt's provider call throws: a provider outcome ends
+      // settlement with its real causal error, never retried into
+      // invisibility and never relabeled as step-budget exhaustion.
+      throw new Error("provider transport failed during settlement");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-provider-error",
+    intent: "Prove a provider error remains causal when maxSteps is omitted.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The settlement provider error is retained as the causal outcome."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("failed");
+  expect(record.error).toBe("provider transport failed during settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // The provider throw ended settlement: no third provider call ever starts.
+  expect(calls).toBe(3);
+  const failedAttempts = record.trace.filter((event) => event.type === "structured.settlement.attempt.failed");
+  expect(failedAttempts).toHaveLength(2);
+  expect(failedAttempts[1]?.data).toEqual({
+    attempt: 2,
+    error: "provider transport failed during settlement",
+  });
+  expect(record.trace.some((event) => event.type === "structured.settlement.finished")).toBe(false);
+});
+
+test("an immediately resolving noncompliant settlement stays bounded by a short maxDurationMs with maxSteps omitted", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // Every settlement attempt completes normally without calling the
+      // schema tool, and the provider resolves immediately. Without an
+      // event-loop checkpoint between attempts this Promise/microtask loop
+      // would starve the timer that owns maxDurationMs, so the short
+      // duration budget must still end the run. The budget is long enough
+      // for the main execution step and at least one settlement attempt to
+      // complete, so the loop is really entered before the timer fires.
+      return response([{ type: "text", text: "Still no settlement tool call." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-duration-bound",
+    intent: "Prove a short maxDurationMs bounds an immediately resolving noncompliant settlement.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The duration budget ends the settlement with a cancelled standing."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 100, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  // The run entered the settlement retry loop and still terminated boundedly:
+  // no shell watchdog, no step-budget exhaustion invention, and no unbounded
+  // provider-call or trace growth.
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error?.toLowerCase()).toContain("timed out");
+  expect(calls).toBeGreaterThan(1);
+  expect(calls).toBeLessThan(10_000);
+  expect(record.durationMs).toBeLessThan(1_000);
+});
+
+test("an omitted maxSteps settlement observes caller cancellation between immediately resolving noncompliant attempts", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      if (calls === 3) {
+        // Deterministic caller cancellation queued as a macrotask after the
+        // normally completed unsatisfied settlement attempt, not fired
+        // synchronously inside the provider callback: a synchronous abort
+        // would be observed by the outer run's own signal listener regardless
+        // of any checkpoint, which would be false coverage. Only the
+        // event-loop checkpoint after the attempt can observe this queued
+        // caller reason before another provider call, with no sleep-based
+        // assertion mechanism and no shell watchdog.
+        setImmediate(() => controller.abort(new Error("caller cancelled the noncompliant settlement")));
+      }
+      return response([{ type: "text", text: "Still no settlement tool call." }], "stop");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "unbounded-settlement-caller-abort",
+    intent: "Prove caller cancellation bounds an immediately resolving noncompliant settlement.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["Caller cancellation ends the settlement without another provider call."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, { signal: controller.signal });
+
+  // The run ends with the original abort reason and never starts another
+  // provider call or invents step-budget exhaustion.
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the noncompliant settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // Exactly three provider calls ran: the main execution step and two
+  // settlement attempts. The queued abort became observable at the checkpoint
+  // after the second attempt, so no fourth call ever starts; without the
+  // checkpoint the loop would begin the next provider call before the queued
+  // macrotask could run.
+  expect(calls).toBe(3);
+  // Trace finalization: the aborted settlement attempt keeps its causal
+  // reason internally but never emits an attempt-failed event after the
+  // enclosing run already emitted cell.error and cell.finished. Only the
+  // normally completed unsatisfied first attempt carries its own event; the
+  // original abort reason appears in the final Cell error, not in a
+  // settlement event appended after the immutable final.
+  const failedAttempts = record.trace.filter(
+    (event) => event.type === "structured.settlement.attempt.failed",
+  );
+  expect(failedAttempts).toHaveLength(1);
+  expect(failedAttempts[0]?.data).toEqual({ attempt: 1, error: "emit_structured_output was not accepted" });
+  // No event appears after cell.finished: the immutable Cell final is the
+  // last retained event in the returned trace.
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(finishedIndex).toBeGreaterThanOrEqual(0);
+  expect(finishedIndex).toBe(record.trace.length - 1);
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  // Deterministic macrotask barrier: after runCell returns, the returned
+  // trace bytes remain unchanged even though the suspended settlement
+  // continuation resumes on a later event-loop tick. Two setImmediate yields
+  // are the exact barrier the post-checkpoint branch would need to cross; no
+  // sleep-based mechanism is used.
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  // The original caller reason remains the causal outcome across the barrier.
+  expect(record.error).toBe("caller cancelled the noncompliant settlement");
+  expect(calls).toBe(3);
+});
+
+test("an in-flight settlement provider rejection after caller cancellation never emits after the Cell final", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // The settlement provider call stays in flight until the caller aborts;
+      // the provider then rejects exactly like an aborted transport. The
+      // cancellation is queued as a macrotask only after the settlement step
+      // is really in flight, never fired synchronously inside the provider
+      // callback.
+      return new Promise<LanguageModelV3GenerateResult>((_resolve, reject) => {
+        controller.signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+        setImmediate(() => controller.abort(new Error("caller cancelled the in-flight settlement")));
+      });
+    },
+    // A live onTrace observer selects the streaming main path; the simulated
+    // stream covers only the deterministic main execution step.
+    doStream: async () => {
+      calls += 1;
+      return simulatedMainInvestigationStream();
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+  const observed: Array<{ type: string; data: unknown }> = [];
+
+  const record = await runCell({
+    id: "in-flight-settlement-rejection-abort",
+    intent: "Prove an in-flight settlement provider rejection after caller cancellation never emits after the Cell final.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The original caller reason stays causal and no settlement event follows the final."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, {
+    // The caller cancellation is part of the Cell envelope under test: the
+    // same controller.signal aborts runWithSignal, so the provider rejection
+    // is observed as an in-flight cancellation instead of an ordinary failed
+    // provider result.
+    signal: controller.signal,
+    onTrace: (event) => observed.push({ type: event.type, data: event.data }),
+  });
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // Exactly two provider calls ran: the main execution step and the rejected
+  // in-flight settlement step; no third call ever starts.
+  expect(calls).toBe(2);
+  // Both the retained trace and the live-observed sequence end at the
+  // immutable Cell final; the rejected in-flight attempt emitted nothing.
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  expect(observed.at(-1)?.type).toBe("cell.finished");
+  expect(record.trace.some((event) => event.type === "structured.settlement.attempt.failed")).toBe(false);
+  expect(record.trace.filter((event) => event.type.startsWith("structured.settlement"))
+    .map((event) => event.type)).toEqual(["structured.settlement.started"]);
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+  const observedFinishedIndex = observed.findIndex((event) => event.type === "cell.finished");
+  expect(observed.slice(observedFinishedIndex + 1)).toEqual([]);
+  // Deterministic macrotask barriers for the suspended settlement
+  // continuation (provider rejection -> helper catch) to settle: the returned
+  // and observed bytes stay byte-identical and the caller reason stays causal.
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  const observedBytesAtReturn = JSON.stringify(observed);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  expect(JSON.stringify(observed)).toBe(observedBytesAtReturn);
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(calls).toBe(2);
+});
+
+test("a normally resolving in-flight settlement step after caller cancellation never emits after the Cell final", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // The settlement provider call stays in flight; the caller aborts and
+      // the provider still completes the step normally. The step's onStepEnd
+      // continuation then runs after runCell already emitted the immutable
+      // Cell final: it must not emit a settlement step event then. The abort
+      // is dispatched before the resolution inside one macrotask so
+      // cell.finished is deterministically emitted before the step
+      // continuation runs.
+      return new Promise<LanguageModelV3GenerateResult>((resolve) => {
+        setImmediate(() => {
+          controller.abort(new Error("caller cancelled the in-flight settlement"));
+          resolve(response([{ type: "text", text: "Still no settlement tool call." }], "stop"));
+        });
+      });
+    },
+    doStream: async () => {
+      calls += 1;
+      return simulatedMainInvestigationStream();
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+  const observed: Array<{ type: string; data: unknown }> = [];
+
+  const record = await runCell({
+    id: "in-flight-settlement-resolution-abort",
+    intent: "Prove a normally resolving in-flight settlement step after caller cancellation never emits after the Cell final.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The post-abort step-finished callback never emits after the final."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, {
+    // The caller cancellation is part of the Cell envelope under test: the
+    // same controller.signal aborts runWithSignal, so the normally resolving
+    // noncompliant settlement step is observed as a post-abort completion
+    // instead of an unbounded noncompliant settlement.
+    signal: controller.signal,
+    onTrace: (event) => observed.push({ type: event.type, data: event.data }),
+  });
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(calls).toBe(2);
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  expect(observed.at(-1)?.type).toBe("cell.finished");
+  // The post-abort step-finished callback is the directly reachable
+  // settlement emit this regression exposes: it never appears in the retained
+  // trace at all, so no settlement event follows the immutable final.
+  expect(record.trace.some((event) => event.type === "structured.settlement.step.finished")).toBe(false);
+  expect(record.trace.some((event) => event.type === "structured.settlement.attempt.failed")).toBe(false);
+  expect(record.trace.filter((event) => event.type.startsWith("structured.settlement"))
+    .map((event) => event.type)).toEqual(["structured.settlement.started"]);
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+  const observedFinishedIndex = observed.findIndex((event) => event.type === "cell.finished");
+  expect(observed.slice(observedFinishedIndex + 1)).toEqual([]);
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  const observedBytesAtReturn = JSON.stringify(observed);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  expect(JSON.stringify(observed)).toBe(observedBytesAtReturn);
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(calls).toBe(2);
+});
+
+test("an accepted structured output arriving after caller cancellation never emits settlement completion after the Cell final", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      // The settlement provider call stays in flight; the caller aborts and
+      // the provider still completes the step with a valid
+      // emit_structured_output tool call. The tool execute assigns the
+      // accepted output, so the shared helper resolves through every
+      // output-undefined and catch guard; the accepted-output completion
+      // stays causal only to the already-finalized cancellation and the
+      // driver must not emit structured.settlement.finished after the
+      // immutable Cell final. The cancellation is queued as a macrotask only
+      // after the settlement step is really in flight, never fired
+      // synchronously inside the provider callback.
+      return new Promise<LanguageModelV3GenerateResult>((resolve) => {
+        setImmediate(() => {
+          controller.abort(new Error("caller cancelled the in-flight settlement"));
+          resolve(response([{
+            type: "tool-call",
+            toolCallId: "settle-after-abort",
+            toolName: "emit_structured_output",
+            input: JSON.stringify({ decision: "P04" }),
+          }], "tool-calls"));
+        });
+      });
+    },
+    // A live onTrace observer selects the streaming main path; the simulated
+    // stream covers only the deterministic main execution step.
+    doStream: async () => {
+      calls += 1;
+      return simulatedMainInvestigationStream();
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+  const observed: Array<{ type: string; data: unknown }> = [];
+
+  const record = await runCell({
+    id: "in-flight-settlement-accepted-output-abort",
+    intent: "Prove an accepted output after caller cancellation never emits settlement completion after the Cell final.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The original caller reason stays causal and no settlement completion follows the final."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, {
+    // The caller cancellation is part of the Cell envelope under test: the
+    // same controller.signal aborts runWithSignal, so the accepted-output
+    // completion is observed as a post-abort provider completion instead of
+    // an ordinary successful settlement.
+    signal: controller.signal,
+    onTrace: (event) => observed.push({ type: event.type, data: event.data }),
+  });
+
+  expect(record.input.budget.maxSteps).toBeUndefined();
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(record.error).not.toContain("step budget exhausted");
+  // Exactly two provider calls ran: the main execution step and the in-flight
+  // settlement step that accepted the output only after the cancellation; no
+  // third call ever starts.
+  expect(calls).toBe(2);
+  // The accepted output existed, but the already-finalized Cell standing
+  // never emits a settlement completion: only the started event appears.
+  expect(record.trace.filter((event) => event.type.startsWith("structured.settlement"))
+    .map((event) => event.type)).toEqual(["structured.settlement.started"]);
+  // Both the retained trace and the live-observed sequence end at the
+  // immutable Cell final and nothing follows it.
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  expect(observed.at(-1)?.type).toBe("cell.finished");
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+  const observedFinishedIndex = observed.findIndex((event) => event.type === "cell.finished");
+  expect(observed.slice(observedFinishedIndex + 1)).toEqual([]);
+  // Deterministic macrotask barriers for the suspended settlement
+  // continuation (accepted output -> driver completion emission) to settle:
+  // the returned and observed bytes stay byte-identical and the caller
+  // reason stays causal.
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  const observedBytesAtReturn = JSON.stringify(observed);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  expect(JSON.stringify(observed)).toBe(observedBytesAtReturn);
+  expect(record.error).toBe("caller cancelled the in-flight settlement");
+  expect(calls).toBe(2);
+});
+
+test("a normally completing final allowed settlement step after caller cancellation keeps the caller reason without emitting exhaustion", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const controller = new AbortController();
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) return response([{ type: "text", text: "Main investigation completed." }], "stop");
+      // The second and final allowed provider step is the settlement call:
+      // the caller aborts while it is in flight and the provider still
+      // completes the step normally without the accepted output. The
+      // post-abort completion must keep the original caller reason and emit
+      // no step-budget exhaustion after the Cell final.
+      return new Promise<LanguageModelV3GenerateResult>((resolve) => {
+        setImmediate(() => {
+          controller.abort(new Error("caller cancelled the final settlement step"));
+          resolve(response([{ type: "text", text: "Still no settlement tool call." }], "stop"));
+        });
+      });
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitKimiRoute(),
+    kimiApiKey: "not-used",
+    model: "k3",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "finite-final-settlement-step-abort",
+    intent: "Prove a post-abort final allowed settlement step keeps the caller reason without emitting exhaustion.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Return the structured result."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The caller reason stays causal and no exhaustion event follows the final."],
+    outputSchema: {
+      type: "object",
+      properties: { decision: { type: "string", enum: ["P04"] } },
+      required: ["decision"],
+      additionalProperties: false,
+    },
+    budget: { maxSteps: 2, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver, { signal: controller.signal });
+
+  expect(record.status).toBe("cancelled");
+  expect(record.error).toBe("caller cancelled the final settlement step");
+  expect(record.error).not.toContain("step budget exhausted");
+  // Exactly two provider calls ran: the main execution step and the final
+  // allowed settlement step that completed only after the cancellation.
+  expect(calls).toBe(2);
+  expect(record.trace.at(-1)?.type).toBe("cell.finished");
+  expect(record.trace.some((event) => event.type === "structured.settlement.step.finished")).toBe(false);
+  expect(record.trace.some((event) => event.type === "structured.settlement.attempt.failed")).toBe(false);
+  expect(record.trace.filter((event) => event.type.startsWith("structured.settlement"))
+    .map((event) => event.type)).toEqual(["structured.settlement.started"]);
+  const finishedIndex = record.trace.findIndex((event) => event.type === "cell.finished");
+  expect(record.trace.slice(finishedIndex + 1)).toEqual([]);
+  const traceBytesAtReturn = JSON.stringify(record.trace);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(JSON.stringify(record.trace)).toBe(traceBytesAtReturn);
+  expect(record.error).toBe("caller cancelled the final settlement step");
+  expect(calls).toBe(2);
+});
+
 test("stops the main loop after one structured output step following a terminal call", async () => {
   const root = await fixture();
   let calls = 0;
@@ -1817,6 +2419,29 @@ test("candidate adapter grounds a selected title in injected runtime evidence", 
   expect(result.value.evidence).toEqual([expect.objectContaining({ titleId: "seed-1", provider: "test-retriever" })]);
   expect(result.usage.totalTokens).toBe(4);
 });
+
+function simulatedMainInvestigationStream() {
+  // The exact LanguageModelV3StreamPart sequence for the deterministic main
+  // execution step: each part is one simulated stream chunk so the mock emits
+  // individual parts, never a single chunk that is itself an array of parts.
+  const mainParts: LanguageModelV3StreamPart[] = [
+    { type: "stream-start", warnings: [] },
+    { type: "text-start", id: "main-response" },
+    { type: "text-delta", id: "main-response", delta: "Main investigation completed." },
+    { type: "text-end", id: "main-response" },
+    {
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+      },
+    },
+  ];
+  return {
+    stream: simulateReadableStream({ chunks: mainParts, chunkDelayInMs: null }),
+  };
+}
 
 function response(
   content: LanguageModelV3GenerateResult["content"],

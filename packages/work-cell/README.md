@@ -437,13 +437,18 @@ ordinary investigation without response-format pressure, then uses a private
 schema tool to project the retained evidence. The internal tool is not added to
 `terminalTools`; the caller still declares one output contract and Work Cell
 still validates it independently. Trace and usage expose the extra settlement
-phase instead of pretending it was one provider-native response. The
-settlement phase consumes the same explicit `maxSteps` allowance as the main
+phase instead of pretending it was one provider-native response. The settlement
+phase consumes the same explicit `maxSteps` allowance as the main
 loop and terminal recovery: when no step remains it does not start, and the
-Cell fails truthfully instead of passing without the required output. A
+Cell fails truthfully instead of passing without the required output. An
+omitted `maxSteps` installs no settlement-attempt ceiling either: attempts
+continue until the output is accepted, bounded only by `maxDurationMs` and
+caller cancellation. A
 settlement provider or adapter failure after its step consumed the final
 allowance keeps its real causal error; only a normally completed unsatisfied
-attempt reports the canonical step-budget exhaustion wording.
+attempt reports the canonical step-budget exhaustion wording, and a provider
+or adapter failure ends settlement with its causal error instead of being
+retried into invisibility.
 Tool-settlement routes have no closure phase; this settlement path is their
 only structured-output phase. The closure phase described above exists only
 for the terminal plus inline-output mode.
@@ -501,7 +506,20 @@ A structured-settlement provider or adapter throw after its step consumed the
 final allowance keeps that same real causal error: the settlement reports
 step-budget exhaustion only when an attempt completes normally without an
 accepted output, never when the settlement call itself failed, and no further
-settlement attempt starts when no step remains.
+settlement attempt starts when no step remains. An omitted `maxSteps` also
+installs no settlement-attempt ceiling: each attempt still consumes the same
+shared allowance when one exists, and attempts continue until the output is
+accepted, `maxDurationMs` or caller cancellation ends the run, or a provider
+or adapter failure ends settlement with its causal error. After each normally
+completed unsatisfied settlement attempt the settlement yields one event-loop
+checkpoint, so `maxDurationMs` and caller cancellation stay observable even
+against an immediately-resolving noncompliant provider; a cancelled run ends
+with the original abort reason instead of starting another provider call or
+inventing step-budget exhaustion. A settlement completion event is emitted
+only while the run is still live: an accepted structured output that arrives
+after the caller cancelled an in-flight settlement attempt stays causal only
+to that already-finalized cancellation and never emits
+`structured.settlement.finished` after the immutable Cell final.
 Settlement usage remains usage attribution only: it is never
 extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
 budget boundary: it ends the run with a `cancelled` standing that keeps the
