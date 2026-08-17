@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T22:59:59Z",
+  "updatedAt": "2026-08-17T23:56:29Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -284,5 +284,5 @@
       "status": "open"
     }
   ],
-  "currentFocus": "ordinary-run-explicit-step-budget"
+  "currentFocus": "daily-single-run-e2e"
 }
