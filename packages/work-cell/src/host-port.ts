@@ -65,11 +65,9 @@ export interface HostWorkspace {
 /**
  * The one injected host port. The caller supplies the implementation that
  * opens the workspace capability surface for a run from the declared
- * `WorkspacePolicy` and `Budget`; the core records the adapter kind as
- * observation, never as authority.
+ * `WorkspacePolicy` and `Budget`. The core never asks for adapter identity
+ * evidence: capability follows the injected implementation alone.
  */
 export interface CellHost {
-  /** Stable adapter identity, retained as observation only. */
-  readonly kind: string;
   createWorkspace(policy: WorkspacePolicy, budget: Budget): Promise<HostWorkspace>;
 }

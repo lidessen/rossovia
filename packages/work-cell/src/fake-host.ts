@@ -9,8 +9,6 @@ import type {
   WorkspaceSnapshot,
 } from "./host-port";
 
-export const FAKE_HOST_KIND = "fake-deterministic.v1" as const;
-
 /**
  * A deterministic in-memory host for tests and substitution probes. It runs
  * the same neutral port contract as the local filesystem adapter without
@@ -22,8 +20,6 @@ export const FAKE_HOST_KIND = "fake-deterministic.v1" as const;
  * fake and are therefore never traversed.
  */
 export class FakeHost implements CellHost {
-  readonly kind = FAKE_HOST_KIND;
-
   private readonly files = new Map<string, Uint8Array>();
   private readonly commandResults = new Map<string, CommandResult>();
 
@@ -49,6 +45,10 @@ export class FakeHost implements CellHost {
 
   async createWorkspace(policy: WorkspacePolicy, budget: Budget): Promise<HostWorkspace> {
     const root = policy.root;
+    // Same refusal as the local adapter: a workspace root must be absolute.
+    if (!isAbsolute(root)) {
+      throw new Error("workspace.root must be absolute");
+    }
     const files = this.files;
     const commandResults = this.commandResults;
     const keyFor = (relativePath: string): string => key(root, relativePath);
@@ -149,7 +149,11 @@ export class FakeHost implements CellHost {
         if (combined.aborted) throw combined.reason ?? new DOMException("Aborted", "AbortError");
         const registered = commandResults.get(argv.join(" "));
         if (registered === undefined) {
-          return { exitCode: 0, stdout: "", stderr: "", durationMs: 0 };
+          // An allowed command must never invent success: without a registered
+          // deterministic result there is no truthful outcome to report.
+          throw new Error(
+            `command is allowed but has no registered deterministic result: ${argv.join(" ")}`,
+          );
         }
         return {
           ...registered,
@@ -192,24 +196,35 @@ export class FakeHost implements CellHost {
  * overriding the declared executable capability flags. Proves that the
  * model-visible read/write/command surface follows the injected port alone —
  * self-declared CellInput capabilities can never re-open a denied surface.
+ *
+ * Every port method is delegated explicitly with its receiver bound to the
+ * delegate workspace, so prototype methods of a class-based adapter (the
+ * local filesystem Workspace) survive the wrapper; a shallow spread would
+ * lose them.
  */
 export class FilteredHost implements CellHost {
-  readonly kind: string;
-
   constructor(
     private readonly delegate: CellHost,
     private readonly capabilities: Partial<Pick<HostWorkspace, "canRead" | "canWrite" | "canRunCommands">>,
-  ) {
-    this.kind = `${delegate.kind}:filtered`;
-  }
+  ) {}
 
   async createWorkspace(policy: WorkspacePolicy, budget: Budget): Promise<HostWorkspace> {
     const workspace = await this.delegate.createWorkspace(policy, budget);
     return {
-      ...workspace,
+      root: workspace.root,
       canRead: this.capabilities.canRead ?? workspace.canRead,
       canWrite: this.capabilities.canWrite ?? workspace.canWrite,
       canRunCommands: this.capabilities.canRunCommands ?? workspace.canRunCommands,
+      listFiles: (path, maxEntries) => workspace.listFiles(path, maxEntries),
+      readText: (path, startLine, endLine) => workspace.readText(path, startLine, endLine),
+      readBinary: (path) => workspace.readBinary(path),
+      writeText: (path, content) => workspace.writeText(path, content),
+      createText: (path, content) => workspace.createText(path, content),
+      assertEditable: (path) => workspace.assertEditable(path),
+      describeArtifact: (path) => workspace.describeArtifact(path),
+      runCommand: (argv, cwd, timeoutMs, signal) => workspace.runCommand(argv, cwd, timeoutMs, signal),
+      snapshot: () => workspace.snapshot(),
+      diff: (before, after) => workspace.diff(before, after),
     };
   }
 }

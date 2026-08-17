@@ -17,8 +17,6 @@ export type { CommandResult, WorkspaceArtifact, WorkspaceSnapshot } from "./host
 
 type Snapshot = WorkspaceSnapshot;
 
-export const LOCAL_WORKSPACE_HOST_KIND = "local-fs-bun.v1" as const;
-
 export class Workspace implements HostWorkspace {
   readonly root: string;
   readonly canRead: boolean;
@@ -355,8 +353,6 @@ function isMissing(error: unknown): boolean {
  * filesystem inject it explicitly as their host port.
  */
 export class LocalWorkspaceHost implements CellHost {
-  readonly kind = LOCAL_WORKSPACE_HOST_KIND;
-
   createWorkspace(policy: WorkspacePolicy, budget: Budget): Promise<Workspace> {
     return Workspace.create(policy, budget);
   }

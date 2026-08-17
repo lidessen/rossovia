@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CellInput } from "../src/contracts";
+import type { Budget, CellInput, WorkspacePolicy } from "../src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
 import { FilteredHost, FakeHost } from "../src/fake-host";
 import { createLocalHost } from "../src/workspace";
@@ -154,6 +154,32 @@ describe("self-declared capability is not host authority", () => {
     expect(workspace.canWrite).toBe(false);
   });
 
+  test("a filtered real local adapter preserves the complete HostWorkspace behavior", async () => {
+    const realRoot = await realFixture();
+    await mkdir(join(realRoot, "docs"), { recursive: true });
+    await writeFile(join(realRoot, "docs", "source.md"), "grounded\n");
+    const input = writableCell(realRoot, "filtered-local");
+    // The local adapter workspace is a class instance whose methods live on
+    // the prototype: a shallow-spread wrapper loses snapshot, readText, diff,
+    // and every other method. The wrapper must delegate them explicitly.
+    const filtered = new FilteredHost(createLocalHost(), { canWrite: false });
+    const workspace = await filtered.createWorkspace(input.workspace, input.budget);
+
+    expect(workspace.canRead).toBe(true);
+    expect(workspace.canWrite).toBe(false);
+    expect(workspace.canRunCommands).toBe(false);
+    await expect(workspace.readText("docs/source.md")).resolves.toBe("grounded\n");
+    await expect(workspace.listFiles("docs")).resolves.toEqual(["docs/source.md"]);
+    const before = await workspace.snapshot();
+    expect(before.get("docs/source.md")).toMatch(/^[a-f0-9]{64}$/);
+    await workspace.createText("docs/added.md", "new\n");
+    const after = await workspace.snapshot();
+    expect(workspace.diff(before, after)).toEqual({ added: ["docs/added.md"], changed: [], removed: [] });
+    await expect(workspace.assertEditable("docs/source.md")).resolves.toBe(
+      join(await realpath(realRoot), "docs", "source.md"),
+    );
+  });
+
   test("a missing required capability still settles capability_mismatch without starting the driver", async () => {
     const fake = new FakeHost("/fake-mismatch");
     const input = writableCell("/fake-mismatch", "mismatch");
@@ -173,6 +199,71 @@ describe("self-declared capability is not host authority", () => {
     expect(record.status).toBe("capability_mismatch");
     expect(record.error).toBe("missing capabilities: unavailable-capability");
     expect(ran).toBe(false);
+  });
+});
+
+describe("fake-host deterministic command and root parity", () => {
+  function commandCell(root: string, id: string, maxCommandOutputBytes = 4_000): CellInput {
+    return {
+      id,
+      intent: `Exercise the deterministic fake command port for ${id}.`,
+      workspace: {
+        root,
+        readPaths: ["."],
+        writePaths: [],
+        excludePaths: [],
+        allowedCommands: ["git"],
+      },
+      instructions: ["Run only registered deterministic commands."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["Command outcomes come from registered results alone."],
+      budget: { maxSteps: 2, maxDurationMs: 5_000, maxCommandOutputBytes },
+    };
+  }
+
+  test("an allowed but unregistered command fails visibly instead of inventing success", async () => {
+    const fake = new FakeHost("/fake-command");
+    const cell = commandCell("/fake-command", "unregistered");
+    const workspace = await fake.createWorkspace(cell.workspace, cell.budget);
+
+    await expect(workspace.runCommand(["git", "status"]))
+      .rejects.toThrow("command is allowed but has no registered deterministic result: git status");
+  });
+
+  test("a registered deterministic command retains output truncation and caller abort behavior", async () => {
+    const fake = new FakeHost("/fake-command-registered");
+    fake.registerCommand(["git", "log"], { exitCode: 0, stdout: "x".repeat(1_000) });
+    const cell = commandCell("/fake-command-registered", "registered", 64);
+    const workspace = await fake.createWorkspace(cell.workspace, cell.budget);
+
+    const result = await workspace.runCommand(["git", "log"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("[truncated]");
+    expect(result.stdout.length).toBeLessThan(1_000);
+
+    const controller = new AbortController();
+    controller.abort(new Error("caller aborted command"));
+    await expect(workspace.runCommand(["git", "log"], ".", 60_000, controller.signal))
+      .rejects.toThrow("caller aborted command");
+  });
+
+  test("fake and local hosts reject a relative workspace root with the same refusal", async () => {
+    const policy: WorkspacePolicy = {
+      root: "relative/workspace",
+      readPaths: ["."],
+      writePaths: [],
+      excludePaths: [],
+      allowedCommands: [],
+    };
+    const budget: Budget = { maxDurationMs: 1_000, maxCommandOutputBytes: 4_000 };
+    const fake = new FakeHost("/fake-root-parity");
+
+    await expect(fake.createWorkspace(policy, budget))
+      .rejects.toThrow("workspace.root must be absolute");
+    await expect(createLocalHost().createWorkspace(policy, budget))
+      .rejects.toThrow("workspace.root must be absolute");
   });
 });
 
