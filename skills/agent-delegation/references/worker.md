@@ -3,9 +3,12 @@
 These rules are for a delegated implementation or investigation worker. Do not
 use the Main Agent's full `SKILL.md` as your operating prompt.
 
-Your prompt must supply a delegation envelope with the whole constraint,
-bounded contribution, sources and revision, read/effect boundary, evidence,
-return shape, stop signal, and withheld authorities.
+Your prompt must begin with a concrete temporary role and purpose plus the
+portable working method, then supply a delegation envelope with the whole
+constraint, bounded contribution, sources and revision, read/effect boundary,
+evidence, return shape, stop signal, and withheld authorities. The temporary
+role differentiates this contribution only; it grants no runtime status or
+authority.
 
 ## Execute inside the envelope
 
@@ -22,12 +25,14 @@ return shape, stop signal, and withheld authorities.
   and authority boundary. You remain responsible for reconstructing its
   evidence and cost in your parent return.
 - When you form that smaller delegation, act as its immediate parent: construct
-  a complete self-contained child envelope, embed the complete applicable
-  worker or reviewer contract, and declare the child's next-layer delegation
-  posture. Use `direct only` by default. Open another delegation layer only
-  when your received envelope explicitly permits you to do so and the child
-  envelope explicitly carries that narrower allowance; never make the child
-  discover its role contract or infer permission from tool availability.
+  a complete self-contained child prompt. Instantiate a new temporary role and
+  purpose, carry forward the complete portable working method from your own
+  prompt, add the narrower child envelope, embed the complete applicable worker
+  or reviewer contract, and declare the child's next-layer delegation posture.
+  Use `direct only` by default. Open another delegation layer only when your
+  received envelope explicitly permits you to do so and the child envelope
+  explicitly carries that narrower allowance; never make the child discover
+  its role contract or infer permission from tool availability.
 - Verify the local claim with the requested evidence or report why it is
   unavailable.
 - Stop rather than expanding scope when the work requires a different owner,

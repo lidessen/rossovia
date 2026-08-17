@@ -97,19 +97,24 @@ refactoring boundaries, research questions, or project policy.
 3. **Contract each contribution.** Read `references/delegation.md`. Give every
    worker an exact whole constraint, bounded contribution, sources and
    revision, effect ownership, required evidence, return shape, stop signal,
-   and withheld authorities. Before release, load exactly one applicable role
-   contract—`references/worker.md` or `references/reviewer.md`—and embed its
-   complete contents in the native delegate prompt. Do not require a child to
-   discover a Skill-relative path. Give a reviewer the exact candidate,
-   acceptance contract, and narrow evidence in addition to its embedded role
-   contract.
+   and withheld authorities. Prepend the canonical child prompt fragment from
+   `references/delegation.md`: instantiate one temporary role and purpose for
+   this contribution, then preserve its portable working method. Before
+   release, load exactly one applicable role contract—`references/worker.md`
+   or `references/reviewer.md`—and embed its complete contents in the child
+   prompt. Do this for native, injected, and nested children; do not require a
+   child to discover a Skill-relative path. Give a reviewer the exact
+   candidate, acceptance contract, and narrow evidence in addition to these
+   two shared layers and its embedded role contract.
 4. **Map without changing meaning.** Read `references/runtime-mapping.md` when
    choosing between native delegates, a caller-injected sub-worker tool backed
    by explicit persistent Runs, or a bounded hybrid. Map one contribution to
    exactly one execution owner. A native child handle and a durable child Run
-   ID are different lifecycle facts, but they must receive the same work-unit
-   contract and return the same class of claim and evidence. Do not encode
-   temporary roles as runtime types or teach Work Cell the child lifecycle.
+   ID are different lifecycle facts, but they must receive the same complete
+   child prompt and return the same class of claim and evidence. Temporary
+   role and purpose differentiate the Agent through its prompt and working
+   environment; do not encode them as runtime types or teach Work Cell the
+   child lifecycle.
 5. **Release through the active environment.** Use its supported delegation
    capability directly. Do not start another system merely to gain
    delegation, and never dispatch the same contribution through two carriers.

@@ -3,11 +3,14 @@
 These rules are for a non-producing reviewer of one exact candidate or claim.
 Do not reuse the maker's worker prompt.
 
-Your prompt must identify the candidate and source revision, exact claim or
-acceptance contract, read-only evidence boundary, relevant failure classes,
-and withheld authorities. It should arrive through a fresh context that does
-not inherit producer reasoning. If the active environment cannot provide that
-separation, state that limitation and do not label the review independent.
+Your prompt must begin with a concrete temporary role and purpose plus the
+portable working method, then identify the candidate and source revision,
+exact claim or acceptance contract, read-only evidence boundary, relevant
+failure classes, and withheld authorities. The temporary role differentiates
+this contribution only; it grants no runtime status or authority. The prompt
+should arrive through a fresh context that does not inherit producer reasoning.
+If the active environment cannot provide that separation, state that
+limitation and do not label the review independent.
 
 ## Review
 
@@ -20,7 +23,9 @@ separation, state that limitation and do not label the review independent.
   return is evidence inside this review, not a second independent review
   verdict.
 - When you form that evidence helper, act as its immediate parent: construct a
-  complete self-contained child envelope, embed the complete Worker Contract,
+  complete self-contained child prompt. Instantiate a new temporary role and
+  purpose, carry forward the complete portable working method from your own
+  prompt, add the narrower child envelope, embed the complete Worker Contract,
   and declare the child's next-layer delegation posture. Use `direct only` by
   default. Open another delegation layer only when your received reviewer
   envelope explicitly permits you to do so and the child envelope explicitly

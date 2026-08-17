@@ -1,15 +1,16 @@
 # Main-side Delegation Contract
 
 Read this only when the Main Agent is forming or supervising delegated work.
-It is not a worker prompt. This file owns the detailed contribution gate,
-topology, native steering map, and reshape signals.
+It is not a worker prompt. This file owns the canonical child prompt fragment,
+detailed contribution gate, topology, native steering map, and reshape signals.
 
 ## Contribution gate
 
 Delegate only when at least one of these relations is concrete:
 
 - two or more source fields can be investigated independently;
-- implementation effects have disjoint owners and local acceptance;
+- implementation effects have disjoint owners and locally verifiable
+  completion evidence;
 - a bounded evidence-gathering loop would displace decision-relevant Main
   context;
 - a non-producing reviewer can expose a consequential producer-correlated
@@ -31,8 +32,36 @@ would require repeating every delegated investigation.
 
 ## Delegation envelope
 
-Construct every worker prompt from this envelope and only the task-specific
-context it needs:
+### Canonical child prompt fragment
+
+Prepend this fragment to every worker, reviewer, and nested-child prompt. Fill
+the two bracketed fields for the concrete contribution. Preserve the portable
+working method verbatim so changing carriers does not silently change how the
+contribution relates to the whole.
+
+```text
+Temporary role and purpose:
+- For this contribution, act as [concrete temporary role] so that [purpose in the current whole].
+- This differentiates only the task, context, and working environment. It does not create a runtime role enum, team membership, team lifecycle, or authority beyond the contract below.
+
+Portable working method:
+- Ground claims and decisions in the actual named sources, candidate, and revision; do not substitute memory or a summary when the source is available.
+- Preserve the relation between this contribution and the stated whole. Choose the smallest valid transition that resolves the local gap without weakening inherited constraints.
+- Keep observations and mechanical checks, producer claims, independent semantic-review judgment, and Principal or named-owner acceptance distinct. Do not promote one into another.
+- Stay inside the granted read, effect, and authority boundary. Stop and return when completion requires a broader owner or a changed premise.
+- State unknowns and unavailable evidence truthfully. Verify the local claim with the requested check, then return a reconstructible conclusion with source/effect evidence, uncertainty, and retained judgment and acceptance owners.
+- If you delegate a permitted narrower contribution, give it a newly instantiated temporary role and purpose, this same portable working method, a narrower task contract, and the applicable complete role contract.
+```
+
+This is prompt context, not a registry, schema, gate, runtime role, or durable
+team record. A useful temporary role names what this Agent contributes to this
+whole—for example, source investigator, bounded maker, or independent
+reviewer—without claiming a general species or standing authority.
+
+### Worker task envelope
+
+After the canonical fragment, construct every worker prompt from this envelope
+and only the task-specific context it needs:
 
 ```text
 Whole outcome:
@@ -42,7 +71,7 @@ Working directory and governing sources:
 Source revision or candidate identity:
 Read boundary:
 Effect ownership: read-only | exact writable paths/effects
-Required evidence and local acceptance:
+Required evidence and local verification:
 Compressed return shape:
 Stop or disconfirming signal:
 Authority withheld:
@@ -60,7 +89,8 @@ the child locate a Skill-relative path.
 
 ## Reviewer envelope
 
-A reviewer receives a different contract:
+A reviewer receives the same canonical child prompt fragment, followed by a
+different task contract:
 
 ```text
 Candidate identity and source revision:

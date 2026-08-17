@@ -16,6 +16,12 @@ whole constraint
   -> Main reconstruction against the whole
 ```
 
+The carrier input is the complete child prompt: one concrete temporary role
+and purpose, the canonical portable working method, the task-specific
+contribution contract, and the applicable complete worker or reviewer
+contract. The first two layers shape the Agent's differentiation and method;
+the carrier transports them without interpreting them as lifecycle state.
+
 `researcher`, `implementer`, `reviewer`, and similar names are prompt context,
 not runtime species. Change the task, sources, workspace, capabilities, budget,
 effect boundary, or return contract to differentiate an Agent. Do not add a
@@ -41,7 +47,7 @@ forms without dispatching the same work twice.
 |---|---|---|
 | Whole | Main's current request and frozen sources | current Principal request plus authoritative Project/Task standing |
 | Child identity | one native child handle and prompt | one explicit Run ID and immutable request |
-| Input | self-contained delegation envelope | the same envelope passed to a sub-worker tool and lowered by its adapter into the child Run/Cell contract |
+| Input | complete self-contained child prompt | the same complete child prompt passed to a sub-worker tool and lowered by its adapter into the child Run/Cell contract |
 | Effects | only effects granted to that child by the current harness | exact Run capability plus the runtime's writer/effect owner |
 | Progress | transient child messages or tool observations | owner-backed Run activity; unknown after lost liveness when evidence cannot reconstruct it |
 | Correction | follow up the same child only for a named gap inside its existing ownership | correct the owning Task/premise; the owning Agent decides whether to request a new child Run, and Orchestration authorizes and creates it with lineage |
@@ -70,15 +76,17 @@ When Rossovia or another persistent runtime is already the requested owner:
    Cell. Give that Cell no special team state. Through its caller-supplied tool
    surface, inject one sub-worker delegation capability only when the current
    task topology needs it.
-3. Let the Main call that tool with a complete contribution envelope. The tool
-   adapter translates and submits the bounded request; Orchestration authorizes,
-   creates, and persists one explicit child Run, then lowers its immutable input
-   into a bounded Cell invocation. The capability returns an opaque child
-   reference plus a compressed claim, evidence, uncertainty, and terminal
-   standing. It never returns acceptance or transfers lifecycle ownership to
-   the parent Cell. Progress and control, when exposed, address the opaque
-   reference through the same host capability; they do not expose or duplicate
-   the orchestration store.
+3. Let the Main call that tool with the same complete child prompt used by a
+   native delegate, including
+   its temporary role and purpose, portable working method, task contract, and
+   role contract. The tool adapter translates and submits that bounded request;
+   Orchestration authorizes, creates, and persists one explicit child Run, then
+   lowers its immutable input into a bounded Cell invocation. The capability
+   returns an opaque child reference plus a compressed claim, evidence,
+   uncertainty, and terminal standing. It never returns acceptance or transfers
+   lifecycle ownership to the parent Cell. Progress and control, when exposed,
+   address the opaque reference through the same host capability; they do not
+   expose or duplicate the orchestration store.
 4. Keep child lifecycle outside Work Cell. Orchestration owns child Run identity,
    start, capacity and scheduling, exact live control, terminal standing, and
    recovery. Work Cell records invocation-specific usage observations;
@@ -107,7 +115,7 @@ same capability—or no delegation tool at all—without changing Cell core.
 Its smallest portable semantic contract is:
 
 ```text
-delegate(contribution envelope)
+delegate(complete child prompt)
   -> opaque child reference
   -> terminal standing + claim + evidence + uncertainty
 ```
@@ -119,13 +127,22 @@ execution requires it, but all operations address the same opaque child and
 the adapter preserves safe transport semantics around one lifecycle owned by
 Orchestration; it does not make lifecycle or retry decisions.
 
+The neutral Work Cell tool port and the read-only Run policy remain
+role-agnostic: they carry an opaque model-visible tool capability and bounded
+request, not a role enum, prompt registry, or team lifecycle. The Rossovia
+adapter is responsible for preserving the complete child prompt when it maps
+that request to the future `sub_worker` capability. Neither neutral layer
+parses temporary roles or promotes the portable method into persistent state.
+
 ## Native-sub-agent mapping
 
 When the active harness exposes session-local sub-agents:
 
 1. Create one native child for each independently useful contribution.
-2. Give it the complete envelope and applicable worker or reviewer contract;
-   do not rely on inherited conversation history as its specification.
+2. Give it the same complete child prompt: temporary role and purpose,
+   portable working method, task envelope, and applicable worker or reviewer
+   contract. Do not rely on inherited conversation history as its
+   specification.
 3. Follow up the same child only for a named gap inside its current ownership.
    Use a fresh child for a new contribution or independent review.
 4. Treat liveness, cancellation, and context inheritance as current-harness
@@ -135,7 +152,7 @@ When the active harness exposes session-local sub-agents:
 
 ## Portability probe
 
-Use the same fixture twice when claiming portability:
+Use the same frozen fixture twice when claiming portability:
 
 ```text
 Whole: one consequential change with two independent source investigations,
@@ -148,14 +165,24 @@ Expected semantic topology:
   Main synthesizes; reviewer does not accept
 ```
 
-Run the same Main prompt and contribution envelopes once with native delegates
-and once inside a Work Cell supplied with the sub-worker tool. The work-unit
-cuts, effect ownership, return claims, and acceptance owner must remain
-equivalent. Native child handles versus child Run IDs, progress evidence, and
-recovery behavior should differ because those belong to the harness. The probe
-fails if Work Cell gains child lifecycle, if the persistent mapping adds role
-types or a second lifecycle, if the native mapping fabricates durable state, or
-if either mapping gives multiple writers the same effect.
+Run the same Main prompt and complete child prompts once with native delegates
+and once inside a Work Cell supplied with the sub-worker tool. For each matched
+contribution, retain the two complete child prompts and mechanically confirm
+that they contain the same temporary role and purpose, portable working method,
+task envelope, and role contract. Then have a fresh reviewer judge task fidelity,
+source grounding, effect containment, evidence reconstruction, unknowns, and
+the separation of producer claim, semantic review, and named acceptance; prompt
+presence alone does not prove correct execution. The work-unit cuts, effect
+ownership, return claims, and acceptance owner must remain equivalent. Native
+child handles versus child Run IDs, progress evidence, and recovery behavior
+should differ because those belong to the harness.
+
+The probe fails if either carrier omits or rewrites the portable prompt layers,
+if Work Cell gains child lifecycle, if the persistent mapping adds role types
+or a second lifecycle, if the native mapping fabricates durable state, or if
+either mapping gives multiple writers the same effect. Until retained evidence
+exists from both carriers, describe Rossovia transfer as a forward contract or
+pending probe, not observed portability.
 
 ## Stop and reshape
 
