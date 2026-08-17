@@ -46,13 +46,69 @@ available environment and capability, permitted effects, completion/return
 condition, and evidence relation to the whole. Stable does not mean infallible
 or deterministic; failure and uncertainty must remain visible and contained.
 
+## Construct a receiver-specific working environment
+
+An Agent working environment is the minimum local world from which one receiver
+can understand a bounded contribution, use only real capabilities, observe the
+result, and return evidence that can be reconnected to the whole. A prompt is
+one projection of that world, not the whole environment and not a source of
+capability or authority.
+
+Construct four coupled relations without turning them into a schema or
+preflight:
+
+- **cognitive:** the concrete object and action, necessary concepts,
+  authoritative sources and revision, relation to the whole, downstream use,
+  and explicit non-goals;
+- **attention:** what must be salient now, what can be loaded on demand, and
+  which parent history or runtime detail cannot change this action and should
+  stay out;
+- **action:** actual workspace, model-visible tools, host capabilities, resource
+  envelope, allowed effects, withheld decisions, and stop behavior; and
+- **evidence:** observable activity and artifacts, scoped mechanical checks,
+  declared unknowns, semantic-review and acceptance owners, and a
+  reconstructible return.
+
+Judge the result as self-contained for action, decision-relevant,
+source-truthful, operationally real, effect-bounded, observable/reconstructible,
+and economical. Minimum-sufficient depends on this receiver and action; it does
+not mean maximum context or the shortest prompt. Define a necessary
+project-specific term at first use by the object it names, its boundary, and why
+it matters now. A title or persona does not replace object/action, downstream
+use, and non-goals.
+
+Keep ownership distributed rather than adding an environment owner:
+[`task-shaping`](../../task-shaping/SKILL.md) or the domain method forms the
+executable unit; [`context-engineering`](../../context-engineering/SKILL.md)
+selects and times source delivery;
+[`agent-delegation`](../../agent-delegation/SKILL.md) forms a contribution and
+return relation. Under Rossovia's accepted
+[module ownership](../../../design/decisions/055-rossovia-runtime-module-ownership.md),
+Orchestration binds Run identity, control, resources, and shared effects; Work
+Cell executes one bounded invocation and records scoped mechanical evidence;
+Integrations translate provider and host protocols; Presentation projects owner
+facts; and Workbench retains Task meaning and acceptance. The direct caller or
+Main Agent composes these inputs for the receiver; no environment registry,
+role type, or new hierarchy follows.
+
+Reason from whole and unit to receiver information, then real capabilities and
+effects, then evidence and return; reconstruct in the reverse direction before
+admitting the result as a premise. For a non-mandatory expression probe, give a
+fresh Agent only the complete proposed environment and ask it to restate the
+object, whole relation, boundary and effects, non-goals, verification, and
+return. Needing a definition for an undeclared term is a comprehension failure,
+not evidence for a glossary mechanism. Compare with a jargon-heavy control only
+when claiming improvement. A successful restatement proves comprehension, not
+semantic correctness or acceptance.
+
 ## Differentiate work; do not hard-code the organization
 
 Treat Agent roles as temporary differentiations of one general Agent model by
 task description and working environment, not as runtime species. The current
 organization is the relation among explicit work units and their dependencies,
-evidence, and returns. A role label can guide an Agent without earning a role
-enum, team state machine, queue, or new authority.
+evidence, and returns. A concrete contribution relation can guide attention and
+responsibility; a title alone cannot. Neither earns a role enum, team state
+machine, queue, or new authority.
 
 Keep discipline in generic sidecar owners: Project/Task standing, Run identity
 and effects, budget/control/recovery, capability boundaries, and mechanical

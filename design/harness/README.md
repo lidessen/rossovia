@@ -6,6 +6,11 @@ isolation, but the relation among a task description, the environment in which
 the Agent receives it, the effects that environment permits, and the evidence
 by which the result can be judged.
 
+The working environment is the receiver-specific minimum local world formed
+from task meaning, information, capabilities, effect limits, feedback, and
+return evidence. A prompt is one projection of that world, not the whole
+harness.
+
 Rossovia uses one general Agent execution model. Agents become temporarily
 different because they receive different tasks, context, capabilities,
 workspaces, budgets, dependencies, and return obligations. Those differences
@@ -18,6 +23,7 @@ survive misunderstanding, concurrency, interruption, or process loss.
 | Question | Source |
 |---|---|
 | What is Agent harness engineering, and how do task transformation, attention, evidence, effects, and temporary organization fit together? | [Harness theory](THEORY.md) |
+| How should a designer construct the minimum local world in which one Agent can understand, act, and return reconstructible evidence? | [Agent working environment](THEORY.md#agent-working-environment-a-receiver-specific-local-world) |
 | How should test breadth change from exploration through stabilization, integration, and release hardening without becoming a new gate? | [Phase-appropriate engineering tests](THEORY.md#engineering-tests-as-phase-appropriate-feedback) |
 | Which runtime module owns Project/Task state, Runs, Worktree writer exclusion, Cell execution, external protocols, and presentation? | [Runtime ownership Decision 055](../decisions/055-rossovia-runtime-module-ownership.md) |
 | How is the current implementation moving toward that ownership model without a big-bang rewrite? | [Runtime ownership migration](../organization/rossovia-runtime-ownership-migration.md) |

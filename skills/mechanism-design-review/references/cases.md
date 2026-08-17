@@ -163,3 +163,40 @@ an already load-bearing invariant, not because every edge must be anticipated.
 **Reopen when.** A new supported effect channel can bypass the repaired owner,
 the runtime enters process-loss or concurrent-writer conditions, or a release
 claim needs evidence from the intended operating profile.
+
+## Case 7 — Role title and runtime map in a child prompt
+
+**Identity.** The object is one receiver-facing working-environment projection,
+not an Agent role record or a serialized copy of the parent's orchestration
+model. It must tell the child what concrete object and action it owns, how the
+result is used, what it must not decide, which capabilities are real, and what
+evidence must return.
+
+**Origin.** An initial delegation-method revision required a “temporary role
+and purpose” heading and repeated that it did not create role enums, team state,
+or runtime authority. The negative runtime statements were architecturally
+true but mostly irrelevant to the receiver, while a title could remain empty of
+the object/action, downstream use, and non-goal relation that changes its work.
+The corrected method now constructs a receiver-facing contribution relation
+only when it is decision-relevant and otherwise relies on the exact task,
+portable method, and return contract
+([child prompt construction](../../agent-delegation/references/delegation.md#child-prompt-construction)).
+
+**Destination.** Supply the minimum local world needed for action: governing
+sources and concepts, salient whole relation, actual workspace/tools/effects
+and stop conditions, and a reconstructible evidence return. Omit parent maps
+that cannot change the child action. Define a necessary project term by its
+object, boundary, and immediate relevance instead of assuming shared jargon.
+
+**Treatment.** `simplify` the prompt and context projection. Do not add a role
+taxonomy, environment schema, prompt registry, or glossary gate. Keep actual
+capability and effect enforcement with the runtime owners; prompt text only
+projects the parts the receiver needs.
+
+**Reopen when.** A matched fresh-Agent comparison under the real execution
+profile shows that the relational prompt still repeatedly loses the object,
+effect boundary, non-goals, verification, or hand-off after irrelevant terms
+are removed; or the failure is not comprehension but an unavailable capability
+or unenforced effect boundary. The first result supports another context or
+expression treatment; the second returns to the runtime owner rather than
+adding stronger prose.

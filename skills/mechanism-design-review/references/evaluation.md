@@ -215,6 +215,44 @@ three, turns the phases into lifecycle state, treats a test pass as semantic
 acceptance, or cannot explain which outcome changes the next practice and what
 cost the additional evidence incurs.
 
+### Pending probe — Receiver-specific working environment
+
+**Standing:** `transfer-unverified`; no arm has been run.
+
+Use one frozen, bounded review task and the same sources, tool capabilities,
+read/effect limits, verification request, and return contract in two prompt
+arms:
+
+- the **jargon-heavy control** adds a job title, unexplained project
+  abbreviations, and the parent's runtime/module map; and
+- the **receiver-specific candidate** replaces those additions with only the
+  decision-relevant object/action, whole and downstream relation, explicit
+  non-goals, and operational definitions for necessary project terms.
+
+Give each complete prompt, without prior conversation, to a fresh Agent before
+execution. Ask it to restate the object, relation to the whole, read and effect
+boundary, non-goals, verification, and required return. A request to explain an
+undeclared term is a comprehension failure. Then let separate fresh Agents
+execute the same task. Retain unedited prompts and outputs, model/profile and
+carrier identity, available tools and permissions, clarification requests,
+corrective follow-ups, and timing/usage when observable.
+
+Mechanical inspection checks only that the declared sources, capabilities,
+effects, and return fields were actually present. A fresh source-aware reviewer
+judges task fidelity, whole-relation preservation, non-goals, evidence quality,
+and hand-off reconstruction. The acceptance owner remains separate. Compare
+noise statements and correction turns as observations, not a score or gate.
+
+The candidate is not supported merely because it is shorter or can be
+restated. It must preserve or improve execution and reconstruction while
+removing irrelevant context; a lost hard constraint, fabricated capability, or
+weaker effect boundary is a failure. Repeated comprehension failures after the
+candidate treatment reopen context delivery or prompt expression. Failures
+caused by absent tools or unenforced effects return to their runtime owners.
+Do not claim transfer until both arms have retained evidence under a named
+execution profile and an independent review disposition.
+
 Task shaping, context delivery, and delegation topology remain outside this
-Skill's evaluation. A future evaluator may recognize those as upstream
-pressures, but it must route them to their owners rather than solve them here.
+Skill's mechanism judgment. The working-environment probe may test whether the
+reviewer recognizes and routes those upstream pressures, but it must not let
+this Skill form units, choose delivery timing, or operate delegation itself.

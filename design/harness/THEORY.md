@@ -106,6 +106,128 @@ effects remain coupled. Recomposition is therefore not concatenation or
 majority vote: it restores cross-unit invariants, resolves contradictions, and
 forms one candidate for the original acceptance owner.
 
+## Agent working environment: a receiver-specific local world
+
+An Agent's **working environment** is the minimum-sufficient local world from
+which that particular receiver can understand one bounded contribution, take
+only the available actions, observe what happened, and return evidence that a
+downstream owner can reconstruct. It is not synonymous with a prompt, context
+window, workspace, tool list, process environment, or Run record. Those are
+possible projections or bound parts of the relation.
+
+The environment couples four relations:
+
+| Relation | Minimum question it must answer | Typical contents |
+| --- | --- | --- |
+| **Cognitive** | What object and change are real, which concepts and sources govern them, and how does this contribution relate to the requested whole? | object and requested transformation; necessary concepts defined for this receiver; authoritative sources, revision, and standing; downstream use and explicit non-goals |
+| **Attention** | What must be salient now, what can be discovered on demand, and what should be absent because it cannot change this action? | compact orientation; activated method; source pointers; volatile detail loaded at its decision boundary; omitted parent history and runtime maps |
+| **Action** | Where can the Agent act, which capabilities actually exist, which effects are allowed, and when must it stop? | working location; model-visible tools; host capabilities; read/write or external-effect limits; resource envelope; stop, cancellation, and unavailable-capability behavior |
+| **Evidence** | What observations can the environment produce, what can be checked mechanically, who judges meaning, who accepts, and what must return? | trace and artifact identity; explicit mechanical predicates; declared unknowns; semantic-review owner; acceptance owner; conclusion, evidence, uncertainty, and hand-off contract |
+
+These relations are coupled but keep distinct owners. A source-rich prompt with
+no real tool cannot create an action capability. A writable workspace without
+the relevant whole can produce locally plausible but unusable effects. A test
+can establish its predicate without judging semantic adequacy. A polished
+return that loses source revision, changed effects, or retained decisions
+cannot be safely recomposed.
+
+### Construction criteria
+
+A useful environment is:
+
+- **self-contained for action:** the receiver can identify its object, next
+  action, boundaries, non-goals, verification, and required return without
+  reconstructing the parent's conversation;
+- **decision-relevant:** every supplied concept, source, tool, and constraint
+  can change the receiver's action or interpretation at the moment it appears;
+- **source-truthful:** authoritative sources and their standing remain visible,
+  while summaries, prompts, and cached views remain declared projections;
+- **operationally real:** the workspace, tools, model binding, permissions,
+  budget, and cancellation behavior described to the Agent match the actual
+  invocation rather than an imagined harness;
+- **effect-bounded:** allowed changes, external effects, withheld authority,
+  single-writer ownership where needed, and stop conditions are explicit and
+  enforceable at their real owner;
+- **observable and reconstructible:** local observations and mechanical checks
+  retain their narrow meaning, unknowns remain visible, and the return lets the
+  next owner reconnect the contribution to the whole; and
+- **economical:** irrelevant history, parent orchestration maps, ceremonial
+  titles, duplicate doctrine, and detail that belongs on demand do not consume
+  the receiver's attention.
+
+These are reasoning criteria, not a score, schema, environment registry, or
+mandatory preflight. Minimum-sufficient is receiver- and action-specific: the
+same source or tool may be essential for one contribution and noise for
+another. Removing a hard constraint is not economy, while including every
+possibly relevant detail is not self-containment.
+
+Prompt text is only one projection of this world. It can express the cognitive
+relation, make selected boundaries salient, and name expected evidence; it
+cannot by itself supply a tool, grant an effect, establish the real workspace,
+create independent review, or confer acceptance. Write prompt content for the
+receiver. Omit parent lifecycle and module maps that do not change its action.
+When a project-specific term is necessary, define it at first use in one
+operational sentence: the object it denotes, its boundary, and why it matters
+now. A title or persona cannot substitute for a concrete object/action,
+downstream use, and non-goal relation.
+
+### Ownership and assembly
+
+No new module owns “the environment.” It is assembled for one invocation from
+decisions and facts owned elsewhere. Runtime ownership follows
+[Decision 055](../decisions/055-rossovia-runtime-module-ownership.md); the
+method boundaries follow [`task-shaping`](../../skills/task-shaping/SKILL.md),
+[`context-engineering`](../../skills/context-engineering/SKILL.md), and
+[`agent-delegation`](../../skills/agent-delegation/SKILL.md):
+
+| Owner | Contribution to the working environment | Boundary retained |
+| --- | --- | --- |
+| Workbench / domain owner | authoritative Project/Task meaning, correction, and acceptance standing | does not choose execution topology or run the Agent |
+| `task-shaping` or owning domain method | forms the executable unit, whole obligation, local transformation, and reconstruction boundary | does not release Runs or choose provider policy |
+| `context-engineering` | selects authoritative information and times its receiver-facing delivery | does not author source meaning or grant capabilities |
+| `agent-delegation` | forms a bounded contribution, downstream use, non-goals, and evidence-bearing return relation | does not create another lifecycle or acceptance owner |
+| Orchestration | binds the authorized Run identity, resolved execution request, control, resource allocation, and shared-effect ownership | does not own Task meaning, provider translation, or acceptance |
+| Work Cell | executes one immutable bounded invocation with caller-supplied capabilities and emits scoped mechanical evidence and at most one final | does not infer a Task, child organization, semantic review, or acceptance |
+| Integrations | translate the bound request and tools to provider, host, workspace, and external-system protocols | do not own generic lifecycle or domain truth |
+| Presentation | projects owner facts for a human or Agent entry surface | does not become an execution, liveness, or acceptance source |
+
+The Main Agent or direct caller composes the receiver-facing request from these
+owners; Orchestration and Work Cell bind the operational parts they actually
+own. A standalone Work Cell can therefore receive an equivalent bounded
+environment from a direct experiment without acquiring Workbench or
+Orchestration state.
+
+### Construction and reconstruction reasoning
+
+Use this sequence only as a reasoning aid; collapse steps for simple work and
+do not encode it as a workflow:
+
+1. Form the whole and the smallest coherent unit through its owning method.
+2. Name the receiver's actual object and next action, then select only the
+   concepts, sources, and whole relation needed to perform it.
+3. Bind the real workspace, model-visible tools, host capabilities, resource
+   limits, effects, and stop behavior; do not promise unavailable operations.
+4. Make the decisive constraints salient now and leave recoverable detail on
+   demand, with necessary project terms defined operationally.
+5. State local observations and mechanical predicates separately from
+   semantic-review and acceptance ownership, then require a return that carries
+   conclusion, evidence, unknowns, changed effects, and downstream use.
+6. At hand-off, reconstruct the contribution against its named sources,
+   effect evidence, whole obligation, and retained decisions before using it as
+   a premise.
+
+For a receiver-facing expression probe, give only the complete proposed
+environment to a fresh Agent and ask it to restate the object, relation to the
+whole, boundaries and allowed effects, non-goals, verification, and return. A
+request to explain an undeclared term is a comprehension failure. Compare with
+a jargon-heavy control when claiming improvement, and retain prompt/output
+noise plus corrective follow-ups. This tests comprehension, not task
+correctness: mechanical inspection confirms the declared surfaces exist, an
+independent source-aware reviewer judges semantic performance, and the named
+owner alone accepts. No matched fresh-Agent comparison has yet established
+portable benefit for this formulation; treat it as a forward probe until that
+evidence exists.
+
 ## Agent differentiation and organization
 
 At the theory level, the system begins with one general Agent model: receive a
@@ -134,11 +256,12 @@ sidecar discipline:
 ```
 
 The organization is therefore the current relation among differentiated work
-units, not a code-defined org chart. A role name may be useful prompt context,
-but it does not need its own runtime type, lifecycle, queue, or authority. The
-same general Agent model can participate in different organizations because
-the task, sources, workspace, tools, capability, budget, isolation, required
-return, and predecessor relations differ.
+units, not a code-defined org chart. A concrete contribution relation may be
+useful prompt context when it changes attention or responsibility; a title
+alone does not. Neither needs its own runtime type, lifecycle, queue, or
+authority. The same general Agent model can participate in different
+organizations because the task, sources, workspace, tools, capability, budget,
+isolation, required return, and predecessor relations differ.
 
 This is neither a loose verbal collective nor an ungoverned swarm. Discipline
 comes from sidecar systems that are deliberately more rigid than the semantic
