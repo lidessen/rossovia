@@ -40,8 +40,9 @@ test("current worker cards expose capability and execution defaults from one pol
   });
 
   expect(kimiCodingPlan).toBeDefined();
-  expect(kimiCodingPlan?.labels).toContain("vision");
+  expect(kimiCodingPlan?.labels).not.toContain("vision");
   expect(kimiCodingPlan?.description).toContain("Kimi Coding Plan");
+  expect(kimiCodingPlan?.description).not.toContain("image input");
   expect(kimiCodingPlan).toMatchObject({
     executionProfile: {
       provider: "kimi-coding",

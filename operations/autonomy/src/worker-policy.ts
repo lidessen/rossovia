@@ -82,9 +82,9 @@ export function currentWorkerCards(
     WorkerCardSchema.parse({
       version: WORKER_CARD_VERSION,
       id: "kimi-coding-plan",
-      labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
       description:
-        "Kimi Coding Plan handles complex code engineering with thinking, tool use, and image input through the Kimi Coding Plan endpoint. Recommended for code-heavy or visual-plus-code tasks that benefit from sustained reasoning when a Kimi Coding Plan subscription is preferred.",
+        "Kimi Coding Plan handles complex text and code engineering with thinking, tool use, and sustained reasoning. Recommended for code-heavy tasks that benefit from sustained reasoning through the Kimi Coding Plan endpoint.",
       executionProfile: {
         id: "kimi-coding-plan",
         version: "execution-profile.v1",
