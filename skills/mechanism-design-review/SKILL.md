@@ -40,9 +40,16 @@ of this Skill a new runtime dependency. Use it while forming or reviewing a
 design; retain its result only when the owning design already needs that
 decision recorded.
 
-Read [concepts](references/concepts.md) only when mechanism, policy, adapter,
-prompt guidance, durable fact, projection, observation, review, acceptance, or
-action meanings are being conflated.
+Read the portable [harness theory](references/harness-theory.md) when the
+review needs enough of the task relation to distinguish a mechanism problem
+from task-shaping, context-delivery, delegation, evidence, effect-authority,
+recovery, or projection pressure. Reconstruct only what changes the mechanism
+judgment; route formation of Agent-executable units to `task-shaping`, source
+timing to `context-engineering`, and execution topology to `agent-delegation`.
+The theory is an operational projection, not a new semantic source or admission
+mechanism. Read [concepts](references/concepts.md) only when their detailed
+terms—mechanism, policy, adapter, prompt guidance, durable fact, projection,
+observation, review, acceptance, or action—are being conflated.
 
 ## Principle source
 
@@ -140,7 +147,8 @@ retirement path. “More explicit,” “more robust,” and “future-proof” 
 it.
 
 Choose `keep`, `prompt`, `reuse`, `simplify`, or `mechanism-candidate`. This is a
-recommendation, never approval. Read the [worked cases](references/cases.md)
+recommendation, never approval. Derive the result from object, epistemic claim,
+effect, and authority before consulting a similar case. Read the [worked cases](references/cases.md)
 only after forming an initial three-question answer; use them to compare
 relations and reopening evidence, not to select a result by resemblance.
 
@@ -209,11 +217,12 @@ universal review queue or retry controller.
 As a bounded design probe, ask an unfamiliar Agent to classify representative
 cases without teaching it an exception table. If it repeatedly confuses verbs
 or invents new ones, derive the difference from target, input identity, effect
-relation, and authority instead of expanding the enum. This is evidence for
-the current review, not a standing gate or required ceremony. The current
-single-evaluator [evaluation notes](references/evaluation.md) retain one failed
-flat-vocabulary probe and one supported three-question transfer probe; do not
-treat them as cross-model proof.
+relation, epistemic claim, and authority instead of expanding the enum. This is
+evidence for the current review, not a standing gate or required ceremony. The
+current single-evaluator [evaluation notes](references/evaluation.md) retain a
+failed flat-vocabulary probe, one supported explanation probe, a theory
+authoring fixture, and a `transfer-unverified` blinded-evaluation plan; do not
+treat the fixture or plan as transfer evidence.
 
 ## Recurring mechanism traps
 
@@ -233,6 +242,9 @@ treat them as cross-model proof.
   and
 - importing a framework's session, workflow, or plugin machinery because its
   feature list resembles the local problem.
+- encoding temporary Agent roles or one observed team topology as runtime
+  species, lifecycle states, or scheduler truth when generic Task/Run/evidence
+  sidecars already provide the required discipline.
 
 These are investigation signals, not automatic rejection rules. A concrete
 case may still justify one of them when its unique control property and burden
@@ -309,6 +321,9 @@ names are prompts for content, not a form that must be emitted literally.
 | Need | Owner |
 |---|---|
 | Review whether a proposed agent-system mechanism is necessary and proportionate | this Skill |
+| Shape a requested task into stable direct, guarded, transformed, or escalated work units | `task-shaping` or the owning domain Skill |
+| Deliver authoritative source context at the right action boundary | `context-engineering` |
+| Decide and operate direct versus delegated execution topology | `agent-delegation` |
 | Decide whether a recurring need should be a Skill, artifact, runtime, projection, or no new form | `form-guidance` |
 | Design an end-to-end reliability relation after a concrete failure is established | `systems-engineering` |
 | Review defects in an implemented patch | `code-review` |

@@ -43,6 +43,16 @@ with the actual object, actors, constraints, and acceptance owner. Runtimes and
 adapters execute that already-formed work; their successful operation cannot
 promote their own policy or result into an upper source.
 
+The [Agent harness theory](organization/agent-harness-theory.md) is the
+project-level derivative that treats harness design as Agent-facing task
+engineering: reconstructing, re-expressing, environmentalizing, partitioning,
+and recomposing work under bounded attention, evidence, effect, and authority
+constraints. It treats Agent organization as flexible differentiation by Task
+and environment while generic sidecar systems retain rigid state, resource,
+effect, and evidence discipline. It does not add a governing layer, replace the
+Sequence, or turn its method into a mandatory admission process; it gives
+Skills and runtime decisions one shared, revisable explanatory model.
+
 ### Governing layers
 
 | Layer | Owns | Changes only when | Must not absorb |

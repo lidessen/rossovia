@@ -120,3 +120,65 @@ unproved claims about current implementation behavior.
 The result shows that the revised form can carry a consequential design
 decision without source reconstruction; it does not establish portability
 across model families or prove the architecture's implementation claims.
+
+## Authoring fixture — Theory expression without an exception table
+
+**Purpose.** Show how the author currently derives several unrelated mechanism
+decisions from object, epistemic claim, effect, causal identity, and authority.
+This fixture does not show that a fresh reviewer can transfer the theory.
+
+**Method.** Apply the portable
+[harness theory](harness-theory.md) in its stated order: name the object and
+owner; distinguish observation/mechanical conformance/semantic judgment/
+authority; then classify the effect and recovery relation. The following are
+worked derivations, not evaluator outputs or a claim about transfer.
+
+| Unrelated pressure | Derivation before cases | Classification | What would disconfirm it |
+| --- | --- | --- | --- |
+| A release task requires `report.md`, a JSON manifest, and links to named source files. A proposal says a CI gate should declare the report "good enough." | Paths, bytes, schema, and declared references are reproducible conformance claims, so the checker can own them. Adequacy, relevance, and whether the report answers the actual brief depend on source interpretation and unencoded tradeoffs. | Keep mechanical artifact checking narrow; send consequential adequacy to an independent semantic reviewer; reserve acceptance for the Principal. Do not call the green check a semantic gate. | The acceptance contract specifies a governed, decidable adequacy predicate for this scope; automate that predicate while retaining any remainder for review. |
+| A provider call with idempotency key `K` timed out before its acknowledgement. Separately, an Agent Run that prepared the request ended with an adverse review. A proposal calls both follow-ups `retry`. | Re-sending the same identified provider request is an adapter delivery question; provider idempotency/query decides whether replay is safe. Asking the Agent to act after adverse semantic review changes candidate meaning and crosses a new execution boundary. | The adapter may query or safely replay `K` without a new Agent Run. Correction plus a fresh, explicitly identified Run is required for the reviewed candidate; a generic automatic retry is rejected. | The provider lacks idempotency/status and the effect is irreversible: elevate the delivery boundary to a mechanism/authority problem rather than replay. Or a true live control can alter the existing Run without beginning another execution. |
+| After restart, a UI has a terminal Cell final and old activity events but no surviving process handle. Product asks for a durable `running` ledger. The same product also sends an irreversible third-party publication request that can time out after commit. | Liveness is a transient observation: old events plus terminal evidence cannot prove a live process now. A UI record would be a projection pretending to be authority. Publication has a causal external effect that needs exact identity and protected authority across ambiguity. | Project `terminal` where final evidence exists and `unknown` for lost liveness; do not create a liveness fact. For publication, retain strict effect ownership, idempotency/query where available, and explicit authorization rather than borrowing the UI's relaxed precision. | A named recovery owner and reader need crash-surviving liveness state to preserve a hard safety property, with explicit write authority, a concurrency/consistency relation, and retirement path. Or publication is proven reversible and locally recoverable, reducing its effect-boundary requirement. |
+
+**Coherence condition.** Each classification retains a different owner for
+mechanical fact, semantic judgment, effect/recovery, and acceptance; it does
+not introduce a public `retry`/`verify` verb, a semantic validator, or a
+durable projection authority.
+
+**Disconfirming observation.** The derivation needs a case-specific exception to
+place one of the three situations, or reaches different answers while preserving
+the same object, predicate, effect relation, and authority facts. In that case,
+revise the theory's distinctions rather than append another vocabulary rule.
+
+**Standing.** This is a source-visible authoring fixture for the new theory. It
+is not an independent evaluator run, transfer evidence, proof of causal
+expression effect, or a runtime gate.
+
+## Pending evaluation — Blinded theory transfer
+
+**Standing:** `transfer-unverified`.
+
+The authoring fixture above shows internal coherence, not transfer. A valid
+next evaluation must separate authoring from evaluation:
+
+1. give a fresh evaluator the portable theory but not `cases.md`, this file's
+   worked derivation, or the expected classifications;
+2. ask it to review at least three novel mechanism pressures whose domains,
+   labels, and surface actions differ from the authored examples;
+3. retain the unedited prompt, output, model/profile identity, and any request
+   for an exception rule;
+4. judge whether it derives object, claim scope, effect relation, authority,
+   smallest treatment, and reopening evidence without inventing a new owner or
+   mandatory workflow; and
+5. include a control that receives the old flat vocabulary or no theory before
+   claiming a causal improvement.
+
+A separate organization-boundary probe should hold one Agent model and the
+generic Project/Task/Run/Cell sidecar primitives fixed, then vary only task,
+environment, capability, and return relations across direct work and two
+temporary multi-Run organizations. Needing a new role type, lifecycle, or team
+state merely to express one topology is a failure; a performance benefit is a
+different empirical claim.
+
+Task shaping, context delivery, and delegation topology remain outside this
+Skill's evaluation. A future evaluator may recognize those as upstream
+pressures, but it must route them to their owners rather than solve them here.
