@@ -12,26 +12,27 @@ import {
   type CellInput,
   type CellUsage,
   type DriverDescriptor,
-} from "./contracts";
+} from "../../contracts";
 import {
   CellExecutionError,
+  TerminalContractError,
+  createStepAllowance,
+  stepBudgetExhaustedMessage,
   type CellDriver,
   type DriverContext,
   type DriverResult,
-} from "./driver";
-import { compileOutputSchema } from "./output-schema";
+} from "../../driver";
+import { compileAiSdkOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
-import { TaskStore } from "./task-store";
+import { TaskStore } from "../../task-store";
 import {
-  BUDGET_CONTROL_TOOL_NAMES,
   createHostTools,
   EXECUTION_TOOL_NAMES,
   terminalActionRequired,
 } from "./host-tools";
 import {
   AiSdkDriverOptions,
-  type TaskToolSet,
 } from "./ai-sdk-driver";
 import {
   createValidationModel,
@@ -205,16 +206,15 @@ function piHarnessTarget(options: PiHarnessDriverOptions): PiHarnessTarget {
  * Pi adapter in-process and an empty in-memory just-bash sandbox. Every Pi
  * built-in tool is disabled; the model-visible tool set is exactly the
  * host-executed Work Cell surface (read/list, Pi-native exact batch edit,
- * create-new-only full write, allow-listed commands, host task tools, budget
- * and terminal tools). Provider/model identity, usage, tasks, and workspace
- * effects remain Work Cell evidence; the harness session identity is
+ * create-new-only full write, allow-listed commands, host task tools, and
+ * caller-declared terminal tools). Provider/model identity, usage, tasks, and
+ * workspace effects remain Work Cell evidence; the harness session identity is
  * observation only. Every host tool execution crosses one causal event-loop
  * handoff before its effect so an immediately-resolving result cannot
  * outrun the pinned adapter's next-turn registration barrier.
  */
 export class PiHarnessCellDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
-  readonly budgetControl = "completed-step-v1" as const;
   protected readonly model;
   private readonly harness: HarnessV1<ToolSet>;
   private readonly sandbox: HarnessV1SandboxProvider | undefined;
@@ -258,7 +258,7 @@ export class PiHarnessCellDriver implements CellDriver {
     });
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
-    const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
+    const outputSchema = input.outputSchema ? compileAiSdkOutputSchema(input.outputSchema) : undefined;
     const markTerminalTool = (name: string): boolean => {
       if (terminalToolsCalled.size > 0) {
         terminalProtocolError = `expected exactly one terminal tool call; received ${[
@@ -274,9 +274,6 @@ export class PiHarnessCellDriver implements CellDriver {
     };
     const actionBlocked = () => {
       if (terminalOnly) return terminalActionRequired();
-      if (context.budgetControl && context.budgetControl.phase !== "production") {
-        return terminalActionRequired();
-      }
       return undefined;
     };
     const hostTools = {
@@ -300,7 +297,7 @@ export class PiHarnessCellDriver implements CellDriver {
     };
     const conflictingTerminalNames = (input.terminalTools ?? [])
       .map((terminal) => terminal.name)
-      .filter((name) => EXECUTION_TOOL_NAMES.has(name) || BUDGET_CONTROL_TOOL_NAMES.has(name));
+      .filter((name) => EXECUTION_TOOL_NAMES.has(name));
     if (conflictingTerminalNames.length > 0) {
       throw new Error(
         `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,
@@ -348,6 +345,12 @@ export class PiHarnessCellDriver implements CellDriver {
 
     let observedUsage: CellUsage = emptyUsage();
     let observedSettlementUsage: CellUsage = emptyUsage();
+    // One shared monotonic, non-extendable explicit step allowance for every
+    // provider/model step: the harness main turn and the structured
+    // settlement consume the same count. An omitted maxSteps installs no
+    // step-count ceiling, so only maxDurationMs and the caller's abort signal
+    // remain.
+    const stepAllowance = createStepAllowance(input.budget.maxSteps);
     const session = await agent.createSession();
     let harnessSessionId: string | undefined;
     const stepBudgetAbort = new AbortController();
@@ -382,31 +385,18 @@ export class PiHarnessCellDriver implements CellDriver {
         acceptStep: () => stepBudgetExhaustedAt === undefined,
         observeUsage: (usage) => {
           observedUsage = addUsage(observedUsage, usage);
-          context.observeUsage(
-            usage,
-            context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
-          );
-          if (context.budgetControl?.phase === "settlement") {
-            observedSettlementUsage = addUsage(observedSettlementUsage, usage);
-          }
+          context.observeUsage(usage, "execution");
         },
         onStepFinished: (_finishReason, stepHadToolActivity) => {
           completedSteps += 1;
-          if (context.budgetControl?.phase === "production") {
-            const decisionPoint = context.budgetControl.completedStep();
-            if (decisionPoint) context.emit("budget.decision_point", { completedSafeStep: true });
-          } else if (
-            context.budgetControl === undefined
-            && input.budget.maxSteps !== undefined
-            && completedSteps >= input.budget.maxSteps
-            // The pinned harness-pi adapter translates every inferred
-            // completed step — including tool-continuing steps — to a
-            // unified stop finish label, so a label-gated guard is
-            // unreachable on the production adapter. "Another model step
-            // will begin" is therefore derived from actual tool activity
-            // in the completed step, never from the hardcoded finish
-            // label. A tool-free terminal response on the final allowed
-            // step completes naturally.
+          stepAllowance.consume();
+          // The immutable step budget is enforced from actual tool activity,
+          // never from the harness finish label. A tool-free terminal response
+          // on the final allowed step completes naturally. Recovery and
+          // settlement phases (when they exist) continue from the same
+          // remaining allowance; no later phase starts when none remains.
+          if (
+            stepAllowance.exhausted
             && stepHadToolActivity
           ) {
             // Freeze the exact accepted-step count before aborting. Pi emits
@@ -414,7 +404,7 @@ export class PiHarnessCellDriver implements CellDriver {
             // not another completed provider step.
             stepBudgetExhaustedAt = completedSteps;
             stepBudgetAbort.abort(new Error(
-              `Work Cell step budget exhausted after ${stepBudgetExhaustedAt} completed steps`,
+              stepBudgetExhaustedMessage(stepBudgetExhaustedAt, "no provider step remains"),
             ));
           }
         },
@@ -430,8 +420,29 @@ export class PiHarnessCellDriver implements CellDriver {
         // calls, so they supersede zero or partial inferred-step usage rather
         // than being added to it.
         if (aggregateUsage?.totalTokens) observedUsage = aggregateUsage;
+        if (terminalProtocolError) {
+          throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
+        }
+        // A declared terminal tool accepted on the final allowed step retains
+        // that accepted action and completes the Cell: the turn was frozen
+        // before any further provider call could begin, and the terminal-only
+        // standing needs no separate final-output step. Only a normally
+        // stopped unsatisfied loop reports step exhaustion.
+        if (terminalToolsCalled.size > 0) {
+          const calledNames = [...terminalToolsCalled];
+          return {
+            terminalToolsCalled: calledNames,
+            ...(tasks.snapshot().length > 0 ? { tasks: tasks.snapshot() } : {}),
+            finalText: `Terminal contract satisfied during execution through ${calledNames.join(", ")}; no final text was generated.`,
+            usage: observedUsage,
+            rawSteps: [],
+            providerMetadata: {
+              ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
+            },
+          };
+        }
         throw new CellExecutionError(
-          `Work Cell step budget exhausted after ${stepBudgetExhaustedAt} completed steps`,
+          stepBudgetExhaustedMessage(stepBudgetExhaustedAt, "no provider step remains"),
           observedUsage,
           observedSettlementUsage,
         );
@@ -448,7 +459,7 @@ export class PiHarnessCellDriver implements CellDriver {
       // materialized; never add both views of the same tokens.
       observedUsage = normalizedUsage.totalTokens > 0 ? normalizedUsage : observedUsage;
       if (terminalProtocolError) {
-        throw new CellExecutionError(terminalProtocolError, observedUsage, observedSettlementUsage);
+        throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
       }
       if (context.signal.aborted) {
         throw new CellExecutionError(
@@ -462,6 +473,16 @@ export class PiHarnessCellDriver implements CellDriver {
       let settlement: StructuredSettlementResult | undefined;
       let output: unknown;
       if (outputSchema) {
+        // The allowance is shared and non-extendable: structured settlement
+        // never starts when no provider step remains; the Cell fails
+        // truthfully instead of passing without the required output.
+        if (stepAllowance.remaining === 0) {
+          throw new CellExecutionError(
+            stepBudgetExhaustedMessage(stepAllowance.consumed, "the structured output contract cannot be settled"),
+            observedUsage,
+            observedSettlementUsage,
+          );
+        }
         context.emit("structured.settlement.started", { mode: "tool-settlement" });
         settlement = await settleStructuredOutput({
           model: this.model,
@@ -473,6 +494,7 @@ export class PiHarnessCellDriver implements CellDriver {
             .join("\n\n"),
           context,
           maxOutputTokens: MAX_AGENT_OUTPUT_TOKENS,
+          stepAllowance,
         });
         if (settlement.output === undefined) {
           const failedSettlementUsage = addUsage(observedSettlementUsage, settlement.usage);
@@ -483,7 +505,17 @@ export class PiHarnessCellDriver implements CellDriver {
           );
         }
         output = settlement.output;
-        context.emit("structured.settlement.finished", { mode: "tool-settlement" });
+        // A valid emit_structured_output call can arrive after the caller
+        // cancelled while this settlement attempt was still in flight: the tool
+        // execute assigns the accepted output, so the shared helper resolves
+        // through every output-undefined and catch guard. The enclosing runCell
+        // already emitted the immutable Cell final (cell.error then
+        // cell.finished) with the original caller reason, so the accepted-output
+        // completion stays causal only to that finalized cancellation and no
+        // settlement event is emitted after the final.
+        if (!context.signal.aborted) {
+          context.emit("structured.settlement.finished", { mode: "tool-settlement" });
+        }
       }
       const settlementUsage = settlement
         ? addUsage(observedSettlementUsage, settlement.usage)
@@ -506,7 +538,7 @@ export class PiHarnessCellDriver implements CellDriver {
     } catch (error) {
       if (error instanceof CellExecutionError) throw error;
       if (terminalProtocolError) {
-        throw new CellExecutionError(terminalProtocolError, observedUsage, observedSettlementUsage);
+        throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
       }
       throw new CellExecutionError(
         error instanceof Error ? error.message : String(error),

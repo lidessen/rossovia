@@ -1,10 +1,10 @@
-import { AiSdkValidationDriver, type AiSdkDriverOptions } from "../../../packages/work-cell/src/ai-sdk-driver";
-import { PiHarnessCellDriver } from "../../../packages/work-cell/src/pi-harness-driver";
+import { AiSdkValidationDriver, type AiSdkDriverOptions } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
+import { PiHarnessCellDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/pi-harness-driver";
 import {
   DEEPSEEK_PROVIDER_ID,
   DeepSeekInferencePolicySchema,
   type DeepSeekInferencePolicy,
-} from "../../../packages/work-cell/src/providers/deepseek";
+} from "../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek";
 import {
   WORKER_CARD_VERSION,
   WorkerCardSchema,

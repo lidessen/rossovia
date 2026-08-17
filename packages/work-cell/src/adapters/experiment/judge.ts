@@ -1,8 +1,8 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { CellUsage } from "../../contracts";
-import { normalizeAiSdkUsage as normalizeUsage } from "../../ai-sdk-usage";
-import { createValidationModel, type ValidationModelOptions } from "../../validation-model";
+import { normalizeAiSdkUsage as normalizeUsage } from "../../integrations/ai-sdk/ai-sdk-usage";
+import { createValidationModel, type ValidationModelOptions } from "../../integrations/ai-sdk/validation-model";
 
 export const BlindJudgementSchema = z.object({
   preferred: z.enum(["A", "B", "tie", "inconclusive"]),

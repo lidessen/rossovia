@@ -19,14 +19,33 @@ import {
 } from "../src/delegate-admission";
 import { digest } from "../src/canonical-json";
 import {
-  DelegateLoopSession,
-  runDelegateLoop,
+  DelegateLoopSession as DelegateLoopSessionCore,
+  runDelegateLoop as runDelegateLoopCore,
   type DelegateBatchCheckpoint,
   type DelegateCall,
+  type DelegateLoopOptions,
   type DelegateTimeline,
   type PreparedDelegateExecution,
   type WorkerSpawnCall,
 } from "../src/delegate-loop";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
+
+// Every test caller explicitly injects the real local filesystem/Bun adapter
+// through the neutral host port; the wrappers keep the injection visible in
+// one place while the call sites below exercise the unchanged loop contract.
+const runDelegateLoop = (
+  input: Parameters<typeof runDelegateLoopCore>[0],
+  options: Omit<DelegateLoopOptions, "host">,
+) => runDelegateLoopCore(input, { ...options, host: createLocalHost() });
+
+class DelegateLoopSession extends DelegateLoopSessionCore {
+  constructor(
+    input: ConstructorParameters<typeof DelegateLoopSessionCore>[0],
+    options: Omit<DelegateLoopOptions, "host">,
+  ) {
+    super(input, { ...options, host: createLocalHost() });
+  }
+}
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import { digestAnchor } from "../src/mission-reconciliation";
 import type { MissionExecutionController } from "../src/mission-execution-host";
@@ -822,6 +841,7 @@ test("parent recovery remains pending until child timelines settle and rejects a
   await timeline.markBatchDispatched(checkpoint);
   const run = await runPreparedDelegateBatch(batchInput, () => new ResultDriver("completed"), {
     concurrency: 2,
+    host: createLocalHost(),
   });
   const outcomes = run.kind === "swarm"
     ? run.record.outcomes.map((outcome, index) => {
@@ -870,7 +890,10 @@ test("child settlement digest matches the Cell record representation retained in
 
   await timeline.prepareBatch(checkpoint);
   await timeline.markBatchDispatched(checkpoint);
-  const run = await runPreparedDelegateBatch(batchInput, () => new ResultDriver("completed"), { concurrency: 1 });
+  const run = await runPreparedDelegateBatch(batchInput, () => new ResultDriver("completed"), {
+    concurrency: 1,
+    host: createLocalHost(),
+  });
   if (run.kind !== "direct") throw new Error("expected one direct delegated Cell");
   const runWithUndefined = {
     ...run,

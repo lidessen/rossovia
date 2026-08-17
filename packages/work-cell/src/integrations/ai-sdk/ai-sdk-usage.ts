@@ -1,4 +1,4 @@
-import type { CellUsage } from "./contracts";
+import type { CellUsage } from "../../contracts";
 
 export function normalizeAiSdkUsage(
   usage: unknown,

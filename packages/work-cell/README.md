@@ -15,6 +15,31 @@ generic `CellInput` contract. The Sequence adapter selects one lead P-ID and up
 to three supports, loads only their interpretations, and retains the expression
 as typed preparation evidence before invoking the unchanged core.
 
+## Neutral host port and the local adapter
+
+The core executes files, commands, snapshots, and artifact effects only through
+one caller-injected neutral host port (`CellHost`/`HostWorkspace` in
+`src/host-port.ts`). `runCell` requires an explicit `host` in its options and
+never constructs a concrete filesystem, reads the process environment, or
+starts a process on its own. The model-visible `list_files`/`read_file`,
+`edit_file`/`write_file`, and `run_command` tools exist only when the injected
+port grants `canRead`, `canWrite`, and `canRunCommands`; `CellInput.capabilities`
+and `capabilitiesRequired` remain model/worker adapter descriptions and can
+never grant host effects on their own.
+
+The concrete local implementation (`LocalWorkspaceHost`/
+`createLocalHost` in `src/workspace.ts`) keeps the absolute-root, read/write
+scope, exclude, symlink, command allow-list, output-byte, duration, and caller
+AbortSignal enforcement plus the snapshot/diff logic, and executes allowed
+commands through `Bun.spawn` with the caller's `PATH`. Callers that own a real
+process and filesystem — the CLI, the Workbench O2 ordinary Task path over its
+O3-authorized bound Worktree, Autonomy delegates over disposable or isolated
+workspaces, direct experiments, and tests — inject that adapter explicitly.
+`src/fake-host.ts` provides a deterministic in-memory `FakeHost` and a
+capability-overriding `FilteredHost` so the same Cell contract can run against
+a fake host and the real adapter interchangeably in tests and substitution
+probes.
+
 The package does not depend on an external agent engine. AI SDK 7 is the first
 driver adapter; `deepseek-v4-flash` is the default model. Validation calls use
 only an explicitly supplied route or a human-confirmed provider profile. A
@@ -94,13 +119,14 @@ successful attributable result; cleanup never replaces the original failure.
 There is no silent prompt fallback and no instruction to the worker to adopt
 todos through `todowrite`.
 
-Model routing has three extension points. `model-route.ts` executes an ordered
-provider-neutral route and retains attempts; `providers/` owns each external
-API's construction, request translation, error meaning, and pricing; and
-`provider-profile.ts` owns explicit preference and credential references while
-`validation-model.ts` resolves that selection into provider-specific models.
-Adding or replacing a validation provider should change these policy and
-adapter surfaces, not the generic route executor. OpenCode Go and Kimi Coding
+Model routing has three extension points, all inside the declared
+`src/integrations/ai-sdk/` Integration island: `model-route.ts` executes an
+ordered provider-neutral route and retains attempts; the island's `providers/`
+owns each external API's construction, request translation, error meaning, and
+pricing; and `provider-profile.ts` owns explicit preference and credential
+references while `validation-model.ts` resolves that selection into
+provider-specific models. Adding or replacing a validation provider should
+change these policy and adapter surfaces, not the generic route executor. OpenCode Go and Kimi Coding
 Plan are fixed-price subscriptions: their token tariffs measure allowance
 consumption, not marginal money spent by one Cell. Any subscription or mixed
 route therefore retains usage and serving evidence but omits a dollar estimate
@@ -138,11 +164,11 @@ Work Cell surface: scope-bound `list_files`/`read_file`, the Pi-native exact
 batch `edit_file` (unique, non-overlapping exact `oldText` matches; an absent,
 duplicated, overlapping, or out-of-scope match fails the whole call with zero
 mutation), `write_file` (create-new-only: it refuses to overwrite an existing
-file), allow-listed `run_command`, the host Task tools, and budget/terminal
-tools. Every driver shares that one host tool owner (`createHostTools`); no
-driver re-implements a second execution pathway. Provider/model identity,
-usage, tasks, and workspace effects remain Work Cell evidence; the harness
-session identity is observation only.
+file), allow-listed `run_command`, the host Task tools, and caller-declared
+terminal tools. Every driver shares that one host tool owner
+(`createHostTools`); no driver re-implements a second execution pathway.
+Provider/model identity, usage, tasks, and workspace effects remain Work Cell
+evidence; the harness session identity is observation only.
 
 Every host tool execution through the Pi adapter crosses one causal
 event-loop handoff before its effect. The pinned harness-pi adapter can
@@ -163,10 +189,17 @@ label. The pinned adapter translates every inferred completed step — including
 tool-continuing steps whose results feed the next model step — to a unified
 stop finish reason, so a label-gated guard would be unreachable in production.
 A completed step that carried tool activity aborts the run before step
-`maxSteps + 1` can begin; a tool-free terminal response on the final allowed
-step completes naturally. The exhaustion count freezes at that accepted
-boundary: an inferred Pi finish emitted while the abort settles is neither
-counted nor retained as another completed step. When Pi exposes its aggregate
+`maxSteps + 1` can begin — unless a declared terminal tool was accepted on
+that final allowed step, in which case the accepted action completes the Cell
+without starting another provider call; a tool-free terminal response on the
+final allowed step completes naturally. The exhaustion count freezes at that
+accepted boundary: an inferred Pi finish emitted while the abort settles is
+neither counted nor retained as another completed step. The explicit
+`maxSteps` is one
+shared, monotonic, non-extendable allowance: the structured settlement phase
+consumes the same remaining steps as the main turn and never starts when none
+remains, so total model steps across both phases never exceed the caller's
+bound. When Pi exposes its aggregate
 session counters on this failure path, they supersede zero or partial
 inferred-step usage rather than being added to the same model work. An
 omitted `maxSteps` installs no step-count stop condition: the model continues
@@ -277,7 +310,11 @@ spliced into another provider's partial output.
 
 ## Orchestration runtime
 
-`runCell` remains the atomic execution boundary. Multi-Cell execution is built
+`runCell` remains the atomic execution boundary. It keeps one canonical
+pre-driver `CellInput` and passes the supplied driver an isolated immutable
+parsed copy, so a driver can never rewrite the caller contract that terminal,
+task, artifact, and output verification and the final record derive from.
+Multi-Cell execution is built
 above it through a small `WorkSource` protocol: a source yields one eligible
 lease, the orchestration kernel runs that ordinary Cell with a fresh driver,
 and the source receives the retained settlement. The kernel owns bounded
@@ -291,7 +328,10 @@ only after its producer explicitly closes it and every dispatched Cell settles:
 
 ```ts
 const queue = new InMemoryCellQueue();
-const running = runOrchestration(queue, (input) => catalog.createDriver(input), { concurrency: 4 });
+const running = runOrchestration(queue, (input) => catalog.createDriver(input), {
+  concurrency: 4,
+  host: createLocalHost(),
+});
 
 await queue.submit(firstCell);
 await queue.submit(secondCell);
@@ -335,9 +375,24 @@ there is no `resultContract` or review-pack wrapper:
 ```
 
 `terminalTools` dynamically become callable tools and require one declared tool
-to be called exactly once. Without `outputSchema`, that call ends the model loop;
-with `outputSchema`, one tool-free step may still produce the independent
-logical result. Terminal names must be unique, and a driver must reject names
+to be called exactly once. Without `outputSchema`, that call ends the model loop.
+With `outputSchema`, the terminal and output contracts stay separate. On an
+inline structured-output route, when terminal tools and inline output are both
+declared, the main execution phase may end naturally or stop right after an
+accepted terminal tool — it never requires the final structured output before
+the terminal contract is satisfied, and its instructions defer that output to
+the existing closure phase. The closure phase then produces the independent
+logical result: terminal recovery followed by the final output when the main
+loop ended without the terminal, and only the final output step when the
+terminal was already accepted — the output-only closure states that the
+terminal is already satisfied, exposes no tools, and requests only the final
+structured output. A Cell with inline output but no terminal tools keeps the
+single-agent inline path. Both closure forms consume the same shared
+`maxSteps` allowance. Tool-settlement routes (providers without native
+structured output) retain their separate settlement path: they finish the
+main loop and any terminal recovery first, then project the retained evidence
+through the private schema tool under the same allowance. Terminal names must be unique, and a
+driver must reject names
 that collide with its ordinary execution tools before dispatch. The terminal
 input remains trace evidence and is not silently
 treated as that result. `outputSchema` validates the final logical result. `artifacts`
@@ -382,7 +437,21 @@ ordinary investigation without response-format pressure, then uses a private
 schema tool to project the retained evidence. The internal tool is not added to
 `terminalTools`; the caller still declares one output contract and Work Cell
 still validates it independently. Trace and usage expose the extra settlement
-phase instead of pretending it was one provider-native response.
+phase instead of pretending it was one provider-native response. The settlement
+phase consumes the same explicit `maxSteps` allowance as the main
+loop and terminal recovery: when no step remains it does not start, and the
+Cell fails truthfully instead of passing without the required output. An
+omitted `maxSteps` installs no settlement-attempt ceiling either: attempts
+continue until the output is accepted, bounded only by `maxDurationMs` and
+caller cancellation. A
+settlement provider or adapter failure after its step consumed the final
+allowance keeps its real causal error; only a normally completed unsatisfied
+attempt reports the canonical step-budget exhaustion wording, and a provider
+or adapter failure ends settlement with its causal error instead of being
+retried into invisibility.
+Tool-settlement routes have no closure phase; this settlement path is their
+only structured-output phase. The closure phase described above exists only
+for the terminal plus inline-output mode.
 
 ## Work and budget boundary
 
@@ -410,42 +479,62 @@ observations are the audit fallback when cancellation or failure wins before a
 result returns. A timeout therefore does not turn already-observed model work
 into zero usage.
 
-### Programmatic budget approval
+### Step and duration policy
 
 `budget.maxSteps` is an optional explicit per-run/operator step policy. An
 omitted `maxSteps` means no step-count stop condition at all: the model may
 take as many steps as the work needs within the non-extendable duration
-budget, and no completed-step decision point or approval phase is installed.
-`budget.maxDurationMs` alone therefore remains a hard timeout, not a soft
-budget boundary — it ends the run without any settle/request choice.
+budget. An explicit `maxSteps` is one shared, monotonic, non-extendable
+allowance consumed by every provider/model step — the main execution loop,
+the terminal-tool recovery phase, the terminal plus inline-output closure
+phase, and the structured-output settlement phase alike. The main loop stops
+exactly at the declared step count; when no step
+remains, no later phase starts and the Cell fails truthfully instead of
+passing without the required terminal tool or structured output. A tool-free
+final response on the last remaining step completes naturally with its
+required terminal/output standing: exhaustion never discards or relabels a
+step that already finished inside the allowance. A terminal-tool Cell with a
+structured-output contract still requires at least two steps (one terminal
+action and one final output); a terminal-only Cell may complete on its single
+allowed step, and both drivers retain an accepted terminal action on the final
+allowed step without starting any additional provider call. An actual provider
+or adapter failure after the final allowance is consumed keeps its real causal
+error even when declared terminal tools remain unsatisfied: terminal-contract
+exhaustion is classified only from a normally completed or explicitly
+step-stopped unsatisfied loop, never from an arbitrary provider throw.
+A structured-settlement provider or adapter throw after its step consumed the
+final allowance keeps that same real causal error: the settlement reports
+step-budget exhaustion only when an attempt completes normally without an
+accepted output, never when the settlement call itself failed, and no further
+settlement attempt starts when no step remains. An omitted `maxSteps` also
+installs no settlement-attempt ceiling: each attempt still consumes the same
+shared allowance when one exists, and attempts continue until the output is
+accepted, `maxDurationMs` or caller cancellation ends the run, or a provider
+or adapter failure ends settlement with its causal error. After each normally
+completed unsatisfied settlement attempt the settlement yields one event-loop
+checkpoint, so `maxDurationMs` and caller cancellation stay observable even
+against an immediately-resolving noncompliant provider; a cancelled run ends
+with the original abort reason instead of starting another provider call or
+inventing step-budget exhaustion. A settlement completion event is emitted
+only while the run is still live: an accepted structured output that arrives
+after the caller cancelled an in-flight settlement attempt stays causal only
+to that already-finalized cancellation and never emits
+`structured.settlement.finished` after the immutable Cell final.
+Settlement usage remains usage attribution only: it is never
+extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
+budget boundary: it ends the run with a `cancelled` standing that keeps the
+already-observed usage, trace, and any mechanical final standing.
 
-Programmatic budget approval requires a caller that explicitly selects a
-finite step policy: `runCell` rejects `budgetApproval` when the Cell input
-carries no explicit finite `maxSteps`, and it fails closed before execution
-when the selected driver does not implement the completed-step budget-control
-contract.
-
-AI SDK callers may pass `budgetApproval`, `settlementReserveMs`, and
-`hardLimitMs` to `runCell` together with such an explicit `maxSteps`. When the
-Cell reaches its soft step or duration budget after a completed step, ordinary
-tools close and the model must choose `settle_now` or one bounded
-`request_budget` action. A request contains only `additionalSteps`,
-`additionalDurationMs`, and `remainingWork`; Work Cell adds the Cell identity
-and observed step/time counters before invoking the callback. The callback
-also receives `{ signal }`; approval adapters should stop their own waiting or
-external review when it aborts so caller cancellation or the hard limit does
-not leave approval work running in the background.
-
-Returning `{ decision: "allow" }` adds exactly the requested step and duration
-allowances to the current run and retained transcript. Returning
-`{ decision: "deny" }`, throwing, or returning an invalid result fails closed
-into settlement. Approval changes budget only: it cannot widen tools, workspace,
-provider, or any other authority.
-
-Settlement receives its own lazily started `settlementReserveMs` timeout. The
-caller signal and the single non-extendable `hardLimitMs` still dominate
-production, approval waiting, and settlement. Drivers that do not implement the
-completed-step budget-control contract fail before execution.
+Exhaustion reports one canonical sentence across the AI SDK and Pi drivers:
+`Work Cell step budget exhausted after N steps; <reason>`. An unsatisfied
+declared terminal contract — including one that the shared allowance ran out
+before satisfying, or a second terminal call — keeps the canonical
+`protocol_error` standing instead of a weakened ordinary failure. A Cell
+without declared terminal tools preserves the actual provider error even
+when the explicit allowance became exhausted, and a provider throw with
+declared terminal tools still open keeps its real causal error as well:
+terminal-tool failure is reported only for a genuinely unsatisfied declared
+terminal contract.
 
 ## Project interaction
 
@@ -647,10 +736,22 @@ Sequence expression, experiment treatment, proposal-specific role, vote,
 workflow, or doctrine belongs in an adapter, not in `CellInput`, `CellDriver`,
 or `runCell`.
 
-The public core barrel exports contracts, the driver interface, workspace,
-`runCell`, the AI SDK driver, the orchestration protocol and in-memory queue,
-and the general Swarm runtime. Optional carriers are explicit adapter entry
-points:
+The current package barrel exports contracts, the neutral host port, the driver
+interface, workspace (`Workspace` as the local adapter plus `createLocalHost`),
+the deterministic `FakeHost`/`FilteredHost`, `runCell`, the orchestration
+protocol and in-memory queue, and the general Swarm runtime. The accepted C1-C3
+core is narrower: contracts, `CellDriver`, `HostWorkspace`, the neutral output
+validator, and `runCell`. Every concrete AI
+SDK/Pi/provider driver, provider route, host-tool wiring, and
+structured-settlement implementation is exported from the declared
+`src/integrations/ai-sdk/` Integration path; the C1-C3 core keeps no `ai`,
+`@ai-sdk`, Pi, or concrete provider import, and the former core root paths of
+those concrete implementations are physically removed — no tombstones or
+compatibility shims exist. Other currently exported helpers, local adapters,
+worker catalog, concurrency, `src/swarm.ts`, and `src/orchestration.ts` are not
+declared C1-C3 core architecture: they are untouched pre-existing adjacent or
+legacy mechanisms pending a later Goal review.
+Optional carriers are explicit adapter entry points:
 
 - `src/adapters/sequence/`
 - `src/adapters/experiment/`

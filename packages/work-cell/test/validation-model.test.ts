@@ -8,32 +8,32 @@ import {
 import { generateText, simulateReadableStream, streamText, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
-import { createRoutedLanguageModel } from "../src/model-route";
-import { normalizeAiSdkUsage } from "../src/ai-sdk-usage";
+import { createRoutedLanguageModel } from "../src/integrations/ai-sdk/model-route";
+import { normalizeAiSdkUsage } from "../src/integrations/ai-sdk/ai-sdk-usage";
 import {
   adaptOpenCodeGoRequestBody,
   classifyOpenCodeGoFailure,
-} from "../src/providers/opencode-go";
+} from "../src/integrations/ai-sdk/providers/opencode-go";
 import {
   adaptKimiCodingToolChoice,
   adaptKimiCodingRequest,
   classifyKimiCodingFailure,
   createKimiCodingModel,
-} from "../src/providers/kimi-coding";
+} from "../src/integrations/ai-sdk/providers/kimi-coding";
 import {
   adaptDeepSeekToolChoice,
   classifyDeepSeekFailure,
   deepSeekRequestMiddleware,
   deepSeekProviderOptions,
-} from "../src/providers/deepseek";
+} from "../src/integrations/ai-sdk/providers/deepseek";
 import {
   createValidationModel,
   validationModelName,
-} from "../src/validation-model";
+} from "../src/integrations/ai-sdk/validation-model";
 import {
   ProviderProfileSchema,
   type ValidationProviderId,
-} from "../src/provider-profile";
+} from "../src/integrations/ai-sdk/provider-profile";
 
 const routeTarget = (provider: ValidationProviderId) => ({
   provider,

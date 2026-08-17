@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integrations/ai-sdk";
 import {
   createCurrentWorkerCatalog,
   currentWorkerCards,

@@ -13,129 +13,41 @@ import {
   type CellPreparation,
   type TraceEvent,
   type ProviderFingerprintStanding,
-  BudgetApprovalResultSchema,
-  type BudgetApprovalResult,
-  type BudgetRequest,
 } from "./contracts";
 import type { CellDriver } from "./driver";
-import { CellExecutionError, traceEvent } from "./driver";
-import { Workspace } from "./workspace";
+import { CellExecutionError, TerminalContractError, traceEvent } from "./driver";
+import type { CellHost, HostWorkspace } from "./host-port";
 import { compileOutputSchema } from "./output-schema";
 import { TaskStore } from "./task-store";
 
 export interface RunCellOptions {
+  /**
+   * The one injected host port. The caller supplies the implementation that
+   * opens the workspace capability surface for this run; the core never
+   * constructs a concrete filesystem, reads the process environment, or
+   * starts a process on its own.
+   */
+  host: CellHost;
   signal?: AbortSignal;
   preparation?: CellPreparation;
   /** Observe the same bounded events retained in the final trace while the Cell is running. */
   onTrace?: (event: TraceEvent) => void;
-  /** Host policy for a model-authored soft work-budget increase request. */
-  budgetApproval?: (
-    request: BudgetRequest,
-    context: { signal: AbortSignal },
-  ) => BudgetApprovalResult | Promise<BudgetApprovalResult>;
-  /** Duration unavailable to production and created only for settlement. */
-  settlementReserveMs?: number;
-  /** One non-extendable hard duration limit for the whole run. */
-  hardLimitMs?: number;
-}
-
-class SoftBudgetControl {
-  private phaseValue: "production" | "decision" | "settlement" = "production";
-  private completedStepsValue = 0;
-  private softStepLimit: number;
-  private softDurationLimitMs: number;
-  private skipCompletedControlStep = false;
-
-  constructor(private readonly options: {
-    cellId: string;
-    startedAtMs: number;
-    initialSteps: number;
-    initialDurationMs: number;
-    approve: NonNullable<RunCellOptions["budgetApproval"]>;
-    signal: AbortSignal;
-  }) {
-    this.softStepLimit = options.initialSteps;
-    this.softDurationLimitMs = options.initialDurationMs;
-  }
-
-  get phase() {
-    return this.phaseValue;
-  }
-
-  completedStep(): boolean {
-    if (this.phaseValue !== "production") return false;
-    if (this.skipCompletedControlStep) {
-      this.skipCompletedControlStep = false;
-      return false;
-    }
-    this.completedStepsValue += 1;
-    const elapsedMs = Math.max(0, Date.now() - this.options.startedAtMs);
-    if (this.completedStepsValue < this.softStepLimit && elapsedMs < this.softDurationLimitMs) return false;
-    this.phaseValue = "decision";
-    return true;
-  }
-
-  settleNow(): void {
-    if (this.phaseValue !== "decision") throw new Error("settle_now requires a soft-budget decision point");
-    this.phaseValue = "settlement";
-  }
-
-  async requestBudget(
-    value: Omit<BudgetRequest, "cellId" | "completedSteps" | "elapsedMs">,
-  ): Promise<{ request: BudgetRequest; result: BudgetApprovalResult }> {
-    if (this.phaseValue !== "decision") throw new Error("request_budget requires a soft-budget decision point");
-    const request: BudgetRequest = {
-      cellId: this.options.cellId,
-      ...value,
-      completedSteps: this.completedStepsValue,
-      elapsedMs: Math.max(0, Date.now() - this.options.startedAtMs),
-    };
-    let result: BudgetApprovalResult;
-    try {
-      const approval = await runWithSignal(
-        () => Promise.resolve(this.options.approve(request, { signal: this.options.signal })),
-        this.options.signal,
-      );
-      result = BudgetApprovalResultSchema.parse(approval);
-    } catch (error) {
-      result = {
-        decision: "deny",
-        reason: `budget approval failed closed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-    if (result.decision === "allow") {
-      this.softStepLimit += request.additionalSteps;
-      this.softDurationLimitMs += request.additionalDurationMs;
-      this.phaseValue = "production";
-      this.skipCompletedControlStep = true;
-    } else {
-      this.phaseValue = "settlement";
-    }
-    return { request, result };
-  }
 }
 
 export async function runCell(
   unparsedInput: unknown,
   driver: CellDriver,
-  options: RunCellOptions = {},
+  options: RunCellOptions,
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
-  const budgetApprovalEnabled = options.budgetApproval !== undefined;
-  if (budgetApprovalEnabled && driver.budgetControl !== "completed-step-v1") {
-    throw new Error(`driver ${driver.descriptor.adapter} does not support completed-step budget control`);
-  }
-  if (budgetApprovalEnabled && (!options.settlementReserveMs || !options.hardLimitMs)) {
-    throw new Error("budgetApproval requires positive settlementReserveMs and hardLimitMs");
-  }
-  if (budgetApprovalEnabled && input.budget.maxSteps === undefined) {
-    throw new Error("budgetApproval requires an explicit finite maxSteps policy on the Cell input");
-  }
-  if (budgetApprovalEnabled && options.hardLimitMs! < input.budget.maxDurationMs) {
-    throw new Error("hardLimitMs must cover the initial Cell duration and cannot be extended");
-  }
-  if (!budgetApprovalEnabled && input.budget.maxSteps !== undefined
-    && input.terminalTools?.length && input.budget.maxSteps < 2) {
+  // A terminal-only Cell completes on its single allowed step: the accepted
+  // terminal action is the final step and no separate output step exists.
+  // Only a Cell that also declares a structured output contract needs a
+  // second step for the final output.
+  if (input.budget.maxSteps !== undefined
+    && input.terminalTools?.length && input.outputSchema && input.budget.maxSteps < 2) {
+    // Reached only when a structured-output contract needs a second step for
+    // the final output; the exact public wording is unchanged for callers.
     throw new Error("terminal tools require at least two steps: one terminal action and one final output");
   }
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
@@ -143,46 +55,51 @@ export async function runCell(
   const startedAt = new Date();
   const trace: TraceEvent[] = [];
   let observerActive = options.onTrace !== undefined;
-  const emit = (type: string, data: unknown) => {
+  let traceSealed = false;
+  const emit = (type: string, data: unknown, terminal = false) => {
+    if (traceSealed) return;
     const event = traceEvent(type, data);
     trace.push(event);
+    // The terminal event seals observation as it is appended, before its
+    // observer is invoked: an observer failure on cell.finished can never
+    // append cell.observer.failed after the terminal event.
+    if (terminal) traceSealed = true;
     if (!observerActive) return;
     try {
       options.onTrace?.(event);
     } catch (error) {
       observerActive = false;
+      if (traceSealed) return;
       trace.push(traceEvent("cell.observer.failed", {
         error: error instanceof Error ? error.message : String(error),
       }));
     }
   };
   emit("cell.started", { runId, cellId: input.id, driver: driver.descriptor });
-  const workspace = await Workspace.create(input.workspace, input.budget);
+  // The host port is caller-injected: only the supplied implementation may
+  // grant filesystem, command, snapshot, and artifact effects. A CellInput
+  // capability declaration never opens a host surface on its own.
+  const workspace = await options.host.createWorkspace(input.workspace, input.budget);
+  // The Cell owns one host-effect admission gate around the injected
+  // workspace. Every model-visible mutating effect — writes, exclusive
+  // creates, and commands — is admitted through it. After the driver settles
+  // (completion, failure, or cancellation) the gate closes so new effects
+  // fail, and every already-admitted effect is joined before the workspace
+  // snapshot and the immutable final: no host effect can remain live past
+  // the returned record. The neutral port contract is unchanged; the
+  // injected adapter never sees the gate.
+  const admission = gateHostEffects(workspace);
   const before = await workspace.snapshot();
-  const hardTimeoutMs = budgetApprovalEnabled
-    ? options.hardLimitMs!
-    : input.budget.maxDurationMs;
-  const timeoutSignal = AbortSignal.timeout(hardTimeoutMs);
+  const timeoutSignal = AbortSignal.timeout(input.budget.maxDurationMs);
   const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-  let reserveSignal: AbortSignal | undefined;
-  const settlementSignal = () => {
-    if (!budgetApprovalEnabled) return signal;
-    reserveSignal ??= AbortSignal.any([
-      signal,
-      AbortSignal.timeout(options.settlementReserveMs!),
-    ]);
-    return reserveSignal;
-  };
-  const budgetControl = options.budgetApproval && input.budget.maxSteps !== undefined
-    ? new SoftBudgetControl({
-        cellId: input.id,
-        startedAtMs: startedAt.getTime(),
-        initialSteps: input.budget.maxSteps,
-        initialDurationMs: input.budget.maxDurationMs,
-        approve: options.budgetApproval,
-        signal,
-      })
-    : undefined;
+  // Close the host-effect admission gate synchronously from an abort
+  // listener registered before the driver starts: during synchronous
+  // AbortSignal dispatch a driver abort listener could otherwise start a
+  // new workspace write before the rejection path reaches the outer catch.
+  // The listener is removed as soon as the driver settles without aborting;
+  // the close-and-drain final boundary below stays authoritative.
+  const closeAdmissionOnAbort = () => admission.close();
+  signal.addEventListener("abort", closeAdmissionOnAbort);
   const missingCapabilities = input.capabilitiesRequired.filter(
     (capability) => !input.capabilities.includes(capability),
   );
@@ -199,7 +116,7 @@ export async function runCell(
   let artifactVerification: ArtifactVerification | undefined;
   let taskVerification: TaskVerification | undefined;
   let artifacts: ArtifactRecord[] = [];
-  let after: Awaited<ReturnType<Workspace["snapshot"]>> | undefined;
+  let after: Awaited<ReturnType<HostWorkspace["snapshot"]>> | undefined;
 
   if (missingCapabilities.length > 0) {
     status = "capability_mismatch";
@@ -208,7 +125,7 @@ export async function runCell(
   } else {
     try {
       const context = {
-        workspace,
+        workspace: admission.workspace,
         signal,
         liveObservation: observerActive,
         observeUsage(usage: CellUsage, phase?: "execution" | "settlement") {
@@ -217,8 +134,6 @@ export async function runCell(
             observedSettlementUsage = addUsage(observedSettlementUsage ?? emptyUsage(), usage);
           }
         },
-        ...(budgetControl ? { budgetControl } : {}),
-        settlementSignal,
         emit(type: string, data: unknown) {
           emit(type, data);
         },
@@ -229,7 +144,23 @@ export async function runCell(
           usage: options.preparation.usage,
         });
       }
-      driverResult = await runWithSignal(() => driver.run(input, context), signal);
+      // One canonical pre-driver CellInput is the caller contract. Terminal,
+      // task, artifact, and output verification plus the final record derive
+      // only from that canonical value; the supplied driver receives an
+      // isolated immutable parsed copy it can never rewrite.
+      try {
+        driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
+      } finally {
+        // The driver settled without aborting: the synchronous gate-close
+        // listener has no further role and is removed before the
+        // close-and-drain boundary below.
+        signal.removeEventListener("abort", closeAdmissionOnAbort);
+      }
+      // The driver settled normally: close the host-effect admission gate and
+      // join every already-admitted effect before verification and the
+      // workspace snapshot, so the final record reflects only settled effects.
+      admission.close();
+      await admission.drain();
       const terminalTools = input.terminalTools ?? [];
       const terminalResult = verifyTerminalContract(
         terminalTools.map((terminal) => terminal.name),
@@ -292,11 +223,19 @@ export async function runCell(
         failureSettlementUsage = observedSettlementUsage;
       }
       if (signal.aborted) status = "cancelled";
+      else if (caught instanceof TerminalContractError) status = "protocol_error";
       else status = "failed";
       emit("cell.error", { status, error });
     }
   }
 
+  // Whatever settled the driver — completion, failure, or cancellation — the
+  // host-effect admission gate closes and every already-admitted effect is
+  // joined before the workspace snapshot and the immutable final. When
+  // quiescence cannot be proved the Cell returns no final at all, leaving
+  // the existing no-final/unresolved/claim-retained O2 standing untouched.
+  admission.close();
+  await admission.drain();
   after ??= await workspace.snapshot();
   const finishedAt = new Date();
   const usage = addUsage(
@@ -312,7 +251,10 @@ export async function runCell(
     ? subtractUsage(aggregateDriverUsage, settlementUsage)
     : aggregateDriverUsage;
   const estimate = estimateCost(usage, driver.descriptor.pricing);
-  emit("cell.finished", { status, usage });
+  // Observation is sealed as the terminal event is appended, before its
+  // observer runs: neither a stray tool completion nor a late driver
+  // callback can append to the retained trace after cell.finished.
+  emit("cell.finished", { status, usage }, true);
 
   const priceRevision = input.executionProfile?.priceRevision ?? driver.descriptor.pricing?.revision;
   const sessionId = observedSessionId(driverResult?.providerMetadata);
@@ -364,6 +306,72 @@ export async function runCell(
       ...(driverResult ? [{ phase: "execution", steps: driverResult.rawSteps }] : []),
     ],
     ...(error ? { error } : {}),
+  };
+}
+
+interface HostEffectAdmission {
+  /** The gated workspace the driver and its host tools receive. */
+  readonly workspace: HostWorkspace;
+  /** Close the admission gate: any new mutating host effect fails immediately. */
+  close(): void;
+  /** Resolve once every already-admitted host effect has settled. */
+  drain(): Promise<void>;
+}
+
+/**
+ * The Cell-owned host-effect admission gate over the caller-injected
+ * workspace. Mutating operations — writeText, createText, and runCommand —
+ * are admitted through this wrapper; every other port operation delegates
+ * unchanged. Once closed, already-admitted effects settle through their own
+ * bounded behavior (writes complete or fail; commands carry their own
+ * timeout plus the Cell abort signal) and `drain` joins them all. The
+ * neutral port contract is unchanged: this is a Cell-side wrapper, and the
+ * injected adapter never sees the gate.
+ */
+function gateHostEffects(workspace: HostWorkspace): HostEffectAdmission {
+  let closed = false;
+  const pending = new Set<Promise<unknown>>();
+  const admit = <T>(start: () => Promise<T>): Promise<T> => {
+    if (closed) {
+      return Promise.reject(
+        new Error("the Cell host-effect admission gate is closed; no new host effects may start"),
+      );
+    }
+    const effect = Promise.resolve().then(start);
+    pending.add(effect);
+    const release = () => {
+      pending.delete(effect);
+    };
+    effect.then(release, release);
+    return effect;
+  };
+  return {
+    workspace: {
+      root: workspace.root,
+      canRead: workspace.canRead,
+      canWrite: workspace.canWrite,
+      canRunCommands: workspace.canRunCommands,
+      listFiles: (path, maxEntries) => workspace.listFiles(path, maxEntries),
+      readText: (path, startLine, endLine) => workspace.readText(path, startLine, endLine),
+      readBinary: (path) => workspace.readBinary(path),
+      writeText: (path, content) => admit(() => workspace.writeText(path, content)),
+      createText: (path, content) => admit(() => workspace.createText(path, content)),
+      assertEditable: (path) => workspace.assertEditable(path),
+      describeArtifact: (path) => workspace.describeArtifact(path),
+      runCommand: (argv, cwd, timeoutMs, signal) =>
+        admit(() => workspace.runCommand(argv, cwd, timeoutMs, signal)),
+      snapshot: () => workspace.snapshot(),
+      diff: (before, after) => workspace.diff(before, after),
+    },
+    close() {
+      closed = true;
+    },
+    async drain() {
+      // Join the currently admitted effects exactly once; effects admitted
+      // after close are impossible, and settled effects release themselves
+      // from the set.
+      await Promise.allSettled([...pending]);
+    },
   };
 }
 
@@ -436,6 +444,24 @@ function verifyTerminalContract(required: string[], called: string[]) {
   };
 }
 
+/**
+ * The supplied driver receives an isolated, deeply frozen parsed copy of the
+ * canonical CellInput: a malicious or buggy driver can read the caller
+ * contract freely, but any mutation attempt fails on the copy instead of
+ * reaching the canonical value that verification and the final record derive
+ * from.
+ */
+function disposableCellInput(input: CellInput): CellInput {
+  return deepFreeze(structuredClone(input));
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  const object = value as Record<string, unknown>;
+  for (const key of Object.keys(object)) deepFreeze(object[key]);
+  return Object.freeze(object) as T;
+}
+
 function runWithSignal<T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (signal.aborted) {
@@ -453,7 +479,7 @@ function runWithSignal<T>(start: () => Promise<T>, signal: AbortSignal): Promise
 
 async function verifyArtifacts(
   input: CellInput,
-  workspace: Workspace,
+  workspace: HostWorkspace,
   diff: CellRunRecord["workspaceDiff"],
 ): Promise<{ artifacts: ArtifactRecord[]; verification: ArtifactVerification }> {
   if (!input.artifacts?.length) return { artifacts: [], verification: { passed: true, errors: [] } };

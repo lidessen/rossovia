@@ -13,6 +13,7 @@ import {
 } from "../src/delegate-admission";
 import type { CellInput, CellUsage } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../../../packages/work-cell/src/driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 
 const roots: string[] = [];
 
@@ -37,7 +38,7 @@ test("a complete admitted step lowers independent contributions to a Swarm and p
   const result = await runPreparedDelegateBatch(input, () => {
     drivers += 1;
     return new PassingDriver();
-  }, { concurrency: 8 });
+  }, { concurrency: 8, host: createLocalHost() });
 
   expect(result.kind).toBe("swarm");
   expect(drivers).toBe(2);
@@ -69,7 +70,7 @@ test("one inadmissible contribution rejects the whole step before any driver is 
   await expect(runPreparedDelegateBatch(input, () => {
     drivers += 1;
     return new PassingDriver();
-  }, { concurrency: 2 })).rejects.toThrow(DelegateAdmissionError);
+  }, { concurrency: 2, host: createLocalHost() })).rejects.toThrow(DelegateAdmissionError);
 
   expect(drivers).toBe(0);
   try {
@@ -145,7 +146,10 @@ test("one admitted contribution uses direct Cell execution rather than manufactu
     contribution(root, "contract", "inspect-contract", "reliable-primitive", "admitted"),
   ]);
 
-  const result = await runPreparedDelegateBatch(input, () => new PassingDriver(), { concurrency: 4 });
+  const result = await runPreparedDelegateBatch(input, () => new PassingDriver(), {
+    concurrency: 4,
+    host: createLocalHost(),
+  });
 
   expect(result.kind).toBe("direct");
   if (result.kind === "direct") expect(result.record.status).toBe("passed");

@@ -1,16 +1,17 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
-import type { CellInput } from "./contracts";
-import type { DriverContext } from "./driver";
-import type { TaskStore } from "./task-store";
+import type { CellInput } from "../../contracts";
+import type { DriverContext } from "../../driver";
+import type { TaskStore } from "../../task-store";
 import { createTaskTools } from "./task-tools";
 import { createWorkspaceEditTool } from "./workspace-edit";
-import type { TaskToolSet } from "./ai-sdk-driver";
+import type { TaskToolSet } from "./task-tool-set";
 
 /**
- * The one host-executed tool owner shared by every CellDriver: ordinary task
- * work and conversation carriers always cross the same scope-bound tool
- * surface, and no driver re-implements a second execution pathway.
+ * The one host-executed tool owner shared by every AI SDK/Pi CellDriver:
+ * ordinary task work and conversation carriers always cross the same
+ * scope-bound tool surface, and no driver re-implements a second execution
+ * pathway.
  */
 export const EXECUTION_TOOL_NAMES = new Set([
   "list_files",
@@ -23,8 +24,6 @@ export const EXECUTION_TOOL_NAMES = new Set([
   "task_list",
   "task_get",
 ]);
-
-export const BUDGET_CONTROL_TOOL_NAMES = new Set(["settle_now", "request_budget"]);
 
 export interface HostToolOptions {
   readonly input: CellInput;
@@ -171,31 +170,6 @@ export function createHostTools(options: HostToolOptions): Record<string, Tool> 
       actionBlocked,
       emit: (event) => context.emit(event.type, event.data),
     }),
-    ...(context.budgetControl ? {
-      settle_now: tool({
-        description: "End investigation and enter terminal/structured settlement now.",
-        inputSchema: z.object({}).strict(),
-        execute: async () => {
-          context.budgetControl!.settleNow();
-          context.emit("budget.choice.settle_now", {});
-          return { accepted: true };
-        },
-      }),
-      request_budget: tool({
-        description: "Request a bounded increase to this run's soft work allowance.",
-        inputSchema: z.object({
-          additionalSteps: z.number().int().positive(),
-          additionalDurationMs: z.number().int().positive(),
-          remainingWork: z.string().min(1),
-        }).strict(),
-        execute: async (value) => {
-          const { request, result } = await context.budgetControl!.requestBudget(value);
-          context.emit("budget.request", request);
-          context.emit("budget.approval", result);
-          return { accepted: result.decision === "allow", decision: result.decision };
-        },
-      }),
-    } : {}),
   };
 }
 

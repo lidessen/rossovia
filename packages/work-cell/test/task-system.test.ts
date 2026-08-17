@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { TaskStore } from "../src/task-store";
-import { createTaskTools } from "../src/task-tools";
+import { createTaskTools } from "../src/integrations/ai-sdk/task-tools";
 
 test("a worker reads shared task context but can update only its assigned task", async () => {
   const store = new TaskStore([

@@ -4,20 +4,22 @@ import {
   type CellInput,
   type CellUsage,
   type DriverDescriptor,
-} from "./contracts";
+} from "../../contracts";
 import {
   CellExecutionError,
+  TerminalContractError,
+  createStepAllowance,
+  stepBudgetExhaustedMessage,
   type CellDriver,
   type DriverContext,
   type DriverResult,
-} from "./driver";
-// AI SDK and provider types remain confined to this adapter.
-import { compileOutputSchema } from "./output-schema";
+} from "../../driver";
+// AI SDK and provider types remain confined to this Integration island.
+import { compileAiSdkOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
-import { TaskStore } from "./task-store";
+import { TaskStore } from "../../task-store";
 import {
-  BUDGET_CONTROL_TOOL_NAMES,
   createHostTools,
   EXECUTION_TOOL_NAMES,
   terminalActionRequired,
@@ -39,14 +41,12 @@ import {
   sanitize,
   taskToolNames,
 } from "./driver-common";
+import type { TaskToolSet } from "./task-tool-set";
 
 export type AiSdkDriverOptions = ValidationModelOptions & {
   /** Host-selected Task authority; it changes the actual tool surface, not only the prompt. */
   taskToolSet?: TaskToolSet;
 };
-
-export const TaskToolSetSchema = z.enum(["manage", "read-update", "read-only"]);
-export type TaskToolSet = z.infer<typeof TaskToolSetSchema>;
 
 const MAX_AGENT_OUTPUT_TOKENS = 16_000;
 const STREAM_PROGRESS_CHARACTERS = 1_000;
@@ -62,7 +62,6 @@ interface MaterializedAgentResult {
 
 export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
-  readonly budgetControl = "completed-step-v1" as const;
   protected readonly model;
   private readonly structuredOutputMode: "inline" | "tool-settlement";
   private readonly taskToolSet: NonNullable<AiSdkDriverOptions["taskToolSet"]>;
@@ -92,13 +91,19 @@ export class AiSdkValidationDriver implements CellDriver {
     });
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
-    const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
-    // Controlled settlement always uses the separately signalled settlement
-    // carrier, even when this provider could have emitted inline output.
-    const inlineOutputSchema = this.structuredOutputMode === "inline" && !context.budgetControl
+    const outputSchema = input.outputSchema ? compileAiSdkOutputSchema(input.outputSchema) : undefined;
+    // Inline structured output is a provider-adapter decision; the tool-based
+    // settlement path stays the fallback for providers without native support.
+    const inlineOutputSchema = this.structuredOutputMode === "inline"
       ? outputSchema
       : undefined;
     const deferredStructuredOutput = outputSchema !== undefined && inlineOutputSchema === undefined;
+    // One shared monotonic, non-extendable explicit step allowance for every
+    // provider/model step: the main loop, terminal recovery, and structured
+    // settlement consume the same count. An omitted maxSteps installs no
+    // step-count ceiling, so only maxDurationMs and the caller's abort signal
+    // remain.
+    const stepAllowance = createStepAllowance(input.budget.maxSteps);
     const tools = this.createExecutionTools(
       input,
       context,
@@ -118,72 +123,42 @@ export class AiSdkValidationDriver implements CellDriver {
       tasks,
     );
     const terminalNames = input.terminalTools?.map((terminal) => terminal.name) ?? [];
-    const productionToolNames = Object.keys(tools).filter(
-      (name) => name !== "settle_now" && name !== "request_budget",
-    );
+    const hasTerminalTools = (input.terminalTools?.length ?? 0) > 0;
     const terminalSatisfied = () => terminalNames.some((name) => terminalToolsCalled.has(name));
     const stopAfterAcceptedTerminal = () => terminalSatisfied();
-    const stopAfterSettlementChoice = () => context.budgetControl?.phase === "settlement";
     const stopAfterCancellation = () => context.signal.aborted;
+    // Phase ownership for simultaneous terminal and inline structured-output
+    // contracts: the main execution phase never requires the final structured
+    // output before terminal satisfaction. It may end naturally or stop right
+    // after an accepted terminal tool; inline `Output.object` attaches only to
+    // the closure phase, which performs terminal recovery and the final output
+    // step under the same shared step allowance. A Cell with inline output but
+    // no terminal tools keeps the single-agent inline path unchanged.
+    const mainInlineOutput = inlineOutputSchema !== undefined && !hasTerminalTools;
     const executionAgent = new ToolLoopAgent({
       model: this.model,
       instructions: renderExecutionInstructions(input, {
         deferStructuredOutput: deferredStructuredOutput,
+        deferStructuredOutputToClosure: hasTerminalTools && inlineOutputSchema !== undefined,
         taskToolSet: this.taskToolSet,
       }),
       tools,
       stopWhen: [
-        ...(context.budgetControl || input.budget.maxSteps === undefined
-          ? []
-          : [isStepCount(input.budget.maxSteps)]),
-        ...(terminalNames.length > 0 && !inlineOutputSchema ? [stopAfterAcceptedTerminal] : []),
-        ...(context.budgetControl ? [stopAfterSettlementChoice] : []),
+        ...(input.budget.maxSteps === undefined ? [] : [isStepCount(input.budget.maxSteps)]),
+        ...(terminalNames.length > 0 ? [stopAfterAcceptedTerminal] : []),
         stopAfterCancellation,
       ],
-      ...(inlineOutputSchema ? { output: Output.object({ schema: inlineOutputSchema.forAiSdk() }) } : {}),
-      ...(input.terminalTools?.length || context.budgetControl
+      ...(mainInlineOutput ? { output: Output.object({ schema: inlineOutputSchema.forAiSdk() }) } : {}),
+      ...(input.terminalTools?.length
         ? {
             prepareStep: ({ stepNumber }) => {
-              if (context.budgetControl?.phase === "decision") {
-                terminalOnly = true;
-                return {
-                  activeTools: ["settle_now", "request_budget"] as never[],
-                  toolChoice: "required" as const,
-                  instructions: `${renderExecutionInstructions(input, {
-                    deferStructuredOutput: deferredStructuredOutput,
-                    taskToolSet: this.taskToolSet,
-                  })}\n\nThe soft work budget was reached after a completed safe step. Choose exactly one control action now: settle_now, or request_budget with a bounded step/time increase and concrete remaining work. Do not investigate or use ordinary tools.`,
-                };
-              }
-              if (context.budgetControl?.phase === "settlement") {
-                terminalOnly = true;
-                if (terminalSatisfied()) {
-                  return finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
-                }
-                return terminalNames.length > 0
-                  ? {
-                      activeTools: terminalNames as never[],
-                      toolChoice: terminalToolChoice(terminalNames) as never,
-                      instructions: `${renderExecutionInstructions(input, {
-                        deferStructuredOutput: deferredStructuredOutput,
-                        taskToolSet: this.taskToolSet,
-                      })}\n\nYou chose settle_now. Investigation is closed. Invoke exactly one declared terminal tool now.`,
-                    }
-                  : finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
-              }
-              if (context.budgetControl?.phase === "production") {
-                terminalOnly = false;
-                return { activeTools: productionToolNames as never[] };
-              }
-              if (terminalSatisfied()) {
-                terminalOnly = true;
-                return finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
-              }
-              // A terminal-only Cell needs one final action turn. When an
-              // independent structured output is also required, reserve a
-              // second tool-free turn for that result. Applies only when the
-              // caller selected an explicit finite step policy; an omitted
-              // maxSteps never creates a hidden step deadline.
+              // The closure phase owns terminal recovery and the final output
+              // step; the main loop stops right after an accepted terminal
+              // tool. Near an explicit finite step policy the main loop still
+              // forces the terminal action so the closure keeps at least one
+              // step for the final output. Applies only when the caller
+              // selected an explicit finite step policy; an omitted maxSteps
+              // never creates a hidden step deadline.
               const reservedSteps = inlineOutputSchema ? 2 : 1;
               if (input.budget.maxSteps !== undefined
                 && stepNumber >= input.budget.maxSteps - reservedSteps) {
@@ -196,6 +171,7 @@ export class AiSdkValidationDriver implements CellDriver {
                   toolChoice: terminalToolChoice(terminalNames) as never,
                   instructions: `${renderExecutionInstructions(input, {
                     deferStructuredOutput: deferredStructuredOutput,
+                    deferStructuredOutputToClosure: hasTerminalTools && inlineOutputSchema !== undefined,
                     taskToolSet: this.taskToolSet,
                   })}\n\nYou have reached the final action step. Invoke exactly one declared terminal tool now; do not continue analysis.`,
                 };
@@ -220,8 +196,9 @@ export class AiSdkValidationDriver implements CellDriver {
           ? { prompt: firstUserInput }
           : { messages: [firstUserInput] }),
         abortSignal: context.signal,
-        ...(context.budgetControl ? {} : { timeout: { totalMs: input.budget.maxDurationMs } }),
+        timeout: { totalMs: input.budget.maxDurationMs },
         onStepStart: ({ callId, provider, modelId, stepNumber, activeTools }) => {
+          stepAllowance.consume();
           context.emit("agent.step.started", {
             callId,
             provider,
@@ -250,10 +227,7 @@ export class AiSdkValidationDriver implements CellDriver {
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const stepUsage = normalizeUsage(usage, providerMetadata);
           observedUsage = addUsage(observedUsage, stepUsage);
-          context.observeUsage(
-            stepUsage,
-            context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
-          );
+          context.observeUsage(stepUsage, "execution");
           context.emit("agent.step.finished", {
             finishReason,
             performance: sanitize(performance),
@@ -263,26 +237,28 @@ export class AiSdkValidationDriver implements CellDriver {
             toolCalls: sanitize(toolCalls),
             toolResults: sanitize(toolResults),
           });
-          if (context.budgetControl?.phase === "settlement") {
-            observedSettlementUsage = addUsage(observedSettlementUsage, stepUsage);
-          }
-          const decisionPoint = terminalSatisfied() ? false : context.budgetControl?.completedStep();
-          if (decisionPoint) context.emit("budget.decision_point", { completedSafeStep: true });
         },
       };
       if (context.liveObservation) {
         const observeChunk = createStreamActivityObserver(context, "execution");
         const streamed = await executionAgent.stream(callbacks);
         for await (const chunk of streamed.stream) observeChunk(chunk);
-        executionResult = await materializeStreamedResult(streamed, inlineOutputSchema !== undefined);
+        executionResult = await materializeStreamedResult(streamed, mainInlineOutput);
       } else {
         const generated = await executionAgent.generate(callbacks);
-        executionResult = materializeGeneratedResult(generated, inlineOutputSchema !== undefined);
+        executionResult = materializeGeneratedResult(generated, mainInlineOutput);
       }
     } catch (error) {
       if (terminalProtocolError) {
-        throw new CellExecutionError(terminalProtocolError, observedUsage, observedSettlementUsage);
-      } else if (terminalSatisfied() && !inlineOutputSchema) {
+        throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
+      }
+      // Terminal-contract exhaustion is classified only from a normally
+      // completed or explicitly step-stopped unsatisfied loop — never from an
+      // arbitrary provider or adapter throw. An actual provider error after
+      // the final allowance is consumed keeps its real causal message even
+      // when declared terminal tools remain unsatisfied, and a Cell without
+      // declared terminal tools likewise preserves the provider error.
+      if (terminalSatisfied() && !inlineOutputSchema) {
         executionResult = terminalOnlyResult(terminalNames, observedUsage, "execution");
       } else {
         throw new CellExecutionError(
@@ -307,56 +283,104 @@ export class AiSdkValidationDriver implements CellDriver {
         text: terminalOnlyResult(terminalNames, emptyUsage(), "execution").text,
       };
     }
-    const controlledSettlement = context.budgetControl?.phase === "settlement";
-    const needsTerminalCarrier = input.terminalTools?.length && !terminalSatisfied();
-    const needsPlainTextSettlement = controlledSettlement && terminalNames.length === 0 && !outputSchema;
-    if (needsTerminalCarrier || needsPlainTextSettlement) {
-      if (!controlledSettlement) {
+    const needsTerminalCarrier = hasTerminalTools && !terminalSatisfied();
+    // Phase ownership: when terminal tools and inline structured output are
+    // both declared, the closure phase owns the remaining contracts — it
+    // performs terminal recovery and the final output when the main loop ended
+    // without the terminal, and only the final output step when the terminal
+    // was already accepted. Both closure forms consume the same shared,
+    // non-extendable step allowance.
+    const runsClosure = needsTerminalCarrier || (hasTerminalTools && inlineOutputSchema !== undefined);
+    if (runsClosure) {
+      // The allowance is shared and non-extendable: the closure never starts
+      // when no provider step remains; the Cell fails truthfully instead of
+      // passing without the required terminal tool or structured output. An
+      // unsatisfied declared terminal contract keeps the canonical protocol
+      // standing; an already accepted terminal with no step left for the final
+      // output is a truthful structured-output failure.
+      if (stepAllowance.remaining === 0) {
+        if (needsTerminalCarrier) {
+          throw new TerminalContractError(
+            stepBudgetExhaustedMessage(stepAllowance.consumed, "the terminal-tool contract was not satisfied"),
+            addUsage(observedUsage, closureUsage),
+            observedSettlementUsage,
+          );
+        }
+        throw new CellExecutionError(
+          stepBudgetExhaustedMessage(stepAllowance.consumed, "the structured output contract was not satisfied"),
+          addUsage(observedUsage, closureUsage),
+          observedSettlementUsage,
+        );
+      }
+      if (needsTerminalCarrier) {
         context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
       }
       const availableTools = tools as Record<string, (typeof tools)[keyof typeof tools]>;
       const closureTools = Object.fromEntries(
         terminalNames.map((name) => [name, availableTools[name]!]),
       );
+      // Captured once at closure start: the closure agent consumes only its
+      // own provider steps, so its step-count stop condition is the allowance
+      // remaining after the main turn, unchanged for the whole phase.
+      const remainingClosureSteps = stepAllowance.remaining;
+      // Whether the declared terminal was already accepted when the current
+      // closure step began: only steps that start with the contract open are
+      // actual terminal recovery; a step that starts with the terminal
+      // accepted is the output-only closure step.
+      let terminalSatisfiedBeforeStep = false;
       const closureAgent = new ToolLoopAgent({
         model: this.model,
-        instructions: [
-          renderExecutionInstructions(input, {
-            deferStructuredOutput: deferredStructuredOutput,
-            taskToolSet: this.taskToolSet,
-          }),
-          controlledSettlement ? "## Reserved settlement phase" : "## Terminal recovery phase",
-          controlledSettlement
-            ? "Investigation is closed. Use only the retained evidence to produce the required terminal settlement."
-            : "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
-          "Only the original task context and a compact projection of successful tool results are present; prior assistant reasoning, prose, rejected calls, and other transcript messages are absent. Retained results remain usable evidence, and a later rejected tool call does not erase them or prove that no files were read.",
-          "Use the retained evidence, bound only genuinely missing facts, and invoke exactly one declared terminal tool now.",
-          ...(terminalNames.length > 0
-            ? [`You must invoke exactly one of: ${terminalNames.join(", ")}, then return a concise final report.`]
-            : ["Return the smallest truthful final report now. Do not take any action or add facts."]),
-        ].join("\n"),
-        tools: closureTools,
-        stopWhen: terminalNames.length === 0
-          ? isStepCount(1)
-          : inlineOutputSchema
-          ? isStepCount(3)
-          : [isStepCount(2), stopAfterAcceptedTerminal],
+        instructions: needsTerminalCarrier
+          ? [
+              renderExecutionInstructions(input, {
+                deferStructuredOutput: deferredStructuredOutput,
+                taskToolSet: this.taskToolSet,
+              }),
+              "## Terminal recovery phase",
+              "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
+              "Only the original task context and a compact projection of successful tool results are present; prior assistant reasoning, prose, rejected calls, and other transcript messages are absent. Retained results remain usable evidence, and a later rejected tool call does not erase them or prove that no files were read.",
+              "Use the retained evidence, bound only genuinely missing facts, and invoke exactly one declared terminal tool now.",
+              `You must invoke exactly one of: ${terminalNames.join(", ")}, then return the final structured output.`,
+            ].join("\n")
+          : [
+              "The declared terminal tool was already accepted during execution. Do not take further actions.",
+              "Return the final structured output now.",
+            ].join("\n\n"),
+        // The accepted-terminal closure exposes no tools at all: the terminal
+        // contract is already satisfied, and a second terminal call would be a
+        // protocol violation. The recovery closure exposes only the declared
+        // terminal tools.
+        tools: needsTerminalCarrier ? closureTools : {},
+        // The same proven loop boundary as the main agent: a step-count
+        // stop condition over this agent's own provider steps, sized to the
+        // allowance that remains after the main turn. It stops before a
+        // step that would exceed the shared maxSteps and lets a tool-free
+        // final allowed step complete naturally with its output instead of
+        // being cut off by exhaustion after the step already finished.
+        stopWhen: needsTerminalCarrier && !inlineOutputSchema
+          ? [() => stepAllowance.exhausted, stopAfterAcceptedTerminal]
+          : [
+              ...(remainingClosureSteps === undefined
+                ? [() => stepAllowance.exhausted]
+                : [isStepCount(remainingClosureSteps)]),
+            ],
         ...(inlineOutputSchema ? { output: Output.object({ schema: inlineOutputSchema.forAiSdk() }) } : {}),
-        prepareStep: () => {
-          if (terminalNames.length === 0) {
-            terminalOnly = true;
-            return { activeTools: [], toolChoice: "none" as const };
-          }
-          if (terminalSatisfied()) {
-            terminalOnly = true;
-            return finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
-          }
-          terminalOnly = true;
-          return {
-            activeTools: terminalNames,
-            toolChoice: terminalToolChoice(terminalNames) as never,
-          };
-        },
+        prepareStep: needsTerminalCarrier
+          ? () => {
+              if (terminalSatisfied()) {
+                terminalOnly = true;
+                return finalOutputStep(input, inlineOutputSchema !== undefined);
+              }
+              terminalOnly = true;
+              return {
+                activeTools: terminalNames,
+                toolChoice: terminalToolChoice(terminalNames) as never,
+              };
+            }
+          : () => {
+              terminalOnly = true;
+              return finalOutputStep(input, true);
+            },
         // Recovery must be able to emit every terminal payload admitted by the
         // main loop. A smaller provider limit can truncate otherwise valid tool
         // input before Work Cell gets a chance to verify it.
@@ -373,42 +397,54 @@ export class AiSdkValidationDriver implements CellDriver {
               role: "user",
               content: `Retained successful tool evidence from the execution trace:\n${renderRecoveryEvidence(executionResult.steps)}`,
             },
-            {
-              role: "user",
-              content: controlledSettlement
-                ? "The decision is settle_now. Use the retained investigation context only and complete terminal settlement. Do not restart the task."
-                : "The work above ended without satisfying its terminal-tool contract. Use the retained investigation context and invoke exactly one declared terminal tool now. Do not restart the task.",
-            },
+            needsTerminalCarrier
+              ? {
+                  role: "user",
+                  content: "The work above ended without satisfying its terminal-tool contract. Use the retained investigation context and invoke exactly one declared terminal tool now. Do not restart the task.",
+                }
+              : {
+                  role: "user",
+                  content: "The declared terminal tool was already accepted. Do not take further actions; return the final structured output now.",
+                },
           ],
-          abortSignal: context.budgetControl?.phase === "settlement"
-            ? context.settlementSignal?.() ?? context.signal
-            : context.signal,
-          ...(context.budgetControl ? {} : { timeout: { totalMs: input.budget.maxDurationMs } }),
+          abortSignal: context.signal,
+          timeout: { totalMs: input.budget.maxDurationMs },
+          onStepStart: () => {
+            // Consumed at step start so a recovery step that fails under the
+            // forced terminal tool choice still counts against the shared
+            // allowance. A step that begins with the declared terminal already
+            // accepted is the output-only closure step, not terminal recovery.
+            stepAllowance.consume();
+            terminalSatisfiedBeforeStep = terminalSatisfied();
+          },
           onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
             const stepUsage = normalizeUsage(usage, providerMetadata);
             closureUsage = addUsage(closureUsage, stepUsage);
-            context.observeUsage(
-              stepUsage,
-              context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
+            context.observeUsage(stepUsage, "execution");
+            // Only steps that began with the terminal contract still open are
+            // actual terminal recovery; a step that began with the terminal
+            // already accepted is the output-only closure step and carries its
+            // own truthful structured-output event.
+            context.emit(
+              needsTerminalCarrier && !terminalSatisfiedBeforeStep
+                ? "terminal.recovery.step.finished"
+                : "structured.output.step.finished",
+              {
+                finishReason,
+                performance: sanitize(performance),
+                providerMetadata: sanitize(providerMetadata),
+                usage,
+                cumulativeUsage: closureUsage,
+                toolCalls: sanitize(toolCalls),
+                toolResults: sanitize(toolResults),
+              },
             );
-            context.emit("terminal.recovery.step.finished", {
-              finishReason,
-              performance: sanitize(performance),
-              providerMetadata: sanitize(providerMetadata),
-              usage,
-              cumulativeUsage: closureUsage,
-              toolCalls: sanitize(toolCalls),
-              toolResults: sanitize(toolResults),
-            });
-            if (context.budgetControl?.phase === "settlement") {
-              observedSettlementUsage = addUsage(observedSettlementUsage, stepUsage);
-            }
           },
         });
         closureResult = materializeGeneratedResult(generatedClosure, inlineOutputSchema !== undefined);
       } catch (error) {
         if (terminalProtocolError) {
-          throw new CellExecutionError(
+          throw new TerminalContractError(
             terminalProtocolError,
             addUsage(observedUsage, closureUsage),
             observedSettlementUsage,
@@ -416,6 +452,10 @@ export class AiSdkValidationDriver implements CellDriver {
         } else if (terminalSatisfied() && !inlineOutputSchema) {
           closureResult = terminalOnlyResult(terminalNames, closureUsage, "recovery");
         } else {
+          // An actual provider or adapter error inside the closure keeps its
+          // real causal message even when the allowance is exhausted and the
+          // terminal contract is still open; exhaustion is classified only
+          // from a normally completed or explicitly step-stopped loop.
           throw new CellExecutionError(
             error instanceof Error ? error.message : String(error),
             addUsage(observedUsage, closureUsage),
@@ -431,8 +471,19 @@ export class AiSdkValidationDriver implements CellDriver {
       }
     }
     if (terminalProtocolError) {
-      throw new CellExecutionError(
+      throw new TerminalContractError(
         terminalProtocolError,
+        addUsage(observedUsage, closureUsage),
+        observedSettlementUsage,
+      );
+    }
+    // Terminal recovery consumed the last remaining provider step without
+    // satisfying the declared terminal contract: fail truthfully with the
+    // canonical protocol standing instead of returning a result that would
+    // pass verification.
+    if (needsTerminalCarrier && !terminalSatisfied() && stepAllowance.exhausted) {
+      throw new TerminalContractError(
+        stepBudgetExhaustedMessage(stepAllowance.consumed, "the terminal-tool contract was not satisfied"),
         addUsage(observedUsage, closureUsage),
         observedSettlementUsage,
       );
@@ -456,7 +507,21 @@ export class AiSdkValidationDriver implements CellDriver {
           observedSettlementUsage,
         );
       }
+      if (output === undefined && stepAllowance.exhausted) {
+        throw new CellExecutionError(
+          stepBudgetExhaustedMessage(stepAllowance.consumed, "the structured output contract was not satisfied"),
+          addUsage(observedUsage, closureUsage),
+          observedSettlementUsage,
+        );
+      }
     } else if (outputSchema) {
+      if (stepAllowance.remaining === 0) {
+        throw new CellExecutionError(
+          stepBudgetExhaustedMessage(stepAllowance.consumed, "the structured output contract cannot be settled"),
+          addUsage(observedUsage, closureUsage),
+          observedSettlementUsage,
+        );
+      }
       context.emit("structured.settlement.started", { mode: "tool-settlement" });
       settlement = await settleStructuredOutput({
         model: this.model,
@@ -470,6 +535,7 @@ export class AiSdkValidationDriver implements CellDriver {
         ].filter((part): part is string => Boolean(part?.trim())).join("\n\n"),
         context,
         maxOutputTokens: MAX_AGENT_OUTPUT_TOKENS,
+        stepAllowance,
       });
       if (settlement.output === undefined) {
         const failedSettlementUsage = addUsage(observedSettlementUsage, settlement.usage);
@@ -480,7 +546,17 @@ export class AiSdkValidationDriver implements CellDriver {
         );
       }
       output = settlement.output;
-      context.emit("structured.settlement.finished", { mode: "tool-settlement" });
+      // A valid emit_structured_output call can arrive after the caller
+      // cancelled while this settlement attempt was still in flight: the tool
+      // execute assigns the accepted output, so the shared helper resolves
+      // through every output-undefined and catch guard. The enclosing runCell
+      // already emitted the immutable Cell final (cell.error then
+      // cell.finished) with the original caller reason, so the accepted-output
+      // completion stays causal only to that finalized cancellation and no
+      // settlement event is emitted after the final.
+      if (!context.signal.aborted) {
+        context.emit("structured.settlement.finished", { mode: "tool-settlement" });
+      }
     }
     const usage = settlement ? addUsage(executionUsage, settlement.usage) : executionUsage;
     const settlementUsage = settlement
@@ -521,12 +597,9 @@ export class AiSdkValidationDriver implements CellDriver {
     terminalOnly: () => boolean,
     tasks: TaskStore,
   ) {
-    const projectedExecutionToolNames = context.budgetControl
-      ? new Set([...EXECUTION_TOOL_NAMES, ...BUDGET_CONTROL_TOOL_NAMES])
-      : EXECUTION_TOOL_NAMES;
     const conflictingTerminalNames = (input.terminalTools ?? [])
       .map((terminal) => terminal.name)
-      .filter((name) => projectedExecutionToolNames.has(name));
+      .filter((name) => EXECUTION_TOOL_NAMES.has(name));
     if (conflictingTerminalNames.length > 0) {
       throw new Error(
         `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,
@@ -566,15 +639,17 @@ function terminalToolChoice(names: string[]) {
 function finalOutputStep(
   input: CellInput,
   inlineStructuredOutput: boolean,
-  taskToolSet: TaskToolSet,
 ) {
   return {
     activeTools: [],
     toolChoice: "none" as const,
-    instructions: `${renderExecutionInstructions(input, {
-      deferStructuredOutput: input.outputSchema !== undefined && !inlineStructuredOutput,
-      taskToolSet,
-    })}\n\nA declared terminal tool has been called. Do not take further actions. Return the final ${inlineStructuredOutput ? "structured output" : "concise report"} now.`,
+    instructions: [
+      "The declared terminal tool was already accepted. Do not take further actions.",
+      `Return the final ${inlineStructuredOutput ? "structured output" : "concise report"} now.`,
+      ...(inlineStructuredOutput && input.outputSchema
+        ? [`Return a final structured output that conforms exactly to this JSON Schema:\n${JSON.stringify(input.outputSchema)}`]
+        : []),
+    ].join("\n\n"),
   };
 }
 

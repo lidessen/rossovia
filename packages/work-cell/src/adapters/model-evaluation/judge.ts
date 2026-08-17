@@ -1,13 +1,13 @@
 import { generateText, Output, tool } from "ai";
 import { z } from "zod";
 import type { CellUsage, DriverDescriptor } from "../../contracts";
-import { normalizeAiSdkUsage as normalizeUsage } from "../../ai-sdk-usage";
+import { normalizeAiSdkUsage as normalizeUsage } from "../../integrations/ai-sdk/ai-sdk-usage";
 import {
   createValidationModel,
   validationModelName,
   validationProviderName,
   type ValidationModelOptions,
-} from "../../validation-model";
+} from "../../integrations/ai-sdk/validation-model";
 
 export const ModelEvaluationJudgementSchema = z.object({
   preferred: z.enum(["A", "B", "tie", "inconclusive"]),

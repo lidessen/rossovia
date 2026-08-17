@@ -5,6 +5,7 @@ import type {
 } from "../../../packages/work-cell/src/contracts";
 import { CellInputSchema } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import { runCell } from "../../../packages/work-cell/src/run-cell";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
@@ -353,6 +354,8 @@ export async function runPreparedDelegateBatch(
   createDriver: (input: CellInput) => CellDriver,
   options: {
     readonly concurrency: number;
+    /** The caller-injected host port for every delegated Cell. */
+    readonly host: CellHost;
     readonly signal?: AbortSignal;
     readonly onTrace?: (event: TraceEvent) => void;
   },
@@ -367,6 +370,8 @@ export async function runAdmittedDelegateBatch(
   createDriver: (input: CellInput) => CellDriver,
   options: {
     readonly concurrency: number;
+    /** The caller-injected host port for every delegated Cell. */
+    readonly host: CellHost;
     readonly signal?: AbortSignal;
     readonly onTrace?: (event: TraceEvent) => void;
   },
@@ -377,13 +382,14 @@ export async function runAdmittedDelegateBatch(
       lowered.input,
       createDriver(lowered.input),
       {
+        host: options.host,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(options.onTrace === undefined ? {} : { onTrace: options.onTrace }),
       },
     );
     return { kind: "direct", admission, record };
   }
-  const record = await runSwarm(lowered.manifest, createDriver, options.signal);
+  const record = await runSwarm(lowered.manifest, createDriver, options.host, options.signal);
   return { kind: "swarm", admission, record };
 }
 
