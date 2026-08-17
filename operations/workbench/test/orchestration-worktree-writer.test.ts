@@ -25,6 +25,7 @@ import { createPrincipalTask } from "../src/tasks";
 import {
   acquireWorktreeWriterLease,
   canonicalGitDirectory,
+  createWorktreeWriter,
   inspectRetainedWorktreeWriterLease,
   isProcessDefinitelyAbsent,
   readWorktreeWriterLease,
@@ -35,6 +36,7 @@ import {
   WorktreeWriterLeaseSchema,
   type WorktreeWriterLease,
 } from "../src/orchestration/worktree-writer";
+import type { GitWorktreeMetadataPort } from "../src/orchestration/git-worktree-port";
 import {
   runPrincipalTask,
   type TaskCellExecutor,
@@ -668,6 +670,140 @@ describe("O3 integration regressions", () => {
     await expect(runTestTask(current.home, created.task.id, executor.execute))
       .resolves.toBeTruthy();
     expect(executor.requests).toHaveLength(1);
+  });
+});
+
+describe("O3 GitWorktreeMetadataPort without any Git repository", () => {
+  test("two independent writer instances complete the exact acquire/inspect/release surface without cross-talk", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-o3-fake-port-"));
+    temporaryRoots.push(root);
+    const rawWorktree = join(root, "plain-directory");
+    const rawMetadata = join(root, "fake-git-metadata");
+    const rawOtherMetadata = join(root, "other-fake-git-metadata");
+    mkdirSync(rawWorktree, { recursive: true });
+    mkdirSync(rawMetadata, { recursive: true });
+    mkdirSync(rawOtherMetadata, { recursive: true });
+    const worktree = realpathSync(rawWorktree);
+    const metadata = realpathSync(rawMetadata);
+    const otherMetadata = realpathSync(rawOtherMetadata);
+    // The fixture directory is intentionally not a Git repository.
+    expect(existsSync(join(worktree, ".git"))).toBeFalse();
+
+    // One instance/factory boundary per immutable port: two distinct ports
+    // execute through independent writer instances with no cross-talk.
+    const port: GitWorktreeMetadataPort = { canonicalGitDirectory: () => metadata };
+    const otherPort: GitWorktreeMetadataPort = { canonicalGitDirectory: () => otherMetadata };
+    const writer = createWorktreeWriter(port);
+    const otherWriter = createWorktreeWriter(otherPort);
+
+    // The exported free functions remain the one immutable production
+    // default over the declared concrete Git adapter: deriving the claim
+    // path without a Git repository still fails visibly.
+    expect(() => worktreeWriterLeasePath(worktree)).toThrow(/not a git repository/);
+
+    // Interleaved calls through the two instances never change one another.
+    expect(writer.canonicalGitDirectory(worktree)).toBe(metadata);
+    expect(otherWriter.canonicalGitDirectory(worktree)).toBe(otherMetadata);
+    expect(writer.canonicalGitDirectory(worktree)).toBe(metadata);
+    const leasePath = writer.worktreeWriterLeasePath(worktree);
+    expect(leasePath).toBe(join(metadata, WORKTREE_WRITER_LEASE_FILENAME));
+    const otherLeasePath = otherWriter.worktreeWriterLeasePath(worktree);
+    expect(otherLeasePath).toBe(join(otherMetadata, WORKTREE_WRITER_LEASE_FILENAME));
+    expect(writer.worktreeWriterLeasePath(worktree)).toBe(leasePath);
+
+    const owner = { taskId: "fake-port-task", attemptId: randomUUID() };
+    const lease = writer.acquireWorktreeWriterLease(worktree, owner);
+    expect(WorktreeWriterLeaseSchema.parse(JSON.parse(lease.content))).toEqual({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree,
+      taskId: owner.taskId,
+      attemptId: owner.attemptId,
+      pid: process.pid,
+      acquiredAt: expect.any(String),
+    });
+    expect(readFileSync(lease.path, "utf8")).toBe(lease.content);
+
+    // No-clobber and byte-match behavior keep the frozen O3 surface even
+    // when the metadata directory is not a Git metadata directory at all.
+    expect(() => writer.acquireWorktreeWriterLease(worktree, {
+      taskId: "second-owner",
+      attemptId: randomUUID(),
+    })).toThrow(
+      `task Worktree already has an active task-run lease: ${worktree}; lease: ${lease.path}`,
+    );
+    // The other instance's port is fully independent: its own acquire
+    // succeeds concurrently in its own metadata directory while the first
+    // instance's claim is still held.
+    const otherOwner = { taskId: "other-port-task", attemptId: randomUUID() };
+    const otherLease = otherWriter.acquireWorktreeWriterLease(worktree, otherOwner);
+    expect(otherLease.path).toBe(otherLeasePath);
+    expect(readFileSync(otherLease.path, "utf8")).toBe(otherLease.content);
+
+    const expected = { ...owner, worktree };
+    expect(writer.readWorktreeWriterLease(lease.path, expected).raw).toBe(lease.content);
+    expect(writer.inspectRetainedWorktreeWriterLease(expected).standing).toBe("exact");
+    expect(writer.inspectRetainedWorktreeWriterLease({ ...expected, attemptId: randomUUID() }).standing)
+      .toBe("different-owner");
+
+    // The byte-matched release of one instance never touches the other
+    // instance's claim.
+    writer.releaseWorktreeWriterLease(lease);
+    expect(writer.inspectRetainedWorktreeWriterLease(expected))
+      .toEqual({ standing: "absent", leasePath });
+    expect(readFileSync(otherLease.path, "utf8")).toBe(otherLease.content);
+    otherWriter.releaseWorktreeWriterLease(otherLease);
+    expect(existsSync(otherLease.path)).toBeFalse();
+  });
+
+  test("completes the exact recovery surface through an independent writer instance", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-o3-fake-port-"));
+    temporaryRoots.push(root);
+    const rawWorktree = join(root, "plain-directory");
+    const rawMetadata = join(root, "fake-git-metadata");
+    mkdirSync(rawWorktree, { recursive: true });
+    mkdirSync(rawMetadata, { recursive: true });
+    const worktree = realpathSync(rawWorktree);
+    const metadata = realpathSync(rawMetadata);
+    expect(existsSync(join(worktree, ".git"))).toBeFalse();
+    const port: GitWorktreeMetadataPort = { canonicalGitDirectory: () => metadata };
+    const writer = createWorktreeWriter(port);
+    const leasePath = writer.worktreeWriterLeasePath(worktree);
+    const expected = { worktree, taskId: "fake-port-task", attemptId: randomUUID() };
+    const claim = (record: Record<string, unknown>): string =>
+      `${JSON.stringify(record, null, 2)}\n`;
+    const base = {
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree,
+      taskId: expected.taskId,
+      attemptId: expected.attemptId,
+      acquiredAt: new Date().toISOString(),
+    };
+
+    // Absent is reported absent and never re-acquired.
+    expect(writer.recoverRetainedWorktreeWriterLease(expected).outcome).toBe("absent");
+    expect(existsSync(leasePath)).toBeFalse();
+
+    // An exact claim with a live owner is refused with the bytes retained.
+    const liveBytes = claim({ ...base, pid: process.pid });
+    writeFileSync(leasePath, liveBytes);
+    const live = writer.recoverRetainedWorktreeWriterLease(expected);
+    expect(live.outcome).toBe("refused");
+    expect(readFileSync(leasePath, "utf8")).toBe(liveBytes);
+
+    // An exact claim with a provably absent owner is released.
+    const deadBytes = claim({ ...base, pid: deadPid() });
+    writeFileSync(leasePath, deadBytes);
+    const released = writer.recoverRetainedWorktreeWriterLease(expected);
+    expect(released.outcome).toBe("released");
+    expect(existsSync(leasePath)).toBeFalse();
+
+    // A different valid owner's claim is reported and never deleted.
+    const otherBytes = claim({ ...base, attemptId: randomUUID(), pid: deadPid() });
+    writeFileSync(leasePath, otherBytes);
+    const different = writer.recoverRetainedWorktreeWriterLease(expected);
+    expect(different.outcome).toBe("different-owner");
+    expect(readFileSync(leasePath, "utf8")).toBe(otherBytes);
+    rmSync(leasePath);
   });
 });
 
