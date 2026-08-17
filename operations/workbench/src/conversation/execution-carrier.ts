@@ -22,7 +22,11 @@ import {
   type TaskRunExecution,
   type TaskRunLease,
 } from "../task-run";
-import { readStrictTaskAttemptEvidence } from "../task-attempts";
+import {
+  readStrictTaskAttemptEvidence,
+  type ParsedTaskRunSettlement,
+  type StrictTaskAttemptEvidence,
+} from "../task-attempts";
 import { PrincipalTaskError } from "../tasks";
 import type { PrincipalTask } from "../contracts";
 import { loadHome, resolveHome, workspaceFor } from "../home";
@@ -131,6 +135,31 @@ export interface CarrierStartReceipt {
 }
 
 /**
+ * The exact owner-backed standing one reconnect hydration re-derives for a
+ * committed task_continue action: the retained runtime handle's live or
+ * terminal liveness, or — when this process retains no handle (a server
+ * reload/restart) — the canonical attempt/final/settlement evidence family
+ * matched by the attempt's durable correlation, projected as terminal or
+ * unknown, never live. Hydration is read-only: it never starts, stops,
+ * reconciles, or mutates any carrier or attempt evidence.
+ */
+export type CarrierHydration =
+  | {
+    readonly standing: "live";
+    readonly identity: ConversationCarrierIdentity;
+  }
+  | {
+    readonly standing: "terminal";
+    readonly identity: ConversationCarrierIdentity;
+    readonly settlement: CarrierSettlement;
+  }
+  | {
+    readonly standing: "unknown";
+    readonly identity: ConversationCarrierIdentity;
+    readonly reason: string;
+  };
+
+/**
  * The in-memory registry of one Workbench server: the exact retained runtime
  * handles of conversation-owned asynchronous ordinary Task carriers. It owns
  * liveness only while the handle exists; a retained `started` attempt without
@@ -163,6 +192,20 @@ export interface ConversationExecutionCarrierRegistry {
     readonly control: "stop";
     readonly actor: { readonly conversationId: string; readonly turnId: string; readonly actionId: string };
   }): CarrierControlReceipt;
+  /**
+   * Re-derive the exact owner-backed standing of the carrier started by one
+   * committed task_continue action, for reconnect hydration after durable
+   * replay/reconciliation. A retained runtime handle contributes its live or
+   * terminal liveness; with no retained handle the canonical attempt
+   * evidence family is searched for the action's exact durable correlation
+   * and projected as terminal or unknown — never live. Undefined when no
+   * carrier evidence exists for the action. Read-only: no start, stop,
+   * reconciliation, or mutation is performed.
+   */
+  hydrateCarrier(input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+  }): CarrierHydration | undefined;
 }
 
 export interface ConversationExecutionCarrierOptions {
@@ -330,6 +373,24 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
       );
     }
     return carrier.stop(input.actor);
+  }
+
+  hydrateCarrier(input: {
+    readonly conversationId: string;
+    readonly actionId: string;
+  }): CarrierHydration | undefined {
+    const attemptId = this.startedByCommittedAction.get(
+      committedActionKey(input.conversationId, input.actionId),
+    );
+    if (attemptId !== undefined) {
+      const handle = this.handles.get(attemptId);
+      if (handle !== undefined) return hydrationFromHandle(handle);
+    }
+    return carrierHydrationFromEvidence(
+      this.home,
+      input.conversationId,
+      input.actionId,
+    );
   }
 
   private prepareCarrierRun(operation: TaskContinueOperation): PreparedPrincipalTaskRun {
@@ -828,6 +889,117 @@ function writeControlReceipt(
     settlementRef: attempt.settlementRef,
   });
   return evidenceRef(home, path);
+}
+
+/** The retained handle's exact liveness projected as a read-only hydration. */
+function hydrationFromHandle(handle: ConversationCarrierHandle): CarrierHydration {
+  const liveness = handle.liveness();
+  return liveness.state === "live"
+    ? { standing: "live", identity: handle.identity }
+    : {
+      standing: "terminal",
+      identity: handle.identity,
+      settlement: liveness.settlement,
+    };
+}
+
+/**
+ * Re-derive the standing of one committed task_continue action from the
+ * canonical attempt evidence family when this process retains no runtime
+ * handle (server reload/restart). The exact durable correlation retained on
+ * the immutable attempt record selects the attempt; its strict evidence is
+ * then projected terminal only when the settlement is valid and its exact
+ * lease release succeeded — otherwise unknown, never live, never a new
+ * effect. Undefined when no attempt retains the action's correlation.
+ */
+export function carrierHydrationFromEvidence(
+  home: string,
+  conversationId: string,
+  actionId: string,
+): CarrierHydration | undefined {
+  for (const attemptId of listAttemptDirectories(home)) {
+    const evidence = readStrictTaskAttemptEvidence(home, attemptId);
+    const attempt = evidence.attempt;
+    if (attempt === undefined) continue;
+    const correlation = attempt.correlation;
+    if (
+      correlation === undefined
+      || correlation.conversationId !== conversationId
+      || correlation.actionId !== actionId
+    ) continue;
+    const identity: ConversationCarrierIdentity = {
+      carrierId: attemptId,
+      conversationId,
+      turnId: correlation.turnId,
+      actionId,
+      taskId: attempt.taskId,
+      attemptId,
+      workerId: attempt.workerId ?? "",
+      worktree: evidence.input?.workspace.root ?? "",
+    };
+    const withoutHandle = carrierStandingWithoutHandle(home, attemptId);
+    if (withoutHandle.kind === "settled" && evidence.settlement !== undefined) {
+      return {
+        standing: "terminal",
+        identity,
+        settlement: terminalSettlementFromEvidence(
+          evidence.settlement,
+          evidence,
+        ),
+      };
+    }
+    const reason = evidence.standing === "invalid"
+      ? `attempt evidence is invalid and cannot settle standing: ${evidence.error ?? "invalid evidence"}`
+      : withoutHandle.kind === "settled"
+        ? "the attempt settled but its terminal settlement could not be re-read"
+        : "the attempt has no valid terminal settlement and liveness cannot be claimed";
+    return { standing: "unknown", identity, reason };
+  }
+  return undefined;
+}
+
+/**
+ * Project one validated append-only settlement into the carrier terminal
+ * standing with its exact canonical evidence refs: `recorded` cites the
+ * settlement and the retained final record, `control-stopped` cites the
+ * durable control receipt and the settlement, `runner-failed` cites the
+ * settlement. Nothing is invented for a malformed settlement.
+ */
+function terminalSettlementFromEvidence(
+  settlement: ParsedTaskRunSettlement,
+  evidence: StrictTaskAttemptEvidence,
+): CarrierSettlement {
+  // The strict evidence validation already guarantees a present cellStatus
+  // equals the retained final record's exact CellTerminalStatus; the
+  // projection only narrows the schema-validated string back to that union.
+  const cellStatus = settlement.cellStatus as CellRunRecord["status"] | undefined;
+  switch (settlement.status) {
+    case "recorded":
+      return {
+        status: "recorded",
+        evidenceRefs: [
+          evidence.refs.settlementRef,
+          evidence.refs.finalRecordRef,
+        ],
+        cellStatus: cellStatus!,
+      };
+    case "control-stopped":
+      return {
+        status: "control-stopped",
+        evidenceRefs: settlement.controlRef === undefined
+          ? [evidence.refs.settlementRef]
+          : [settlement.controlRef, evidence.refs.settlementRef],
+        ...(cellStatus === undefined ? {} : { cellStatus }),
+        ...(settlement.error === undefined ? {} : { error: settlement.error }),
+      };
+    case "runner-failed":
+      return {
+        status: "runner-failed",
+        evidenceRefs: [evidence.refs.settlementRef],
+        ...(cellStatus === undefined ? {} : { cellStatus }),
+        ...(settlement.error === undefined ? {} : { error: settlement.error }),
+      };
+  }
 }
 
 /**

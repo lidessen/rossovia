@@ -323,6 +323,11 @@ if (import.meta.main) {
     resolveHome(options.home),
     autonomyCli,
   );
+  // One resolved home for the whole production entry: an explicit --home
+  // keeps its exact semantics, and the default Rossovia home is normalized
+  // into the request-handler options so every snapshot and result owner
+  // (attempt projections, verified-result submission, acceptance) reads the
+  // same home the clients/registries already resolved.
   const home = resolveHome(options.home);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
   const contributionRegistry = createConversationContributionRegistry(home);
@@ -333,7 +338,11 @@ if (import.meta.main) {
     carrierRegistry,
     contributionRegistry,
   });
-  const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
+  const requestHandler = createWorkbenchRequestHandler(
+    { ...options, home },
+    client,
+    { conversationSocket },
+  );
   const server: Bun.Server<ConversationSocketData> = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,

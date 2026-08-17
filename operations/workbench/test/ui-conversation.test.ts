@@ -152,6 +152,76 @@ describe("conversation frame vocabulary", () => {
         status: "recorded",
       })),
     ).toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.standing",
+        standing: "live",
+        turnId,
+        messageId: turnId,
+        actionId,
+        carrierId: "attempt-4",
+        taskId: "fixture-task",
+        attemptId: "attempt-4",
+      })),
+    ).not.toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.standing",
+        standing: "terminal",
+        turnId,
+        messageId: turnId,
+        actionId,
+        carrierId: "attempt-4",
+        taskId: "fixture-task",
+        attemptId: "attempt-4",
+        status: "recorded",
+        cellStatus: "passed",
+        evidenceRefs: ["state/task-attempts/attempt-4/settlement.json"],
+      })),
+    ).not.toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.standing",
+        standing: "unknown",
+        turnId,
+        messageId: turnId,
+        actionId,
+        carrierId: "attempt-4",
+        taskId: "fixture-task",
+        attemptId: "attempt-4",
+        reason: "no terminal settlement",
+      })),
+    ).not.toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.standing",
+        standing: "live",
+      })),
+    ).toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.standing",
+        standing: "unknown",
+        turnId,
+        messageId: turnId,
+        actionId,
+        carrierId: "attempt-4",
+        taskId: "fixture-task",
+        attemptId: "attempt-4",
+      })),
+    ).toBeNull();
+    expect(
+      parseConversationServerFrame(JSON.stringify({
+        type: "carrier.standing",
+        standing: "started",
+        turnId,
+        messageId: turnId,
+        actionId,
+        carrierId: "attempt-4",
+        taskId: "fixture-task",
+        attemptId: "attempt-4",
+      })),
+    ).toBeNull();
     expect(parseConversationServerFrame("{broken")).toBeNull();
     expect(parseConversationServerFrame("42")).toBeNull();
   });
@@ -315,6 +385,31 @@ describe("conversation projection DOM contract", () => {
     expect(carrierBlock).toContain('class="carrier-terminal"');
     expect(carrierBlock).toContain("terminal !== undefined");
     expect(carrierBlock).toContain("停止该工作");
+    expect(carrierBlock.indexOf("data-conversation-work-stop"))
+      .toBeGreaterThan(carrierBlock.indexOf('class="carrier-terminal"'));
+  });
+
+  test("rehydrates exact owner-backed carrier standing after replay and keeps terminal and unknown carriers non-stoppable", () => {
+    expect(app).toContain('case "carrier.standing"');
+    expect(app).toContain('frame.standing === "terminal"');
+    expect(app).toContain('frame.standing === "unknown"');
+    expect(app).toContain('carrier.standing = "live"');
+    expect(app).toContain('carrier.standing === "unknown"');
+    expect(app).toContain("状态未知 · 停止不可用");
+    expect(app).toContain("状态未知 · 无停止控制");
+    expect(app).toContain("重连水合无法证明该载体当前 live");
+    expect(app).toContain("该载体当前没有可验证的 live 运行；停止未发送，状态与历史保留。");
+    expect(app).toContain("carrier.standingReason");
+    // Hydration is applied through the same validated frame vocabulary and
+    // never resends stale client memory; the local carrier memory is still
+    // cleared on disconnect and rebuilt only from server hydration.
+    expect(app).toContain("重连水合");
+    expect(app).toContain("不会保留或重发旧状态");
+    const carrierBlock = app.slice(
+      app.indexOf("function renderConversationCarrier"),
+      app.indexOf("function renderConversationAction"),
+    );
+    expect(carrierBlock).toContain('class="carrier-terminal"');
     expect(carrierBlock.indexOf("data-conversation-work-stop"))
       .toBeGreaterThan(carrierBlock.indexOf('class="carrier-terminal"'));
   });

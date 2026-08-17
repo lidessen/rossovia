@@ -437,6 +437,31 @@ export function parseConversationServerFrame(raw) {
     ) return null;
     return frame;
   }
+  if (frame.type === "carrier.standing") {
+    if (
+      typeof frame.turnId !== "string"
+      || typeof frame.messageId !== "string"
+      || typeof frame.actionId !== "string"
+      || typeof frame.carrierId !== "string"
+      || typeof frame.taskId !== "string"
+      || typeof frame.attemptId !== "string"
+    ) return null;
+    if (frame.standing === "live") return frame;
+    if (frame.standing === "terminal") {
+      if (
+        typeof frame.status !== "string"
+        || !Array.isArray(frame.evidenceRefs)
+        || !frame.evidenceRefs.every((ref) => typeof ref === "string")
+        || (frame.cellStatus !== undefined && typeof frame.cellStatus !== "string")
+      ) return null;
+      return frame;
+    }
+    if (frame.standing === "unknown") {
+      if (typeof frame.reason !== "string") return null;
+      return frame;
+    }
+    return null;
+  }
   if (frame.type === "projection.changed") return frame;
   if (frame.type === "protocol.error") {
     if (typeof frame.code !== "string" || typeof frame.message !== "string") return null;
@@ -4330,6 +4355,9 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         entry.provisional = "";
       }
     }
+    // 本地载体状态属于客户端临时内存：断开时丢弃，不会保留或重发旧状态。
+    // 重连后由服务端在 durable replay 之后按 owner 证据重新水合精确的
+    // live/terminal/unknown standing，停止控制只从水合后的精确状态派生。
     conversationState.carriers.clear();
   }
 
@@ -4526,12 +4554,49 @@ export function taskEvidenceLinkTarget(ref, workItems) {
             attemptId: frame.attemptId,
             activity: [],
             control: "idle",
+            standing: "live",
             terminal: undefined,
           };
           conversationState.carriers.set(frame.actionId, carrier);
         }
         if (carrier.terminal === undefined) {
           carrier.activity.push({ text: frame.text, at: new Date().toISOString() });
+        }
+        renderConversationSurface();
+        return;
+      }
+      case "carrier.standing": {
+        // 服务端在 durable replay/调和之后按 owner 证据重新水合一个精确
+        // carrier 状态：live 恢复精确停止控制；terminal/unknown 恢复不可
+        // 停止的 standing/history。水合只读，从不重发客户端旧内存或效果。
+        let carrier = conversationState.carriers.get(frame.actionId);
+        if (carrier === undefined) {
+          carrier = {
+            turnId: frame.turnId,
+            messageId: frame.messageId,
+            actionId: frame.actionId,
+            carrierId: frame.carrierId,
+            taskId: frame.taskId,
+            attemptId: frame.attemptId,
+            activity: [],
+            control: "idle",
+            standing: "live",
+            terminal: undefined,
+          };
+          conversationState.carriers.set(frame.actionId, carrier);
+        }
+        if (frame.standing === "terminal") {
+          carrier.standing = "unknown";
+          carrier.terminal = {
+            status: frame.status,
+            cellStatus: typeof frame.cellStatus === "string" ? frame.cellStatus : null,
+            evidenceRefs: [...frame.evidenceRefs],
+          };
+        } else if (frame.standing === "unknown") {
+          carrier.standing = "unknown";
+          carrier.standingReason = frame.reason;
+        } else {
+          carrier.standing = "live";
         }
         renderConversationSurface();
         return;
@@ -4703,6 +4768,13 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       );
       return;
     }
+    if (carrier.standing === "unknown") {
+      pushProtocolNotice(
+        "not-sent",
+        "该载体当前没有可验证的 live 运行；停止未发送，状态与历史保留。",
+      );
+      return;
+    }
     if (conversationState.connection !== "live") {
       pushProtocolNotice(
         "not-sent",
@@ -4838,13 +4910,16 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     const controlBusy = carrier.control === "requested";
     const live = conversationState.connection === "live";
     const terminal = carrier.terminal;
+    const unknown = carrier.standing === "unknown" && terminal === undefined;
     const standingLabel = terminal !== undefined
       ? "已终止 · 活动历史保留"
-      : controlBusy
-        ? "停止已请求 · 等待权威回执"
-        : "活动已观察";
+      : unknown
+        ? "状态未知 · 停止不可用"
+        : controlBusy
+          ? "停止已请求 · 等待权威回执"
+          : "活动已观察";
     return `
-      <div class="conversation-carrier" data-carrier-control="${carrier.control}" data-carrier-terminal="${terminal === undefined ? "live" : escapeHtml(terminal.status)}">
+      <div class="conversation-carrier" data-carrier-control="${carrier.control}" data-carrier-terminal="${terminal === undefined ? (unknown ? "unknown" : "live") : escapeHtml(terminal.status)}">
         <header>
           <span>执行载体 · owner-backed 活动</span>
           <b>${escapeHtml(standingLabel)}</b>
@@ -4863,25 +4938,41 @@ export function taskEvidenceLinkTarget(ref, workItems) {
           terminal !== undefined
             ? `<footer class="carrier-terminal">
                  <b>${escapeHtml(conversationCarrierTerminalCopy[terminal.status] || terminal.status)}</b>
+                 ${
+                   terminal.evidenceRefs.length
+                     ? `<ul class="carrier-activity">${terminal.evidenceRefs
+                       .map((ref) => `<li><code>${escapeHtml(ref)}</code></li>`)
+                       .join("")}</ul>`
+                     : ""
+                 }
                  <small>
                    载体已终止；停止控制已移除，活动历史保留。canonical 终态证据由 attempt/settlement 所有者保留，
                    不会重放或重新发出停止。
                  </small>
                </footer>`
-            : `<footer>
-                 <button
-                   class="conversation-control is-danger"
-                   type="button"
-                   data-conversation-work-stop="${escapeHtml(actionId)}"
-                   ${controlBusy || !live ? "disabled" : ""}
-                 >
-                   停止该工作
-                 </button>
-                 <small>
-                   只发送精确 turn/action/carrier 目标；过期的目标会被运行时以零效果拒绝。
-                   暂停/续接/恢复不在此 UI 提供，因为它们不属于当前普通 Task 载体的控制面。
-                 </small>
-               </footer>`
+            : unknown
+              ? `<footer class="carrier-terminal">
+                   <b>状态未知 · 无停止控制</b>
+                   <small>
+                     重连水合无法证明该载体当前 live（如服务重启后无保留 handle，或结算证据无法重读）；
+                     状态与历史保留，不会发送停止，也不会猜测为 live。
+                     ${escapeHtml(carrier.standingReason ?? "")}
+                   </small>
+                 </footer>`
+              : `<footer>
+                   <button
+                     class="conversation-control is-danger"
+                     type="button"
+                     data-conversation-work-stop="${escapeHtml(actionId)}"
+                     ${controlBusy || !live ? "disabled" : ""}
+                   >
+                     停止该工作
+                   </button>
+                   <small>
+                     只发送精确 turn/action/carrier 目标；过期的目标会被运行时以零效果拒绝。
+                     暂停/续接/恢复不在此 UI 提供，因为它们不属于当前普通 Task 载体的控制面。
+                   </small>
+                 </footer>`
         }
       </div>
     `;
