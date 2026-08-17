@@ -163,10 +163,13 @@ label. The pinned adapter translates every inferred completed step — including
 tool-continuing steps whose results feed the next model step — to a unified
 stop finish reason, so a label-gated guard would be unreachable in production.
 A completed step that carried tool activity aborts the run before step
-`maxSteps + 1` can begin; a tool-free terminal response on the final allowed
-step completes naturally. The exhaustion count freezes at that accepted
-boundary: an inferred Pi finish emitted while the abort settles is neither
-counted nor retained as another completed step. The explicit `maxSteps` is one
+`maxSteps + 1` can begin — unless a declared terminal tool was accepted on
+that final allowed step, in which case the accepted action completes the Cell
+without starting another provider call; a tool-free terminal response on the
+final allowed step completes naturally. The exhaustion count freezes at that
+accepted boundary: an inferred Pi finish emitted while the abort settles is
+neither counted nor retained as another completed step. The explicit
+`maxSteps` is one
 shared, monotonic, non-extendable allowance: the structured settlement phase
 consumes the same remaining steps as the main turn and never starts when none
 remains, so total model steps across both phases never exceed the caller's
@@ -281,7 +284,11 @@ spliced into another provider's partial output.
 
 ## Orchestration runtime
 
-`runCell` remains the atomic execution boundary. Multi-Cell execution is built
+`runCell` remains the atomic execution boundary. It keeps one canonical
+pre-driver `CellInput` and passes the supplied driver an isolated immutable
+parsed copy, so a driver can never rewrite the caller contract that terminal,
+task, artifact, and output verification and the final record derive from.
+Multi-Cell execution is built
 above it through a small `WorkSource` protocol: a source yields one eligible
 lease, the orchestration kernel runs that ordinary Cell with a fresh driver,
 and the source receives the retained settlement. The kernel owns bounded
@@ -449,9 +456,16 @@ remains, no later phase starts and the Cell fails truthfully instead of
 passing without the required terminal tool or structured output. A tool-free
 final response on the last remaining step completes naturally with its
 required terminal/output standing: exhaustion never discards or relabels a
-step that already finished inside the allowance. A
-terminal-tool Cell requires at least two steps (one terminal action and one
-final output). Settlement usage remains usage attribution only: it is never
+step that already finished inside the allowance. A terminal-tool Cell with a
+structured-output contract still requires at least two steps (one terminal
+action and one final output); a terminal-only Cell may complete on its single
+allowed step, and both drivers retain an accepted terminal action on the final
+allowed step without starting any additional provider call. An actual provider
+or adapter failure after the final allowance is consumed keeps its real causal
+error even when declared terminal tools remain unsatisfied: terminal-contract
+exhaustion is classified only from a normally completed or explicitly
+step-stopped unsatisfied loop, never from an arbitrary provider throw.
+Settlement usage remains usage attribution only: it is never
 extra step budget. `budget.maxDurationMs` remains a hard timeout, not a soft
 budget boundary: it ends the run with a `cancelled` standing that keeps the
 already-observed usage, trace, and any mechanical final standing.
@@ -462,8 +476,10 @@ declared terminal contract — including one that the shared allowance ran out
 before satisfying, or a second terminal call — keeps the canonical
 `protocol_error` standing instead of a weakened ordinary failure. A Cell
 without declared terminal tools preserves the actual provider error even
-when the explicit allowance became exhausted: only a real unsatisfied
-declared terminal contract may report terminal-tool failure.
+when the explicit allowance became exhausted, and a provider throw with
+declared terminal tools still open keeps its real causal error as well:
+terminal-tool failure is reported only for a genuinely unsatisfied declared
+terminal contract.
 
 ## Project interaction
 

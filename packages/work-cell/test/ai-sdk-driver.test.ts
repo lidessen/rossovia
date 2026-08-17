@@ -1148,6 +1148,116 @@ test("a no-terminal Cell preserves the actual provider error when the explicit m
   expect(calls).toBe(2);
 });
 
+test("a declared-terminal provider error at the final allowed step retains its real causal error", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return response([{
+          type: "tool-call",
+          toolCallId: "read-before-bound",
+          toolName: "read_file",
+          input: JSON.stringify({ path: "principles/SEQUENCE.md" }),
+        }], "tool-calls");
+      }
+      // The second and final allowed provider step throws while the declared
+      // terminal contract is still open. This is an arbitrary provider throw,
+      // not a normally completed or explicitly step-stopped unsatisfied loop:
+      // the real causal error must be retained instead of being relabeled as
+      // terminal-contract exhaustion.
+      throw new Error("provider transport failed at the final allowed step");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-declared-terminal-bound-error",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "declared-terminal-bound-error",
+    intent: "Prove a real provider error at the allowance bound keeps its causal message.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Read, then finish."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The provider error is retained even though the terminal contract is still open."],
+    terminalTools: [{
+      name: "submit_review",
+      description: "Signal review completion.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    budget: { maxSteps: 2, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  expect(record.status).toBe("failed");
+  expect(record.error).toContain("provider transport failed at the final allowed step");
+  expect(record.error).not.toContain("terminal-tool contract");
+  expect(record.error).not.toContain("step budget exhausted");
+  expect(record.trace.filter((event) => event.type === "tool.read_file")).toHaveLength(1);
+  // Both allowed steps were attempted: the ordinary read and the throwing
+  // final provider call; no terminal recovery phase starts after the throw.
+  expect(record.trace.filter((event) => event.type === "agent.step.started")).toHaveLength(2);
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
+  expect(calls).toBe(2);
+});
+
+test("retains an accepted terminal action on the single final allowed step of a terminal-only Cell", async () => {
+  const root = await fixture();
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls += 1;
+      return response([{
+        type: "tool-call",
+        toolCallId: "terminal-only-step",
+        toolName: "finish_work",
+        input: "{}",
+      }], "tool-calls");
+    },
+  });
+  const driver = new AiSdkValidationDriver({
+    route: explicitDeepSeekRoute(),
+    deepSeekApiKey: "not-used",
+    model: "mock-terminal-only-one-step",
+  });
+  Object.defineProperty(driver, "model", { value: model });
+
+  const record = await runCell({
+    id: "terminal-only-one-step",
+    intent: "Prove a terminal-only Cell completes on its single allowed step.",
+    workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    instructions: ["Invoke the declared terminal tool."],
+    capabilities: ["read"],
+    capabilitiesRequired: ["read"],
+    acceptance: ["The accepted terminal action is retained on the final allowed step."],
+    terminalTools: [{
+      name: "finish_work",
+      description: "Finish the bounded work.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }],
+    budget: { maxSteps: 1, maxDurationMs: 10_000, maxCommandOutputBytes: 4_000 },
+  }, driver);
+
+  // maxSteps=1 is the exact bound: the single allowed step performs the
+  // accepted terminal action, the loop stops right after it, and no second
+  // provider call ever starts.
+  expect(record.status).toBe("passed");
+  expect(record.verification.terminal).toEqual({
+    passed: true,
+    required: ["finish_work"],
+    called: ["finish_work"],
+  });
+  expect(record.finalText).toContain("Terminal contract satisfied during execution through finish_work");
+  expect(record.trace.some((event) => event.type === "terminal.contract.recovery")).toBe(false);
+  expect(record.trace.filter((event) => event.type === "agent.step.finished")).toHaveLength(1);
+  expect(record.error).toBeUndefined();
+  expect(calls).toBe(1);
+});
+
 test("terminal recovery consumes the shared maxSteps allowance and fails truthfully when no step remains", async () => {
   const root = await fixture();
   let calls = 0;

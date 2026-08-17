@@ -118,16 +118,16 @@ test("file-backed Swarm returns stable status and result paths without retaining
 test("one Cell runner error cannot erase passing siblings or reorder their records", async () => {
   const root = await fixture();
   const manifest = swarm(root, ["first", "broken", "third"]);
-  manifest.cells[1]!.budget.maxSteps = 1;
-  manifest.cells[1]!.terminalTools = [{
-    name: "finish_test",
-    description: "Finish the test.",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  }];
   let drivers = 0;
 
-  const record = await runSwarm(manifest, () => {
+  const record = await runSwarm(manifest, (input) => {
     drivers += 1;
+    // Runner isolation lives at the factory boundary, before runCell begins:
+    // a CellDriver.run failure is caught by runCell and returns a truthful
+    // failed Cell record, which Swarm correctly classifies as settled.
+    if (input.id === "broken") {
+      throw new Error("deterministic runner failure for broken cell");
+    }
     return new SwarmDriver();
   });
 
@@ -137,6 +137,12 @@ test("one Cell runner error cannot erase passing siblings or reorder their recor
     ["broken", "runner_error"],
     ["third", "settled"],
   ]);
+  const broken = record.outcomes[1];
+  expect(broken).toBeDefined();
+  expect(broken?.kind).toBe("runner_error");
+  if (broken?.kind === "runner_error") {
+    expect(broken.error).toBe("deterministic runner failure for broken cell");
+  }
   expect(projectSwarm(record)).toMatchObject({
     authority: "none",
     counts: { passed: 2, runner_error: 1 },
@@ -151,6 +157,7 @@ test("one Cell runner error cannot erase passing siblings or reorder their recor
     version: "work-cell.swarm-outcome.v1",
     cellId: "broken",
     kind: "runner_error",
+    error: "deterministic runner failure for broken cell",
     startedAt: expect.any(String),
     finishedAt: expect.any(String),
   });

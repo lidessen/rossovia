@@ -421,6 +421,27 @@ export class PiHarnessCellDriver implements CellDriver {
         // calls, so they supersede zero or partial inferred-step usage rather
         // than being added to it.
         if (aggregateUsage?.totalTokens) observedUsage = aggregateUsage;
+        if (terminalProtocolError) {
+          throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
+        }
+        // A declared terminal tool accepted on the final allowed step retains
+        // that accepted action and completes the Cell: the turn was frozen
+        // before any further provider call could begin, and the terminal-only
+        // standing needs no separate final-output step. Only a normally
+        // stopped unsatisfied loop reports step exhaustion.
+        if (terminalToolsCalled.size > 0) {
+          const calledNames = [...terminalToolsCalled];
+          return {
+            terminalToolsCalled: calledNames,
+            ...(tasks.snapshot().length > 0 ? { tasks: tasks.snapshot() } : {}),
+            finalText: `Terminal contract satisfied during execution through ${calledNames.join(", ")}; no final text was generated.`,
+            usage: observedUsage,
+            rawSteps: [],
+            providerMetadata: {
+              ...(harnessSessionId ? { sessionId: harnessSessionId } : {}),
+            },
+          };
+        }
         throw new CellExecutionError(
           stepBudgetExhaustedMessage(stepBudgetExhaustedAt, "no provider step remains"),
           observedUsage,

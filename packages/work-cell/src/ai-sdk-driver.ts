@@ -254,17 +254,12 @@ export class AiSdkValidationDriver implements CellDriver {
       if (terminalProtocolError) {
         throw new TerminalContractError(terminalProtocolError, observedUsage, observedSettlementUsage);
       }
-      // Only a real unsatisfied declared terminal contract may report
-      // terminal-tool failure. A Cell without declared terminal tools
-      // preserves the actual provider error even when the explicit allowance
-      // became exhausted.
-      if (stepAllowance.exhausted && terminalNames.length > 0 && !terminalSatisfied()) {
-        throw new TerminalContractError(
-          stepBudgetExhaustedMessage(stepAllowance.consumed, "the terminal-tool contract was not satisfied"),
-          observedUsage,
-          observedSettlementUsage,
-        );
-      }
+      // Terminal-contract exhaustion is classified only from a normally
+      // completed or explicitly step-stopped unsatisfied loop — never from an
+      // arbitrary provider or adapter throw. An actual provider error after
+      // the final allowance is consumed keeps its real causal message even
+      // when declared terminal tools remain unsatisfied, and a Cell without
+      // declared terminal tools likewise preserves the provider error.
       if (terminalSatisfied() && !inlineOutputSchema) {
         executionResult = terminalOnlyResult(terminalNames, observedUsage, "execution");
       } else {
@@ -456,15 +451,13 @@ export class AiSdkValidationDriver implements CellDriver {
             addUsage(observedUsage, closureUsage),
             observedSettlementUsage,
           );
-        } else if (stepAllowance.exhausted && !terminalSatisfied()) {
-          throw new TerminalContractError(
-            stepBudgetExhaustedMessage(stepAllowance.consumed, "the terminal-tool contract was not satisfied"),
-            addUsage(observedUsage, closureUsage),
-            observedSettlementUsage,
-          );
         } else if (terminalSatisfied() && !inlineOutputSchema) {
           closureResult = terminalOnlyResult(terminalNames, closureUsage, "recovery");
         } else {
+          // An actual provider or adapter error inside the closure keeps its
+          // real causal message even when the allowance is exhausted and the
+          // terminal contract is still open; exhaustion is classified only
+          // from a normally completed or explicitly step-stopped loop.
           throw new CellExecutionError(
             error instanceof Error ? error.message : String(error),
             addUsage(observedUsage, closureUsage),

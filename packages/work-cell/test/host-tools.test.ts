@@ -573,6 +573,91 @@ describe("Pi harness driver fail-closed mapping", () => {
     expect(result.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
   });
 
+  test("retains an accepted terminal action on the final allowed step without starting another provider call", async () => {
+    const toolResults: Array<{ toolCallId: string; output: unknown }> = [];
+    let secondStepEmitted = false;
+    const harness = scriptedHarness(async ({ emit, abortSignal, waitForToolResult }) => {
+      emit({ type: "stream-start", warnings: [] });
+      emit({
+        type: "tool-call",
+        toolCallId: "terminal-final-step",
+        toolName: "finish_work",
+        input: "{}",
+        providerExecuted: false,
+      });
+      await waitForToolResult(1);
+      emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+      // The accepted terminal action sat on the single final allowed step;
+      // the step budget must freeze the turn before any further model step
+      // (such as a final text response) can begin. The turn abort signal is
+      // the exact consumer-owned acknowledgment: it turns aborted only after
+      // the async stream consumer processed the finish-step chunk above and
+      // onStepFinished consumed the final allowance unit, so awaiting it is
+      // an observable barrier instead of an immediate timing assumption. A
+      // bounded deadline only guards against a production regression that
+      // never aborts; it then still attempts the forbidden second step so
+      // secondStepEmitted fails visibly rather than hanging the suite.
+      const stepProcessedByConsumer = await new Promise<boolean>((resolve) => {
+        if (abortSignal?.aborted) {
+          resolve(true);
+          return;
+        }
+        abortSignal?.addEventListener("abort", () => resolve(true), { once: true });
+        const deadline = setTimeout(() => resolve(false), 1_000);
+        abortSignal?.addEventListener("abort", () => clearTimeout(deadline), { once: true });
+      });
+      if (!stepProcessedByConsumer) {
+        secondStepEmitted = true;
+        emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
+        emit({
+          type: "finish",
+          finishReason: STOP_REASON,
+          totalUsage: {
+            inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+            outputTokens: { total: 2, text: 2, reasoning: 0 },
+          },
+        });
+      }
+    }, toolResults);
+    const { input } = await fixture();
+    input.terminalTools = [{
+      name: "finish_work",
+      description: "Finish the bounded work.",
+      inputSchema: { type: "object", additionalProperties: false },
+    }];
+    input.budget.maxSteps = 1;
+    const driver = new PiHarnessCellDriver({
+      route: [{
+        provider: "deepseek",
+        credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+        model: "deepseek-v4-pro",
+      }],
+      environment: { DEEPSEEK_API_KEY: "configured" } as NodeJS.ProcessEnv,
+      harness,
+    });
+
+    // The full runCell path: maxSteps=1 is the exact bound for a terminal-only
+    // Cell. The single allowed step performs the accepted terminal action, the
+    // turn freezes there, and the Cell passes without a separate final-output
+    // step or any additional provider call.
+    const record = await runCell(input, driver);
+    // Exactly one accepted terminal call and one finished provider step; the
+    // forbidden second provider/model step was never even attempted, and the
+    // Cell still passes with the exact observed usage of the single step.
+    expect(secondStepEmitted).toBe(false);
+    expect(record.status).toBe("passed");
+    expect(record.verification.terminal).toEqual({
+      passed: true,
+      required: ["finish_work"],
+      called: ["finish_work"],
+    });
+    expect(record.trace.filter((event) => event.type === "terminal.tool.called")).toHaveLength(1);
+    expect(record.finalText).toContain("Terminal contract satisfied during execution through finish_work");
+    expect(record.trace.filter((event) => event.type === "agent.step.finished")).toHaveLength(1);
+    expect(record.usage).toEqual({ inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 });
+    expect(record.error).toBeUndefined();
+  });
+
   test("a stream without a maxSteps policy crosses twenty tool steps and completes normally", async () => {
     const toolStepCount = 22;
     const toolResults: Array<{ toolCallId: string; output: unknown }> = [];

@@ -218,6 +218,12 @@ describe("Work Cell core", () => {
     const root = await fixture();
     const base = input(root);
     base.budget.maxSteps = 1;
+    base.outputSchema = {
+      type: "object",
+      properties: { status: { type: "string" } },
+      required: ["status"],
+      additionalProperties: false,
+    };
     base.terminalTools = [{
       name: "finish_report",
       description: "Signal completion.",
@@ -227,6 +233,27 @@ describe("Work Cell core", () => {
     await expect(runCell(base, new ScriptedDriver(geneExpression("P04", [])))).rejects.toThrow(
       "terminal tools require at least two steps",
     );
+  });
+
+  test("a terminal-only Cell completes on its single allowed step", async () => {
+    const root = await fixture();
+    const base = input(root);
+    base.budget.maxSteps = 1;
+    base.terminalTools = [{
+      name: "finish_report",
+      description: "Signal completion.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    }];
+
+    const record = await runCell(base, new ContractDriver(false));
+
+    expect(record.status).toBe("passed");
+    expect(record.verification.terminal).toEqual({
+      passed: true,
+      required: ["finish_report"],
+      called: ["finish_report"],
+    });
+    expect(record.input.budget.maxSteps).toBe(1);
   });
 
   test("retains a token estimate for post-run audit without interrupting the cell", async () => {

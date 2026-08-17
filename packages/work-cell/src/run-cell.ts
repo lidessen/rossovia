@@ -33,8 +33,14 @@ export async function runCell(
   options: RunCellOptions = {},
 ): Promise<CellRunRecord> {
   const input = CellInputSchema.parse(unparsedInput);
+  // A terminal-only Cell completes on its single allowed step: the accepted
+  // terminal action is the final step and no separate output step exists.
+  // Only a Cell that also declares a structured output contract needs a
+  // second step for the final output.
   if (input.budget.maxSteps !== undefined
-    && input.terminalTools?.length && input.budget.maxSteps < 2) {
+    && input.terminalTools?.length && input.outputSchema && input.budget.maxSteps < 2) {
+    // Reached only when a structured-output contract needs a second step for
+    // the final output; the exact public wording is unchanged for callers.
     throw new Error("terminal tools require at least two steps: one terminal action and one final output");
   }
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
@@ -104,7 +110,11 @@ export async function runCell(
           usage: options.preparation.usage,
         });
       }
-      driverResult = await runWithSignal(() => driver.run(input, context), signal);
+      // One canonical pre-driver CellInput is the caller contract. Terminal,
+      // task, artifact, and output verification plus the final record derive
+      // only from that canonical value; the supplied driver receives an
+      // isolated immutable parsed copy it can never rewrite.
+      driverResult = await runWithSignal(() => driver.run(disposableCellInput(input), context), signal);
       const terminalTools = input.terminalTools ?? [];
       const terminalResult = verifyTerminalContract(
         terminalTools.map((terminal) => terminal.name),
@@ -310,6 +320,24 @@ function verifyTerminalContract(required: string[], called: string[]) {
     verification: { passed: error === undefined, required, called },
     ...(error ? { error } : {}),
   };
+}
+
+/**
+ * The supplied driver receives an isolated, deeply frozen parsed copy of the
+ * canonical CellInput: a malicious or buggy driver can read the caller
+ * contract freely, but any mutation attempt fails on the copy instead of
+ * reaching the canonical value that verification and the final record derive
+ * from.
+ */
+function disposableCellInput(input: CellInput): CellInput {
+  return deepFreeze(structuredClone(input));
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  const object = value as Record<string, unknown>;
+  for (const key of Object.keys(object)) deepFreeze(object[key]);
+  return Object.freeze(object) as T;
 }
 
 function runWithSignal<T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> {
