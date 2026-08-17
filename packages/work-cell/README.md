@@ -138,11 +138,11 @@ Work Cell surface: scope-bound `list_files`/`read_file`, the Pi-native exact
 batch `edit_file` (unique, non-overlapping exact `oldText` matches; an absent,
 duplicated, overlapping, or out-of-scope match fails the whole call with zero
 mutation), `write_file` (create-new-only: it refuses to overwrite an existing
-file), allow-listed `run_command`, the host Task tools, and budget/terminal
-tools. Every driver shares that one host tool owner (`createHostTools`); no
-driver re-implements a second execution pathway. Provider/model identity,
-usage, tasks, and workspace effects remain Work Cell evidence; the harness
-session identity is observation only.
+file), allow-listed `run_command`, the host Task tools, and caller-declared
+terminal tools. Every driver shares that one host tool owner
+(`createHostTools`); no driver re-implements a second execution pathway.
+Provider/model identity, usage, tasks, and workspace effects remain Work Cell
+evidence; the harness session identity is observation only.
 
 Every host tool execution through the Pi adapter crosses one causal
 event-loop handoff before its effect. The pinned harness-pi adapter can
@@ -410,42 +410,16 @@ observations are the audit fallback when cancellation or failure wins before a
 result returns. A timeout therefore does not turn already-observed model work
 into zero usage.
 
-### Programmatic budget approval
+### Step and duration policy
 
 `budget.maxSteps` is an optional explicit per-run/operator step policy. An
 omitted `maxSteps` means no step-count stop condition at all: the model may
 take as many steps as the work needs within the non-extendable duration
-budget, and no completed-step decision point or approval phase is installed.
-`budget.maxDurationMs` alone therefore remains a hard timeout, not a soft
-budget boundary — it ends the run without any settle/request choice.
-
-Programmatic budget approval requires a caller that explicitly selects a
-finite step policy: `runCell` rejects `budgetApproval` when the Cell input
-carries no explicit finite `maxSteps`, and it fails closed before execution
-when the selected driver does not implement the completed-step budget-control
-contract.
-
-AI SDK callers may pass `budgetApproval`, `settlementReserveMs`, and
-`hardLimitMs` to `runCell` together with such an explicit `maxSteps`. When the
-Cell reaches its soft step or duration budget after a completed step, ordinary
-tools close and the model must choose `settle_now` or one bounded
-`request_budget` action. A request contains only `additionalSteps`,
-`additionalDurationMs`, and `remainingWork`; Work Cell adds the Cell identity
-and observed step/time counters before invoking the callback. The callback
-also receives `{ signal }`; approval adapters should stop their own waiting or
-external review when it aborts so caller cancellation or the hard limit does
-not leave approval work running in the background.
-
-Returning `{ decision: "allow" }` adds exactly the requested step and duration
-allowances to the current run and retained transcript. Returning
-`{ decision: "deny" }`, throwing, or returning an invalid result fails closed
-into settlement. Approval changes budget only: it cannot widen tools, workspace,
-provider, or any other authority.
-
-Settlement receives its own lazily started `settlementReserveMs` timeout. The
-caller signal and the single non-extendable `hardLimitMs` still dominate
-production, approval waiting, and settlement. Drivers that do not implement the
-completed-step budget-control contract fail before execution.
+budget. An explicit `maxSteps` stops the loop exactly at the declared step
+count; a terminal-tool Cell requires at least two steps (one terminal action
+and one final output). `budget.maxDurationMs` remains a hard timeout, not a
+soft budget boundary: it ends the run with a `cancelled` standing that keeps
+the already-observed usage, trace, and any mechanical final standing.
 
 ## Project interaction
 

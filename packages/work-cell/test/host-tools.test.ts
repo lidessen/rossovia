@@ -15,7 +15,6 @@ import { Workspace } from "../src/workspace";
 import { TaskStore } from "../src/task-store";
 import { runCell } from "../src/run-cell";
 import {
-  BUDGET_CONTROL_TOOL_NAMES,
   createHostTools,
   EXECUTION_TOOL_NAMES,
 } from "../src/host-tools";
@@ -168,10 +167,7 @@ describe("host-executed tool surface", () => {
       fullWriteMode: "create-new-only",
     });
     const names = Object.keys(tools).sort();
-    const allowed = new Set([
-      ...EXECUTION_TOOL_NAMES,
-      ...BUDGET_CONTROL_TOOL_NAMES,
-    ]);
+    const allowed = new Set([...EXECUTION_TOOL_NAMES]);
     for (const name of names) {
       expect(allowed.has(name)).toBeTrue();
     }
@@ -189,45 +185,6 @@ describe("host-executed tool surface", () => {
       "task_update",
       "write_file",
     ]);
-  });
-
-  test("budget control tools appear only with a completed-step budget control", async () => {
-    const { workspace, input } = await fixture();
-    const withControl = createHostTools({
-      input,
-      context: driverContext(workspace, {
-        budgetControl: {
-          phase: "production",
-          completedStep: () => false,
-          settleNow: () => {},
-          requestBudget: async (request) => ({
-            request: {
-              cellId: input.id,
-              ...request,
-              completedSteps: 0,
-              elapsedMs: 0,
-            },
-            result: { decision: "allow" as const, reason: "test" },
-          }),
-        },
-      }),
-      tasks: TaskStore.fromSeeds(input.tasks, input.id),
-      taskToolSet: "manage",
-      actionBlocked: () => undefined,
-      fullWriteMode: "create-new-only",
-    });
-    expect(Object.keys(withControl)).toEqual(expect.arrayContaining(["settle_now", "request_budget"]));
-
-    const without = createHostTools({
-      input,
-      context: driverContext(workspace),
-      tasks: TaskStore.fromSeeds(input.tasks, input.id),
-      taskToolSet: "manage",
-      actionBlocked: () => undefined,
-      fullWriteMode: "create-new-only",
-    });
-    expect(Object.keys(without)).not.toContain("settle_now");
-    expect(Object.keys(without)).not.toContain("request_budget");
   });
 
   test("read-only task authority never exposes task mutation tools", async () => {
@@ -452,7 +409,6 @@ describe("Pi harness driver fail-closed mapping", () => {
       provider: "deepseek",
       model: "deepseek-v4-pro",
     });
-    expect(driver.budgetControl).toBe("completed-step-v1");
   });
 
   test("maps the selected max reasoning policy to Pi xhigh at construction", () => {
@@ -661,16 +617,12 @@ describe("Pi harness driver fail-closed mapping", () => {
     });
 
     // The full runCell path: the recorded terminal is normal (passed), the
-    // immutable input retains no maxSteps, every tool step completes, and no
-    // budget request, approval, or decision point is ever projected.
+    // immutable input retains no maxSteps, and every tool step completes.
     const record = await runCell(input, driver);
     expect(record.status).toBe("passed");
     expect(record.input.budget.maxSteps).toBeUndefined();
     expect(record.trace.filter((event) => event.type === "agent.step.finished"))
       .toHaveLength(toolStepCount + 1);
-    expect(record.trace.some((event) => event.type === "budget.decision_point")).toBe(false);
-    expect(record.trace.some((event) =>
-      event.type === "budget.request" || event.type === "budget.approval")).toBe(false);
     expect(record.usage).toMatchObject({
       inputTokens: toolStepCount + 1,
       outputTokens: toolStepCount + 1,

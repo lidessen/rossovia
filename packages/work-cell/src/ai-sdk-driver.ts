@@ -17,7 +17,6 @@ import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import { TaskStore } from "./task-store";
 import {
-  BUDGET_CONTROL_TOOL_NAMES,
   createHostTools,
   EXECUTION_TOOL_NAMES,
   terminalActionRequired,
@@ -62,7 +61,6 @@ interface MaterializedAgentResult {
 
 export class AiSdkValidationDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
-  readonly budgetControl = "completed-step-v1" as const;
   protected readonly model;
   private readonly structuredOutputMode: "inline" | "tool-settlement";
   private readonly taskToolSet: NonNullable<AiSdkDriverOptions["taskToolSet"]>;
@@ -93,9 +91,9 @@ export class AiSdkValidationDriver implements CellDriver {
     let terminalProtocolError: string | undefined;
     let terminalOnly = false;
     const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
-    // Controlled settlement always uses the separately signalled settlement
-    // carrier, even when this provider could have emitted inline output.
-    const inlineOutputSchema = this.structuredOutputMode === "inline" && !context.budgetControl
+    // Inline structured output is a provider-adapter decision; the tool-based
+    // settlement path stays the fallback for providers without native support.
+    const inlineOutputSchema = this.structuredOutputMode === "inline"
       ? outputSchema
       : undefined;
     const deferredStructuredOutput = outputSchema !== undefined && inlineOutputSchema === undefined;
@@ -118,12 +116,8 @@ export class AiSdkValidationDriver implements CellDriver {
       tasks,
     );
     const terminalNames = input.terminalTools?.map((terminal) => terminal.name) ?? [];
-    const productionToolNames = Object.keys(tools).filter(
-      (name) => name !== "settle_now" && name !== "request_budget",
-    );
     const terminalSatisfied = () => terminalNames.some((name) => terminalToolsCalled.has(name));
     const stopAfterAcceptedTerminal = () => terminalSatisfied();
-    const stopAfterSettlementChoice = () => context.budgetControl?.phase === "settlement";
     const stopAfterCancellation = () => context.signal.aborted;
     const executionAgent = new ToolLoopAgent({
       model: this.model,
@@ -133,48 +127,14 @@ export class AiSdkValidationDriver implements CellDriver {
       }),
       tools,
       stopWhen: [
-        ...(context.budgetControl || input.budget.maxSteps === undefined
-          ? []
-          : [isStepCount(input.budget.maxSteps)]),
+        ...(input.budget.maxSteps === undefined ? [] : [isStepCount(input.budget.maxSteps)]),
         ...(terminalNames.length > 0 && !inlineOutputSchema ? [stopAfterAcceptedTerminal] : []),
-        ...(context.budgetControl ? [stopAfterSettlementChoice] : []),
         stopAfterCancellation,
       ],
       ...(inlineOutputSchema ? { output: Output.object({ schema: inlineOutputSchema.forAiSdk() }) } : {}),
-      ...(input.terminalTools?.length || context.budgetControl
+      ...(input.terminalTools?.length
         ? {
             prepareStep: ({ stepNumber }) => {
-              if (context.budgetControl?.phase === "decision") {
-                terminalOnly = true;
-                return {
-                  activeTools: ["settle_now", "request_budget"] as never[],
-                  toolChoice: "required" as const,
-                  instructions: `${renderExecutionInstructions(input, {
-                    deferStructuredOutput: deferredStructuredOutput,
-                    taskToolSet: this.taskToolSet,
-                  })}\n\nThe soft work budget was reached after a completed safe step. Choose exactly one control action now: settle_now, or request_budget with a bounded step/time increase and concrete remaining work. Do not investigate or use ordinary tools.`,
-                };
-              }
-              if (context.budgetControl?.phase === "settlement") {
-                terminalOnly = true;
-                if (terminalSatisfied()) {
-                  return finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
-                }
-                return terminalNames.length > 0
-                  ? {
-                      activeTools: terminalNames as never[],
-                      toolChoice: terminalToolChoice(terminalNames) as never,
-                      instructions: `${renderExecutionInstructions(input, {
-                        deferStructuredOutput: deferredStructuredOutput,
-                        taskToolSet: this.taskToolSet,
-                      })}\n\nYou chose settle_now. Investigation is closed. Invoke exactly one declared terminal tool now.`,
-                    }
-                  : finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
-              }
-              if (context.budgetControl?.phase === "production") {
-                terminalOnly = false;
-                return { activeTools: productionToolNames as never[] };
-              }
               if (terminalSatisfied()) {
                 terminalOnly = true;
                 return finalOutputStep(input, inlineOutputSchema !== undefined, this.taskToolSet);
@@ -220,7 +180,7 @@ export class AiSdkValidationDriver implements CellDriver {
           ? { prompt: firstUserInput }
           : { messages: [firstUserInput] }),
         abortSignal: context.signal,
-        ...(context.budgetControl ? {} : { timeout: { totalMs: input.budget.maxDurationMs } }),
+        timeout: { totalMs: input.budget.maxDurationMs },
         onStepStart: ({ callId, provider, modelId, stepNumber, activeTools }) => {
           context.emit("agent.step.started", {
             callId,
@@ -250,10 +210,7 @@ export class AiSdkValidationDriver implements CellDriver {
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const stepUsage = normalizeUsage(usage, providerMetadata);
           observedUsage = addUsage(observedUsage, stepUsage);
-          context.observeUsage(
-            stepUsage,
-            context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
-          );
+          context.observeUsage(stepUsage, "execution");
           context.emit("agent.step.finished", {
             finishReason,
             performance: sanitize(performance),
@@ -263,11 +220,6 @@ export class AiSdkValidationDriver implements CellDriver {
             toolCalls: sanitize(toolCalls),
             toolResults: sanitize(toolResults),
           });
-          if (context.budgetControl?.phase === "settlement") {
-            observedSettlementUsage = addUsage(observedSettlementUsage, stepUsage);
-          }
-          const decisionPoint = terminalSatisfied() ? false : context.budgetControl?.completedStep();
-          if (decisionPoint) context.emit("budget.decision_point", { completedSafeStep: true });
         },
       };
       if (context.liveObservation) {
@@ -307,13 +259,9 @@ export class AiSdkValidationDriver implements CellDriver {
         text: terminalOnlyResult(terminalNames, emptyUsage(), "execution").text,
       };
     }
-    const controlledSettlement = context.budgetControl?.phase === "settlement";
     const needsTerminalCarrier = input.terminalTools?.length && !terminalSatisfied();
-    const needsPlainTextSettlement = controlledSettlement && terminalNames.length === 0 && !outputSchema;
-    if (needsTerminalCarrier || needsPlainTextSettlement) {
-      if (!controlledSettlement) {
-        context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
-      }
+    if (needsTerminalCarrier) {
+      context.emit("terminal.contract.recovery", { requiredTools: input.terminalTools, reason: "natural_finish_without_terminal_tool" });
       const availableTools = tools as Record<string, (typeof tools)[keyof typeof tools]>;
       const closureTools = Object.fromEntries(
         terminalNames.map((name) => [name, availableTools[name]!]),
@@ -325,10 +273,8 @@ export class AiSdkValidationDriver implements CellDriver {
             deferStructuredOutput: deferredStructuredOutput,
             taskToolSet: this.taskToolSet,
           }),
-          controlledSettlement ? "## Reserved settlement phase" : "## Terminal recovery phase",
-          controlledSettlement
-            ? "Investigation is closed. Use only the retained evidence to produce the required terminal settlement."
-            : "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
+          "## Terminal recovery phase",
+          "The previous work ended without satisfying its terminal-tool contract. Do not continue investigation.",
           "Only the original task context and a compact projection of successful tool results are present; prior assistant reasoning, prose, rejected calls, and other transcript messages are absent. Retained results remain usable evidence, and a later rejected tool call does not erase them or prove that no files were read.",
           "Use the retained evidence, bound only genuinely missing facts, and invoke exactly one declared terminal tool now.",
           ...(terminalNames.length > 0
@@ -375,22 +321,15 @@ export class AiSdkValidationDriver implements CellDriver {
             },
             {
               role: "user",
-              content: controlledSettlement
-                ? "The decision is settle_now. Use the retained investigation context only and complete terminal settlement. Do not restart the task."
-                : "The work above ended without satisfying its terminal-tool contract. Use the retained investigation context and invoke exactly one declared terminal tool now. Do not restart the task.",
+              content: "The work above ended without satisfying its terminal-tool contract. Use the retained investigation context and invoke exactly one declared terminal tool now. Do not restart the task.",
             },
           ],
-          abortSignal: context.budgetControl?.phase === "settlement"
-            ? context.settlementSignal?.() ?? context.signal
-            : context.signal,
-          ...(context.budgetControl ? {} : { timeout: { totalMs: input.budget.maxDurationMs } }),
+          abortSignal: context.signal,
+          timeout: { totalMs: input.budget.maxDurationMs },
           onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
             const stepUsage = normalizeUsage(usage, providerMetadata);
             closureUsage = addUsage(closureUsage, stepUsage);
-            context.observeUsage(
-              stepUsage,
-              context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
-            );
+            context.observeUsage(stepUsage, "execution");
             context.emit("terminal.recovery.step.finished", {
               finishReason,
               performance: sanitize(performance),
@@ -400,9 +339,6 @@ export class AiSdkValidationDriver implements CellDriver {
               toolCalls: sanitize(toolCalls),
               toolResults: sanitize(toolResults),
             });
-            if (context.budgetControl?.phase === "settlement") {
-              observedSettlementUsage = addUsage(observedSettlementUsage, stepUsage);
-            }
           },
         });
         closureResult = materializeGeneratedResult(generatedClosure, inlineOutputSchema !== undefined);
@@ -521,12 +457,9 @@ export class AiSdkValidationDriver implements CellDriver {
     terminalOnly: () => boolean,
     tasks: TaskStore,
   ) {
-    const projectedExecutionToolNames = context.budgetControl
-      ? new Set([...EXECUTION_TOOL_NAMES, ...BUDGET_CONTROL_TOOL_NAMES])
-      : EXECUTION_TOOL_NAMES;
     const conflictingTerminalNames = (input.terminalTools ?? [])
       .map((terminal) => terminal.name)
-      .filter((name) => projectedExecutionToolNames.has(name));
+      .filter((name) => EXECUTION_TOOL_NAMES.has(name));
     if (conflictingTerminalNames.length > 0) {
       throw new Error(
         `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,

@@ -24,7 +24,6 @@ import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import { TaskStore } from "./task-store";
 import {
-  BUDGET_CONTROL_TOOL_NAMES,
   createHostTools,
   EXECUTION_TOOL_NAMES,
   terminalActionRequired,
@@ -205,16 +204,15 @@ function piHarnessTarget(options: PiHarnessDriverOptions): PiHarnessTarget {
  * Pi adapter in-process and an empty in-memory just-bash sandbox. Every Pi
  * built-in tool is disabled; the model-visible tool set is exactly the
  * host-executed Work Cell surface (read/list, Pi-native exact batch edit,
- * create-new-only full write, allow-listed commands, host task tools, budget
- * and terminal tools). Provider/model identity, usage, tasks, and workspace
- * effects remain Work Cell evidence; the harness session identity is
+ * create-new-only full write, allow-listed commands, host task tools, and
+ * caller-declared terminal tools). Provider/model identity, usage, tasks, and
+ * workspace effects remain Work Cell evidence; the harness session identity is
  * observation only. Every host tool execution crosses one causal event-loop
  * handoff before its effect so an immediately-resolving result cannot
  * outrun the pinned adapter's next-turn registration barrier.
  */
 export class PiHarnessCellDriver implements CellDriver {
   readonly descriptor: DriverDescriptor;
-  readonly budgetControl = "completed-step-v1" as const;
   protected readonly model;
   private readonly harness: HarnessV1<ToolSet>;
   private readonly sandbox: HarnessV1SandboxProvider | undefined;
@@ -274,9 +272,6 @@ export class PiHarnessCellDriver implements CellDriver {
     };
     const actionBlocked = () => {
       if (terminalOnly) return terminalActionRequired();
-      if (context.budgetControl && context.budgetControl.phase !== "production") {
-        return terminalActionRequired();
-      }
       return undefined;
     };
     const hostTools = {
@@ -300,7 +295,7 @@ export class PiHarnessCellDriver implements CellDriver {
     };
     const conflictingTerminalNames = (input.terminalTools ?? [])
       .map((terminal) => terminal.name)
-      .filter((name) => EXECUTION_TOOL_NAMES.has(name) || BUDGET_CONTROL_TOOL_NAMES.has(name));
+      .filter((name) => EXECUTION_TOOL_NAMES.has(name));
     if (conflictingTerminalNames.length > 0) {
       throw new Error(
         `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,
@@ -382,31 +377,16 @@ export class PiHarnessCellDriver implements CellDriver {
         acceptStep: () => stepBudgetExhaustedAt === undefined,
         observeUsage: (usage) => {
           observedUsage = addUsage(observedUsage, usage);
-          context.observeUsage(
-            usage,
-            context.budgetControl?.phase === "settlement" ? "settlement" : "execution",
-          );
-          if (context.budgetControl?.phase === "settlement") {
-            observedSettlementUsage = addUsage(observedSettlementUsage, usage);
-          }
+          context.observeUsage(usage, "execution");
         },
         onStepFinished: (_finishReason, stepHadToolActivity) => {
           completedSteps += 1;
-          if (context.budgetControl?.phase === "production") {
-            const decisionPoint = context.budgetControl.completedStep();
-            if (decisionPoint) context.emit("budget.decision_point", { completedSafeStep: true });
-          } else if (
-            context.budgetControl === undefined
-            && input.budget.maxSteps !== undefined
+          // The immutable step budget is enforced from actual tool activity,
+          // never from the harness finish label. A tool-free terminal response
+          // on the final allowed step completes naturally.
+          if (
+            input.budget.maxSteps !== undefined
             && completedSteps >= input.budget.maxSteps
-            // The pinned harness-pi adapter translates every inferred
-            // completed step — including tool-continuing steps — to a
-            // unified stop finish label, so a label-gated guard is
-            // unreachable on the production adapter. "Another model step
-            // will begin" is therefore derived from actual tool activity
-            // in the completed step, never from the hardcoded finish
-            // label. A tool-free terminal response on the final allowed
-            // step completes naturally.
             && stepHadToolActivity
           ) {
             // Freeze the exact accepted-step count before aborting. Pi emits

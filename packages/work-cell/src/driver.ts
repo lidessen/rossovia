@@ -1,8 +1,6 @@
 import type {
   CellInput,
   CellUsage,
-  BudgetApprovalResult,
-  BudgetRequest,
   DriverDescriptor,
   Task,
   TraceEvent,
@@ -16,18 +14,6 @@ export interface DriverContext {
   liveObservation: boolean;
   /** Retain completed provider-step usage even if the outer Cell timeout wins the driver race. */
   observeUsage(usage: CellUsage, phase?: "execution" | "settlement"): void;
-  /** Present only for drivers that enforce completed-step soft-budget approval. */
-  budgetControl?: {
-    readonly phase: "production" | "decision" | "settlement";
-    completedStep(): boolean;
-    settleNow(): void;
-    requestBudget(request: Omit<BudgetRequest, "cellId" | "completedSteps" | "elapsedMs">): Promise<{
-      request: BudgetRequest;
-      result: BudgetApprovalResult;
-    }>;
-  };
-  /** Creates the reserve allowance only when terminal/structured settlement starts. */
-  settlementSignal?(): AbortSignal;
   emit(type: string, data: unknown): void;
 }
 
@@ -39,7 +25,7 @@ export interface DriverResult {
   finalText: string;
   output?: unknown;
   usage: CellUsage;
-  /** Usage spent after the soft-budget settlement transition; excluded from ordinary execution usage. */
+  /** Usage spent by the structured-output settlement phase; excluded from ordinary execution usage. */
   settlementUsage?: CellUsage;
   rawSteps: unknown[];
   providerMetadata?: unknown;
@@ -47,7 +33,6 @@ export interface DriverResult {
 
 export interface CellDriver {
   readonly descriptor: DriverDescriptor;
-  readonly budgetControl?: "completed-step-v1";
   run(input: CellInput, context: DriverContext): Promise<DriverResult>;
 }
 

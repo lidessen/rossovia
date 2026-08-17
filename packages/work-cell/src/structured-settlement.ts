@@ -62,7 +62,7 @@ export async function settleStructuredOutput(options: {
     try {
       const result = await agent.generate({
         prompt,
-        abortSignal: options.context.settlementSignal?.() ?? options.context.signal,
+        abortSignal: options.context.signal,
         onStepEnd: ({ usage: stepUsage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const observed = normalizeUsage(stepUsage, providerMetadata);
           usage = addUsage(usage, observed);

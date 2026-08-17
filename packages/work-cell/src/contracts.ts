@@ -120,20 +120,6 @@ export const UsageSchema = z.object({
   cachedInputTokens: z.number().nonnegative().default(0),
 });
 
-export const BudgetRequestSchema = z.object({
-  cellId: z.string().min(1),
-  additionalSteps: z.number().int().positive(),
-  additionalDurationMs: z.number().int().positive(),
-  remainingWork: z.string().min(1),
-  completedSteps: z.number().int().nonnegative(),
-  elapsedMs: z.number().int().nonnegative(),
-}).strict();
-
-export const BudgetApprovalResultSchema = z.discriminatedUnion("decision", [
-  z.object({ decision: z.literal("allow") }).strict(),
-  z.object({ decision: z.literal("deny"), reason: z.string().min(1).optional() }).strict(),
-]);
-
 export const CellContextSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -205,9 +191,6 @@ export type Task = z.infer<typeof TaskSchema>;
 export type TerminalTool = z.infer<typeof TerminalToolSchema>;
 export type CellUsage = z.infer<typeof UsageSchema>;
 export type WorkspaceDiff = z.infer<typeof WorkspaceDiffSchema>;
-export type BudgetRequest = z.infer<typeof BudgetRequestSchema>;
-export type BudgetApprovalResult = z.infer<typeof BudgetApprovalResultSchema>;
-
 export type CellTerminalStatus =
   | "passed"
   | "failed"
