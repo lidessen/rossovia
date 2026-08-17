@@ -117,6 +117,7 @@ interface TestRunArguments {
   provider: string;
   model: string;
   reasoningEffort?: string;
+  maxSteps?: number;
   expectedSourceRevision: number;
   expectedRevision: number;
 }
@@ -161,6 +162,7 @@ function runTestTask(
       ...(arguments_.continueFromAttemptId !== undefined
         ? { continueFromAttemptId: arguments_.continueFromAttemptId }
         : {}),
+      ...(arguments_.maxSteps !== undefined ? { maxSteps: arguments_.maxSteps } : {}),
     },
     {
       ...dependencies,
@@ -2305,6 +2307,66 @@ describe("task run public boundary", () => {
       expectedRevision: accepted.task.revision,
     }, executor.execute)).rejects.toThrow("completed tasks are viewable history");
     expect(executor.requests).toHaveLength(0);
+  });
+});
+
+describe("task run --max-steps option", () => {
+  test("lowers an explicit positive maxSteps into the immutable CellInput budget and retains it on the attempt record", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      maxSteps: 10,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.budget).toMatchObject({ maxDurationMs: 1_800_000, maxSteps: 10 });
+    const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+    expect(attemptRecord.maxSteps).toBe(10);
+    const finalRecord = JSON.parse(readFileSync(join(current.home, result.finalRecordRef), "utf8"));
+    expect(finalRecord.input.budget.maxSteps).toBe(10);
+    expect(finalRecord.input).toEqual(input);
+    expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]!.cellInput.budget.maxSteps).toBe(10);
+  });
+
+  test("omits maxSteps from the CellInput budget and attempt record when not provided", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.budget.maxDurationMs).toBe(1_800_000);
+    expect(input.budget.maxSteps).toBeUndefined();
+    expect(input.budget).not.toHaveProperty("maxSteps");
+    const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+    expect(attemptRecord.maxSteps).toBeUndefined();
+    expect(attemptRecord).not.toHaveProperty("maxSteps");
+  });
+
+  test("rejects a missing, non-positive, non-integer, or otherwise invalid --max-steps value before dispatch", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    for (const value of ["0", "-1", "1.5", "abc"]) {
+      const result = taskCli(current.home, "run", created.task.id, "--worker", "deepseek-flash", "--max-steps", value);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("--max-steps must be a positive integer");
+      expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(0);
+    }
+    const missing = taskCli(current.home, "run", created.task.id, "--worker", "deepseek-flash", "--max-steps");
+    expect(missing.exitCode).toBe(2);
+    expect(missing.stderr).toContain("invalid task option sequence");
+    expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(0);
   });
 });
 

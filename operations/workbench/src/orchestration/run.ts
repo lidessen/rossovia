@@ -75,6 +75,8 @@ export const RunRequestSchema = z.object({
       removed: z.array(z.string()),
     }).strict(),
   }).strict().optional(),
+  /** Optional explicit positive per-run step cap, lowered into the immutable CellInput budget. */
+  maxSteps: z.number().int().positive().optional(),
   /** Exact journal causality when the accepted request came from Conversation. */
   correlation: z.object({
     conversationId: z.string().uuid(),
@@ -160,6 +162,7 @@ export function canonicalRunRequestJson(request: RunRequest): string {
       : {}),
     worktree: request.worktree,
     ...(request.continuation !== undefined ? { continuation: request.continuation } : {}),
+    ...(request.maxSteps !== undefined ? { maxSteps: request.maxSteps } : {}),
     ...(request.correlation !== undefined ? { correlation: request.correlation } : {}),
   });
 }
@@ -227,6 +230,7 @@ export function createRunRequestRecord(
             },
           }
         : {}),
+      ...(request.maxSteps !== undefined ? { maxSteps: request.maxSteps } : {}),
       status: "started",
       startedAt: new Date().toISOString(),
       requestDigest: digest,
@@ -292,6 +296,7 @@ function retainedRunRequest(record: Record<string, unknown>): RunRequest | undef
     },
     worktree: record.worktree,
     ...(record.continuation === undefined ? {} : { continuation: record.continuation }),
+    ...(typeof record.maxSteps === "number" ? { maxSteps: record.maxSteps } : {}),
     ...(record.correlation === undefined ? {} : { correlation: record.correlation }),
   });
   return parsed.success ? parsed.data : undefined;
@@ -860,6 +865,15 @@ function validateLoweredCellInput(
   if (lease.path !== worktreeWriterLeasePath(request.worktree)) {
     throw new Error(
       `the exact O3 writer claim ${lease.path} does not bind the accepted Run request Worktree`,
+    );
+  }
+  const loweredMaxSteps = cellInput.budget?.maxSteps;
+  const requestedMaxSteps = request.maxSteps;
+  if (loweredMaxSteps !== requestedMaxSteps) {
+    const loweredLabel = loweredMaxSteps === undefined ? "absent" : String(loweredMaxSteps);
+    const requestedLabel = requestedMaxSteps === undefined ? "absent" : String(requestedMaxSteps);
+    throw new Error(
+      `lowered CellInput maxSteps ${loweredLabel} does not match the accepted Run request maxSteps ${requestedLabel}`,
     );
   }
 }

@@ -96,6 +96,8 @@ export interface TaskRunArguments {
   workerId: string;
   /** Continue one exact prior attempt lineage instead of starting fresh. */
   continueFromAttemptId?: string;
+  /** Optional explicit positive per-run step cap, lowered into the CellInput budget. */
+  maxSteps?: number;
 }
 
 interface TaskRunDependencies {
@@ -692,6 +694,7 @@ export async function runPrincipalTask(
     execution,
     worktree,
     ...(continuation === undefined ? {} : { continuation }),
+    ...(arguments_.maxSteps === undefined ? {} : { maxSteps: arguments_.maxSteps }),
   };
   const result = await runOrdinaryTaskRun(home, request, {
     // The pre-claim seam is omitted when absent: never passed as undefined.
@@ -714,7 +717,7 @@ export async function runPrincipalTask(
         verifyCleanStatus(worktree);
       }
     },
-    lowerCellInput: () => buildTaskCellInput(task, worktree, card.id, card, request.requestId),
+    lowerCellInput: () => buildTaskCellInput(task, worktree, card.id, card, request.requestId, request.maxSteps),
     execute: async (cellInput, options) => {
       const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
       return executor({
@@ -1153,8 +1156,9 @@ export function buildTaskCellInput(
   workerId: string,
   worker: WorkerCard,
   attemptId: string,
+  maxSteps?: number,
 ): CellInput {
-  const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId);
+  const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId, maxSteps);
   return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
 }
 
@@ -1164,6 +1168,7 @@ function taskCellInputObject(
   workerId: string,
   worker: WorkerCard,
   attemptId: string,
+  maxSteps?: number,
 ): Record<string, unknown> {
   return {
     id: `workbench-task-${task.id}-attempt-${attemptId}`,
@@ -1188,7 +1193,10 @@ function taskCellInputObject(
     ...(task.todos.length > 0
       ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }
       : {}),
-    budget: { maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS },
+    budget: {
+      maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS,
+      ...(maxSteps === undefined ? {} : { maxSteps }),
+    },
   };
 }
 

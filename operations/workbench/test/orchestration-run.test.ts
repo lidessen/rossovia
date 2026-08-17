@@ -226,8 +226,12 @@ function makeRequest(fixture_: Fixture, taskId: string, overrides: Partial<RunRe
 }
 
 /** The lower callback needs the requestId; bind it per request instead. */
-function lowerFor(fixture_: Fixture, taskId: string, runId: string): () => CellInput {
-  return () => cellInputFor(runId, fixture_.worktree, taskId);
+function lowerFor(fixture_: Fixture, taskId: string, runId: string, maxSteps?: number): () => CellInput {
+  return () => {
+    const input = cellInputFor(runId, fixture_.worktree, taskId);
+    if (maxSteps === undefined) return input;
+    return { ...input, budget: { ...input.budget, maxSteps } } as CellInput;
+  };
 }
 
 function stopRequest(requestedBy: string): RunStopRequest {
@@ -450,6 +454,147 @@ describe("O2 Run request identity", () => {
     })).rejects.toBeInstanceOf(RunRequestConflictError);
     expect(executor.invocations).toHaveLength(0);
     expect(existsSync(published.refs.inputPath)).toBeFalse();
+  });
+});
+
+describe("O2 Run max-steps passthrough", () => {
+  test("retains an explicit maxSteps in the request, digest, attempt record, and lowered CellInput budget", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id, { maxSteps: 15 });
+    const executor = new RecordingExecutor();
+    const result = await runOrdinaryTaskRun(current.home, request, {
+      card: testCard(),
+      lowerCellInput: lowerFor(current, created.task.id, request.requestId, request.maxSteps),
+      execute: executor.execute,
+    });
+    const outcome = terminalRun(result);
+    expect(outcome).toMatchObject({
+      runId: request.requestId,
+      status: "recorded",
+      cleanup: "released",
+    });
+    expect(executor.invocations).toHaveLength(1);
+    expect(executor.invocations[0]!.budget.maxSteps).toBe(15);
+    expect(executor.invocations[0]!.budget.maxDurationMs).toBe(1_800_000);
+
+    const retained = JSON.parse(
+      readFileSync(join(current.home, "state", "task-attempts", request.requestId, "attempt.json"), "utf8"),
+    );
+    expect(retained.maxSteps).toBe(15);
+    expect(retained.requestDigest).toBe(runRequestDigest(request));
+
+    const digestWithoutMaxSteps = runRequestDigest(makeRequest(current, created.task.id, { requestId: request.requestId }));
+    expect(retained.requestDigest).not.toBe(digestWithoutMaxSteps);
+  });
+
+  test("omits maxSteps from the budget and digest when not supplied", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id);
+    const executor = new RecordingExecutor();
+    const result = await runOrdinaryTaskRun(current.home, request, {
+      card: testCard(),
+      lowerCellInput: lowerFor(current, created.task.id, request.requestId, request.maxSteps),
+      execute: executor.execute,
+    });
+    expect(terminalRun(result).status).toBe("recorded");
+    expect(executor.invocations[0]!.budget.maxSteps).toBeUndefined();
+    expect(executor.invocations[0]!.budget).not.toHaveProperty("maxSteps");
+    const retained = JSON.parse(
+      readFileSync(join(current.home, "state", "task-attempts", request.requestId, "attempt.json"), "utf8"),
+    );
+    expect(retained.maxSteps).toBeUndefined();
+    expect(retained).not.toHaveProperty("maxSteps");
+    expect(retained.requestDigest).toBe(runRequestDigest(request));
+  });
+
+  test("identical maxSteps replays converge and different maxSteps under the same run id conflict", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const request = makeRequest(current, created.task.id, { maxSteps: 7 });
+    const executor = new RecordingExecutor();
+    const dependencies: OrdinaryRunDependencies = {
+      card: testCard(),
+      lowerCellInput: lowerFor(current, created.task.id, request.requestId, request.maxSteps),
+      execute: executor.execute,
+    };
+
+    const first = await runOrdinaryTaskRun(current.home, request, dependencies);
+    expect(first.standing).toBe("terminal");
+    expect(terminalRun(first).runId).toBe(request.requestId);
+    const replayed = await runOrdinaryTaskRun(current.home, request, dependencies);
+    expect(replayed.standing).toBe("terminal");
+    expect(executor.invocations).toHaveLength(1);
+
+    await expect(runOrdinaryTaskRun(current.home, {
+      ...request,
+      maxSteps: 8,
+    }, dependencies)).rejects.toBeInstanceOf(RunRequestConflictError);
+    expect(executor.invocations).toHaveLength(1);
+
+    await expect(runOrdinaryTaskRun(current.home, {
+      ...request,
+      maxSteps: undefined,
+    }, dependencies)).rejects.toBeInstanceOf(RunRequestConflictError);
+    expect(executor.invocations).toHaveLength(1);
+  });
+
+  test("a lowered CellInput maxSteps mismatch settles a truthful pre-Cell failure with zero Cells", async () => {
+    const cases: Array<{
+      request: (current: Fixture, taskId: string) => RunRequest;
+      lower: (current: Fixture, request: RunRequest) => CellInput;
+      error: string;
+    }> = [
+      {
+        // The request asks for a cap but the lowerer omits it.
+        request: (current, taskId) => makeRequest(current, taskId, { maxSteps: 7 }),
+        lower: (current, request) => cellInputFor(request.requestId, current.worktree, request.taskId),
+        error: "lowered CellInput maxSteps absent does not match the accepted Run request maxSteps 7",
+      },
+      {
+        // The request asks for one cap but the lowerer supplies a different value.
+        request: (current, taskId) => makeRequest(current, taskId, { maxSteps: 7 }),
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return { ...input, budget: { ...input.budget, maxSteps: 8 } } as CellInput;
+        },
+        error: "lowered CellInput maxSteps 8 does not match the accepted Run request maxSteps 7",
+      },
+      {
+        // The request omits a cap but the lowerer injects one.
+        request: (current, taskId) => makeRequest(current, taskId),
+        lower: (current, request) => {
+          const input = cellInputFor(request.requestId, current.worktree, request.taskId);
+          return { ...input, budget: { ...input.budget, maxSteps: 7 } } as CellInput;
+        },
+        error: "lowered CellInput maxSteps 7 does not match the accepted Run request maxSteps absent",
+      },
+    ];
+
+    for (const candidate of cases) {
+      const current = fixture();
+      const created = agentTask(current);
+      const request = candidate.request(current, created.task.id);
+      const executor = new RecordingExecutor();
+      await expect(runOrdinaryTaskRun(current.home, request, {
+        card: testCard(),
+        lowerCellInput: () => candidate.lower(current, request),
+        execute: executor.execute,
+      })).rejects.toThrow(candidate.error);
+      expect(executor.invocations).toHaveLength(0);
+      const standing = runStanding(current.home, request.requestId);
+      expect(standing.standing).toBe("terminal");
+      const outcome = terminalStanding(standing);
+      expect(outcome).toMatchObject({ status: "runner-failed", cleanup: "released" });
+      expect(outcome.error).toContain("maxSteps");
+      expect(outcome).not.toHaveProperty("workCellRunId");
+      expect(outcome).not.toHaveProperty("finalRecord");
+      // The mismatched input was never persisted: the refusal is pre-Cell
+      // and pre-preparation with no invented evidence.
+      expect(existsSync(join(current.home, outcome.refs.inputRef))).toBeFalse();
+      expect(existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)))).toBeFalse();
+    }
   });
 });
 
