@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-15T22:40:27Z",
+  "updatedAt": "2026-08-18T07:11:45Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -229,7 +229,100 @@
       "status": "closed",
       "disposition": "integrate",
       "mainlineDelta": "PR #131 integrated exact candidate 74f8c5c4806a412ad658f17dfc0724fa80043252 as normal merge c95c067709d176d9a883be6aa84cbbf46fee9de8: ordinary Tasks no longer receive an implicit maxSteps limit; finite maxSteps remains an explicit opt-in policy, and only the exact historical raw-omitted/final-20 evidence relation is normalized for strict compatibility. Duration, cancellation, usage, trace, lease, attempt, terminal settlement, and Task authority remain bounded and unchanged. Final two-project DeepSeek browser dogfood, GLM/Harness trials, Principal Task acceptance, and whole Mission completion remain pending."
+    },
+    {
+      "id": "s1-cell-tool-port",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Add the optional provider-neutral caller-injected Cell tool port and AI SDK/Pi adapter translation on the exact reviewed combined runtime baseline without adding sub-worker or orchestration semantics.",
+      "returnCondition": "Return with one clean bounded S1 implementation commit from b83011d: neutral optional CellToolSet, sorted projected names and per-call bounded evidence, shared C2 abort/quiescence/finalization semantics, fail-closed adapter support/collision/schema behavior, the three phase-appropriate test stories, Work Cell full/typecheck/dependency/diff checks, fresh independent exact-head review, and no sub_worker, child Run, O2/O3, Task, retry, policy, Principal acceptance, Mission settlement, or remote integration.",
+      "sources": [
+        "conversation:active-goal#s1-cell-tool-port",
+        "task-shape:/root/shape_s1_cell_tool_port@b83011d72ce4d2bc41df7837ad100cf2bbabe5f6",
+        "review:/root/review_s1_cell_tool_shape"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "foreground-signal-canonical-stop",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Translate the first SIGINT or SIGTERM received by an ordinary foreground task run into the existing canonical O2 stopRun path without creating another controller, lifecycle, or durable control owner.",
+      "returnCondition": "Return with one clean bounded implementation commit from f7c670d6354bb7b9eda69c9ebd2f990e9169dff7: O2 publishes its registered live control before execution; the foreground adapter retains only temporary listeners, one pending pre-live signal, one registry and live Run identity, and one exactly-once guard; canonical stopRun durably records control before abort; admitted Work Cell effects quiesce before control-stopped finalization and O3 release; focused foreground-signals/orchestration-run/task-run/conversation-carrier, Workbench typecheck and diff-check, then one full Workbench run are green; fresh independent exact-head Kimi review is READY; no Work Cell, worker, conversation, Mission documentation, help, persistent control, second registry/controller/lease/lifecycle, retry/reconcile action, cross-process, provider, exit-code policy, Task acceptance, Mission settlement, publication, or merge change.",
+      "sources": [
+        "decision:055-rossovia-runtime-module-ownership#O2-O3",
+        "migration:rossovia-runtime-ownership#stage-2",
+        "parent:f7c670d6354bb7b9eda69c9ebd2f990e9169dff7/tree96fd2368f4048e3d77f6f4184ed890aad17c506e",
+        "principal-request:foreground-signal-to-canonical-stop"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "daily-single-run-e2e",
+      "parent": "foreground-signal-canonical-stop",
+      "kind": "review",
+      "purpose": "Use the exact reviewed foreground-stop composition as the active local line for one representative single-Run daily-loop proof while retaining product, Task, Mission, and Principal acceptance boundaries.",
+      "returnCondition": "Return only after one exact clean integration head and one representative single-Run daily-loop proof establish normal execution, first foreground SIGINT or SIGTERM translation through canonical O2 stop, Work Cell quiescence before control-stopped finalization and O3 release, reconnect and result truth, and attributable verification; otherwise remain open with the exact blocker. Do not accept or settle any Task or Mission branch, publish, push, open a PR, merge to main, or clean reviewed worktrees.",
+      "sources": [
+        "candidate:7b90fdb387dece21f96cf796a89395eaac983485/tree2e360f53ad3ab92df444cffe430712e8a10a1f64",
+        "parent:f7c670d6354bb7b9eda69c9ebd2f990e9169dff7",
+        "principal:daily-single-run-e2e"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "ordinary-run-explicit-step-budget",
+      "parent": "daily-single-run-e2e",
+      "kind": "correction",
+      "purpose": "Let the caller of an ordinary rossovia task run explicitly choose an optional positive step cap while preserving the canonical Run, immutable CellInput, and no-default budget boundary.",
+      "returnCondition": "Ordinary rossovia task run optionally accepts a caller-explicit positive integer --max-steps; the value enters the canonical Run request and digest and the immutable CellInput budget; omission still means no step limit; the existing 30-minute ceiling remains emergency timeout only. Add no budget system, approval, default, or second lifecycle; do not change provider or driver output caps; do not touch conversation schema, S2, or P5.",
+      "sources": [
+        "principal:ordinary-run-explicit-step-budget",
+        "parent:daily-single-run-e2e@d27f652e80f751b9c49775ee5032e67f64599af6",
+        "blocker:ordinary-task-run-explicit-step-cap"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "deepseek-cost-evidence",
+      "parent": "daily-single-run-e2e",
+      "kind": "correction",
+      "purpose": "Correct current DeepSeek Flash and Pro time-versioned pricing semantics and retain truthful usage and cost standing without changing provider routing or creating new budget or lifecycle authority.",
+      "returnCondition": "Return with one clean implementation candidate that corrects current DeepSeek Flash and Pro time-versioned pricing semantics and truthful usage and cost standing; focused Work Cell tests, Work Cell typecheck, git diff-check, and fresh independent exact-head review are required. Add no budget system, new lifecycle, provider routing change, or model call; do not accept or settle any Task or Mission branch, publish, push, open a PR, or merge.",
+      "sources": [
+        "principal:deepseek-cost-evidence",
+        "parent:daily-single-run-e2e@6f3f0b396c05cee582441c6baa19446f3fa92185",
+        "blocker:deepseek-current-pricing-and-truthful-cost-standing"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "s2-readonly-sub-worker-run",
+      "parent": "s1-cell-tool-port",
+      "kind": "implementation",
+      "purpose": "让一次父 Run 的模型工具调用可以请求一个只读子贡献；子贡献仍是现有 Orchestration 的一个显式 Run，不是 Work Cell 内部的第二个 Cell 或新的团队生命周期。",
+      "returnCondition": "Return with one clean bounded implementation from dd6ff73a: a caller-injected sub_worker CellTool starts exactly one read-only canonical O2 child Run attributed to the same current Task revisions, with a distinct deterministic child Run identity from parent Run plus exact toolCallId and a separately bound complete-prompt digest; child workspace has no write paths or commands and pays no O3 writer claim; parent cancellation/Cell tool drain awaits the child terminal boundary and returns source-linked bounded evidence. Prove one forward completion, one cancellation/no-final boundary, and one compatibility/capability refusal story plus focused Work Cell/Workbench typechecks and fresh independent exact-head review. Add no child Task, role/team type, peer lifecycle, registry, retry, implicit continuation, P5 migration, effectful child, acceptance, Mission settlement, remote action, or cleanup.",
+      "sources": [
+        "design/decisions/055-rossovia-runtime-module-ownership.md",
+        "design/organization/rossovia-runtime-ownership-migration.md",
+        "git:dd6ff73a77de446f0f2551774794e30e9cddb67c",
+        "git:885cf7d47f6a4b357d10d3e5ca480f1804e1dea2",
+        "task:fcbff626-ecbf-442f-b6ef-393c8bbe7805#claim:ec61721c-841c-45c0-859a-0ed3213f830c"
+      ],
+      "status": "open"
+    },
+    {
+      "id": "s2-child-admission-budget",
+      "parent": "s2-readonly-sub-worker-run",
+      "kind": "implementation",
+      "purpose": "Let one parent Run expose sub_worker while its caller-owned closure admits at most one read-only child Run; excess calls refuse before child Run creation or persistence with bounded source-linked evidence.",
+      "returnCondition": "Return one clean implementation from git:89523f44fc7a8e19106ce099e06e20eca06b23e7: each parent Run caller injects one explicit child-admission envelope with a first-slice hard cap of one; the first admitted sub_worker invocation may create its existing read-only canonical child Run, while every later invocation for that parent refuses before child Run identity persistence, Cell creation, or model dispatch and returns bounded evidence linked to the parent Run and tool call. Reuse current Run, Task, Cell, and tool-result evidence. Prove first admission, over-limit zero-child refusal, and cancellation/compatibility preservation with focused tests and typecheck, then commit a clean checkpoint. Add no child model call during verification, new lifecycle, registry, retry, general budget system, Task type, acceptance, Mission settlement, remote action, or independent review in this slice.",
+      "sources": [
+        "git:89523f44fc7a8e19106ce099e06e20eca06b23e7",
+        "mission:s2-readonly-sub-worker-run"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "mainline"
+  "currentFocus": "s2-child-admission-budget"
 }

@@ -1,25 +1,26 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
 import type { PrincipalTask, PrincipalTasks } from "../contracts";
 import { resolveHome } from "../home";
+import {
+  createLocalTaskControlPlane,
+  LocalTaskControlError,
+  type LocalTaskControlPlane,
+} from "../local-task-control-plane";
 import { expandPath } from "../paths";
 import { resolveProject } from "../resolve";
-import {
-  correctPrincipalTask,
-  createPrincipalTask,
-  loadPrincipalTasks,
-  PrincipalTaskError,
-} from "../tasks";
+import { PrincipalTaskError } from "../tasks";
 import { evidenceRef } from "../task-run";
 import { readStrictTaskAttemptEvidence } from "../task-attempts";
 import { optionalGit, requiredGit } from "../workspace";
 import { taskActionSourceRef, taskReceiptEvidenceRef } from "./contracts";
 import type { ConversationOperation } from "../../../autonomy/src/conversation-coordinator";
+import { runStanding } from "../orchestration/run";
+import { RunControlReceiptSchema } from "../task-attempts";
 import {
   ConversationCarrierError,
   listAttemptDirectories,
-  TaskRunControlReceiptSchema,
+  runStopRequester,
   type CarrierControlReceipt,
   type ConversationExecutionCarrierRegistry,
 } from "./execution-carrier";
@@ -118,12 +119,20 @@ export interface ConversationOperationHost {
   /** Crash reconciliation: search the canonical Task owner for the action's causal reference. */
   findCanonicalReceipt(input: {
     readonly conversationId: string;
+    readonly turnId?: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
   }): CanonicalReceiptLookup;
 }
 
 export interface ConversationTaskOperationHostOptions {
+  /**
+   * Create the Workbench-owned Project/Task mutation and read port for this
+   * host's resolved home. Conversation orchestration may request typed Task
+   * operations but never supplies an already-bound port or writes the Task
+   * source directly.
+   */
+  readonly taskControlPlaneFactory?: (home: string) => LocalTaskControlPlane;
   /**
    * The exact retained carrier runtime that starts and controls ordinary Task
    * carriers. Absent, `task_continue` and `work_control` fail visibly.
@@ -145,6 +154,7 @@ export function createConversationTaskOperationHost(
 
 class WorkbenchTaskOperationHost implements ConversationOperationHost {
   readonly home: string;
+  private readonly taskControlPlane: LocalTaskControlPlane;
   private readonly carrierRegistry: ConversationExecutionCarrierRegistry | undefined;
   private readonly contributionRegistry: ConversationContributionRegistry | undefined;
 
@@ -153,6 +163,8 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     options: ConversationTaskOperationHostOptions,
   ) {
     this.home = home;
+    const taskControlPlaneFactory = options.taskControlPlaneFactory ?? createLocalTaskControlPlane;
+    this.taskControlPlane = taskControlPlaneFactory(home);
     this.carrierRegistry = options.carrierRegistry;
     this.contributionRegistry = options.contributionRegistry;
   }
@@ -219,17 +231,29 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
 
   findCanonicalReceipt(input: {
     readonly conversationId: string;
+    readonly turnId?: string;
     readonly actionId: string;
     readonly operation: ConversationOperation;
   }): CanonicalReceiptLookup {
     const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
     const operation = input.operation;
     if (operation.kind === "task_continue") {
-      return this.findContinueReceipt(sourceRef);
+      if (input.turnId === undefined) {
+        return { standing: "uninspectable", reason: "task_continue reconciliation requires its exact turn identity" };
+      }
+      return this.findContinueReceipt({
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        actionId: input.actionId,
+      });
     }
     if (operation.kind === "work_control") {
+      if (input.turnId === undefined) {
+        return { standing: "uninspectable", reason: "work_control reconciliation requires its exact turn identity" };
+      }
       return this.findControlReceipt({
         conversationId: input.conversationId,
+        turnId: input.turnId,
         actionId: input.actionId,
         operation,
       });
@@ -246,7 +270,7 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
     }
     let tasks: PrincipalTasks;
     try {
-      tasks = loadPrincipalTasks(this.home);
+      tasks = this.taskControlPlane.list();
     } catch (error) {
       return {
         standing: "uninspectable",
@@ -279,12 +303,17 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * A typed continue starts at most one carrier for its committed action: the
-   * retained registry re-reads the exact canonical Task and source revision,
-   * the registered project identity and current primary observation, the
-   * bound Worktree path and head, and the exact Worktree lease immediately
-   * before the effect. The returned receipt references the durable attempt
-   * evidence, not a second task or execution store.
+   * A typed continue starts at most one Run for its committed action through
+   * the canonical O2 Run owner: the committed action UUID is the only Run
+   * identity, so the returned `carrierId` equals the action id. The registry
+   * publishes the immutable Run request — re-reading the exact canonical Task
+   * and source revision, the registered project identity and current primary
+   * observation, the bound Worktree path and head, and the clean status
+   * immediately before publication — before any writer acquisition or
+   * mutable preparation, and the O2 owner then invokes at most one unchanged
+   * Work Cell and retains one truthful terminal outcome. The returned receipt
+   * references the durable Run evidence, not a second task or execution
+   * store.
    */
   private executeContinue(
     input: {
@@ -316,11 +345,12 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * A typed control resolves one exact retained carrier and applies only that
-   * mapped stop. A carrier without a retained runtime handle and without a
-   * terminal settlement leaves liveness unknown and the control unverified;
-   * an already settled carrier refuses visibly; pause/resume/recover are not
-   * owned by an ordinary Task carrier.
+   * A typed control resolves one exact retained Run and applies only that
+   * mapped stop through the canonical Run control owner. A Run without a
+   * retained runtime handle and without a terminal settlement leaves
+   * liveness unknown and the control unverified; an already terminal Run
+   * refuses visibly; pause/resume/recover are not owned by an ordinary Task
+   * Run.
    */
   private executeControl(input: {
     readonly conversationId: string;
@@ -371,16 +401,73 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * The canonical continue receipt: the retained attempt carrying this
-   * action's causal source reference, read through the strict evidence
-   * reader. A matching correlation under invalid or mismatched evidence is
-   * uninspectable, never settled.
+   * The canonical continue receipt: the canonical Run whose identity equals
+   * this committed action (runId == actionId), matched by its retained
+   * journal-owned correlation. A published Run with or without a final is the
+   * committed continue effect and reconciles as settled from its exact
+   * evidence refs; a retained Run whose correlation does not match this
+   * action is uninspectable, never settled and never retried as absent.
+   * Historical pre-Run-identity attempt families fall back to the exact
+   * directory scan by causal source reference. A matching correlation under
+   * invalid or mismatched evidence is uninspectable, never settled.
    */
-  private findContinueReceipt(sourceRef: string): CanonicalReceiptLookup {
+  private findContinueReceipt(input: {
+    readonly conversationId: string;
+    readonly turnId: string;
+    readonly actionId: string;
+  }): CanonicalReceiptLookup {
+    const sourceRef = taskActionSourceRef(input.conversationId, input.actionId);
+    // The canonical Run identity for this committed action: one durable Run
+    // request over the attempt evidence family at `state/task-attempts/<actionId>`.
+    const standing = runStanding(this.home, input.actionId);
+    if (standing.standing !== "unavailable") {
+      const evidence = readStrictTaskAttemptEvidence(this.home, input.actionId);
+      const correlation = evidence.attempt?.correlation;
+      if (
+        correlation?.conversationId === input.conversationId
+        && correlation.turnId === input.turnId
+        && correlation.actionId === input.actionId
+        && correlation.sourceRef === sourceRef
+      ) {
+        if (evidence.standing !== "available" || evidence.attempt === undefined) {
+          return {
+            standing: "uninspectable",
+            reason: `Run ${input.actionId} retains invalid evidence for this action: ${evidence.error ?? "unavailable"}`,
+          };
+        }
+        return {
+          standing: "settled",
+          receipt: {
+            taskId: evidence.attempt.taskId,
+            sourceRevision: evidence.attempt.sourceRevision,
+            taskRevision: evidence.attempt.taskRevision,
+            evidenceRefs: [
+              evidence.refs.attemptRef,
+              evidence.refs.inputRef,
+              evidence.refs.finalRecordRef,
+              evidence.refs.settlementRef,
+            ],
+          },
+        };
+      }
+      // A Run record exists at this exact action identity but its retained
+      // correlation does not match this action: never settled, never
+      // retried as absent.
+      return {
+        standing: "uninspectable",
+        reason: `Run ${input.actionId} retains a journal correlation that does not match this committed action`,
+      };
+    }
+    // Historical pre-Run-identity attempt families: the exact directory scan.
     for (const attemptId of listAttemptDirectories(this.home)) {
       const evidence = readStrictTaskAttemptEvidence(this.home, attemptId);
       const correlation = evidence.attempt?.correlation;
-      if (correlation?.sourceRef !== sourceRef) continue;
+      if (
+        correlation?.conversationId !== input.conversationId
+        || correlation.turnId !== input.turnId
+        || correlation.actionId !== input.actionId
+        || correlation.sourceRef !== sourceRef
+      ) continue;
       if (evidence.standing !== "available") {
         return {
           standing: "uninspectable",
@@ -406,17 +493,18 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
   }
 
   /**
-   * The canonical control receipt: the strict retained control record for
-   * this action's causal source reference, cross-linked against the owning
-   * attempt evidence and the requested operation — carrierId, attemptId,
-   * taskId, worker, Worktree, actor identity, and stable refs must all
-   * match. No matching sourceRef is provable absence and remains retryable;
-   * a matching sourceRef whose record is unreadable or fails any cross-link
+   * The canonical control receipt: the strict retained Run control receipt
+   * for this action's causal source reference, cross-linked against the
+   * requested operation — the Run identity (runId == carrierId), the exact
+   * causal requester tuple, and the stable evidence refs must all match.
+   * No matching sourceRef is provable absence and remains retryable; a
+   * matching sourceRef whose record is unreadable or fails any cross-link
    * is uninspectable — visible uncertainty that cannot settle and cannot be
    * retried as if absent.
    */
   private findControlReceipt(input: {
     readonly conversationId: string;
+    readonly turnId: string;
     readonly actionId: string;
     readonly operation: Extract<ConversationOperation, { kind: "work_control" }>;
   }): CanonicalReceiptLookup {
@@ -433,17 +521,34 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
         reason: `the retained control record for carrier ${carrierId} cannot be read: ${errorMessage(error)}`,
       };
     }
-    const parsed = TaskRunControlReceiptSchema.safeParse(value);
+    const parsed = RunControlReceiptSchema.safeParse(value);
     if (!parsed.success) {
       return {
         standing: "uninspectable",
-        reason: `the retained control record for carrier ${carrierId} does not match the exact receipt shape`,
+        reason: `the retained control record for carrier ${carrierId} does not match the exact canonical Run receipt shape`,
       };
     }
     const receipt = parsed.data;
     if (receipt.sourceRef !== sourceRef) {
       // A different committed action's receipt: provable absence for this one.
       return { standing: "absent" };
+    }
+    if (receipt.runId !== carrierId) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record for carrier ${carrierId} does not belong to its Run identity`,
+      };
+    }
+    const expectedRequester = runStopRequester({
+      conversationId: input.conversationId,
+      turnId: input.turnId,
+      actionId: input.actionId,
+    });
+    if (receipt.requestedBy !== expectedRequester) {
+      return {
+        standing: "uninspectable",
+        reason: `the retained control record requester identity does not match the reconciled action`,
+      };
     }
     const evidence = readStrictTaskAttemptEvidence(this.home, carrierId);
     if (evidence.standing !== "available" || evidence.attempt === undefined) {
@@ -453,11 +558,13 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
           `carrier ${carrierId} retains invalid evidence for this control: ${evidence.error ?? "unavailable"}`,
       };
     }
-    const mismatch = controlReceiptCrossLinkError(receipt, carrierId, evidence, input);
-    if (mismatch !== undefined) {
+    // The strict evidence read already validated the receipt against its
+    // owning attempt family (task, worker, Worktree, and stable refs); the
+    // retained receipt must be that family's exact control evidence.
+    if (evidence.control === undefined || !("runId" in evidence.control)) {
       return {
         standing: "uninspectable",
-        reason: `the retained control record for carrier ${carrierId} fails its exact identity: ${mismatch}`,
+        reason: `the retained control record for carrier ${carrierId} is not its owning Run's exact control evidence`,
       };
     }
     const refs = [evidenceRef(this.home, controlPath)];
@@ -713,26 +820,29 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
         `task Worktree is not clean: ${canonicalWorktree}`,
       );
     }
-    const tasks = loadPrincipalTasks(this.home);
-    const result = createPrincipalTask(this.home, {
-      title: operation.title,
-      objective: operation.objective,
-      acceptance: operation.acceptance,
-      ...(operation.todos === undefined ? {} : { todos: operation.todos }),
-      nextActor: "agent",
-      sourceRef,
-      expectedSourceRevision: tasks.sourceRevision,
-      project: operation.projectId,
-      worktree: canonicalWorktree,
+    const tasks = this.taskControlPlane.list();
+    const result = this.taskControlPlane.execute({
+      kind: "create",
+      arguments: {
+        title: operation.title,
+        objective: operation.objective,
+        acceptance: operation.acceptance,
+        ...(operation.todos === undefined ? {} : { todos: operation.todos }),
+        nextActor: "agent",
+        sourceRef,
+        expectedSourceRevision: tasks.sourceRevision,
+        project: operation.projectId,
+        worktree: canonicalWorktree,
+      },
     });
-    return receiptFor(loadPrincipalTasks(this.home), result.task);
+    return receiptFor(this.taskControlPlane.list(), result.task);
   }
 
   private executeCorrect(
     operation: Extract<ConversationOperation, { kind: "task_correct" }>,
     sourceRef: string,
   ): TaskActionReceipt {
-    const tasks = loadPrincipalTasks(this.home);
+    const tasks = this.taskControlPlane.list();
     if (tasks.sourceRevision !== operation.expectedSourceRevision) {
       throw new ConversationOperationHostError(
         "stale-revision",
@@ -758,15 +868,18 @@ class WorkbenchTaskOperationHost implements ConversationOperationHost {
         `task ${task.id} is settled; reopen it before appending a correction`,
       );
     }
-    const result = correctPrincipalTask(this.home, {
-      id: task.id,
-      expectedSourceRevision: tasks.sourceRevision,
-      expectedRevision: task.revision,
-      statement: operation.statement,
-      sourceRef,
-      nextActor: "agent",
+    const result = this.taskControlPlane.execute({
+      kind: "correct",
+      arguments: {
+        id: task.id,
+        expectedSourceRevision: tasks.sourceRevision,
+        expectedRevision: task.revision,
+        statement: operation.statement,
+        sourceRef,
+        nextActor: "agent",
+      },
     });
-    return receiptFor(loadPrincipalTasks(this.home), result.task);
+    return receiptFor(this.taskControlPlane.list(), result.task);
   }
 }
 
@@ -845,7 +958,7 @@ function mapOperationError(error: unknown): Error {
   if (error instanceof ConversationOperationHostError) return error;
   if (error instanceof ConversationCarrierError) return mapCarrierError(error);
   if (error instanceof ContributionError) return mapContributionError(error);
-  if (error instanceof PrincipalTaskError) {
+  if (error instanceof LocalTaskControlError || error instanceof PrincipalTaskError) {
     const code: ConversationOperationHostErrorCode =
       error.code === "task-drift" ? "stale-revision"
       : error.code === "task-not-found" ? "task-not-found"
@@ -906,59 +1019,6 @@ function mapCarrierError(error: ConversationCarrierError): ConversationOperation
     : error.code === "source-unavailable" ? "source-unavailable"
     : "operation-unavailable";
   return new ConversationOperationHostError(code, error.message);
-}
-
-/**
- * Cross-link one strict control receipt against its owning attempt evidence
- * and the requested operation. Returns a mismatch reason, or undefined when
- * every identity link matches: the requested actor conversation/action, the
- * exact carrier/attempt identity, the attempt's taskId and workerId, the
- * stable attempt/settlement refs, and the immutable CellInput's exact
- * Worktree.
- */
-function controlReceiptCrossLinkError(
-  receipt: z.infer<typeof TaskRunControlReceiptSchema>,
-  attemptId: string,
-  evidence: ReturnType<typeof readStrictTaskAttemptEvidence>,
-  input: {
-    readonly conversationId: string;
-    readonly actionId: string;
-  },
-): string | undefined {
-  if (receipt.requestedBy.conversationId !== input.conversationId
-    || receipt.requestedBy.actionId !== input.actionId) {
-    return "the requested actor identity does not match the reconciled action";
-  }
-  if (receipt.carrierId !== attemptId || receipt.attemptId !== attemptId) {
-    return "the receipt does not belong to its carrier attempt";
-  }
-  const attempt = evidence.attempt!;
-  if (receipt.taskId !== attempt.taskId) {
-    return "the receipt task identity does not match its owning attempt";
-  }
-  if (attempt.workerId === undefined || receipt.workerId !== attempt.workerId) {
-    return "the receipt worker identity does not match its owning attempt";
-  }
-  if (receipt.attemptRef !== evidence.refs.attemptRef
-    || receipt.settlementRef !== evidence.refs.settlementRef) {
-    return "the receipt stable refs do not match its owning attempt evidence";
-  }
-  const cellInput = evidence.input;
-  if (cellInput === undefined) {
-    return "the owning attempt's immutable CellInput is unavailable";
-  }
-  let inputWorktree: string;
-  let receiptWorktree: string;
-  try {
-    inputWorktree = realpathSync(cellInput.workspace.root);
-    receiptWorktree = realpathSync(receipt.worktree);
-  } catch {
-    return "the receipt Worktree cannot be related to the immutable CellInput workspace";
-  }
-  if (inputWorktree !== receiptWorktree) {
-    return "the receipt Worktree does not match the immutable CellInput workspace";
-  }
-  return undefined;
 }
 
 function errorMessage(error: unknown): string {

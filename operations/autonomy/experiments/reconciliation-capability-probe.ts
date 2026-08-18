@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import type { ExecutionProfile } from "../../../packages/work-cell/src/contracts";
-import { AiSdkValidationDriver } from "../../../packages/work-cell/src/ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import {
   proposeMissionReconciliation,
@@ -123,6 +124,7 @@ for (const probeCase of cases) {
         executionProfile: profile(driver),
       }, {
         driver,
+        host: createLocalHost(),
         maxSteps: 4,
         maxDurationMs: 120_000,
       });

@@ -35,22 +35,28 @@ import {
   type DelegateResultProjection,
 } from "../../../autonomy/src/delegate-loop";
 import { FileMissionTimeline } from "../../../autonomy/src/delegate-timeline";
-import type { PrincipalTask } from "../contracts";
-import { loadPrincipalTasks } from "../tasks";
+import type { PrincipalTask, PrincipalTasks } from "../contracts";
 import { loadHome, resolveHome, workspaceFor } from "../home";
+import {
+  createLocalTaskControlPlane,
+  type LocalTaskReadPort,
+} from "../local-task-control-plane";
 import { expandPath } from "../paths";
 import { observeWorkspace, requiredGit } from "../workspace";
 import {
-  acquireWorktreeLease,
-  canonicalGitDirectory,
+  acquireWorktreeWriterLease,
+  inspectRetainedWorktreeWriterLease,
+  recoverRetainedWorktreeWriterLease,
+  releaseWorktreeWriterLease,
+  worktreeWriterLeasePath,
+  type WorktreeWriterLease,
+} from "../orchestration/worktree-writer";
+import {
   evidenceRef,
-  isProcessDefinitelyAbsent,
   ordinaryOpenCodeExcludes,
   ORDINARY_TASK_MAX_DURATION_MS,
-  releaseWorktreeLease,
   verifyCleanStatus,
   writeImmutableJson,
-  type TaskRunLease,
 } from "../task-run";
 import { digest, taskActionSourceRef } from "./contracts";
 import { FileConversationJournal } from "./journal";
@@ -201,7 +207,12 @@ export interface ContributionProjection {
   readonly status?: string;
 }
 
-export type ChildResultRefusalCode = "not-found" | "not-settled" | "stale" | "invalid";
+export type ChildResultRefusalCode =
+  | "not-found"
+  | "not-settled"
+  | "stale"
+  | "source-unavailable"
+  | "invalid";
 
 export type ChildResultRead =
   | { readonly standing: "read"; readonly result: DelegateResultProjection }
@@ -282,13 +293,14 @@ export interface ConversationContributionRegistry {
   }): ContributionControlReceipt;
   /**
    * The narrowly contribution-owned recovery owner for one exact retained
-   * task-run Worktree lease: it reuses the exact lease identity, PID
-   * liveness, byte-match, and release semantics and never forges Task
-   * attempt or Work Cell evidence. It recovers both a lock-only crash
-   * (lease acquired, contribution never started) and a receipt-backed
-   * terminal release failure; a live, unknown, mismatched, or unreadable
-   * owner is refused fail-closed, and an already-absent lease is
-   * not-retained, never re-acquired.
+   * task-run Worktree lease: it runs the exact identity, PID liveness,
+   * byte-match, and release semantics through the canonical O3 retained-
+   * claim inspection/recovery boundary and never forges Task attempt or
+   * Work Cell evidence. It recovers both a lock-only crash (lease
+   * acquired, contribution never started) and a receipt-backed terminal
+   * release failure; a live, unknown, mismatched, schema-invalid, or
+   * noncanonical-path owner is refused fail-closed and never deleted, and
+   * an already-absent canonical claim is not-retained, never re-acquired.
    */
   reconcileLease(input: {
     readonly conversationId: string;
@@ -298,6 +310,8 @@ export interface ConversationContributionRegistry {
 }
 
 export interface ConversationContributionRegistryOptions {
+  /** Create the canonical Task read port for this registry's resolved home. */
+  readonly taskReadPortFactory?: (home: string) => LocalTaskReadPort;
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
@@ -401,6 +415,11 @@ const SpawnReceiptSchema = z.object({
 }).strict();
 type SpawnReceipt = z.infer<typeof SpawnReceiptSchema>;
 
+type ContributionTaskCurrentness =
+  | { readonly standing: "current" }
+  | { readonly standing: "stale" }
+  | { readonly standing: "unavailable"; readonly reason: string };
+
 /**
  * The durable started marker one successful spawn publishes AFTER its
  * reservation, lease acquisition, and handle registration. It is the only
@@ -499,6 +518,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   private readonly catalog: WorkerCatalog;
   private readonly timeline: FileMissionTimeline;
   private readonly journal: FileConversationJournal;
+  private readonly taskReadPort: LocalTaskReadPort;
   private readonly maxLiveContributions: number;
   private readonly now: () => string;
   private readonly handles = new Map<string, WorkbenchContributionHandle>();
@@ -527,6 +547,8 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       options.timelineSyncDurability,
     );
     this.journal = new FileConversationJournal(home);
+    const taskReadPortFactory = options.taskReadPortFactory ?? createLocalTaskControlPlane;
+    this.taskReadPort = taskReadPortFactory(home);
     const max = options.maxLiveContributions ?? 8;
     if (!Number.isInteger(max) || max < 1) {
       throw new Error("maxLiveContributions must be a positive integer");
@@ -734,15 +756,18 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       this.onReservationPublished();
     }
 
-    let lease: TaskRunLease | undefined;
+    let lease: WorktreeWriterLease | undefined;
     if (operation.effectKind === "effectful") {
       try {
-        // Only the reservation winner may acquire the shared task-run
-        // Worktree lease: one Task/Worktree permits at most one effectful
+        // Only the reservation winner may acquire the shared O3 Worktree
+        // writer claim: one Task/Worktree permits at most one effectful
         // execution owner, whether a task_continue carrier or a temporary
         // contribution, and overlapping writers are refused by the same
         // atomic owner evidence.
-        lease = acquireWorktreeLease(worktree, task.id, batchId);
+        lease = acquireWorktreeWriterLease(worktree, {
+          taskId: task.id,
+          attemptId: batchId,
+        });
       } catch (error) {
         // The reservation lost the exact writer lock: retract the
         // just-published reservation so the refused action leaves no claimed
@@ -1080,7 +1105,11 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
   async listSettledChildSummaries(conversationId: string): Promise<readonly ChildSummary[]> {
     const summaries: ChildSummary[] = [];
     for (const receipt of this.readSpawnReceipts(conversationId)) {
-      if (!this.isStillCurrent(receipt)) continue;
+      const currentness = this.taskCurrentness(receipt);
+      if (currentness.standing === "unavailable") {
+        throw new ContributionError("source-unavailable", currentness.reason);
+      }
+      if (currentness.standing === "stale") continue;
       let result: DelegateResultProjection;
       try {
         result = await this.timeline.readResult(conversationId, contributionPreparedBatchId(conversationId, receipt.batchId), receipt.key);
@@ -1119,7 +1148,15 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         reason: `batch ${input.batchId} does not retain a child result for key ${input.key}`,
       };
     }
-    if (!this.isStillCurrent(receipt)) {
+    const currentness = this.taskCurrentness(receipt);
+    if (currentness.standing === "unavailable") {
+      return {
+        standing: "refused",
+        code: "source-unavailable",
+        reason: currentness.reason,
+      };
+    }
+    if (currentness.standing === "stale") {
       return {
         standing: "refused",
         code: "stale",
@@ -1214,10 +1251,14 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    * The exact retained-lease recovery owner. The lease binding is read from
    * the durable spawn reservation (published before acquisition, so both a
    * lock-only crash and a receipt-backed terminal release failure retain the
-   * same exact identity); the current lease bytes must still match that
-   * identity and its owner process must be verifiably absent before the
-   * exact byte-match release runs. It never touches Task attempt or Work
-   * Cell evidence and never re-acquires or guesses a lease.
+   * same exact identity). The canonical O3 boundary derives the claim path
+   * from the binding's Worktree, verifies the recorded reservation path
+   * against it, validates the strict frozen schema plus the exact
+   * task/attempt/worktree identity, and byte-match releases only an exact
+   * claim whose owner process is verifiably absent. It never touches Task
+   * attempt or Work Cell evidence, never re-acquires or guesses a lease,
+   * and never deletes a different-owner, schema-invalid, or
+   * noncanonical-path claim.
    */
   reconcileLease(input: {
     readonly conversationId: string;
@@ -1245,63 +1286,27 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
         reason: `contribution ${input.batchId}/${input.key} holds no effectful lease binding; nothing to recover`,
       };
     }
-    let raw: string;
-    try {
-      raw = readFileSync(binding.path, "utf8");
-    } catch (error) {
-      if (isMissing(error)) {
-        return {
-          outcome: "not-retained",
-          reason: `the exact lease ${binding.path} is already absent; the release already succeeded`,
-        };
-      }
-      return {
-        outcome: "refused",
-        reason: `the retained lease ${binding.path} cannot be read: ${errorMessage(error)}`,
-      };
+    const recovery = recoverRetainedWorktreeWriterLease({
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      recordedLeasePath: binding.path,
+    });
+    if (recovery.outcome === "released") {
+      return { outcome: "released", leasePath: recovery.leasePath };
     }
-    let value: unknown;
-    try {
-      value = JSON.parse(raw);
-    } catch {
-      return {
-        outcome: "refused",
-        reason: `the retained lease ${binding.path} does not carry the exact expected identity bytes`,
-      };
+    if (recovery.outcome === "absent") {
+      return { outcome: "not-retained", reason: recovery.reason };
     }
-    const record = asRecord(value);
-    if (
-      record.taskId !== binding.taskId
-      || record.attemptId !== binding.attemptId
-      || record.worktree !== binding.worktree
-    ) {
+    if (recovery.outcome === "different-owner") {
       return {
         outcome: "refused",
         reason:
-          `the retained lease ${binding.path} belongs to a different owner identity than `
+          `the retained lease ${recovery.leasePath} belongs to a different owner identity than `
           + `contribution ${input.batchId}/${input.key}; reconciliation fails closed`,
       };
     }
-    const pid = typeof record.pid === "number" && Number.isInteger(record.pid) && record.pid > 0
-      ? record.pid
-      : undefined;
-    if (pid === undefined || !isProcessDefinitelyAbsent(pid)) {
-      return {
-        outcome: "refused",
-        reason:
-          `the retained lease owner process ${pid === undefined ? "unknown" : pid} for `
-          + `contribution ${input.batchId}/${input.key} is still alive or cannot be proven absent; reconciliation fails closed`,
-      };
-    }
-    try {
-      releaseWorktreeLease({ path: binding.path, content: raw });
-    } catch (error) {
-      return {
-        outcome: "refused",
-        reason: `the exact lease release for ${binding.path} failed: ${errorMessage(error)}`,
-      };
-    }
-    return { outcome: "released", leasePath: binding.path };
+    return { outcome: "refused", reason: recovery.reason };
   }
 
   /** The exact catalog identity for one selector; never a policy-catalog fallback. */
@@ -1323,9 +1328,9 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     }
   }
 
-  private currentTasks(): ReturnType<typeof loadPrincipalTasks> {
+  private currentTasks(): PrincipalTasks {
     try {
-      return loadPrincipalTasks(this.home);
+      return this.taskReadPort.list();
     } catch (error) {
       throw new ContributionError("source-unavailable", `the canonical Task source cannot be read: ${errorMessage(error)}`);
     }
@@ -1365,7 +1370,14 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
    */
   private eligibleSettledKeys(conversationId: string, dependsOn: readonly string[]): string[] {
     if (dependsOn.length === 0) return [];
-    const current = this.readSpawnReceipts(conversationId).filter((receipt) => this.isStillCurrent(receipt));
+    const current: SpawnReceipt[] = [];
+    for (const receipt of this.readSpawnReceipts(conversationId)) {
+      const currentness = this.taskCurrentness(receipt);
+      if (currentness.standing === "unavailable") {
+        throw new ContributionError("source-unavailable", currentness.reason);
+      }
+      if (currentness.standing === "current") current.push(receipt);
+    }
     const byKey = new Map(current.map((receipt) => [receipt.key, receipt] as const));
     const eligible: string[] = [];
     for (const dependency of dependsOn) {
@@ -1532,6 +1544,10 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       timeline: this.timeline,
       workerCatalog: this.catalog,
       concurrency: 1,
+      // The Workbench contribution registry owns the real process: it
+      // explicitly injects the local host adapter for the contribution Cell
+      // over its O3-verified bound Worktree.
+      host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
       signal: handle.signal,
       executionObserver: {
         prepare: async () => {},
@@ -1565,7 +1581,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     },
     actionKey: string,
     batchId: string,
-    lease: TaskRunLease | undefined,
+    lease: WorktreeWriterLease | undefined,
     delegate: DelegateBatchHandle | undefined,
     error: unknown,
   ): Promise<ContributionError> {
@@ -1597,7 +1613,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     this.handles.delete(batchId);
     if (lease !== undefined) {
       try {
-        releaseWorktreeLease(lease);
+        releaseWorktreeWriterLease(lease);
       } catch (releaseError) {
         // The exact lease release failed AFTER the delegate settled: the
         // spawn reservation — the durable exact lease binding published
@@ -1721,7 +1737,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       ...(input.effectKind === "effectful"
         ? {
             lease: {
-              path: join(canonicalGitDirectory(input.worktree), "rossovia-task-run.lock"),
+              path: worktreeWriterLeasePath(input.worktree),
               worktree: input.worktree,
               taskId: input.task.id,
               attemptId: input.batchId,
@@ -1829,16 +1845,28 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
     return receipts;
   }
 
-  /** The contribution is still current only while its Task revision still matches the current source. */
-  private isStillCurrent(receipt: SpawnReceipt): boolean {
-    let tasks;
+  /**
+   * The contribution is current only while an observed Task still carries
+   * its retained revision. A missing Task or revision mismatch is stale;
+   * an unreadable Task source is unavailable and must never be reported as
+   * an observed stale fact.
+   */
+  private taskCurrentness(receipt: SpawnReceipt): ContributionTaskCurrentness {
+    let tasks: PrincipalTasks;
     try {
-      tasks = loadPrincipalTasks(this.home);
-    } catch {
-      return false;
+      tasks = this.taskReadPort.list();
+    } catch (error) {
+      return {
+        standing: "unavailable",
+        reason:
+          `the canonical Task source cannot be read while checking contribution `
+          + `${receipt.batchId}/${receipt.key}: ${errorMessage(error)}`,
+      };
     }
     const task = taskById(tasks, receipt.taskId);
-    return task !== undefined && task.revision === receipt.taskRevision;
+    return task !== undefined && task.revision === receipt.taskRevision
+      ? { standing: "current" }
+      : { standing: "stale" };
   }
 
   private conversationDirectory(conversationId: string): string {
@@ -1871,7 +1899,7 @@ class WorkbenchContributionHandle implements ContributionHandle {
   readonly signal: AbortSignal;
   private readonly home: string;
   private readonly controller = new AbortController();
-  private lease: TaskRunLease | undefined;
+  private lease: WorktreeWriterLease | undefined;
   private readonly activityListeners = new Set<(activity: { text: string }) => void>();
   private readonly settledListeners = new Set<(settlement: ContributionSettlement) => void>();
   private resolveSettled!: (settlement: ContributionSettlement) => void;
@@ -1887,7 +1915,7 @@ class WorkbenchContributionHandle implements ContributionHandle {
     readonly identity: ContributionIdentity;
     readonly home: string;
     readonly spawnRef: string;
-    readonly lease?: TaskRunLease;
+    readonly lease?: WorktreeWriterLease;
   }) {
     this.identity = input.identity;
     this.home = input.home;
@@ -1997,7 +2025,7 @@ class WorkbenchContributionHandle implements ContributionHandle {
     if (this.lease !== undefined) {
       const retainedLease = this.lease;
       try {
-        releaseWorktreeLease(retainedLease);
+        releaseWorktreeWriterLease(retainedLease);
         this.lease = undefined;
       } catch (error) {
         const pid = leaseOwnerPid(retainedLease);
@@ -2105,7 +2133,7 @@ function contributionControlReceipt(
   };
 }
 
-function taskById(tasks: ReturnType<typeof loadPrincipalTasks>, idArgument: string): PrincipalTask | undefined {
+function taskById(tasks: PrincipalTasks, idArgument: string): PrincipalTask | undefined {
   const folded = idArgument.trim().toLowerCase();
   if (folded.length === 0) return undefined;
   const matches = tasks.tasks.filter((task) => task.id.toLowerCase() === folded);
@@ -2368,31 +2396,34 @@ export function fsyncFileDurability(path: string): void {
 }
 
 /**
- * The standing of one spawn-receipt-retained exact lease: retained when the
- * lease file still exists and provably belongs to the same owner identity
- * (an unreadable file fails closed as retained), released when it is absent
- * or provably belongs to another owner.
+ * The standing of one spawn-receipt-retained exact lease, inspected through
+ * the canonical O3 retained-claim boundary: retained when the exact claim
+ * still holds the canonical path for this owner identity or the canonical
+ * inspection cannot prove release (fail-closed); released only when the
+ * canonical path is provably absent or provably carries another valid
+ * owner's claim. A wrong-version, missing-field, mismatched-worktree, or
+ * noncanonical-path claim is never accepted as released and is never
+ * deleted.
  */
 function contributionLeaseStanding(lease: {
   readonly path: string;
+  readonly worktree: string;
   readonly taskId: string;
   readonly attemptId: string;
 }): "retained" | "released" {
-  if (!existsSync(lease.path)) return "released";
-  let value: unknown;
-  try {
-    value = JSON.parse(readFileSync(lease.path, "utf8"));
-  } catch {
-    return "retained";
-  }
-  const record = asRecord(value);
-  return record.taskId === lease.taskId && record.attemptId === lease.attemptId
-    ? "retained"
-    : "released";
+  const inspected = inspectRetainedWorktreeWriterLease({
+    worktree: lease.worktree,
+    taskId: lease.taskId,
+    attemptId: lease.attemptId,
+    recordedLeasePath: lease.path,
+  });
+  return inspected.standing === "absent" || inspected.standing === "different-owner"
+    ? "released"
+    : "retained";
 }
 
-/** The owner pid of one exact lease, when its content parses. */
-function leaseOwnerPid(lease: TaskRunLease): number | undefined {
+/** The owner pid of one exact O3 writer claim, when its content parses. */
+function leaseOwnerPid(lease: WorktreeWriterLease): number | undefined {
   try {
     const pid = asRecord(JSON.parse(lease.content)).pid;
     return typeof pid === "number" ? pid : undefined;

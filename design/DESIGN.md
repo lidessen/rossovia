@@ -43,6 +43,16 @@ with the actual object, actors, constraints, and acceptance owner. Runtimes and
 adapters execute that already-formed work; their successful operation cannot
 promote their own policy or result into an upper source.
 
+The [Agent harness theory](harness/) is the
+project-level derivative that treats harness design as Agent-facing task
+engineering: reconstructing, re-expressing, environmentalizing, partitioning,
+and recomposing work under bounded attention, evidence, effect, and authority
+constraints. It treats Agent organization as flexible differentiation by Task
+and environment while generic sidecar systems retain rigid state, resource,
+effect, and evidence discipline. It does not add a governing layer, replace the
+Sequence, or turn its method into a mandatory admission process; it gives
+Skills and runtime decisions one shared, revisable explanatory model.
+
 ### Governing layers
 
 | Layer | Owns | Changes only when | Must not absorb |
@@ -131,6 +141,16 @@ and formal operation remains human-initiated. See
 [decision 043](decisions/043-generative-system-and-human-governed-autonomy.md).
 
 ## Modules
+
+[Decision 055](decisions/055-rossovia-runtime-module-ownership.md) fixes the
+target runtime ownership model used by future migrations: Workbench is the pure
+Project/Task manager; Orchestration owns the Main-Agent function, Run lifecycle,
+and shared-Worktree writer ownership; Work Cell remains a standalone bounded
+execution kernel; Integrations translate external protocols; and Presentation
+owns no authoritative fact. The current capability map below still describes
+the wider implemented repository during the
+[staged migration](organization/rossovia-runtime-ownership-migration.md). Its
+physical placement or continued existence does not override the target owner.
 
 The list below is a current capability map beneath the governing layers, not a
 second architecture root. A module may change, split, or retire without

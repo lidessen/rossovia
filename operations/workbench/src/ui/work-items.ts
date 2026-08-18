@@ -1,6 +1,11 @@
 import { realpathSync } from "node:fs";
 import type { TaskAttemptProjection } from "../task-attempts";
 import {
+  readStrictTaskAttemptEvidence,
+  showPrincipalTaskAttempts,
+} from "../task-attempts";
+import { optionalGit } from "../workspace";
+import {
   MissionAnchorSeedSchema,
   type MissionAnchorSeed,
 } from "../../../autonomy/src/mission-anchor";
@@ -14,9 +19,15 @@ import type {
 import { CurrentVerifiedResultProjectionSchema } from "./projection";
 import type {
   AutonomyEffectVerificationSelector,
+  OrdinaryAttemptResultSelector,
   PrincipalTask,
+  PrincipalTaskResultClaim,
   PrincipalTaskResultReview,
   PrincipalTasks,
+  TaskResultVerificationSelector,
+} from "../contracts";
+import {
+  OrdinaryAttemptResultSelectorSchema,
 } from "../contracts";
 import {
   WorkbenchTaskExecutionContextRefSchema,
@@ -324,6 +335,7 @@ export interface WorkItemProjection {
         readonly selector: AutonomyEffectVerificationSelector;
         readonly evidenceRefs: readonly string[];
       } | null;
+      readonly attemptResultCandidate: AttemptResultCandidate | null;
     };
     readonly latestResultVerification:
       | {
@@ -335,7 +347,7 @@ export interface WorkItemProjection {
       }
       | {
         readonly standing: "verified-current";
-        readonly selector: AutonomyEffectVerificationSelector;
+        readonly selector: TaskResultVerificationSelector;
         readonly evidenceRefs: readonly string[];
       }
       | {
@@ -344,7 +356,7 @@ export interface WorkItemProjection {
       }
       | {
         readonly standing: "accepted-runtime-evidence-retained";
-        readonly selector: AutonomyEffectVerificationSelector;
+        readonly selector: TaskResultVerificationSelector;
       };
     readonly latestResultReview:
       | { readonly standing: "none" }
@@ -373,6 +385,39 @@ export interface WorkItemSetProjection {
       readonly reason?: string;
     };
   };
+}
+
+/**
+ * One strict ordinary-attempt result candidate derived by re-reading the
+ * canonical attempt/final/settlement readers — the projected attempt list
+ * plus the strict evidence family — never by copying runtime truth. It binds
+ * the exact attempt id, the current Task revision, the retained Work Cell
+ * run id, the owner-backed workspace diff and checks, the exact bound
+ * Worktree identity with its currently observed HEAD, and the stable
+ * evidence refs. A stopped, failed, stale, malformed, or unavailable
+ * attempt yields no candidate.
+ */
+export interface AttemptResultCandidate {
+  readonly selector: OrdinaryAttemptResultSelector;
+  readonly attemptId: string;
+  /** The exact current Task revision the attempt ran against. */
+  readonly taskRevision: number;
+  readonly cellStatus: "passed";
+  readonly workCellRunId: string | null;
+  readonly workspaceDiff: {
+    readonly added: readonly string[];
+    readonly changed: readonly string[];
+    readonly removed: readonly string[];
+  };
+  readonly verification: {
+    readonly passed: boolean;
+    readonly terminalPassed: boolean;
+  };
+  readonly worktree: {
+    readonly path: string;
+    readonly head: string;
+  };
+  readonly evidenceRefs: readonly string[];
 }
 
 export type PrincipalTaskSourceObservation =
@@ -781,6 +826,7 @@ function missionWorkItems(
 function principalTaskWorkItems(
   snapshot: WorkItemSnapshot,
   observation: PrincipalTaskSourceObservation,
+  home?: string,
   taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
 ): WorkItemProjection[] {
   if (observation.standing !== "available") return [];
@@ -1257,6 +1303,12 @@ function principalTaskWorkItems(
       && task.lifecycle !== "verifying"
         ? verifiedCurrentExecution
         : null;
+    const attemptResultCandidate = attemptResultCandidateFor(
+      home,
+      task,
+      expectedWorktreePath,
+      taskAttempts?.[task.id],
+    );
     const worktreeObserved =
       expectedWorktreePath !== undefined
       && project !== undefined
@@ -1343,6 +1395,17 @@ function principalTaskWorkItems(
             }),
           };
     const latestClaim = task.resultClaims.at(-1);
+    const attemptClaimVerification =
+      latestClaim !== undefined
+      && latestClaim.evidence.kind === "runtime-verified-attempt"
+        ? attemptClaimVerificationFor(
+          home,
+          task,
+          expectedWorktreePath,
+          taskAttempts?.[task.id],
+          latestClaim,
+        )
+        : null;
     const latestResultVerification =
       latestClaim === undefined
         ? { standing: "none" as const }
@@ -1353,27 +1416,41 @@ function principalTaskWorkItems(
           }
           : latestClaim.standing === "accepted"
               && latestClaim.resolution?.kind === "accepted"
-              && latestClaim.resolution.basis === "runtime-verified-effect"
+              && (
+                latestClaim.resolution.basis === "runtime-verified-effect"
+                || latestClaim.resolution.basis === "runtime-verified-attempt"
+              )
             ? {
               standing: "accepted-runtime-evidence-retained" as const,
               selector: latestClaim.evidence.selector,
             }
-            : verifiedCurrentExecution !== null
-                && latestClaim.evidence.authorizationId
-                  === verifiedCurrentExecution.authorizationId
-                && sameRuntimeVerificationSelector(
-                  latestClaim.evidence.selector,
-                  verifiedCurrentExecution.selector,
-                )
-              ? {
-                standing: "verified-current" as const,
-                selector: verifiedCurrentExecution.selector,
-                evidenceRefs: verifiedCurrentExecution.evidenceRefs,
-              }
-              : {
-                standing: "runtime-evidence-unavailable" as const,
-                reason: "the retained runtime verification selector is no longer the exact current verified execution",
-              };
+            : latestClaim.evidence.kind === "runtime-verified-effect"
+              ? verifiedCurrentExecution !== null
+                  && latestClaim.evidence.authorizationId
+                    === verifiedCurrentExecution.authorizationId
+                  && sameRuntimeVerificationSelector(
+                    latestClaim.evidence.selector,
+                    verifiedCurrentExecution.selector,
+                  )
+                ? {
+                  standing: "verified-current" as const,
+                  selector: verifiedCurrentExecution.selector,
+                  evidenceRefs: verifiedCurrentExecution.evidenceRefs,
+                }
+                : {
+                  standing: "runtime-evidence-unavailable" as const,
+                  reason: "the retained runtime verification selector is no longer the exact current verified execution",
+                }
+              : attemptClaimVerification !== null
+                ? {
+                  standing: "verified-current" as const,
+                  selector: attemptClaimVerification.selector,
+                  evidenceRefs: attemptClaimVerification.evidenceRefs,
+                }
+                : {
+                  standing: "runtime-evidence-unavailable" as const,
+                  reason: "the retained attempt verification selector is no longer the exact current recorded passed attempt",
+                };
     const resultReviews = task.resultClaims.flatMap(
       (claim): ResultReviewProjection[] => claim.reviews.map((assessment) => ({
         claim: {
@@ -1541,6 +1618,7 @@ function principalTaskWorkItems(
           correctionDeliveryCandidate,
           recoveryCandidate,
           verifiedResultCandidate,
+          attemptResultCandidate,
         },
         latestResultVerification,
         latestResultReview,
@@ -1734,12 +1812,16 @@ function taskLaunchReadinessBlockers(input: {
 }
 
 function sameRuntimeVerificationSelector(
-  left: AutonomyEffectVerificationSelector,
-  right: AutonomyEffectVerificationSelector,
+  left: TaskResultVerificationSelector,
+  right: TaskResultVerificationSelector,
 ): boolean {
-  return left.kind === right.kind
-    && left.effectId === right.effectId
-    && left.verificationEventId === right.verificationEventId;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "autonomy-effect-verification.v1") {
+    const observed = right as AutonomyEffectVerificationSelector;
+    return left.effectId === observed.effectId
+      && left.verificationEventId === observed.verificationEventId;
+  }
+  return left.attemptId === (right as OrdinaryAttemptResultSelector).attemptId;
 }
 
 function reviewIndependence(
@@ -1793,6 +1875,149 @@ function sameObservedPath(
   }
 }
 
+/**
+ * Derive the one strict ordinary-attempt result candidate by re-reading the
+ * canonical attempt/final/settlement readers — the projected attempt list
+ * plus the strict evidence family — never by copying runtime truth. The
+ * candidate appears only for an open Agent-owned Task whose latest attempt
+ * is a fully available, recorded, passed run with overall and terminal
+ * verification at the exact current Task revision, whose immutable CellInput
+ * binds the Task's current Worktree, and whose Worktree still sits at the
+ * exact currently observed HEAD. Stopped, failed, stale, malformed, or
+ * unavailable evidence yields no candidate.
+ */
+function attemptResultCandidateFor(
+  home: string | undefined,
+  task: PrincipalTask,
+  expectedWorktreePath: string | undefined,
+  observed: TaskAttemptSourceObservation | undefined,
+): AttemptResultCandidate | null {
+  if (home === undefined || expectedWorktreePath === undefined) return null;
+  if (task.lifecycle !== "open" || task.nextActor !== "agent") return null;
+  if (task.resultClaims.some((claim) => claim.standing === "submitted")) return null;
+  const candidate = attemptResultEvidenceFor(home, task, expectedWorktreePath, observed);
+  if (candidate === null || candidate.taskRevision !== task.revision) return null;
+  return candidate;
+}
+
+/**
+ * Revalidate one already submitted ordinary-attempt claim against the same
+ * canonical attempt evidence the submission verified: the exact attempt must
+ * still be fully available, recorded, passed, and verified, its immutable
+ * CellInput must still bind the Task's current Worktree, the current
+ * Worktree HEAD must equal the exact HEAD the submission verified, and the
+ * claim's retained verified Task revision must still match the attempt's
+ * own revision. Any drift after submission — evidence corruption, Worktree
+ * rebinding, HEAD movement, or supersession by a correction — yields no
+ * current verification, so an explicit accept refuses.
+ */
+function attemptClaimVerificationFor(
+  home: string | undefined,
+  task: PrincipalTask,
+  expectedWorktreePath: string | undefined,
+  observed: TaskAttemptSourceObservation | undefined,
+  claim: PrincipalTaskResultClaim,
+): { selector: OrdinaryAttemptResultSelector; evidenceRefs: readonly string[] } | null {
+  if (claim.evidence.kind !== "runtime-verified-attempt") return null;
+  const evidence = attemptResultEvidenceFor(home, task, expectedWorktreePath, observed);
+  if (evidence === null) return null;
+  if (evidence.selector.attemptId !== claim.evidence.selector.attemptId) return null;
+  if (evidence.taskRevision !== claim.evidence.taskRevision) return null;
+  if (evidence.worktree.head !== claim.evidence.worktreeHead) return null;
+  return { selector: evidence.selector, evidenceRefs: evidence.evidenceRefs };
+}
+
+/**
+ * The ungated canonical attempt evidence derivation shared by the submission
+ * candidate and by the revalidation of an already submitted attempt claim:
+ * the exact same strict readers and checks, without lifecycle gating.
+ */
+function attemptResultEvidenceFor(
+  home: string | undefined,
+  task: PrincipalTask,
+  expectedWorktreePath: string | undefined,
+  observed: TaskAttemptSourceObservation | undefined,
+): AttemptResultCandidate | null {
+  if (home === undefined || expectedWorktreePath === undefined) return null;
+  const attempts = observed !== undefined && observed.standing === "available"
+    ? observed.attempts
+    : showPrincipalTaskAttempts(home, task.id);
+  const latest = attempts.at(-1);
+  if (latest === undefined) return null;
+  if (latest.status !== "recorded" || latest.cellStatus !== "passed") return null;
+  if (
+    latest.verification?.passed !== true
+    || latest.verification.terminal?.passed !== true
+  ) return null;
+  if (
+    latest.evidence.attempt.standing !== "available"
+    || latest.evidence.finalRecord.standing !== "available"
+    || latest.evidence.settlement.standing !== "available"
+  ) return null;
+  // The strict evidence family is re-read as the authority for the exact
+  // run identity, workspace binding, checks, and stable refs; the projection
+  // above only selects the latest attempt.
+  const evidence = readStrictTaskAttemptEvidence(home, latest.attemptId);
+  if (evidence.standing !== "available") return null;
+  const attempt = evidence.attempt;
+  const settlement = evidence.settlement;
+  const final = evidence.finalRecord;
+  const input = evidence.input;
+  if (
+    attempt === undefined
+    || settlement === undefined
+    || final === undefined
+    || input === undefined
+  ) return null;
+  if (attempt.taskId !== task.id) return null;
+  if (settlement.status !== "recorded") return null;
+  if (
+    settlement.workCellRunId === undefined
+    || settlement.cellStatus === undefined
+    || settlement.workCellRunId !== final.runId
+    || settlement.cellStatus !== final.status
+  ) return null;
+  if (
+    final.status !== "passed"
+    || final.verification.passed !== true
+    || final.verification.terminal.passed !== true
+  ) return null;
+  if (!sameObservedPath(input.workspace.root, expectedWorktreePath)) return null;
+  let head: string | null = null;
+  try {
+    head = optionalGit(["rev-parse", "HEAD"], input.workspace.root);
+  } catch {
+    return null;
+  }
+  if (head === null || !/^[0-9a-f]{40}$/u.test(head)) return null;
+  return {
+    selector: OrdinaryAttemptResultSelectorSchema.parse({
+      kind: "ordinary-attempt-result.v1",
+      attemptId: latest.attemptId,
+    }),
+    attemptId: latest.attemptId,
+    taskRevision: attempt.taskRevision,
+    cellStatus: "passed",
+    workCellRunId: settlement.workCellRunId,
+    workspaceDiff: {
+      added: [...final.workspaceDiff.added],
+      changed: [...final.workspaceDiff.changed],
+      removed: [...final.workspaceDiff.removed],
+    },
+    verification: {
+      passed: final.verification.passed,
+      terminalPassed: final.verification.terminal.passed,
+    },
+    worktree: { path: input.workspace.root, head },
+    evidenceRefs: [
+      evidence.refs.inputRef,
+      evidence.refs.attemptRef,
+      evidence.refs.finalRecordRef,
+      evidence.refs.settlementRef,
+    ],
+  };
+}
+
 function runnerTargetState(
   value: string | undefined,
 ):
@@ -1826,6 +2051,7 @@ export function buildWorkItemProjection(
     reason: "Principal task source was not observed.",
   },
   taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
+  home?: string,
 ): WorkItemSetProjection {
   const attention = attentionWorkItems(snapshot);
   const runners = runnerWorkItems(snapshot);
@@ -1838,7 +2064,7 @@ export function buildWorkItemProjection(
   const items = [
     ...attention,
     ...runners,
-    ...principalTaskWorkItems(snapshot, taskSource, taskAttempts),
+    ...principalTaskWorkItems(snapshot, taskSource, home, taskAttempts),
     ...missionWorkItems(snapshot, activeMissionKeys),
   ].sort((left, right) => {
     const attentionRank = {

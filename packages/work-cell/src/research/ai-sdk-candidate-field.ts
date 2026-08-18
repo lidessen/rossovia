@@ -15,13 +15,13 @@ import {
   type SeedSelection,
 } from "./candidate-field";
 import type { CellUsage } from "../contracts";
-import { normalizeAiSdkUsage as normalizeUsage } from "../ai-sdk-usage";
+import { normalizeAiSdkUsage as normalizeUsage } from "../integrations/ai-sdk/ai-sdk-usage";
 import {
   createValidationModel,
   validationModelName,
   validationProviderName,
   type ValidationModelOptions,
-} from "../validation-model";
+} from "../integrations/ai-sdk/validation-model";
 
 export interface AiSdkCandidateFieldOptions extends ValidationModelOptions {
   seedRetriever?: SeedMaterialRetriever;

@@ -29,9 +29,11 @@ ethical boundary is liberation rather than extraction: human and AI capability
 must not be organized as an unaccountable source of exploitation.
 
 Start from the [founding mandate](design/FOUNDING-MANDATE.md) to understand why
-the project exists, the [operating protocol](design/operations/OPERATING-PROTOCOL.md)
-to see how human-authorized work proceeds, or the active skills below to use a
-specific method.
+the project exists, the [Agent harness theory](design/harness/) to understand
+how Rossovia turns human work into disciplined Agent-executable units, the
+[operating protocol](design/operations/OPERATING-PROTOCOL.md) to see how
+human-authorized work proceeds, or the active skills below to use a specific
+method.
 
 ## Ways to use Rossovia
 
@@ -140,6 +142,7 @@ inferred memory never becomes active preference without human confirmation.
 | [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
+| [`design/harness/`](design/harness/) | the visible project-level map and coherent theory of Agent-oriented task engineering | a second Principle canon, runtime authority, or empirical proof by itself |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
 | [`chronicle/`](chronicle/) | provenance-preserving observation receipts and correction chains | claims, decisions, or a universal activity log |
 | [`operations/missions/`](operations/missions/) | return obligations for active multi-session missions | a backlog, scheduler, or Git history duplicate |
@@ -167,6 +170,7 @@ retained evaluations rather than replacing them.
 | [disciplined-development](skills/disciplined-development/SKILL.md) | `/disciplined-development` | Apply lightweight evidence, scope, and test-value discipline underneath a development task without creating another methodology workflow. |
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | Turn an observed non-trivial practice into a settled conclusion, a next smallest test, or a route to the owner of the unresolved judgment. |
 | [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | Choose whether a recurring need should exist as a skill, decision artifact, runtime, projection, bounded campaign, or no new form before implementation starts. |
+| [mechanism-design-review](skills/mechanism-design-review/SKILL.md) | `/mechanism-design-review` | Derive the smallest valid treatment for an agent-system pressure by asking what the object is and owns, where it came from, and what relation it must become before adding mechanism complexity. |
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | Name a shared project concept, define its operative boundary, explain it at the right source, and decline needless terminology. |
 | [document-writing](skills/document-writing/SKILL.md) | `/document-writing` | Turn source-grounded meaning into truthful prose for a real writer, reader, occasion, and intended change; treat AI-writing patterns as late diagnostics rather than the generative method. |
 | [work-estimation](skills/work-estimation/SKILL.md) | `/work-estimation` | Recover necessary work and discovery branches before converting a mission into model-specific budget, time, or cost. |
@@ -233,6 +237,7 @@ operating mode remains human-initiated.
 | Applying a lightweight evidence, scope, completion, or meaningful-test discipline to ordinary development | `/disciplined-development` |
 | Turning a finished or failed non-trivial attempt into the next bounded practice | `/practice-cycle` |
 | Deciding whether a capability needs a skill, record, runtime, projection, or no new form | `/form-guidance` |
+| Reviewing a proposed agent-harness state, gate, hook, queue, lock, retry, record, or workflow through its identity, causal origin, destination, and smallest sufficient form | `/mechanism-design-review` |
 | Naming a shared concept, defining terminology, or deciding where its explanation belongs | `/naming-and-articulation` |
 | Writing or rewriting a README, design document, report, explainer, guide, or other prose for a real reader without changing the source facts | `/document-writing` |
 | Comparing the real work of alternatives, selecting estimate precision, or setting error tolerance before a budget | `/work-estimation` |

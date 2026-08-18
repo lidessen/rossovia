@@ -12,6 +12,7 @@ import {
   type WorkSettlement,
   type WorkSource,
 } from "../src/orchestration";
+import { createLocalHost } from "../src/workspace";
 
 const roots: string[] = [];
 
@@ -27,7 +28,7 @@ test("an open queue accepts work after execution starts and closes with bounded 
   const running = runOrchestration(queue, () => {
     drivers += 1;
     return new QueueDriver(tracker);
-  }, { concurrency: 2 });
+  }, { concurrency: 2, host: createLocalHost() });
 
   await queue.submit(input(root, "first"));
   await queue.submit(input(root, "second"));
@@ -72,6 +73,7 @@ test("cancelling an empty open queue removes its waiter and preserves later subm
   const controller = new AbortController();
   const running = runOrchestration(queue, () => new QueueDriver(new ExecutionTracker(1)), {
     concurrency: 1,
+    host: createLocalHost(),
     signal: controller.signal,
   });
 
@@ -114,7 +116,7 @@ test("a fatal WorkSource protocol violation retains sibling settlements and fail
 
   let caught: unknown;
   try {
-    await runOrchestration(source, () => driver, { concurrency: 2 });
+    await runOrchestration(source, () => driver, { concurrency: 2, host: createLocalHost() });
   } catch (error) {
     caught = error;
   }

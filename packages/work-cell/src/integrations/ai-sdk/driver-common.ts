@@ -1,7 +1,7 @@
 import type { UserModelMessage } from "ai";
-import type { CellInput, CellUsage } from "./contracts";
-import type { DriverContext } from "./driver";
-import type { TaskToolSet } from "./ai-sdk-driver";
+import type { CellInput, CellUsage } from "../../contracts";
+import type { DriverContext } from "../../driver";
+import type { TaskToolSet } from "./task-tool-set";
 
 /** Shared pure helpers for driver instructions, evidence projection, and usage. */
 
@@ -90,16 +90,24 @@ export function renderRecoveryEvidence(steps: readonly unknown[]): string {
 
 export function renderExecutionInstructions(
   input: CellInput,
-  options: { deferStructuredOutput?: boolean; taskToolSet: TaskToolSet },
+  options: {
+    deferStructuredOutput?: boolean;
+    /** The main phase defers the final structured output to the existing closure phase (terminal plus inline-output mode). */
+    deferStructuredOutputToClosure?: boolean;
+    taskToolSet: TaskToolSet;
+  },
 ): string {
   const terminalInstruction = input.terminalTools?.length
     ? `Finish by invoking exactly one declared terminal tool: ${input.terminalTools.map((terminal) => terminal.name).join(", ")}.`
     : "A terminal tool is not required. Leave a concise final response after completing the work.";
-  const outputInstruction = input.outputSchema && !options.deferStructuredOutput
+  const deferredToClosure = options.deferStructuredOutputToClosure === true;
+  const outputInstruction = input.outputSchema && !options.deferStructuredOutput && !deferredToClosure
     ? `Return a final structured output that conforms exactly to this JSON Schema. This is independent of every tool input:\n${JSON.stringify(input.outputSchema)}`
     : undefined;
-  const deferredOutputInstruction = input.outputSchema && options.deferStructuredOutput
-    ? "A separate structured settlement phase will follow. Complete the necessary investigation first and leave a source-grounded report; do not guess schema fields or stop at placeholders."
+  const deferredOutputInstruction = input.outputSchema && (options.deferStructuredOutput || deferredToClosure)
+    ? deferredToClosure
+      ? "A separate closure phase will collect the final structured output after the declared terminal tool is invoked. Complete the necessary investigation and invoke exactly one declared terminal tool; do not guess schema fields or stop at placeholders."
+      : "A separate structured settlement phase will follow. Complete the necessary investigation first and leave a source-grounded report; do not guess schema fields or stop at placeholders."
     : undefined;
   const artifactInstruction = input.artifacts?.length
     ? `Create each declared artifact in the workspace write scope. Their paths and instructions are binding:\n${input.artifacts.map((artifact) => `- ${artifact.path}: ${artifact.instructions}`).join("\n")}`

@@ -18,7 +18,7 @@ import {
   type SequenceCellInput,
 } from "./genome";
 import { runCell } from "../../run-cell";
-import { Workspace } from "../../workspace";
+import type { CellHost } from "../../host-port";
 
 export const SEQUENCE_PREPARATION_ADAPTER = "sequence.v1" as const;
 
@@ -58,10 +58,11 @@ export interface PreparedSequenceCell {
 export async function prepareSequenceCell(
   unparsedInput: unknown,
   selector: SequenceSelector,
+  host: CellHost,
   signal: AbortSignal,
 ): Promise<PreparedSequenceCell> {
   const input = SequenceCellInputSchema.parse(unparsedInput);
-  const workspace = await Workspace.create(input.workspace, input.budget);
+  const workspace = await host.createWorkspace(input.workspace, input.budget);
   const preparationTrace: TraceEvent[] = [];
   const context: DriverContext = {
     workspace,
@@ -130,6 +131,7 @@ export async function prepareSequenceCell(
 export async function runSequenceCell(
   unparsedInput: unknown,
   driver: CellDriver & SequenceSelector,
+  host: CellHost,
   externalSignal?: AbortSignal,
 ): Promise<CellRunRecord> {
   const input = SequenceCellInputSchema.parse(unparsedInput);
@@ -144,7 +146,7 @@ export async function runSequenceCell(
     prepared = lowerSequenceInput(input);
   } else {
     try {
-      const result = await prepareSequenceCell(input, driver, signal);
+      const result = await prepareSequenceCell(input, driver, host, signal);
       prepared = result.input;
       preparation = result.preparation;
     } catch (caught) {
@@ -168,7 +170,11 @@ export async function runSequenceCell(
       };
     }
   }
-  const record = await runCell(prepared, executionDriver, { signal, ...(preparation ? { preparation } : {}) });
+  const record = await runCell(prepared, executionDriver, {
+    host,
+    signal,
+    ...(preparation ? { preparation } : {}),
+  });
   const finishedAt = new Date();
   return {
     ...record,

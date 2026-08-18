@@ -29,6 +29,12 @@ agent can discover the relevant part at the moment it changes action. Loaded
 instructions, summaries, indexes, and retrieved fragments remain projections
 unless separately governed as sources.
 
+An Agent's larger working environment also contains a task form, workspace,
+tools, capabilities, effect limits, verification, and a return contract. This
+Skill owns only the selection, timing, and receiver-facing expression of source
+information inside that environment; it does not bind the other parts or become
+their owner.
+
 Do not assume that a familiar filename, three-layer model, hook, skill directory,
 or memory mechanism exists in another runtime. Investigate the actual target.
 
@@ -78,7 +84,11 @@ domain owner. Delivery cannot repair absent doctrine or decide what is true.
 4. **Select the smallest path.** Prefer a discoverable pointer to a named source
    over copied doctrine. Compress only what the target decision can safely lose.
    Keep hard constraints reachable at the moment they govern action; remove
-   detail that does not change that action.
+   detail that does not change that action. Express the projection for its
+   receiver: omit parent history and runtime maps that do not affect the named
+   action. If any necessary term could change the receiver's action or return,
+   define it at first use by the object it denotes, its boundary, and why it
+   matters now.
 5. **Preserve ownership boundaries.** Route source content and acceptance to the
    domain owner, source/lifetime conflicts to `artifact-organization`, skill
    expression failures to `skill-engineering`, and vendor-specific mechanics to
@@ -88,6 +98,11 @@ domain owner. Delivery cannot repair absent doctrine or decide what is true.
    surface, observe the delivery path where possible, and check the named action.
    Use a boundary task to expose needless loading. Add a controlled baseline
    only when claiming comparative improvement, not merely to prove delivery.
+   When prompt comprehension is the suspected failure, a fresh Agent may first
+   restate the object, boundary, allowed effects, non-goals, verification, and
+   return from the delivered context alone; a request to define an undeclared
+   term defeats that delivery claim. Keep successful restatement separate from
+   semantic task correctness and acceptance.
 7. **Externalize proportionally.** Return a conversation result for a bounded
    audit. Retain a delivery map or evaluation record only when a later actor must
    reproduce, approve, or revise the placement decision.

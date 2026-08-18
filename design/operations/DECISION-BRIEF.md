@@ -7,9 +7,10 @@
 ## Purpose
 
 When a human decision is material, a bare request for approval transfers the
-agent's unresolved comparison work back to the Principal. A Decision Brief is a
-small presentation contract: it makes the available choices, recommendation,
-consequences, and authorized next action visible in one response.
+agent's unresolved comprehension and comparison work back to the Principal. A
+Decision Brief is a small, self-contained presentation contract: it gives the
+Principal the working model needed to understand the object, compare the
+available choices, and know what each reply authorizes in one response.
 
 It is a decision **projection**, not a decision source. The named Strategy
 Case, Work Estimate, PR, or design record retains the facts and rationale. The
@@ -29,7 +30,10 @@ one consequential alternative, it must say that the decision is not ready.
 
 ## Required response shape
 
-Keep the first screen concise. Link the durable record for evidence and detail.
+Keep the first screen concise but complete enough to orient the decision. The
+Principal must not need to open the durable record or source code to learn what
+the system is, how it works, why the decision exists, or how the options differ.
+Links retain evidence and permit drill-down after that explanation.
 
 ```markdown
 ## Decision: <one sentence>
@@ -37,15 +41,33 @@ Keep the first screen concise. Link the durable record for evidence and detail.
 **Recommendation: A — <short action>**
 <why it best meets the mandate and current constraints>
 
+### What this is and why it matters
+<plain-language object, purpose, current pressure, and decision boundary>
+
+### How it works
+<normal path, named owners and relations, and failure/recovery boundary; use a
+small flow or table only when it materially reduces explanation cost>
+
+### What changes and what stays
+<current-to-target delta, retained hard constraints, removed or deferred
+complexity, and material unknowns>
+
 | Key | Choose this when | Immediate authorized result | Main tradeoff / reopening signal |
 |---|---|---|---|
 | A | | | |
 | B | | | |
 | C — hold or discover | | | |
 
-**Current evidence:** <one sentence and source link>
+**Residual risk and acceptance owner:** <what remains uncertain and who accepts it>
+**Evidence for drill-down:** <one sentence and source links; never a substitute for the explanation above>
 **Your reply:** `A`, `B`, `C`, or `explain <key>`.
 ```
+
+This is a content contract, not a demand for the same headings at every scale.
+A small reversible choice may combine sections into two paragraphs. A module,
+runtime, architecture, strategy, or irreversible-effect decision normally
+needs the full working model because names and source links alone do not explain
+its behavior.
 
 Use two to four options. Include `hold` or a smallest discovery probe when it
 is a real alternative; do not add it ceremonially. The recommendation is an
@@ -79,7 +101,15 @@ interactive choices as though they were part of the code change.
 
 ## Action and boundary test
 
-The brief works only if a Principal can choose without asking what the options
-are or what follows each one. It fails if a response hides the alternatives in
-a long narrative, makes the recommendation sound pre-committed, invents a
-false choice, or uses an option label to smuggle in extra authority.
+The brief works only if a Principal who has not opened the linked files can:
+
+1. explain what the object is and why the decision exists;
+2. trace the normal path and the material failure/recovery boundary;
+3. distinguish current state, proposed state, hard constraints, and unknowns;
+4. compare the consequential alternatives and tradeoffs; and
+5. state exactly what their reply authorizes.
+
+It fails if a response hides the alternatives in a long narrative, makes the
+recommendation sound pre-committed, invents a false choice, uses an option label
+to smuggle in extra authority, or substitutes status labels, file lists, test
+counts, citations, or code links for the missing working model.

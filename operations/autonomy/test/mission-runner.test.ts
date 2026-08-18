@@ -1298,78 +1298,97 @@ test("a verified reconciliation commits through the live runner before a success
   const timeline = new FileMissionTimeline(missionRunnerDirectory(root, missionId));
   const seededAnchor = await seedTimeline(timeline, missionId);
   const runtimeModule = fileURLToPath(new URL("./fixtures/continuing-mission-runtime.ts", import.meta.url));
-  const child = startRunner(root, missionId, runtimeModule);
-  await waitForLiveStatus(root, missionId, child);
-
-  const accepted = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "input",
-    input: {
-      id: "continue-input-1",
-      actorRef: "principal:test",
-      sourceRef: "test:principal-input",
-      payload: { kind: "contribution", text: "Continue only after this input is reconciled." },
-    },
-  })));
-  if (accepted.receipt === undefined) throw new Error("expected a retained Mission input receipt");
-  const commit = await reconciliationCommit(root, missionId, accepted.receipt, seededAnchor);
-
-  const tooEarly = await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "reconciliation-commit",
-    commit,
-    expectedRunnerId: accepted.status.runnerId,
-    expectedState: accepted.status.state,
-  }));
-  expect(tooEarly).toMatchObject({ ok: false });
-  if (!tooEarly.ok) expect(tooEarly.error).toContain("turn is still live");
-
-  const staleTurn = await waitForSettledTurn(timeline, missionId, child);
-  expect(staleTurn).toMatchObject({
-    start: { turnId: `continuing-${missionId}-0`, baselineWatermark: 0 },
-    settlement: { kind: "input-pending", currentWatermark: 1 },
+  const releasePath = join(root, "continuing-runtime.release");
+  const child = startRunner(root, missionId, runtimeModule, undefined, {
+    ROSSOVIA_CONTINUING_MISSION_RELEASE_PATH: releasePath,
   });
+  try {
+    await waitForLiveStatus(root, missionId, child);
 
-  const commitPath = join(root, "reconciliation-commit.json");
-  await writeFile(commitPath, `${JSON.stringify(commit)}\n`, "utf8");
-  const pendingStatus = (await waitForLiveStatus(root, missionId, child));
-  const staleTarget = await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "reconciliation-commit",
-    commit,
-    expectedRunnerId: "replacement-runner",
-    expectedState: pendingStatus.state,
-  }));
-  expect(staleTarget).toMatchObject({ ok: false });
-  if (!staleTarget.ok) expect(staleTarget.error).toContain("runner changed");
-  const committed = await runCli([
-    "mission", "reconcile", missionId, commitPath, "--home", root,
-    "--expected-runner", pendingStatus.runnerId,
-    "--expected-state", pendingStatus.state,
-  ]);
-  expect(committed.exitCode).toBe(0);
-  expect(JSON.parse(committed.stdout)).toMatchObject({ status: {
-    state: "running",
-    inputWatermark: 1,
-    reconciledWatermark: 1,
-  } });
-  const successor = await waitForSettledTurn(timeline, missionId, child);
-  expect(successor).toMatchObject({
-    start: { turnId: `continuing-${missionId}-1`, baselineWatermark: 1 },
-    settlement: { kind: "finished", text: "continued at watermark 1" },
-  });
+    const accepted = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "input",
+      input: {
+        id: "continue-input-1",
+        actorRef: "principal:test",
+        sourceRef: "test:principal-input",
+        payload: { kind: "contribution", text: "Continue only after this input is reconciled." },
+      },
+    })));
+    if (accepted.receipt === undefined) throw new Error("expected a retained Mission input receipt");
+    const commit = await reconciliationCommit(root, missionId, accepted.receipt, seededAnchor);
 
-  const replayTarget = await waitForLiveStatus(root, missionId, child);
-  const replayed = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "reconciliation-commit",
-    commit,
-    expectedRunnerId: replayTarget.runnerId,
-    expectedState: replayTarget.state,
-  })));
-  expect(replayed.status.reconciledWatermark).toBe(1);
-  const parent = await Bun.file(timeline.timelinePath(missionId)).text();
-  expect(parent.match(/mission\.input-reconciled/g)).toHaveLength(1);
-  expect(parent.match(/mission\.turn-started/g)).toHaveLength(2);
+    try {
+      const tooEarly = await requestMissionRunner(root, missionId, missionRunnerRequest({
+        kind: "reconciliation-commit",
+        commit,
+        expectedRunnerId: accepted.status.runnerId,
+        expectedState: accepted.status.state,
+      }));
+      expect(tooEarly).toMatchObject({ ok: false });
+      if (!tooEarly.ok) expect(tooEarly.error).toContain("turn is still live");
+    } finally {
+      await writeFile(releasePath, "released\n", "utf8");
+    }
 
-  await requestMissionRunner(root, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
-  await waitForExit(child);
+    const staleTurn = await waitForSettledTurn(timeline, missionId, child);
+    expect(staleTurn).toMatchObject({
+      start: { turnId: `continuing-${missionId}-0`, baselineWatermark: 0 },
+      settlement: { kind: "input-pending", currentWatermark: 1 },
+    });
+
+    const commitPath = join(root, "reconciliation-commit.json");
+    await writeFile(commitPath, `${JSON.stringify(commit)}\n`, "utf8");
+    const pendingStatus = (await waitForLiveStatus(root, missionId, child));
+    const staleTarget = await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "reconciliation-commit",
+      commit,
+      expectedRunnerId: "replacement-runner",
+      expectedState: pendingStatus.state,
+    }));
+    expect(staleTarget).toMatchObject({ ok: false });
+    if (!staleTarget.ok) expect(staleTarget.error).toContain("runner changed");
+    const committed = await runCli([
+      "mission", "reconcile", missionId, commitPath, "--home", root,
+      "--expected-runner", pendingStatus.runnerId,
+      "--expected-state", pendingStatus.state,
+    ]);
+    expect(committed.exitCode).toBe(0);
+    expect(JSON.parse(committed.stdout)).toMatchObject({ status: {
+      state: "running",
+      inputWatermark: 1,
+      reconciledWatermark: 1,
+    } });
+    const successor = await waitForSettledTurn(timeline, missionId, child);
+    expect(successor).toMatchObject({
+      start: { turnId: `continuing-${missionId}-1`, baselineWatermark: 1 },
+      settlement: { kind: "finished", text: "continued at watermark 1" },
+    });
+
+    const replayTarget = await waitForLiveStatus(root, missionId, child);
+    const replayed = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "reconciliation-commit",
+      commit,
+      expectedRunnerId: replayTarget.runnerId,
+      expectedState: replayTarget.state,
+    })));
+    expect(replayed.status.reconciledWatermark).toBe(1);
+    const parent = await Bun.file(timeline.timelinePath(missionId)).text();
+    expect(parent.match(/mission\.input-reconciled/g)).toHaveLength(1);
+    expect(parent.match(/mission\.turn-started/g)).toHaveLength(2);
+  } finally {
+    try {
+      await writeFile(releasePath, "released\n", "utf8");
+    } finally {
+      await requestMissionRunner(
+        root,
+        missionId,
+        missionRunnerRequest({ kind: "runner-shutdown" }),
+      ).catch(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      });
+      await waitForExit(child);
+    }
+  }
 }, 10_000);
 
 test("runtime restarts preserve a partially reconciled backlog and start only after its final watermark", async () => {
@@ -1839,12 +1858,19 @@ async function sendControl(
   })));
 }
 
-function startRunner(root: string, missionId: string, runtimeModule?: string, anchorFile?: string): ChildProcess {
+function startRunner(
+  root: string,
+  missionId: string,
+  runtimeModule?: string,
+  anchorFile?: string,
+  environment: NodeJS.ProcessEnv = {},
+): ChildProcess {
   const script = fileURLToPath(new URL("../src/mission-runner-process.ts", import.meta.url));
   const args = [script, "--home", root, "--mission", missionId];
   if (runtimeModule !== undefined) args.push("--runtime-module", runtimeModule);
   if (anchorFile !== undefined) args.push("--anchor-file", anchorFile);
   const child = spawn(process.execPath, args, {
+    env: { ...process.env, ...environment },
     stdio: ["ignore", "ignore", "pipe"],
   });
   childErrors.set(child, "");

@@ -8,32 +8,32 @@ import {
 import { generateText, simulateReadableStream, streamText, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
-import { createRoutedLanguageModel } from "../src/model-route";
-import { normalizeAiSdkUsage } from "../src/ai-sdk-usage";
+import { createRoutedLanguageModel } from "../src/integrations/ai-sdk/model-route";
+import { normalizeAiSdkUsage } from "../src/integrations/ai-sdk/ai-sdk-usage";
 import {
   adaptOpenCodeGoRequestBody,
   classifyOpenCodeGoFailure,
-} from "../src/providers/opencode-go";
+} from "../src/integrations/ai-sdk/providers/opencode-go";
 import {
   adaptKimiCodingToolChoice,
   adaptKimiCodingRequest,
   classifyKimiCodingFailure,
   createKimiCodingModel,
-} from "../src/providers/kimi-coding";
+} from "../src/integrations/ai-sdk/providers/kimi-coding";
 import {
   adaptDeepSeekToolChoice,
   classifyDeepSeekFailure,
   deepSeekRequestMiddleware,
   deepSeekProviderOptions,
-} from "../src/providers/deepseek";
+} from "../src/integrations/ai-sdk/providers/deepseek";
 import {
   createValidationModel,
   validationModelName,
-} from "../src/validation-model";
+} from "../src/integrations/ai-sdk/validation-model";
 import {
   ProviderProfileSchema,
   type ValidationProviderId,
-} from "../src/provider-profile";
+} from "../src/integrations/ai-sdk/provider-profile";
 
 const routeTarget = (provider: ValidationProviderId) => ({
   provider,
@@ -84,8 +84,11 @@ test("the validation policy requires an explicit route backed by its referenced 
   });
   expect(deepSeekOnly.structuredOutputMode).toBe("tool-settlement");
   expect(deepSeekOnly.pricing).toEqual(expect.objectContaining({
-    inputPerMillionUsd: 0.14,
-    outputPerMillionUsd: 0.28,
+    inputPerMillionUsd: 0.44,
+    cachedInputPerMillionUsd: 0.014,
+    outputPerMillionUsd: 1.32,
+    source: "https://api-docs.deepseek.com/quick_start/pricing",
+    revision: "2026-08-17",
   }));
 
   expect(createValidationModel({
@@ -183,6 +186,22 @@ test("DeepSeek response evidence retains provider fingerprints for generate and 
     type: "finish",
     providerMetadata: { deepseek: { systemFingerprint: "fp-stream" } },
   })]);
+});
+
+test("a single DeepSeek Pro route carries Pro peak pricing", () => {
+  const selection = createValidationModel({
+    route: [{ ...routeTarget("deepseek"), model: "deepseek-v4-pro" }],
+    deepSeekApiKey: "deepseek-key",
+  });
+
+  expect(selection.models).toEqual(["deepseek-v4-pro"]);
+  expect(selection.pricing).toEqual(expect.objectContaining({
+    inputPerMillionUsd: 1.32,
+    cachedInputPerMillionUsd: 0.044,
+    outputPerMillionUsd: 3.96,
+    source: "https://api-docs.deepseek.com/quick_start/pricing",
+    revision: "2026-08-17",
+  }));
 });
 
 test("an unpriced model cannot inherit the default model's dollar estimate", () => {
@@ -699,10 +718,38 @@ test("usage normalization reads standard cache details before provider-neutral m
     arbitraryProvider: { promptCacheHitTokens: 32 },
     workCellRoute: { servedBy: "arbitraryProvider" },
   })).toEqual({
-    inputTokens: 100,
+    inputTokens: 68,
     outputTokens: 10,
     totalTokens: 110,
     cachedInputTokens: 32,
+  });
+});
+
+test("normalizeAiSdkUsage derives non-cache input from total when cache-read tokens are reported", () => {
+  expect(normalizeAiSdkUsage({
+    inputTokens: 1000,
+    outputTokens: 200,
+    totalTokens: 1200,
+    inputTokenDetails: { cacheReadTokens: 800 },
+  }, undefined)).toEqual({
+    inputTokens: 200,
+    outputTokens: 200,
+    totalTokens: 1200,
+    cachedInputTokens: 800,
+  });
+});
+
+test("normalizeAiSdkUsage prefers explicit noCacheTokens and preserves the provider total", () => {
+  expect(normalizeAiSdkUsage({
+    inputTokens: 1000,
+    outputTokens: 200,
+    totalTokens: 1400,
+    inputTokenDetails: { noCacheTokens: 150, cacheReadTokens: 250 },
+  }, undefined)).toEqual({
+    inputTokens: 150,
+    outputTokens: 200,
+    totalTokens: 1400,
+    cachedInputTokens: 250,
   });
 });
 

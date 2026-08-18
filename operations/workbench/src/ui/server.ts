@@ -68,7 +68,7 @@ export interface ServerOptions {
 }
 
 export interface WorkbenchRequestHandlerDependencies {
-  readonly localTaskControlPlane?: LocalTaskControlPlane;
+  readonly localTaskControlPlaneFactory?: (home: string) => LocalTaskControlPlane;
   readonly conversationSocket?: ConversationSocketRuntime;
 }
 
@@ -83,8 +83,10 @@ export function createWorkbenchRequestHandler(
   dependencies: WorkbenchRequestHandlerDependencies = {},
 ): (request: Request, server?: Bun.Server<ConversationSocketData>) => Promise<Response> {
   const taskActionsInFlight = new Set<string>();
-  const localTaskControlPlane = dependencies.localTaskControlPlane
-    ?? createLocalTaskControlPlane(options.home);
+  const home = resolveHome(options.home);
+  const localTaskControlPlaneFactory = dependencies.localTaskControlPlaneFactory
+    ?? createLocalTaskControlPlane;
+  const localTaskControlPlane = localTaskControlPlaneFactory(home);
 
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
@@ -130,6 +132,7 @@ export function createWorkbenchRequestHandler(
         const result = executeTaskCreateAction(
           options.home,
           await readJsonRequest(request, "task creation"),
+          localTaskControlPlane,
         );
         return json({ ok: true, result }, 200);
       } catch (error: unknown) {
@@ -191,7 +194,8 @@ export function createWorkbenchRequestHandler(
             )
             : kind === "submit-verified-execution"
               ? submitVerifiedTaskResult(
-                options.home,
+                localTaskControlPlane,
+                home,
                 (await buildLiveSnapshot(options, client)).workItems,
                 taskActionId,
                 body,
@@ -204,7 +208,12 @@ export function createWorkbenchRequestHandler(
                   body,
                   localTaskControlPlane,
                 )
-                : executeTaskMutationAction(options.home, taskActionId, body);
+                : executeTaskMutationAction(
+                  options.home,
+                  taskActionId,
+                  body,
+                  localTaskControlPlane,
+                );
           return json({ ok: true, result }, 200);
         } finally {
           if (reservesTask) taskActionsInFlight.delete(taskActionId);
@@ -319,11 +328,13 @@ export function createWorkbenchRequestHandler(
 
 if (import.meta.main) {
   const options = parseArguments(process.argv.slice(2));
-  const client = new AutonomyCliClient(
-    resolveHome(options.home),
-    autonomyCli,
-  );
+  // One concrete home resolution for the whole production entry: an explicit
+  // --home keeps its exact semantics, and the default Rossovia home is
+  // normalized exactly once and shared by the autonomy client, carrier and
+  // contribution registries, the request handler, every snapshot/attempt
+  // projection, and every Task action authority.
   const home = resolveHome(options.home);
+  const client = new AutonomyCliClient(home, autonomyCli);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
@@ -333,7 +344,11 @@ if (import.meta.main) {
     carrierRegistry,
     contributionRegistry,
   });
-  const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
+  const requestHandler = createWorkbenchRequestHandler(
+    { ...options, home },
+    client,
+    { conversationSocket },
+  );
   const server: Bun.Server<ConversationSocketData> = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,
@@ -450,7 +465,7 @@ async function buildLiveSnapshot(
   };
   return {
     ...liveSnapshot,
-    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts),
+    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts, options.home),
   };
 }
 

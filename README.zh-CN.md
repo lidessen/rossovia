@@ -24,6 +24,8 @@ skill 则是在具体语境中对所选条目的表达。
 边界是解放而非攫取：人和 AI 的能力都不得被组织成不受问责的剥削来源。
 
 从[创始使命](design/FOUNDING-MANDATE.md)开始，可以理解项目为何存在；阅读
+[Agent harness 理论](design/harness/)，可以理解 Rossovia 如何把人的工作转化为
+有纪律、可由 Agent 稳定执行的工作单元；阅读
 [运行协议](design/operations/OPERATING-PROTOCOL.md)，可以了解经人授权的工作
 如何推进；也可以直接从下方活跃 skills 中选择一种具体方法。
 
@@ -120,6 +122,7 @@ memory 不会成为生效偏好。
 | [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位、显式的用户/项目偏好，以及本地 Principal-attributed 任务的持久生命周期和 control-plane UI | 任务调度、推断偏好、本机能力、目标项目任务事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
+| [`design/harness/`](design/harness/) | 面向 Agent 的任务工程理论、导航和项目级解释 | 第二套原则正典、运行时权威或未经实证的能力主张 |
 | [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |
 | [`chronicle/`](chronicle/) | 保留来源的观察回执与纠正链 | 主张、决策或通用活动日志 |
 | [`operations/missions/`](operations/missions/) | 活跃跨会话任务的返回义务 | 待办列表、调度器或 Git 历史副本 |

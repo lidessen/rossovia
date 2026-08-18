@@ -13,6 +13,7 @@ import {
 import type { CellDriver, DriverContext, DriverResult } from "../src/driver";
 import type { GeneExpression, GeneSelectionResult, Genome, SequenceCellInput } from "../src/adapters/sequence/genome";
 import type { SequenceSelector } from "../src/adapters/sequence/runtime";
+import { createLocalHost } from "../src/workspace";
 
 const roots: string[] = [];
 
@@ -30,7 +31,7 @@ test("runs independent deliberation members and preserves a dissenting position"
   ];
   let created = 0;
 
-  const record = await runDeliberation(manifest, () => new DeliberationDriver(stances[created++]!));
+  const record = await runDeliberation(manifest, () => new DeliberationDriver(stances[created++]!), createLocalHost());
 
   expect(record.members).toHaveLength(3);
   const runs = record.members.filter((member) => member.status === "run");
@@ -57,7 +58,7 @@ test("rejects a docket that silently omits a Sequence P-ID", async () => {
   const manifest = docket(root);
   manifest.sequenceCoverage.pop();
 
-  await expect(runDeliberation(manifest, () => new DeliberationDriver(position("support", "Unused")))).rejects.toThrow(
+  await expect(runDeliberation(manifest, () => new DeliberationDriver(position("support", "Unused")), createLocalHost())).rejects.toThrow(
     "sequence coverage must account for every P-ID",
   );
 });
@@ -67,7 +68,7 @@ test("rejects a deliberation member that has write or command authority", async 
   const manifest = docket(root);
   manifest.members[0]!.input.workspace.writePaths = ["output"];
 
-  await expect(runDeliberation(manifest, () => new DeliberationDriver(position("support", "Unused")))).rejects.toThrow(
+  await expect(runDeliberation(manifest, () => new DeliberationDriver(position("support", "Unused")), createLocalHost())).rejects.toThrow(
     "must be read-only and command-free",
   );
 });
@@ -77,7 +78,7 @@ test("rejects a deliberation member that has write or command authority", async 
   const manifest = docket(root);
   manifest.budget.envelope.maxTotalTokens = 29_999;
 
-  await expect(runDeliberation(manifest, () => new DeliberationDriver(position("support", "Unused")))).rejects.toThrow(
+  await expect(runDeliberation(manifest, () => new DeliberationDriver(position("support", "Unused")), createLocalHost())).rejects.toThrow(
     "estimates exceed the deliberation allocation envelope",
   );
 });
@@ -85,8 +86,8 @@ test("rejects a deliberation member that has write or command authority", async 
 test("retains both repeated direct-manifest invocations instead of overwriting the earlier record", async () => {
   const root = await fixture();
   const manifest = docket(root);
-  const first = await runDeliberation(manifest, () => new DeliberationDriver(position("support", "First retained run")));
-  const second = await runDeliberation(manifest, () => new DeliberationDriver(position("support", "Second retained run")));
+  const first = await runDeliberation(manifest, () => new DeliberationDriver(position("support", "First retained run")), createLocalHost());
+  const second = await runDeliberation(manifest, () => new DeliberationDriver(position("support", "Second retained run")), createLocalHost());
   const manifestPath = join(root, "docket.json");
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
   const firstPath = await persistDeliberationRecord(manifestPath, first);
@@ -104,7 +105,7 @@ test("stops later members when observed usage leaves no complete allocation", as
   manifest.budget.envelope.maxTotalTokens = 60;
   let created = 0;
 
-  const record = await runDeliberation(manifest, () => new DeliberationDriver(position("support", `Run ${++created}`)));
+  const record = await runDeliberation(manifest, () => new DeliberationDriver(position("support", `Run ${++created}`)), createLocalHost());
 
   expect(created).toBe(2);
   expect(record.members[2]).toMatchObject({
@@ -127,7 +128,7 @@ test("uses the shared remaining envelope to recover only an unsettled seat", asy
   for (const member of manifest.members) member.input.budget.estimatedTokens = 48_000;
   let created = 0;
 
-  const record = await runDeliberation(manifest, () => new RecoveryDriver(created++ === 0));
+  const record = await runDeliberation(manifest, () => new RecoveryDriver(created++ === 0), createLocalHost());
 
   expect(record.members.filter((member) => member.memberId === "contradiction")).toHaveLength(2);
   expect(record.members.filter((member) => member.memberId === "evidence")).toHaveLength(1);

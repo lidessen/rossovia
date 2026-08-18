@@ -92,6 +92,21 @@ only the matching entry. That file owns the exact CLI mapping and operational
 authority boundaries. Do not load it for ordinary repository, Skill, or direct
 delegation work.
 
+## Conversation command entry architecture route
+
+When a request concerns the Conversation Command Entry product, Rossovia
+runtime ownership or migration, production readiness, or remaining work, begin
+with the
+[Conversation Command Entry roadmap](design/operations/CONVERSATION-COMMAND-ENTRY-ROADMAP.md).
+It maps each question to its authoritative design, operating specification,
+verification evidence, or current Mission projection and records the migration
+stage exits and model-selection principles. Follow the mapped source rather
+than treating the roadmap as a second authority or loading every historical
+artifact. In particular, Decision 055 owns the target module boundaries, the
+runtime migration plan owns stage order and exit evidence, the scoped
+Workbench instructions own commands and their authority limits, and the
+Mission status is a current coordination projection only.
+
 ## Integration entry
 
 When the human asks to create or operate a branch, worktree, PR, review, or
@@ -157,12 +172,24 @@ When creating or materially updating a skill:
 ### Human decision handoffs
 
 When a material choice belongs to the human principal, do not ask for bare
-approval or make them reconstruct the option set. Present the recommendation,
-two to four consequential choices, each choice's immediate authorized result,
-main tradeoff or reopening signal, and a compact reply key. Use the project's
-[Decision Brief](design/operations/DECISION-BRIEF.md) when it exists. The brief
-is a projection for human action; it never approves, merges, expands scope, or
-turns silence into consent.
+approval or make them reconstruct either the system or the option set. The live
+response must contain the decision-relevant working model: what the object is,
+why it exists, how its main parts interact, what is true now, what would change,
+the recommendation, two to four consequential choices, each choice's immediate
+authorized result, its main tradeoff or reopening signal, and a compact reply
+key. For architecture or system decisions, explain the normal path, failure and
+recovery boundary, retained and removed responsibilities, and material residual
+risk in plain language before asking for a choice.
+
+Source and code links provide traceability and optional drill-down; they must
+not carry explanation that the response itself omits. A Principal should be
+able to restate the system, compare the material alternatives, and understand
+what their reply authorizes without opening repository files. Calibrate depth
+to the decision—a simple reversible choice can remain short—but do not compress
+a consequential design into status labels, changed-file lists, test counts, or
+links. Use the project's [Decision Brief](design/operations/DECISION-BRIEF.md)
+when it exists. The brief is a projection for human action; it never approves,
+merges, expands scope, or turns silence into consent.
 
 MIT licensed, maintained by Lidessen.
 

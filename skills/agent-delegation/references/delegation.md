@@ -1,15 +1,16 @@
 # Main-side Delegation Contract
 
 Read this only when the Main Agent is forming or supervising delegated work.
-It is not a worker prompt. This file owns the detailed contribution gate,
-topology, native steering map, and reshape signals.
+It is not a worker prompt. This file owns the canonical child prompt fragment,
+detailed contribution gate, topology, native steering map, and reshape signals.
 
 ## Contribution gate
 
 Delegate only when at least one of these relations is concrete:
 
 - two or more source fields can be investigated independently;
-- implementation effects have disjoint owners and local acceptance;
+- implementation effects have disjoint owners and locally verifiable
+  completion evidence;
 - a bounded evidence-gathering loop would displace decision-relevant Main
   context;
 - a non-producing reviewer can expose a consequential producer-correlated
@@ -29,49 +30,97 @@ would require repeating every delegated investigation.
 | Consequential candidate | maker then fresh reviewer | reviewer stays read-only |
 | Strict dependency | sequential work or targeted follow-up | preserve one owner |
 
-## Delegation envelope
+## Child prompt construction
 
-Construct every worker prompt from this envelope and only the task-specific
-context it needs:
+Build every worker, reviewer, and nested-child prompt from four compact parts,
+in order. Include only information that can change the receiver's action. Do
+not replace a contribution relation with a title or pass through parent/runtime
+terms that the receiver does not need. If any necessary term could change the
+receiver's action or return, define it at first use in one operational sentence:
+what object it names, its boundary, and why it matters to this contribution.
+
+### 1. Contribution relation, only when decision-relevant
+
+Use plain object and action language. Omit this part when the task contract
+already makes the same relation unambiguous; a title adds no useful
+differentiation.
 
 ```text
-Whole outcome:
-Main-owned constraint or relation:
-Contribution:
+Contribution relation:
+- Object and bounded action owned here:
+- How the result will be used downstream:
+- Explicit non-goals and decisions retained elsewhere:
+```
+
+### 2. Canonical portable method
+
+Preserve this fragment when changing carriers:
+
+```text
+Portable method:
+- Use the named sources, candidate, and revision; state missing evidence instead of substituting memory or a summary.
+- Keep the result connected to the requested overall outcome and choose the smallest change that closes this contribution without weakening its constraints.
+- Stay inside the stated read, change, and decision boundaries. Stop when completion needs a broader owner or changed premise.
+- Record observations and check results separately from your claims. Independent semantic review and named-owner acceptance remain separate decisions.
+- Run the requested local verification. Return the conclusion, source/change evidence, unknowns, and hand-off relation needed to reconstruct the result.
+- If narrower delegation is explicitly allowed, give that child these same four prompt parts with the same or tighter boundaries.
+```
+
+This is prompt content, not a registry, schema, gate, or runtime state.
+
+### 3–4. Worker task and return contracts
+
+After the two parts above, construct the exact task contract and then the
+return contract. Read `worker.md`; inline every constraint from its `Work
+within the supplied boundaries` section under the task contract and every field from its
+`Return` section under the return contract. Do not paste the file heading or
+make the receiver locate it.
+
+```text
+Exact task contract:
+Object and requested action:
+Requested overall outcome or constraint this contribution must preserve:
 Working directory and governing sources:
 Source revision or candidate identity:
 Read boundary:
-Effect ownership: read-only | exact writable paths/effects
-Required evidence and local acceptance:
-Compressed return shape:
-Stop or disconfirming signal:
-Authority withheld:
-Returned evidence use: leads only | exact source claims may be admitted as bounded premises after Main checks the declared conditions
-Claim-admission conditions: exact source scope and lineage, named admissible claims, uncertainty, and retained judgment owner
+Allowed changes or other effects: read-only | exact paths/effects
+Non-goals and decisions not owned here:
+Required evidence and verification:
+Stop conditions:
 Nested delegation posture: direct only | available when a newly discovered bounded contribution earns its coordination cost
 Inherited limits for descendants: same or narrower read, effect, evidence, and authority boundary
-Worker rules: inline the complete contents of references/worker.md here
+Execution constraints: inline the complete worker.md execution section here
+
+Return contract:
+Inline the complete worker.md return section here
 ```
 
 If the contribution cannot be expressed this way, its independence is not yet
 formed. Keep it with Main or return to the domain owner that can define the
-semantic boundary. The Main Agent resolves and loads the role file; never make
-the child locate a Skill-relative path.
+semantic boundary.
 
-## Reviewer envelope
+## Reviewer task and return contracts
 
-A reviewer receives a different contract:
+A reviewer receives the same optional contribution relation and portable
+method, followed by its exact task contract and return contract. Read
+`reviewer.md`; inline every constraint from its `Review` section under the task
+contract and every field from its `Return` section under the return contract.
 
 ```text
+Exact task contract:
 Candidate identity and source revision:
+Requested overall outcome or constraint this review must preserve:
 Exact claim or acceptance contract:
 Read-only evidence boundary:
 Highest-risk failure classes:
 Required finding and no-finding evidence:
-Authority withheld: no implementation, acceptance, merge, or publication
+Non-goals and decisions not owned here: no implementation, acceptance, merge, or publication
 Nested delegation posture: direct review preferred; a narrow evidence reproduction may be delegated only when independence and final reviewer ownership remain explicit
 Inherited limits for descendants: read-only evidence boundary and no implementation or acceptance authority
-Reviewer rules: inline the complete contents of references/reviewer.md here
+Review constraints: inline the complete reviewer.md review section here
+
+Return contract:
+Inline the complete reviewer.md return section here
 ```
 
 Do not give the reviewer the maker's desired verdict or ask it to continue the
@@ -91,10 +140,10 @@ Map these relations to the active environment's supported capabilities:
 - stop a delegate when its premise, authority, or effect boundary is invalid;
 - wait only when Main's next useful action depends on the result.
 
-A worker whose envelope makes nested delegation available and that forms a
+A worker whose task contract makes nested delegation available and that forms a
 smaller delegation owns its local child contract and returns the reconstructed
 child claim, not the full child history, to its parent. It cannot widen the
-outer whole, effect surface, or granted authority. Topology depth is an
+requested overall outcome, effect surface, or granted authority. Topology depth is an
 observable choice to evaluate, not success or failure by itself.
 
 Do not encode one harness's tool names, concurrency limits, or context-forking
@@ -107,25 +156,27 @@ Require this minimum return:
 ```text
 Conclusion:
 Evidence: source refs, commands, tests, or changed artifact identity
-Source scope and lineage actually read:
-Exact source claims and their declared use: leads only | bounded premises under the envelope's conditions
+Sources actually read: file paths, URLs, or record IDs plus revision/version
+Source claims used: exact claim plus either `Main must recheck` or `may be relied on only when: <conditions>`
 Uncertainties:
-Judgment and acceptance retained by:
+Decisions not made here and who must make them:
+Hand-off: named downstream use of this result and decisions retained elsewhere
 Risks and unresolved relations:
 Changed paths or effects:
-Nested contributions: none | local benefit, inherited boundary, child evidence, and realized cost
+Nested contributions: none | local benefit, limits given to the child, child evidence, and realized cost
 Stop hit: no | yes with reason
 Suggested follow-up: only when a named gap remains
 ```
 
 Main reconstructs results with an obligation map, checks common source
-revision, source scope and lineage, declared claim use, uncertainty, judgment
-ownership, and effect ownership, then inspects the shared diff or artifacts and
-runs the integration or behavior checks appropriate to the whole. A worker
-report cannot admit its own claims. When the envelope and retained evidence do
-not establish bounded premise use, Main treats child-only claims as leads or
-reads the authoritative sources. Pull full traces only when the compressed
-evidence cannot settle a material claim.
+revision, the exact files, URLs, or records read, how each source claim may be
+used, uncertainty, retained decisions, and effect ownership, then inspects the
+shared diff or artifacts and runs the integration or behavior checks appropriate
+to the whole. A worker report cannot admit its own claims. Unless the task
+contract and retained evidence state the conditions under which Main may rely
+on a child-only claim, Main treats it as a lead or reads the authoritative
+source. Pull full traces only when the compressed evidence cannot settle a
+material claim.
 
 ## Reshape signals
 
@@ -137,5 +188,6 @@ Stop or change topology when:
 - follow-up requests broaden rather than close one named gap;
 - the reducer must redo all delegated work;
 - a nested contribution expands effects or authority, loses its inherited
-  whole, hides evidence, or adds cost without a decision-changing benefit;
+  requested overall outcome, hides evidence, or adds cost without a
+  decision-changing benefit;
 - coordination cost exceeds direct work without producing independent evidence.

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CellInput, ExecutionProfile } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../../../packages/work-cell/src/driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import { digest } from "../src/canonical-json";
 import { FileMissionTimeline } from "../src/delegate-timeline";
 import {
@@ -33,7 +34,7 @@ test("reconciliation runs as one terminal-tool Work Cell with only the anchor an
     input,
     workspaceRoot: root,
     executionProfile: profile(),
-  }, { driver });
+  }, { driver, host: createLocalHost() });
 
   expect(result.kind).toBe("proposed");
   if (result.kind !== "proposed") throw new Error("expected reconciliation proposal");
@@ -91,7 +92,7 @@ test("only an independently accepted next anchor commits and advances reconcilia
     input,
     workspaceRoot: root,
     executionProfile: profile(),
-  }, { driver: new ReconciliationDriver(correction()) });
+  }, { driver: new ReconciliationDriver(correction()), host: createLocalHost() });
   if (result.kind !== "proposed") throw new Error("expected reconciliation proposal");
   const acceptance = acceptanceFor(
     result.proposal,
@@ -138,7 +139,7 @@ test("continue reconciliation advances lineage without rewriting the active inte
     disposition: "continue",
     inputEffect: "The active constraints are unchanged.",
     responseObligations: [],
-  }) });
+  }), host: createLocalHost() });
   if (result.kind !== "proposed") throw new Error("expected reconciliation proposal");
 
   const drifted = {
@@ -344,7 +345,7 @@ test("ambiguous reconciliation cannot commit and an input watermark cannot be sk
     input: first,
     workspaceRoot: root,
     executionProfile: profile(),
-  }, { driver: new ReconciliationDriver(decision) });
+  }, { driver: new ReconciliationDriver(decision), host: createLocalHost() });
   if (result.kind !== "proposed") throw new Error("expected reconciliation proposal");
 
   await expect(timeline.commitReconciliation({
@@ -358,7 +359,7 @@ test("ambiguous reconciliation cannot commit and an input watermark cannot be sk
     input: second,
     workspaceRoot: root,
     executionProfile: profile(),
-  }, { driver: new ReconciliationDriver({ disposition: "continue", inputEffect: "none", responseObligations: [] }) }))
+  }, { driver: new ReconciliationDriver({ disposition: "continue", inputEffect: "none", responseObligations: [] }), host: createLocalHost() }))
     .rejects.toThrow("not the next unreconciled watermark");
 });
 
@@ -373,7 +374,7 @@ test("a driver name claim without the terminal payload cannot create a reconcili
     input,
     workspaceRoot: root,
     executionProfile: profile(),
-  }, { driver: new NameOnlyDriver() });
+  }, { driver: new NameOnlyDriver(), host: createLocalHost() });
 
   expect(result.kind).toBe("unsettled");
   if (result.kind !== "unsettled") throw new Error("expected unsettled reconciliation");
@@ -398,7 +399,7 @@ test("mechanical control remains outside semantic reconciliation", async () => {
     input,
     workspaceRoot: root,
     executionProfile: profile(),
-  }, { driver })).rejects.toThrow(
+  }, { driver, host: createLocalHost() })).rejects.toThrow(
     "mechanical control and cannot enter semantic reconciliation",
   );
   expect(driver.calls).toBe(0);

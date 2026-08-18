@@ -10,6 +10,7 @@ import {
   type CodexAppServerSession,
 } from "../src/codex-app-server-driver";
 import { runCell } from "../src/run-cell";
+import { createLocalHost } from "../src/workspace";
 
 type JsonObject = Record<string, unknown>;
 
@@ -31,7 +32,7 @@ describe("Codex app-server driver", () => {
     const fake = successfulAdapter();
     const driver = appServerDriver(root, fake.adapter);
 
-    const record = await runCell(cellInput(root), driver);
+    const record = await runCell(cellInput(root), driver, { host: createLocalHost() });
     const launch = fake.launches[0]!;
     const thread = fake.requests.find((request) =>
       request.method === "thread/start"
@@ -116,6 +117,7 @@ describe("Codex app-server driver", () => {
     const record = await runCell(
       cellInput(root),
       appServerDriver(root, fake.adapter),
+      { host: createLocalHost() },
     );
 
     expect(record.status).toBe("failed");
@@ -144,6 +146,7 @@ describe("Codex app-server driver", () => {
     const record = await runCell(
       cellInput(root),
       appServerDriver(root, fake.adapter),
+      { host: createLocalHost() },
     );
 
     expect(record.status).toBe("failed");
@@ -173,6 +176,7 @@ describe("Codex app-server driver", () => {
     const record = await runCell(
       cellInput(root),
       appServerDriver(root, fake.adapter),
+      { host: createLocalHost() },
     );
 
     expect(record.status).toBe("failed");
@@ -197,6 +201,7 @@ describe("Codex app-server driver", () => {
     const record = await runCell(
       cellInput(root),
       appServerDriver(root, fake.adapter),
+      { host: createLocalHost() },
     );
 
     expect(record.status).toBe("failed");
@@ -220,6 +225,7 @@ describe("Codex app-server driver", () => {
     const record = await runCell(
       cellInput(root),
       appServerDriver(root, fake.adapter),
+      { host: createLocalHost() },
     );
 
     expect(record.status).toBe("failed");
@@ -244,6 +250,7 @@ describe("Codex app-server driver", () => {
     const record = await runCell(
       cellInput(root),
       appServerDriver(root, fake.adapter),
+      { host: createLocalHost() },
     );
 
     expect(record.status).toBe("failed");

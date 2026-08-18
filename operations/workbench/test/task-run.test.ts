@@ -18,7 +18,7 @@ import {
   type CellInput,
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
-import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/pi-harness-driver";
+import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integrations/ai-sdk";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 import { initializeHome } from "../src/home";
 import { registerProject } from "../src/register";
@@ -42,7 +42,12 @@ import {
   type TaskCellExecutionInput,
   type TaskRunResult,
 } from "../src/task-run";
-import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
+import {
+  WorkerCatalog,
+  type WorkerCard,
+} from "../../../packages/work-cell/src/worker-catalog";
+import { RunControlRegistry, stopRun } from "../src/orchestration/run";
+import { worktreeWriterLeasePath } from "../src/orchestration/worktree-writer";
 import { readStrictTaskAttemptEvidence, showPrincipalTaskAttempts } from "../src/task-attempts";
 
 const temporaryRoots: string[] = [];
@@ -115,6 +120,7 @@ interface TestRunArguments {
   provider: string;
   model: string;
   reasoningEffort?: string;
+  maxSteps?: number;
   expectedSourceRevision: number;
   expectedRevision: number;
 }
@@ -151,6 +157,7 @@ function runTestTask(
   executor?: TaskCellExecutor,
   dependencies: Parameters<typeof runPrincipalTaskImpl>[2] = {},
 ): Promise<TaskRunResult> {
+  const card = testCard(arguments_);
   return runPrincipalTaskImpl(
     home,
     {
@@ -159,11 +166,15 @@ function runTestTask(
       ...(arguments_.continueFromAttemptId !== undefined
         ? { continueFromAttemptId: arguments_.continueFromAttemptId }
         : {}),
+      ...(arguments_.maxSteps !== undefined ? { maxSteps: arguments_.maxSteps } : {}),
     },
     {
       ...dependencies,
-      resolveWorkerCard: () => testCard(arguments_),
+      resolveWorkerCard: () => card,
       executeTaskCell: executor ?? defaultCellExecutor(),
+      catalog: dependencies.catalog ?? new WorkerCatalog([
+        { card, createDriver: () => { throw new Error("test driver not used"); } },
+      ]),
     },
   );
 }
@@ -383,6 +394,83 @@ function legacyMaxSteps20Attempt(
   return attempt;
 }
 
+interface HistoricalV1ReasoningAttemptFixture {
+  attemptId: string;
+  directory: string;
+  attemptBytes: string;
+  inputBytes: string;
+  leasePath: string;
+  leaseContent: string;
+}
+
+/**
+ * One retained historical v1 attempt family: the attempt record retains
+ * attempt-level reasoning effort while its immutable CellInput carries no
+ * workerId and no executionProfile (the pre-profile lowering shape). The
+ * exact dead-owner O3 claim makes the family reconcileable.
+ */
+function historicalV1ReasoningAttempt(
+  fixture_: Fixture,
+  taskId: string,
+  pid: number,
+): HistoricalV1ReasoningAttemptFixture {
+  const attemptId = randomUUID();
+  const directory = join(fixture_.home, "state", "task-attempts", attemptId);
+  mkdirSync(directory, { recursive: true });
+  const inputRef = `state/task-attempts/${attemptId}/cell-input.json`;
+  const finalRecordRef = `state/task-attempts/${attemptId}/cell-input.run.json`;
+  const attemptBytes = `${JSON.stringify({
+    version: "rosso.task-run-attempt.v1",
+    taskId,
+    taskRevision: 1,
+    sourceRevision: 1,
+    attemptId,
+    inputRef,
+    finalRecordRef,
+    driver: "opencode-cli",
+    model: "opencode/go",
+    reasoningEffort: "high",
+    status: "started",
+    startedAt: "2026-08-12T12:00:00.000Z",
+  }, null, 2)}\n`;
+  const inputBytes = `${JSON.stringify({
+    id: `workbench-task-${taskId}-attempt-${attemptId}`,
+    intent: "Implement the exact bounded change",
+    workspace: {
+      root: realpathSync(fixture_.worktree),
+      readPaths: ["."],
+      writePaths: ["."],
+      excludePaths: [],
+      allowedCommands: [],
+    },
+    instructions: [
+      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["The requested behavior is observable"],
+    budget: { maxDurationMs: 1_800_000 },
+  }, null, 2)}\n`;
+  writeFileSync(join(directory, "attempt.json"), attemptBytes);
+  writeFileSync(join(directory, "cell-input.json"), inputBytes);
+  const gitDirectoryRaw = git(fixture_.worktree, "rev-parse", "--git-dir");
+  const gitDirectory = realpathSync(
+    isAbsolute(gitDirectoryRaw) ? gitDirectoryRaw : join(fixture_.worktree, gitDirectoryRaw),
+  );
+  const leasePath = join(gitDirectory, "rossovia-task-run.lock");
+  const leaseContent = `${JSON.stringify({
+    version: "rosso.task-run-worktree-lease.v1",
+    worktree: realpathSync(fixture_.worktree),
+    taskId,
+    attemptId,
+    pid,
+    acquiredAt: "2026-08-12T12:00:00.000Z",
+  }, null, 2)}\n`;
+  writeFileSync(leasePath, leaseContent, { flag: "wx" });
+  return { attemptId, directory, attemptBytes, inputBytes, leasePath, leaseContent };
+}
+
 describe("task attempt reconciliation", () => {
   test("reconciles an interrupted attempt with a dead owner, preserving evidence and enabling a fresh run", async () => {
     const current = fixture();
@@ -599,7 +687,7 @@ describe("task attempt reconciliation", () => {
     expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
   });
 
-  test("a second reconciliation after success fails closed without touching retained evidence", () => {
+  test("a second reconciliation after success converges idempotently without touching retained evidence", () => {
     const current = fixture();
     const created = agentTask(current);
     const attempt = interruptedAttempt(current, created.task.id, deadPid());
@@ -609,10 +697,19 @@ describe("task attempt reconciliation", () => {
     });
     const settlementBytes = readFileSync(join(current.home, first.settlementRef), "utf8");
 
-    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+    // O2 reconciliation is idempotent owner maintenance: the exact release
+    // already succeeded, so the retry converges on the retained outcome and
+    // mutates nothing.
+    const second = reconcilePrincipalTaskAttempt(current.home, {
       id: created.task.id,
       attemptId: attempt.attemptId,
-    })).toThrow("has no retained task-run lease");
+    });
+    expect(second).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
     expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
     expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
     expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
@@ -644,17 +741,21 @@ describe("task attempt reconciliation", () => {
     expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
     expect(existsSync(attempt.leasePath)).toBeFalse();
 
-    // The still-exact settlement with a changed lease identity fails closed.
+    // A schema-valid claim for a different owner proves the exact claim was
+    // already released: O2 reconciliation converges on the retained outcome
+    // and never touches the foreign claim.
     writeFileSync(attempt.leasePath, attempt.leaseContent, { flag: "wx" });
     const bytes = JSON.parse(readFileSync(attempt.leasePath, "utf8"));
     bytes.attemptId = randomUUID();
     writeFileSync(attempt.leasePath, `${JSON.stringify(bytes, null, 2)}\n`);
-    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+    const converged = reconcilePrincipalTaskAttempt(current.home, {
       id: created.task.id,
       attemptId: attempt.attemptId,
-    })).toThrow("belongs to attempt");
+    });
+    expect(converged.status).toBe("runner-failed");
     expect(readFileSync(join(current.home, first.settlementRef), "utf8")).toBe(settlementBytes);
-    expect(existsSync(attempt.leasePath)).toBeTrue();
+    // The different-owner claim is preserved exactly.
+    expect(readFileSync(attempt.leasePath, "utf8")).toBe(`${JSON.stringify(bytes, null, 2)}\n`);
   });
 
   test("derives the shared normal settlement from a retained final record without a settlement", async () => {
@@ -901,6 +1002,51 @@ describe("task attempt reconciliation", () => {
       status: "runner-failed",
     });
     expect(existsSync(attempt.leasePath)).toBeFalse();
+  });
+
+  test("the CLI reconciles through the O2 owner idempotently with the legacy result shape", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = interruptedAttempt(current, created.task.id, deadPid());
+
+    const first = taskCliWithOutput(
+      current.home,
+      "reconcile-attempt",
+      created.task.id,
+      "--attempt",
+      attempt.attemptId,
+    );
+    expect(first.exitCode).toBe(0);
+    const firstJson = JSON.parse(first.stdout);
+    expect(firstJson).toMatchObject({
+      version: "rosso.task-attempt-reconcile.v1",
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      settlementRef: `state/task-attempts/${attempt.attemptId}/settlement.json`,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    const settlementBytes = readFileSync(join(current.home, firstJson.settlementRef), "utf8");
+
+    // The identical CLI reconciliation converges idempotently: no throw, no
+    // settlement mutation, and no retained evidence change.
+    const second = taskCliWithOutput(
+      current.home,
+      "reconcile-attempt",
+      created.task.id,
+      "--attempt",
+      attempt.attemptId,
+    );
+    expect(second.exitCode).toBe(0);
+    expect(JSON.parse(second.stdout)).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+    });
+    expect(readFileSync(join(current.home, firstJson.settlementRef), "utf8")).toBe(settlementBytes);
+    expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
   });
 });
 
@@ -1806,11 +1952,16 @@ describe("task run public boundary", () => {
 
     await expect(runTestTask(current.home, arguments_, overlapping.execute)).resolves.toBeTruthy();
     expect(inner.requests).toHaveLength(0);
-    expect(existsSync(join(otherHome, "state", "task-attempts"))).toBeFalse();
+    // The refused inner Run keeps one durable pre-Cell terminal outcome in its
+    // own home; the outer writer's claim is never touched.
+    const innerProjections = showPrincipalTaskAttempts(otherHome, otherTask.task.id);
+    expect(innerProjections).toHaveLength(1);
+    expect(innerProjections[0]).toMatchObject({ status: "runner-failed" });
+    expect(innerProjections[0]).not.toHaveProperty("cellStatus");
     await expect(runTestTask(current.home, arguments_, new FakeCellExecutor().execute)).resolves.toBeTruthy();
   });
 
-  test("rechecks cleanliness after lease acquisition before creating attempt evidence", async () => {
+  test("retains the durable Run request before O3 and settles a truthful pre-Cell refusal on dirty recheck", async () => {
     const current = fixture();
     const created = agentTask(current);
     const executor = new FakeCellExecutor();
@@ -1826,7 +1977,15 @@ describe("task run public boundary", () => {
       },
     })).rejects.toThrow("task Worktree is not clean");
     expect(executor.requests).toHaveLength(0);
-    expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+    // The accepted request's durable Run record exists before O3 acquisition;
+    // the refusal settles a truthful runner-failed terminal outcome with zero
+    // Cell invocations and the exact claim released.
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(1);
+    expect(projections[0]).toMatchObject({ status: "runner-failed" });
+    expect(projections[0]).not.toHaveProperty("cellStatus");
+    expect(projections[0]).not.toHaveProperty("observedSession");
+    expect(attemptLeaseStanding(current.home, created.task.id, projections[0]!.attemptId)).toBe("released");
 
     rmSync(join(current.worktree, "became-dirty.txt"));
     await expect(runTestTask(current.home, {
@@ -1895,7 +2054,13 @@ describe("task run public boundary", () => {
         `task ${created.task.id} changed before attempt creation after the task-run lease was acquired`,
       );
       expect(executor.requests).toHaveLength(0);
-      expect(existsSync(join(current.home, "state", "task-attempts"))).toBeFalse();
+      // The accepted request retains one durable Run with a truthful pre-Cell
+      // terminal outcome; the exact claim is released and no Cell was invoked.
+      const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+      expect(projections).toHaveLength(1);
+      expect(projections[0]).toMatchObject({ status: "runner-failed" });
+      expect(projections[0]).not.toHaveProperty("cellStatus");
+      expect(attemptLeaseStanding(current.home, created.task.id, projections[0]!.attemptId)).toBe("released");
     }
   });
 
@@ -2149,6 +2314,66 @@ describe("task run public boundary", () => {
       expectedRevision: accepted.task.revision,
     }, executor.execute)).rejects.toThrow("completed tasks are viewable history");
     expect(executor.requests).toHaveLength(0);
+  });
+});
+
+describe("task run --max-steps option", () => {
+  test("lowers an explicit positive maxSteps into the immutable CellInput budget and retains it on the attempt record", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      maxSteps: 10,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.budget).toMatchObject({ maxDurationMs: 1_800_000, maxSteps: 10 });
+    const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+    expect(attemptRecord.maxSteps).toBe(10);
+    const finalRecord = JSON.parse(readFileSync(join(current.home, result.finalRecordRef), "utf8"));
+    expect(finalRecord.input.budget.maxSteps).toBe(10);
+    expect(finalRecord.input).toEqual(input);
+    expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]!.cellInput.budget.maxSteps).toBe(10);
+  });
+
+  test("omits maxSteps from the CellInput budget and attempt record when not provided", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.budget.maxDurationMs).toBe(1_800_000);
+    expect(input.budget.maxSteps).toBeUndefined();
+    expect(input.budget).not.toHaveProperty("maxSteps");
+    const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+    expect(attemptRecord.maxSteps).toBeUndefined();
+    expect(attemptRecord).not.toHaveProperty("maxSteps");
+  });
+
+  test("rejects a missing, non-positive, non-integer, or otherwise invalid --max-steps value before dispatch", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    for (const value of ["0", "-1", "1.5", "abc"]) {
+      const result = taskCli(current.home, "run", created.task.id, "--worker", "deepseek-flash", "--max-steps", value);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("--max-steps must be a positive integer");
+      expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(0);
+    }
+    const missing = taskCli(current.home, "run", created.task.id, "--worker", "deepseek-flash", "--max-steps");
+    expect(missing.exitCode).toBe(2);
+    expect(missing.stderr).toContain("invalid task option sequence");
+    expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(0);
   });
 });
 
@@ -2810,6 +3035,97 @@ describe("legacy default maxSteps attempt evidence", () => {
   });
 });
 
+describe("historical v1 reasoning-effort attempt evidence", () => {
+  test("keeps a historical v1 attempt with attempt-level reasoning effort and no input execution profile available and reconcileable", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = historicalV1ReasoningAttempt(current, created.task.id, deadPid());
+
+    // The old record must remain available: the attempt retains its
+    // attempt-level reasoning effort while the immutable CellInput carries
+    // no worker-bound execution profile to relate it to.
+    const evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.attempt?.reasoningEffort).toBe("high");
+    expect(evidence.attempt?.workerId).toBeUndefined();
+    expect(evidence.input?.workerId).toBeUndefined();
+    expect(evidence.input?.executionProfile).toBeUndefined();
+
+    // Reconcile compatibility: the exact dead-owner claim is reconciled to
+    // the truthful interrupted runner-failed outcome and released.
+    const result = reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    });
+    expect(result).toMatchObject({
+      taskId: created.task.id,
+      attemptId: attempt.attemptId,
+      status: "runner-failed",
+      error: expect.stringContaining("interrupted"),
+    });
+    expect(existsSync(attempt.leasePath)).toBeFalse();
+    // The historical bytes are never rewritten by the compatibility read.
+    expect(readFileSync(join(attempt.directory, "attempt.json"), "utf8")).toBe(attempt.attemptBytes);
+    expect(readFileSync(join(attempt.directory, "cell-input.json"), "utf8")).toBe(attempt.inputBytes);
+  });
+
+  test("a contradictory profile-bearing current record fails closed while exact profile-bearing equality restores the family", () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const attempt = historicalV1ReasoningAttempt(current, created.task.id, deadPid());
+    const inputPath = join(attempt.directory, "cell-input.json");
+    const input = JSON.parse(readFileSync(inputPath, "utf8"));
+
+    // A contradictory profile-bearing current record: the immutable input
+    // gains a worker-bound execution profile whose reasoning effort differs
+    // from the retained attempt-level effort — strict evidence fails closed
+    // and never reconciles.
+    writeFileSync(inputPath, `${JSON.stringify({
+      ...input,
+      workerId: "test-worker",
+      executionProfile: {
+        id: "test-worker",
+        version: "execution-profile.v1",
+        provider: "opencode",
+        model: "opencode/go",
+        reasoningEffort: "medium",
+        parallelism: "serial",
+      },
+    }, null, 2)}\n`);
+    let evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("invalid");
+    expect(evidence.error).toContain("reasoning effort");
+    expect(() => reconcilePrincipalTaskAttempt(current.home, {
+      id: created.task.id,
+      attemptId: attempt.attemptId,
+    })).toThrow("retains invalid evidence and cannot be reconciled");
+    expect(existsSync(join(attempt.directory, "settlement.json"))).toBeFalse();
+    // The failed-closed read never touches the exact claim.
+    expect(readFileSync(attempt.leasePath, "utf8")).toBe(attempt.leaseContent);
+
+    // Exact optional-value equality on a profile-bearing current record
+    // restores the available family: the O2 relation is unchanged whenever
+    // the immutable input carries a worker-bound execution profile.
+    writeFileSync(inputPath, `${JSON.stringify({
+      ...input,
+      workerId: "test-worker",
+      executionProfile: {
+        id: "test-worker",
+        version: "execution-profile.v1",
+        provider: "opencode",
+        model: "opencode/go",
+        reasoningEffort: "high",
+        parallelism: "serial",
+      },
+    }, null, 2)}\n`);
+    evidence = readStrictTaskAttemptEvidence(current.home, attempt.attemptId);
+    expect(evidence.standing).toBe("available");
+    expect(evidence.input?.workerId).toBe("test-worker");
+    expect(evidence.input?.executionProfile?.reasoningEffort).toBe("high");
+    expect(evidence.attempt?.reasoningEffort).toBe("high");
+  });
+});
+
 function taskCli(home: string, ...arguments_: string[]): {
   exitCode: number;
   stderr: string;
@@ -2881,3 +3197,111 @@ function taskCliWithOutput(home: string, ...arguments_: string[]): {
   });
   return { exitCode: result.exitCode, stdout: result.stdout.toString() };
 }
+
+describe("foreground control bundle for ordinary task run", () => {
+  test("an ordinary task run with a control bundle but no signal records normally and releases the lease", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const registry = new RunControlRegistry();
+    let publishedRunId: string | undefined;
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, new FakeCellExecutor().execute, {
+      controlBundle: {
+        registry,
+        onControlAvailable: (runId) => { publishedRunId = runId; },
+      },
+    });
+    expect(publishedRunId).toBeDefined();
+    expect(registry.has(publishedRunId!)).toBeFalse();
+    expect(result.cellStatus).toBe("passed");
+    expect(attemptLeaseStanding(current.home, created.task.id, publishedRunId!)).toBe("released");
+    const evidence = readStrictTaskAttemptEvidence(current.home, publishedRunId!);
+    expect(evidence.settlement?.status).toBe("recorded");
+    expect(showPrincipalTask(current.home, created.task.id).task.lifecycle).toBe("open");
+  });
+
+  test("a foreground signal drains the admitted effect before control-stopped finalization and O3 release, leaving the task open", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const registry = new RunControlRegistry();
+    let publishedRunId: string | undefined;
+    let resolveStarted!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { resolveStarted = resolve; });
+    let resolveEffectDrained!: () => void;
+    const effectDrainedPromise = new Promise<void>((resolve) => { resolveEffectDrained = resolve; });
+    const effectMarker = join(current.worktree, "admitted-effect.marker");
+    let receiptBeforeAbortHandling = false;
+    let effectIncompleteWhenAborted = false;
+    let settlementAbsentWhenAborted = false;
+    let leaseHeldWhenAborted = false;
+
+    const execute: TaskCellExecutor = async (input) => {
+      resolveStarted();
+      const { cellInput, signal } = input;
+      writeFileSync(effectMarker, "incomplete\n");
+      return new Promise((resolve) => {
+        const onAbort = () => {
+          const receiptPath = join(current.home, "state", "task-attempts", publishedRunId!, "control.json");
+          receiptBeforeAbortHandling = existsSync(receiptPath);
+          effectIncompleteWhenAborted = existsSync(effectMarker);
+          settlementAbsentWhenAborted = !existsSync(
+            join(current.home, "state", "task-attempts", publishedRunId!, "settlement.json"),
+          );
+          leaseHeldWhenAborted = existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)));
+          effectDrainedPromise.then(() => {
+            rmSync(effectMarker);
+            resolve(validWorkCellRecord(cellInput, { runId: "stopped-run", status: "cancelled" }));
+          });
+        };
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    };
+    const runPromise = runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, execute, {
+      controlBundle: {
+        registry,
+        onControlAvailable: (runId) => { publishedRunId = runId; },
+      },
+    });
+    await startedPromise;
+    expect(publishedRunId).toBeDefined();
+
+    const receipt = stopRun(
+      current.home,
+      publishedRunId!,
+      { control: "stop", requestedBy: "test", sourceRef: "test:signal" },
+      registry,
+    );
+    resolveEffectDrained();
+
+    await expect(runPromise).rejects.toThrow("settled with status cancelled");
+    expect(receiptBeforeAbortHandling).toBeTrue();
+    expect(effectIncompleteWhenAborted).toBeTrue();
+    expect(settlementAbsentWhenAborted).toBeTrue();
+    expect(leaseHeldWhenAborted).toBeTrue();
+    expect(existsSync(effectMarker)).toBeFalse();
+
+    const evidence = readStrictTaskAttemptEvidence(current.home, publishedRunId!);
+    expect(evidence.finalRecord).toBeDefined();
+    expect(evidence.finalRecord?.status).toBe("cancelled");
+    expect(evidence.settlement?.status).toBe("control-stopped");
+    expect(evidence.settlement?.controlRef).toBe(receipt.receiptRef);
+    expect(attemptLeaseStanding(current.home, created.task.id, publishedRunId!)).toBe("released");
+    const task = showPrincipalTask(current.home, created.task.id);
+    expect(task.task.lifecycle).toBe("open");
+  });
+});

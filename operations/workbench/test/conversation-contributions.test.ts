@@ -16,8 +16,18 @@ import { dirname, join } from "node:path";
 import type { CellDriver, DriverResult } from "../../../packages/work-cell/src/driver";
 import { WorkerCatalog, type WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
 import { initializeHome } from "../src/home";
+import {
+  LocalTaskControlError,
+  type LocalTaskReadPort,
+} from "../src/local-task-control-plane";
 import { registerProject } from "../src/register";
 import { correctPrincipalTask, createPrincipalTask, loadPrincipalTasks } from "../src/tasks";
+import { PrincipalTasksSchema, type PrincipalTasks } from "../src/contracts";
+import {
+  acquireWorktreeWriterLease,
+  releaseWorktreeWriterLease,
+  worktreeWriterLeasePath,
+} from "../src/orchestration/worktree-writer";
 import {
   CONTRIBUTION_TASK_SOURCE_REF,
   CONTRIBUTION_TERMINAL_TOOL,
@@ -129,6 +139,25 @@ function fixture(): Fixture {
     primaryHead: git(primary, "rev-parse", "HEAD"),
     worktreeHead: git(worktree, "rev-parse", "HEAD"),
   };
+}
+
+function taskReadSource(
+  fixture_: Fixture,
+  sourceRevision: number,
+  taskRevision: number,
+): PrincipalTasks {
+  const disk = loadPrincipalTasks(fixture_.home);
+  const task = disk.tasks.find((candidate) => candidate.id === fixture_.taskId);
+  if (task === undefined) throw new Error(`fixture Task ${fixture_.taskId} is missing`);
+  return PrincipalTasksSchema.parse({
+    ...disk,
+    sourceRevision,
+    tasks: [{
+      ...task,
+      revision: taskRevision,
+      acceptance: ["The port-owned Task acceptance is preserved"],
+    }],
+  });
 }
 
 const FAKE_WORKER_ID = "fake-worker";
@@ -608,6 +637,200 @@ describe("conversation temporary contributions", () => {
     }, "derived-task contribution settles");
   });
 
+  test("derives spawn and settled-result currentness from one canonical-home Task read port", async () => {
+    const fixture_ = fixture();
+    let taskSource = taskReadSource(fixture_, 41, 7);
+    let listCalls = 0;
+    const factoryHomes: string[] = [];
+    const taskReadPort: LocalTaskReadPort = {
+      list() {
+        listCalls += 1;
+        return taskSource;
+      },
+      show() {
+        throw new Error("Task show is outside the contribution read boundary");
+      },
+    };
+    const registry = createConversationContributionRegistry(
+      join(fixture_.home, "..", "home"),
+      {
+        catalog: fakeCatalog(),
+        taskReadPortFactory(handlerHome) {
+          factoryHomes.push(handlerHome);
+          return taskReadPort;
+        },
+      },
+    );
+    const actor = await seededActor(fixture_);
+
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "port-derived-task" }),
+    ));
+
+    expect(listCalls).toBe(1);
+    expect(factoryHomes).toEqual([realpathSync(fixture_.home)]);
+    expect(receipt).toMatchObject({
+      taskId: fixture_.taskId,
+      sourceRevision: 41,
+      taskRevision: 7,
+    });
+    const spawnRecord = readContributionSpawnReceipts(
+      fixture_.home,
+      actor.conversationId,
+    )[0]!;
+    expect(spawnRecord).toMatchObject({
+      taskId: fixture_.taskId,
+      sourceRevision: 41,
+      taskRevision: 7,
+    });
+    await waitFor(async () => {
+      const projections = await registry.listContributions(actor.conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "port-derived contribution settles");
+
+    const currentRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(currentRead.standing).toBe("read");
+    expect(listCalls).toBe(2);
+    const currentSummaries = await registry.listSettledChildSummaries(actor.conversationId);
+    expect(currentSummaries).toHaveLength(1);
+    expect(listCalls).toBe(3);
+
+    taskSource = taskReadSource(fixture_, 42, 8);
+    const staleRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(staleRead).toMatchObject({ standing: "refused", code: "stale" });
+    expect(listCalls).toBe(4);
+    expect(await registry.listSettledChildSummaries(actor.conversationId)).toEqual([]);
+    expect(listCalls).toBe(5);
+    expect(factoryHomes).toEqual([realpathSync(fixture_.home)]);
+  });
+
+  test("fails spawn visibly and refuses settled results when the Task read port fails", async () => {
+    const fixture_ = fixture();
+    const taskSource = taskReadSource(fixture_, 51, 9);
+    let failure: "none" | "typed" | "untyped" = "none";
+    let failOnListCall: number | undefined;
+    let listCalls = 0;
+    const factoryHomes: string[] = [];
+    const taskReadPort: LocalTaskReadPort = {
+      list() {
+        listCalls += 1;
+        if (listCalls === failOnListCall) {
+          throw new Error("dependency currentness Task read failure");
+        }
+        if (failure === "typed") {
+          throw new LocalTaskControlError(
+            "source-unavailable",
+            "typed contribution Task read failure",
+          );
+        }
+        if (failure === "untyped") {
+          throw new Error("untyped contribution Task read failure");
+        }
+        return taskSource;
+      },
+      show() {
+        throw new Error("Task show is outside the contribution read boundary");
+      },
+    };
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+      taskReadPortFactory(handlerHome) {
+        factoryHomes.push(handlerHome);
+        return taskReadPort;
+      },
+    });
+    const actor = await seededActor(fixture_);
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "read-failure-currentness" }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(actor.conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "read-failure contribution settles");
+    expect(listCalls).toBe(1);
+
+    failure = "untyped";
+    const unavailableRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(unavailableRead).toMatchObject({
+      standing: "refused",
+      code: "source-unavailable",
+      reason: expect.stringContaining("untyped contribution Task read failure"),
+    });
+    expect(listCalls).toBe(2);
+    const unavailableSummaries = await registry
+      .listSettledChildSummaries(actor.conversationId)
+      .catch((error: unknown) => error);
+    expect(unavailableSummaries).toBeInstanceOf(ContributionError);
+    expect(unavailableSummaries).toMatchObject({
+      code: "source-unavailable",
+      message: expect.stringContaining("untyped contribution Task read failure"),
+    });
+    expect(listCalls).toBe(3);
+
+    failure = "none";
+    const recoveredRead = await registry.readChildResult({
+      conversationId: actor.conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(recoveredRead.standing).toBe("read");
+    expect(listCalls).toBe(4);
+    expect(await registry.listSettledChildSummaries(actor.conversationId)).toHaveLength(1);
+    expect(listCalls).toBe(5);
+
+    failOnListCall = listCalls + 2;
+    const dependencyFailure = await registry.spawn(spawnInput(
+      {
+        conversationId: actor.conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+      },
+      spawnOperation({
+        key: "read-failure-dependency",
+        dependsOn: [receipt.key],
+      }),
+    )).catch((error: unknown) => error);
+    expect(dependencyFailure).toBeInstanceOf(ContributionError);
+    expect(dependencyFailure).toMatchObject({
+      code: "source-unavailable",
+      message: expect.stringContaining("dependency currentness Task read failure"),
+    });
+    expect(listCalls).toBe(7);
+
+    failOnListCall = undefined;
+    failure = "typed";
+    const spawnFailure = await registry.spawn(spawnInput(
+      {
+        conversationId: actor.conversationId,
+        turnId: randomUUID(),
+        actionId: randomUUID(),
+      },
+      spawnOperation({ key: "read-failure-spawn" }),
+    )).catch((error: unknown) => error);
+    expect(spawnFailure).toBeInstanceOf(ContributionError);
+    expect(spawnFailure).toMatchObject({
+      code: "source-unavailable",
+      message: expect.stringContaining("typed contribution Task read failure"),
+    });
+    expect(listCalls).toBe(8);
+    expect(readContributionSpawnReceipts(fixture_.home, actor.conversationId)).toHaveLength(1);
+    expect(factoryHomes).toEqual([realpathSync(fixture_.home)]);
+  });
+
   test("spawn selects the exact catalog worker and refuses unknown or unavailable workers", async () => {
     const fixture_ = fixture();
     const catalog = fakeCatalog();
@@ -718,15 +941,19 @@ describe("conversation temporary contributions", () => {
       operation: overlapping as Extract<ConversationOperation, { kind: "contribution_spawn" }>,
     })).rejects.toThrowError(ContributionError);
 
-    // A task_continue carrier on the same Worktree is refused by the same lease.
+    // A task_continue publishes its canonical Run request before O3. The
+    // occupied shared claim then settles that Run runner-failed with zero
+    // Cell invocation; the existing contribution remains the sole live
+    // effectful owner and its lifecycle is unchanged.
     const carrierRegistry = createConversationExecutionCarrierRegistry(fixture_.home, {
       catalog: fakeCatalog(slowContributionDriver),
     });
     const carrierHost = createConversationTaskOperationHost(fixture_.home, { carrierRegistry });
-    expect(() => carrierHost.executeOperation({
+    const carrierActionId = randomUUID();
+    const carrierReceipt = await carrierHost.executeOperation({
       conversationId,
       turnId: randomUUID(),
-      actionId: randomUUID(),
+      actionId: carrierActionId,
       operation: {
         kind: "task_continue",
         taskId: fixture_.taskId,
@@ -738,7 +965,22 @@ describe("conversation temporary contributions", () => {
         worktreePath: fixture_.worktree,
         expectedWorktreeHead: fixture_.worktreeHead,
       },
-    })).toThrow();
+    });
+    expect(carrierReceipt.carrierId).toBe(carrierActionId);
+    const refusedCarrier = carrierRegistry.carrier(carrierActionId)!;
+    await waitFor(() => refusedCarrier.liveness().state !== "live", "carrier O3 refusal settles");
+    const refusedStanding = refusedCarrier.liveness();
+    expect(refusedStanding.state).toBe("settled");
+    if (refusedStanding.state !== "settled") throw new Error("expected settled Run refusal");
+    expect(refusedStanding.settlement.status).toBe("runner-failed");
+    expect(existsSync(join(
+      fixture_.home,
+      "state",
+      "task-attempts",
+      carrierActionId,
+      "cell-input.json",
+    ))).toBe(false);
+    expect(registry.contribution(receipt.batchId, "writer-one")!.liveness().state).toBe("live");
 
     // A read-only contribution may still overlap the effectful writer.
     const readOnly = spawnOperation({ key: "reader-one", effectKind: "read-only" });
@@ -2248,6 +2490,259 @@ describe("conversation temporary contributions", () => {
     const projection = projections.find((entry) => entry.batchId === receipt.batchId);
     expect(projection?.state).toBe("unresolved");
     expect(projection?.status).toContain("reconcile-required");
+  });
+
+  test("reconcileLease refuses and never deletes retained claims that violate the strict O3 schema", async () => {
+    const fixture_ = fixture();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "schema-refused-writer", effectKind: "effectful" }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "contribution settles");
+
+    const reservationPath = join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `spawn-${actor.actionId}.json`,
+    );
+    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+    const binding = spawnRecord.lease as Record<string, unknown>;
+    const leasePath = String(binding.path);
+    const claim = (record: Record<string, unknown>): string =>
+      `${JSON.stringify(record, null, 2)}\n`;
+
+    // A wrong-version claim with matching owner identity and a provably
+    // absent pid is refused and never deleted.
+    const wrongVersion = claim({
+      version: "some-other.version",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    });
+    writeFileSync(leasePath, wrongVersion, "utf8");
+    const wrongVersionRecovery = registry.reconcileLease({
+      conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(wrongVersionRecovery.outcome).toBe("refused");
+    expect(existsSync(leasePath)).toBe(true);
+    expect(readFileSync(leasePath, "utf8")).toBe(wrongVersion);
+
+    // A missing-field claim (no acquiredAt) with matching owner identity
+    // is refused and never deleted.
+    const missingField = claim({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: 999_999_999,
+    });
+    writeFileSync(leasePath, missingField, "utf8");
+    const missingRecovery = registry.reconcileLease({
+      conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(missingRecovery.outcome).toBe("refused");
+    expect(existsSync(leasePath)).toBe(true);
+    expect(readFileSync(leasePath, "utf8")).toBe(missingField);
+  });
+
+  test("reconcileLease never deletes a claim bound to a reservation-recorded noncanonical path and keeps it unreconciled", async () => {
+    const fixture_ = fixture();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "noncanonical-writer", effectKind: "effectful" }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "contribution settles");
+
+    const directory = contributionStateDirectory(fixture_.home, conversationId);
+    const reservationPath = join(directory, `spawn-${actor.actionId}.json`);
+    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+    const binding = spawnRecord.lease as Record<string, unknown>;
+    const canonicalPath = worktreeWriterLeasePath(String(binding.worktree));
+    expect(String(binding.path)).toBe(canonicalPath);
+
+    // Corrupt the durable reservation's recorded claim path to a
+    // noncanonical location and place a dead-owner claim there.
+    const noncanonical = join(fixture_.root, "noncanonical.lock");
+    writeFileSync(reservationPath, `${JSON.stringify({
+      ...spawnRecord,
+      lease: { ...binding, path: noncanonical },
+    }, null, 2)}\n`, "utf8");
+    const noncanonicalBytes = `${JSON.stringify({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: binding.worktree,
+      taskId: binding.taskId,
+      attemptId: binding.attemptId,
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    }, null, 2)}\n`;
+    writeFileSync(noncanonical, noncanonicalBytes, "utf8");
+
+    // Recovery refuses the noncanonical binding and deletes nothing: the
+    // claim at the noncanonical path remains byte-identical and the exact
+    // canonical path stays absent.
+    const recovery = registry.reconcileLease({
+      conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(recovery.outcome).toBe("refused");
+    if (recovery.outcome === "refused") expect(recovery.reason).toContain("canonical");
+    expect(existsSync(noncanonical)).toBe(true);
+    expect(readFileSync(noncanonical, "utf8")).toBe(noncanonicalBytes);
+    expect(existsSync(canonicalPath)).toBe(false);
+
+    // The no-handle standing projection fails closed the same way: the
+    // noncanonical binding keeps the contribution unresolved, never
+    // settled.
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const projections = await restarted.listContributions(conversationId);
+    const projection = projections.find((entry) => entry.batchId === receipt.batchId);
+    expect(projection?.state).toBe("unresolved");
+    expect(projection?.status).toContain("reconcile-required");
+  });
+
+  test("a valid different successor owner does not make the prior contribution falsely unresolved", async () => {
+    const fixture_ = fixture();
+    const registry = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = await registry.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "successor-writer", effectKind: "effectful" }),
+    ));
+    await waitFor(async () => {
+      const projections = await registry.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "contribution settles");
+
+    // The exact prior claim was released at settlement: the canonical path
+    // is free and a different valid owner acquires it.
+    const worktree = realpathSync(fixture_.worktree);
+    const canonicalPath = worktreeWriterLeasePath(worktree);
+    expect(existsSync(canonicalPath)).toBe(false);
+    const successor = acquireWorktreeWriterLease(worktree, {
+      taskId: "successor-task",
+      attemptId: randomUUID(),
+    });
+
+    // A restarted registry projects the settled prior contribution as
+    // settled, not unresolved: the valid successor claim proves the prior
+    // owner's claim was released rather than retained.
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const projections = await restarted.listContributions(conversationId);
+    const projection = projections.find((entry) => entry.batchId === receipt.batchId);
+    expect(projection?.state).toBe("settled");
+
+    // Recovery refuses the successor's valid claim without deleting it.
+    const recovery = restarted.reconcileLease({
+      conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(recovery.outcome).toBe("refused");
+    if (recovery.outcome === "refused") expect(recovery.reason).toContain("different owner");
+    expect(readFileSync(canonicalPath, "utf8")).toBe(successor.content);
+    releaseWorktreeWriterLease(successor);
+  });
+
+  test("a restarted registry keeps a schema-invalid retained claim unresolved and never deletes it", async () => {
+    const fixture_ = fixture();
+    const first = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+    const conversationId = randomUUID();
+    await seedTaskAction(fixture_.home, conversationId, fixture_);
+    const actor = { conversationId, turnId: randomUUID(), actionId: randomUUID() };
+    const receipt = await first.spawn(spawnInput(
+      actor,
+      spawnOperation({ key: "invalid-schema-writer", effectKind: "effectful" }),
+    ));
+    await waitFor(async () => {
+      const projections = await first.listContributions(conversationId);
+      return projections.every((entry) => entry.state === "settled");
+    }, "contribution settles");
+
+    const reservationPath = join(
+      contributionStateDirectory(fixture_.home, conversationId),
+      `spawn-${actor.actionId}.json`,
+    );
+    const spawnRecord = JSON.parse(readFileSync(reservationPath, "utf8")) as Record<string, unknown>;
+    const leaseRecord = spawnRecord.lease as Record<string, unknown>;
+    const leasePath = String(leaseRecord.path);
+    const claim = (record: Record<string, unknown>): string =>
+      `${JSON.stringify(record, null, 2)}\n`;
+
+    const restarted = createConversationContributionRegistry(fixture_.home, {
+      catalog: fakeCatalog(),
+    });
+
+    // A wrong-version retained claim keeps the projection unresolved.
+    writeFileSync(leasePath, claim({
+      version: "some-other.version",
+      worktree: leaseRecord.worktree,
+      taskId: leaseRecord.taskId,
+      attemptId: leaseRecord.attemptId,
+      pid: 999_999_999,
+      acquiredAt: new Date().toISOString(),
+    }), "utf8");
+    const wrongVersionProjection = (await restarted.listContributions(conversationId))
+      .find((entry) => entry.batchId === receipt.batchId);
+    expect(wrongVersionProjection?.state).toBe("unresolved");
+    expect(wrongVersionProjection?.status).toContain("reconcile-required");
+    expect(existsSync(leasePath)).toBe(true);
+
+    // A missing-field retained claim keeps the projection unresolved too.
+    writeFileSync(leasePath, claim({
+      version: "rosso.task-run-worktree-lease.v1",
+      worktree: leaseRecord.worktree,
+      taskId: leaseRecord.taskId,
+      attemptId: leaseRecord.attemptId,
+      pid: 999_999_999,
+    }), "utf8");
+    const missingProjection = (await restarted.listContributions(conversationId))
+      .find((entry) => entry.batchId === receipt.batchId);
+    expect(missingProjection?.state).toBe("unresolved");
+    expect(existsSync(leasePath)).toBe(true);
+
+    // The canonical retained claim is never deleted by any read: recovery
+    // refuses the schema-invalid shape and keeps the exact bytes.
+    const recovery = restarted.reconcileLease({
+      conversationId,
+      batchId: receipt.batchId,
+      key: receipt.key,
+    });
+    expect(recovery.outcome).toBe("refused");
+    expect(existsSync(leasePath)).toBe(true);
   });
 
   test("every contribution retains its exact worker and execution profile", async () => {

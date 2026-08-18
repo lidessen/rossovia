@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mechanism Design Review"
+  short_description: "Derive and explain simpler agent-system mechanisms"
+  default_prompt: "Use $mechanism-design-review to reconstruct only the task relation needed to judge whether a proposed mechanism is necessary, then derive the smallest sufficient treatment from identity, causal origin, destination, evidence limits, and effect authority; route task shaping, context delivery, and delegation to their existing owners."
