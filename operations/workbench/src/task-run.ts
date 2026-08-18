@@ -740,6 +740,10 @@ export async function runPrincipalTask(
       });
     }
     return {
+      // The parent Run injects a hard cap of one into the sub_worker
+      // closure: the first invocation admits one read-only child Run, and
+      // every later invocation for the same parent is refused before any
+      // asynchronous child preparation or evidence creation.
       [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
         home,
         parentRunId: request.requestId,
@@ -751,6 +755,12 @@ export async function runPrincipalTask(
         catalog: getCatalog(),
         host,
         registry: dependencies.controlBundle.registry,
+        // The parent Run injects a hard cap of one through the explicit
+        // admission envelope: the first sub_worker invocation consumes the
+        // single admission synchronously, and every later invocation for the
+        // same parent is refused before any asynchronous child preparation or
+        // evidence creation.
+        admission: { remaining: 1 },
         buildChildCellInput: (childRunId, workerId, prompt) =>
           buildReadOnlyChildCellInput(task, worktree, getCatalog().card(workerId), childRunId, prompt, request.maxSteps),
       }),
