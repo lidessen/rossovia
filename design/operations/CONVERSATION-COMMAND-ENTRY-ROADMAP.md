@@ -72,8 +72,10 @@ Mission focus advanced.
 The safe integration baseline observed on 2026-08-18 is
 `git:64b6186dad6916c6e4d954d0ffd0e2925a0485ad`. It composes the reviewed
 foreground-stop and S2 skeleton work plus the explicitly labeled child-admission
-WIP. The current documentation is being added on top of that baseline; it does
-not turn any open Task, WIP slice, review, or Mission branch into accepted work.
+WIP. The local primary branch has since recorded that baseline and this
+navigation surface in merge commit
+`git:0442416cdcc7ff419f7c9db06d86cc1e6f603838`; this local merge does not turn
+any open Task, WIP slice, review, or Mission branch into accepted work.
 
 P5 direct migration is blocked and is not part of this integration line. Its
 Workbench Task is `98024d97-296d-4bcc-95c0-e32869cbafd2`; the recoverable local
