@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-18T01:23:39Z",
+  "updatedAt": "2026-08-18T07:11:45Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -310,7 +310,19 @@
         "task:fcbff626-ecbf-442f-b6ef-393c8bbe7805#claim:ec61721c-841c-45c0-859a-0ed3213f830c"
       ],
       "status": "open"
+    },
+    {
+      "id": "s2-child-admission-budget",
+      "parent": "s2-readonly-sub-worker-run",
+      "kind": "implementation",
+      "purpose": "Let one parent Run expose sub_worker while its caller-owned closure admits at most one read-only child Run; excess calls refuse before child Run creation or persistence with bounded source-linked evidence.",
+      "returnCondition": "Return one clean implementation from git:89523f44fc7a8e19106ce099e06e20eca06b23e7: each parent Run caller injects one explicit child-admission envelope with a first-slice hard cap of one; the first admitted sub_worker invocation may create its existing read-only canonical child Run, while every later invocation for that parent refuses before child Run identity persistence, Cell creation, or model dispatch and returns bounded evidence linked to the parent Run and tool call. Reuse current Run, Task, Cell, and tool-result evidence. Prove first admission, over-limit zero-child refusal, and cancellation/compatibility preservation with focused tests and typecheck, then commit a clean checkpoint. Add no child model call during verification, new lifecycle, registry, retry, general budget system, Task type, acceptance, Mission settlement, remote action, or independent review in this slice.",
+      "sources": [
+        "git:89523f44fc7a8e19106ce099e06e20eca06b23e7",
+        "mission:s2-readonly-sub-worker-run"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "s2-readonly-sub-worker-run"
+  "currentFocus": "s2-child-admission-budget"
 }
