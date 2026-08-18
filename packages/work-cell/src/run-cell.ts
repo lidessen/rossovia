@@ -48,6 +48,13 @@ export interface RunCellOptions {
    * `supportsCellTools: true` capability.
    */
   tools?: CellToolSet;
+  /**
+   * Optional deterministic Run identity supplied by the caller. When omitted
+   * the Cell mints a fresh random UUID. An explicit id is used by callers that
+   * already own the Run identity — for example a one-shot child Run whose id
+   * is derived from a parent Run and an exact toolCallId.
+   */
+  runId?: string;
 }
 
 export async function runCell(
@@ -86,7 +93,7 @@ export async function runCell(
     throw new Error("terminal tools require at least two steps: one terminal action and one final output");
   }
   const outputSchema = input.outputSchema ? compileOutputSchema(input.outputSchema) : undefined;
-  const runId = randomUUID();
+  const runId = options.runId ?? randomUUID();
   const startedAt = new Date();
   const trace: TraceEvent[] = [];
   let observerActive = options.onTrace !== undefined;
