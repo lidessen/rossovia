@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-17T23:56:29Z",
+  "updatedAt": "2026-08-18T00:09:23Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -282,7 +282,20 @@
         "blocker:ordinary-task-run-explicit-step-cap"
       ],
       "status": "open"
+    },
+    {
+      "id": "deepseek-cost-evidence",
+      "parent": "daily-single-run-e2e",
+      "kind": "correction",
+      "purpose": "Correct current DeepSeek Flash and Pro time-versioned pricing semantics and retain truthful usage and cost standing without changing provider routing or creating new budget or lifecycle authority.",
+      "returnCondition": "Return with one clean implementation candidate that corrects current DeepSeek Flash and Pro time-versioned pricing semantics and truthful usage and cost standing; focused Work Cell tests, Work Cell typecheck, git diff-check, and fresh independent exact-head review are required. Add no budget system, new lifecycle, provider routing change, or model call; do not accept or settle any Task or Mission branch, publish, push, open a PR, or merge.",
+      "sources": [
+        "principal:deepseek-cost-evidence",
+        "parent:daily-single-run-e2e@6f3f0b396c05cee582441c6baa19446f3fa92185",
+        "blocker:deepseek-current-pricing-and-truthful-cost-standing"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "daily-single-run-e2e"
+  "currentFocus": "deepseek-cost-evidence"
 }
