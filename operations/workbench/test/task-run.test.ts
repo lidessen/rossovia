@@ -42,7 +42,10 @@ import {
   type TaskCellExecutionInput,
   type TaskRunResult,
 } from "../src/task-run";
-import type { WorkerCard } from "../../../packages/work-cell/src/worker-catalog";
+import {
+  WorkerCatalog,
+  type WorkerCard,
+} from "../../../packages/work-cell/src/worker-catalog";
 import { RunControlRegistry, stopRun } from "../src/orchestration/run";
 import { worktreeWriterLeasePath } from "../src/orchestration/worktree-writer";
 import { readStrictTaskAttemptEvidence, showPrincipalTaskAttempts } from "../src/task-attempts";
@@ -154,6 +157,7 @@ function runTestTask(
   executor?: TaskCellExecutor,
   dependencies: Parameters<typeof runPrincipalTaskImpl>[2] = {},
 ): Promise<TaskRunResult> {
+  const card = testCard(arguments_);
   return runPrincipalTaskImpl(
     home,
     {
@@ -166,8 +170,11 @@ function runTestTask(
     },
     {
       ...dependencies,
-      resolveWorkerCard: () => testCard(arguments_),
+      resolveWorkerCard: () => card,
       executeTaskCell: executor ?? defaultCellExecutor(),
+      catalog: dependencies.catalog ?? new WorkerCatalog([
+        { card, createDriver: () => { throw new Error("test driver not used"); } },
+      ]),
     },
   );
 }

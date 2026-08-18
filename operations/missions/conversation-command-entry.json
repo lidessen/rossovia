@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-18T00:09:23Z",
+  "updatedAt": "2026-08-18T01:23:39Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -295,7 +295,22 @@
         "blocker:deepseek-current-pricing-and-truthful-cost-standing"
       ],
       "status": "open"
+    },
+    {
+      "id": "s2-readonly-sub-worker-run",
+      "parent": "s1-cell-tool-port",
+      "kind": "implementation",
+      "purpose": "让一次父 Run 的模型工具调用可以请求一个只读子贡献；子贡献仍是现有 Orchestration 的一个显式 Run，不是 Work Cell 内部的第二个 Cell 或新的团队生命周期。",
+      "returnCondition": "Return with one clean bounded implementation from dd6ff73a: a caller-injected sub_worker CellTool starts exactly one read-only canonical O2 child Run attributed to the same current Task revisions, with a distinct deterministic child Run identity from parent Run plus exact toolCallId and a separately bound complete-prompt digest; child workspace has no write paths or commands and pays no O3 writer claim; parent cancellation/Cell tool drain awaits the child terminal boundary and returns source-linked bounded evidence. Prove one forward completion, one cancellation/no-final boundary, and one compatibility/capability refusal story plus focused Work Cell/Workbench typechecks and fresh independent exact-head review. Add no child Task, role/team type, peer lifecycle, registry, retry, implicit continuation, P5 migration, effectful child, acceptance, Mission settlement, remote action, or cleanup.",
+      "sources": [
+        "design/decisions/055-rossovia-runtime-module-ownership.md",
+        "design/organization/rossovia-runtime-ownership-migration.md",
+        "git:dd6ff73a77de446f0f2551774794e30e9cddb67c",
+        "git:885cf7d47f6a4b357d10d3e5ca480f1804e1dea2",
+        "task:fcbff626-ecbf-442f-b6ef-393c8bbe7805#claim:ec61721c-841c-45c0-859a-0ed3213f830c"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "deepseek-cost-evidence"
+  "currentFocus": "s2-readonly-sub-worker-run"
 }

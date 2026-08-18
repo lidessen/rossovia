@@ -77,12 +77,30 @@ export const RunRequestSchema = z.object({
   }).strict().optional(),
   /** Optional explicit positive per-run step cap, lowered into the immutable CellInput budget. */
   maxSteps: z.number().int().positive().optional(),
+  /**
+   * Run access mode. The omitted legacy value is `ordinary` and effectful:
+   * it acquires an exact O3 writer claim and lowers ordinary workspace
+   * write/command authority. `read-only` skips O3 acquisition entirely and
+   * lowers an immutable CellInput with no write paths and no allowed commands.
+   */
+  access: z.enum(["ordinary", "read-only"]).optional(),
   /** Exact journal causality when the accepted request came from Conversation. */
   correlation: z.object({
     conversationId: z.string().uuid(),
     turnId: z.string().uuid(),
     actionId: z.string().uuid(),
     sourceRef: z.string().min(1),
+  }).strict().optional(),
+  /**
+   * Parent-tool invocation binding for a read-only child Run: the exact parent
+   * Run identity, the provider tool call identity, the complete prompt digest,
+   * and the parent tool name. Independent from Conversation correlation.
+   */
+  parentTool: z.object({
+    name: z.string().min(1),
+    parentRunId: z.string().uuid(),
+    toolCallId: z.string().min(1),
+    promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
   }).strict().optional(),
 }).strict();
 
@@ -163,7 +181,9 @@ export function canonicalRunRequestJson(request: RunRequest): string {
     worktree: request.worktree,
     ...(request.continuation !== undefined ? { continuation: request.continuation } : {}),
     ...(request.maxSteps !== undefined ? { maxSteps: request.maxSteps } : {}),
+    ...(request.access === "read-only" ? { access: request.access } : {}),
     ...(request.correlation !== undefined ? { correlation: request.correlation } : {}),
+    ...(request.parentTool !== undefined ? { parentTool: request.parentTool } : {}),
   });
 }
 
@@ -231,6 +251,8 @@ export function createRunRequestRecord(
           }
         : {}),
       ...(request.maxSteps !== undefined ? { maxSteps: request.maxSteps } : {}),
+      ...(request.access === "read-only" ? { access: request.access } : {}),
+      ...(request.parentTool !== undefined ? { parentTool: request.parentTool } : {}),
       status: "started",
       startedAt: new Date().toISOString(),
       requestDigest: digest,
@@ -297,7 +319,9 @@ function retainedRunRequest(record: Record<string, unknown>): RunRequest | undef
     worktree: record.worktree,
     ...(record.continuation === undefined ? {} : { continuation: record.continuation }),
     ...(typeof record.maxSteps === "number" ? { maxSteps: record.maxSteps } : {}),
+    ...(record.access === "read-only" ? { access: record.access as "read-only" } : {}),
     ...(record.correlation === undefined ? {} : { correlation: record.correlation }),
+    ...(record.parentTool !== undefined ? { parentTool: record.parentTool } : {}),
   });
   return parsed.success ? parsed.data : undefined;
 }
@@ -489,7 +513,8 @@ export interface RunFinalizationInput {
   readonly expectedInput: CellInput;
   readonly task: { readonly id: string; readonly revision: number };
   readonly runId: string;
-  readonly lease: WorktreeWriterLease;
+  /** Absent for read-only Runs, which never acquire an O3 writer claim. */
+  readonly lease?: WorktreeWriterLease;
   readonly outcome:
     | { readonly status: "final"; readonly record: CellRunRecord }
     | { readonly status: "failed"; readonly error: string };
@@ -575,22 +600,25 @@ export async function runOrdinaryTaskRun(
   const controller = new AbortController();
   let lease: WorktreeWriterLease | undefined;
   let finalizationAttempted = false;
+  const readOnly = request.access === "read-only";
   try {
-    try {
-      dependencies.beforeLeaseAcquire?.();
-    } catch (error) {
-      settleRefusal(refs, request, error);
-      throw error;
-    }
-    try {
-      lease = (dependencies.acquireLease ?? acquireWorktreeWriterLease)(
-        request.worktree,
-        { taskId: request.taskId, attemptId: request.requestId },
-      );
-    } catch (error) {
-      // O3 refusal: a truthful pre-Cell terminal Run with no claim held.
-      settleRefusal(refs, request, error);
-      throw error;
+    if (!readOnly) {
+      try {
+        dependencies.beforeLeaseAcquire?.();
+      } catch (error) {
+        settleRefusal(refs, request, error);
+        throw error;
+      }
+      try {
+        lease = (dependencies.acquireLease ?? acquireWorktreeWriterLease)(
+          request.worktree,
+          { taskId: request.taskId, attemptId: request.requestId },
+        );
+      } catch (error) {
+        // O3 refusal: a truthful pre-Cell terminal Run with no claim held.
+        settleRefusal(refs, request, error);
+        throw error;
+      }
     }
     try {
       // Mutable preparation happens only after the exact O3 claim; the
@@ -598,10 +626,14 @@ export async function runOrdinaryTaskRun(
       // keeps one exact inspectable input and zero Cell invocations.
       const cellInput = dependencies.lowerCellInput();
       // The lowered CellInput is bound and validated against the accepted
-      // durable Run request and the exact O3 claim BEFORE it is persisted or
-      // executed: a mismatch settles a truthful pre-Cell failure, runs zero
-      // Cells, and releases the exact claim.
-      validateLoweredCellInput(cellInput, request, lease);
+      // durable Run request BEFORE it is persisted or executed: identity,
+      // worker, execution profile, Worktree, and maxSteps must match for
+      // every run including read-only. The effectful-only O3 lease-path
+      // check is separate and runs only when a claim was acquired.
+      validateLoweredCellInput(cellInput, request);
+      if (lease !== undefined) {
+        validateLeaseBindsWorktree(lease, request);
+      }
       taskRunHelpers().writeImmutableJson(refs.inputPath, cellInput);
       dependencies.revalidate?.();
       if (registry !== undefined) {
@@ -615,7 +647,7 @@ export async function runOrdinaryTaskRun(
         expectedInput: cellInput,
         task: { id: request.taskId, revision: request.taskRevision },
         runId: request.requestId,
-        lease,
+        ...(lease !== undefined ? { lease } : {}),
         outcome,
         ...(controlRef !== undefined ? { controlRef } : {}),
         execution: request.execution,
@@ -771,7 +803,7 @@ function defaultRunFinalize(input: RunFinalizationInput): RunFinalization {
     expectedInput: input.expectedInput,
     task: input.task,
     attemptId: input.runId,
-    lease: input.lease,
+    ...(input.lease !== undefined ? { lease: input.lease } : {}),
     outcome: input.outcome,
     ...(input.controlRef !== undefined ? { controlRef: input.controlRef } : {}),
     // The exact execution identity is rebuilt with the absent reasoning
@@ -812,7 +844,6 @@ function canonicalWorktree(root: string): string {
 function validateLoweredCellInput(
   cellInput: CellInput,
   request: RunRequest,
-  lease: WorktreeWriterLease,
 ): void {
   const expectedCellId = `workbench-task-${request.taskId}-attempt-${request.requestId}`;
   if (cellInput.id !== expectedCellId) {
@@ -862,11 +893,6 @@ function validateLoweredCellInput(
       `lowered CellInput workspace root ${observedRoot} does not match the accepted Run request Worktree ${expectedRoot}`,
     );
   }
-  if (lease.path !== worktreeWriterLeasePath(request.worktree)) {
-    throw new Error(
-      `the exact O3 writer claim ${lease.path} does not bind the accepted Run request Worktree`,
-    );
-  }
   const loweredMaxSteps = cellInput.budget?.maxSteps;
   const requestedMaxSteps = request.maxSteps;
   if (loweredMaxSteps !== requestedMaxSteps) {
@@ -874,6 +900,33 @@ function validateLoweredCellInput(
     const requestedLabel = requestedMaxSteps === undefined ? "absent" : String(requestedMaxSteps);
     throw new Error(
       `lowered CellInput maxSteps ${loweredLabel} does not match the accepted Run request maxSteps ${requestedLabel}`,
+    );
+  }
+  // Read-only Runs must lower an immutable CellInput with no write paths and
+  // no allowed commands before any execution; this is part of the shared
+  // lowering validation, not the effectful O3 lease path.
+  if (request.access === "read-only") {
+    if (cellInput.workspace.writePaths.length > 0) {
+      throw new Error("read-only Run lowered CellInput must have no write paths");
+    }
+    if (cellInput.workspace.allowedCommands.length > 0) {
+      throw new Error("read-only Run lowered CellInput must have no allowed commands");
+    }
+  }
+}
+
+/**
+ * Effectful-only O3 writer-claim validation: the exact acquired lease
+ * must bind the accepted Run request Worktree. Read-only Runs skip this
+ * check because they never acquire a claim.
+ */
+function validateLeaseBindsWorktree(
+  lease: WorktreeWriterLease,
+  request: RunRequest,
+): void {
+  if (lease.path !== worktreeWriterLeasePath(request.worktree)) {
+    throw new Error(
+      `the exact O3 writer claim ${lease.path} does not bind the accepted Run request Worktree`,
     );
   }
 }
@@ -957,6 +1010,9 @@ function evidenceCleanupStanding(
 ): RunCleanupStanding {
   const attempt = evidence.attempt;
   if (attempt === undefined) return "uninspectable";
+  // A read-only Run never acquires an O3 writer claim, so its cleanup is
+  // always released; no lease inspection is required or meaningful.
+  if (attempt.access === "read-only") return "released";
   // The request-owned Worktree identity retained before O3 acquisition is the
   // standing source for an inputless Run; historical families fall back to
   // the immutable CellInput workspace root.
@@ -1091,6 +1147,29 @@ export function reconcileRun(
     return reconcileSettledRun(runId, evidence, worktree, refs, dependencies);
   }
 
+  // A read-only Run never acquires an O3 writer claim, so it does not need
+  // owner-absence proof before deriving a truthful no-final settlement from
+  // the retained control receipt or final record. It remains unresolved when
+  // neither terminal evidence exists.
+  if (attempt.access === "read-only") {
+    if (evidence.control === undefined && evidence.finalRecord === undefined) {
+      throw new ReconcileRunRefusal(
+        "unproven-owner",
+        `Run ${runId} is a read-only Run with no retained terminal evidence; liveness is unknown`,
+      );
+    }
+    const settlementInput = deriveNoFinalSettlementInput(runId, evidence, refs);
+    taskRunHelpers().writeTaskRunSettlement(refs, settlementInput);
+    const settledEvidence = readStrictTaskAttemptEvidence(home, runId);
+    if (settledEvidence.standing !== "available" || settledEvidence.settlement === undefined) {
+      throw new ReconcileRunRefusal(
+        "invalid",
+        `Run ${runId} retained no readable valid settlement after the shared settlement write; reconcile fails closed`,
+      );
+    }
+    return reconcileSettledRun(runId, settledEvidence, worktree, refs, dependencies);
+  }
+
   const inspected = inspectRetainedWorktreeWriterLease({
     worktree,
     taskId: attempt.taskId,
@@ -1115,7 +1194,29 @@ export function reconcileRun(
       inspected.pid,
     );
   }
-  const settlementInput = evidence.control !== undefined
+  taskRunHelpers().writeTaskRunSettlement(refs, deriveNoFinalSettlementInput(runId, evidence, refs));
+  // The shared settlement write is durable, but the pre-write evidence
+  // snapshot still carries no settlement and must never derive the terminal
+  // outcome. Strictly re-read the exact attempt family and require it to be
+  // available and valid with the expected settlement relation before any
+  // exact O3 release or outcome derivation happens.
+  const settledEvidence = readStrictTaskAttemptEvidence(home, runId);
+  if (settledEvidence.standing !== "available" || settledEvidence.settlement === undefined) {
+    throw new ReconcileRunRefusal(
+      "invalid",
+      `Run ${runId} retained no readable valid settlement after the shared settlement write; reconcile fails closed`,
+    );
+  }
+  return reconcileSettledRun(runId, settledEvidence, worktree, refs, dependencies);
+}
+
+function deriveNoFinalSettlementInput(
+  runId: string,
+  evidence: StrictTaskAttemptEvidence,
+  _refs: RunEvidenceRefs,
+) {
+  const attempt = evidence.attempt!;
+  return evidence.control !== undefined
     ? {
       taskId: attempt.taskId,
       taskRevision: attempt.taskRevision,
@@ -1144,20 +1245,6 @@ export function reconcileRun(
         error:
           "interrupted before a final Work Cell record was retained; reconciled by the Run owner",
       };
-  taskRunHelpers().writeTaskRunSettlement(refs, settlementInput);
-  // The shared settlement write is durable, but the pre-write evidence
-  // snapshot still carries no settlement and must never derive the terminal
-  // outcome. Strictly re-read the exact attempt family and require it to be
-  // available and valid with the expected settlement relation before any
-  // exact O3 release or outcome derivation happens.
-  const settledEvidence = readStrictTaskAttemptEvidence(home, runId);
-  if (settledEvidence.standing !== "available" || settledEvidence.settlement === undefined) {
-    throw new ReconcileRunRefusal(
-      "invalid",
-      `Run ${runId} retained no readable valid settlement after the shared settlement write; reconcile fails closed`,
-    );
-  }
-  return reconcileSettledRun(runId, settledEvidence, worktree, refs, dependencies);
 }
 
 function reconcileSettledRun(
@@ -1178,6 +1265,14 @@ function reconcileSettledRun(
     );
   }
   const attempt = evidence.attempt;
+  // A read-only Run never acquired an O3 writer claim, so no lease inspection
+  // or release is required: cleanup is released by definition.
+  if (attempt.access === "read-only") {
+    return {
+      runId,
+      outcome: terminalOutcomeFromEvidence(refs, evidence, runId, "released")!,
+    };
+  }
   const inspected = inspectRetainedWorktreeWriterLease({
     worktree,
     taskId: attempt.taskId,
@@ -1216,6 +1311,124 @@ function reconcileSettledRun(
     runId,
     outcome: terminalOutcomeFromEvidence(refs, evidence, runId, "released")!,
   };
+}
+
+/**
+ * One parent-tool sub_worker invocation creates exactly one read-only child
+ * Run. The child Run identity is deterministic from the exact parentRunId and
+ * the provider toolCallId, and the complete prompt is bound through the
+ * parent-tool correlation digest. The child Run reuses the same Task
+ * attribution and Worktree root, but its access mode is read-only: it skips
+ * O3 acquisition, lowers no write paths and no allowed commands, and receives
+ * no injected CellTools, so a second-layer sub_worker is impossible.
+ */
+export interface ReadOnlyChildRunInput {
+  readonly parentRunId: string;
+  readonly toolCallId: string;
+  readonly taskId: string;
+  readonly taskRevision: number;
+  readonly sourceRevision: number;
+  readonly worktree: string;
+  readonly workerId: string;
+  readonly prompt: string;
+  readonly promptDigest: string;
+  /** The parent tool name that invoked the child Run; defaults to sub_worker. */
+  readonly parentToolName?: string;
+  readonly execution: RunRequest["execution"];
+  readonly maxSteps?: number;
+}
+
+export type ReadOnlyChildRunResult = RunResult;
+
+export interface ReadOnlyChildRunDependencies {
+  readonly lowerCellInput: () => CellInput;
+  readonly execute: NonNullable<OrdinaryRunDependencies["execute"]>;
+  readonly finalize?: OrdinaryRunDependencies["finalize"];
+  readonly card?: unknown;
+  readonly registry?: RunControlRegistry;
+  readonly onControlAvailable?: (runId: string) => void;
+}
+
+/**
+ * The Workbench Orchestration neutral one-shot child Run port. A single
+ * read-only Run is created, executed, and finalized through the existing O2
+ * owners; no second lifecycle, Work Cell orchestration, or O3 claim is
+ * introduced.
+ */
+export function buildReadOnlyChildRunRequest(input: ReadOnlyChildRunInput): RunRequest {
+  return {
+    requestId: deriveChildRunId(input.parentRunId, input.toolCallId),
+    taskId: input.taskId,
+    taskRevision: input.taskRevision,
+    sourceRevision: input.sourceRevision,
+    workerId: input.workerId,
+    execution: input.execution,
+    worktree: input.worktree,
+    access: "read-only",
+    parentTool: {
+      name: input.parentToolName ?? "sub_worker",
+      parentRunId: input.parentRunId,
+      toolCallId: input.toolCallId,
+      promptDigest: input.promptDigest,
+    },
+    ...(input.maxSteps === undefined ? {} : { maxSteps: input.maxSteps }),
+  };
+}
+
+export async function runReadOnlyChildRun(
+  home: string,
+  input: ReadOnlyChildRunInput,
+  dependencies: ReadOnlyChildRunDependencies,
+): Promise<RunResult> {
+  const request = buildReadOnlyChildRunRequest(input);
+  return await runOrdinaryTaskRun(home, request, {
+    lowerCellInput: dependencies.lowerCellInput,
+    execute: dependencies.execute,
+    ...(dependencies.finalize === undefined ? {} : { finalize: dependencies.finalize }),
+    ...(dependencies.card === undefined ? {} : { card: dependencies.card }),
+    ...(dependencies.registry === undefined
+      ? {}
+      : {
+          registry: dependencies.registry,
+          ...(dependencies.onControlAvailable === undefined
+            ? {}
+            : { onControlAvailable: dependencies.onControlAvailable }),
+        }),
+  });
+}
+
+/**
+ * Deterministically derive a child Run identity from the exact parent Run
+ * identity and the provider tool call identity. The result is a valid UUID
+ * (RFC 9562 v5) so it satisfies the existing RunRequest schema, while the
+ * complete prompt is bound separately through the request digest/correlation.
+ */
+export function deriveChildRunId(parentRunId: string, toolCallId: string): string {
+  const namespace = uuidBytes(ROSSOVIA_SUB_WORKER_NAMESPACE);
+  const name = new TextEncoder().encode(`${parentRunId}:${toolCallId}`);
+  const hash = createHash("sha1").update(namespace).update(name).digest();
+  hash[6] = (hash[6]! & 0x0f) | 0x50;
+  hash[8] = (hash[8]! & 0x3f) | 0x80;
+  return formatUuid(hash.subarray(0, 16));
+}
+
+/** Fixed Rossovia sub_worker UUIDv5 namespace; never changes. */
+const ROSSOVIA_SUB_WORKER_NAMESPACE = "0191ec12-2de1-7b9e-8f3a-2c9e4d8a1f50";
+
+function uuidBytes(uuid: string): Uint8Array {
+  const hex = uuid.replace(/-/g, "");
+  if (hex.length !== 32) throw new Error(`invalid UUID: ${uuid}`);
+  const bytes = new Uint8Array(16);
+  for (let index = 0; index < 16; index += 1) {
+    bytes[index] = parseInt(hex.slice(index * 2, index * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function formatUuid(bytes: Uint8Array): string {
+  if (bytes.length !== 16) throw new Error("UUID must be 16 bytes");
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 function taskRunHelpers(): typeof import("../task-run") {

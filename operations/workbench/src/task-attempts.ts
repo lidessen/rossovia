@@ -52,15 +52,31 @@ const TaskRunAttemptSchema = z.object({
   status: z.literal("started"),
   startedAt: z.iso.datetime(),
   /**
-   * Optional conversation correlation retained by a conversation-owned
-   * catalog attempt: the exact durable turn/action identity and the causal
-   * action source reference the reconciliation path searches for.
+   * Run access mode. The omitted legacy value is `ordinary` and effectful;
+   * `read-only` skips O3 acquisition and lowers no write/command authority.
+   */
+  access: z.enum(["ordinary", "read-only"]).optional(),
+  /**
+   * Optional Conversation-owned correlation: the exact committed turn/action
+   * identity and causal source reference. Parent-tool child Runs use the
+   * separate `parentTool` field.
    */
   correlation: z.object({
     conversationId: z.string().uuid(),
     turnId: z.string().uuid(),
     actionId: z.string().uuid(),
     sourceRef: z.string().min(1),
+  }).strict().optional(),
+  /**
+   * Optional parent-tool invocation binding for a read-only child Run: the
+   * exact parent Run identity, provider tool call identity, complete prompt
+   * digest, and parent tool name.
+   */
+  parentTool: z.object({
+    name: z.string().min(1),
+    parentRunId: z.string().uuid(),
+    toolCallId: z.string().min(1),
+    promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
   }).strict().optional(),
 }).passthrough();
 
@@ -155,12 +171,19 @@ export interface TaskAttemptProjection {
   driver?: string;
   model?: string;
   reasoningEffort?: string;
-  /** Conversation correlation retained by a conversation-owned catalog attempt. */
+  /** Conversation-owned correlation retained by the Run request. */
   correlation?: {
     conversationId: string;
     turnId: string;
     actionId: string;
     sourceRef: string;
+  };
+  /** Parent-tool invocation binding retained by the Run request. */
+  parentTool?: {
+    name: string;
+    parentRunId: string;
+    toolCallId: string;
+    promptDigest: string;
   };
   /** Session requested by the caller for this attempt, when one was supplied. */
   requestedSession?: string;
@@ -337,6 +360,9 @@ function projectAttempt(
         : {}),
       ...(attempt.value.correlation !== undefined
         ? { correlation: attempt.value.correlation }
+        : {}),
+      ...(attempt.value.parentTool !== undefined
+        ? { parentTool: attempt.value.parentTool }
         : {}),
       ...(attempt.value.session !== undefined ? { requestedSession: attempt.value.session } : {}),
       ...(attempt.value.continuation !== undefined
@@ -515,6 +541,14 @@ export function readStrictTaskAttemptEvidence(
         && candidate.executionProfile.reasoningEffort !== attemptRecord.reasoningEffort
       ) {
         return "CellInput execution profile reasoning effort does not match the attempt record";
+      }
+      if (attemptRecord.access === "read-only") {
+        if (candidate.workspace.writePaths.length > 0) {
+          return "read-only Run immutable CellInput must have no write paths";
+        }
+        if (candidate.workspace.allowedCommands.length > 0) {
+          return "read-only Run immutable CellInput must have no allowed commands";
+        }
       }
       const requestWorktree = attemptRecord.worktree;
       if (requestWorktree !== undefined) {
