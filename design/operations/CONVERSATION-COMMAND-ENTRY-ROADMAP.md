@@ -69,12 +69,32 @@ Mission focus advanced.
 
 ## Current roadmap and later TODO
 
-The primary-workspace Mission status observed on 2026-08-17 keeps the mainline
-active and reports `ordinary-run-explicit-step-budget` as current focus. This
-is a dated projection, not a durable status claim. Before acting, run the
-official Mission status and check surfaces from the current primary workspace.
+The safe integration baseline observed on 2026-08-18 is
+`git:64b6186dad6916c6e4d954d0ffd0e2925a0485ad`. It composes the reviewed
+foreground-stop and S2 skeleton work plus the explicitly labeled child-admission
+WIP. The current documentation is being added on top of that baseline; it does
+not turn any open Task, WIP slice, review, or Mission branch into accepted work.
 
-The open work falls into four bounded outcomes:
+P5 direct migration is blocked and is not part of this integration line. Its
+Workbench Task is `98024d97-296d-4bcc-95c0-e32869cbafd2`; the recoverable local
+checkpoint `bfe129f4014f5fcd44b4cb33d33abd805bbea72e` and later uncommitted
+workspace bytes are incomplete WIP and must not be merged. The current P5
+direction is direct removal of the old contribution peer lifecycle after its
+real consumers are migrated to the canonical explicit Run owner. Retaining the
+old lifecycle as a compatibility authority is not a completed migration. The
+recorded DeepSeek attempt stopped on provider balance, and the Kimi attempt
+stopped at its duration boundary without verification; neither is semantic or
+integration evidence. Resume from the Task ledger and exact Git/worktree state,
+not from model prose or this projection.
+
+The immediate integration sequence is therefore: verify this safe baseline,
+obtain fresh exact-head independent review, and merge only that reviewed
+baseline. The later product sequence remains P5 direct migration, recovery,
+Presentation, concentrated whole-product verification, fresh review, and a
+separate authorized merge. Before acting, run the official Mission status and
+check surfaces from the current authoritative workspace.
+
+The remaining work falls into five bounded outcomes:
 
 1. **Finish the ordinary single-Run control path.** Preserve the canonical Run
    and immutable Cell boundary while adding only a caller-explicit optional
@@ -93,7 +113,12 @@ The open work falls into four bounded outcomes:
    existing result-claim path without automatic submission or acceptance. F6
    must preserve concurrent successful project registrations as one
    fail-closed Workbench state transition without inventing a new authority.
-4. **Re-run the whole product claim after the owners return.** Reconstruct the
+4. **Complete P5 without a compatibility peer.** Enumerate every live consumer,
+   move the contribution policy path onto one canonical explicit Run, remove
+   the old peer lifecycle, and prove ordinary mapping, reconnect without replay,
+   and absence of a legacy caller. A compatibility projection, tombstone-only
+   file, timed-out workspace, or green unrelated baseline cannot close P5.
+5. **Re-run the whole product claim after the owners return.** Reconstruct the
    current exact head, repeat representative deterministic/provider/browser
    evidence, and obtain a fresh independent semantic review. Only then is a
    Principal decision on Task/product acceptance or Mission settlement
@@ -122,11 +147,13 @@ attempt state, branch activity, or check output here.
   model, thinking, and effort; report only adapter/provider-returned observation
   as observed. A required-profile mismatch or unavailable capability is visible,
   never a silent downgrade.
-- DeepSeek Pro with thinking and `reasoning=max` is the current conversation
-  coordinator policy, not a mechanism invariant or universal worker default.
-  Ordinary Task production uses the catalog-backed Vercel AI SDK runtime.
-  OpenCode CLI remains an explicit compatibility/experiment adapter and is not
-  an ordinary fallback.
+- For the current migration phase, ordinary implementation prefers the
+  catalog-backed OpenCode Go Flash route; Kimi is reserved for architecture
+  reasoning and boundary review. If one is unavailable, choose a fallback by
+  the actual task shape from DeepSeek Flash or Pro rather than changing runtime
+  configuration. This is dated policy, not a mechanism invariant or universal
+  worker default. The P5 DeepSeek balance failure and Kimi timeout are current
+  unavailability evidence, not permission to retry silently or claim progress.
 - Price, token, step, and duration choices are policy envelopes. Estimate
   before material spend, preserve normalized attributable usage/cost when
   available, and retain `unknown` rather than inventing zero. Ordinary
