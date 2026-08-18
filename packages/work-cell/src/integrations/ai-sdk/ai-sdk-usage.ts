@@ -5,15 +5,38 @@ export function normalizeAiSdkUsage(
   providerMetadata?: unknown,
 ): CellUsage {
   const record = asRecord(usage);
-  const inputTokens = numberValue(record.inputTokens) || numberValue(record.promptTokens);
+  const totalInputTokens = numberValue(record.inputTokens) || numberValue(record.promptTokens);
   const outputTokens = numberValue(record.outputTokens) || numberValue(record.completionTokens);
+  const details = asRecord(record.inputTokenDetails);
+  const cacheReadTokens = numberValue(details.cacheReadTokens);
+  const providerCacheHits = providerCacheReadTokens(providerMetadata);
+  const cachedInputTokens = cacheReadTokens || providerCacheHits;
+
+  // AI SDK v7 reports `inputTokens` as the *total* input. The non-cache
+  // portion is either explicit (`noCacheTokens`) or must be derived from the
+  // total when cache-read tokens are reported separately. Pi/harness paths that
+  // already emit separated input/cacheRead categories pass through unchanged
+  // because they do not provide cache evidence here.
+  const explicitNoCache = optionalNumber(details.noCacheTokens);
+  let inputTokens: number;
+  if (explicitNoCache !== undefined) {
+    inputTokens = explicitNoCache;
+  } else if (cachedInputTokens > 0) {
+    inputTokens = Math.max(0, totalInputTokens - cachedInputTokens);
+  } else {
+    inputTokens = totalInputTokens;
+  }
+
+  const providerTotal = optionalNumber(record.totalTokens);
+  const totalTokens = providerTotal !== undefined && providerTotal > 0
+    ? providerTotal
+    : inputTokens + outputTokens + cachedInputTokens;
+
   return {
     inputTokens,
     outputTokens,
-    totalTokens: numberValue(record.totalTokens) || inputTokens + outputTokens,
-    cachedInputTokens:
-      numberValue((record.inputTokenDetails as { cacheReadTokens?: unknown } | null | undefined)?.cacheReadTokens)
-      || providerCacheReadTokens(providerMetadata),
+    totalTokens,
+    cachedInputTokens,
   };
 }
 
@@ -29,6 +52,10 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
 }
 
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function numberValue(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return optionalNumber(value) ?? 0;
 }

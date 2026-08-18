@@ -860,6 +860,6 @@ function estimateCost(
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillionUsd;
   return {
     value: Number((inputCost + outputCost).toFixed(8)),
-    basis: `reported-usage peak-rate upper bound (${pricing.source}, revision ${pricing.revision ?? "unknown"})`,
+    basis: `reported-usage peak-rate upper bound from official pricing snapshot (${pricing.source}, revision ${pricing.revision ?? "unknown"}); not a provider invoice`,
   };
 }

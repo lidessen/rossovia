@@ -249,6 +249,7 @@ describe("cost estimate evidence", () => {
     expect(record.estimateBasis).toContain("reported-usage peak-rate upper bound");
     expect(record.estimateBasis).toContain(deepSeekFlashPricing.source);
     expect(record.estimateBasis).toContain("2026-08-17");
+    expect(record.estimateBasis).toContain("not a provider invoice");
   });
 
   test("omits a dollar cost when provider usage is zero", async () => {
@@ -300,6 +301,7 @@ describe("cost estimate evidence", () => {
     expect(record.status).toBe("passed");
     expect(record.estimatedCostUsd).toBe(5.28);
     expect(record.estimateBasis).toContain("reported-usage peak-rate upper bound");
+    expect(record.estimateBasis).toContain("not a provider invoice");
   });
 });
 

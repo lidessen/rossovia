@@ -718,10 +718,38 @@ test("usage normalization reads standard cache details before provider-neutral m
     arbitraryProvider: { promptCacheHitTokens: 32 },
     workCellRoute: { servedBy: "arbitraryProvider" },
   })).toEqual({
-    inputTokens: 100,
+    inputTokens: 68,
     outputTokens: 10,
     totalTokens: 110,
     cachedInputTokens: 32,
+  });
+});
+
+test("normalizeAiSdkUsage derives non-cache input from total when cache-read tokens are reported", () => {
+  expect(normalizeAiSdkUsage({
+    inputTokens: 1000,
+    outputTokens: 200,
+    totalTokens: 1200,
+    inputTokenDetails: { cacheReadTokens: 800 },
+  }, undefined)).toEqual({
+    inputTokens: 200,
+    outputTokens: 200,
+    totalTokens: 1200,
+    cachedInputTokens: 800,
+  });
+});
+
+test("normalizeAiSdkUsage prefers explicit noCacheTokens and preserves the provider total", () => {
+  expect(normalizeAiSdkUsage({
+    inputTokens: 1000,
+    outputTokens: 200,
+    totalTokens: 1400,
+    inputTokenDetails: { noCacheTokens: 150, cacheReadTokens: 250 },
+  }, undefined)).toEqual({
+    inputTokens: 150,
+    outputTokens: 200,
+    totalTokens: 1400,
+    cachedInputTokens: 250,
   });
 });
 
