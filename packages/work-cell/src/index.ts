@@ -12,7 +12,6 @@ export * from "./codex-cli-driver";
 export * from "./opencode-cli-driver";
 export * from "./codex-app-server-driver";
 export * from "./orchestration";
-export * from "./sub-worker";
 export * from "./swarm";
 export * from "./provider-observation";
 // Declared AI SDK Integration path: every concrete AI SDK/Pi/provider driver,

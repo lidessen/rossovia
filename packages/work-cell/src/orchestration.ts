@@ -73,25 +73,10 @@ export class OrchestrationRunError extends Error {
   }
 }
 
-export interface OrchestrationOptions {
-  concurrency: number;
-  host: CellHost;
-  signal?: AbortSignal;
-  /**
-   * Optional deterministic Cell Run id factory. When supplied, each lease is
-   * executed through `runCell` with the returned id; callers that already own
-   * the Run identity — for example a one-shot child Run whose id is derived
-   * from a parent Run and an exact toolCallId — use this to mint the child
-   * execution id. Omit for ordinary multi-Cell orchestration, where each Cell
-   * receives a fresh random UUID.
-   */
-  createRunId?: (item: WorkItem) => string;
-}
-
 export async function runOrchestration(
   source: WorkSource,
   createDriver: (input: CellInput) => CellDriver,
-  options: OrchestrationOptions,
+  options: { concurrency: number; host: CellHost; signal?: AbortSignal },
 ): Promise<OrchestrationRun> {
   if (!Number.isInteger(options.concurrency) || options.concurrency < 1) {
     throw new Error("orchestration concurrency must be a positive integer");
@@ -138,11 +123,7 @@ export async function runOrchestration(
         const record = await runCell(
           lease.item.input,
           createDriver(lease.item.input),
-          {
-            host: options.host,
-            signal: executionSignal,
-            ...(options.createRunId ? { runId: options.createRunId(lease.item) } : {}),
-          },
+          { host: options.host, signal: executionSignal },
         );
         settlement = {
           kind: "settled",
@@ -325,81 +306,6 @@ export class InMemoryCellQueue implements WorkSource {
       waiter.resolve(null);
     }
   }
-}
-
-/**
- * A neutral one-shot WorkSource for a single child Run. It yields exactly one
- * admitted Cell and then closes. The caller owns the child Run identity and the
- * child Cell input; this source only binds them to the WorkSource protocol.
- */
-export class OneShotChildRunSource implements WorkSource {
-  private readonly item: WorkItem;
-  private lease: WorkLease | null = null;
-  private observedSettlement: WorkSettlement | undefined;
-  private finished = false;
-
-  constructor(item: WorkItem) {
-    this.item = item;
-  }
-
-  async next(signal: AbortSignal): Promise<WorkLease | null> {
-    signal.throwIfAborted();
-    if (this.finished) return null;
-    if (this.lease !== null) return null;
-    this.lease = createLease(this.item);
-    return this.lease;
-  }
-
-  async settle(settlement: WorkSettlement): Promise<void> {
-    if (this.observedSettlement !== undefined) {
-      throw new Error("one-shot child Run already settled");
-    }
-    this.observedSettlement = settlement;
-    this.finished = true;
-  }
-
-  settlement(): WorkSettlement | undefined {
-    return this.observedSettlement;
-  }
-}
-
-export interface OneShotChildRunResult {
-  /** The deterministic Run identity supplied by the caller. */
-  readonly runId: string;
-  /** The one settlement produced by the child Run. */
-  readonly settlement: WorkSettlement;
-}
-
-/**
- * Run exactly one admitted child Cell through the Orchestration neutral port.
- * The caller supplies the deterministic `runId`, so the child execution is
- * reconstructible from the parent Run and the exact provider toolCallId. The
- * child Cell must already be read-only and command-free; this helper does not
- * mutate the supplied input.
- */
-export async function runOneShotChildCell(
-  item: WorkItem,
-  createDriver: (input: CellInput) => CellDriver,
-  options: {
-    readonly host: CellHost;
-    readonly runId: string;
-    readonly signal?: AbortSignal;
-  },
-): Promise<OneShotChildRunResult> {
-  const source = new OneShotChildRunSource(item);
-  const orchestration = await runOrchestration(source, createDriver, {
-    concurrency: 1,
-    host: options.host,
-    signal: options.signal,
-    createRunId: () => options.runId,
-  });
-  const settlement = source.settlement();
-  if (settlement === undefined) {
-    throw new Error(
-      `one-shot child Run ${options.runId} produced no settlement; orchestration status: ${orchestration.status}`,
-    );
-  }
-  return { runId: options.runId, settlement };
 }
 
 function createLease(item: WorkItem): WorkLease {

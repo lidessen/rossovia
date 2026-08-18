@@ -15,6 +15,7 @@ import type {
   TraceEvent,
 } from "../../../packages/work-cell/src/contracts";
 import type { CellHost } from "../../../packages/work-cell/src/host-port";
+import type { CellToolSet } from "../../../packages/work-cell/src/tool-port";
 import type { WorkerCard, WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import {
@@ -130,6 +131,13 @@ interface TaskRunDependencies {
     readonly registry: RunControlRegistry;
     readonly onControlAvailable: (runId: string) => void;
   };
+  /**
+   * Optional factory for caller-injected CellTools forwarded to the parent
+   * Work Cell. Receives the Run identity and the shared registry so the tool
+   * can correlate its effects to the exact Run and stop any child Runs it
+   * creates. The child Run itself receives no tools.
+   */
+  createCellTools?: (context: { runId: string; registry: RunControlRegistry }) => CellToolSet;
 }
 
 /** One execution request as retained on the attempt record. */
@@ -467,6 +475,13 @@ export interface TaskCellExecutionInput {
   host?: CellHost;
   signal?: AbortSignal;
   onTrace?: (event: TraceEvent) => void;
+  /**
+   * Optional caller-injected CellTool set forwarded to runCell. A parent Run
+   * passes its sub_worker tool here so the child Cell can observe it; a
+   * read-only child Run receives no tools so it cannot create a second-layer
+   * sub_worker.
+   */
+  tools?: CellToolSet;
 }
 
 export type TaskCellExecutor = (input: TaskCellExecutionInput) => Promise<CellRunRecord>;
@@ -490,6 +505,7 @@ export async function executeTaskCellRun(
     host?: CellHost;
     signal?: AbortSignal;
     onTrace?: (event: TraceEvent) => void;
+    tools?: CellToolSet;
   } = {},
 ): Promise<TaskCellOutcome> {
   try {
@@ -504,6 +520,7 @@ export async function executeTaskCellRun(
       host,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.onTrace ? { onTrace: options.onTrace } : {}),
+      ...(options.tools ? { tools: options.tools } : {}),
     });
     return { status: "final", record };
   } catch (error) {
@@ -517,7 +534,11 @@ export interface TaskAttemptFinalizationInput {
   expectedInput: CellInput;
   task: { id: string; revision: number };
   attemptId: string;
-  lease: TaskRunLease;
+  /**
+   * The exact O3 writer claim to release after the durable settlement. Absent
+   * for read-only Runs, which never acquire a claim.
+   */
+  lease?: TaskRunLease;
   outcome: TaskCellOutcome;
   /** Durable control receipt ref when a work_control stop settled this attempt. */
   controlRef?: string;
@@ -611,15 +632,17 @@ function settleAndReleaseTaskAttempt(
   } catch (error) {
     return { status: "unresolved", error: `terminal evidence retention failed: ${errorMessage(error)}` };
   }
-  try {
-    releaseWorktreeLease(input.lease);
-  } catch (error) {
-    return {
-      status: "unresolved",
-      error:
-        "the durable settlement was retained but the task-run lease could not be released: "
-        + `${errorMessage(error)}; task reconcile-attempt can retry the exact finalization`,
-    };
+  if (input.lease !== undefined) {
+    try {
+      releaseWorktreeLease(input.lease);
+    } catch (error) {
+      return {
+        status: "unresolved",
+        error:
+          "the durable settlement was retained but the task-run lease could not be released: "
+          + `${errorMessage(error)}; task reconcile-attempt can retry the exact finalization`,
+      };
+    }
   }
   return {
     status: "finalized",
@@ -696,6 +719,13 @@ export async function runPrincipalTask(
     ...(continuation === undefined ? {} : { continuation }),
     ...(arguments_.maxSteps === undefined ? {} : { maxSteps: arguments_.maxSteps }),
   };
+  const parentCellTools = dependencies.createCellTools !== undefined
+    && dependencies.controlBundle !== undefined
+    ? dependencies.createCellTools({
+        runId: request.requestId,
+        registry: dependencies.controlBundle.registry,
+      })
+    : undefined;
   const result = await runOrdinaryTaskRun(home, request, {
     // The pre-claim seam is omitted when absent: never passed as undefined.
     ...(dependencies.beforeLeaseAcquire === undefined
@@ -727,6 +757,9 @@ export async function runPrincipalTask(
         // bound Worktree and injects it explicitly on every attempt.
         host: workCellWorkspace().createLocalHost(),
         ...(options.signal ? { signal: options.signal } : {}),
+        ...(parentCellTools !== undefined && Object.keys(parentCellTools).length > 0
+          ? { tools: parentCellTools }
+          : {}),
       });
     },
   });
@@ -776,6 +809,7 @@ function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRun
     ...(input.host ? { host: input.host } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.onTrace ? { onTrace: input.onTrace } : {}),
+    ...(input.tools ? { tools: input.tools } : {}),
   }).then((outcome) => {
     if (outcome.status === "failed") throw new Error(outcome.error);
     return outcome.record;

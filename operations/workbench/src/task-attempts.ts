@@ -52,16 +52,29 @@ const TaskRunAttemptSchema = z.object({
   status: z.literal("started"),
   startedAt: z.iso.datetime(),
   /**
-   * Optional conversation correlation retained by a conversation-owned
-   * catalog attempt: the exact durable turn/action identity and the causal
-   * action source reference the reconciliation path searches for.
+   * Run access mode. The omitted legacy value is `ordinary` and effectful;
+   * `read-only` skips O3 acquisition and lowers no write/command authority.
    */
-  correlation: z.object({
-    conversationId: z.string().uuid(),
-    turnId: z.string().uuid(),
-    actionId: z.string().uuid(),
-    sourceRef: z.string().min(1),
-  }).strict().optional(),
+  access: z.enum(["ordinary", "read-only"]).optional(),
+  /**
+   * Optional correlation: either a conversation-owned turn/action identity,
+   * or a parent-tool sub_worker invocation binding an exact parent Run, tool
+   * call id, and prompt digest.
+   */
+  correlation: z.union([
+    z.object({
+      conversationId: z.string().uuid(),
+      turnId: z.string().uuid(),
+      actionId: z.string().uuid(),
+      sourceRef: z.string().min(1),
+    }).strict(),
+    z.object({
+      kind: z.literal("parent-tool"),
+      parentRunId: z.string().uuid(),
+      toolCallId: z.string().min(1),
+      promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    }).strict(),
+  ]).optional(),
 }).passthrough();
 
 const TaskRunSettlementSchema = z.object({
@@ -155,13 +168,20 @@ export interface TaskAttemptProjection {
   driver?: string;
   model?: string;
   reasoningEffort?: string;
-  /** Conversation correlation retained by a conversation-owned catalog attempt. */
-  correlation?: {
-    conversationId: string;
-    turnId: string;
-    actionId: string;
-    sourceRef: string;
-  };
+  /** Conversation or parent-tool correlation retained by the Run request. */
+  correlation?:
+    | {
+      conversationId: string;
+      turnId: string;
+      actionId: string;
+      sourceRef: string;
+    }
+    | {
+      kind: "parent-tool";
+      parentRunId: string;
+      toolCallId: string;
+      promptDigest: string;
+    };
   /** Session requested by the caller for this attempt, when one was supplied. */
   requestedSession?: string;
   /** Session observed in this attempt's retained Work Cell final record, when available. */
@@ -515,6 +535,14 @@ export function readStrictTaskAttemptEvidence(
         && candidate.executionProfile.reasoningEffort !== attemptRecord.reasoningEffort
       ) {
         return "CellInput execution profile reasoning effort does not match the attempt record";
+      }
+      if (attemptRecord.access === "read-only") {
+        if (candidate.workspace.writePaths.length > 0) {
+          return "read-only Run immutable CellInput must have no write paths";
+        }
+        if (candidate.workspace.allowedCommands.length > 0) {
+          return "read-only Run immutable CellInput must have no allowed commands";
+        }
       }
       const requestWorktree = attemptRecord.worktree;
       if (requestWorktree !== undefined) {
