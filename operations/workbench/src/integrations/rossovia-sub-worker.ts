@@ -123,6 +123,10 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
   const availableWorkers = context.catalog.list();
   const snapshot = formatWorkerSnapshot(availableWorkers);
   const availableIds = availableWorkers.map((card) => card.id);
+  // Caller-owned hard cap: one read-only child Run per parent Run. The
+  // admission is consumed synchronously at the tool boundary before any
+  // asynchronous child preparation, and is never returned.
+  let admitted = true;
   return {
     description:
       "Delegate one bounded read-only sub-task to a single available Work Cell worker. "
@@ -144,6 +148,13 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
       additionalProperties: false,
     },
     execute: async (input: unknown, toolContext: CellToolExecutionContext): Promise<SubWorkerToolResult> => {
+      if (!admitted) {
+        throw new Error(
+          `sub_worker admission already consumed for parent run ${context.parentRunId}; `
+          + `refused call ${toolContext.toolCallId}`
+        );
+      }
+      admitted = false;
       const parsed = parseSubWorkerInput(input);
       const promptDigest = digestText(parsed.prompt);
       const childRunId = deriveChildRunId(context.parentRunId, toolContext.toolCallId);
