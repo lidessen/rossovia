@@ -7,12 +7,14 @@ import {
   PrincipalTaskResultReviewSchema,
   PrincipalTasksSchema,
   type AutonomyEffectVerificationSelector,
+  type OrdinaryAttemptResultSelector,
   type PrincipalTask,
   type PrincipalTaskBinding,
   type PrincipalTaskCorrectionDelivery,
   type PrincipalTaskResultEvidence,
   type PrincipalTaskResultClaim,
   type PrincipalTasks,
+  type TaskResultVerificationSelector,
 } from "./contracts";
 import {
   executionAuthorizationReceiptPath,
@@ -87,7 +89,7 @@ export interface TaskReviewArguments extends TaskMutationExpectation {
 
 export interface TaskAcceptArguments extends TaskMutationExpectation {
   sourceRef: string;
-  runtimeVerificationSelector?: AutonomyEffectVerificationSelector;
+  runtimeVerificationSelector?: TaskResultVerificationSelector;
 }
 
 export interface TaskReopenArguments extends TaskMutationExpectation {
@@ -387,6 +389,8 @@ export function acceptPrincipalTaskResult(
     if (claim.evidence.kind === "runtime-verified-effect") {
       if (
         arguments_.runtimeVerificationSelector === undefined
+        || arguments_.runtimeVerificationSelector.kind
+          !== "autonomy-effect-verification.v1"
         || !sameRuntimeVerificationSelector(
           claim.evidence.selector,
           arguments_.runtimeVerificationSelector,
@@ -394,6 +398,18 @@ export function acceptPrincipalTaskResult(
       ) {
         throw new Error(
           `task ${task.id} runtime-verified result must be revalidated through the live Workbench before acceptance`,
+        );
+      }
+    } else if (claim.evidence.kind === "runtime-verified-attempt") {
+      if (
+        arguments_.runtimeVerificationSelector === undefined
+        || arguments_.runtimeVerificationSelector.kind
+          !== "ordinary-attempt-result.v1"
+        || claim.evidence.selector.attemptId
+          !== arguments_.runtimeVerificationSelector.attemptId
+      ) {
+        throw new Error(
+          `task ${task.id} attempt-verified result must be revalidated through the live Workbench before acceptance`,
         );
       }
     } else if (arguments_.runtimeVerificationSelector !== undefined) {
@@ -409,7 +425,9 @@ export function acceptPrincipalTaskResult(
       acceptanceBoundary: "workbench-local-task-only",
       basis: claim.evidence.kind === "runtime-verified-effect"
         ? "runtime-verified-effect"
-        : "agent-claim",
+        : claim.evidence.kind === "runtime-verified-attempt"
+          ? "runtime-verified-attempt"
+          : "agent-claim",
     };
     task.lifecycle = "settled";
     task.nextActor = "none";
@@ -1057,13 +1075,23 @@ function nonemptyList(values: readonly string[], label: string): string[] {
   return values.map((value) => nonempty(value, label));
 }
 
+/**
+ * Exact comparison for the two verified-result selector kinds retained on a
+ * claim: the Autonomy effect selector compares its effect and verification
+ * event identity, and the ordinary attempt selector compares the exact
+ * canonical attempt id. Mixed kinds never match.
+ */
 function sameRuntimeVerificationSelector(
-  left: AutonomyEffectVerificationSelector,
-  right: AutonomyEffectVerificationSelector,
+  left: TaskResultVerificationSelector,
+  right: TaskResultVerificationSelector,
 ): boolean {
-  return left.kind === right.kind
-    && left.effectId === right.effectId
-    && left.verificationEventId === right.verificationEventId;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "autonomy-effect-verification.v1") {
+    const observed = right as AutonomyEffectVerificationSelector;
+    return left.effectId === observed.effectId
+      && left.verificationEventId === observed.verificationEventId;
+  }
+  return left.attemptId === (right as OrdinaryAttemptResultSelector).attemptId;
 }
 
 function now(): string {

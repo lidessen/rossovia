@@ -5,6 +5,7 @@ import {
   type ExecutionProfile,
 } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver } from "../../../packages/work-cell/src/driver";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import { runCell } from "../../../packages/work-cell/src/run-cell";
 import type { MissionInputReceipt } from "./mission-input";
 import { digest, stableStringify } from "./canonical-json";
@@ -78,6 +79,8 @@ export interface ReconciliationVerificationRequest {
 
 export interface ReconciliationVerificationOptions {
   readonly driver: CellDriver;
+  /** The caller-injected host port for the verification Cell. */
+  readonly host: CellHost;
   readonly maxSteps?: number;
   readonly maxDurationMs?: number;
   readonly signal?: AbortSignal;
@@ -186,6 +189,7 @@ export async function verifyMissionReconciliation(
     },
     executionProfile,
   }, options.driver, {
+    host: options.host,
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
   if (record.status !== "passed") {

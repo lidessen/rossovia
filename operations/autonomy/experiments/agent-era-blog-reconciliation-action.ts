@@ -6,6 +6,7 @@ import {
   CodexAppServerDriver,
   type CodexAppServerProcessAdapter,
 } from "../../../packages/work-cell/src/codex-app-server-driver";
+import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 import {
   loadHome,
   workspaceFor,
@@ -339,6 +340,9 @@ async function createCodexReconciliationCell(
   return {
     workspaceRoot,
     driver,
+    // The experiment caller owns the real process: it explicitly injects the
+    // local host adapter over this fresh disposable workspace root.
+    host: createLocalHost(),
     isolation: "fresh-disposable-no-environment",
     dispose: async () => {
       await rm(workspaceRoot, { recursive: true, force: true });

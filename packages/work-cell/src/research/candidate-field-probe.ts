@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
-import { requireValidationConfiguration } from "../validation-model";
+import { requireValidationConfiguration } from "../integrations/ai-sdk/validation-model";
 import type { ActivationFieldRecord } from "./activation-field";
 import { AiSdkCandidateFieldDriver } from "./ai-sdk-candidate-field";
 import { CandidateFieldSpecSchema, SeedLibrarySchema, runCandidateField } from "./candidate-field";

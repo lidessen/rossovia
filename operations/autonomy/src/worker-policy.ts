@@ -1,10 +1,14 @@
-import { AiSdkValidationDriver, type AiSdkDriverOptions } from "../../../packages/work-cell/src/ai-sdk-driver";
-import { PiHarnessCellDriver } from "../../../packages/work-cell/src/pi-harness-driver";
+import { AiSdkValidationDriver, type AiSdkDriverOptions } from "../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver";
+import { PiHarnessCellDriver } from "../../../packages/work-cell/src/integrations/ai-sdk/pi-harness-driver";
 import {
   DEEPSEEK_PROVIDER_ID,
   DeepSeekInferencePolicySchema,
   type DeepSeekInferencePolicy,
-} from "../../../packages/work-cell/src/providers/deepseek";
+} from "../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek";
+import {
+  KIMI_CODING_DEFAULT_MODEL,
+  KIMI_CODING_PROVIDER_ID,
+} from "../../../packages/work-cell/src/integrations/ai-sdk/providers/kimi-coding";
 import {
   WORKER_CARD_VERSION,
   WorkerCardSchema,
@@ -16,7 +20,9 @@ const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
 const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 const OPENCODE_PROVIDER_ID = "opencode-go";
 const OPENCODE_CREDENTIAL = "OPENCODE_API_KEY";
+const KIMI_CODE_CREDENTIAL = "KIMI_CODE_API_KEY";
 const KIMI_VISUAL_MODEL = "kimi-k2.7-code";
+const KIMI_CODING_PLAN_MODEL = KIMI_CODING_DEFAULT_MODEL;
 
 /** Current host policy. Mechanism callers may instead supply any WorkerCatalog. */
 export function currentWorkerCards(
@@ -73,6 +79,22 @@ export function currentWorkerCards(
         ? { status: "available" }
         : { status: "unavailable", reason: `${OPENCODE_CREDENTIAL} is not configured` },
     }),
+    WorkerCardSchema.parse({
+      version: WORKER_CARD_VERSION,
+      id: "kimi-coding-plan",
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
+      description:
+        "Kimi Coding Plan handles complex text and code engineering with thinking, tool use, and sustained reasoning. Recommended for code-heavy tasks that benefit from sustained reasoning through the Kimi Coding Plan endpoint.",
+      executionProfile: {
+        id: "kimi-coding-plan",
+        version: "execution-profile.v1",
+        provider: KIMI_CODING_PROVIDER_ID,
+        model: KIMI_CODING_PLAN_MODEL,
+      },
+      availability: environment[KIMI_CODE_CREDENTIAL]
+        ? { status: "available" }
+        : { status: "unavailable", reason: `${KIMI_CODE_CREDENTIAL} is not configured` },
+    }),
   ];
 }
 
@@ -104,7 +126,7 @@ export function deepSeekDriverOptions(
 export function createCurrentWorkerCatalog(
   environment: NodeJS.ProcessEnv = process.env,
 ): WorkerCatalog {
-  const [deepseekFlash, deepseekPro, kimi] = currentWorkerCards(environment);
+  const [deepseekFlash, deepseekPro, kimi, kimiCodingPlan] = currentWorkerCards(environment);
   return new WorkerCatalog([
     {
       // The ordinary production driver: the pinned Pi harness adapter inside
@@ -129,6 +151,19 @@ export function createCurrentWorkerCatalog(
           provider: OPENCODE_PROVIDER_ID,
           credential: { source: "env", name: OPENCODE_CREDENTIAL },
           model: kimi!.executionProfile.model,
+        }],
+        environment,
+      }),
+    },
+    {
+      // Kimi Coding Plan uses the same generic AI SDK validation driver over
+      // the Kimi Coding provider adapter.
+      card: kimiCodingPlan!,
+      createDriver: () => new AiSdkValidationDriver({
+        route: [{
+          provider: KIMI_CODING_PROVIDER_ID,
+          credential: { source: "env", name: KIMI_CODE_CREDENTIAL },
+          model: kimiCodingPlan!.executionProfile.model,
         }],
         environment,
       }),

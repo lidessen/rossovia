@@ -195,6 +195,7 @@ export function createWorkbenchRequestHandler(
             : kind === "submit-verified-execution"
               ? submitVerifiedTaskResult(
                 localTaskControlPlane,
+                home,
                 (await buildLiveSnapshot(options, client)).workItems,
                 taskActionId,
                 body,
@@ -327,11 +328,13 @@ export function createWorkbenchRequestHandler(
 
 if (import.meta.main) {
   const options = parseArguments(process.argv.slice(2));
-  const client = new AutonomyCliClient(
-    resolveHome(options.home),
-    autonomyCli,
-  );
+  // One concrete home resolution for the whole production entry: an explicit
+  // --home keeps its exact semantics, and the default Rossovia home is
+  // normalized exactly once and shared by the autonomy client, carrier and
+  // contribution registries, the request handler, every snapshot/attempt
+  // projection, and every Task action authority.
   const home = resolveHome(options.home);
+  const client = new AutonomyCliClient(home, autonomyCli);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
@@ -341,7 +344,11 @@ if (import.meta.main) {
     carrierRegistry,
     contributionRegistry,
   });
-  const requestHandler = createWorkbenchRequestHandler(options, client, { conversationSocket });
+  const requestHandler = createWorkbenchRequestHandler(
+    { ...options, home },
+    client,
+    { conversationSocket },
+  );
   const server: Bun.Server<ConversationSocketData> = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,
@@ -458,7 +465,7 @@ async function buildLiveSnapshot(
   };
   return {
     ...liveSnapshot,
-    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts),
+    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts, options.home),
   };
 }
 

@@ -4,26 +4,56 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { z } from "zod";
 import type {
   CellInput,
   CellRunRecord,
   TraceEvent,
 } from "../../../packages/work-cell/src/contracts";
+import type { CellHost } from "../../../packages/work-cell/src/host-port";
+import type { CellToolSet } from "../../../packages/work-cell/src/tool-port";
 import type { WorkerCard, WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
+import {
+  createRossoviaSubWorkerTool,
+  ROSSOVIA_SUB_WORKER_TOOL_NAME,
+} from "./integrations/rossovia-sub-worker";
 import { loadHome, resolveHome, workspaceFor } from "./home";
+import {
+  acquireWorktreeWriterLease,
+  canonicalGitDirectory,
+  isProcessDefinitelyAbsent,
+  readWorktreeWriterLease,
+  releaseWorktreeWriterLease,
+  worktreeWriterLeasePath,
+  WorktreeWriterLeaseSchema,
+  type WorktreeWriterLease,
+} from "./orchestration/worktree-writer";
+// The exact Git metadata location and the owner-process absence observation
+// remain part of the current task-run export surface as bounded
+// compatibility aliases over the canonical O3 owner.
+export { canonicalGitDirectory, isProcessDefinitelyAbsent };
+import {
+  reconcileRun,
+  // Runtime value import: the compatibility adapter below uses
+  // `instanceof ReconcileRunRefusal` to translate typed O2 reconciliation
+  // refusals into the frozen historical observable messages.
+  ReconcileRunRefusal,
+  RunControlRegistry,
+  runOrdinaryTaskRun,
+  type ReconcileRunResult,
+  type RunRequest,
+  type RunTerminalOutcome,
+} from "./orchestration/run";
 import { runCommand } from "./process";
 import {
   readStrictTaskAttemptEvidence,
   TaskAttemptIdSchema,
   type ParsedTaskRunAttempt,
-  type ParsedTaskRunSettlement,
+  type StrictTaskAttemptEvidence,
   type TaskRunSettlementStatus,
 } from "./task-attempts";
 import { showPrincipalTask } from "./tasks";
@@ -71,6 +101,8 @@ export interface TaskRunArguments {
   workerId: string;
   /** Continue one exact prior attempt lineage instead of starting fresh. */
   continueFromAttemptId?: string;
+  /** Optional explicit positive per-run step cap, lowered into the CellInput budget. */
+  maxSteps?: number;
 }
 
 interface TaskRunDependencies {
@@ -94,6 +126,24 @@ interface TaskRunDependencies {
    * execution (WorkerCatalog.createDriver -> runCell).
    */
   executeTaskCell?: TaskCellExecutor;
+  /**
+   * Optional foreground Run-control bundle: one existing O2 registry plus a
+   * publication callback. Used only by the CLI signal adapter; conversation and
+   * other callers must not pass this.
+   */
+  controlBundle?: {
+    readonly registry: RunControlRegistry;
+    readonly onControlAvailable: (runId: string) => void;
+  };
+  /**
+   * Test-only override for caller-injected CellTools forwarded to the parent
+   * Work Cell. Receives the Run identity and the shared registry so the tool
+   * can correlate its effects to the exact Run and stop any child Runs it
+   * creates. The child Run itself receives no tools. Production callers should
+   * omit this and rely on the default `sub_worker` tool injected when a
+   * `controlBundle` is supplied.
+   */
+  createCellTools?: (context: { runId: string; registry: RunControlRegistry }) => CellToolSet;
 }
 
 /** One execution request as retained on the attempt record. */
@@ -141,17 +191,6 @@ export interface TaskAttemptReconcileResult {
   error?: string;
 }
 
-const TASK_RUN_LEASE_VERSION = "rosso.task-run-worktree-lease.v1" as const;
-
-const TaskRunWorktreeLeaseSchema = z.object({
-  version: z.literal(TASK_RUN_LEASE_VERSION),
-  worktree: z.string().min(1),
-  taskId: z.string().min(1),
-  attemptId: z.string().min(1),
-  pid: z.number().int().positive(),
-  acquiredAt: z.string().min(1),
-});
-
 /**
  * The shared normal settlement derivation for one validated owner-backed
  * Work Cell final record: a passed run records normally, any other terminal
@@ -183,17 +222,26 @@ export function finalRecordSettlementInput(
 }
 
 /**
- * Reconcile one crash-retained ordinary task attempt whose owner process is
- * verifiably dead. The command re-reads the strict attempt evidence family
- * (immutable attempt record, CellInput, final record, settlement) and the
- * exact task/attempt/worktree lease bytes in the bound Worktree's Git
- * metadata, and fails closed on a live or unknown owner, mismatched identity,
- * changed or missing lease, or invalid evidence. Three exact finalizations
- * exist, and each releases the still-exact lease only after a durable
- * settlement exists:
+ * Reconcile one crash-retained ordinary task attempt through the canonical
+ * O2 Run owner (`reconcileRun`). This function is the Task-selector and
+ * result-shape compatibility adapter over the canonical owner: it validates
+ * the exact Task attribution and the legacy attempt-id shape, translates the
+ * typed O2 reconciliation refusals into the frozen historical messages, and
+ * re-projects the O2 terminal outcome into the legacy
+ * `rosso.task-attempt-reconcile.v1` result shape. It never independently
+ * writes a settlement and never releases an O3 claim: every durable mutation
+ * and every exact lease release happen inside the canonical owner, which
+ * re-reads the strict attempt family (request record, CellInput, final
+ * record, control receipt, settlement) and the exact task/attempt/worktree
+ * claim bytes in the bound Worktree's Git metadata, and fails closed on a
+ * live or unknown owner, mismatched identity, changed or missing lease, or
+ * invalid evidence. Three exact finalizations exist, and each releases the
+ * still-exact lease only after a durable settlement exists:
  * - an existing exact settlement plus a still-exact dead-owner lease retries
  *   only the lease release (idempotent finalization of a crash between
  *   settlement write and release);
+ * - a durable stop receipt (with or without a retained cancelled final)
+ *   derives the `control-stopped` settlement without redispatching control;
  * - a real owner final record without a settlement validates the final
  *   record against the immutable input and derives the shared normal
  *   settlement from it;
@@ -226,65 +274,90 @@ export function reconcilePrincipalTaskAttempt(
   if (attemptRecord.taskId !== task.id) {
     throw new Error(`attempt ${arguments_.attemptId} belongs to task ${attemptRecord.taskId}, not the requested task ${task.id}`);
   }
-  const input = evidence.input;
-  if (input === undefined) {
+  let result: ReconcileRunResult;
+  try {
+    result = reconcileRun(home, arguments_.attemptId);
+  } catch (error: unknown) {
+    if (error instanceof ReconcileRunRefusal) {
+      throwLegacyReconcileRefusal(
+        error,
+        home,
+        arguments_,
+        attempt,
+        attemptRecord,
+        evidence,
+      );
+    }
+    throw error;
+  }
+  return reconcileResult(attempt, attemptRecord, result.outcome);
+}
+
+/**
+ * Translate one typed O2 reconciliation refusal into the frozen historical
+ * observable messages. `unproven-owner` and `invalid-lease` refusals are
+ * translated through the exact O3 retained-claim read, which inspects only
+ * and never writes or releases the claim.
+ */
+function throwLegacyReconcileRefusal(
+  refusal: ReconcileRunRefusal,
+  home: string,
+  arguments_: TaskAttemptReconcileArguments,
+  attempt: AttemptEvidence,
+  attemptRecord: ParsedTaskRunAttempt,
+  evidence: StrictTaskAttemptEvidence,
+): never {
+  if (refusal.code === "unknown") {
+    throw new Error(`attempt ${arguments_.attemptId} has no retained attempt evidence: ${attempt.attemptPath}`);
+  }
+  if (refusal.code === "invalid") {
+    throw new Error(
+      `attempt ${arguments_.attemptId} retains invalid evidence and cannot be reconciled: ${refusal.message}`,
+    );
+  }
+  if (refusal.code === "unreadable-input") {
     throw new Error(`attempt ${arguments_.attemptId} has no readable immutable CellInput: ${attempt.inputPath}`);
   }
-  // The exact lease location is the strict immutable CellInput's workspace
-  // root, never the Task's current rebindable worktreePath: a legal X→Y Task
-  // rebind neither hides nor redirects attempt A's retained exact lease in X.
-  const worktree = reconcileCellInputWorkspace(input, arguments_.attemptId);
-
-  const leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
-
-  if (evidence.settlement !== undefined) {
-    // Exact retry finalization: the durable settlement was already produced
-    // for this attempt; only the still-exact dead-owner lease remains.
-    const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
-    assertReconcileOwnerDead(retained.pid, arguments_.attemptId);
-    releaseWorktreeLease({ path: leasePath, content: retained.raw });
-    return reconcileResult(attempt, attemptRecord, evidence.settlement);
-  }
-
-  let settlementInput: TaskRunSettlementInput;
-  if (evidence.finalRecord !== undefined) {
-    settlementInput = finalRecordSettlementInput(
-      task.id,
-      attemptRecord.taskRevision,
-      arguments_.attemptId,
-      evidence.finalRecord,
+  if (refusal.code === "owner-live") {
+    throw new Error(
+      `the task-run lease owner process ${refusal.pid ?? "unknown"} for attempt ${arguments_.attemptId} `
+      + "is still alive or owned elsewhere; reconciliation fails closed",
     );
-  } else {
-    settlementInput = {
-      taskId: task.id,
-      taskRevision: attemptRecord.taskRevision,
-      attemptId: arguments_.attemptId,
-      status: "runner-failed",
-      error: "interrupted before a final Work Cell record was retained; reconciled by task reconcile-attempt",
-    };
   }
+  if (refusal.code === "unproven-owner" || refusal.code === "invalid-lease") {
+    const worktree = reconcileLegacyWorktree(home, arguments_.attemptId, attemptRecord, evidence);
+    readRetainedTaskRunLease(
+      worktreeWriterLeasePath(worktree),
+      attemptRecord.taskId,
+      arguments_.attemptId,
+      worktree,
+    );
+  }
+  throw new Error(refusal.message);
+}
 
-  const retained = readRetainedTaskRunLease(leasePath, task.id, arguments_.attemptId, worktree);
-  assertReconcileOwnerDead(retained.pid, arguments_.attemptId);
-  writeTaskRunSettlement(attempt, settlementInput);
-  releaseWorktreeLease({ path: leasePath, content: retained.raw });
-  return reconcileResult(attempt, attemptRecord, {
-    status: settlementInput.status,
-    ...(settlementInput.workCellRunId === undefined ? {} : { workCellRunId: settlementInput.workCellRunId }),
-    ...(settlementInput.cellStatus === undefined ? {} : { cellStatus: settlementInput.cellStatus }),
-    ...(settlementInput.error === undefined ? {} : { error: settlementInput.error }),
-  });
+/** The exact claim-owner Worktree for the legacy refusal translation. */
+function reconcileLegacyWorktree(
+  home: string,
+  attemptId: string,
+  attemptRecord: ParsedTaskRunAttempt,
+  evidence: StrictTaskAttemptEvidence,
+): string {
+  const root = attemptRecord.worktree ?? evidence.input?.workspace.root;
+  if (root === undefined) {
+    throw new Error(`attempt ${attemptId} has no readable immutable CellInput: ${attemptEvidence(home, attemptId).inputPath}`);
+  }
+  try {
+    return realpathSync(root);
+  } catch {
+    throw new Error(`attempt ${attemptId} CellInput workspace root cannot be resolved: ${root}`);
+  }
 }
 
 function reconcileResult(
   attempt: AttemptEvidence,
   attemptRecord: ParsedTaskRunAttempt,
-  settlement: ParsedTaskRunSettlement | {
-    readonly status: TaskRunSettlementStatus;
-    readonly workCellRunId?: string | undefined;
-    readonly cellStatus?: string | undefined;
-    readonly error?: string | undefined;
-  },
+  outcome: RunTerminalOutcome,
 ): TaskAttemptReconcileResult {
   return {
     version: "rosso.task-attempt-reconcile.v1",
@@ -292,93 +365,25 @@ function reconcileResult(
     taskRevision: attemptRecord.taskRevision,
     attemptId: attemptRecord.attemptId,
     settlementRef: attempt.settlementRef,
-    status: settlement.status,
-    ...(settlement.workCellRunId === undefined ? {} : { workCellRunId: settlement.workCellRunId }),
-    ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
-    ...(settlement.error === undefined ? {} : { error: settlement.error }),
+    status: outcome.status,
+    ...(outcome.workCellRunId === undefined ? {} : { workCellRunId: outcome.workCellRunId }),
+    ...(outcome.cellStatus === undefined ? {} : { cellStatus: outcome.cellStatus }),
+    ...(outcome.error === undefined ? {} : { error: outcome.error }),
   };
 }
 
-function reconcileCellInputWorkspace(input: CellInput, attemptId: string): string {
-  let observedRoot: string;
-  try {
-    observedRoot = realpathSync(input.workspace.root);
-  } catch {
-    throw new Error(`attempt ${attemptId} CellInput workspace root cannot be resolved: ${input.workspace.root}`);
-  }
-  return observedRoot;
-}
-
 /**
- * Reconcile reads the strict attempt evidence family: shape, cell/input
- * identity, driver/model form, and the embedded immutable CellInput identity
- * were already validated by the strict evidence reader; nothing here copies
- * or forges evidence.
+ * Compatibility reader over the canonical O3 writer-claim validation:
+ * reconcile reads the retained claim through the exact O3 owner identity
+ * check; the observable refusal messages are the frozen O3 surface.
  */
-
 function readRetainedTaskRunLease(
   leasePath: string,
   taskId: string,
   attemptId: string,
   worktree: string,
 ): { pid: number; raw: string } {
-  let raw: string;
-  try {
-    raw = readFileSync(leasePath, "utf8");
-  } catch {
-    throw new Error(`attempt ${attemptId} has no retained task-run lease in the bound Worktree: ${leasePath}`);
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error(
-      `the retained task-run lease for attempt ${attemptId} does not carry the exact expected identity bytes: ${leasePath}`,
-    );
-  }
-  const parsed = TaskRunWorktreeLeaseSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(
-      `the retained task-run lease for attempt ${attemptId} does not carry the exact expected identity bytes: ${leasePath}`,
-    );
-  }
-  const lease = parsed.data;
-  if (lease.taskId !== taskId) {
-    throw new Error(`the retained task-run lease belongs to task ${lease.taskId}, not the requested task ${taskId}`);
-  }
-  if (lease.attemptId !== attemptId) {
-    throw new Error(`the retained task-run lease belongs to attempt ${lease.attemptId}, not the requested attempt ${attemptId}`);
-  }
-  let observedWorktree: string;
-  try {
-    observedWorktree = realpathSync(lease.worktree);
-  } catch {
-    throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
-  }
-  if (observedWorktree !== worktree) {
-    throw new Error(`the retained task-run lease Worktree does not match the task's current bound Worktree: ${lease.worktree}`);
-  }
-  return { pid: lease.pid, raw };
-}
-
-function assertReconcileOwnerDead(pid: number, attemptId: string): void {
-  if (!isProcessDefinitelyAbsent(pid)) {
-    throw new Error(
-      `the task-run lease owner process ${pid} for attempt ${attemptId} `
-      + "is still alive or owned elsewhere; reconciliation fails closed",
-    );
-  }
-}
-
-/** One lease owner process is provably absent only when its pid no longer resolves. */
-export function isProcessDefinitelyAbsent(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return false;
-  } catch (error) {
-    return typeof error === "object" && error !== null && "code" in error
-      && (error as { code?: unknown }).code === "ESRCH";
-  }
+  return readWorktreeWriterLease(leasePath, { taskId, attemptId, worktree });
 }
 
 /**
@@ -386,7 +391,9 @@ export function isProcessDefinitelyAbsent(pid: number): boolean {
  * retained task-run lease, located from the strict immutable attempt
  * CellInput's workspace root — never from the Task's current rebindable
  * worktreePath, so a legal X→Y Task rebind neither hides nor redirects
- * attempt A's retained exact lease in X. `retained` means the exact lease
+ * attempt A's retained exact lease in X. The lease location, schema, and
+ * owner identity now come from the canonical O3 worktree-writer owner.
+ * `retained` means the exact lease
  * file still exists for this attempt's owner identity (or exists but cannot
  * be proven to belong to a different attempt); `released` means the lease
  * file is absent or provably belongs to another attempt; `uninspectable`
@@ -413,7 +420,7 @@ export function attemptLeaseStanding(
   let leasePath: string;
   try {
     const worktree = realpathSync(input.workspace.root);
-    leasePath = join(canonicalGitDirectory(worktree), "rossovia-task-run.lock");
+    leasePath = worktreeWriterLeasePath(worktree);
   } catch {
     return "uninspectable";
   }
@@ -424,7 +431,7 @@ export function attemptLeaseStanding(
   } catch {
     return "retained";
   }
-  const parsed = TaskRunWorktreeLeaseSchema.safeParse(value);
+  const parsed = WorktreeWriterLeaseSchema.safeParse(value);
   if (!parsed.success) return "retained";
   if (parsed.data.taskId !== taskId || parsed.data.attemptId !== attemptId) {
     return "released";
@@ -466,8 +473,21 @@ export function listPrincipalTaskWorkers(
 export interface TaskCellExecutionInput {
   catalog: WorkerCatalog;
   cellInput: CellInput;
+  /**
+   * The caller-injected host port for this Task Cell. The O2 ordinary path
+   * always injects the local adapter over its O3-authorized bound Worktree;
+   * the field stays overridable only for the test seam.
+   */
+  host?: CellHost;
   signal?: AbortSignal;
   onTrace?: (event: TraceEvent) => void;
+  /**
+   * Optional caller-injected CellTool set forwarded to runCell. A parent Run
+   * passes its sub_worker tool here so the child Cell can observe it; a
+   * read-only child Run receives no tools so it cannot create a second-layer
+   * sub_worker.
+   */
+  tools?: CellToolSet;
 }
 
 export type TaskCellExecutor = (input: TaskCellExecutionInput) => Promise<CellRunRecord>;
@@ -487,15 +507,26 @@ export type TaskCellOutcome =
 export async function executeTaskCellRun(
   catalog: WorkerCatalog,
   cellInput: CellInput,
-  options: { signal?: AbortSignal; onTrace?: (event: TraceEvent) => void } = {},
+  options: {
+    host?: CellHost;
+    signal?: AbortSignal;
+    onTrace?: (event: TraceEvent) => void;
+    tools?: CellToolSet;
+  } = {},
 ): Promise<TaskCellOutcome> {
   try {
     // The one shared Task Cell execution owner. The run-cell module is loaded
     // lazily so a minimal Workbench-only CLI fixture (without the Work Cell
     // sibling package) can still load for setup and other local commands.
+    // The host port is explicit caller injection: the O2 ordinary path
+    // supplies the local adapter bound to its O3-authorized Worktree, and
+    // runCell never constructs a filesystem or process on its own.
+    const host = options.host ?? workCellWorkspace().createLocalHost();
     const record = await workCellRunCell().runCell(cellInput, catalog.createDriver(cellInput), {
+      host,
       ...(options.signal ? { signal: options.signal } : {}),
       ...(options.onTrace ? { onTrace: options.onTrace } : {}),
+      ...(options.tools ? { tools: options.tools } : {}),
     });
     return { status: "final", record };
   } catch (error) {
@@ -509,7 +540,11 @@ export interface TaskAttemptFinalizationInput {
   expectedInput: CellInput;
   task: { id: string; revision: number };
   attemptId: string;
-  lease: TaskRunLease;
+  /**
+   * The exact O3 writer claim to release after the durable settlement. Absent
+   * for read-only Runs, which never acquire a claim.
+   */
+  lease?: TaskRunLease;
   outcome: TaskCellOutcome;
   /** Durable control receipt ref when a work_control stop settled this attempt. */
   controlRef?: string;
@@ -603,15 +638,17 @@ function settleAndReleaseTaskAttempt(
   } catch (error) {
     return { status: "unresolved", error: `terminal evidence retention failed: ${errorMessage(error)}` };
   }
-  try {
-    releaseWorktreeLease(input.lease);
-  } catch (error) {
-    return {
-      status: "unresolved",
-      error:
-        "the durable settlement was retained but the task-run lease could not be released: "
-        + `${errorMessage(error)}; task reconcile-attempt can retry the exact finalization`,
-    };
+  if (input.lease !== undefined) {
+    try {
+      releaseWorktreeLease(input.lease);
+    } catch (error) {
+      return {
+        status: "unresolved",
+        error:
+          "the durable settlement was retained but the task-run lease could not be released: "
+          + `${errorMessage(error)}; task reconcile-attempt can retry the exact finalization`,
+      };
+    }
   }
   return {
     status: "finalized",
@@ -662,8 +699,12 @@ function validateFinalRecord(
 }
 
 /**
- * Run one ordinary task attempt through the one shared catalog-backed Task
- * Cell owner. The CLI dispatch is asynchronous in-process; it never spawns an
+ * Run one ordinary task through the one canonical O2 Run owner
+ * (`orchestration/run.ts`) over the existing attempt evidence family: one
+ * durable Run identity before O3 acquisition, at most one unchanged Work
+ * Cell through the shared catalog-backed executor, and one truthful terminal
+ * settlement in the canonical final record -> settlement -> lease release
+ * order. The CLI dispatch is asynchronous in-process; it never spawns an
  * opencode-cli harness process.
  */
 export async function runPrincipalTask(
@@ -671,100 +712,144 @@ export async function runPrincipalTask(
   arguments_: TaskRunArguments,
   dependencies: TaskRunDependencies = {},
 ): Promise<TaskRunResult> {
-  const prepared = preparePrincipalTaskRun(homeArgument, arguments_, dependencies);
-  const { home, task, observed, worktree, attemptId, lease, execution, continuation } = prepared;
-  let finalized = false;
-  let attempt: (AttemptEvidence & { expectedCellInput: CellInput }) | undefined;
-  try {
-    attempt = createAttempt(
-      home,
-      task,
-      observed.sourceRevision,
-      attemptId,
-      worktree,
-      arguments_.workerId,
-      prepared.card,
-      execution,
-      continuation,
-    );
-    const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
-    let outcome: TaskCellOutcome;
-    try {
-      const record = await executor({
-        catalog: dependencies.catalog ?? currentCatalog(),
-        cellInput: attempt.expectedCellInput,
+  const resolved = resolveOrdinaryTaskRun(homeArgument, arguments_, dependencies);
+  const { home, task, observed, worktree, execution, continuation, card, projectId } = resolved;
+  const host = workCellWorkspace().createLocalHost();
+  let catalog: WorkerCatalog | undefined;
+  const getCatalog = (): WorkerCatalog => {
+    if (catalog === undefined) catalog = dependencies.catalog ?? currentCatalog();
+    return catalog;
+  };
+  const request: RunRequest = {
+    requestId: randomUUID(),
+    taskId: task.id,
+    taskRevision: task.revision,
+    sourceRevision: observed.sourceRevision,
+    workerId: card.id,
+    execution,
+    worktree,
+    ...(continuation === undefined ? {} : { continuation }),
+    ...(arguments_.maxSteps === undefined ? {} : { maxSteps: arguments_.maxSteps }),
+  };
+  const parentCellTools = (() => {
+    if (dependencies.controlBundle === undefined) return undefined;
+    if (dependencies.createCellTools !== undefined) {
+      return dependencies.createCellTools({
+        runId: request.requestId,
+        registry: dependencies.controlBundle.registry,
       });
-      outcome = { status: "final", record };
-    } catch (error) {
-      outcome = { status: "failed", error: errorMessage(error) };
     }
-    const finalization = finalizeTaskAttempt({
-      attempt,
-      expectedInput: attempt.expectedCellInput,
-      task: { id: task.id, revision: task.revision },
-      attemptId,
-      lease,
-      outcome,
-      execution,
-      card: prepared.card,
-    });
-    finalized = true;
-    if (finalization.status === "unresolved") {
-      throw new Error(finalization.error);
-    }
-    if (finalization.settlement.status !== "recorded") {
-      throw new Error(
-        `the Work Cell run settled with status ${finalization.finalRecord?.status ?? "unknown"}; `
-        + `the attempt settlement is ${finalization.settlement.status}`
-        + `${finalization.settlement.error !== undefined ? `: ${finalization.settlement.error}` : ""}`,
-      );
-    }
-    const finalRecord = finalization.finalRecord!;
     return {
-      version: "rosso.task-run-result.v1",
-      taskId: task.id,
-      taskRevision: task.revision,
-      sourceRevision: observed.sourceRevision,
-      attemptId,
-      inputRef: attempt.inputRef,
-      finalRecordRef: attempt.finalRecordRef,
-      attemptRef: attempt.attemptRef,
-      settlementRef: attempt.settlementRef,
-      workCellRunId: finalRecord.runId,
-      cellStatus: finalRecord.status,
-      ...(finalRecord.executionObservation.sessionId
-        ? { sessionId: finalRecord.executionObservation.sessionId }
-        : {}),
-      semanticAcceptance: "not-evaluated",
+      // The parent Run injects a hard cap of one into the sub_worker
+      // closure: the first invocation admits one read-only child Run, and
+      // every later invocation for the same parent is refused before any
+      // asynchronous child preparation or evidence creation.
+      [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
+        home,
+        parentRunId: request.requestId,
+        taskId: task.id,
+        taskRevision: task.revision,
+        sourceRevision: observed.sourceRevision,
+        worktree,
+        ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
+        catalog: getCatalog(),
+        host,
+        registry: dependencies.controlBundle.registry,
+        // The parent Run injects a hard cap of one through the explicit
+        // admission envelope: the first sub_worker invocation consumes the
+        // single admission synchronously, and every later invocation for the
+        // same parent is refused before any asynchronous child preparation or
+        // evidence creation.
+        admission: { remaining: 1 },
+        buildChildCellInput: (childRunId, workerId, prompt) =>
+          buildReadOnlyChildCellInput(task, worktree, getCatalog().card(workerId), childRunId, prompt, request.maxSteps),
+      }),
     };
-  } catch (error: unknown) {
-    if (!finalized && attempt !== undefined && existsSync(attempt.attemptPath) && !existsSync(attempt.settlementPath)) {
-      try {
-        writeTaskRunSettlement(attempt, {
-          taskId: task.id,
-          taskRevision: task.revision,
-          attemptId,
-          status: "runner-failed",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      } catch {
-        // The original failure stays primary; a fallback settlement write
-        // that still cannot succeed is the same visible retention failure.
+  })();
+  const result = await runOrdinaryTaskRun(home, request, {
+    // The pre-claim seam is omitted when absent: never passed as undefined.
+    ...(dependencies.beforeLeaseAcquire === undefined
+      ? {}
+      : { beforeLeaseAcquire: dependencies.beforeLeaseAcquire }),
+    ...(dependencies.controlBundle === undefined
+      ? {}
+      : {
+          registry: dependencies.controlBundle.registry,
+          onControlAvailable: dependencies.controlBundle.onControlAvailable,
+        }),
+    card,
+    revalidate: () => {
+      verifyTaskSnapshotAfterLease(home, observed);
+      verifyCurrentBinding(home, projectId, worktree);
+      if (continuation !== undefined) {
+        verifyContinuationDiff(worktree, continuation.workspaceDiff);
+      } else {
+        verifyCleanStatus(worktree);
       }
-    }
-    throw error;
-  } finally {
-    // The shared finalization owns the canonical settlement -> lease release
-    // order. The lease is released here only when finalization never ran;
-    // an unresolved finalization keeps the exact lease for reconcile-attempt.
-    if (!finalized) releaseWorktreeLease(lease);
+    },
+    lowerCellInput: () => buildTaskCellInput(task, worktree, card.id, card, request.requestId, request.maxSteps),
+    execute: async (cellInput, options) => {
+      const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
+      return executor({
+        catalog: getCatalog(),
+        cellInput,
+        // The O2 owner constructs the local host adapter for its O3-authorized
+        // bound Worktree and injects it explicitly on every attempt.
+        host,
+        ...(options.signal ? { signal: options.signal } : {}),
+        ...(parentCellTools !== undefined && Object.keys(parentCellTools).length > 0
+          ? { tools: parentCellTools }
+          : {}),
+      });
+    },
+  });
+  if (result.standing === "unresolved") {
+    throw new Error(result.error);
   }
+  const outcome = result.outcome;
+  if (outcome.cleanup !== "released") {
+    // The durable settlement exists while the exact O3 release failed: the
+    // terminal outcome is retained and reconcile-attempt retries only the
+    // release, exactly as the historical unresolved finalization.
+    throw new Error(
+      outcome.cleanupError
+      ?? "the durable settlement was retained but the task-run lease could not be released; "
+        + "task reconcile-attempt can retry the exact finalization",
+    );
+  }
+  if (outcome.status !== "recorded") {
+    throw new Error(
+      `the Work Cell run settled with status ${outcome.finalRecord?.status ?? "unknown"}; `
+      + `the attempt settlement is ${outcome.status}`
+      + `${outcome.error !== undefined ? `: ${outcome.error}` : ""}`,
+    );
+  }
+  const finalRecord = outcome.finalRecord!;
+  return {
+    version: "rosso.task-run-result.v1",
+    taskId: task.id,
+    taskRevision: task.revision,
+    sourceRevision: observed.sourceRevision,
+    attemptId: request.requestId,
+    inputRef: outcome.refs.inputRef,
+    finalRecordRef: outcome.refs.finalRecordRef,
+    attemptRef: outcome.refs.attemptRef,
+    settlementRef: outcome.refs.settlementRef,
+    workCellRunId: finalRecord.runId,
+    cellStatus: finalRecord.status,
+    ...(finalRecord.executionObservation.sessionId
+      ? { sessionId: finalRecord.executionObservation.sessionId }
+      : {}),
+    semanticAcceptance: "not-evaluated",
+  };
 }
 
 function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRunRecord> {
   return executeTaskCellRun(input.catalog, input.cellInput, {
+    ...(input.host ? { host: input.host } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.onTrace ? { onTrace: input.onTrace } : {}),
+    ...(input.tools ? { tools: input.tools } : {}),
   }).then((outcome) => {
     if (outcome.status === "failed") throw new Error(outcome.error);
     return outcome.record;
@@ -772,11 +857,11 @@ function defaultTaskCellExecutor(input: TaskCellExecutionInput): Promise<CellRun
 }
 
 /**
- * The synchronous guarded preparation every ordinary task run performs before
- * any execution effect: exact worker resolution, canonical Task re-read,
- * project/binding checks, the exact observed Worktree and its current head,
- * the atomic Worktree lease, a fresh Task snapshot verification, and the
- * clean/continuation Worktree status check. A conversation-owned asynchronous
+ * The synchronous guarded preparation every ordinary task run performs
+ * before any durable Run identity or execution effect: exact worker
+ * resolution, canonical Task re-read, project/binding checks, the exact
+ * observed Worktree and its current head, and the exact prior-attempt
+ * lineage for a requested continuation. A conversation-owned asynchronous
  * catalog carrier reuses the same evidence family and lease through these
  * pieces instead of a parallel task-run database.
  */
@@ -801,6 +886,67 @@ export function preparePrincipalTaskRun(
   arguments_: TaskRunArguments,
   dependencies: TaskRunDependencies = {},
 ): PreparedPrincipalTaskRun {
+  const resolved = resolveOrdinaryTaskRun(homeArgument, arguments_, dependencies);
+  const attemptId = randomUUID();
+
+  dependencies.beforeLeaseAcquire?.();
+  const lease = acquireWorktreeLease(resolved.worktree, resolved.task.id, attemptId);
+  try {
+    verifyTaskSnapshotAfterLease(resolved.home, resolved.observed);
+    verifyCurrentBinding(resolved.home, resolved.projectId, resolved.worktree);
+    if (resolved.continuation !== undefined) {
+      verifyContinuationDiff(resolved.worktree, resolved.continuation.workspaceDiff);
+    } else {
+      verifyCleanStatus(resolved.worktree);
+    }
+    return {
+      home: resolved.home,
+      card: resolved.card,
+      execution: resolved.execution,
+      observed: resolved.observed,
+      task: resolved.task,
+      worktree: resolved.worktree,
+      attemptId,
+      lease,
+      ...(resolved.continuation === undefined ? {} : { continuation: resolved.continuation }),
+    };
+  } catch (error) {
+    releaseWorktreeLease(lease);
+    throw error;
+  }
+}
+
+/**
+ * The shared read-only acceptance of one ordinary task run, performed before
+ * any durable Run identity: exact worker resolution, the canonical Task
+ * re-read and lifecycle/binding checks, the exact observed Worktree with its
+ * current head, and the exact prior-attempt lineage walk for a requested
+ * continuation. No durable write and no O3 claim happens here; the O2 owner
+ * creates the durable Run request record only after this acceptance, and
+ * before O3 acquisition. The conversation-owned ordinary carrier resolves
+ * the same fresh Task/source/project/Worktree selectors through this exact
+ * function so a refused action leaves no Run record and no claim.
+ */
+export interface ResolvedOrdinaryTaskRun {
+  readonly home: string;
+  readonly card: WorkerCard;
+  readonly execution: TaskRunExecution;
+  readonly observed: ReturnType<typeof showPrincipalTask>;
+  readonly task: ReturnType<typeof showPrincipalTask>["task"];
+  readonly projectId: string;
+  readonly worktree: string;
+  /** Exact prior-attempt lineage for a stateless continuation, when requested. */
+  readonly continuation?: {
+    continuedFromAttemptId: string;
+    workspaceDiff: CellRunRecord["workspaceDiff"];
+  };
+}
+
+export function resolveOrdinaryTaskRun(
+  homeArgument: string | undefined,
+  arguments_: TaskRunArguments,
+  dependencies: TaskRunDependencies,
+): ResolvedOrdinaryTaskRun {
   validatePolicy(arguments_);
   const home = resolveHome(homeArgument);
   const card = resolveWorkerCard(arguments_.workerId, dependencies);
@@ -819,45 +965,29 @@ export function preparePrincipalTaskRun(
     throw new Error(`task ${task.id} must be bound to an existing project Worktree before it can run`);
   }
 
+  const projectId = task.binding.projectId;
   const worktree = resolveBoundWorktree(
     home,
-    task.binding.projectId,
+    projectId,
     task.binding.worktreePath,
   );
   const worktreeHead = requiredGit(["rev-parse", "HEAD"], worktree);
   if (!/^[0-9a-f]{40}$/u.test(worktreeHead)) {
     throw new Error(`the bound Worktree's current head cannot be read: ${worktree}`);
   }
-  const attemptId = randomUUID();
-
-  dependencies.beforeLeaseAcquire?.();
-  const lease = acquireWorktreeLease(worktree, task.id, attemptId);
-  try {
-    verifyTaskSnapshotAfterLease(home, observed);
-    verifyCurrentBinding(home, task.binding.projectId, worktree);
-    const continuation = arguments_.continueFromAttemptId
-      ? continuationEvidence(home, task.id, worktree, arguments_.continueFromAttemptId, execution)
-      : undefined;
-    if (continuation !== undefined) {
-      verifyContinuationDiff(worktree, continuation.workspaceDiff);
-    } else {
-      verifyCleanStatus(worktree);
-    }
-    return {
-      home,
-      card,
-      execution,
-      observed,
-      task,
-      worktree,
-      attemptId,
-      lease,
-      ...(continuation === undefined ? {} : { continuation }),
-    };
-  } catch (error) {
-    releaseWorktreeLease(lease);
-    throw error;
-  }
+  const continuation = arguments_.continueFromAttemptId
+    ? continuationEvidence(home, task.id, worktree, arguments_.continueFromAttemptId, execution)
+    : undefined;
+  return {
+    home,
+    card,
+    execution,
+    observed,
+    task,
+    projectId,
+    worktree,
+    ...(continuation === undefined ? {} : { continuation }),
+  };
 }
 
 /**
@@ -996,37 +1126,25 @@ function gitVisiblePaths(worktree: string): Set<string> {
   return paths;
 }
 
-export interface TaskRunLease {
-  path: string;
-  content: string;
-}
+/**
+ * Bounded compatibility alias for the canonical O3 writer-claim type. The
+ * authoritative owner is the O3 worktree-writer module; this name remains
+ * only so current task-run consumers keep compiling, and it grants no new
+ * writer authority.
+ */
+export type TaskRunLease = WorktreeWriterLease;
 
+/**
+ * Bounded compatibility alias over the canonical O3 writer-claim acquire.
+ * Ordinary Task runs acquire the exact O3 claim; the historical signature
+ * and refusal message are retained byte-for-byte.
+ */
 export function acquireWorktreeLease(
   worktree: string,
   taskId: string,
   attemptId: string,
 ): TaskRunLease {
-  const gitDirectory = canonicalGitDirectory(worktree);
-  const path = join(gitDirectory, "rossovia-task-run.lock");
-  const content = `${JSON.stringify({
-    version: "rosso.task-run-worktree-lease.v1",
-    worktree,
-    taskId,
-    attemptId,
-    pid: process.pid,
-    acquiredAt: new Date().toISOString(),
-  }, null, 2)}\n`;
-  try {
-    writeFileSync(path, content, { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    if (isAlreadyExists(error)) {
-      throw new Error(
-        `task Worktree already has an active task-run lease: ${worktree}; lease: ${path}`,
-      );
-    }
-    throw error;
-  }
-  return { path, content };
+  return acquireWorktreeWriterLease(worktree, { taskId, attemptId });
 }
 
 export interface AttemptEvidence {
@@ -1065,31 +1183,7 @@ export function createAttempt(
   correlation?: AttemptCorrelation,
 ): AttemptEvidence & { expectedCellInput: CellInput } {
   const attempt = attemptEvidence(home, attemptId);
-  const cellInput = {
-    id: `workbench-task-${task.id}-attempt-${attemptId}`,
-    workerId,
-    executionProfile: worker.executionProfile,
-    intent: task.objective,
-    workspace: {
-      root: worktree,
-      readPaths: ["."],
-      writePaths: ["."],
-      excludePaths: ordinaryOpenCodeExcludes(worktree),
-      allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
-    },
-    instructions: [
-      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
-      ...task.corrections.map((correction) => correction.statement),
-    ],
-    capabilities: [],
-    context: [],
-    capabilitiesRequired: [],
-    acceptance: task.acceptance,
-    ...(task.todos.length > 0
-      ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }
-      : {}),
-    budget: { maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS },
-  };
+  const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId);
   const expectedCellInput = workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
   mkdirSync(join(home, "state", "task-attempts"), { recursive: true });
   mkdirSync(join(home, "state", "task-attempts", attemptId), { recursive: false });
@@ -1121,6 +1215,105 @@ export function createAttempt(
     startedAt: new Date().toISOString(),
   });
   return { ...attempt, expectedCellInput };
+}
+
+/**
+ * The shared ordinary lowering of one accepted Task snapshot into the
+ * immutable CellInput: exact worker identity and execution profile, task
+ * objective and corrections as instructions, acceptance, todos when present,
+ * the exact Worktree policy, and the emergency duration envelope. The O2
+ * ordinary path and the conversation-owned carrier lower the same shape.
+ */
+export function buildTaskCellInput(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  workerId: string,
+  worker: WorkerCard,
+  attemptId: string,
+  maxSteps?: number,
+): CellInput {
+  const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId, maxSteps);
+  return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
+}
+
+/**
+ * Lower one read-only sub_worker child Run into an immutable CellInput. The
+ * child reuses the parent Task identity and revisions/worktree, but runs with
+ * the model-selected worker card's execution profile, the complete receiver
+ * prompt as its intent, and a workspace with whole-Worktree reads and no
+ * writes or commands.
+ */
+export function buildReadOnlyChildCellInput(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  worker: WorkerCard,
+  childRunId: string,
+  prompt: string,
+  maxSteps?: number,
+): CellInput {
+  const cellInput = {
+    id: `workbench-task-${task.id}-attempt-${childRunId}`,
+    workerId: worker.id,
+    executionProfile: worker.executionProfile,
+    intent: prompt,
+    workspace: {
+      root: worktree,
+      readPaths: ["."],
+      writePaths: [] as string[],
+      excludePaths: ordinaryOpenCodeExcludes(worktree),
+      allowedCommands: [] as string[],
+    },
+    instructions: [
+      "Complete the bounded child task described in the prompt. Do not claim semantic acceptance.",
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["Do not claim semantic acceptance."],
+    budget: {
+      maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS,
+      ...(maxSteps === undefined ? {} : { maxSteps }),
+    },
+  };
+  return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
+}
+
+function taskCellInputObject(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  workerId: string,
+  worker: WorkerCard,
+  attemptId: string,
+  maxSteps?: number,
+): Record<string, unknown> {
+  return {
+    id: `workbench-task-${task.id}-attempt-${attemptId}`,
+    workerId,
+    executionProfile: worker.executionProfile,
+    intent: task.objective,
+    workspace: {
+      root: worktree,
+      readPaths: ["."],
+      writePaths: ["."],
+      excludePaths: ordinaryOpenCodeExcludes(worktree),
+      allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
+    },
+    instructions: [
+      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
+      ...task.corrections.map((correction) => correction.statement),
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: task.acceptance,
+    ...(task.todos.length > 0
+      ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }
+      : {}),
+    budget: {
+      maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS,
+      ...(maxSteps === undefined ? {} : { maxSteps }),
+    },
+  };
 }
 
 export function attemptEvidence(home: string, attemptId: string): AttemptEvidence {
@@ -1180,12 +1373,6 @@ export function writeTaskRunSettlement(
   });
 }
 
-/** The exact resolved Git metadata directory one Worktree lease binds to. */
-export function canonicalGitDirectory(worktree: string): string {
-  const raw = requiredGit(["rev-parse", "--git-dir"], worktree);
-  return realpathSync(isAbsolute(raw) ? raw : resolve(worktree, raw));
-}
-
 export function ordinaryOpenCodeExcludes(worktree: string): string[] {
   const tracked = (requiredGit(["ls-files", "-z"], worktree) ?? "")
     .split("\0")
@@ -1195,11 +1382,12 @@ export function ordinaryOpenCodeExcludes(worktree: string): string[] {
   );
 }
 
+/**
+ * Bounded compatibility alias over the canonical O3 writer-claim release:
+ * the exact byte-match refusal and removal stay the frozen O3 surface.
+ */
 export function releaseWorktreeLease(lease: TaskRunLease): void {
-  if (readFileSync(lease.path, "utf8") !== lease.content) {
-    throw new Error(`task-run lease ownership changed before release: ${lease.path}`);
-  }
-  rmSync(lease.path);
+  releaseWorktreeWriterLease(lease);
 }
 
 
@@ -1210,6 +1398,10 @@ function workCellContracts(): typeof import("../../../packages/work-cell/src/con
 
 function workCellRunCell(): typeof import("../../../packages/work-cell/src/run-cell") {
   return requireFromHere("../../../packages/work-cell/src/run-cell");
+}
+
+function workCellWorkspace(): typeof import("../../../packages/work-cell/src/workspace") {
+  return requireFromHere("../../../packages/work-cell/src/workspace");
 }
 
 // The sibling worker policy is loaded only when worker list/task run actually
@@ -1227,10 +1419,6 @@ function currentCatalog(environment: NodeJS.ProcessEnv = process.env): WorkerCat
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isAlreadyExists(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }
 
 function validatePolicy(arguments_: TaskRunArguments): void {

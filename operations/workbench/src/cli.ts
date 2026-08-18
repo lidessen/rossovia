@@ -9,10 +9,11 @@ import {
   UsageError,
   USAGE_EXIT_CODE,
 } from "./cli-errors";
+import { createForegroundRunSignalAdapter } from "./integrations/foreground-run-signals";
 import type { ContributionLeaseReconcileResult } from "./conversation/contributions";
 import { authorizeExecution, inspectExecution } from "./execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
-import { initializeHome, loadHome } from "./home";
+import { initializeHome, loadHome, resolveHome } from "./home";
 import { runHookCommand } from "./hooks";
 import { runCorrectionCommand, runInterventionCommand } from "./interventions";
 import { createLocalTaskControlPlane, LocalTaskControlError } from "./local-task-control-plane";
@@ -443,18 +444,28 @@ async function dispatchTaskCommand(
     const parsed = parseTaskOptions(
       raw.slice(1),
       1,
-      new Set(["--worker", "--continue"]),
+      new Set(["--worker", "--continue", "--max-steps"]),
       new Set(),
       new Set(),
     );
-    assertTaskOptions(parsed, new Set(["--worker", "--continue"]));
-    return await runPrincipalTask(home, {
-      id: parsed.positionals[0]!,
-      workerId: taskOption(parsed, "--worker"),
-      ...(parsed.values.has("--continue")
-        ? { continueFromAttemptId: taskOption(parsed, "--continue") }
-        : {}),
-    });
+    assertTaskOptions(parsed, new Set(["--worker", "--continue", "--max-steps"]));
+    const maxSteps = parsePositiveIntegerOption(parsed, "--max-steps");
+    const runHome = resolveHome(home);
+    const adapter = createForegroundRunSignalAdapter({ home: runHome });
+    try {
+      return await runPrincipalTask(home, {
+        id: parsed.positionals[0]!,
+        workerId: taskOption(parsed, "--worker"),
+        ...(parsed.values.has("--continue")
+          ? { continueFromAttemptId: taskOption(parsed, "--continue") }
+          : {}),
+        ...(maxSteps !== undefined ? { maxSteps } : {}),
+      }, {
+        controlBundle: adapter.controlBundle,
+      });
+    } finally {
+      adapter.dispose();
+    }
   }
 
   const parsed = parseTaskOptions(
@@ -732,6 +743,19 @@ function taskRevision(
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1)) {
     throw new ParseUsageError(`${option} must be ${allowZero ? "a non-negative" : "a positive"} integer`);
+  }
+  return value;
+}
+
+function parsePositiveIntegerOption(
+  parsed: ParsedTaskOptions,
+  option: string,
+): number | undefined {
+  if (!parsed.values.has(option)) return undefined;
+  const raw = taskOption(parsed, option);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new ParseUsageError(`${option} must be a positive integer`);
   }
   return value;
 }

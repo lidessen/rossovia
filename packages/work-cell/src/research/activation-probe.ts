@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { z } from "zod";
-import { requireValidationConfiguration } from "../validation-model";
+import { requireValidationConfiguration } from "../integrations/ai-sdk/validation-model";
 import { runActivationField } from "./activation-field";
 import { AiSdkActivationFieldDriver } from "./ai-sdk-activation-field";
 import { compilePhenotypePrompts, PopulationSpecSchema, samplePopulation } from "./population-shape";

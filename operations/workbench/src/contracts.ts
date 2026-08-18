@@ -112,6 +112,23 @@ export const AutonomyEffectVerificationSelectorSchema = z.object({
   verificationEventId: nonempty,
 }).strict();
 
+/**
+ * The one strict selector for an ordinary Task attempt result: the exact
+ * canonical attempt id whose owner-backed attempt/final/settlement evidence
+ * family the submission re-verifies. It carries no provider, effect, or
+ * verification-event identity because those facts live in the retained
+ * attempt evidence, never in a copied runtime claim.
+ */
+export const OrdinaryAttemptResultSelectorSchema = z.object({
+  kind: z.literal("ordinary-attempt-result.v1"),
+  attemptId: z.string().uuid(),
+}).strict();
+
+export const TaskResultVerificationSelectorSchema = z.discriminatedUnion("kind", [
+  AutonomyEffectVerificationSelectorSchema,
+  OrdinaryAttemptResultSelectorSchema,
+]);
+
 export const PrincipalTaskResultEvidenceSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("agent-references-unverified"),
@@ -120,6 +137,14 @@ export const PrincipalTaskResultEvidenceSchema = z.discriminatedUnion("kind", [
     kind: z.literal("runtime-verified-effect"),
     authorizationId: z.string().uuid(),
     selector: AutonomyEffectVerificationSelectorSchema,
+  }).strict(),
+  z.object({
+    kind: z.literal("runtime-verified-attempt"),
+    selector: OrdinaryAttemptResultSelectorSchema,
+    /** The exact Task revision the attempt ran against and the submission re-verified. */
+    taskRevision: z.number().int().positive(),
+    /** The exact bound Worktree HEAD the submission verified against. */
+    worktreeHead: z.string().regex(/^[0-9a-f]{40}$/),
   }).strict(),
 ]);
 
@@ -178,6 +203,7 @@ export const PrincipalTaskResultClaimSchema = z.object({
       basis: z.enum([
         "agent-claim",
         "runtime-verified-effect",
+        "runtime-verified-attempt",
       ]).default("agent-claim"),
     }).strict(),
     z.object({
@@ -362,6 +388,12 @@ export type PrincipalTaskCorrectionDelivery = z.infer<
 >;
 export type AutonomyEffectVerificationSelector = z.infer<
   typeof AutonomyEffectVerificationSelectorSchema
+>;
+export type OrdinaryAttemptResultSelector = z.infer<
+  typeof OrdinaryAttemptResultSelectorSchema
+>;
+export type TaskResultVerificationSelector = z.infer<
+  typeof TaskResultVerificationSelectorSchema
 >;
 export type PrincipalTaskResultEvidence = z.infer<
   typeof PrincipalTaskResultEvidenceSchema

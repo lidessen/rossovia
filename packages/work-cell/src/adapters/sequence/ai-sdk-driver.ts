@@ -1,6 +1,6 @@
 import { ToolLoopAgent, hasToolCall, tool } from "ai";
 import type { DriverContext } from "../../driver";
-import { normalizeAiSdkUsage as normalizeUsage } from "../../ai-sdk-usage";
+import { normalizeAiSdkUsage as normalizeUsage } from "../../integrations/ai-sdk/ai-sdk-usage";
 import {
   GeneExpressionSchema,
   renderGenomeForSelection,
@@ -9,7 +9,7 @@ import {
   type Genome,
   type SequenceCellInput,
 } from "./genome";
-import { AiSdkValidationDriver } from "../../ai-sdk-driver";
+import { AiSdkValidationDriver } from "../../integrations/ai-sdk/ai-sdk-driver";
 import { SequencePreparationError, type SequenceSelector } from "./runtime";
 
 /** Sequence-specific preparation paired with the general AI SDK executor. */

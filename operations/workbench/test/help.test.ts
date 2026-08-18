@@ -168,6 +168,15 @@ describe("Rossovia CLI help contract", () => {
     expect(unknown.stderr).toBe("rossovia: unknown command: frobnicate\nrun 'rossovia help' for usage\n");
   });
 
+  test("task run help documents the optional --max-steps flag without changing its usage line", () => {
+    const run = cliRun(["help", "task", "run"], { stdin: "" });
+    expect(run.exitCode).toBe(0);
+    expect(run.stderr).toBe("");
+    expect(run.stdout).toContain("usage: rossovia task run <id> --worker <worker-id> [--continue <attempt-id>]");
+    expect(run.stdout).toContain("--max-steps <positive-integer>");
+    expect(run.stdout).toContain("30-minute emergency timeout");
+  });
+
   test("help resolution does not change a valid non-help invocation", () => {
     const root = temporary();
     const home = join(root, "home");

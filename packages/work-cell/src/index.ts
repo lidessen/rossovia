@@ -1,22 +1,20 @@
 export * from "./contracts";
 export * from "./driver";
+export * from "./host-port";
+export * from "./tool-port";
 export * from "./workspace";
+export * from "./fake-host";
 export * from "./file-input";
 export * from "./task-store";
-export * from "./task-tools";
 export * from "./run-cell";
-export * from "./ai-sdk-driver";
-export * from "./pi-harness-driver";
-export * from "./host-tools";
-export * from "./workspace-edit";
+export * from "./worker-catalog";
 export * from "./codex-cli-driver";
 export * from "./opencode-cli-driver";
 export * from "./codex-app-server-driver";
 export * from "./orchestration";
-export * from "./worker-catalog";
 export * from "./swarm";
 export * from "./provider-observation";
-export * from "./provider-profile";
-export * from "./providers/codex-observer";
-export * from "./providers/claude-observer";
-export * from "./providers/kimi-coding-quota";
+// Declared AI SDK Integration path: every concrete AI SDK/Pi/provider driver,
+// provider route, host-tool wiring, and structured-settlement implementation
+// lives in the integrations/ai-sdk island and is exported only from there.
+export * from "./integrations/ai-sdk";

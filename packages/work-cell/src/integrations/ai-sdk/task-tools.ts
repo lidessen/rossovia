@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { Task } from "./contracts";
-import { TaskStore } from "./task-store";
+import type { Task } from "../../contracts";
+import { TaskStore } from "../../task-store";
 
 export interface TaskToolProjection {
   readonly read: "all" | "owned";

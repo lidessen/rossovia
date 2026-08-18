@@ -112,6 +112,7 @@ function workItems(
           correctionDeliveryCandidate: null,
           recoveryCandidate: null,
           verifiedResultCandidate: null,
+          attemptResultCandidate: null,
         },
         latestResultVerification: { standing: "none" },
         latestResultReview: { standing: "none" },

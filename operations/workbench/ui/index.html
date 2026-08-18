@@ -725,6 +725,18 @@
                   提交当前已验证执行结果
                 </button>
               </div>
+              <div class="task-verified-result-candidate" id="task-attempt-result-candidate" hidden>
+                <span>当前普通运行尝试核验</span>
+                <strong id="task-attempt-result-effect">—</strong>
+                <p id="task-attempt-result-source">—</p>
+                <button id="task-submit-attempt-result" type="button">
+                  提交当前已验证运行尝试结果
+                </button>
+                <small>
+                  不会自动提交或验收；只会形成一份带 canonical 证据引用的未接受结果声明。
+                  停止、失败、过期或证据不可用的尝试不产生此候选。
+                </small>
+              </div>
             </form>
 
             <form class="local-task-action" id="task-reopen-form">

@@ -23,6 +23,7 @@ import {
   AiSdkModelEvaluationJudge,
   assertAcceptanceCoverage,
 } from "../src/adapters/model-evaluation/judge";
+import { createLocalHost } from "../src/workspace";
 
 const roots: string[] = [];
 
@@ -41,7 +42,7 @@ test("model evaluation keeps repeated profile evidence blind under a balanced is
     root,
     (profile) => new ProfileDriver(profile, observedRoots),
     judge,
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   );
 
   expect(record.trials).toHaveLength(4);
@@ -170,7 +171,7 @@ test("model evaluation isolates instruction carriers behind one shared execution
       return new InputCapturingDriver(observedInputs);
     },
     judge,
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   );
 
   expect(observedInputs).toHaveLength(4);
@@ -269,7 +270,7 @@ test("instruction-carrier comparison skips semantic judging on observed identity
     root,
     () => new ObservedIdentityDriver(invocation++ % 2 === 0 ? "served-a" : "served-b"),
     judge,
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   );
 
   expect(judge.calls).toBe(0);
@@ -367,7 +368,7 @@ test("model evaluation rejects a changed source fixture before creating a driver
       return new ProfileDriver(profile, []);
     },
     new CapturingJudge(),
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   )).rejects.toThrow("fixture digest mismatch");
   expect(driverCalls).toBe(0);
 });
@@ -553,7 +554,7 @@ test("model evaluation does not project a driver declaration as selected route e
     root,
     (profile) => new ProfileDriver(profile, [], false),
     new CapturingJudge(),
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   );
 
   expect(record.profileSummaries.map(({ selectedRouteIdentities }) => selectedRouteIdentities)).toEqual([
@@ -575,7 +576,7 @@ test("model evaluation retains runner failures and skips semantic comparison", a
       return new ProfileDriver(profile, []);
     },
     judge,
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   );
 
   expect(judge.calls).toBe(0);
@@ -606,7 +607,7 @@ test("model evaluation retains judge failure after all trials settle", async () 
     root,
     (profile) => new ProfileDriver(profile, []),
     judge,
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   );
 
   expect(record.trials.every((trial) => trial.record?.status === "passed")).toBe(true);
@@ -634,7 +635,7 @@ test("model evaluation rejects fixture overlays that escape the frozen snapshot"
     root,
     (profile) => new ProfileDriver(profile, []),
     new CapturingJudge(),
-    { startingProfileIndex: 0 },
+    { host: createLocalHost(), startingProfileIndex: 0 },
   )).rejects.toThrow("fixture overlay destination escapes its root");
 });
 
