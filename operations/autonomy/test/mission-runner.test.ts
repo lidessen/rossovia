@@ -1302,78 +1302,93 @@ test("a verified reconciliation commits through the live runner before a success
   const child = startRunner(root, missionId, runtimeModule, undefined, {
     ROSSOVIA_CONTINUING_MISSION_RELEASE_PATH: releasePath,
   });
-  await waitForLiveStatus(root, missionId, child);
+  try {
+    await waitForLiveStatus(root, missionId, child);
 
-  const accepted = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "input",
-    input: {
-      id: "continue-input-1",
-      actorRef: "principal:test",
-      sourceRef: "test:principal-input",
-      payload: { kind: "contribution", text: "Continue only after this input is reconciled." },
-    },
-  })));
-  if (accepted.receipt === undefined) throw new Error("expected a retained Mission input receipt");
-  const commit = await reconciliationCommit(root, missionId, accepted.receipt, seededAnchor);
+    const accepted = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "input",
+      input: {
+        id: "continue-input-1",
+        actorRef: "principal:test",
+        sourceRef: "test:principal-input",
+        payload: { kind: "contribution", text: "Continue only after this input is reconciled." },
+      },
+    })));
+    if (accepted.receipt === undefined) throw new Error("expected a retained Mission input receipt");
+    const commit = await reconciliationCommit(root, missionId, accepted.receipt, seededAnchor);
 
-  const tooEarly = await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "reconciliation-commit",
-    commit,
-    expectedRunnerId: accepted.status.runnerId,
-    expectedState: accepted.status.state,
-  }));
-  expect(tooEarly).toMatchObject({ ok: false });
-  if (!tooEarly.ok) expect(tooEarly.error).toContain("turn is still live");
-  await writeFile(releasePath, "released\n", "utf8");
+    try {
+      const tooEarly = await requestMissionRunner(root, missionId, missionRunnerRequest({
+        kind: "reconciliation-commit",
+        commit,
+        expectedRunnerId: accepted.status.runnerId,
+        expectedState: accepted.status.state,
+      }));
+      expect(tooEarly).toMatchObject({ ok: false });
+      if (!tooEarly.ok) expect(tooEarly.error).toContain("turn is still live");
+    } finally {
+      await writeFile(releasePath, "released\n", "utf8");
+    }
 
-  const staleTurn = await waitForSettledTurn(timeline, missionId, child);
-  expect(staleTurn).toMatchObject({
-    start: { turnId: `continuing-${missionId}-0`, baselineWatermark: 0 },
-    settlement: { kind: "input-pending", currentWatermark: 1 },
-  });
+    const staleTurn = await waitForSettledTurn(timeline, missionId, child);
+    expect(staleTurn).toMatchObject({
+      start: { turnId: `continuing-${missionId}-0`, baselineWatermark: 0 },
+      settlement: { kind: "input-pending", currentWatermark: 1 },
+    });
 
-  const commitPath = join(root, "reconciliation-commit.json");
-  await writeFile(commitPath, `${JSON.stringify(commit)}\n`, "utf8");
-  const pendingStatus = (await waitForLiveStatus(root, missionId, child));
-  const staleTarget = await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "reconciliation-commit",
-    commit,
-    expectedRunnerId: "replacement-runner",
-    expectedState: pendingStatus.state,
-  }));
-  expect(staleTarget).toMatchObject({ ok: false });
-  if (!staleTarget.ok) expect(staleTarget.error).toContain("runner changed");
-  const committed = await runCli([
-    "mission", "reconcile", missionId, commitPath, "--home", root,
-    "--expected-runner", pendingStatus.runnerId,
-    "--expected-state", pendingStatus.state,
-  ]);
-  expect(committed.exitCode).toBe(0);
-  expect(JSON.parse(committed.stdout)).toMatchObject({ status: {
-    state: "running",
-    inputWatermark: 1,
-    reconciledWatermark: 1,
-  } });
-  const successor = await waitForSettledTurn(timeline, missionId, child);
-  expect(successor).toMatchObject({
-    start: { turnId: `continuing-${missionId}-1`, baselineWatermark: 1 },
-    settlement: { kind: "finished", text: "continued at watermark 1" },
-  });
+    const commitPath = join(root, "reconciliation-commit.json");
+    await writeFile(commitPath, `${JSON.stringify(commit)}\n`, "utf8");
+    const pendingStatus = (await waitForLiveStatus(root, missionId, child));
+    const staleTarget = await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "reconciliation-commit",
+      commit,
+      expectedRunnerId: "replacement-runner",
+      expectedState: pendingStatus.state,
+    }));
+    expect(staleTarget).toMatchObject({ ok: false });
+    if (!staleTarget.ok) expect(staleTarget.error).toContain("runner changed");
+    const committed = await runCli([
+      "mission", "reconcile", missionId, commitPath, "--home", root,
+      "--expected-runner", pendingStatus.runnerId,
+      "--expected-state", pendingStatus.state,
+    ]);
+    expect(committed.exitCode).toBe(0);
+    expect(JSON.parse(committed.stdout)).toMatchObject({ status: {
+      state: "running",
+      inputWatermark: 1,
+      reconciledWatermark: 1,
+    } });
+    const successor = await waitForSettledTurn(timeline, missionId, child);
+    expect(successor).toMatchObject({
+      start: { turnId: `continuing-${missionId}-1`, baselineWatermark: 1 },
+      settlement: { kind: "finished", text: "continued at watermark 1" },
+    });
 
-  const replayTarget = await waitForLiveStatus(root, missionId, child);
-  const replayed = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
-    kind: "reconciliation-commit",
-    commit,
-    expectedRunnerId: replayTarget.runnerId,
-    expectedState: replayTarget.state,
-  })));
-  expect(replayed.status.reconciledWatermark).toBe(1);
-  const parent = await Bun.file(timeline.timelinePath(missionId)).text();
-  expect(parent.match(/mission\.input-reconciled/g)).toHaveLength(1);
-  expect(parent.match(/mission\.turn-started/g)).toHaveLength(2);
-
-  await requestMissionRunner(root, missionId, missionRunnerRequest({ kind: "runner-shutdown" }));
-  await waitForExit(child);
+    const replayTarget = await waitForLiveStatus(root, missionId, child);
+    const replayed = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
+      kind: "reconciliation-commit",
+      commit,
+      expectedRunnerId: replayTarget.runnerId,
+      expectedState: replayTarget.state,
+    })));
+    expect(replayed.status.reconciledWatermark).toBe(1);
+    const parent = await Bun.file(timeline.timelinePath(missionId)).text();
+    expect(parent.match(/mission\.input-reconciled/g)).toHaveLength(1);
+    expect(parent.match(/mission\.turn-started/g)).toHaveLength(2);
+  } finally {
+    try {
+      await writeFile(releasePath, "released\n", "utf8");
+    } finally {
+      await requestMissionRunner(
+        root,
+        missionId,
+        missionRunnerRequest({ kind: "runner-shutdown" }),
+      ).catch(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      });
+      await waitForExit(child);
+    }
+  }
 }, 10_000);
 
 test("runtime restarts preserve a partially reconciled backlog and start only after its final watermark", async () => {
