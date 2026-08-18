@@ -136,7 +136,7 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
           const { executeTaskCellRun } = await import("../task-run");
           const outcome = await executeTaskCellRun(context.catalog, cellInput, {
             host: context.host,
-            signal: options.signal,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
           });
           if (outcome.status === "failed") throw new Error(outcome.error);
           return outcome.record;
@@ -161,6 +161,7 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
         workerId: parsed.workerId,
         prompt: parsed.prompt,
         promptDigest: requestDigest,
+        parentToolName: ROSSOVIA_SUB_WORKER_TOOL_NAME,
         execution: context.execution,
         ...(context.maxSteps === undefined ? {} : { maxSteps: context.maxSteps }),
       }, childDependencies).then(
@@ -196,10 +197,13 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
         };
       }
 
+      const status: SubWorkerToolResult["status"] = childTerminal.finalRecord !== undefined
+        ? childTerminal.finalRecord.status
+        : "runner_error";
       return {
         childRunId,
         kind: "settled",
-        status: childTerminal.cellStatus ?? childTerminal.status,
+        status,
         evidence,
         result: childTerminal.finalRecord === undefined
           ? { error: childTerminal.error ?? "child Run produced no final record" }

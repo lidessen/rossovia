@@ -45,6 +45,8 @@ import {
   type OrdinaryRunDependencies,
   type RunRequest,
   type RunResult,
+  type RunStanding,
+  type RunTerminalOutcome,
 } from "../src/orchestration/run";
 
 const temporaryRoots: string[] = [];
@@ -344,8 +346,8 @@ function parentCellTools(fixture_: Fixture): CellToolSet {
 function parentExecutor(fixture_: Fixture): NonNullable<OrdinaryRunDependencies["execute"]> {
   return async (cellInput, options) => {
     const outcome = await executeTaskCellRun(catalog(), cellInput, {
-      signal: options.signal,
       host: createLocalHost(),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
       tools: parentCellTools(fixture_),
     });
     if (outcome.status === "failed") throw new Error(outcome.error);
@@ -353,7 +355,7 @@ function parentExecutor(fixture_: Fixture): NonNullable<OrdinaryRunDependencies[
   };
 }
 
-function terminalOutcome(run: RunResult): RunResult["outcome"] {
+function terminalOutcome(run: RunResult | RunStanding): RunTerminalOutcome {
   if (run.standing !== "terminal") throw new Error(`expected terminal run, got ${run.standing}`);
   return run.outcome;
 }
@@ -389,8 +391,8 @@ describe("sub_worker forward story", () => {
     expect(childOutcome.status).toBe("recorded");
     expect(childOutcome.cleanup).toBe("released");
     expect(childOutcome.finalRecord).toBeDefined();
-    expect(childOutcome.finalRecord!.workspace.writePaths).toEqual([]);
-    expect(childOutcome.finalRecord!.workspace.allowedCommands).toEqual([]);
+    expect(childOutcome.finalRecord!.input.workspace.writePaths).toEqual([]);
+    expect(childOutcome.finalRecord!.input.workspace.allowedCommands).toEqual([]);
     expect(childOutcome.finalRecord!.cellId).toBe(
       `workbench-task-${current.parentTask.task.id}-attempt-${expectedChildRunId}`,
     );
@@ -399,12 +401,13 @@ describe("sub_worker forward story", () => {
       readFileSync(join(current.home, "state", "task-attempts", expectedChildRunId, "attempt.json"), "utf8"),
     );
     expect(retainedChildAttempt.access).toBe("read-only");
-    expect(retainedChildAttempt.correlation).toEqual({
-      kind: "parent-tool",
+    expect(retainedChildAttempt.parentTool).toEqual({
+      name: ROSSOVIA_SUB_WORKER_TOOL_NAME,
       parentRunId: current.parentRunId,
       toolCallId: "parent-call-1",
       promptDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+    expect(retainedChildAttempt).not.toHaveProperty("correlation");
 
     const retainedParentAttempt = JSON.parse(
       readFileSync(join(current.home, "state", "task-attempts", current.parentRunId, "attempt.json"), "utf8"),
@@ -445,8 +448,8 @@ describe("sub_worker cancellation/no-final boundary", () => {
 
     const executor = async (cellInput: CellInput, options: { signal?: AbortSignal }) => {
       const outcome = await executeTaskCellRun(hangingCatalog, cellInput, {
-        signal: options.signal,
         host: createLocalHost(),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         tools: {
           [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool(parentCtx),
         },
@@ -517,8 +520,8 @@ describe("sub_worker compatibility/capability story", () => {
 
     const unknownExecutor = async (cellInput: CellInput, options: { signal?: AbortSignal }) => {
       const outcome = await executeTaskCellRun(unknownCatalog, cellInput, {
-        signal: options.signal,
         host: createLocalHost(),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         tools: {
           [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
             ...subWorkerToolContext(current),
@@ -561,8 +564,8 @@ describe("sub_worker compatibility/capability story", () => {
     const unavailableCatalog = catalogWithUnavailableChild();
     const unavailableExecutor = async (cellInput: CellInput, options: { signal?: AbortSignal }) => {
       const outcome = await executeTaskCellRun(unavailableCatalog, cellInput, {
-        signal: options.signal,
         host: createLocalHost(),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         tools: {
           [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
             ...subWorkerToolContext(current),
@@ -616,8 +619,8 @@ describe("sub_worker compatibility/capability story", () => {
     ]);
     const badExecutor = async (cellInput: CellInput, options: { signal?: AbortSignal }) => {
       const outcome = await executeTaskCellRun(badCatalog, cellInput, {
-        signal: options.signal,
         host: createLocalHost(),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         tools: {
           [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool(badContext),
         },

@@ -57,24 +57,27 @@ const TaskRunAttemptSchema = z.object({
    */
   access: z.enum(["ordinary", "read-only"]).optional(),
   /**
-   * Optional correlation: either a conversation-owned turn/action identity,
-   * or a parent-tool sub_worker invocation binding an exact parent Run, tool
-   * call id, and prompt digest.
+   * Optional Conversation-owned correlation: the exact committed turn/action
+   * identity and causal source reference. Parent-tool child Runs use the
+   * separate `parentTool` field.
    */
-  correlation: z.union([
-    z.object({
-      conversationId: z.string().uuid(),
-      turnId: z.string().uuid(),
-      actionId: z.string().uuid(),
-      sourceRef: z.string().min(1),
-    }).strict(),
-    z.object({
-      kind: z.literal("parent-tool"),
-      parentRunId: z.string().uuid(),
-      toolCallId: z.string().min(1),
-      promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
-    }).strict(),
-  ]).optional(),
+  correlation: z.object({
+    conversationId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    actionId: z.string().uuid(),
+    sourceRef: z.string().min(1),
+  }).strict().optional(),
+  /**
+   * Optional parent-tool invocation binding for a read-only child Run: the
+   * exact parent Run identity, provider tool call identity, complete prompt
+   * digest, and parent tool name.
+   */
+  parentTool: z.object({
+    name: z.string().min(1),
+    parentRunId: z.string().uuid(),
+    toolCallId: z.string().min(1),
+    promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict().optional(),
 }).passthrough();
 
 const TaskRunSettlementSchema = z.object({
@@ -168,20 +171,20 @@ export interface TaskAttemptProjection {
   driver?: string;
   model?: string;
   reasoningEffort?: string;
-  /** Conversation or parent-tool correlation retained by the Run request. */
-  correlation?:
-    | {
-      conversationId: string;
-      turnId: string;
-      actionId: string;
-      sourceRef: string;
-    }
-    | {
-      kind: "parent-tool";
-      parentRunId: string;
-      toolCallId: string;
-      promptDigest: string;
-    };
+  /** Conversation-owned correlation retained by the Run request. */
+  correlation?: {
+    conversationId: string;
+    turnId: string;
+    actionId: string;
+    sourceRef: string;
+  };
+  /** Parent-tool invocation binding retained by the Run request. */
+  parentTool?: {
+    name: string;
+    parentRunId: string;
+    toolCallId: string;
+    promptDigest: string;
+  };
   /** Session requested by the caller for this attempt, when one was supplied. */
   requestedSession?: string;
   /** Session observed in this attempt's retained Work Cell final record, when available. */
@@ -357,6 +360,9 @@ function projectAttempt(
         : {}),
       ...(attempt.value.correlation !== undefined
         ? { correlation: attempt.value.correlation }
+        : {}),
+      ...(attempt.value.parentTool !== undefined
+        ? { parentTool: attempt.value.parentTool }
         : {}),
       ...(attempt.value.session !== undefined ? { requestedSession: attempt.value.session } : {}),
       ...(attempt.value.continuation !== undefined

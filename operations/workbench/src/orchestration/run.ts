@@ -85,20 +85,23 @@ export const RunRequestSchema = z.object({
    */
   access: z.enum(["ordinary", "read-only"]).optional(),
   /** Exact journal causality when the accepted request came from Conversation. */
-  correlation: z.union([
-    z.object({
-      conversationId: z.string().uuid(),
-      turnId: z.string().uuid(),
-      actionId: z.string().uuid(),
-      sourceRef: z.string().min(1),
-    }).strict(),
-    z.object({
-      kind: z.literal("parent-tool"),
-      parentRunId: z.string().uuid(),
-      toolCallId: z.string().min(1),
-      promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
-    }).strict(),
-  ]).optional(),
+  correlation: z.object({
+    conversationId: z.string().uuid(),
+    turnId: z.string().uuid(),
+    actionId: z.string().uuid(),
+    sourceRef: z.string().min(1),
+  }).strict().optional(),
+  /**
+   * Parent-tool invocation binding for a read-only child Run: the exact parent
+   * Run identity, the provider tool call identity, the complete prompt digest,
+   * and the parent tool name. Independent from Conversation correlation.
+   */
+  parentTool: z.object({
+    name: z.string().min(1),
+    parentRunId: z.string().uuid(),
+    toolCallId: z.string().min(1),
+    promptDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  }).strict().optional(),
 }).strict();
 
 export type RunRequest = z.infer<typeof RunRequestSchema>;
@@ -180,6 +183,7 @@ export function canonicalRunRequestJson(request: RunRequest): string {
     ...(request.maxSteps !== undefined ? { maxSteps: request.maxSteps } : {}),
     ...(request.access === "read-only" ? { access: request.access } : {}),
     ...(request.correlation !== undefined ? { correlation: request.correlation } : {}),
+    ...(request.parentTool !== undefined ? { parentTool: request.parentTool } : {}),
   });
 }
 
@@ -248,6 +252,7 @@ export function createRunRequestRecord(
         : {}),
       ...(request.maxSteps !== undefined ? { maxSteps: request.maxSteps } : {}),
       ...(request.access === "read-only" ? { access: request.access } : {}),
+      ...(request.parentTool !== undefined ? { parentTool: request.parentTool } : {}),
       status: "started",
       startedAt: new Date().toISOString(),
       requestDigest: digest,
@@ -316,6 +321,7 @@ function retainedRunRequest(record: Record<string, unknown>): RunRequest | undef
     ...(typeof record.maxSteps === "number" ? { maxSteps: record.maxSteps } : {}),
     ...(record.access === "read-only" ? { access: record.access as "read-only" } : {}),
     ...(record.correlation === undefined ? {} : { correlation: record.correlation }),
+    ...(record.parentTool !== undefined ? { parentTool: record.parentTool } : {}),
   });
   return parsed.success ? parsed.data : undefined;
 }
@@ -620,11 +626,13 @@ export async function runOrdinaryTaskRun(
       // keeps one exact inspectable input and zero Cell invocations.
       const cellInput = dependencies.lowerCellInput();
       // The lowered CellInput is bound and validated against the accepted
-      // durable Run request and the exact O3 claim BEFORE it is persisted or
-      // executed: a mismatch settles a truthful pre-Cell failure, runs zero
-      // Cells, and releases the exact claim.
+      // durable Run request BEFORE it is persisted or executed: identity,
+      // worker, execution profile, Worktree, and maxSteps must match for
+      // every run including read-only. The effectful-only O3 lease-path
+      // check is separate and runs only when a claim was acquired.
+      validateLoweredCellInput(cellInput, request);
       if (lease !== undefined) {
-        validateLoweredCellInput(cellInput, request, lease);
+        validateLeaseBindsWorktree(lease, request);
       }
       taskRunHelpers().writeImmutableJson(refs.inputPath, cellInput);
       dependencies.revalidate?.();
@@ -795,7 +803,7 @@ function defaultRunFinalize(input: RunFinalizationInput): RunFinalization {
     expectedInput: input.expectedInput,
     task: input.task,
     attemptId: input.runId,
-    lease: input.lease,
+    ...(input.lease !== undefined ? { lease: input.lease } : {}),
     outcome: input.outcome,
     ...(input.controlRef !== undefined ? { controlRef: input.controlRef } : {}),
     // The exact execution identity is rebuilt with the absent reasoning
@@ -836,7 +844,6 @@ function canonicalWorktree(root: string): string {
 function validateLoweredCellInput(
   cellInput: CellInput,
   request: RunRequest,
-  lease: WorktreeWriterLease,
 ): void {
   const expectedCellId = `workbench-task-${request.taskId}-attempt-${request.requestId}`;
   if (cellInput.id !== expectedCellId) {
@@ -886,11 +893,6 @@ function validateLoweredCellInput(
       `lowered CellInput workspace root ${observedRoot} does not match the accepted Run request Worktree ${expectedRoot}`,
     );
   }
-  if (lease.path !== worktreeWriterLeasePath(request.worktree)) {
-    throw new Error(
-      `the exact O3 writer claim ${lease.path} does not bind the accepted Run request Worktree`,
-    );
-  }
   const loweredMaxSteps = cellInput.budget?.maxSteps;
   const requestedMaxSteps = request.maxSteps;
   if (loweredMaxSteps !== requestedMaxSteps) {
@@ -898,6 +900,33 @@ function validateLoweredCellInput(
     const requestedLabel = requestedMaxSteps === undefined ? "absent" : String(requestedMaxSteps);
     throw new Error(
       `lowered CellInput maxSteps ${loweredLabel} does not match the accepted Run request maxSteps ${requestedLabel}`,
+    );
+  }
+  // Read-only Runs must lower an immutable CellInput with no write paths and
+  // no allowed commands before any execution; this is part of the shared
+  // lowering validation, not the effectful O3 lease path.
+  if (request.access === "read-only") {
+    if (cellInput.workspace.writePaths.length > 0) {
+      throw new Error("read-only Run lowered CellInput must have no write paths");
+    }
+    if (cellInput.workspace.allowedCommands.length > 0) {
+      throw new Error("read-only Run lowered CellInput must have no allowed commands");
+    }
+  }
+}
+
+/**
+ * Effectful-only O3 writer-claim validation: the exact acquired lease
+ * must bind the accepted Run request Worktree. Read-only Runs skip this
+ * check because they never acquire a claim.
+ */
+function validateLeaseBindsWorktree(
+  lease: WorktreeWriterLease,
+  request: RunRequest,
+): void {
+  if (lease.path !== worktreeWriterLeasePath(request.worktree)) {
+    throw new Error(
+      `the exact O3 writer claim ${lease.path} does not bind the accepted Run request Worktree`,
     );
   }
 }
@@ -1303,6 +1332,8 @@ export interface ReadOnlyChildRunInput {
   readonly workerId: string;
   readonly prompt: string;
   readonly promptDigest: string;
+  /** The parent tool name that invoked the child Run; defaults to sub_worker. */
+  readonly parentToolName?: string;
   readonly execution: RunRequest["execution"];
   readonly maxSteps?: number;
 }
@@ -1314,7 +1345,7 @@ export interface ReadOnlyChildRunResult {
 
 export interface ReadOnlyChildRunDependencies {
   readonly lowerCellInput: () => CellInput;
-  readonly execute: OrdinaryRunDependencies["execute"];
+  readonly execute: NonNullable<OrdinaryRunDependencies["execute"]>;
   readonly finalize?: OrdinaryRunDependencies["finalize"];
   readonly card?: unknown;
   readonly registry?: RunControlRegistry;
@@ -1342,8 +1373,8 @@ export async function runReadOnlyChildRun(
     execution: input.execution,
     worktree: input.worktree,
     access: "read-only",
-    correlation: {
-      kind: "parent-tool",
+    parentTool: {
+      name: input.parentToolName ?? "sub_worker",
       parentRunId: input.parentRunId,
       toolCallId: input.toolCallId,
       promptDigest: input.promptDigest,
@@ -1359,7 +1390,9 @@ export async function runReadOnlyChildRun(
       ? {}
       : {
           registry: dependencies.registry,
-          onControlAvailable: dependencies.onControlAvailable,
+          ...(dependencies.onControlAvailable === undefined
+            ? {}
+            : { onControlAvailable: dependencies.onControlAvailable }),
         }),
   });
   if (result.standing === "unresolved") {
