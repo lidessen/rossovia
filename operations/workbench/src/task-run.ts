@@ -17,6 +17,10 @@ import type {
 import type { CellHost } from "../../../packages/work-cell/src/host-port";
 import type { CellToolSet } from "../../../packages/work-cell/src/tool-port";
 import type { WorkerCard, WorkerCatalog } from "../../../packages/work-cell/src/worker-catalog";
+import {
+  createRossoviaSubWorkerTool,
+  ROSSOVIA_SUB_WORKER_TOOL_NAME,
+} from "./integrations/rossovia-sub-worker";
 import { loadHome, resolveHome, workspaceFor } from "./home";
 import {
   acquireWorktreeWriterLease,
@@ -132,10 +136,12 @@ interface TaskRunDependencies {
     readonly onControlAvailable: (runId: string) => void;
   };
   /**
-   * Optional factory for caller-injected CellTools forwarded to the parent
+   * Test-only override for caller-injected CellTools forwarded to the parent
    * Work Cell. Receives the Run identity and the shared registry so the tool
    * can correlate its effects to the exact Run and stop any child Runs it
-   * creates. The child Run itself receives no tools.
+   * creates. The child Run itself receives no tools. Production callers should
+   * omit this and rely on the default `sub_worker` tool injected when a
+   * `controlBundle` is supplied.
    */
   createCellTools?: (context: { runId: string; registry: RunControlRegistry }) => CellToolSet;
 }
@@ -708,6 +714,12 @@ export async function runPrincipalTask(
 ): Promise<TaskRunResult> {
   const resolved = resolveOrdinaryTaskRun(homeArgument, arguments_, dependencies);
   const { home, task, observed, worktree, execution, continuation, card, projectId } = resolved;
+  const host = workCellWorkspace().createLocalHost();
+  let catalog: WorkerCatalog | undefined;
+  const getCatalog = (): WorkerCatalog => {
+    if (catalog === undefined) catalog = dependencies.catalog ?? currentCatalog();
+    return catalog;
+  };
   const request: RunRequest = {
     requestId: randomUUID(),
     taskId: task.id,
@@ -719,13 +731,31 @@ export async function runPrincipalTask(
     ...(continuation === undefined ? {} : { continuation }),
     ...(arguments_.maxSteps === undefined ? {} : { maxSteps: arguments_.maxSteps }),
   };
-  const parentCellTools = dependencies.createCellTools !== undefined
-    && dependencies.controlBundle !== undefined
-    ? dependencies.createCellTools({
+  const parentCellTools = (() => {
+    if (dependencies.controlBundle === undefined) return undefined;
+    if (dependencies.createCellTools !== undefined) {
+      return dependencies.createCellTools({
         runId: request.requestId,
         registry: dependencies.controlBundle.registry,
-      })
-    : undefined;
+      });
+    }
+    return {
+      [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
+        home,
+        parentRunId: request.requestId,
+        taskId: task.id,
+        taskRevision: task.revision,
+        sourceRevision: observed.sourceRevision,
+        worktree,
+        ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
+        catalog: getCatalog(),
+        host,
+        registry: dependencies.controlBundle.registry,
+        buildChildCellInput: (childRunId, workerId, prompt) =>
+          buildReadOnlyChildCellInput(task, worktree, getCatalog().card(workerId), childRunId, prompt, request.maxSteps),
+      }),
+    };
+  })();
   const result = await runOrdinaryTaskRun(home, request, {
     // The pre-claim seam is omitted when absent: never passed as undefined.
     ...(dependencies.beforeLeaseAcquire === undefined
@@ -751,11 +781,11 @@ export async function runPrincipalTask(
     execute: async (cellInput, options) => {
       const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
       return executor({
-        catalog: dependencies.catalog ?? currentCatalog(),
+        catalog: getCatalog(),
         cellInput,
         // The O2 owner constructs the local host adapter for its O3-authorized
         // bound Worktree and injects it explicitly on every attempt.
-        host: workCellWorkspace().createLocalHost(),
+        host,
         ...(options.signal ? { signal: options.signal } : {}),
         ...(parentCellTools !== undefined && Object.keys(parentCellTools).length > 0
           ? { tools: parentCellTools }
@@ -1193,6 +1223,48 @@ export function buildTaskCellInput(
   maxSteps?: number,
 ): CellInput {
   const cellInput = taskCellInputObject(task, worktree, workerId, worker, attemptId, maxSteps);
+  return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
+}
+
+/**
+ * Lower one read-only sub_worker child Run into an immutable CellInput. The
+ * child reuses the parent Task identity and revisions/worktree, but runs with
+ * the model-selected worker card's execution profile, the complete receiver
+ * prompt as its intent, and a workspace with whole-Worktree reads and no
+ * writes or commands.
+ */
+export function buildReadOnlyChildCellInput(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  worker: WorkerCard,
+  childRunId: string,
+  prompt: string,
+  maxSteps?: number,
+): CellInput {
+  const cellInput = {
+    id: `workbench-task-${task.id}-attempt-${childRunId}`,
+    workerId: worker.id,
+    executionProfile: worker.executionProfile,
+    intent: prompt,
+    workspace: {
+      root: worktree,
+      readPaths: ["."],
+      writePaths: [] as string[],
+      excludePaths: ordinaryOpenCodeExcludes(worktree),
+      allowedCommands: [] as string[],
+    },
+    instructions: [
+      "Complete the bounded child task described in the prompt. Do not claim semantic acceptance.",
+    ],
+    capabilities: [],
+    context: [],
+    capabilitiesRequired: [],
+    acceptance: ["Do not claim semantic acceptance."],
+    budget: {
+      maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS,
+      ...(maxSteps === undefined ? {} : { maxSteps }),
+    },
+  };
   return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
 }
 

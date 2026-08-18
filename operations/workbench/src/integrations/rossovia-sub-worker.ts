@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { CellInput, CellRunRecord } from "../../../../packages/work-cell/src/contracts";
 import type { CellHost } from "../../../../packages/work-cell/src/host-port";
 import type { CellTool, CellToolExecutionContext } from "../../../../packages/work-cell/src/tool-port";
-import type { WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
+import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
 import {
   deriveChildRunId,
   runReadOnlyChildRun,
@@ -11,7 +11,6 @@ import {
   type RunTerminalOutcome,
   RunControlRegistry,
 } from "../orchestration/run";
-import type { TaskRunExecution } from "../task-run";
 
 export const ROSSOVIA_SUB_WORKER_TOOL_NAME = "sub_worker" as const;
 
@@ -33,8 +32,6 @@ export interface RossoviaSubWorkerContext {
   readonly taskId: string;
   /** The exact resolved Worktree root the child Run reads. */
   readonly worktree: string;
-  /** The requested execution identity inherited from the parent Run. */
-  readonly execution: TaskRunExecution;
   /** Optional explicit per-child step cap. */
   readonly maxSteps?: number;
   /** Worker catalog from which the model selects an available child worker. */
@@ -101,17 +98,31 @@ export interface SubWorkerToolResult {
  * cannot create a second-layer sub_worker. The tool fails closed when no
  * worker is supplied, the worker is unknown or unavailable, or the child
  * lowering produces write/command capability.
+ *
+ * The available-worker snapshot is frozen at tool-creation time and exposed
+ * to the parent model through the tool description and workerId schema
+ * description, including each worker's id, labels, description, and execution
+ * profile.
  */
 export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): CellTool {
+  const availableWorkers = context.catalog.list();
+  const snapshot = formatWorkerSnapshot(availableWorkers);
+  const availableIds = availableWorkers.map((card) => card.id);
   return {
     description:
       "Delegate one bounded read-only sub-task to a single available Work Cell worker. "
       + "Provide the exact workerId and the complete receiver-facing prompt. "
-      + "The child Run is read-only: it cannot write files or run commands.",
+      + "The child Run is read-only: it cannot write files or run commands. "
+      + "Available workers:\n"
+      + snapshot,
     inputSchema: {
       type: "object",
       properties: {
-        workerId: { type: "string", minLength: 1, description: "An available worker id from the WorkerCatalog." },
+        workerId: {
+          type: "string",
+          minLength: 1,
+          description: `An available worker id from the frozen snapshot. Known ids: ${availableIds.join(", ") || "(none available)"}`,
+        },
         prompt: { type: "string", minLength: 1, description: "The complete receiver-facing child-task prompt." },
       },
       required: ["workerId", "prompt"],
@@ -122,18 +133,20 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
       const requestDigest = digestText(parsed.prompt);
       const childRunId = deriveChildRunId(context.parentRunId, toolContext.toolCallId);
 
-      const card = context.catalog.card(parsed.workerId);
-      if (card.availability.status !== "available") {
-        throw new Error(`sub_worker worker ${parsed.workerId} is unavailable: ${card.availability.reason}`);
-      }
+      const card = resolveWorkerCard(context.catalog, parsed.workerId);
 
       const childCellInput = context.buildChildCellInput(childRunId, parsed.workerId, parsed.prompt);
       enforceReadOnlyWorkspace(childCellInput);
 
+      const [{ executeTaskCellRun }, { deriveTaskRunExecution }] = await Promise.all([
+        import("../task-run"),
+        import("../task-run"),
+      ]);
+      const childExecution = deriveTaskRunExecution(card);
+
       const childDependencies: ReadOnlyChildRunDependencies = {
         lowerCellInput: () => childCellInput,
         execute: async (cellInput, options) => {
-          const { executeTaskCellRun } = await import("../task-run");
           const outcome = await executeTaskCellRun(context.catalog, cellInput, {
             host: context.host,
             ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -158,11 +171,11 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
         taskRevision: context.taskRevision,
         sourceRevision: context.sourceRevision,
         worktree: context.worktree,
-        workerId: parsed.workerId,
+        workerId: card.id,
         prompt: parsed.prompt,
         promptDigest: requestDigest,
         parentToolName: ROSSOVIA_SUB_WORKER_TOOL_NAME,
-        execution: context.execution,
+        execution: childExecution,
         ...(context.maxSteps === undefined ? {} : { maxSteps: context.maxSteps }),
       }, childDependencies).then(
         (result) => { childTerminal = result.outcome; },
@@ -182,7 +195,7 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
         taskId: context.taskId,
         taskRevision: context.taskRevision,
         sourceRevision: context.sourceRevision,
-        workerId: parsed.workerId,
+        workerId: card.id,
         workspaceRoot: context.worktree,
         requestDigest,
       };
@@ -247,6 +260,14 @@ function parseSubWorkerInput(input: unknown): SubWorkerToolInput {
   return { workerId, prompt };
 }
 
+function resolveWorkerCard(catalog: WorkerCatalog, workerId: string): WorkerCard {
+  const card = catalog.card(workerId);
+  if (card.availability.status !== "available") {
+    throw new Error(`sub_worker worker ${workerId} is unavailable: ${card.availability.reason}`);
+  }
+  return card;
+}
+
 function digestText(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -258,4 +279,13 @@ function enforceReadOnlyWorkspace(input: CellInput): void {
   if (input.workspace.allowedCommands.length > 0) {
     throw new Error("sub_worker child Run must have no allowed commands");
   }
+}
+
+function formatWorkerSnapshot(cards: WorkerCard[]): string {
+  return cards
+    .map((card) => {
+      const profile = card.executionProfile;
+      return `- ${card.id}: ${card.description} labels=[${card.labels.join(", ")}] provider=${profile.provider} model=${profile.model}${profile.reasoningEffort ? ` reasoning=${profile.reasoningEffort}` : ""}`;
+    })
+    .join("\n");
 }

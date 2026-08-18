@@ -34,8 +34,8 @@ import {
 import { registerProject } from "../src/register";
 import { createPrincipalTask, showPrincipalTask } from "../src/tasks";
 import {
+  buildReadOnlyChildCellInput,
   executeTaskCellRun,
-  type TaskRunExecution,
 } from "../src/task-run";
 import {
   deriveChildRunId,
@@ -119,7 +119,7 @@ function git(cwd: string, ...arguments_: string[]): string {
   return result.stdout.toString().trim();
 }
 
-function parentExecution(): TaskRunExecution {
+function parentExecution(): { driver: string; model: string } {
   return { driver: "ai-sdk-v7", model: "parent/model" };
 }
 
@@ -178,13 +178,6 @@ function catalog(): WorkerCatalog {
   return new WorkerCatalog([
     { card: parentCard(), createDriver: () => new ParentTestDriver() },
     { card: childCard(), createDriver: () => new ChildTestDriver() },
-  ]);
-}
-
-function catalogWithUnavailableChild(): WorkerCatalog {
-  return new WorkerCatalog([
-    { card: parentCard(), createDriver: () => new ParentTestDriver() },
-    { card: unavailableChildCard(), createDriver: () => new ChildTestDriver() },
   ]);
 }
 
@@ -296,10 +289,10 @@ class ChildTestDriver implements CellDriver {
   }
 }
 
-function makeParentRequest(fixture_: Fixture): RunRequest {
+function makeParentRequest(fixture_: Fixture, runId: string = fixture_.parentRunId): RunRequest {
   const task = showPrincipalTask(fixture_.home, fixture_.parentTask.task.id).task;
   return {
-    requestId: fixture_.parentRunId,
+    requestId: runId,
     taskId: task.id,
     taskRevision: task.revision,
     sourceRevision: fixture_.parentTask.sourceRevision,
@@ -314,21 +307,29 @@ function buildParentCellInput(fixture_: Fixture, runId: string): CellInput {
 }
 
 function buildChildCellInput(fixture_: Fixture, childRunId: string, workerId: string, prompt: string): CellInput {
-  const input = cellInputFor(childRunId, fixture_.worktree, fixture_.parentTask.task.id, workerId, "child/model");
-  input.instructions = [prompt];
-  return input;
+  const task = showPrincipalTask(fixture_.home, fixture_.parentTask.task.id).task;
+  return buildReadOnlyChildCellInput(
+    task,
+    realpathSync(fixture_.worktree),
+    catalog().card(workerId),
+    childRunId,
+    prompt,
+    undefined,
+  );
 }
 
-function subWorkerToolContext(fixture_: Fixture): RossoviaSubWorkerContext {
+function subWorkerToolContext(
+  fixture_: Fixture,
+  runId: string = fixture_.parentRunId,
+): RossoviaSubWorkerContext {
   const task = showPrincipalTask(fixture_.home, fixture_.parentTask.task.id).task;
   return {
     home: fixture_.home,
-    parentRunId: fixture_.parentRunId,
+    parentRunId: runId,
     taskId: task.id,
     taskRevision: task.revision,
     sourceRevision: fixture_.parentTask.sourceRevision,
     worktree: realpathSync(fixture_.worktree),
-    execution: parentExecution(),
     catalog: catalog(),
     host: createLocalHost(),
     registry: fixture_.registry,
@@ -492,7 +493,8 @@ describe("sub_worker cancellation/no-final boundary", () => {
 describe("sub_worker compatibility/capability story", () => {
   test("unknown worker, unavailable worker, or a child input requesting write/command capability fail closed", async () => {
     const current = fixture();
-    const request = makeParentRequest(current);
+    const unknownRunId = randomUUID();
+    const unknownRequest = makeParentRequest(current, unknownRunId);
 
     // Parent driver that tries to delegate to an unknown worker.
     class UnknownWorkerDriver implements CellDriver {
@@ -524,7 +526,7 @@ describe("sub_worker compatibility/capability story", () => {
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         tools: {
           [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
-            ...subWorkerToolContext(current),
+            ...subWorkerToolContext(current, unknownRunId),
             catalog: unknownCatalog,
           }),
         },
@@ -533,25 +535,37 @@ describe("sub_worker compatibility/capability story", () => {
       return outcome.record;
     };
 
-    const unknownResult = await runOrdinaryTaskRun(current.home, request, {
+    const unknownResult = await runOrdinaryTaskRun(current.home, unknownRequest, {
       card: parentCard(),
       registry: current.registry,
       onControlAvailable: () => {},
-      lowerCellInput: () => buildParentCellInput(current, current.parentRunId),
+      lowerCellInput: () => buildParentCellInput(current, unknownRunId),
       execute: unknownExecutor,
     });
     expect(terminalOutcome(unknownResult).finalRecord!.finalText).toContain("unknown worker rejected");
 
     // Unavailable worker.
+    const unavailableRunId = randomUUID();
+    const unavailableRequest = makeParentRequest(current, unavailableRunId);
     class UnavailableWorkerDriver implements CellDriver {
       readonly supportsCellTools = true as const;
       readonly descriptor = { adapter: "ai-sdk-v7", provider: "test-provider", model: "parent/model" };
       async run(_input: CellInput, context: DriverContext): Promise<DriverResult> {
-        await expect(context.cellTools!.execute(
-          ROSSOVIA_SUB_WORKER_TOOL_NAME,
-          { workerId: "unavailable-child-worker", prompt: "test" },
-          "call-unavailable",
-        )).rejects.toThrow("unavailable");
+        let rejected = false;
+        let caught: unknown;
+        try {
+          await context.cellTools!.execute(
+            ROSSOVIA_SUB_WORKER_TOOL_NAME,
+            { workerId: "unavailable-child-worker", prompt: "test" },
+            "call-unavailable",
+          );
+        } catch (error) {
+          rejected = true;
+          caught = error;
+        }
+        if (!rejected || !(caught instanceof Error)) {
+          throw new Error("expected sub_worker execute to reject with an Error for an unavailable worker");
+        }
         return {
           terminalToolsCalled: [],
           finalText: "unavailable worker rejected",
@@ -561,14 +575,17 @@ describe("sub_worker compatibility/capability story", () => {
       }
     }
 
-    const unavailableCatalog = catalogWithUnavailableChild();
+    const unavailableCatalog = new WorkerCatalog([
+      { card: parentCard(), createDriver: () => new UnavailableWorkerDriver() },
+      { card: unavailableChildCard(), createDriver: () => new ChildTestDriver() },
+    ]);
     const unavailableExecutor = async (cellInput: CellInput, options: { signal?: AbortSignal }) => {
       const outcome = await executeTaskCellRun(unavailableCatalog, cellInput, {
         host: createLocalHost(),
         ...(options.signal === undefined ? {} : { signal: options.signal }),
         tools: {
           [ROSSOVIA_SUB_WORKER_TOOL_NAME]: createRossoviaSubWorkerTool({
-            ...subWorkerToolContext(current),
+            ...subWorkerToolContext(current, unavailableRunId),
             catalog: unavailableCatalog,
           }),
         },
@@ -577,18 +594,22 @@ describe("sub_worker compatibility/capability story", () => {
       return outcome.record;
     };
 
-    const unavailableResult = await runOrdinaryTaskRun(current.home, request, {
+    const unavailableResult = await runOrdinaryTaskRun(current.home, unavailableRequest, {
       card: parentCard(),
       registry: current.registry,
       onControlAvailable: () => {},
-      lowerCellInput: () => buildParentCellInput(current, current.parentRunId),
+      lowerCellInput: () => buildParentCellInput(current, unavailableRunId),
       execute: unavailableExecutor,
     });
     expect(terminalOutcome(unavailableResult).finalRecord!.finalText).toContain("unavailable worker rejected");
+    const unavailableChildRunId = deriveChildRunId(unavailableRunId, "call-unavailable");
+    expect(existsSync(join(current.home, "state", "task-attempts", unavailableChildRunId, "attempt.json"))).toBe(false);
 
     // Write/command capability requested by the child lowering fails closed.
+    const badRunId = randomUUID();
+    const badRequest = makeParentRequest(current, badRunId);
     const badContext: RossoviaSubWorkerContext = {
-      ...subWorkerToolContext(current),
+      ...subWorkerToolContext(current, badRunId),
       buildChildCellInput: (childRunId, workerId, prompt) => {
         const input = buildChildCellInput(current, childRunId, workerId, prompt);
         input.workspace.writePaths = ["."];
@@ -629,11 +650,11 @@ describe("sub_worker compatibility/capability story", () => {
       return outcome.record;
     };
 
-    const badResult = await runOrdinaryTaskRun(current.home, request, {
+    const badResult = await runOrdinaryTaskRun(current.home, badRequest, {
       card: parentCard(),
       registry: current.registry,
       onControlAvailable: () => {},
-      lowerCellInput: () => buildParentCellInput(current, current.parentRunId),
+      lowerCellInput: () => buildParentCellInput(current, badRunId),
       execute: badExecutor,
     });
     expect(terminalOutcome(badResult).finalRecord!.finalText).toContain("write capability rejected");
