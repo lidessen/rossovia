@@ -852,14 +852,14 @@ function estimateCost(
   pricing: CellRunRecord["driver"]["pricing"],
 ): { value: number; basis: string } | undefined {
   if (!pricing) return undefined;
-  const cached = Math.min(usage.cachedInputTokens, usage.inputTokens);
-  const uncached = Math.max(0, usage.inputTokens - cached);
+  if (usage.inputTokens === 0 && usage.outputTokens === 0 && usage.cachedInputTokens === 0) return undefined;
+  const cachedRate = pricing.cachedInputPerMillionUsd ?? pricing.inputPerMillionUsd;
   const inputCost =
-    (uncached / 1_000_000) * pricing.inputPerMillionUsd +
-    (cached / 1_000_000) * (pricing.cachedInputPerMillionUsd ?? pricing.inputPerMillionUsd);
+    (usage.inputTokens / 1_000_000) * pricing.inputPerMillionUsd +
+    (usage.cachedInputTokens / 1_000_000) * cachedRate;
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillionUsd;
   return {
     value: Number((inputCost + outputCost).toFixed(8)),
-    basis: `estimated from token usage using ${pricing.source}`,
+    basis: `reported-usage peak-rate upper bound (${pricing.source}, revision ${pricing.revision ?? "unknown"})`,
   };
 }

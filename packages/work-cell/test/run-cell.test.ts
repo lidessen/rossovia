@@ -2,8 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CellInput, CellRunRecord } from "../src/contracts";
+import type { CellInput, CellRunRecord, CellUsage } from "../src/contracts";
 import { CellRunRecordSchema, ProviderFingerprintStandingSchema } from "../src/contracts";
+import { deepSeekFlashPricing, deepSeekProPricing } from "../src/integrations/ai-sdk/providers/deepseek";
 import type { CellDriver, DriverResult } from "../src/driver";
 import { runCell } from "../src/run-cell";
 import { createLocalHost } from "../src/workspace";
@@ -195,6 +196,112 @@ class MaliciousMutationDriver implements CellDriver {
     };
   }
 }
+
+describe("cost estimate evidence", () => {
+  function pricedDriver(
+    usage: CellUsage,
+    pricing: { inputPerMillionUsd: number; cachedInputPerMillionUsd?: number; outputPerMillionUsd: number; source: string; revision?: string },
+    status: "passed" | "failed" = "passed",
+  ): CellDriver {
+    return {
+      descriptor: {
+        adapter: "cost-estimate-fixture",
+        provider: "deterministic",
+        model: "fixture",
+        pricing,
+      },
+      async run() {
+        if (status === "failed") {
+          throw new Error("provider failed before producing usage");
+        }
+        return {
+          terminalToolsCalled: [],
+          finalText: "done",
+          usage,
+          rawSteps: [],
+        };
+      },
+    };
+  }
+
+  test("charges cached and non-cached input tokens separately when reported cache exceeds input", async () => {
+    const root = await mkdtemp(join(tmpdir(), "work-cell-cost-test-"));
+    temporaryRoots.push(root);
+    const input: CellInput = {
+      id: "cache-larger-than-input",
+      intent: "Prove cached input is billed as a separate category.",
+      workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Return the fixture result."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["Cached and non-cached input tokens are summed, not subtracted."],
+      budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
+    };
+
+    const record = await runCell(input, pricedDriver(
+      { inputTokens: 100, outputTokens: 50, totalTokens: 150, cachedInputTokens: 200 },
+      deepSeekFlashPricing,
+    ), { host: createLocalHost() });
+
+    expect(record.status).toBe("passed");
+    expect(record.estimatedCostUsd).toBe(0.0001128);
+    expect(record.estimateBasis).toContain("reported-usage peak-rate upper bound");
+    expect(record.estimateBasis).toContain(deepSeekFlashPricing.source);
+    expect(record.estimateBasis).toContain("2026-08-17");
+  });
+
+  test("omits a dollar cost when provider usage is zero", async () => {
+    const root = await mkdtemp(join(tmpdir(), "work-cell-cost-test-"));
+    temporaryRoots.push(root);
+    const input: CellInput = {
+      id: "zero-usage-no-cost",
+      intent: "Prove zero reported usage produces no dollar estimate.",
+      workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Return the fixture result."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["No dollar cost is invented when the driver reports no usage."],
+      budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
+    };
+
+    const record = await runCell(input, pricedDriver(
+      { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
+      deepSeekProPricing,
+      "failed",
+    ), { host: createLocalHost() });
+
+    expect(record.status).toBe("failed");
+    expect(record.estimatedCostUsd).toBeUndefined();
+    expect(record.estimateBasis).toBeUndefined();
+  });
+
+  test("uses model-specific Pro peak pricing when the descriptor carries it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "work-cell-cost-test-"));
+    temporaryRoots.push(root);
+    const input: CellInput = {
+      id: "pro-peak-pricing",
+      intent: "Prove Pro pricing is applied when the descriptor carries it.",
+      workspace: { root, readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+      instructions: ["Return the fixture result."],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["Pro peak pricing produces the expected upper bound."],
+      budget: { maxSteps: 1, maxDurationMs: 2_000, maxCommandOutputBytes: 4_000 },
+    };
+
+    const record = await runCell(input, pricedDriver(
+      { inputTokens: 1_000_000, outputTokens: 1_000_000, totalTokens: 2_000_000, cachedInputTokens: 0 },
+      deepSeekProPricing,
+    ), { host: createLocalHost() });
+
+    expect(record.status).toBe("passed");
+    expect(record.estimatedCostUsd).toBe(5.28);
+    expect(record.estimateBasis).toContain("reported-usage peak-rate upper bound");
+  });
+});
 
 describe("provider fingerprint evidence", () => {
   async function fingerprintInput(): Promise<CellInput> {

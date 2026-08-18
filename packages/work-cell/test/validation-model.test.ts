@@ -84,8 +84,11 @@ test("the validation policy requires an explicit route backed by its referenced 
   });
   expect(deepSeekOnly.structuredOutputMode).toBe("tool-settlement");
   expect(deepSeekOnly.pricing).toEqual(expect.objectContaining({
-    inputPerMillionUsd: 0.14,
-    outputPerMillionUsd: 0.28,
+    inputPerMillionUsd: 0.44,
+    cachedInputPerMillionUsd: 0.014,
+    outputPerMillionUsd: 1.32,
+    source: "https://api-docs.deepseek.com/quick_start/pricing",
+    revision: "2026-08-17",
   }));
 
   expect(createValidationModel({
@@ -183,6 +186,22 @@ test("DeepSeek response evidence retains provider fingerprints for generate and 
     type: "finish",
     providerMetadata: { deepseek: { systemFingerprint: "fp-stream" } },
   })]);
+});
+
+test("a single DeepSeek Pro route carries Pro peak pricing", () => {
+  const selection = createValidationModel({
+    route: [{ ...routeTarget("deepseek"), model: "deepseek-v4-pro" }],
+    deepSeekApiKey: "deepseek-key",
+  });
+
+  expect(selection.models).toEqual(["deepseek-v4-pro"]);
+  expect(selection.pricing).toEqual(expect.objectContaining({
+    inputPerMillionUsd: 1.32,
+    cachedInputPerMillionUsd: 0.044,
+    outputPerMillionUsd: 3.96,
+    source: "https://api-docs.deepseek.com/quick_start/pricing",
+    revision: "2026-08-17",
+  }));
 });
 
 test("an unpriced model cannot inherit the default model's dollar estimate", () => {

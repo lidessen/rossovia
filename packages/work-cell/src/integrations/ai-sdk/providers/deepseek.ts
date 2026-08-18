@@ -122,11 +122,19 @@ function withDeepSeekFingerprint(
 }
 
 export const deepSeekFlashPricing = {
-  inputPerMillionUsd: 0.14,
-  cachedInputPerMillionUsd: 0.0028,
-  outputPerMillionUsd: 0.28,
+  inputPerMillionUsd: 0.44,
+  cachedInputPerMillionUsd: 0.014,
+  outputPerMillionUsd: 1.32,
   source: "https://api-docs.deepseek.com/quick_start/pricing",
-  revision: "2026-07-31",
+  revision: "2026-08-17",
+};
+
+export const deepSeekProPricing = {
+  inputPerMillionUsd: 1.32,
+  cachedInputPerMillionUsd: 0.044,
+  outputPerMillionUsd: 3.96,
+  source: "https://api-docs.deepseek.com/quick_start/pricing",
+  revision: "2026-08-17",
 };
 
 export function createDeepSeekModel(options: {
