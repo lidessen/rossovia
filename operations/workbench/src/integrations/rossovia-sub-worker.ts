@@ -20,6 +20,16 @@ import {
 export const ROSSOVIA_SUB_WORKER_TOOL_NAME = "sub_worker" as const;
 
 /**
+ * Caller-owned admission envelope passed into the sub_worker closure.
+ * The closure consumes one admission synchronously at the tool boundary;
+ * admissions are non-refundable and never replenished.
+ */
+export interface RossoviaSubWorkerAdmission {
+  /** Remaining admissions; the tool seeds its closure-local counter from this. */
+  remaining: number;
+}
+
+/**
  * Caller-owned context that binds the sub_worker closure to one parent Run.
  * The tool does not invent or mutate Task identity; it reuses the current
  * Task attribution and exact Worktree root for the read-only child Run.
@@ -49,6 +59,11 @@ export interface RossoviaSubWorkerContext {
    * the exact stop/control relationship.
    */
   readonly registry: RunControlRegistry;
+  /**
+   * Caller-owned admission envelope. The parent Run injects a hard cap of one;
+   * the tool consumes it synchronously before any asynchronous child work.
+   */
+  readonly admission: RossoviaSubWorkerAdmission;
   /**
    * Build the immutable CellInput for the read-only child Run. The returned
    * input must already have `workspace.writePaths = []` and
@@ -124,9 +139,10 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
   const snapshot = formatWorkerSnapshot(availableWorkers);
   const availableIds = availableWorkers.map((card) => card.id);
   // Caller-owned hard cap: one read-only child Run per parent Run. The
-  // admission is consumed synchronously at the tool boundary before any
-  // asynchronous child preparation, and is never returned.
-  let admitted = true;
+  // admission envelope seeds a closure-local counter that is consumed
+  // synchronously at the tool boundary before any asynchronous child
+  // preparation; consumed admissions are never returned.
+  let remaining = context.admission.remaining;
   return {
     description:
       "Delegate one bounded read-only sub-task to a single available Work Cell worker. "
@@ -148,13 +164,13 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
       additionalProperties: false,
     },
     execute: async (input: unknown, toolContext: CellToolExecutionContext): Promise<SubWorkerToolResult> => {
-      if (!admitted) {
+      if (remaining <= 0) {
         throw new Error(
           `sub_worker admission already consumed for parent run ${context.parentRunId}; `
           + `refused call ${toolContext.toolCallId}`
         );
       }
-      admitted = false;
+      remaining -= 1;
       const parsed = parseSubWorkerInput(input);
       const promptDigest = digestText(parsed.prompt);
       const childRunId = deriveChildRunId(context.parentRunId, toolContext.toolCallId);

@@ -38,6 +38,7 @@ import { createPrincipalTask, showPrincipalTask } from "../src/tasks";
 import {
   buildReadOnlyChildCellInput,
   executeTaskCellRun,
+  runPrincipalTask,
 } from "../src/task-run";
 import {
   deriveChildRunId,
@@ -395,6 +396,7 @@ function subWorkerToolContext(
     catalog: catalog(),
     host: createLocalHost(),
     registry: fixture_.registry,
+    admission: { remaining: 1 },
     buildChildCellInput: (childRunId, workerId, prompt) =>
       buildChildCellInput(fixture_, childRunId, workerId, prompt),
   };
@@ -556,6 +558,58 @@ describe("sub_worker admission envelope", () => {
 
     const firstStanding = runStanding(current.home, firstChildRunId);
     expect(firstStanding.standing).toBe("terminal");
+  });
+});
+
+describe("sub_worker ordinary task-run injection", () => {
+  test("the ordinary parent Run injects a hard cap of one and refuses a second sub_worker call before any second child evidence", async () => {
+    const current = fixture();
+    const task = showPrincipalTask(current.home, current.parentTask.task.id).task;
+    const ordinaryCatalog = new WorkerCatalog([
+      { card: parentCard(), createDriver: () => new DoubleSubWorkerDriver() },
+      { card: childCard(), createDriver: () => new ChildTestDriver() },
+    ]);
+
+    const result = await runPrincipalTask(current.home, {
+      id: task.id,
+      workerId: "parent-worker",
+    }, {
+      resolveWorkerCard: (workerId) => ordinaryCatalog.card(workerId),
+      catalog: ordinaryCatalog,
+      controlBundle: {
+        registry: current.registry,
+        onControlAvailable: () => {},
+      },
+    });
+
+    const parentRunId = result.attemptId;
+    const firstChildRunId = deriveChildRunId(parentRunId, "parent-call-1");
+    const secondChildRunId = deriveChildRunId(parentRunId, "parent-call-2");
+
+    expect(result.cellStatus).toBe("passed");
+    const parentFinalRecord = JSON.parse(
+      readFileSync(join(current.home, result.finalRecordRef), "utf8"),
+    );
+    const parsed = JSON.parse(parentFinalRecord.finalText) as {
+      first: SubWorkerToolResult;
+      secondError: string;
+    };
+    expect(parsed.first.childRunId).toBe(firstChildRunId);
+    expect(parsed.first.standing).toBe("terminal");
+    expect(parsed.first.status).toBe("recorded");
+    expect(parsed.secondError).toContain(parentRunId);
+    expect(parsed.secondError).toContain("parent-call-2");
+
+    // The first child Run produced the ordinary read-only evidence family.
+    expect(existsSync(join(current.home, "state", "task-attempts", firstChildRunId, "attempt.json"))).toBe(true);
+
+    // The second call was refused before any Run request, CellInput, Cell,
+    // attempt, final, settlement, control, or model dispatch evidence.
+    expect(existsSync(join(current.home, "state", "task-attempts", secondChildRunId, "attempt.json"))).toBe(false);
+    expect(existsSync(join(current.home, "state", "task-attempts", secondChildRunId, "cell-input.json"))).toBe(false);
+    expect(existsSync(join(current.home, "state", "task-attempts", secondChildRunId, "cell-input.run.json"))).toBe(false);
+    expect(existsSync(join(current.home, "state", "task-attempts", secondChildRunId, "settlement.json"))).toBe(false);
+    expect(existsSync(join(current.home, "state", "task-attempts", secondChildRunId, "control.json"))).toBe(false);
   });
 });
 
