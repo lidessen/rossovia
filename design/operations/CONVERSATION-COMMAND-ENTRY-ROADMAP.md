@@ -147,13 +147,21 @@ attempt state, branch activity, or check output here.
   model, thinking, and effort; report only adapter/provider-returned observation
   as observed. A required-profile mismatch or unavailable capability is visible,
   never a silent downgrade.
-- For the current migration phase, ordinary implementation prefers the
-  catalog-backed OpenCode Go Flash route; Kimi is reserved for architecture
-  reasoning and boundary review. If one is unavailable, choose a fallback by
-  the actual task shape from DeepSeek Flash or Pro rather than changing runtime
-  configuration. This is dated policy, not a mechanism invariant or universal
-  worker default. The P5 DeepSeek balance failure and Kimi timeout are current
-  unavailability evidence, not permission to retry silently or claim progress.
+- Select a current worker through `worker list`, the host-owned
+  [worker policy](../../operations/autonomy/src/worker-policy.ts), and the
+  matching [Workbench instructions](../../operations/workbench/AGENTS.md#rossovia-local-task-entry).
+  OpenCode Go is an AI SDK provider behind a current worker profile, not a
+  default worker, harness, or fallback. Do not invent a combined provider/model
+  identity that the catalog does not expose.
+- The current
+  [Mission acceptance](../../operations/missions/conversation-command-entry.json)
+  requires DeepSeek Pro with thinking and `reasoning=max` for the conversation
+  coordinator. That scoped requirement is not an ordinary implementation
+  default. The Principal's desired future division of labor among ordinary
+  implementation, architecture reasoning, and review remains a candidate until
+  an owning preference or Orchestration policy records it; this roadmap does
+  not set that ordering. Provider failure or timeout updates availability
+  evidence but does not authorize silent fallback or a progress claim.
 - Price, token, step, and duration choices are policy envelopes. Estimate
   before material spend, preserve normalized attributable usage/cost when
   available, and retain `unknown` rather than inventing zero. Ordinary
