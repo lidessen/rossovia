@@ -92,6 +92,21 @@ only the matching entry. That file owns the exact CLI mapping and operational
 authority boundaries. Do not load it for ordinary repository, Skill, or direct
 delegation work.
 
+## Conversation command entry architecture route
+
+When a request concerns the Conversation Command Entry product, Rossovia
+runtime ownership or migration, production readiness, or remaining work, begin
+with the
+[Conversation Command Entry roadmap](design/operations/CONVERSATION-COMMAND-ENTRY-ROADMAP.md).
+It maps each question to its authoritative design, operating specification,
+verification evidence, or current Mission projection and records the migration
+stage exits and model-selection principles. Follow the mapped source rather
+than treating the roadmap as a second authority or loading every historical
+artifact. In particular, Decision 055 owns the target module boundaries, the
+runtime migration plan owns stage order and exit evidence, the scoped
+Workbench instructions own commands and their authority limits, and the
+Mission status is a current coordination projection only.
+
 ## Integration entry
 
 When the human asks to create or operate a branch, worktree, PR, review, or
