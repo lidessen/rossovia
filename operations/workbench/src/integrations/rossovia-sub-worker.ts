@@ -4,12 +4,17 @@ import type { CellHost } from "../../../../packages/work-cell/src/host-port";
 import type { CellTool, CellToolExecutionContext } from "../../../../packages/work-cell/src/tool-port";
 import type { WorkerCard, WorkerCatalog } from "../../../../packages/work-cell/src/worker-catalog";
 import {
+  buildReadOnlyChildRunRequest,
   deriveChildRunId,
   runReadOnlyChildRun,
   stopRun,
   type ReadOnlyChildRunDependencies,
-  type RunTerminalOutcome,
+  type ReadOnlyChildRunInput,
+  type RunEvidenceRefs,
+  type RunRequest,
+  type RunTerminalStatus,
   RunControlRegistry,
+  runRequestDigest,
 } from "../orchestration/run";
 
 export const ROSSOVIA_SUB_WORKER_TOOL_NAME = "sub_worker" as const;
@@ -64,11 +69,16 @@ export interface SubWorkerToolInput {
  * Bounded, source-linked child Run result returned to the parent model. Full
  * records are retrievable through the Run owner; the tool produces no
  * semantic acceptance.
+ *
+ * The `promptDigest` covers the complete receiver-facing prompt, while the
+ * `requestDigest` covers the canonical O2 Run request. The evidence refs
+ * point at the exact attempt/input/final/settlement records and, when
+ * available, the durable control receipt.
  */
 export interface SubWorkerToolResult {
   readonly childRunId: string;
-  readonly kind: "settled" | "runner_error";
-  readonly status: CellRunRecord["status"] | "runner_error";
+  readonly standing: "terminal" | "unresolved";
+  readonly status: RunTerminalStatus | "unresolved";
   readonly evidence: {
     readonly parentRunId: string;
     readonly taskId: string;
@@ -76,7 +86,12 @@ export interface SubWorkerToolResult {
     readonly sourceRevision: number;
     readonly workerId: string;
     readonly workspaceRoot: string;
+    /** SHA-256 digest of the complete receiver-facing prompt. */
+    readonly promptDigest: string;
+    /** SHA-256 digest of the canonical O2 Run request that owns the child. */
     readonly requestDigest: string;
+    /** Exact attempt/input/final/settlement refs; controlRef when available. */
+    readonly refs: RunEvidenceRefs & { readonly controlRef?: string };
   };
   readonly result:
     | {
@@ -130,118 +145,140 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
     },
     execute: async (input: unknown, toolContext: CellToolExecutionContext): Promise<SubWorkerToolResult> => {
       const parsed = parseSubWorkerInput(input);
-      const requestDigest = digestText(parsed.prompt);
+      const promptDigest = digestText(parsed.prompt);
       const childRunId = deriveChildRunId(context.parentRunId, toolContext.toolCallId);
 
-      const card = resolveWorkerCard(context.catalog, parsed.workerId);
-
-      const childCellInput = context.buildChildCellInput(childRunId, parsed.workerId, parsed.prompt);
-      enforceReadOnlyWorkspace(childCellInput);
-
-      const [{ executeTaskCellRun }, { deriveTaskRunExecution }] = await Promise.all([
-        import("../task-run"),
-        import("../task-run"),
-      ]);
-      const childExecution = deriveTaskRunExecution(card);
-
-      const childDependencies: ReadOnlyChildRunDependencies = {
-        lowerCellInput: () => childCellInput,
-        execute: async (cellInput, options) => {
-          const outcome = await executeTaskCellRun(context.catalog, cellInput, {
-            host: context.host,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
-          });
-          if (outcome.status === "failed") throw new Error(outcome.error);
-          return outcome.record;
-        },
-        card,
-        registry: context.registry,
-        onControlAvailable: () => {
-          // No extra action needed: registration itself makes stopRun reachable.
-        },
-      };
-
       const parentSignal = toolContext.signal;
-      let childTerminal: RunTerminalOutcome | undefined;
-      let childError: string | undefined;
-      const childRunPromise = runReadOnlyChildRun(context.home, {
-        parentRunId: context.parentRunId,
-        toolCallId: toolContext.toolCallId,
-        taskId: context.taskId,
-        taskRevision: context.taskRevision,
-        sourceRevision: context.sourceRevision,
-        worktree: context.worktree,
-        workerId: card.id,
-        prompt: parsed.prompt,
-        promptDigest: requestDigest,
-        parentToolName: ROSSOVIA_SUB_WORKER_TOOL_NAME,
-        execution: childExecution,
-        ...(context.maxSteps === undefined ? {} : { maxSteps: context.maxSteps }),
-      }, childDependencies).then(
-        (result) => { childTerminal = result.outcome; },
-        (error) => { childError = error instanceof Error ? error.message : String(error); },
-      );
+      const sourceRef = `sub_worker:${context.parentRunId}:${childRunId}`;
+      let stopPending = false;
+      let stopDispatched = false;
+      let listenerInstalled = false;
 
-      if (parentSignal.aborted) {
-        requestChildStop(childRunId);
-      } else {
-        parentSignal.addEventListener("abort", () => requestChildStop(childRunId), { once: true });
-      }
-
-      await childRunPromise;
-
-      const evidence = {
-        parentRunId: context.parentRunId,
-        taskId: context.taskId,
-        taskRevision: context.taskRevision,
-        sourceRevision: context.sourceRevision,
-        workerId: card.id,
-        workspaceRoot: context.worktree,
-        requestDigest,
+      const dispatchChildStop = (): void => {
+        if (stopDispatched) return;
+        stopDispatched = true;
+        try {
+          stopRun(
+            context.home,
+            childRunId,
+            { control: "stop", requestedBy: context.parentRunId, sourceRef },
+            context.registry,
+          );
+        } catch {
+          // A failed stop request is already truthful: the child may already be
+          // settled, or the stop raced with normal terminal. The execute promise
+          // continues to await the canonical child terminal.
+        }
+      };
+      const onParentAbort = (): void => {
+        stopPending = true;
+        if (context.registry.has(childRunId)) {
+          dispatchChildStop();
+        }
       };
 
-      if (childTerminal === undefined) {
+      try {
+        if (parentSignal.aborted) {
+          onParentAbort();
+        } else {
+          parentSignal.addEventListener("abort", onParentAbort, { once: true });
+          listenerInstalled = true;
+        }
+
+        const card = resolveWorkerCard(context.catalog, parsed.workerId);
+        const childCellInput = context.buildChildCellInput(childRunId, parsed.workerId, parsed.prompt);
+        enforceReadOnlyWorkspace(childCellInput);
+
+        const { executeTaskCellRun, deriveTaskRunExecution } = await import("../task-run");
+        const childExecution = deriveTaskRunExecution(card);
+
+        const childInput: ReadOnlyChildRunInput = {
+          parentRunId: context.parentRunId,
+          toolCallId: toolContext.toolCallId,
+          taskId: context.taskId,
+          taskRevision: context.taskRevision,
+          sourceRevision: context.sourceRevision,
+          worktree: context.worktree,
+          workerId: card.id,
+          prompt: parsed.prompt,
+          promptDigest,
+          parentToolName: ROSSOVIA_SUB_WORKER_TOOL_NAME,
+          execution: childExecution,
+          ...(context.maxSteps === undefined ? {} : { maxSteps: context.maxSteps }),
+        };
+        const childRunRequest: RunRequest = buildReadOnlyChildRunRequest(childInput);
+        const requestDigest = runRequestDigest(childRunRequest);
+
+        const childDependencies: ReadOnlyChildRunDependencies = {
+          lowerCellInput: () => childCellInput,
+          execute: async (cellInput, options) => {
+            const outcome = await executeTaskCellRun(context.catalog, cellInput, {
+              host: context.host,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+            });
+            if (outcome.status === "failed") throw new Error(outcome.error);
+            return outcome.record;
+          },
+          card,
+          registry: context.registry,
+          onControlAvailable: (runId) => {
+            if (runId !== childRunId) return;
+            if (stopPending) {
+              dispatchChildStop();
+            }
+          },
+        };
+
+        const childResult = await runReadOnlyChildRun(context.home, childInput, childDependencies);
+
+        const baseEvidence = {
+          parentRunId: context.parentRunId,
+          taskId: context.taskId,
+          taskRevision: context.taskRevision,
+          sourceRevision: context.sourceRevision,
+          workerId: card.id,
+          workspaceRoot: context.worktree,
+          promptDigest,
+          requestDigest,
+        };
+
+        if (childResult.standing === "unresolved") {
+          return {
+            childRunId,
+            standing: "unresolved",
+            status: "unresolved",
+            evidence: { ...baseEvidence, refs: childResult.refs },
+            result: { error: childResult.error },
+          };
+        }
+
+        const outcome = childResult.outcome;
+        const refs: RunEvidenceRefs & { readonly controlRef?: string } = {
+          ...outcome.refs,
+          ...(outcome.controlRef !== undefined ? { controlRef: outcome.controlRef } : {}),
+        };
+        const record = outcome.finalRecord;
         return {
           childRunId,
-          kind: "runner_error",
-          status: "runner_error",
-          evidence,
-          result: { error: childError ?? "child Run terminated without a terminal outcome" },
+          standing: "terminal",
+          status: outcome.status,
+          evidence: { ...baseEvidence, refs },
+          result: record === undefined
+            ? { error: outcome.error ?? "child Run produced no final record" }
+            : {
+                usage: record.usage,
+                finalText: record.finalText,
+                terminalToolsCalled: record.verification.terminal.called,
+              },
         };
+      } finally {
+        if (listenerInstalled) {
+          parentSignal.removeEventListener("abort", onParentAbort);
+        }
       }
-
-      const status: SubWorkerToolResult["status"] = childTerminal.finalRecord !== undefined
-        ? childTerminal.finalRecord.status
-        : "runner_error";
-      return {
-        childRunId,
-        kind: "settled",
-        status,
-        evidence,
-        result: childTerminal.finalRecord === undefined
-          ? { error: childTerminal.error ?? "child Run produced no final record" }
-          : {
-              usage: childTerminal.finalRecord.usage,
-              finalText: childTerminal.finalRecord.finalText,
-              terminalToolsCalled: childTerminal.finalRecord.verification.terminal.called,
-            },
-      };
     },
   };
 
-  function requestChildStop(childRunId: string): void {
-    try {
-      stopRun(context.home, childRunId, {
-        control: "stop",
-        requestedBy: context.parentRunId,
-        sourceRef: `sub_worker:${context.parentRunId}:${childRunId}`,
-      }, context.registry);
-    } catch {
-      // A failed stop request is already truthful: the child may already be
-      // settled, or the stop will race with normal terminal. The execute
-      // promise continues to await the canonical child terminal.
-    }
-  }
 }
 
 function parseSubWorkerInput(input: unknown): SubWorkerToolInput {

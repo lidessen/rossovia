@@ -18,6 +18,7 @@ import {
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
 import type { CellDriver, DriverContext, DriverResult } from "../../../packages/work-cell/src/driver";
+import type { CellHost, HostWorkspace } from "../../../packages/work-cell/src/host-port";
 import type { CellToolSet } from "../../../packages/work-cell/src/tool-port";
 import {
   WorkerCardSchema,
@@ -30,6 +31,7 @@ import {
   createRossoviaSubWorkerTool,
   ROSSOVIA_SUB_WORKER_TOOL_NAME,
   type RossoviaSubWorkerContext,
+  type SubWorkerToolResult,
 } from "../src/integrations/rossovia-sub-worker";
 import { registerProject } from "../src/register";
 import { createPrincipalTask, showPrincipalTask } from "../src/tasks";
@@ -42,11 +44,13 @@ import {
   runOrdinaryTaskRun,
   RunControlRegistry,
   runStanding,
+  stopRun,
   type OrdinaryRunDependencies,
   type RunRequest,
   type RunResult,
   type RunStanding,
   type RunTerminalOutcome,
+  RunStopRefusal,
 } from "../src/orchestration/run";
 
 const temporaryRoots: string[] = [];
@@ -117,6 +121,22 @@ function git(cwd: string, ...arguments_: string[]): string {
   });
   if (result.exitCode !== 0) throw new Error(result.stderr.toString());
   return result.stdout.toString().trim();
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error("waitFor timeout");
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 function parentExecution(): { driver: string; model: string } {
@@ -263,10 +283,14 @@ class ParentTestDriver implements CellDriver {
       { workerId: "child-worker", prompt: "Read the fixture and return a bounded result." },
       "parent-call-1",
     );
-    const typed = result as { childRunId: string; status: string };
+    if (context.signal.aborted) {
+      throw context.signal.reason instanceof Error
+        ? context.signal.reason
+        : new Error("parent run stopped");
+    }
     return {
       terminalToolsCalled: [],
-      finalText: `parent delegated to ${typed.childRunId} with status ${typed.status}`,
+      finalText: JSON.stringify(result),
       usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
       rawSteps: [],
     };
@@ -380,7 +404,33 @@ describe("sub_worker forward story", () => {
     expect(outcome.status).toBe("recorded");
     expect(outcome.cleanup).toBe("released");
     expect(outcome.finalRecord).toBeDefined();
-    expect(outcome.finalRecord!.finalText).toContain(expectedChildRunId);
+
+    const retainedChildAttempt = JSON.parse(
+      readFileSync(join(current.home, "state", "task-attempts", expectedChildRunId, "attempt.json"), "utf8"),
+    );
+    const toolResult = JSON.parse(outcome.finalRecord!.finalText) as SubWorkerToolResult;
+    expect(toolResult.childRunId).toBe(expectedChildRunId);
+    expect(toolResult.standing).toBe("terminal");
+    expect(toolResult.status).toBe("recorded");
+    expect(toolResult.evidence.promptDigest).toBe(retainedChildAttempt.parentTool.promptDigest);
+    expect(toolResult.evidence.requestDigest).toBe(retainedChildAttempt.requestDigest);
+    expect(toolResult.evidence.requestDigest).not.toBe(toolResult.evidence.promptDigest);
+    expect(toolResult.evidence.refs).toEqual({
+      inputPath: join(current.home, "state", "task-attempts", expectedChildRunId, "cell-input.json"),
+      finalRecordPath: join(current.home, "state", "task-attempts", expectedChildRunId, "cell-input.run.json"),
+      attemptPath: join(current.home, "state", "task-attempts", expectedChildRunId, "attempt.json"),
+      settlementPath: join(current.home, "state", "task-attempts", expectedChildRunId, "settlement.json"),
+      inputRef: `state/task-attempts/${expectedChildRunId}/cell-input.json`,
+      finalRecordRef: `state/task-attempts/${expectedChildRunId}/cell-input.run.json`,
+      attemptRef: `state/task-attempts/${expectedChildRunId}/attempt.json`,
+      settlementRef: `state/task-attempts/${expectedChildRunId}/settlement.json`,
+    });
+    expect(toolResult.evidence.refs).not.toHaveProperty("controlRef");
+    expect(toolResult.evidence.workerId).toBe("child-worker");
+    expect(toolResult.evidence.taskId).toBe(current.parentTask.task.id);
+    expect(toolResult.evidence.taskRevision).toBe(retainedChildAttempt.taskRevision);
+    expect(toolResult.evidence.sourceRevision).toBe(retainedChildAttempt.sourceRevision);
+    expect(toolResult.evidence.workspaceRoot).toBe(realpathSync(current.worktree));
 
     const parentStanding = runStanding(current.home, current.parentRunId);
     expect(parentStanding.standing).toBe("terminal");
@@ -398,9 +448,6 @@ describe("sub_worker forward story", () => {
       `workbench-task-${current.parentTask.task.id}-attempt-${expectedChildRunId}`,
     );
 
-    const retainedChildAttempt = JSON.parse(
-      readFileSync(join(current.home, "state", "task-attempts", expectedChildRunId, "attempt.json"), "utf8"),
-    );
     expect(retainedChildAttempt.access).toBe("read-only");
     expect(retainedChildAttempt.parentTool).toEqual({
       name: ROSSOVIA_SUB_WORKER_TOOL_NAME,
@@ -418,21 +465,58 @@ describe("sub_worker forward story", () => {
 });
 
 describe("sub_worker cancellation/no-final boundary", () => {
-  test("parent cancellation reaches the exact child Run and the tool promise returns unresolved when the child has no terminal evidence", async () => {
+  test("parent cancellation reaches the exact child Run and the tool promise returns terminal child evidence before the parent finalizes", async () => {
     const current = fixture();
     const request = makeParentRequest(current);
     const expectedChildRunId = deriveChildRunId(current.parentRunId, "parent-call-1");
 
-    let childStarted = false;
+    const barrier = deferred<void>();
+    let barrierReached = false;
+    let snapshotCount = 0;
+    function delayedSnapshotHost(): CellHost {
+      const base = createLocalHost();
+      return {
+        createWorkspace: async (policy, budget) => {
+          const workspace = await base.createWorkspace(policy, budget);
+          return new Proxy(workspace, {
+            get(target, prop) {
+              if (prop === "snapshot") {
+                return async () => {
+                  snapshotCount += 1;
+                  if (snapshotCount === 1) {
+                    return target.snapshot();
+                  }
+                  barrierReached = true;
+                  await barrier.promise;
+                  return target.snapshot();
+                };
+              }
+              const value: unknown = Reflect.get(target as object, prop);
+              if (typeof value === "function") {
+                return value.bind(target);
+              }
+              return value;
+            },
+          }) as HostWorkspace;
+        },
+      };
+    }
+
+    // Child driver that rejects on abort so runCell records a cancelled final.
     class HangingChildDriver implements CellDriver {
       readonly descriptor = { adapter: "ai-sdk-v7", provider: "test-provider", model: "child/model" };
-      async run(input: CellInput): Promise<DriverResult> {
+      async run(input: CellInput, context: DriverContext): Promise<DriverResult> {
         if (input.workspace.writePaths.length > 0 || input.workspace.allowedCommands.length > 0) {
           throw new Error("child driver refused non-read-only workspace");
         }
-        childStarted = true;
-        return await new Promise(() => {
-          // Never resolves; the parent cancellation should stop this Run.
+        return await new Promise((_resolve, reject) => {
+          if (context.signal.aborted) {
+            reject(context.signal.reason ?? new Error("child run stopped"));
+            return;
+          }
+          context.signal.addEventListener("abort", () => {
+            reject(context.signal.reason ?? new Error("child run stopped"));
+          }, { once: true });
         });
       }
     }
@@ -445,6 +529,22 @@ describe("sub_worker cancellation/no-final boundary", () => {
     const parentCtx: RossoviaSubWorkerContext = {
       ...subWorkerToolContext(current),
       catalog: hangingCatalog,
+      host: delayedSnapshotHost(),
+      buildChildCellInput: (childRunId, workerId, prompt) => {
+        // Trigger the real parent stop after the sub_worker listener is installed
+        // but before the child Run is registered in the shared registry.
+        stopRun(
+          current.home,
+          current.parentRunId,
+          {
+            control: "stop",
+            requestedBy: "test-parent",
+            sourceRef: `test:pending-stop:${current.parentRunId}`,
+          },
+          current.registry,
+        );
+        return buildChildCellInput(current, childRunId, workerId, prompt);
+      },
     };
 
     const executor = async (cellInput: CellInput, options: { signal?: AbortSignal }) => {
@@ -459,7 +559,6 @@ describe("sub_worker cancellation/no-final boundary", () => {
       return outcome.record;
     };
 
-    const controller = new AbortController();
     const runPromise = runOrdinaryTaskRun(current.home, request, {
       card: parentCard(),
       registry: current.registry,
@@ -468,25 +567,78 @@ describe("sub_worker cancellation/no-final boundary", () => {
       execute: executor,
     });
 
-    // Wait until the child driver has started, then abort the parent Run.
-    await new Promise<void>((resolve) => {
-      const interval = setInterval(() => {
-        if (childStarted) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 5);
-    });
-    controller.abort();
+    const childAttemptDir = join(current.home, "state", "task-attempts", expectedChildRunId);
+    const controlPath = join(childAttemptDir, "control.json");
 
-    const result = await runPromise;
-    expect(result.standing).toBeOneOf(["terminal", "unresolved"]);
+    // Wait until the child durable control receipt proves the parent stop was
+    // dispatched through the shared registry, and until the post-abort
+    // finalization snapshot reaches the deterministic barrier.
+    await waitFor(() => existsSync(controlPath), 500);
+    await waitFor(() => barrierReached, 500);
+    expect(barrierReached).toBe(true);
+
+    // The host snapshot barrier holds the child finalization; neither the
+    // child nor the parent has a settlement or final record yet.
+    expect(existsSync(join(childAttemptDir, "settlement.json"))).toBe(false);
+    expect(existsSync(join(childAttemptDir, "cell-input.run.json"))).toBe(false);
+    expect(existsSync(join(current.home, "state", "task-attempts", current.parentRunId, "settlement.json"))).toBe(false);
+    expect(existsSync(join(current.home, "state", "task-attempts", current.parentRunId, "cell-input.run.json"))).toBe(false);
+
+    // Release the child finalization boundary.
+    barrier.resolve();
+
+    // The child terminal evidence must be retained before the parent run returns.
+    await waitFor(() => existsSync(join(childAttemptDir, "settlement.json")), 500);
+    await waitFor(() => existsSync(join(childAttemptDir, "cell-input.run.json")), 500);
 
     const childStanding = runStanding(current.home, expectedChildRunId);
-    // The child Run is either terminal (stopped) or unresolved because its
-    // terminal evidence is still being retained. Either way, the parent tool
-    // promise did not return a fake success while the child was live.
-    expect(["terminal", "unresolved"]).toContain(childStanding.standing);
+    expect(childStanding.standing).toBe("terminal");
+    const childOutcome = terminalOutcome(childStanding);
+    expect(childOutcome.status).toBe("control-stopped");
+    expect(childOutcome.cleanup).toBe("released");
+    expect(childOutcome.controlRef).toBeDefined();
+    const childFinalRecord = childOutcome.finalRecord;
+    expect(childFinalRecord).toBeDefined();
+    if (childFinalRecord === undefined) {
+      throw new Error("expected child final record to be retained for cancellation evidence");
+    }
+    expect(childFinalRecord.status).toBe("cancelled");
+
+    const childControl = JSON.parse(readFileSync(controlPath, "utf8"));
+    expect(childControl.runId).toBe(expectedChildRunId);
+    expect(childControl.control).toBe("stop");
+    expect(childControl.sourceRef).toBe(`sub_worker:${current.parentRunId}:${expectedChildRunId}`);
+    expect(childControl.attemptRef).toBe(`state/task-attempts/${expectedChildRunId}/attempt.json`);
+    expect(childControl.settlementRef).toBe(`state/task-attempts/${expectedChildRunId}/settlement.json`);
+
+    const childSettlement = JSON.parse(readFileSync(join(childAttemptDir, "settlement.json"), "utf8"));
+    expect(childSettlement.status).toBe("control-stopped");
+    expect(childSettlement.controlRef).toBe(`state/task-attempts/${expectedChildRunId}/control.json`);
+    expect(childSettlement.workCellRunId).toBe(childFinalRecord.runId);
+    expect(childSettlement.cellStatus).toBe("cancelled");
+
+    // The exact child Run is settled; a second stop is refused, so there is
+    // no replay and no second lifecycle Cell.
+    expect(() =>
+      stopRun(
+        current.home,
+        expectedChildRunId,
+        { control: "stop", requestedBy: "test-parent", sourceRef: "test:second" },
+        current.registry,
+      ),
+    ).toThrow(RunStopRefusal);
+
+    const result = await runPromise;
+    expect(result.standing).toBe("terminal");
+    const parentOutcome = terminalOutcome(result);
+    expect(parentOutcome.status).toBe("control-stopped");
+    expect(parentOutcome.cleanup).toBe("released");
+    expect(parentOutcome.controlRef).toBeDefined();
+
+    const parentAttemptDir = join(current.home, "state", "task-attempts", current.parentRunId);
+    const parentSettlement = JSON.parse(readFileSync(join(parentAttemptDir, "settlement.json"), "utf8"));
+    expect(parentSettlement.status).toBe("control-stopped");
+    expect(parentSettlement.controlRef).toBeDefined();
   });
 });
 

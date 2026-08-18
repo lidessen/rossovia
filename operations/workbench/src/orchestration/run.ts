@@ -1338,10 +1338,7 @@ export interface ReadOnlyChildRunInput {
   readonly maxSteps?: number;
 }
 
-export interface ReadOnlyChildRunResult {
-  readonly childRunId: string;
-  readonly outcome: RunTerminalOutcome;
-}
+export type ReadOnlyChildRunResult = RunResult;
 
 export interface ReadOnlyChildRunDependencies {
   readonly lowerCellInput: () => CellInput;
@@ -1358,14 +1355,9 @@ export interface ReadOnlyChildRunDependencies {
  * owners; no second lifecycle, Work Cell orchestration, or O3 claim is
  * introduced.
  */
-export async function runReadOnlyChildRun(
-  home: string,
-  input: ReadOnlyChildRunInput,
-  dependencies: ReadOnlyChildRunDependencies,
-): Promise<ReadOnlyChildRunResult> {
-  const childRunId = deriveChildRunId(input.parentRunId, input.toolCallId);
-  const request: RunRequest = {
-    requestId: childRunId,
+export function buildReadOnlyChildRunRequest(input: ReadOnlyChildRunInput): RunRequest {
+  return {
+    requestId: deriveChildRunId(input.parentRunId, input.toolCallId),
     taskId: input.taskId,
     taskRevision: input.taskRevision,
     sourceRevision: input.sourceRevision,
@@ -1381,7 +1373,15 @@ export async function runReadOnlyChildRun(
     },
     ...(input.maxSteps === undefined ? {} : { maxSteps: input.maxSteps }),
   };
-  const result = await runOrdinaryTaskRun(home, request, {
+}
+
+export async function runReadOnlyChildRun(
+  home: string,
+  input: ReadOnlyChildRunInput,
+  dependencies: ReadOnlyChildRunDependencies,
+): Promise<RunResult> {
+  const request = buildReadOnlyChildRunRequest(input);
+  return await runOrdinaryTaskRun(home, request, {
     lowerCellInput: dependencies.lowerCellInput,
     execute: dependencies.execute,
     ...(dependencies.finalize === undefined ? {} : { finalize: dependencies.finalize }),
@@ -1395,10 +1395,6 @@ export async function runReadOnlyChildRun(
             : { onControlAvailable: dependencies.onControlAvailable }),
         }),
   });
-  if (result.standing === "unresolved") {
-    throw new Error(result.error);
-  }
-  return { childRunId, outcome: result.outcome };
 }
 
 /**
