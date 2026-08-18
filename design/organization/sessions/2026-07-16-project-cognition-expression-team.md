@@ -14,7 +14,7 @@
 - **Actor and conditions:** an ordinary coding agent operating in a target
   repository, optionally using Work Cell or another sub-agent carrier, without
   access to the conversations that produced this method.
-- **Concrete evidence:** the [Shilu bootstrap and refresh probe](../../../regeneration/evaluations/2026-07-16-project-cognition-bootstrap-and-refresh.md)
+- **Concrete evidence:** the [Shilu bootstrap and refresh probe](../../../evaluations/2026-07-16-project-cognition-bootstrap-and-refresh.md)
   showed a material decision gain over one whole-project model, required local
   repartition after one packet failed, and used a different changed-relation
   partition for selective refresh.

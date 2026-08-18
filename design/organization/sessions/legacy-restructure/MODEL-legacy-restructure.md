@@ -21,7 +21,7 @@ Do not delete or bulk-move `principles/`, `design/DESIGN.md`, adopted
 `design/decisions/`, `principles/adopted/`, `principles/reviews/`, or the
 canonical `skills/` tree. The `.claude/skills`, `.agents/skills`, and
 `.agent/skills` symlinks correctly point at `skills/` and should not be treated
-as duplicate semantic sources. `regeneration/evaluations/` is active behavior
+as duplicate semantic sources. `evaluations/` is active behavior
 evidence and must survive any cleanup.
 
 ---
@@ -62,10 +62,10 @@ evidence and must survive any cleanup.
 | `regeneration/function-map.md` | incubating | Analytical middle term | Feeds target-architecture | Candidate functions, boundaries | Pre-selection only |
 | `regeneration/skill-inventory.md` | incubating | Concrete rewrite corpus inventory | — | Per-skill legacy assumptions | Excludes principle-cultivation by design |
 | `regeneration/workspace-skill-inventory.md` | incubating | Cross-workspace source evidence | — | Moniro/Sikong/agent-worker refs | Input to regeneration |
-| `regeneration/evaluations/` | canonical | Behavior probe evidence | — | All dated evaluation records | Authoritative probe location |
-| `regeneration/principle-cultivation-v2.md` | superseded | Working regen notes | `regeneration/evaluations/2026-07-10-principle-cultivation-v2.md` | None if eval copy kept | Status still says "in progress"; duplicate |
-| `blueprints/regenerate-principle-cultivation.md` | superseded | Completed regen blueprint | `regeneration/evaluations/2026-07-10-principle-cultivation-v2.md` + skill tree | Historical plan only | Marked complete 2026-07-10 |
-| `regeneration/` (root loose files) | unclear | Mix of evidence + stale working notes | `regeneration/evaluations/` + archive subdir | See superseded row | Needs wave to collapse working notes |
+| `evaluations/` | canonical | Behavior probe evidence | — | All dated evaluation records | Authoritative probe location |
+| `regeneration/principle-cultivation-v2.md` | superseded | Working regen notes | `evaluations/2026-07-10-principle-cultivation-v2.md` | None if eval copy kept | Status still says "in progress"; duplicate |
+| `blueprints/regenerate-principle-cultivation.md` | superseded | Completed regen blueprint | `evaluations/2026-07-10-principle-cultivation-v2.md` + skill tree | Historical plan only | Marked complete 2026-07-10 |
+| `regeneration/` (root loose files) | unclear | Mix of evidence + stale working notes | `evaluations/` + archive subdir | See superseded row | Needs wave to collapse working notes |
 | `articles/agent-harness/` | orphan | Long-form research article | Unclear vs collection scope | Research refs inside | Not a skill; predates principle-centered layout |
 | `slides/` | orphan | Presentation assets (agent-evolution) | None in DESIGN.md | Static HTML/JS/CSS | Outside method corpus |
 | `.codex/hooks.json` | projection | Codex local hooks | Owning tool config | Hook definitions | Not collection doctrine |

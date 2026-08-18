@@ -121,18 +121,19 @@ memory 不会成为生效偏好。
 | [`operations/autonomy/`](operations/autonomy/) | 实验性的本地受监督 Mission 机制，负责有序输入、有边界 turn、委派、对账、恢复，以及一个被显式准入的 Blog 隔离 worktree 可写试验 | 已接受的自治运行、任务发现、通用或共享 worktree 可写 effect 权威、远程权威、发布或合并 |
 | [`operations/workbench/`](operations/workbench/) | 可迁移的项目身份、经验证的本机工作区定位、显式的用户/项目偏好，以及本地 Principal-attributed 任务的持久生命周期和 control-plane UI | 任务调度、推断偏好、本机能力、目标项目任务事实或执行权 |
 | [`site/`](site/) | 静态公共主页和可复现的文档投影 | 源事实、项目身份或托管权威 |
+| [`experiments/`](experiments/) | 保留的独立实验及其生成产物 | 已接受的产品行为或治理设计 |
 | [`design/`](design/) | 已接受的架构、决策、运行设计和保留的设计研究 | 实时任务状态或原始运行证据 |
 | [`design/harness/`](design/harness/) | 面向 Agent 的任务工程理论、导航和项目级解释 | 第二套原则正典、运行时权威或未经实证的能力主张 |
-| [`regeneration/evaluations/`](regeneration/evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |
-| [`chronicle/`](chronicle/) | 保留来源的观察回执与纠正链 | 主张、决策或通用活动日志 |
+| [`design/research/`](design/research/) | 架构与机制层研究（技术雷达、替换探针、委派研究） | 原则层理论，属于 `principles/research/` |
+| [`evaluations/`](evaluations/) | 持久的行为与边界评估 | 治理设计或原始运行权威 |
+| [`chronicle/`](chronicle/) | 保留来源的观察回执、纠正链与经整理的检查点投影 | 主张、决策或通用活动日志 |
 | [`operations/missions/`](operations/missions/) | 活跃跨会话任务的返回义务 | 待办列表、调度器或 Git 历史副本 |
-| [`development-log/`](development-log/) | 经整理的开发检查点摘要与方法反馈 | 一手验证证据 |
 | [`archive/`](archive/) | 以只读为主的历史载体与已取代方法 | 当前安装目标或治理指导 |
 
 ## 活跃 Skills
 
 “Active” 只表示当前仓库入口可发现、可安装，不表示 Skill 在所有场景中的
-行为都已经得到证明。[2026-08-03 系统复盘](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
+行为都已经得到证明。[2026-08-03 系统复盘](evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
 是当时已有条目的证据投影；更新的条目会直接链接其当前研究状态。这些指针只
 汇总保留的评估，不替代评估来源。
 

@@ -128,7 +128,7 @@ diagnostics. The raw record remains the evidence-bearing source.
 
 ## Implementation evidence
 
-The [project probe evaluation](../../regeneration/evaluations/2026-07-10-work-cell-project-probe.md)
+The [project probe evaluation](../../evaluations/2026-07-10-work-cell-project-probe.md)
 records the initial dogfood failures, the resulting boundary changes, and two
 successful live probes. The accepted interface is implemented by
 [`project.ts`](../../packages/work-cell/src/adapters/sequence/project.ts),

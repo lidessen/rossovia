@@ -89,7 +89,7 @@ or making one schema imply another.
   orchestration, and the 256-Cell Swarm boundary.
 - A low-cost live `deepseek-v4-flash` call passed through the real v7 adapter
   with 650 total tokens and retained v7 performance statistics; see the
-  [live migration probe](../../regeneration/evaluations/2026-07-15-work-cell-ai-sdk-7-live-probe.md).
+  [live migration probe](../../evaluations/2026-07-15-work-cell-ai-sdk-7-live-probe.md).
 
 The live result proves provider-path compatibility and observation retention,
 not response quality, tool context, file upload, durable recovery, or terminal

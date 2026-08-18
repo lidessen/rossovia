@@ -36,7 +36,7 @@ recommendation into self-approval or adding a central planning layer?
 
 The principal observed that a prior human gate named a needed selection without
 presenting its choice set, forcing a follow-up question before a decision could
-be made. The local [formal-operations entry](../../development-log/2026-07.md#2026-07-10---human-initiated-formal-operations-approved)
+be made. The local [formal-operations entry](../../chronicle/projections/development-log-2026-07.md#2026-07-10---human-initiated-formal-operations-approved)
 shows the system already separates agent execution from human-gated baseline
 selection; the missing element was the human action surface, not a new holder
 of authority.

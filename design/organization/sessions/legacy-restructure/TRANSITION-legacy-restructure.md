@@ -57,7 +57,7 @@ inventory; blueprint is complete.
 
 **Verification:** paths exist under `archive/`; repo root no longer has
 `blueprints/` or `articles/` or `slides/`; evaluations remain in
-`regeneration/evaluations/`.
+`evaluations/`.
 
 ---
 
@@ -159,7 +159,7 @@ feed P09/P10/P15 when that regen happens.
 |---|---|
 | Delete archived tree after move | **Rejected** — user asked slow cleanup |
 | Archive `principles/candidates/` | **Rejected** — active governance queue |
-| Archive `regeneration/evaluations/` | **Rejected** — behavior evidence |
+| Archive `evaluations/` | **Rejected** — behavior evidence |
 | Restore attention-driven as skill here | **Rejected** per target-architecture |
 | Strip blueprint from design-driven in place while it lives in archive | **Deferred** — archive suffices for now |
 
@@ -192,7 +192,7 @@ Archived `setup-lidessen-skills` → `archive/skills/`.
 Archived to `archive/regeneration/`: `skill-inventory.md`,
 `workspace-skill-inventory.md`, `function-map.md`, `target-architecture.md`.
 
-`regeneration/evaluations/` remains active.
+`evaluations/` remains active.
 
 ### Wave 4 — 2026-07-10 — pass
 

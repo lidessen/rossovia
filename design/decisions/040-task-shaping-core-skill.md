@@ -14,10 +14,10 @@ of all of them: whether one concrete task fits the observed stable envelope of
 the chosen agent loop, and, when it does not, how to transform the task without
 losing the whole that later verification must reconstruct.
 
-The retained [cheap-Swarm cognition probe](../../regeneration/evaluations/2026-07-18-cheap-swarm-cognition-probe.md)
+The retained [cheap-Swarm cognition probe](../../evaluations/2026-07-18-cheap-swarm-cognition-probe.md)
 showed that protocol-stable Cells can still produce local semantic errors and
 that reconciliation may cost more than formation. The subsequent
-[index-first retrieval probe](../../regeneration/evaluations/2026-07-18-index-first-cognition-retrieval-probe.md)
+[index-first retrieval probe](../../evaluations/2026-07-18-index-first-cognition-retrieval-probe.md)
 reduced one source-truth run from a broad average of 3,083,245 tokens to 169,104
 through runtime-bounded evidence delivery, yet the verifier still missed the
 explicit candidate/evidence contradiction. Retrieval solved an attention-cost
@@ -138,7 +138,7 @@ removes.
 
 ## First-slice evidence
 
-The [first-slice behavioral probe](../../regeneration/evaluations/2026-07-18-task-shaping-first-slice-probe.md)
+The [first-slice behavioral probe](../../evaluations/2026-07-18-task-shaping-first-slice-probe.md)
 found and corrected two load-bearing failures: eager reference loading on a
 direct task and promotion of historically failing operations by assuming that a
 new guard would work. The final development gate kept the matched direct case

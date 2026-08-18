@@ -450,8 +450,8 @@ reconnect, or authority mechanisms.
 
 **Observed carrier capability.** The direct DeepSeek adapter accepts an explicit
 model and thinking policy and passes reasoning effort through provider options
-([DeepSeek adapter](../../../packages/work-cell/src/providers/deepseek.ts#L17-L35),
-[model construction](../../../packages/work-cell/src/providers/deepseek.ts#L132-L151)).
+([DeepSeek adapter](../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek.ts#L17-L35),
+[model construction](../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek.ts#L132-L151)).
 The OpenCode path accepts Workbench `--model` and `--reasoning-effort`, retains
 the requested values in attempt evidence, and maps reasoning effort to
 OpenCode's provider-specific `--variant`
@@ -487,7 +487,7 @@ Planning must choose the owning policy/evidence carrier without silently
 changing that shared contract. The local adapter accepts `low`, `high`, `xhigh`,
 and `max`; under the current official contract `xhigh` is a compatibility alias
 for `high`, not a distinct native level
-([local schema](../../../packages/work-cell/src/providers/deepseek.ts#L17-L23)).
+([local schema](../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek.ts#L17-L23)).
 
 ## Capability slices and disconfirming observations
 

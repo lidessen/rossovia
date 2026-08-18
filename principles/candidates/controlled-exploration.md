@@ -83,7 +83,7 @@ See [`2026-07-09-controlled-exploration.md`](../reviews/2026-07-09-controlled-ex
 ## Trial evidence
 
 No completed P21 trial. Existing alternate governance passed a forward behavior
-probe, but `regeneration/evaluations/2026-07-09-alternate-candidate-governance.md`
+probe, but `evaluations/2026-07-09-alternate-candidate-governance.md`
 had no pre-change baseline and P20 has not completed a real work trial. The
 architecture examples demonstrate viable bounded lanes, not that P21 made a
 decision P03, P08, P11, and P15 would otherwise miss.

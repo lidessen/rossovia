@@ -1,6 +1,0 @@
-{
-  "caseId": "principal-intervention-classification",
-  "profileId": "deepseek-v4-flash-0731-direct-ai-sdk-v7-readonly-v1",
-  "repetition": 2,
-  "error": "ENOENT: no such file or directory, lstat '/private/tmp/rossovia-deepseek-v4-flash-refresh/regeneration/evaluations/evidence/2026-08-04-deepseek-v4-flash-0731/results/deepseek-v4-flash-0731-capability-refresh-B7N8eq/fixture'"
-}

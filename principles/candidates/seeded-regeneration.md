@@ -101,7 +101,7 @@ on 2026-07-10.
 
 ### Outcome
 
-**Result:** overlap. The [V2 forward probes](../../regeneration/evaluations/2026-07-10-principle-cultivation-v2.md)
+**Result:** overlap. The [V2 forward probes](../../evaluations/2026-07-10-principle-cultivation-v2.md)
 support the regenerated skill's research-without-candidacy behavior and preserve
 the Sequence and alternate-authority boundaries. They do not compare it against
 the recorded incremental baseline, so they cannot independently credit P20 for

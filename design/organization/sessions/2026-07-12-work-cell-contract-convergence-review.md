@@ -36,7 +36,7 @@ results, and the source paths needed to reopen the claims.
 
 | Finding | Evidence | Disposition |
 |---|---|---|
-| The three completion conditions are independent. | [contract shape](../../../packages/work-cell/src/contracts.ts), [runtime settlement](../../../packages/work-cell/src/run-cell.ts), and [driver registration](../../../packages/work-cell/src/ai-sdk-driver.ts) keep terminal invocation, output validation, and artifact verification distinct. | confirmed |
+| The three completion conditions are independent. | [contract shape](../../../packages/work-cell/src/contracts.ts), [runtime settlement](../../../packages/work-cell/src/run-cell.ts), and [driver registration](../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver.ts) keep terminal invocation, output validation, and artifact verification distinct. | confirmed |
 | A terminal invocation previously could end the SDK loop without a final report. | A first live review reached `finish_probe` but failed with `No output generated`; the trace also exposed lost failure usage. The driver now reserves a final output step and reports observed usage through [`CellExecutionError`](../../../packages/work-cell/src/driver.ts). | corrected and live-retried |
 | The repaired terminal path is covered by both a live read-only review and deterministic regressions. | [terminal-step regression](../../../packages/work-cell/test/work-cell.test.ts) rejects an impossible one-step terminal contract; the live retry completed after terminal invocation. | confirmed |
 | Failure-path usage must survive an adapter failure. | [failure-usage regression](../../../packages/work-cell/test/work-cell.test.ts) verifies selection usage plus execution usage are retained after `CellExecutionError`. | confirmed |

@@ -24,7 +24,7 @@ new schema, preflight, gate, or standing committee?
 ## Historical comparisons
 
 The first blind comparison used the bounded structural evidence retained in the
-[sparse multihead code-refactor probe](../../regeneration/evaluations/2026-07-14-code-refactor-routing-probe.md);
+[sparse multihead code-refactor probe](../../evaluations/2026-07-14-code-refactor-routing-probe.md);
 the exact fixture identity, matched conditions, and retained outputs are in the
 [blind-probe evidence record](evidence/theory-generativity-blind-probes-2026-07-26.md#code-refactor-case).
 One Agent fixed its P-ID team from task intent before inspecting the object; a
@@ -34,7 +34,7 @@ evaluation, and do not execute the proposed refactor. This case did not support
 changing the Sequence runtime order.
 
 The second comparison stopped the naming experiment immediately before the
-historical [human rejection of the archive surface](../../regeneration/evaluations/2026-07-13-activation-field-scale-probe.md#human-rejection-of-the-archive-surface);
+historical [human rejection of the archive surface](../../evaluations/2026-07-13-activation-field-scale-probe.md#human-rejection-of-the-archive-surface);
 its cutoff, fixture digest, protocol, and retained outputs are in the
 [naming-surface evidence](evidence/theory-generativity-blind-probes-2026-07-26.md#naming-surface-case).
 The fixture retained the actual candidate surfaces, treatment costs, shared
@@ -62,7 +62,7 @@ selection; their retained outputs and limits are recorded in the
 The later experiment record independently contains the same two corrections:
 the packet lacked a plain direct baseline, and candidate-field artifacts were
 not yet audience-ready expressions. Its subsequent
-[expression projection and surface-gate probes](../../regeneration/evaluations/2026-07-13-activation-field-scale-probe.md#expression-projection-and-surface-gate-probes)
+[expression projection and surface-gate probes](../../evaluations/2026-07-13-activation-field-scale-probe.md#expression-projection-and-surface-gate-probes)
 showed that a plainness instruction alone merely changed maximal distance into
 generic craft language. The historical evidence therefore supports a relation
 among object formation, generative structure, and expression form—not another
@@ -239,7 +239,7 @@ Chinese and English packets must therefore preserve semantic relations rather
 than assume literal translation or language equivalence.
 
 The first bounded campaign is retained in the
-[prompt-composition evaluation](../../regeneration/evaluations/2026-08-04-prompt-composition-predicate-language-probe.md).
+[prompt-composition evaluation](../../evaluations/2026-08-04-prompt-composition-predicate-language-probe.md).
 Its strongest negative result is useful: the single-run screen observed no
 decision delta from decorative expert adjectives or the Main-Agent role noun
 beyond the operative relations they named. Its reasoning-path tasks reached a

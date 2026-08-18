@@ -173,7 +173,7 @@ concrete action phrase, or narrative details introduce unsupported priority,
 stereotype, self-authorization, or task-specific bias.
 
 The frozen H2 carrier comparison is retained in the
-[2026-08-06 development probe](../../regeneration/evaluations/evidence/2026-08-06-attention-management-h2/README.md).
+[2026-08-06 development probe](../../evaluations/evidence/2026-08-06-attention-management-h2/README.md).
 Its first invocation failed at the sandbox network boundary with zero model
 tokens. After explicit disclosure authority, the runtime-pinned retry settled
 all four Cells under matched observed execution identity and the blind judge

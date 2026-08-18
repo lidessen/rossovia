@@ -43,7 +43,7 @@ comparison evidence.
 
 ## Implementation evidence
 
-The [practice-cycle and form-guidance probes](../../regeneration/evaluations/2026-07-10-practice-cycle-and-form-guidance-probes.md)
+The [practice-cycle and form-guidance probes](../../evaluations/2026-07-10-practice-cycle-and-form-guidance-probes.md)
 show a completed Work Cell interaction phase being settled without absorbing a
 new strategic aspiration into its unfinished work, plus a one-step task being
 declined. A comparable baseline remains required before retiring any external

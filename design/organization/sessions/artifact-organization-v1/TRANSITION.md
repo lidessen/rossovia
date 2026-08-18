@@ -24,7 +24,7 @@ The regeneration movement is adopted-in-fact (4 skills regenerated, target archi
 |---|---|---|---|
 | Authority | P14 | Decision 002 content unchanged; only status field modified | Diff shows only `Status:` line changed |
 | Authority | P14 | No other decision affected | `design/decisions/` tree unchanged except 002 |
-| Admission | P13 | Evidence for adoption exists: 4 regenerated skills, evaluation records, target architecture | `regeneration/evaluations/` contains probe records for all 4 skills |
+| Admission | P13 | Evidence for adoption exists: 4 regenerated skills, evaluation records, target architecture | `evaluations/` contains probe records for all 4 skills |
 | Inheritance | P12 | Adoption date recorded in decision body | `**Status:** adopted` + `**Adopted:** 2026-07-10` |
 | Layer | P09 | No process artifact promoted to institution by this change | Only 1 file modified; no new files created |
 

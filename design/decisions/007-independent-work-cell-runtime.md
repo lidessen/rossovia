@@ -147,7 +147,7 @@ comparison validity. The package dependency graph contains AI SDK, the DeepSeek
 provider, Zod, and development-only TypeScript/Bun types; source and dependency
 searches contain no external agent-engine integration.
 
-The first live matched run is preserved in the [P23 Work Cell evaluation](../../regeneration/evaluations/2026-07-10-work-cell-p23-live-comparison.md).
+The first live matched run is preserved in the [P23 Work Cell evaluation](../../evaluations/2026-07-10-work-cell-p23-live-comparison.md).
 Both cells independently expressed P16 with P13/P15/P04, loaded only those
 interpretations, passed their environment-executed checks, retained full local
 traces and diffs, and reached a fresh blinded judge. The result was `overlap`,

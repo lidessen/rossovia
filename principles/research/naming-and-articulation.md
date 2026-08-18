@@ -51,7 +51,7 @@ The collection already needed exact status vocabulary: the verified organization
 probe distinguishes [decision 008's `adopted and verified` status](../../design/decisions/008-project-first-work-cell-interaction.md)
 from decisions 009–012's `accepted for implementation` / `verified for human
 approval` statuses. Collapsing those words would incorrectly promote claims
-into shared fact, as the [organization evaluation](../../regeneration/evaluations/2026-07-10-bounded-adaptive-organization-probe.md)
+into shared fact, as the [organization evaluation](../../evaluations/2026-07-10-bounded-adaptive-organization-probe.md)
 records.
 
 ## Existing-sequence coverage

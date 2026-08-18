@@ -30,15 +30,15 @@ practices.
 ### Behavior
 
 - [x] `research` can save a cited inquiry with `no-proposal` and no candidate —
-  [action probe](../../regeneration/evaluations/2026-07-10-principle-cultivation-v2.md#action-probe).
+  [action probe](../../evaluations/2026-07-10-principle-cultivation-v2.md#action-probe).
 - [x] `propose` can promote one research record into exactly one linked candidate —
   [P22 research](../../principles/research/divide-and-conquer.md) links its one
   [candidate](../../principles/candidates/divide-and-conquer.md).
 - [x] Deprecated `extract` retains candidate-producing behavior when the gate passes —
-  [legacy compatibility probe](../../regeneration/evaluations/2026-07-10-principle-cultivation-v2.md#legacy-compatibility-probe).
+  [legacy compatibility probe](../../evaluations/2026-07-10-principle-cultivation-v2.md#legacy-compatibility-probe).
 - [x] Existing interpretation, review, alternate, direct-adoption, and Sequence
   citation boundaries remain actionable —
-  [boundary probe](../../regeneration/evaluations/2026-07-10-principle-cultivation-v2.md#boundary-probe).
+  [boundary probe](../../evaluations/2026-07-10-principle-cultivation-v2.md#boundary-probe).
 
 ### Design constraints
 
@@ -46,7 +46,7 @@ practices.
   [decision 006](../../design/decisions/006-principle-lineage-cultivation.md) and
   [design lifecycle](../../design/DESIGN.md).
 - [x] Preserves stable P-ID, authority, candidate/adopted, and alternate contracts —
-  [V2 boundary probe](../../regeneration/evaluations/2026-07-10-principle-cultivation-v2.md#boundary-probe).
+  [V2 boundary probe](../../evaluations/2026-07-10-principle-cultivation-v2.md#boundary-probe).
 - [x] P20 remains outside Primary/Supporting lineage and gets a source-linked
   result — [Trial 1 outcome](../../principles/candidates/seeded-regeneration.md#outcome).
 

@@ -238,7 +238,7 @@ general-core/adapter split.
   persistence. With the later terminal and cancellation regressions included,
   the complete package passes 78 tests and 342 assertions plus TypeScript
   checking.
-- The [independent review and correction record](../../regeneration/evaluations/2026-07-15-work-cell-orchestration-independent-review.md)
+- The [independent review and correction record](../../evaluations/2026-07-15-work-cell-orchestration-independent-review.md)
   retains failed review forms, finding dispositions, the fatal-source evidence
   repair, and the final focused `ready` verdict.
 

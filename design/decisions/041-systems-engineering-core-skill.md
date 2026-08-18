@@ -162,7 +162,7 @@ universal system reliability.
 
 ## First-slice evidence
 
-The [contrasted behavioral probe](../../regeneration/evaluations/2026-07-19-systems-engineering-first-slice.md)
+The [contrasted behavioral probe](../../evaluations/2026-07-19-systems-engineering-first-slice.md)
 supported the form boundary: all three simple-case runs retained the existing
 CI/Git correction path, while review and migration cases identified the
 relevant whole-system gaps without adding reviewers or claiming perfect Cells.

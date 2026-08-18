@@ -97,7 +97,7 @@ or path-verification result.
 
 ## Implementation evidence
 
-The [rewrite action, boundary, and inherited/new probes](../../regeneration/evaluations/2026-07-14-context-engineering-rewrite-probe.md)
+The [rewrite action, boundary, and inherited/new probes](../../evaluations/2026-07-14-context-engineering-rewrite-probe.md)
 support the narrower delivery judgment and routing boundaries. They include one
 task-specific Codex prompt-path observation but no matched ordinary-task baseline;
 comparative behavior improvement therefore remains unproven.

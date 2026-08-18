@@ -16,7 +16,7 @@ or a Work Cell runtime acceptance record
 - Prepared fixture manifest digest:
   `4d803a86add82bb22a3eac19a791668803e4aee3d1f0b0d69a9b66a8a021811b`
 - Durable source:
-  [sparse multihead code-refactor probe](../../../regeneration/evaluations/2026-07-14-code-refactor-routing-probe.md)
+  [sparse multihead code-refactor probe](../../../evaluations/2026-07-14-code-refactor-routing-probe.md)
 
 The prepared fixture contained the historical target and nine indexed raw
 records, but excluded the later human disposition. The ignored local fixture is
@@ -28,13 +28,13 @@ linked evaluation identify the evidence used.
 - Historical source revision:
   `b95f4d7f5cded1d94de445777ef2a8fa5d20583a`
 - Source artifact:
-  `regeneration/evaluations/2026-07-13-activation-field-scale-probe.md`
+  `evaluations/2026-07-13-activation-field-scale-probe.md`
 - Historical cutoff: immediately before the heading
   `### Human rejection of the archive surface`
 - Prepared fixture digest:
   `458c0e3854acf5af1c285aa2c584ab934e675582c186e987d999a5d099535e11`
 - Durable source:
-  [activation-field scale probe](../../../regeneration/evaluations/2026-07-13-activation-field-scale-probe.md)
+  [activation-field scale probe](../../../evaluations/2026-07-13-activation-field-scale-probe.md)
 
 The prepared fixture was a compact transcription of the object, candidate
 surfaces, title-only treatment, retrieval treatment, balanced-participation

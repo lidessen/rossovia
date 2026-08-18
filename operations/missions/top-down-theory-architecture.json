@@ -39,8 +39,8 @@
       "returnCondition": "A reconstructable multi-task, matched Chinese-English evaluation separates predicate, composition, ordering, and transfer effects; skill-engineering retains only supported methods and records unresolved model-specific limits.",
       "sources": [
         "principal-message:2026-08-04-prompt-reasoning-path",
-        "repository:regeneration/evaluations/2026-08-04-prompt-composition-predicate-language-probe.md",
-        "repository:regeneration/evaluations/evidence/2026-08-04-prompt-composition-calibration/README.md"
+        "repository:evaluations/2026-08-04-prompt-composition-predicate-language-probe.md",
+        "repository:evaluations/evidence/2026-08-04-prompt-composition-calibration/README.md"
       ],
       "status": "open"
     }

@@ -66,7 +66,7 @@ $ ./operations/workbench/rossovia --home <tmp> task create --title "audit probe 
 ```
 
 No transcript archive of real agent invocations exists in
-`chronicle/`, `development-log/`, or `experiments/` (grep for `rossovia` found
+`chronicle/` or `experiments/` (grep for `rossovia` found
 only product-name references); the only committed CLI-invocation tests are
 [`test/source-runtime.test.ts:78`](test/source-runtime.test.ts) (launcher
 `--help`, missing-Bun failure) and per-module tests that spawn

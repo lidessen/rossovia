@@ -30,7 +30,7 @@ const CAPABILITY = "read";
 const GUARD_REF = "probe:exact-output-and-read-trace-audit";
 const PROFILE_ID = "opencode-go-deepseek-v4-flash-ai-sdk-v7-inline-readonly-v1";
 const PROFILE_REVISION = "2026-07-18-heldout";
-const EVIDENCE_REF = "regeneration/evaluations/2026-07-18-model-capability-heldout.md";
+const EVIDENCE_REF = "evaluations/2026-07-18-model-capability-heldout.md";
 
 const route = [{
   provider: "opencode-go" as const,

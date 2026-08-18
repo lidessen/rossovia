@@ -1,6 +1,7 @@
 .DS_Store
 /outputs/
 .reasonix/
+reasonix.toml
 .work-cell/
 .playwright-cli/
 .vercel/

@@ -5,6 +5,26 @@ that affect selected capabilities. `Action` is `none`, `reapply`, `manual`, or
 `breaking`. Entries are append-only after publication; corrections add a later
 entry instead of rewriting the applied Git interval.
 
+## 2026-08-18
+
+### [repo.layout] Upgrade repository directory structure
+
+- Action: `breaking`
+- Change: lift `regeneration/evaluations/` to the repo-root `evaluations/`
+  (655 files; the directory name now matches its durable-evaluation content),
+  merge the stale `development-log/` into `chronicle/projections/` as the first
+  retained projection, declare `experiments/` and `design/research/` in the
+  Repository map with owns/does-not-own boundaries, and remove `outputs/`
+  (personal files) and `.work-cell/` (242M runtime data) from the workspace
+  after backing up their unique untracked content. All active path references
+  were synced, 178 link regressions from the directory lift were repaired, and
+  19 stale `packages/work-cell/src/*` migration links were re-pointed to
+  `src/integrations/ai-sdk/`.
+- Verify: run Work Cell, Autonomy, and human-agent-visualization test suites,
+  the Chronicle/sequence snapshot self-checks, and the site build with link
+  verification; confirm repo-root markdown link baseline has no new broken
+  links versus the pre-change tree.
+
 ## 2026-08-06
 
 ### [work-cell.model-evaluation] Add matched instruction-carrier comparisons

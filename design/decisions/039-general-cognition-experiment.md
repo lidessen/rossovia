@@ -273,7 +273,7 @@ It should record episode coalescing, rejected proposals, unsupported claims,
 missed cross-boundary impact, queue and admission latency, human repair, and
 write or refresh amplification—not only answer accuracy and model tokens.
 
-The first [cheap-Swarm execution-shape probe](../../regeneration/evaluations/2026-07-18-cheap-swarm-cognition-probe.md)
+The first [cheap-Swarm execution-shape probe](../../evaluations/2026-07-18-cheap-swarm-cognition-probe.md)
 found complementary local precision and an 18% lower token total across the
 four final valid packet records, but retries and provider stalls made the actual
 Swarm path 71.5% more expensive than one whole-field Cell. Reconciliation also
@@ -282,7 +282,7 @@ source evidence. This supports Cognition Cells as conditional formation
 carriers and rejects default Swarm use. It does not close the behavioral gate:
 no formed inheritance was admitted and tested in a later decision.
 
-The subsequent [index-first retrieval probe](../../regeneration/evaluations/2026-07-18-index-first-cognition-retrieval-probe.md)
+The subsequent [index-first retrieval probe](../../evaluations/2026-07-18-index-first-cognition-retrieval-probe.md)
 found that a non-authoritative file-level routing projection reduced tokens by
 80.8% against broad source discovery in one matched run, but neither form caught
 the retained source-truth defect. Prompt-declared line locators were then

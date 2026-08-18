@@ -151,7 +151,7 @@ The next runtime slice must add:
 
 ## Implementation evidence
 
-The [work-estimation action and boundary probe](../../regeneration/evaluations/2026-07-10-work-estimation-probe.md)
+The [work-estimation action and boundary probe](../../evaluations/2026-07-10-work-estimation-probe.md)
 supports the method layer: it compares concrete alternatives through work graphs
 and discovery branches, chooses capability-level tolerance, and refuses an
 unsupported token/cost/P80 claim. It does not prove the pending runtime

@@ -66,7 +66,7 @@ from the same card execution profile, so a card-declared reasoning effort is
 applied, not only described. This contract does not claim that the Rossovia CLI
 wires it automatically. The bounded Kimi image-transport smokes, including one
 direct catalog-backed driver run, are recorded in
-[the minimal evidence record](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md).
+[the minimal evidence record](../../evaluations/evidence/2026-08-13-kimi-vision-worker/README.md).
 
 `actorRef` and `sourceRef` retain attribution supplied by the host. They are not
 independent authentication. Git, worktree, pull-request, and other external
@@ -172,11 +172,11 @@ The retained evidence supports these bounded mechanism claims:
   evidence, and nested spawning before child execution begins.
 
 See the
-[read-only Mission probe](../../regeneration/evaluations/2026-07-21-flash-readonly-mission-runtime-probe.md),
-[live-input probe](../../regeneration/evaluations/2026-07-21-live-mission-input-reconciliation-probe.md),
-[queue/recovery probe](../../regeneration/evaluations/2026-07-21-live-mission-queue-recovery-probe.md),
-[child-result reconstruction prerequisite](../../regeneration/evaluations/2026-07-26-autonomy-child-result-reconstruction.md),
-and [independent PR 48 review](../../regeneration/evaluations/2026-07-21-pr48-independent-review.md).
+[read-only Mission probe](../../evaluations/2026-07-21-flash-readonly-mission-runtime-probe.md),
+[live-input probe](../../evaluations/2026-07-21-live-mission-input-reconciliation-probe.md),
+[queue/recovery probe](../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md),
+[child-result reconstruction prerequisite](../../evaluations/2026-07-26-autonomy-child-result-reconstruction.md),
+and [independent PR 48 review](../../evaluations/2026-07-21-pr48-independent-review.md).
 
 ## Claims not admitted
 

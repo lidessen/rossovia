@@ -84,7 +84,7 @@ process directly?
   the tradeoff warrants it, so the argument supports conditional placement of
   control rather than universal decentralization.
 - The local [artifact-organization simplification
-  trial](../../regeneration/evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10)
+  trial](../../evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10)
   replaced five standing workflow states with two commands, one optional
   record, and inline verification. P15 and P16 explained the smaller surface,
   but the trial also exposed a distinct causal question: should the skill own
@@ -160,7 +160,7 @@ space changes a design after those existing P-IDs have already been applied.
 **Disposition:** `candidate:bounded-autonomy`
 
 P23 remains a candidate while the Sequence stays unchanged. The first
-prospective [skill-rewrite comparison](../../regeneration/evaluations/2026-07-10-work-cell-p23-live-comparison.md)
+prospective [skill-rewrite comparison](../../evaluations/2026-07-10-work-cell-p23-live-comparison.md)
 returned `overlap`: the P11/P13/P15/P16 baseline already protected the same
 investigation freedom and produced a materially equivalent accepted skill. Run
 the remaining multi-actor task-contract probe to test whether coordination,

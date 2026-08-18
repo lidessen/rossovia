@@ -53,7 +53,7 @@ review-team seats.
 - **Evidence:** `principles/interpretations/P03.md`;
   `skills/principle-cultivation/SKILL.md:23-26,94-101,140-151`;
   `principles/candidates/seeded-regeneration.md:80-94`;
-  `regeneration/evaluations/2026-07-09-alternate-candidate-governance.md`;
+  `evaluations/2026-07-09-alternate-candidate-governance.md`;
   Mao's [*On Practice*](https://www.marxists.org/reference/archive/mao/selected-works/volume-1/mswv1_16.htm).
 
 ### P08
@@ -74,7 +74,7 @@ review-team seats.
   P13, and P15 have been applied.
 - **Evidence:** `principles/interpretations/P08.md`;
   `skills/principle-cultivation/SKILL.md:94-101`;
-  `regeneration/evaluations/2026-07-09-alternate-candidate-governance.md`;
+  `evaluations/2026-07-09-alternate-candidate-governance.md`;
   March, [“Exploration and Exploitation in Organizational Learning”](https://doi.org/10.1287/orsc.2.1.71).
 
 ### P11
@@ -117,7 +117,7 @@ review-team seats.
 - **Evidence:** `principles/interpretations/P15.md`;
   `skills/principle-cultivation/SKILL.md:140-151`;
   `principles/candidates/seeded-regeneration.md:80-94`;
-  `regeneration/evaluations/2026-07-09-alternate-candidate-governance.md`;
+  `evaluations/2026-07-09-alternate-candidate-governance.md`;
   March, [“Exploration and Exploitation in Organizational Learning”](https://doi.org/10.1287/orsc.2.1.71).
 
 ## Synthesis

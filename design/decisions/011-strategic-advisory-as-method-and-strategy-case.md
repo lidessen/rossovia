@@ -66,7 +66,7 @@ short mission eligible for an execution owner.
 
 ## Implementation evidence
 
-The [first strategic-advisory action probe](../../regeneration/evaluations/2026-07-10-strategic-advisory-action-probe.md)
+The [first strategic-advisory action probe](../../evaluations/2026-07-10-strategic-advisory-action-probe.md)
 records protocol and budget failures, source-status and self-reference repairs,
 one final mechanically settled proposed Strategy Case, and an
 ordinary-planning boundary result. Human review remains required before

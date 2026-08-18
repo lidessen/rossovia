@@ -112,4 +112,4 @@ capability, or it becomes an obligatory preflight for normal development.
 ## Implementation evidence
 
 The implementation and forward-test evidence are retained in
-[`2026-07-15-improve-agent-workflow-probe.md`](../../regeneration/evaluations/2026-07-15-improve-agent-workflow-probe.md).
+[`2026-07-15-improve-agent-workflow-probe.md`](../../evaluations/2026-07-15-improve-agent-workflow-probe.md).

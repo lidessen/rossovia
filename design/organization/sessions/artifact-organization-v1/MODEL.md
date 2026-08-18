@@ -32,7 +32,7 @@
 | 土壤 | `.reasonix/` (session metadata) | Process artifact | Tool-specific; not organizational |
 | L1 通报 | `AGENTS.md`, `CLAUDE.md` | Projection | Harness + sequence rules at session edge |
 | 公共索引 | `README.md` | Living expression | Entry catalog; must match active skills |
-| 行为验收 | `regeneration/evaluations/` | Durable evidence | Probe records only at this path |
+| 行为验收 | `evaluations/` | Durable evidence | Probe records only at this path |
 | 工具 | `scripts/sync-sequence-snapshot.py` | Living expression | Snapshot generator; 5 skills packaged |
 | 治理投影 | `principles/COUNCIL.md` | Projection | Roster only; not semantic source |
 
@@ -99,7 +99,7 @@ Past campaigns still visible; must not be mistaken for 常备制度.
 
 ## Strongest keep-as-is case
 
-Do not delete or bulk-move: `principles/SEQUENCE.md`, interpretations, adopted/reviews, `design/DESIGN.md`, adopted decisions, the five active skills under `skills/`, `regeneration/evaluations/`, or `archive/` evidence. Symlinks are correct. The base institutions are sound; Waves A/B/C executed — design record adopted, legacy files archived, hygiene cleaned. The remaining work is **growth**: add behavior evidence for `disciplined-development`, update README.md, and plan a git release wave.
+Do not delete or bulk-move: `principles/SEQUENCE.md`, interpretations, adopted/reviews, `design/DESIGN.md`, adopted decisions, the five active skills under `skills/`, `evaluations/`, or `archive/` evidence. Symlinks are correct. The base institutions are sound; Waves A/B/C executed — design record adopted, legacy files archived, hygiene cleaned. The remaining work is **growth**: add behavior evidence for `disciplined-development`, update README.md, and plan a git release wave.
 
 ---
 

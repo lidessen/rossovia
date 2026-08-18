@@ -141,19 +141,20 @@ inferred memory never becomes active preference without human confirmation.
 | [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, recovery, and one explicitly admitted isolated-worktree Blog writable trial | accepted autonomous operation, task discovery, general or shared-worktree writable-effect authority, remote authority, publication, or merge |
 | [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
+| [`experiments/`](experiments/) | retained standalone experiments and their generated artifacts | accepted product behavior or governing design |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
 | [`design/harness/`](design/harness/) | the visible project-level map and coherent theory of Agent-oriented task engineering | a second Principle canon, runtime authority, or empirical proof by itself |
-| [`regeneration/evaluations/`](regeneration/evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
-| [`chronicle/`](chronicle/) | provenance-preserving observation receipts and correction chains | claims, decisions, or a universal activity log |
+| [`design/research/`](design/research/) | architecture- and mechanism-level research (radar, substitution probes, delegation studies) | principle-layer doctrine, which belongs in `principles/research/` |
+| [`evaluations/`](evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
+| [`chronicle/`](chronicle/) | provenance-preserving observation receipts, correction chains, and curated checkpoint projections | claims, decisions, or a universal activity log |
 | [`operations/missions/`](operations/missions/) | return obligations for active multi-session missions | a backlog, scheduler, or Git history duplicate |
-| [`development-log/`](development-log/) | curated development checkpoint summaries and method feedback | primary verification evidence |
 | [`archive/`](archive/) | read-mostly historical carriers and superseded methods | current install targets or governing guidance |
 
 ## Active Skills
 
 “Active” means installable and discoverable through the current repository
 entry; it does not by itself mean behavior-proven for every context. The
-[2026-08-03 system review](regeneration/evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
+[2026-08-03 system review](evaluations/2026-08-03-top-down-theory-architecture-and-skills-review.md#active-skill-evidence-standing)
 is the evidence projection for entries present at that review; newer entries
 link their current research standing directly. These pointers summarize
 retained evaluations rather than replacing them.

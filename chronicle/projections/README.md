@@ -16,3 +16,13 @@ history. A projection that cannot be rebuilt must be promoted through a new
 source/owner decision rather than treated as a convenient exception.
 
 No projection is implemented in this pilot.
+
+The first retained projection is
+[`development-log-2026-07.md`](development-log-2026-07.md): curated
+checkpoint summaries of the July 2026 development movements (target,
+implemented transition, verification references, drift judgment, method
+feedback, and next adjustment). It is a navigational synthesis, not primary
+evidence and not a universal task journal; raw runtime records stay with their
+creating system, behavior evaluations belong in
+[`evaluations/`](../../evaluations/), and decision-changing observations and
+corrections belong in `chronicle/records/`.

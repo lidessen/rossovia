@@ -2,7 +2,7 @@
 
 **Status:** observed failure; no direction promoted
 **Practice source:** [Aesthetic Practice Pilot](../README.md)
-**Technical evidence:** [activation-field scale probe](../../../regeneration/evaluations/2026-07-13-activation-field-scale-probe.md#human-rejection-of-the-archive-surface)
+**Technical evidence:** [activation-field scale probe](../../../evaluations/2026-07-13-activation-field-scale-probe.md#human-rejection-of-the-archive-surface)
 
 ## Object, audience, and action
 

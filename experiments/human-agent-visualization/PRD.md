@@ -111,7 +111,7 @@ Project Lens 对所有仓库的固定分类。
 | Skills | 哪些可复用判断已形成，表达和行为证据到哪里？ | `skills/`、相关 evaluations |
 | Missions 与 Workbench | 当前持续工作和人类任务由谁持有？ | `operations/missions/`、`operations/workbench/` |
 | 执行与认知机制 | Work Cell、Cognition、Autonomy 分别执行或保留什么？ | `packages/`、`operations/autonomy/` |
-| 证据回路 | 哪些观察、测试和评估支持当前说法？ | tests、`regeneration/evaluations/`、`chronicle/` |
+| 证据回路 | 哪些观察、测试和评估支持当前说法？ | tests、`evaluations/`、`chronicle/` |
 | 人类投影 | 人如何看到、质疑和纠正系统？ | Workbench UI、site、Human-Agent Visualization |
 
 每个区域至少显示：

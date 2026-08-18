@@ -236,7 +236,7 @@ used `createCurrentWorkerCatalog(process.env)` and
 identifying `kimi-coding/kimi-for-coding`. Both Cells passed and correctly
 identified the blue rectangle on the left and the red rectangle on the right,
 using 1,683 and 1,496 total tokens respectively. See the
-[minimal retained evidence](../../regeneration/evaluations/evidence/2026-08-13-kimi-vision-worker/README.md)
+[minimal retained evidence](../../evaluations/evidence/2026-08-13-kimi-vision-worker/README.md)
 for the results and their limits. This establishes the bounded local-image
 transport and direct catalog-backed driver paths for those runs; it does not
 establish general visual accuracy, automatic Rossovia CLI catalog wiring, or a
@@ -619,10 +619,10 @@ its stable working envelope, while even a short label can redirect source order
 and worsen a mismatched authority judgment. A task-matched state-transition
 bias also tripled median use on an already stable packet without improving its
 judgment; see the
-[cross-project differentiation probe](../../regeneration/evaluations/2026-07-15-cross-project-cell-differentiation.md).
+[cross-project differentiation probe](../../evaluations/2026-07-15-cross-project-cell-differentiation.md).
 Stability therefore belongs to the whole prepared Cell shape, not to the model
 name or token count alone; see the
-[stability and sparse-differentiation probe](../../regeneration/evaluations/2026-07-15-cell-stability-and-sparse-differentiation.md).
+[stability and sparse-differentiation probe](../../evaluations/2026-07-15-cell-stability-and-sparse-differentiation.md).
 
 Cells may share a workspace root only when every Cell sharing it has empty
 `writePaths` and `allowedCommands`. A writable or command-capable Cell must have
@@ -896,7 +896,7 @@ one-target route; merely setting one key does not authorize it.
 
 Generated evidence is written beneath `.work-cell/`, which is intentionally
 ignored because it may contain full model traces and workspace diffs. Promote a
-reviewed result deliberately into `regeneration/evaluations/`; do not treat raw
+reviewed result deliberately into `evaluations/`; do not treat raw
 output as accepted project fact.
 
 ## Independence boundary

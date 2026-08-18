@@ -5,7 +5,7 @@
   "question": "Given the observed activation-field evidence, what previously unstated mechanism most plausibly explains why high surface diversity did not improve creative quality, and what smallest architecture experiment would distinguish it from the strongest alternative?",
   "sources": [
     {
-      "path": "regeneration/evaluations/2026-07-13-activation-field-scale-probe.md",
+      "path": "evaluations/2026-07-13-activation-field-scale-probe.md",
       "startLine": 245,
       "endLine": 590
     },

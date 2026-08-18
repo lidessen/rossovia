@@ -29,7 +29,7 @@ board, queue, or standing coordinator.
 
 ## Verification
 
-The [action and boundary probe](../../../regeneration/evaluations/2026-07-10-bounded-adaptive-organization-probe.md)
+The [action and boundary probe](../../../evaluations/2026-07-10-bounded-adaptive-organization-probe.md)
 passed a constrained Work Cell route: it selected only conditionally relevant
 roles, retained exact source statuses, named handoff/approval boundaries, and
 rejected a mandatory pipeline or automatic amendment. Two preceding failed runs

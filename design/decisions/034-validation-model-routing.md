@@ -126,7 +126,7 @@ Structured output has a second, independent capability boundary. The official
 Moonshot AI SDK provider advertises native response-format support only for
 model IDs beginning with `kimi-k`; Coding Plan's current `k3` and stable aliases
 do not cross that gate. A minimal no-tool JSON probe can still happen to parse,
-but the retained [K3 completion-treatment probe](../../regeneration/evaluations/2026-07-18-kimi-structured-settlement.md)
+but the retained [K3 completion-treatment probe](../../evaluations/2026-07-18-kimi-structured-settlement.md)
 showed that attaching unsupported response-format/schema pressure to a
 repository task caused zero file reads, schema failures, placeholders, and one
 schema-valid hallucination. Stronger instructions did not repair it.
@@ -230,7 +230,7 @@ or a second variation makes the boundary real.
   model in route metadata. A structured-output probe is separately required
   before claiming that capability through the stable Coding Plan alias.
 
-The retained [validation evaluation](../../regeneration/evaluations/2026-07-16-opencode-go-validation-routing.md)
+The retained [validation evaluation](../../evaluations/2026-07-16-opencode-go-validation-routing.md)
 records deterministic failover and non-replay probes, the live terminal call,
 the live structured-output call, the rejected native `json_schema` form, and
 the independent review corrections. It also retains a large review-run estimate

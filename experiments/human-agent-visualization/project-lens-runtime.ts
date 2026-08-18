@@ -101,12 +101,11 @@ export const PROJECT_LENS_LOCAL_READ_PATHS = [
   "archive",
   "chronicle",
   "design",
-  "development-log",
+  "evaluations",
   "experiments",
   "operations",
   "packages",
   "principles",
-  "regeneration",
   "scripts",
   "site",
   "skills",
@@ -129,7 +128,7 @@ export const PROJECT_LENS_LOCAL_EXCLUDE_PATHS = [
   ".next",
   "experiments/agent-era-blog/build",
   "experiments/human-agent-visualization/generated",
-  "regeneration/evaluations/evidence/2026-08-04-prompt-composition-round2/baseline/scoring/outputs",
+  "evaluations/evidence/2026-08-04-prompt-composition-round2/baseline/scoring/outputs",
 ] as const;
 
 // Only these contents may enter the external provider. focusSources selected

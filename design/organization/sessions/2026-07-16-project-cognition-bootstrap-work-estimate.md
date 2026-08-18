@@ -3,7 +3,7 @@
 **Status:** proposed for the approved discovery mission
 **Decision horizon:** mission
 **Current state and sources:** [Strategy Case](2026-07-16-project-cognition-bootstrap-strategy-case.md),
-[scale-control probe](../../../regeneration/evaluations/2026-07-15-project-cognition-scale-control.md),
+[scale-control probe](../../../evaluations/2026-07-15-project-cognition-scale-control.md),
 and Shilu's committed source tree
 **Target state / decision:** determine whether a typed, semantically partitioned
 project model improves a second-project cognition task and supports bounded

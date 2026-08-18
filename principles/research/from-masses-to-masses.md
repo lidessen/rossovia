@@ -222,7 +222,7 @@ did not already require.
 
 ## Completed trial evidence
 
-The [2026-07-16 progressive-adoption trial](../../regeneration/evaluations/2026-07-16-mass-line-progressive-adoption-trial.md)
+The [2026-07-16 progressive-adoption trial](../../evaluations/2026-07-16-mass-line-progressive-adoption-trial.md)
 used `agent-worker` at fixed revision
 `594281210d856febc485d288188468d5d38ec3a8`. Two matched Cells received the
 same target, method packet, P03/P05/P11/P16 team, model, and acceptance

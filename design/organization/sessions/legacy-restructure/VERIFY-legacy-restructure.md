@@ -8,7 +8,7 @@
 | Semantic source intact | pass | `principles/SEQUENCE.md`, `design/DESIGN.md`, `principles/adopted/`, `principles/reviews/` unchanged |
 | Repo-root `blueprints/` removed | pass | No `blueprints/` directory; content in `archive/blueprints/` |
 | Legacy skills archived, not deleted | pass | Eight skills under `archive/skills/`; four under `skills/` |
-| Regeneration evidence preserved | pass | `regeneration/evaluations/` only at active `regeneration/` |
+| Regeneration evidence preserved | pass | `evaluations/` only at active `regeneration/` |
 | Symlinks still target `skills/` | pass | `.claude/skills`, `.agents/skills`, `.agent/skills` → `../skills` |
 | README matches active set | pass | Four skills + Archive section |
 | Snapshot skills still packaged | pass | harness, principle-cultivation, skill-engineering, project-restructure |

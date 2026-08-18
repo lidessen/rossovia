@@ -5,7 +5,7 @@
 bounded Work Cell comparison only
 **Research basis:** [bounded-autonomy research](../research/bounded-autonomy.md)
 **Observed in:** the [artifact-organization simplification
-trial](../../regeneration/evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10),
+trial](../../evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10),
 classical agent autonomy, adjustable-autonomy systems, polycentric governance,
 and end-to-end system design
 
@@ -36,7 +36,7 @@ P23｜边界与反馈足以约束结果时，不以过程控制代替主体自�
   the countercase: lower-level mechanisms may be justified by a measured
   performance need.
 - The local [compact artifact-organization
-  rewrite](../../regeneration/evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10)
+  rewrite](../../evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10)
   removed standing intermediate states while retaining authority and
   verification gates. It suggests, but does not yet prove independently, that a
   skill can govern result boundaries without owning the agent's whole process.
@@ -106,7 +106,7 @@ review-team seat or semantic authority.
 ## Trial evidence
 
 The first prospective skill-expression trial is recorded in the [Work Cell P23
-live comparison](../../regeneration/evaluations/2026-07-10-work-cell-p23-live-comparison.md).
+live comparison](../../evaluations/2026-07-10-work-cell-p23-live-comparison.md).
 The baseline and treatment ran in separate fixture copies with the same
 acceptance conditions; both independently expressed P16 with P13/P15/P04,
 passed their environment-executed check plans, and produced materially

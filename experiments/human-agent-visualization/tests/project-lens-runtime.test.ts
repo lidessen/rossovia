@@ -115,7 +115,7 @@ test("the Mission proposal is semantically bound to the loaded runtime bytes", (
   expect(mission.executionProposal.runtimeDigest)
     .toBe(currentProjectLensRuntimeDigest());
   expect(missionExecutionProposalDigest(mission.executionProposal))
-    .toBe("b403ff4ee518695525166470f3890eacf3ddc4011d58458f0143060d50718bd4");
+    .toBe("6fd4e91a9e7b79f69c696978779c1ee47cfc4d29fd2f1876657767a8e0d598bc");
 });
 
 test("the provider call consumes the exact task objective, correction, and acceptance", () => {

@@ -129,10 +129,10 @@ authority, or this contract requires reviewable evidence and human approval.
 
 ## Implementation evidence
 
-The [organization action and boundary probe](../../regeneration/evaluations/2026-07-10-bounded-adaptive-organization-probe.md)
+The [organization action and boundary probe](../../evaluations/2026-07-10-bounded-adaptive-organization-probe.md)
 retains one passing constrained route plus its failed scope/protocol attempts.
 It supports the contract's action and boundary claims, but does not constitute
 human adoption or prove universal coordination quality. The earlier
-[practice-cycle/form-guidance probes](../../regeneration/evaluations/2026-07-10-practice-cycle-and-form-guidance-probes.md)
-and [strategic-advisory probe](../../regeneration/evaluations/2026-07-10-strategic-advisory-action-probe.md)
+[practice-cycle/form-guidance probes](../../evaluations/2026-07-10-practice-cycle-and-form-guidance-probes.md)
+and [strategic-advisory probe](../../evaluations/2026-07-10-strategic-advisory-action-probe.md)
 remain component evidence.

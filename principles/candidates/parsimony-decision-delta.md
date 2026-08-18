@@ -84,7 +84,7 @@ evidence for Sequence adoption.
 `audit` and `transition`, one optional campaign record, inline verification,
 and conditional secondary gates. Applying P17 removed no additional command,
 artifact, role, or gate. See the
-[simplification evaluation](../../regeneration/evaluations/2026-07-10-artifact-organization-rewrite.md#p17-comparison).
+[simplification evaluation](../../evaluations/2026-07-10-artifact-organization-rewrite.md#p17-comparison).
 
 **Outcome:** `overlap`. P17 made the necessity question explicit but produced no
 independent decision delta. Retain the current Sequence and the P15 expression

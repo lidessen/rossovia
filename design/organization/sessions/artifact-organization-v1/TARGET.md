@@ -23,7 +23,7 @@
 | `principles/` | Semantic source + durable evidence | Sequence, interpretations, adopted/reviews, research, candidates | None |
 | `skills/` (4 active) | Living expression | `principle-cultivation`, `skill-engineering`, `harness`, `artifact-organization` | None |
 | `design/` | Semantic source + durable evidence | `DESIGN.md`, decisions 001–006 (002 adopted), organization sessions | Adopt decision 002 |
-| `regeneration/evaluations/` | Durable evidence | Behavior probe records only | None |
+| `evaluations/` | Durable evidence | Behavior probe records only | None |
 | `archive/` | Durable evidence | Retired skills, regen notes, pre-collection content | None |
 | `scripts/` | Living expression | `sync-sequence-snapshot.py` | None |
 | `AGENTS.md`, `CLAUDE.md` | Projection (L1) | Harness + sequence rules at session edge | Keep; update when upstream changes |
@@ -62,7 +62,7 @@ The regeneration movement described in decision 002 has been executed: four skil
 | Type | Governed by | Artifact home | Ends with |
 |---|---|---|---|
 | Organization wave | `artifact-organization transition` | `design/organization/` | promote to design OR archive |
-| Regen wave | `skill-engineering` + adopted architecture | `regeneration/evaluations/` for probes | promote skill + archive session |
+| Regen wave | `skill-engineering` + adopted architecture | `evaluations/` for probes | promote skill + archive session |
 | Skill rewrite | `skill-engineering rewrite` | skill package + evaluation record | updated SKILL.md + probe evidence |
 | Principle cultivation | `principle-cultivation` | `principles/research/`, `candidates/`, `reviews/` | adopted, rejected, or pending |
 

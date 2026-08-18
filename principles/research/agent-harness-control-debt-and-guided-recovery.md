@@ -360,7 +360,7 @@ cheap to recover.
   relation; or
 - treat `completed` as proof that the content is correct.
 
-The [read-only review counterexample](../../regeneration/evaluations/2026-07-21-review-cell-read-only-task-projection.md#baseline)
+The [read-only review counterexample](../../evaluations/2026-07-21-review-cell-read-only-task-projection.md#baseline)
 shows that an unnecessary mutable Task can make a useful review fail
 mechanically. **Standing:** Task-state mechanics are verified; the Principal's
 mainline benefit is practice-supported, while matched drift reduction remains
@@ -398,7 +398,7 @@ relations, and acceptance. Compressed evidence reconnects the layers.
   delegation, or fan out a trivial task without an attention, latency,
   isolation, or independent-evidence benefit.
 
-The [scale-control probe](../../regeneration/evaluations/2026-07-15-project-cognition-scale-control.md)
+The [scale-control probe](../../evaluations/2026-07-15-project-cognition-scale-control.md)
 supports semantic partition, local recovery, and compressed synthesis while
 also recording higher total cost and a surviving synthesis error. **Standing:**
 context-scale mechanism supported; agent count and concurrency are not quality
@@ -429,7 +429,7 @@ free prose.
 - create a large union that exposes mutually exclusive branches at once; or
 - add parsing retries until a semantic non-answer becomes schema-valid.
 
-The [K3 matched comparison](../../regeneration/evaluations/2026-07-18-kimi-structured-settlement.md#practice-2--completion-treatment)
+The [K3 matched comparison](../../evaluations/2026-07-18-kimi-structured-settlement.md#practice-2--completion-treatment)
 showed zero-read schema runs and correct text investigations for one exact
 execution profile, then supported deferred projection in that profile.
 **Standing:** useful as an interface carrier; schema-first interference with
@@ -457,7 +457,7 @@ one tool identity instead of inferring completion or disposition from prose.
   let a terminal pass become semantic acceptance; or
 - recover from empty evidence by demanding a confident terminal answer.
 
-The [held-out branch-specific field](../../regeneration/evaluations/2026-07-20-mission-reconciliation-flash-probe.md#held-out-confirmation)
+The [held-out branch-specific field](../../evaluations/2026-07-20-mission-reconciliation-flash-probe.md#held-out-confirmation)
 settled six of six cases with exactly one terminal call. **Standing:** explicit
 transition supported; correctness and acceptance remain outside the terminal.
 
@@ -624,7 +624,7 @@ prevention.
 - append another universal validator for one local error; or
 - continue indefinitely because activity is mistaken for convergence.
 
-The [Mission recovery history](../../regeneration/evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed)
+The [Mission recovery history](../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed)
 supports changed-relation recovery for graceful carrier replacement with
 read-only effects and exact identity. **Standing:** that narrow recovery form is
 supported; crash recovery, writable or uncertain-effect replay, and arbitrary
@@ -709,7 +709,7 @@ not established.
 The first model-capability campaign found that one exact Kimi execution profile
 returned placeholders or failed structure and never used the available read
 tool. The retained
-[prompt/protocol interaction](../../regeneration/evaluations/2026-07-18-model-capability-seed.md#prompting-hypothesis-exposed-by-the-evaluation)
+[prompt/protocol interaction](../../evaluations/2026-07-18-model-capability-seed.md#prompting-hypothesis-exposed-by-the-evaluation)
 was narrower than “schemas are bad”: native structured-output pressure was a
 plausible explanation for preventing investigation, while another profile used
 the same task to gather evidence. A later two-phase settlement path repaired the
@@ -719,7 +719,7 @@ interaction.
 
 The same campaign also removed typed failure-class assignment from its judge
 after repeated prompts manufactured an unsupported causal label. The
-[mechanism correction](../../regeneration/evaluations/2026-07-18-model-capability-seed.md#disconfirming-observation-and-correction)
+[mechanism correction](../../evaluations/2026-07-18-model-capability-seed.md#disconfirming-observation-and-correction)
 shows that strengthening prose around a structurally wrong validator can repeat
 the error; reducing the judge's authority preserved useful comparison evidence.
 
@@ -729,7 +729,7 @@ responsibility.
 ### Simplification can improve actionability without deleting necessary proof
 
 The [artifact-organization simplification
-trial](../../regeneration/evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10)
+trial](../../evaluations/2026-07-10-artifact-organization-rewrite.md#simplification-trial--2026-07-10)
 replaced five standing workflow states with two commands, one optional record,
 and inline verification. It is evidence that accumulated workflow structure can
 be reduced while retaining the governing decision boundary. It was a local
@@ -775,23 +775,23 @@ result, not a general provider or model property.
 
 | Control debt observed | Whole-task consequence | Supported simplification |
 |---|---|---|
-| Forced terminal `tool_choice` on DeepSeek thinking mode | Eight trials investigated and then failed at an incompatible transport boundary. | Lower unsupported forced choice in the provider adapter while preserving independent terminal/schema verification. [Development record](../../regeneration/evaluations/2026-08-04-deepseek-v4-flash-refresh.md#thinking-level-development-experiment) |
-| Unsupported inline `outputSchema` during K3 investigation | Schema runs made zero reads and could return schema-valid fiction; stronger instructions did not repair the interaction. | Investigate without response-format pressure, then project retained evidence through a private schema tool. [Matched development evidence](../../regeneration/evaluations/2026-07-18-kimi-structured-settlement.md#practice-2--completion-treatment) |
-| One union-shaped or flattened terminal schema | The provider rejected the union before execution; flattening reached the model but mixed mutually exclusive branches while the outer terminal check passed. | Use distinct terminal tools so tool identity carries the branch and each schema exposes only its own fields. [Development and held-out record](../../regeneration/evaluations/2026-07-20-mission-reconciliation-flash-probe.md#development-observations) |
-| Read tools exposed without read authority | Three of six development runs called unavailable tools before recovering. | Project only capabilities that the host can execute; omit absent tools instead of prompting the Agent not to use them. [Development observation](../../regeneration/evaluations/2026-07-20-mission-reconciliation-flash-probe.md#development-observations) |
-| A stale 120-second budget applied to a new two-phase profile | Both runs completed investigation but were cut off before or during settlement; the repaired profile normally needed about 130–137 seconds. | Re-estimate the changed work instead of treating an old cutoff as a safety invariant. [Budget audit](../../regeneration/evaluations/2026-07-18-kimi-structured-settlement.md#live-post-fix-evidence-and-budget-audit) |
-| A probe copied runtime-owned filename hashing | The first attempt failed before model execution because the copy guessed the runtime representation incorrectly. | Delete duplicate protocol knowledge and call the owning runtime's `timelinePath()`. [Recovery probe](../../regeneration/evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed) |
-| A `continue` verifier could rewrite the durable next statement | Schema-valid outputs mixed transient watermark progress into long-lived intent. | Remove the field from the unchanged branch; allow statement changes only on the correction branch and check it at commit. [Recovery probe](../../regeneration/evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed) |
-| A treatment campaign began from a uniform baseline floor | Twelve normal executions all failed the semantic rubric, so later improvement could not distinguish real redirection from answer injection or rubric artifacts. | Retire the field from attribution and qualify baseline headroom before adding treatment complexity. [Prompt-composition probe](../../regeneration/evaluations/2026-08-04-prompt-composition-predicate-language-probe.md#probe-4--repeated-session-baseline-qualification) |
+| Forced terminal `tool_choice` on DeepSeek thinking mode | Eight trials investigated and then failed at an incompatible transport boundary. | Lower unsupported forced choice in the provider adapter while preserving independent terminal/schema verification. [Development record](../../evaluations/2026-08-04-deepseek-v4-flash-refresh.md#thinking-level-development-experiment) |
+| Unsupported inline `outputSchema` during K3 investigation | Schema runs made zero reads and could return schema-valid fiction; stronger instructions did not repair the interaction. | Investigate without response-format pressure, then project retained evidence through a private schema tool. [Matched development evidence](../../evaluations/2026-07-18-kimi-structured-settlement.md#practice-2--completion-treatment) |
+| One union-shaped or flattened terminal schema | The provider rejected the union before execution; flattening reached the model but mixed mutually exclusive branches while the outer terminal check passed. | Use distinct terminal tools so tool identity carries the branch and each schema exposes only its own fields. [Development and held-out record](../../evaluations/2026-07-20-mission-reconciliation-flash-probe.md#development-observations) |
+| Read tools exposed without read authority | Three of six development runs called unavailable tools before recovering. | Project only capabilities that the host can execute; omit absent tools instead of prompting the Agent not to use them. [Development observation](../../evaluations/2026-07-20-mission-reconciliation-flash-probe.md#development-observations) |
+| A stale 120-second budget applied to a new two-phase profile | Both runs completed investigation but were cut off before or during settlement; the repaired profile normally needed about 130–137 seconds. | Re-estimate the changed work instead of treating an old cutoff as a safety invariant. [Budget audit](../../evaluations/2026-07-18-kimi-structured-settlement.md#live-post-fix-evidence-and-budget-audit) |
+| A probe copied runtime-owned filename hashing | The first attempt failed before model execution because the copy guessed the runtime representation incorrectly. | Delete duplicate protocol knowledge and call the owning runtime's `timelinePath()`. [Recovery probe](../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed) |
+| A `continue` verifier could rewrite the durable next statement | Schema-valid outputs mixed transient watermark progress into long-lived intent. | Remove the field from the unchanged branch; allow statement changes only on the correction branch and check it at commit. [Recovery probe](../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed) |
+| A treatment campaign began from a uniform baseline floor | Twelve normal executions all failed the semantic rubric, so later improvement could not distinguish real redirection from answer injection or rubric artifacts. | Retire the field from attribution and qualify baseline headroom before adding treatment complexity. [Prompt-composition probe](../../evaluations/2026-08-04-prompt-composition-predicate-language-probe.md#probe-4--repeated-session-baseline-qualification) |
 
 The audit also found controls whose removal would contradict observed evidence:
 
 - A read-only reviewer with `task_create` authority created and stranded an
   unnecessary Task. Host-selected
-  [read-only Task projection](../../regeneration/evaluations/2026-07-21-review-cell-read-only-task-projection.md#baseline)
+  [read-only Task projection](../../evaluations/2026-07-21-review-cell-read-only-task-projection.md#baseline)
   removed the mutation path while retaining one useful terminal recovery.
 - An ordinary full-toolbox probe printed a secret-bearing environment variable;
-  the [credential-free isolation boundary](../../regeneration/evaluations/2026-07-17-agent-environment-source-and-value-boundary.md#full-toolbox-regression-and-safety-boundary)
+  the [credential-free isolation boundary](../../evaluations/2026-07-17-agent-environment-source-and-value-boundary.md#full-toolbox-regression-and-safety-boundary)
   responds to an observed disclosure, not an imagined one.
 - Sending repository-derived content to an external model remains a real effect
   that requires payload-specific authority; a simpler harness cannot silently
@@ -824,7 +824,7 @@ reduced long-task mainline drift unverified.
 ### Sub-agent context layering
 
 The [project-cognition scale-control
-probe](../../regeneration/evaluations/2026-07-15-project-cognition-scale-control.md)
+probe](../../evaluations/2026-07-15-project-cognition-scale-control.md)
 records a single Cell losing the whole after a 35-file, 632k-token trajectory.
 Semantic partitioning isolated local packets, allowed only one overloaded packet
 to be repartitioned, and synthesized from seven compressed reports without
@@ -837,7 +837,7 @@ agents, majority, or concurrency as quality signals.
 advantage remains only directionally observed.
 
 The [Rossovia + Herdr minimum-path
-probe](../../regeneration/evaluations/2026-08-07-rossovia-herdr-delegation-minimum-path.md#corrected-interpretation)
+probe](../../evaluations/2026-08-07-rossovia-herdr-delegation-minimum-path.md#corrected-interpretation)
 adds a smaller counterexample to depth-based control. A worker formed a nested
 investigation despite an explicit one-level contract, yet its read-only result
 survived Main source verification and no repository effect escaped. The
@@ -847,7 +847,7 @@ than treating topology depth as a validity gate; it does not prove the nested
 child caused either the correct result or the high cost.
 
 The follow-up [paired local
-probe](../../regeneration/evaluations/evidence/2026-08-07-direct-vs-nested-delegation/README.md#observed-result)
+probe](../../evaluations/evidence/2026-08-07-direct-vs-nested-delegation/README.md#observed-result)
 declared the same source-local classification task and rubric for both arms.
 Both returns produced five of five source-supported decisions and reported no
 effect, while the nested parent reported 102 seconds versus 31 seconds and no
@@ -864,7 +864,7 @@ causal cost and value on a real context-displacing contribution remain open.
 ### Structured settlement
 
 The [held-out reconciliation
-field](../../regeneration/evaluations/2026-07-20-mission-reconciliation-flash-probe.md#held-out-confirmation)
+field](../../evaluations/2026-07-20-mission-reconciliation-flash-probe.md#held-out-confirmation)
 settled six of six cases with exactly one branch-specific terminal tool and no
 recovery. Contrary records show that schema validity can still carry semantic
 fiction and that forcing structure during investigation can prevent evidence
@@ -877,7 +877,7 @@ all-output contracts rejected.
 ### Trial, error, and recovery
 
 The [Mission queue recovery
-probe](../../regeneration/evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed)
+probe](../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md#what-the-failed-practices-changed)
 preserved successful state while failures removed duplicate protocol knowledge
 and separated two semantic branches. In contrast, stronger K3 instructions did
 not change its zero-read failure, empty-evidence terminal recovery has produced
@@ -1097,13 +1097,13 @@ it, is:
 
 The source-linked historical audit and systematic theory have now survived an
 independent exact-candidate review. The first derived practice is the frozen
-[Todo obligation-carrier development probe](../../regeneration/evaluations/evidence/2026-08-06-todo-obligation-carrier/README.md): it compares an obligation-bearing
+[Todo obligation-carrier development probe](../../evaluations/evidence/2026-08-06-todo-obligation-carrier/README.md): it compares an obligation-bearing
 external Todo with an equally maintained ceremonial Todo while withholding
 carrier vocabulary and mechanically validating artifact identity, settlement
 equality, Todo shape, and update cadence before semantic review.
 
 The Principal authorized the exact packet and the retained
-[development result](../../regeneration/evaluations/evidence/2026-08-06-todo-obligation-carrier/RESULT.md)
+[development result](../../evaluations/evidence/2026-08-06-todo-obligation-carrier/RESULT.md)
 completed eight DeepSeek V4 Flash worker runs. The comparison is invalid for H4:
 the runner parsed a nonexistent `steps[].toolCalls` surface instead of the live
 `steps[].content[]` tool-call blocks, and reconstruction showed that neither arm
@@ -1122,7 +1122,7 @@ exposes a recurring action gap not already owned by `agent-tooling` or
 `systems-engineering`.
 
 The selected next practice is now the locally freeze-ready development
-[Todo return-trigger transfer probe](../../regeneration/evaluations/evidence/2026-08-06-todo-return-trigger/README.md).
+[Todo return-trigger transfer probe](../../evaluations/evidence/2026-08-06-todo-return-trigger/README.md).
 Both arms receive the same pre-created obligation-bearing Todo. The only
 treatment is one host-timed re-presentation of the still-open companion
 obligation immediately after the first primary-artifact write. Todo reads,
@@ -1138,7 +1138,7 @@ terminal-LF-normalized settlement separately. A probe-local runner now binds
 the explicit arm without placing it in the initial model input, rejects any
 fixture file-set drift, pins the evaluator-only semantic rubric, and retains
 protocol-invalid records rather than throwing them away. The
-[independent freeze review](../../regeneration/evaluations/evidence/2026-08-06-todo-return-trigger/FREEZE-REVIEW.md)
+[independent freeze review](../../evaluations/evidence/2026-08-06-todo-return-trigger/FREEZE-REVIEW.md)
 found no remaining load-bearing blocker for development use.
 
 That review does not establish non-ceiling behavior or authorize an external

@@ -236,7 +236,7 @@ verification, and state commit.
 ## Local host-constructed topology probe
 
 The
-[2026-08-07 Northstar topology repetition](../../regeneration/evaluations/evidence/2026-08-07-host-constructed-nested-topology/RESULT.md)
+[2026-08-07 Northstar topology repetition](../../evaluations/evidence/2026-08-07-host-constructed-nested-topology/RESULT.md)
 provides one bounded counterexample to treating a compact child result as
 automatically usable parent evidence. A direct Cell read nine related files. A
 host-constructed nested arm gave two protocol/case files to a child and the
@@ -255,7 +255,7 @@ validity, lineage, and a source path do not by themselves make a returned claim
 a load-bearing premise.
 
 The follow-up
-[parent-only evidence-admission treatment](../../regeneration/evaluations/evidence/2026-08-08-parent-evidence-admission/RESULT.md)
+[parent-only evidence-admission treatment](../../evaluations/evidence/2026-08-08-parent-evidence-admission/RESULT.md)
 pinned the old parent input and changed only its fourth instruction after
 normalizing non-semantic runtime identifiers. It explicitly described how the
 schema-valid retained child report could serve as bounded evidence without
@@ -270,7 +270,7 @@ cheap to inspect directly, delegation may therefore add reconstruction cost
 without reducing attention enough to compensate even when semantics recover.
 
 The subsequent
-[matched parent pair](../../regeneration/evaluations/evidence/2026-08-08-parent-admission-matched-pair/RESULT.md)
+[matched parent pair](../../evaluations/evidence/2026-08-08-parent-admission-matched-pair/RESULT.md)
 ran fresh control and treatment parents over the same frozen child output and
 seven-file raw partition. Order was randomized and retained; route, backend
 fingerprint, schema, budget, read-only workspace, and normalized contract were

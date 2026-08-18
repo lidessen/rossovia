@@ -95,7 +95,7 @@ ordinary writing weight.
 ## Controlled Rossovia probe
 
 The frozen input and manifests live under
-[`regeneration/evaluations/fixtures/2026-07-23-document-expression/`](../../regeneration/evaluations/fixtures/2026-07-23-document-expression/).
+[`evaluations/fixtures/2026-07-23-document-expression/`](../../evaluations/fixtures/2026-07-23-document-expression/).
 Kimi Coding K3 wrote a Chinese Rossovia README opening from the same facts in
 two repeated conditions. Raw Work Cell records remain in ignored local
 `.work-cell` evidence.
@@ -179,7 +179,7 @@ content, not from treating one judge call as fact.
 The candidate skill was then frozen and exercised on two held-out English
 documents with repeated `deepseek-v4-flash` runs. The fixtures and complete
 decision record are retained in the
-[document-writing probe](../../regeneration/evaluations/2026-07-23-document-writing-probe.md).
+[document-writing probe](../../evaluations/2026-07-23-document-writing-probe.md).
 
 The incident-report task was already easy for the baseline, so a blind judge
 found no broad quality difference. Manual source comparison did find one

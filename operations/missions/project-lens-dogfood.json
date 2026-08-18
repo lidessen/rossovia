@@ -11,7 +11,7 @@
     "experiments/human-agent-visualization/DESIGN.md#project-lens"
   ],
   "createdAt": "2026-08-11T18:00:00Z",
-  "updatedAt": "2026-08-12T07:30:03Z",
+  "updatedAt": "2026-08-18T20:35:10Z",
   "mainline": {
     "contradiction": "Project Lens has a real deterministic local builder, while Rossovia needs one project-owned supervised runtime that truthfully separates the builder's complete local traversal from narrower external focus selection and consumes one fresh task-bound authorization.",
     "acceptance": [
@@ -46,7 +46,7 @@
     "mode": "supervised",
     "status": "awaiting-principal-authorization",
     "runtimeRef": "source-project:experiments/human-agent-visualization/project-lens-runtime.ts",
-    "runtimeDigest": "7d66389775b26ee600b8e256bce9d4ae881d79fbfc64187a056c1d4ac2221aef",
+    "runtimeDigest": "9943abaa746a5c62b6b877f873e6bc70edc5e5ca59e048105aadffd56bed6bd8",
     "externalProvider": {
       "name": "DeepSeek",
       "boundary": "external"
@@ -82,12 +82,11 @@
         "archive",
         "chronicle",
         "design",
-        "development-log",
+        "evaluations",
         "experiments",
         "operations",
         "packages",
         "principles",
-        "regeneration",
         "scripts",
         "site",
         "skills",
@@ -107,7 +106,7 @@
         ".next",
         "experiments/agent-era-blog/build",
         "experiments/human-agent-visualization/generated",
-        "regeneration/evaluations/evidence/2026-08-04-prompt-composition-round2/baseline/scoring/outputs"
+        "evaluations/evidence/2026-08-04-prompt-composition-round2/baseline/scoring/outputs"
       ],
       "writePaths": [
         "experiments/human-agent-visualization/generated/project-evidence-bundle.json"

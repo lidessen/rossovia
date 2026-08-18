@@ -51,7 +51,7 @@ general core by convenience.
 ### B — Agent methodology reconstitution
 
 **Owning decisions:** [context engineering replaces harness](../../decisions/026-context-engineering-reconstitutes-harness.md)
-and the accepted [structural refactoring evaluation](../../../regeneration/evaluations/2026-07-14-structural-refactoring-skill-probe.md).
+and the accepted [structural refactoring evaluation](../../../evaluations/2026-07-14-structural-refactoring-skill-probe.md).
 
 **Primary surfaces:**
 

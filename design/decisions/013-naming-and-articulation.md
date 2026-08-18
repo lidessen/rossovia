@@ -82,7 +82,7 @@ The result has separate layers only when each is needed:
 
 ## Implementation evidence
 
-The [naming-and-articulation action and boundary probe](../../regeneration/evaluations/2026-07-10-naming-and-articulation-probe.md)
+The [naming-and-articulation action and boundary probe](../../evaluations/2026-07-10-naming-and-articulation-probe.md)
 retains a constrained successful run: it chose and placed an operative
 definition for the organization term while declining a durable artifact for
 one-off prose. The result is behavior evidence, not proof of general naming

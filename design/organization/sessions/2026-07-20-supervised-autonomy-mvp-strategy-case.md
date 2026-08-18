@@ -590,7 +590,7 @@ recovery ID fails closed. An accepted recovery event followed by another crash
 remains visibly interrupted rather than silently replaying execution.
 
 Deterministic timeline, cross-process runner, and ordinary CLI probes establish
-these mechanics. A later [low-consequence live probe](../../../regeneration/evaluations/2026-07-21-flash-readonly-mission-runtime-probe.md)
+these mechanics. A later [low-consequence live probe](../../../evaluations/2026-07-21-flash-readonly-mission-runtime-probe.md)
 loaded one trusted detached runtime, used a real OpenCode Go DeepSeek V4 Flash
 parent to delegate one host-frozen contribution, settled a real read-only Flash
 Cell, resumed at the durable barrier, and retained exact output, read trace,
@@ -601,7 +601,7 @@ a generally reliable Flash envelope, or safe writable effects. The next
 evidence step was one real external input crossing a live safe point followed
 by explicit reconciliation and a replacement read-only turn.
 
-That [follow-up live probe](../../../regeneration/evaluations/2026-07-21-live-mission-input-reconciliation-probe.md)
+That [follow-up live probe](../../../evaluations/2026-07-21-live-mission-input-reconciliation-probe.md)
 seeded one authorized initial anchor, bound both turn starts to active-anchor
 digests, injected input while the first real Flash parent/child attempt was
 running, withheld the stale parent at its delegated-batch checkpoint, and used
@@ -614,7 +614,7 @@ visible as cost even though it cannot resume. This supports the external-input
 control mechanism, not automatic semantic authority, writable effects, or a
 general reliability claim.
 
-The next [queue and carrier-recovery probe](../../../regeneration/evaluations/2026-07-21-live-mission-queue-recovery-probe.md)
+The next [queue and carrier-recovery probe](../../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md)
 retained two live inputs through three detached carrier processes. It stayed
 `input-pending` after the first commit and across another restart, then started
 exactly one successor turn at baseline 2 after the second verified commit. The
@@ -824,7 +824,7 @@ OpenCode Go DeepSeek V4 Flash route, with no fallback, recovery, or unavailable
 read-tool call. This supports one low-consequence Mission trial; it remains a
 probe rather than an admitted general capability because the cases were small
 synthetic projections, not independently accepted production inputs. See the
-[probe record](../../../regeneration/evaluations/2026-07-20-mission-reconciliation-flash-probe.md).
+[probe record](../../../evaluations/2026-07-20-mission-reconciliation-flash-probe.md).
 
 The next guarded slice makes independent verification load-bearing. A verifier
 receives only the exact anchor, input, and proposal—not the proposer's reasoning
@@ -865,7 +865,7 @@ Two low-cost OpenCode Go DeepSeek V4 Flash runs followed the instructed
 measurement found no exact packet copy in retained parent messages. This is
 guarded discovery evidence for the carrier, not admission of autonomous
 decomposition or general stability; see the
-[delegate-file Flash probe](../../../regeneration/evaluations/2026-07-20-delegate-file-flash-probe.md).
+[delegate-file Flash probe](../../../evaluations/2026-07-20-delegate-file-flash-probe.md).
 
 ## Minimum implementation shape
 

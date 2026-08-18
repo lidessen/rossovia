@@ -17,7 +17,7 @@ bounded campaign, or no new form.
 Recent Work Cell work demonstrated that missing judgment. The runtime's exact
 JSON contract was correct, yet daily project use required a thin project
 projection rather than a new scheduler or a rewritten core; see the [accepted
-project probe evaluation](../../regeneration/evaluations/2026-07-10-work-cell-project-probe.md).
+project probe evaluation](../../evaluations/2026-07-10-work-cell-project-probe.md).
 The distinction was recovered only by manually combining artifact role,
 authority, recurrence, and action-form reasoning.
 
@@ -64,6 +64,6 @@ installed entry before any installation decision.
 
 ## Implementation evidence
 
-The [practice-cycle and form-guidance probes](../../regeneration/evaluations/2026-07-10-practice-cycle-and-form-guidance-probes.md)
+The [practice-cycle and form-guidance probes](../../evaluations/2026-07-10-practice-cycle-and-form-guidance-probes.md)
 retain a live handoff result and a one-off/no-form boundary result. They do not
 establish universal improvement or replacement attribution.

@@ -38,4 +38,4 @@ outside this repo.
 | `archive/slides/` | Presentation assets |
 
 Active behavior evidence remains in
-[`regeneration/evaluations/`](../regeneration/evaluations/).
+[`evaluations/`](../evaluations/).
