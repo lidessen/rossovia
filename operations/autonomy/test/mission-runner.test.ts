@@ -1298,7 +1298,10 @@ test("a verified reconciliation commits through the live runner before a success
   const timeline = new FileMissionTimeline(missionRunnerDirectory(root, missionId));
   const seededAnchor = await seedTimeline(timeline, missionId);
   const runtimeModule = fileURLToPath(new URL("./fixtures/continuing-mission-runtime.ts", import.meta.url));
-  const child = startRunner(root, missionId, runtimeModule);
+  const releasePath = join(root, "continuing-runtime.release");
+  const child = startRunner(root, missionId, runtimeModule, undefined, {
+    ROSSOVIA_CONTINUING_MISSION_RELEASE_PATH: releasePath,
+  });
   await waitForLiveStatus(root, missionId, child);
 
   const accepted = requireSuccess(await requestMissionRunner(root, missionId, missionRunnerRequest({
@@ -1321,6 +1324,7 @@ test("a verified reconciliation commits through the live runner before a success
   }));
   expect(tooEarly).toMatchObject({ ok: false });
   if (!tooEarly.ok) expect(tooEarly.error).toContain("turn is still live");
+  await writeFile(releasePath, "released\n", "utf8");
 
   const staleTurn = await waitForSettledTurn(timeline, missionId, child);
   expect(staleTurn).toMatchObject({
@@ -1839,12 +1843,19 @@ async function sendControl(
   })));
 }
 
-function startRunner(root: string, missionId: string, runtimeModule?: string, anchorFile?: string): ChildProcess {
+function startRunner(
+  root: string,
+  missionId: string,
+  runtimeModule?: string,
+  anchorFile?: string,
+  environment: NodeJS.ProcessEnv = {},
+): ChildProcess {
   const script = fileURLToPath(new URL("../src/mission-runner-process.ts", import.meta.url));
   const args = [script, "--home", root, "--mission", missionId];
   if (runtimeModule !== undefined) args.push("--runtime-module", runtimeModule);
   if (anchorFile !== undefined) args.push("--anchor-file", anchorFile);
   const child = spawn(process.execPath, args, {
+    env: { ...process.env, ...environment },
     stdio: ["ignore", "ignore", "pipe"],
   });
   childErrors.set(child, "");

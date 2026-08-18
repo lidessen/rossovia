@@ -42,7 +42,16 @@ export const createMissionRuntime: MissionRuntimeFactory = async (context) => {
           };
         }
         await inputObserved;
-        await Bun.sleep(500);
+        const releasePath = process.env.ROSSOVIA_CONTINUING_MISSION_RELEASE_PATH;
+        if (releasePath !== undefined) {
+          const deadline = Date.now() + 5_000;
+          while (!(await Bun.file(releasePath).exists())) {
+            if (Date.now() >= deadline) {
+              throw new Error("continuing fixture release barrier timed out");
+            }
+            await Bun.sleep(10);
+          }
+        }
         const input = observedInput;
         if (input === undefined) throw new Error("continuing fixture resumed without input");
         return {
