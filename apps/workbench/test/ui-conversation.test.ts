@@ -7,6 +7,7 @@ import * as conversation from "../../gateway/ui/app.js";
 const {
   buildConversationSocketUrl,
   classifyConversationEvent,
+  conversationComposerStanding,
   conversationMessageSubmitFrame,
   conversationResponseInterruptFrame,
   conversationWorkControlFrame,
@@ -240,6 +241,69 @@ describe("conversation event classification", () => {
     expect(classifyConversationEvent(journalEvent(0, "coordinator.turn-interrupted"))).toBe("interrupted");
     expect(classifyConversationEvent(journalEvent(0, "response.delta"))).toBe("unknown");
     expect(CONVERSATION_TURN_TERMINAL_EVENTS.has("coordinator.turn-settled")).toBeTrue();
+  });
+});
+
+describe("conversation composer standing projection", () => {
+  test("empty or whitespace-only draft is never sendable, even while live", () => {
+    for (const draft of ["", "   ", "\n\t ", "  \n  "]) {
+      const standing = conversationComposerStanding("live", draft);
+      expect(standing.sendable).toBe(false);
+      expect(standing.gate).toBe("empty");
+      expect(standing.standing).toBe("empty");
+    }
+    expect(conversationComposerStanding("live", "  send  ").sendable).toBe(true);
+    // The submit button derives its disabled semantics from the projection.
+    expect(app).toContain("submit.disabled = !standing.sendable");
+    expect(app).toContain('submit.setAttribute("aria-disabled"');
+    expect(app).toContain('submit.dataset.sendable = String(standing.sendable)');
+    // The submit path still refuses blank payloads without faking execution.
+    expect(app).toContain('payload.trim() === ""');
+    expect(app).toContain("空消息不会发送");
+  });
+
+  test("unavailable connections keep the draft and explain the cannot-send boundary per standing", () => {
+    for (const connection of ["connecting", "disconnected", "unavailable", "unknown"]) {
+      const standing = conversationComposerStanding(connection, "草稿保留");
+      expect(standing.sendable).toBe(false);
+      expect(standing.gate).toBe("connection");
+      expect(standing.status).not.toBe("");
+      expect(standing.status).toContain("草稿保留");
+      expect(standing.status).toContain("不会自动重发");
+    }
+    // Unknown or unclassified connection standing is never guessed sendable.
+    expect(conversationComposerStanding("whatever", "text").sendable).toBe(false);
+    expect(conversationComposerStanding("whatever", "text").standing).toBe("unknown");
+    // The composer renderer projects the connection reason into the status line.
+    expect(app).toContain("conversationComposerStanding(");
+    expect(app).toContain('standing.gate === "connection"');
+    expect(app).toContain("对话连接不可用：草稿保留");
+    expect(app).toContain("恢复连接前不能发送");
+  });
+
+  test("live connection with non-empty draft is sendable through the existing frame path", () => {
+    expect(conversationComposerStanding("live", "发送这条消息")).toEqual({
+      sendable: true,
+      gate: "ready",
+      standing: "live",
+      status: "",
+    });
+    // The existing transport/frame authority is unchanged.
+    expect(conversationMessageSubmitFrame(conversationId, "发送这条消息")).toEqual({
+      type: "message.submit",
+      clientMessageId: conversationId,
+      payload: "发送这条消息",
+    });
+    // Tool interrupt stays truthfully unavailable: disabled in the DOM, with
+    // unavailability, reason, and the next understandable boundary in copy.
+    expect(html).toMatch(
+      /id="conversation-tool-interrupt"\s+type="button"\s+disabled/s,
+    );
+    expect(html).toContain("工具中断 · 运行时不支持");
+    expect(html).toContain("不属于当前 conversation 运行时");
+    expect(html).toContain("中断这条回复");
+    expect(html).toContain("停止该工作");
+    expect(app).not.toContain('type: "tool.interrupt"');
   });
 });
 

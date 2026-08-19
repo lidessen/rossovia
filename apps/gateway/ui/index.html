@@ -224,7 +224,8 @@
               id="conversation-tool-interrupt"
               type="button"
               disabled
-              title="工具中断不属于当前 conversation 运行时；它不会伪装成可用控制。"
+              aria-disabled="true"
+              title="工具中断不属于当前 conversation 运行时：该帧会被协议明确拒绝，因此不会伪装成可用控制。可用的精确控制是“中断这条回复”与“停止该工作”，两者都只作用于精确目标。"
             >
               工具中断 · 运行时不支持
             </button>
