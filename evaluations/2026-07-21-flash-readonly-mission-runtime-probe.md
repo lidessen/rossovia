@@ -19,14 +19,14 @@ envelope.
 ## Frozen shape
 
 The runtime module is
-[`flash-readonly-mission-runtime.ts`](../operations/autonomy/experiments/flash-readonly-mission-runtime.ts).
+[`flash-readonly-mission-runtime.ts`](../apps/autonomy/experiments/flash-readonly-mission-runtime.ts).
 It selected only `opencode-go/deepseek-v4-flash`, with no fallback. The parent
 was authorized to form exactly one host-declared semantic call; the host rejects
 any change to its task, sources, obligations, acceptance, result contract, or
 capability need before Cell admission.
 
 The child could read only
-[`operations/autonomy/package.json`](../operations/autonomy/package.json).
+[`apps/autonomy/package.json`](../apps/autonomy/package.json).
 It had no write paths and no allowed commands. Its bounded operation was to
 extract the package name, package version, and exact `ai` dependency version.
 The Task Shape remained `guarded`: prior repository runs provided protocol
@@ -43,7 +43,7 @@ settled at `22:23:32.665Z`, and the Mission turn settled at `22:23:34.594Z`.
 |---|---|
 | Parent | emitted the one exact `delegate` call, parked, resumed, returned, and reported no uncovered obligation |
 | Child route | `ai-sdk-v7 / opencode-go / deepseek-v4-flash` |
-| Child tool evidence | one `tool.read_file` for `operations/autonomy/package.json`, 561 characters |
+| Child tool evidence | one `tool.read_file` for `apps/autonomy/package.json`, 561 characters |
 | Child output | `@atthis/autonomy`, `0.1.0`, `ai` `7.0.28`, correct source path |
 | Effects | empty added, changed, and removed file sets; no command authority |
 | Child settlement | Work Cell `passed`; contribution `completed` |

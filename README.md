@@ -66,7 +66,7 @@ missing value. It does not scan an unspecified home directory, auto-register
 discovered repositories, or make the user remember command flags.
 
 If a previous checkout initialized `~/.atthis`, ask the agent to migrate the
-workbench, or run `./operations/workbench/rossovia migrate`, before ordinary Rossovia
+workbench, or run `./apps/workbench/rossovia migrate`, before ordinary Rossovia
 initialization. The migration preserves the old source and records a receipt;
 it does not keep two writable homes.
 
@@ -74,20 +74,20 @@ For automation, debugging, or an environment without an agent, the equivalent
 manual entry remains available:
 
 ```sh
-./operations/workbench/rossovia init --workspace-root /path/to/workspaces
-./operations/workbench/rossovia root add /path/to/another-workspace-root
-./operations/workbench/rossovia project list
-./operations/workbench/rossovia resolve example-project
-./operations/workbench/rossovia preference list --project example-project
+./apps/workbench/rossovia init --workspace-root /path/to/workspaces
+./apps/workbench/rossovia root add /path/to/another-workspace-root
+./apps/workbench/rossovia project list
+./apps/workbench/rossovia resolve example-project
+./apps/workbench/rossovia preference list --project example-project
 ```
 
 For daily task work, open the Principal Workbench UI or inspect the same durable
 local task source through the control-plane CLI:
 
 ```sh
-bun run --cwd operations/workbench ui
-./operations/workbench/rossovia task list
-./operations/workbench/rossovia task show <task-id>
+bun run --cwd apps/workbench ui
+./apps/workbench/rossovia task list
+./apps/workbench/rossovia task show <task-id>
 ```
 
 The UI supports creating, assigning, correcting, submitting, accepting, and
@@ -108,9 +108,9 @@ is persistent setup guidance, not a delegation runtime or a replacement for
 the `agent-delegation` Skill:
 
 ```sh
-./operations/workbench/rossovia init --setup multi-agent-delegation
-./operations/workbench/rossovia setup status
-./operations/workbench/rossovia setup apply
+./apps/workbench/rossovia init --setup multi-agent-delegation
+./apps/workbench/rossovia setup status
+./apps/workbench/rossovia setup apply
 ```
 
 The Workbench records the applied Git revision and managed-block digest. After
@@ -138,8 +138,8 @@ inferred memory never becomes active preference without human confirmation.
 | [`skills/`](skills/) | the current installable methodology and behavioral expressions | the semantic source they express |
 | [`packages/work-cell/`](packages/work-cell/) | a general bounded agent runtime, optional adapters, and experimental research implementations | planning, doctrine, or human acceptance |
 | [`packages/cognition/`](packages/cognition/) | domain-declared progressive formation, source and artifact lineage, admission evidence, and rebuildable retrieval projections | universal cognition stages, domain interpretation, model execution, or admission authority |
-| [`operations/autonomy/`](operations/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, recovery, and one explicitly admitted isolated-worktree Blog writable trial | accepted autonomous operation, task discovery, general or shared-worktree writable-effect authority, remote authority, publication, or merge |
-| [`operations/workbench/`](operations/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
+| [`apps/autonomy/`](apps/autonomy/) | an experimental local supervised-Mission mechanism for ordered input, bounded turns, delegation, reconciliation, recovery, and one explicitly admitted isolated-worktree Blog writable trial | accepted autonomous operation, task discovery, general or shared-worktree writable-effect authority, remote authority, publication, or merge |
+| [`apps/workbench/`](apps/workbench/) | relocatable project identity, verified machine-local workspace resolution, explicit user/project defaults, and the durable lifecycle and control-plane UI for locally Principal-attributed tasks | task scheduling, inferred preference, machine capability, target-project task facts, or execution authority |
 | [`site/`](site/) | the static public home page and reproducible documentation projection | source facts, project identity, or hosting authority |
 | [`experiments/`](experiments/) | retained standalone experiments and their generated artifacts | accepted product behavior or governing design |
 | [`design/`](design/) | accepted architecture, decisions, operations design, and retained design studies | live task state or raw runtime evidence |
@@ -147,7 +147,7 @@ inferred memory never becomes active preference without human confirmation.
 | [`design/research/`](design/research/) | architecture- and mechanism-level research (radar, substitution probes, delegation studies) | principle-layer doctrine, which belongs in `principles/research/` |
 | [`evaluations/`](evaluations/) | durable behavior and boundary evaluations | governing design or raw run authority |
 | [`chronicle/`](chronicle/) | provenance-preserving observation receipts, correction chains, and curated checkpoint projections | claims, decisions, or a universal activity log |
-| [`operations/missions/`](operations/missions/) | return obligations for active multi-session missions | a backlog, scheduler, or Git history duplicate |
+| [`apps/missions/`](apps/missions/) | return obligations for active multi-session missions | a backlog, scheduler, or Git history duplicate |
 | [`archive/`](archive/) | read-mostly historical carriers and superseded methods | current install targets or governing guidance |
 
 ## Active Skills
@@ -212,7 +212,7 @@ models, and task routing stay outside the core. Project cognition and Rossovia
 resume are future domain methods over this mechanism, not its defining schema; see
 [decision 039](design/decisions/039-general-cognition-experiment.md).
 
-[`operations/autonomy`](operations/autonomy/README.md) is the project-local
+[`apps/autonomy`](apps/autonomy/README.md) is the project-local
 supervised-Mission experiment. Its implemented first slice retains ordered
 human input, bounded Agent turns, delegation evidence, reconciliation, and
 local recovery. Read-only and graceful-restart mechanism claims have guarded

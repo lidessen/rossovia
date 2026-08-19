@@ -15,12 +15,12 @@ same candidate exposed a real implementation defect: `db/schema.ts` used
 `index(...)` without importing `index`.
 
 The retained failed effect remains valid historical evidence. It cannot be
-re-verified or silently replaced because the [effect journal](../../operations/autonomy/src/effect-journal.ts)
+re-verified or silently replaced because the [effect journal](../../apps/autonomy/src/effect-journal.ts)
 admits one immutable independent-verification event. Directly editing the
 candidate now would make the Workbench projection stale without recording who
 performed the repair, which failure it answered, or whether the new bytes were
 independently verified. Re-authorizing the original
-[external Blog runtime](../../operations/autonomy/experiments/agent-era-blog-mission-runtime.ts)
+[external Blog runtime](../../apps/autonomy/experiments/agent-era-blog-mission-runtime.ts)
 would misrepresent a known local repair as another external model decision and
 would violate the receipt's one-use boundary.
 
@@ -158,7 +158,7 @@ a fresh isolated execution safer and cheaper.
 Treatment A was run against the retained Blog failure without another external
 model execution. A structured Mission correction input was appended before the
 repair, the missing `index` import was added to `db/schema.ts`, and the
-[Blog-local verifier](../../operations/autonomy/src/local-correction.ts)
+[Blog-local verifier](../../apps/autonomy/src/local-correction.ts)
 produced an immutable passing report with digest
 `44b0ffb003ab18010bac8366bfb207f5fa57a7f939fdc866166700808fea4de5`.
 The Workbench projection preserved the original `failed` verdict as stale,
@@ -170,7 +170,7 @@ supported: the report proves `provider: null` and zero model budget, but the
 human and protocol cost was not measured against a comparable fresh execution.
 Condition 2 is not satisfied:
 
-- [Mission correction input](../../operations/autonomy/src/mission-input.ts)
+- [Mission correction input](../../apps/autonomy/src/mission-input.ts)
   validates a declared subject and scope before it is retained, but the actual
   file edit does not pass through that scope;
 - the verifier rejects a changed failed-subject file after the edit, rather

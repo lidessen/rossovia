@@ -13,11 +13,11 @@ import {
   AiSdkValidationDriver,
   createValidationModel,
 } from "../../packages/work-cell/src/integrations/ai-sdk";
-import { executionAuthorizationClaimPath } from "../../operations/workbench/src/execution-authorization-claim";
+import { executionAuthorizationClaimPath } from "../../apps/workbench/src/execution-authorization-claim";
 import {
   MissionExecutionProposalSchema,
   type MissionExecutionProposal,
-} from "../../operations/workbench/src/mission-execution-proposal";
+} from "../../apps/workbench/src/mission-execution-proposal";
 import {
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
   WorkbenchTaskExecutionContextSchema,
@@ -26,36 +26,36 @@ import {
   workbenchTaskExecutionContextRef,
   sameWorkbenchTaskExecutionContextRef,
   type WorkbenchTaskExecutionContext,
-} from "../../operations/workbench/src/task-execution-context";
+} from "../../apps/workbench/src/task-execution-context";
 import {
   DelegateLoopSession,
   type DelegateCall,
   type DelegateLoopRun,
-} from "../../operations/autonomy/src/delegate-loop";
-import type { FileMissionTimeline } from "../../operations/autonomy/src/delegate-timeline";
-import { FileEffectJournal } from "../../operations/autonomy/src/effect-journal";
-import { stableStringify } from "../../operations/autonomy/src/canonical-json";
-import type { MissionExecutionController } from "../../operations/autonomy/src/mission-execution-host";
-import { missionRunnerDirectory } from "../../operations/autonomy/src/mission-runner";
+} from "../../apps/autonomy/src/delegate-loop";
+import type { FileMissionTimeline } from "../../apps/autonomy/src/delegate-timeline";
+import { FileEffectJournal } from "../../apps/autonomy/src/effect-journal";
+import { stableStringify } from "../../apps/autonomy/src/canonical-json";
+import type { MissionExecutionController } from "../../apps/autonomy/src/mission-execution-host";
+import { missionRunnerDirectory } from "../../apps/autonomy/src/mission-runner";
 import type {
   MissionRuntimeFactory,
   MissionRuntimeRecoveryCapabilities,
   PreparedMissionExecution,
-} from "../../operations/autonomy/src/mission-runtime";
-import { digestAnchor } from "../../operations/autonomy/src/mission-reconciliation";
+} from "../../apps/autonomy/src/mission-runtime";
+import { digestAnchor } from "../../apps/autonomy/src/mission-reconciliation";
 import {
   MissionSupervisorSession,
   type MissionSupervisorTransition,
-} from "../../operations/autonomy/src/mission-supervisor";
+} from "../../apps/autonomy/src/mission-supervisor";
 import {
   MISSION_TURN_VERSION,
   type MissionTurnStart,
-} from "../../operations/autonomy/src/mission-turn";
+} from "../../apps/autonomy/src/mission-turn";
 import {
   claimProjectExecutionAuthorization,
   type ProjectExecutionAuthorizationContract,
   validateProjectExecutionAuthorization,
-} from "../../operations/autonomy/experiments/project-execution-authorization";
+} from "../../apps/autonomy/experiments/project-execution-authorization";
 import { validateProjectBundle } from "./lib/project-evidence-bundle.js";
 import {
   PROJECT_LENS_MATERIALIZER_REF,
@@ -67,7 +67,7 @@ import { buildProjectLensBundle } from "./scripts/project-lens-builder.js";
 const WORKTREE_ENV = "ROSSO_PROJECT_LENS_EFFECT_ROOT";
 const AUTHORIZATION_RECEIPT_ENV = "ROSSO_PROJECT_LENS_AUTHORIZATION_RECEIPT";
 const MISSION_ID = "project-lens-dogfood";
-const MISSION_SOURCE = "operations/missions/project-lens-dogfood.json";
+const MISSION_SOURCE = "apps/missions/project-lens-dogfood.json";
 const RUNTIME_REF = PROJECT_LENS_MATERIALIZER_REF;
 const RUNTIME_SOURCE_PATH = fileURLToPath(import.meta.url);
 const OBLIGATION = "select-and-materialize-one-project-lens-arrival-path";
@@ -143,8 +143,8 @@ export const PROJECT_LENS_PROVIDER_READ_PATHS = [
   "experiments/human-agent-visualization/README.md",
   "experiments/human-agent-visualization/scripts/project-lens-builder.js",
   "experiments/human-agent-visualization/tests/project-lens.test.js",
-  "operations/workbench/AGENTS.md",
-  "operations/workbench/README.md",
+  "apps/workbench/AGENTS.md",
+  "apps/workbench/README.md",
   MISSION_SOURCE,
 ] as const;
 

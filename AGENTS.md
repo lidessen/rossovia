@@ -87,7 +87,7 @@ persistent state or runtime capability is actually requested.
 When a request concerns Workbench setup or migration, workspace roots, project
 registration or routing, preferences, local or cross-project tasks, Mission
 continuity, or supervised execution, read
-[the scoped Workbench instructions](operations/workbench/AGENTS.md) and follow
+[the scoped Workbench instructions](apps/workbench/AGENTS.md) and follow
 only the matching entry. That file owns the exact CLI mapping and operational
 authority boundaries. Do not load it for ordinary repository, Skill, or direct
 delegation work.

@@ -253,10 +253,10 @@ Rossovia already contains parts of the required relation:
   bounded human-governed form.
 - [Work Cell](../../packages/work-cell/README.md) supplies an isolated,
   replaceable execution unit with retained evidence.
-- [Autonomy](../../operations/autonomy/README.md) retains ordered Mission
+- [Autonomy](../../apps/autonomy/README.md) retains ordered Mission
   input, turns, delegation, interruption, reconciliation, and local recovery.
 - [Decision 050](../decisions/050-principal-workbench-supervised-mvp.md) and
-  [Workbench](../../operations/workbench/README.md) make the current
+  [Workbench](../../apps/workbench/README.md) make the current
   multi-project system perceptible and provide explicit human intervention.
 
 The present architecture nevertheless describes its transitional constraints

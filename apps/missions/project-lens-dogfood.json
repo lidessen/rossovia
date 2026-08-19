@@ -1,0 +1,162 @@
+{
+  "version": "mission-record.v1",
+  "id": "project-lens-dogfood",
+  "title": "Run one supervised Project Lens dogfood introduction",
+  "sources": [
+    "workbench-task:1ce3278e-e2b6-4529-95f9-01095e66d3cb@11",
+    "workbench-correction:a9250fc6-31d6-4545-801e-5c1eee56b173",
+    "workbench-task:6bce989a-4d25-44b2-ba00-f0a266769590@3",
+    "workbench-correction:3d51fdb7-8fbb-4a14-8073-b66a114478f6",
+    "reviewed-local-commit:1d0d1fcb9bb4c0d6cc01dc0f8ead22c87c51d809",
+    "experiments/human-agent-visualization/DESIGN.md#project-lens"
+  ],
+  "createdAt": "2026-08-11T18:00:00Z",
+  "updatedAt": "2026-08-18T20:35:10Z",
+  "mainline": {
+    "contradiction": "Project Lens has a real deterministic local builder, while Rossovia needs one project-owned supervised runtime that truthfully separates the builder's complete local traversal from narrower external focus selection and consumes one fresh task-bound authorization.",
+    "acceptance": [
+      "Trusted Workbench launch resolves exactly the project-owned runtime source and supplies its candidate worktree, one-use authorization receipt, and server-formed task context.",
+      "The runtime locally traverses every declared repository root subject to the builder's real exclusions, while DeepSeek receives only the separately declared provider paths and task context.",
+      "The external Cell selects focusSources only as explanation order; the existing Project Lens builder creates and validates experiments/human-agent-visualization/generated/project-evidence-bundle.json.",
+      "HOLD releases no disclosure, budget, write, or execution authority; ALLOW authorizes only one supervised candidate with commit, merge, publish, and product acceptance withheld.",
+      "The generated bundle remains a local reconstructible projection for later inspection and is not integration or product acceptance evidence."
+    ],
+    "status": "active"
+  },
+  "branches": [
+    {
+      "id": "continuation-start",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "修复同一 Mission 既有 initial anchor 后的后续监督启动，并只处理经证实的 stale runner/socket 启动残留，使 Project Lens v3 能在 provider 前通过正式 UI launch 通路",
+      "returnCondition": "最小补丁由独立审查证明不删除 timeline、不重置初始 anchor、不绕过 UI、不新增 gate；针对既有 timeline 后续 turn 与确证 stale runner 的回归测试通过并集成 main",
+      "sources": [
+        "runtime-observation:project-lens-v3-prelaunch-anchor-conflict",
+        "runtime-observation:project-lens-v3-stale-runner-socket"
+      ],
+      "status": "closed",
+      "disposition": "no-change",
+      "mainlineDelta": "Current HEAD already omits initialAnchor for seeded Mission continuation; the observed socket remains owned by live carrier PID 31825 while sandboxed connect reports masked ENOENT, so no Workbench or Autonomy code change is admitted."
+    }
+  ],
+  "currentFocus": "mainline",
+  "executionProposal": {
+    "version": "mission-execution-proposal.v2",
+    "proposalId": "project-lens-dogfood-v6",
+    "mode": "supervised",
+    "status": "awaiting-principal-authorization",
+    "runtimeRef": "source-project:experiments/human-agent-visualization/project-lens-runtime.ts",
+    "runtimeDigest": "9943abaa746a5c62b6b877f873e6bc70edc5e5ca59e048105aadffd56bed6bd8",
+    "externalProvider": {
+      "name": "DeepSeek",
+      "boundary": "external"
+    },
+    "externalDisclosure": {
+      "dataCategories": [
+        "Server-formed Workbench task objective, acceptance conditions, and retained Principal correction statements",
+        "Contents of only these repository paths: AGENTS.md, README.md, principles/SEQUENCE.md, skills/visualization/SKILL.md, experiments/human-agent-visualization/PRD.md, experiments/human-agent-visualization/DESIGN.md, experiments/human-agent-visualization/README.md, experiments/human-agent-visualization/scripts/project-lens-builder.js, experiments/human-agent-visualization/tests/project-lens.test.js, apps/workbench/AGENTS.md, apps/workbench/README.md, apps/missions/project-lens-dogfood.json",
+        "Project Lens focus-selection instructions, question, audience, and local artifact acceptance criteria",
+        "No other repository files, Git metadata, secrets, environment values, authorization receipts, Mission timeline, or generated bundle"
+      ]
+    },
+    "candidateWorktree": {
+      "rootRef": "environment:ROSSO_PROJECT_LENS_EFFECT_ROOT",
+      "binding": "operator-selected-at-launch"
+    },
+    "scope": {
+      "readPaths": [
+        ".agent",
+        ".agents",
+        ".claude",
+        ".codex",
+        ".cursor",
+        ".gitattributes",
+        ".github",
+        ".gitignore",
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "LICENSE",
+        "README.md",
+        "README.zh-CN.md",
+        "archive",
+        "chronicle",
+        "design",
+        "evaluations",
+        "experiments",
+        "apps",
+        "packages",
+        "principles",
+        "scripts",
+        "site",
+        "skills",
+        "vercel.json"
+      ],
+      "excludePaths": [
+        ".git",
+        ".work-cell",
+        ".reasonix",
+        "node_modules",
+        "dist",
+        "build",
+        "target",
+        "coverage",
+        "generated",
+        "outputs",
+        ".next",
+        "experiments/agent-era-blog/build",
+        "experiments/human-agent-visualization/generated",
+        "evaluations/evidence/2026-08-04-prompt-composition-round2/baseline/scoring/outputs"
+      ],
+      "writePaths": [
+        "experiments/human-agent-visualization/generated/project-evidence-bundle.json"
+      ],
+      "commands": []
+    },
+    "budget": {
+      "parent": {
+        "maxModelSteps": 3,
+        "maxOutputTokensPerStep": 2000
+      },
+      "delegatedCell": {
+        "maxSteps": 8,
+        "maxOutputTokensPerStep": 8000,
+        "maxDurationMs": 180000
+      },
+      "estimatedTokens": 24000,
+      "estimatedTokensSemantics": "forecast-only-not-stop-condition"
+    },
+    "authority": {
+      "externalDisclosure": "withheld",
+      "budgetRelease": "withheld",
+      "write": "withheld",
+      "execute": "withheld",
+      "commit": "withheld",
+      "merge": "withheld",
+      "publish": "withheld"
+    },
+    "pendingDecisions": [
+      {
+        "id": "external-disclosure",
+        "label": "Authorize one declared DeepSeek Project Lens disclosure",
+        "proposal": "ALLOW",
+        "status": "pending",
+        "options": [
+          {
+            "replyKey": "ALLOW",
+            "label": "Run one candidate",
+            "immediateResult": "Disclose only the declared provider-input paths and task context, release the declared budget, and write one generated bundle in the isolated candidate.",
+            "tradeoff": "The declared task and repository excerpts leave the local boundary and may incur model cost; the output remains an unaccepted local projection."
+          },
+          {
+            "replyKey": "HOLD",
+            "label": "Keep blocked",
+            "immediateResult": "Do not disclose repository content, release budget or write authority, start the runtime, or generate a candidate bundle.",
+            "tradeoff": "No live Project Lens dogfood evidence is produced."
+          }
+        ],
+        "compactReplyKey": "ALLOW"
+      }
+    ]
+  }
+}

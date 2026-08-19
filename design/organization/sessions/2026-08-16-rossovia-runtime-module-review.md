@@ -168,7 +168,7 @@ The candidate is constrained by five existing boundary decisions:
   Mission meaning ([Decision 007](../../decisions/007-independent-work-cell-runtime.md)).
 - Mission Records preserve material cross-session return obligations and are
   not a task board, scheduler, or launch authority
-  ([Mission boundaries](../../../operations/missions/README.md#boundaries)).
+  ([Mission boundaries](../../../apps/missions/README.md#boundaries)).
 - Conversation storage owns delivery, order, causal references, and reconnect;
   it does not copy Task, Mission, effect, or acceptance truth
   ([System Case authority map](2026-08-13-conversation-command-entry-system-case.md#canonical-authority-and-state-map)).
@@ -512,12 +512,12 @@ becomes replay, and reconnect is only transport behavior.
 
 This compression follows the present owners rather than the present file
 count: Workbench already holds revisioned Task meaning in
-[`contracts.ts`](../../../operations/workbench/src/contracts.ts) and
-[`tasks.ts`](../../../operations/workbench/src/tasks.ts); ordinary execution,
+[`contracts.ts`](../../../apps/workbench/src/contracts.ts) and
+[`tasks.ts`](../../../apps/workbench/src/tasks.ts); ordinary execution,
 attempt evidence, and the current Worktree lease meet in
-[`task-run.ts`](../../../operations/workbench/src/task-run.ts); conversational
+[`task-run.ts`](../../../apps/workbench/src/task-run.ts); conversational
 execution duplicates part of that lifecycle in
-[`execution-carrier.ts`](../../../operations/workbench/src/conversation/execution-carrier.ts);
+[`execution-carrier.ts`](../../../apps/workbench/src/conversation/execution-carrier.ts);
 and the standalone Cell envelope and host-effect boundary live in
 [`run-cell.ts`](../../../packages/work-cell/src/run-cell.ts) and
 [`host-tools.ts`](../../../packages/work-cell/src/integrations/ai-sdk/host-tools.ts). Those files
@@ -554,12 +554,12 @@ and several duplicate lifecycles that should be consolidated.
 
 | Current design family | Target form | Direction |
 |---|---|---|
-| [Conversation journal](../../../operations/workbench/src/conversation/journal.ts), message identity, action receipt, and reconnect cursor | Activated durable-ingress mechanism for O1/O2 | Keep only for interaction that must survive reconnect or process replacement; do not require it for direct Runs |
-| [Prompt composition](../../../operations/autonomy/src/conversation-prompt.ts), [context assembly](../../../operations/workbench/src/conversation/context.ts), worker selection, model/tool/budget choice | O1 judgment, projection, and policy | Keep replaceable and mostly rebuildable; do not add a decision-state machine |
-| [Execution authorization](../../../operations/workbench/src/execution-authorization.ts) receipt and consumption | Activated grant mechanism referenced by O2 | Retain one canonical grant and one-use consumption when a Run actually requires prior authority; do not copy its fields into parallel receipts |
-| [Attempt, input, final, settlement, and recovery](../../../operations/workbench/src/task-attempts.ts) plus control, continuation, and carrier | O2 Run phases, evidence, and live-handle projection | Consolidate around one Run identity; a carrier is not a second durable lifecycle |
+| [Conversation journal](../../../apps/workbench/src/conversation/journal.ts), message identity, action receipt, and reconnect cursor | Activated durable-ingress mechanism for O1/O2 | Keep only for interaction that must survive reconnect or process replacement; do not require it for direct Runs |
+| [Prompt composition](../../../apps/autonomy/src/conversation-prompt.ts), [context assembly](../../../apps/workbench/src/conversation/context.ts), worker selection, model/tool/budget choice | O1 judgment, projection, and policy | Keep replaceable and mostly rebuildable; do not add a decision-state machine |
+| [Execution authorization](../../../apps/workbench/src/execution-authorization.ts) receipt and consumption | Activated grant mechanism referenced by O2 | Retain one canonical grant and one-use consumption when a Run actually requires prior authority; do not copy its fields into parallel receipts |
+| [Attempt, input, final, settlement, and recovery](../../../apps/workbench/src/task-attempts.ts) plus control, continuation, and carrier | O2 Run phases, evidence, and live-handle projection | Consolidate around one Run identity; a carrier is not a second durable lifecycle |
 | Mission input, anchor, and continuity | Activated long-horizon authoritative work-source facts inside Orchestration | Keep one canonical writer, explicit settlement, and a deletion/archival path after the return obligation is discharged; lower each concrete execution through O2 |
-| [Contribution](../../../operations/workbench/src/conversation/contributions.ts) spawn reservation, liveness, control, terminal state, and lease recovery | Duplicate Run lifecycle around an optional strategy | Retain contribution intent, dependency key, synthesis relation, and result reference; replace its execution lifecycle with O2 |
+| [Contribution](../../../apps/workbench/src/conversation/contributions.ts) spawn reservation, liveness, control, terminal state, and lease recovery | Duplicate Run lifecycle around an optional strategy | Retain contribution intent, dependency key, synthesis relation, and result reference; replace its execution lifecycle with O2 |
 | [Swarm and queue](../../../packages/work-cell/src/orchestration.ts), graph, and delegate batches | Scheduling policy plus aggregate projection over many O2 Runs | Move from the Cell kernel to Orchestration; no aggregate `*Run` may be confused with the one-Cell O2 Run |
 | Cell [`TaskStore`](../../../packages/work-cell/src/task-store.ts), native todos, and plan items | Optional execution-local checklist/evidence | Default to absent; remove ownership/dependency semantics that duplicate Workbench Tasks or orchestration graphs unless a concrete experiment needs them |
 | Terminal tools | Caller-selected C3 submission interface | Keep the one-of mechanical check; do not make each terminal form a mechanism |
@@ -569,8 +569,8 @@ and several duplicate lifecycles that should be consolidated.
 | [Model route](../../../packages/work-cell/src/integrations/ai-sdk/model-route.ts) and availability fallback | Integration mechanism under explicit O1 policy | Keep provider error semantics and no-replay boundary inside adapters; do not let routing restart a Cell or become Run truth |
 | [Worker catalog](../../../packages/work-cell/src/worker-catalog.ts), [provider profile](../../../packages/work-cell/src/integrations/ai-sdk/provider-profile.ts), quota observer, pricing, and fingerprints | O1 policy plus Integration observation | Keep selected facts source-linked and replaceable; they are not Cell-core state |
 | Trace, raw steps, activity, summaries, indexes, and status | C3/O2 evidence plus rebuildable projections | Keep the minimum causal ledger; make raw provider diagnostics opt-in and never a second final |
-| [Hooks](../../../operations/workbench/src/hooks.ts), setup, migration, launcher, statusline, and host payload normalization | Integrations | Keep only bindings with a current host consumer; they create no Workbench or Run truth |
-| [Snapshot and work-item](../../../operations/workbench/src/ui/projection.ts) feed/browser state | Presentation | Rebuild from named owners and delete duplicate liveness/semantic state |
+| [Hooks](../../../apps/workbench/src/hooks.ts), setup, migration, launcher, statusline, and host payload normalization | Integrations | Keep only bindings with a current host consumer; they create no Workbench or Run truth |
+| [Snapshot and work-item](../../../apps/workbench/src/ui/projection.ts) feed/browser state | Presentation | Rebuild from named owners and delete duplicate liveness/semantic state |
 | Cognition, deliberation, evaluation, activation, and probes | Labs or domain adapters | Keep outside normal startup and public core exports until a separately accepted product role exists |
 
 The word *mechanism* still applies to an activated journal, grant, or provider
@@ -725,8 +725,8 @@ the generation check internally, but it is not a second semantic mechanism.
 
 The current implementation reads `tasks.json`, checks `sourceRevision`, and
 later atomically renames a replacement file
-([`tasks.ts`](../../../operations/workbench/src/tasks.ts),
-[`home.ts`](../../../operations/workbench/src/home.ts)). Two processes can both
+([`tasks.ts`](../../../apps/workbench/src/tasks.ts),
+[`home.ts`](../../../apps/workbench/src/home.ts)). Two processes can both
 read generation N before either rename, both pass the check, and both write
 generation N+1; atomic rename prevents a torn file but not the lost update.
 Therefore the present generation is a useful stale-snapshot precondition, not
@@ -878,7 +878,7 @@ outcome as non-terminal.
 The current `rossovia-task-run.lock` already implements much of this shape:
 atomic `wx` creation in the exact Git metadata directory, Task/attempt/PID
 identity, byte-matched release, and fail-closed dead-owner reconciliation in
-[`task-run.ts`](../../../operations/workbench/src/task-run.ts). It has no expiry,
+[`task-run.ts`](../../../apps/workbench/src/task-run.ts). It has no expiry,
 renewal, or time-bounded ownership. In distributed-systems terminology that is
 closer to an **owner-identified exclusive lock** than a lease. The target name
 therefore describes the invariant rather than preserving the historical
@@ -1162,9 +1162,9 @@ current evidence, not ownership authority.
 | [`runCell`](../../../packages/work-cell/src/run-cell.ts) constructs the concrete filesystem/Bun workspace itself and validates capability strings declared by the same input | The candidate's injected `HostCapabilities` boundary is not yet real; a self-declared label is not effect authority | Inject an enforceable host environment behind C2 and test it with a fake host plus the filesystem adapter |
 | Work Cell [AI SDK](../../../packages/work-cell/src/integrations/ai-sdk/ai-sdk-driver.ts)/[Pi](../../../packages/work-cell/src/integrations/ai-sdk/pi-harness-driver.ts) drivers default-create [`TaskStore`](../../../packages/work-cell/src/task-store.ts), while Autonomy imports the same task/dependency kernel | Cell checklist, orchestration dependency, and Workbench Task meanings are physically coupled | Rename/narrow the Cell-local form, make it opt-in, and give dependency/scheduling policy to Orchestration |
 | [`CellRunRecord.runId`](../../../packages/work-cell/src/contracts.ts) names the Cell invocation while Workbench attempts and several aggregates also use “run” | One word currently addresses different cardinalities and recovery owners | Rename the Cell field conceptually to `cellInvocationId`; retain compatibility during migration |
-| [`operations/workbench/package.json`](../../../operations/workbench/package.json) depends on AI SDK and task/conversation paths dynamically load [Autonomy worker policy](../../../operations/autonomy/src/worker-policy.ts) | The physical Workbench package owns both pure Project/Task state and Orchestration/Integration runtime code | Keep the Workbench domain port dependency-light; move task-run, conversation execution, provider policy, and runtime composition behind Orchestration ports |
-| [`task-run`](../../../operations/workbench/src/task-run.ts), [conversation execution](../../../operations/workbench/src/conversation/execution-carrier.ts), [contribution](../../../operations/workbench/src/conversation/contributions.ts), [Mission runner](../../../operations/autonomy/src/mission-runner.ts), [Swarm](../../../packages/work-cell/src/swarm.ts), and [effect journal](../../../operations/autonomy/src/effect-journal.ts) each retain overlapping start/live/control/final/recovery concepts | Multiple execution forms can disagree about liveness, terminality, control, and recovery | Introduce one O2 Run contract, then reduce strategy records to their unique semantic and aggregate facts |
-| [`SwarmRun`](../../../packages/work-cell/src/swarm.ts) and [`DelegateLoopRun`](../../../operations/autonomy/src/delegate-loop.ts) name aggregates containing multiple Cell outcomes | The target uses one O2 Run for one causal request and at most one Cell; aggregate “Run” names obscure cardinality and authority | Rename them batch/group/turn projections; every child execution receives its own O2 Run identity |
+| [`apps/workbench/package.json`](../../../apps/workbench/package.json) depends on AI SDK and task/conversation paths dynamically load [Autonomy worker policy](../../../apps/autonomy/src/worker-policy.ts) | The physical Workbench package owns both pure Project/Task state and Orchestration/Integration runtime code | Keep the Workbench domain port dependency-light; move task-run, conversation execution, provider policy, and runtime composition behind Orchestration ports |
+| [`task-run`](../../../apps/workbench/src/task-run.ts), [conversation execution](../../../apps/workbench/src/conversation/execution-carrier.ts), [contribution](../../../apps/workbench/src/conversation/contributions.ts), [Mission runner](../../../apps/autonomy/src/mission-runner.ts), [Swarm](../../../packages/work-cell/src/swarm.ts), and [effect journal](../../../apps/autonomy/src/effect-journal.ts) each retain overlapping start/live/control/final/recovery concepts | Multiple execution forms can disagree about liveness, terminality, control, and recovery | Introduce one O2 Run contract, then reduce strategy records to their unique semantic and aggregate facts |
+| [`SwarmRun`](../../../packages/work-cell/src/swarm.ts) and [`DelegateLoopRun`](../../../apps/autonomy/src/delegate-loop.ts) name aggregates containing multiple Cell outcomes | The target uses one O2 Run for one causal request and at most one Cell; aggregate “Run” names obscure cardinality and authority | Rename them batch/group/turn projections; every child execution receives its own O2 Run identity |
 
 This is a migration finding, not an instruction to move files immediately. The
 new ports must exist and preserve the standalone and crash-recovery probes

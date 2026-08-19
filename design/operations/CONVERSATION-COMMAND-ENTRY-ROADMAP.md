@@ -4,7 +4,7 @@
 execution, integration, or acceptance authority
 
 **Current-state source:** the primary-workspace
-[`conversation-command-entry` Mission](../../operations/missions/conversation-command-entry.json),
+[`conversation-command-entry` Mission](../../apps/missions/conversation-command-entry.json),
 read through the scoped Mission status operation
 
 ## Purpose and reading order
@@ -24,7 +24,7 @@ Read only the sources needed for the current judgment:
 3. Read the scoped product case, implementation plan, or verification record
    only when the task concerns that product behavior or its historical
    evidence.
-4. Read the [Workbench instructions](../../operations/workbench/AGENTS.md) for
+4. Read the [Workbench instructions](../../apps/workbench/AGENTS.md) for
    an actual Workbench, Task, Mission, or execution operation, and the
    [operating protocol](OPERATING-PROTOCOL.md) when work enters a branch,
    review, PR, merge, or cleanup path.
@@ -43,12 +43,12 @@ that ownership.
 | [Root `AGENTS.md`](../../AGENTS.md) | Repository entry and routing to the smallest governing source. | On repository entry; return to it when scope changes. | Repository guidance. |
 | [Decision 055](../decisions/055-rossovia-runtime-module-ownership.md) | Accepted target ownership for Workbench, Orchestration Runtime, Work Cell, Integrations, and Presentation; also the authority, failure, and cardinality boundaries among them. | Before adding, moving, reviewing, or removing a runtime mechanism. | Accepted architecture; only a Principal-authorized decision can reopen it. |
 | [Runtime ownership migration](../organization/rossovia-runtime-ownership-migration.md) | Ordered ownership transfers, stage exits, compatibility limits, and removal proof. | Before shaping a migration slice or claiming a stage complete. | The migration plan under Decision 055; each slice still needs its own authorization, evidence, review, and integration. |
-| [Workbench `AGENTS.md`](../../operations/workbench/AGENTS.md) | Natural-language-to-command mappings and authority boundaries for setup, preferences, Tasks, Mission continuity, supervised execution, and browser observation. | Load only the entry matching a requested Workbench operation. | The scoped Workbench operating instruction surface. |
+| [Workbench `AGENTS.md`](../../apps/workbench/AGENTS.md) | Natural-language-to-command mappings and authority boundaries for setup, preferences, Tasks, Mission continuity, supervised execution, and browser observation. | Load only the entry matching a requested Workbench operation. | The scoped Workbench operating instruction surface. |
 | [Human-Initiated Operating Protocol](OPERATING-PROTOCOL.md) | Human-triggered formation, branch/worktree discipline, independent review, Principal decision handoff, integration, and continuity safe points. | When work must survive a session or enter shared review, publication, merge, or cleanup. | Repository operating protocol; the Principal retains acceptance and merge authority. |
 | [Conversation Command Entry System Case](../organization/sessions/2026-08-13-conversation-command-entry-system-case.md) | The original product problem, canonical-source map, duplex conversation relation, coordinator boundary, policy/non-goals, and falsification questions. | When reasoning about product behavior or why the entry exists. Do not use it as current accepted runtime architecture; its own status remains candidate. | Its source-bound design record; product settlement remains with the Mission acceptance. |
 | [Prepared implementation plan](../organization/sessions/2026-08-13-conversation-command-entry-implementation-plan.md) | Historical capability-wave decomposition, ownership packets, named dogfood, checks, and prohibited additions for the first implementation. | When reconstructing the original implementation sequence or a wave's intended boundary. Do not use it as current implementation or authorization evidence. | The prepared process artifact; later accepted decisions and current source supersede it where they differ. |
 | [P7 whole verification](../organization/sessions/2026-08-13-conversation-command-entry-verification.md) | Frozen behavioral, provider, event, and browser evidence plus F1–F6 findings at its named product revision. | When tracing what P7 actually observed or why a correction exists. Re-run current evidence before a readiness claim. | Independent verification evidence only; it cannot revise design or accept the product. |
-| [`conversation-command-entry` Mission](../../operations/missions/conversation-command-entry.json) | Durable current cross-session contradiction, acceptance, branch obligations, return conditions, dispositions, and focus. | At continuity safe points and before reporting current work. Use the official status/check surfaces rather than editing or inferring. | The Git-tracked Mission record; it is coordination truth, not architecture, a backlog, launch authority, or acceptance. |
+| [`conversation-command-entry` Mission](../../apps/missions/conversation-command-entry.json) | Durable current cross-session contradiction, acceptance, branch obligations, return conditions, dispositions, and focus. | At continuity safe points and before reporting current work. Use the official status/check surfaces rather than editing or inferring. | The Git-tracked Mission record; it is coordination truth, not architecture, a backlog, launch authority, or acceptance. |
 | This roadmap | A compact route through the sources, stage exits, current TODO families, and model policy. | On first orientation or when a later Agent cannot tell which document to trust. | Documentation projection. Source owners above retain every underlying fact. |
 
 ## Migration stage exits
@@ -150,13 +150,13 @@ attempt state, branch activity, or check output here.
   as observed. A required-profile mismatch or unavailable capability is visible,
   never a silent downgrade.
 - Select a current worker through `worker list`, the host-owned
-  [worker policy](../../operations/autonomy/src/worker-policy.ts), and the
-  matching [Workbench instructions](../../operations/workbench/AGENTS.md#rossovia-local-task-entry).
+  [worker policy](../../apps/autonomy/src/worker-policy.ts), and the
+  matching [Workbench instructions](../../apps/workbench/AGENTS.md#rossovia-local-task-entry).
   OpenCode Go is an AI SDK provider behind a current worker profile, not a
   default worker, harness, or fallback. Do not invent a combined provider/model
   identity that the catalog does not expose.
 - The current
-  [Mission acceptance](../../operations/missions/conversation-command-entry.json)
+  [Mission acceptance](../../apps/missions/conversation-command-entry.json)
   requires DeepSeek Pro with thinking and `reasoning=max` for the conversation
   coordinator. That scoped requirement is not an ordinary implementation
   default. The Principal's desired future division of labor among ordinary

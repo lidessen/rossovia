@@ -5,7 +5,7 @@ implementation authority
 
 **Date:** 2026-08-13
 
-**Mission:** [conversation-command-entry](../../../operations/missions/conversation-command-entry.json)
+**Mission:** [conversation-command-entry](../../../apps/missions/conversation-command-entry.json)
 
 **Repository evidence baseline:** `23246d48b8e01792e34d8b0f4bed22f030b66bf1`;
 the design worktree began at `2ca83a619b9869ded320f952b0773549a4e7d555`,
@@ -74,7 +74,7 @@ using CLI forms:
 6. use the entry for ordinary local multi-project direction without depending on
    a Codex conversation as the session-level coordinator.
 
-The accepted [Mission acceptance](../../../operations/missions/conversation-command-entry.json)
+The accepted [Mission acceptance](../../../apps/missions/conversation-command-entry.json)
 owns product settlement. This candidate describes a system relation that could
 satisfy it; neither this document nor its author accepts that outcome.
 
@@ -88,12 +88,12 @@ conversation runtime:
   Task project context requires a registered project and its current primary
   observation, while `task run` additionally requires an exact existing
   Worktree binding
-  ([Workbench route](../../../operations/workbench/AGENTS.md#rossovia-workbench-entry),
-  [resolution](../../../operations/workbench/src/resolve.ts#L15-L51),
-  [Task binding](../../../operations/workbench/src/tasks.ts#L793-L850),
-  [run binding](../../../operations/workbench/src/task-run.ts#L149-L164)).
+  ([Workbench route](../../../apps/workbench/AGENTS.md#rossovia-workbench-entry),
+  [resolution](../../../apps/workbench/src/resolve.ts#L15-L51),
+  [Task binding](../../../apps/workbench/src/tasks.ts#L793-L850),
+  [run binding](../../../apps/workbench/src/task-run.ts#L149-L164)).
 - Local Principal Tasks are created and mutated in
-  [`state/tasks.json`](../../../operations/workbench/src/tasks.ts#L147-L238),
+  [`state/tasks.json`](../../../apps/workbench/src/tasks.ts#L147-L238),
   using source and task revisions; correction reopens the same unsettled task,
   and submitted output remains a claim until explicit acceptance.
 - CLI `task run` lowers one open task into immutable attempt input, a Work Cell
@@ -102,22 +102,22 @@ conversation runtime:
   observation, and the ordinary Task control plane has no pause/resume/stop
   operation. The attempt projection intentionally omits the raw trace and takes
   requested and observed facts from their respective sources
-  ([task run](../../../operations/workbench/src/task-run.ts#L423-L471),
-  [attempt projection](../../../operations/workbench/src/task-attempts.ts#L11-L108),
-  [Task control plane](../../../operations/workbench/src/local-task-control-plane.ts#L49-L66)).
+  ([task run](../../../apps/workbench/src/task-run.ts#L423-L471),
+  [attempt projection](../../../apps/workbench/src/task-attempts.ts#L11-L108),
+  [Task control plane](../../../apps/workbench/src/local-task-control-plane.ts#L49-L66)).
 - A live Mission runner receives exact contribution, control, correction, and
   recovery through its runner boundary, while the Mission timeline retains
   ordered inputs, turns, delegation, and reconciliation
-  ([Mission input contract](../../../operations/autonomy/src/mission-input.ts),
-  [Workbench runner actions](../../../operations/workbench/src/ui/actions.ts#L28-L74),
-  [Mission runner](../../../operations/autonomy/src/mission-runner.ts)).
+  ([Mission input contract](../../../apps/autonomy/src/mission-input.ts),
+  [Workbench runner actions](../../../apps/workbench/src/ui/actions.ts#L28-L74),
+  [Mission runner](../../../apps/autonomy/src/mission-runner.ts)).
 - The browser server exposes snapshot reads and form-style POST mutations, and
   task launch is restricted to two trusted runtime adapters
-  ([server routes](../../../operations/workbench/src/ui/server.ts#L81-L187),
-  [runtime adapters](../../../operations/workbench/src/ui/task-execution-runtime-adapter.ts)).
+  ([server routes](../../../apps/workbench/src/ui/server.ts#L81-L187),
+  [runtime adapters](../../../apps/workbench/src/ui/task-execution-runtime-adapter.ts)).
   The browser refreshes `/api/snapshot` on a five-second polling interval rather
   than consuming a duplex event stream
-  ([browser polling](../../../operations/workbench/ui/app.js#L278-L304)).
+  ([browser polling](../../../apps/workbench/ui/app.js#L278-L304)).
 
 **Design inference.** The principal gap is not another chat renderer. It is an
 owned relation from one incoming Principal message, through coordinator judgment
@@ -135,16 +135,16 @@ with it.
 
 | Canonical source | Existing ownership | Conversation-entry relation |
 |---|---|---|
-| Registered project source and current workspace observation | A stable registered project ID owns project identity; a spoken alias resolves only to a routing projection. Project context is valid only from the registered project's current primary observation, and execution requires an exact observed Worktree ([Workbench route](../../../operations/workbench/AGENTS.md#rossovia-workbench-entry), [resolution](../../../operations/workbench/src/resolve.ts#L15-L51), [Task binding](../../../operations/workbench/src/tasks.ts#L793-L850)). | Before a project-bound Task mutation, the coordinator requires one unambiguous registered/current resolution; before execution, it requires the exact retained Worktree binding. Discovered, unregistered, ambiguous, stale, or unwritable results remain visible and cannot fall back to an independent Task or guessed Worktree. The exact pre-action representation is for planning. |
-| Local Task source | `state/tasks.json` owns the explicit local obligation, lifecycle, corrections, result claims, and Principal settlement; reviews add evidence without changing task standing ([Task source](../../../operations/workbench/src/tasks.ts#L147-L260), [review and acceptance](../../../operations/workbench/src/tasks.ts#L330-L384)). | The coordinator calls typed Task operations against current revisions. The journal references returned Task identity and revision; it never copies or decides task lifecycle. |
-| Git Mission record | A Mission record owns a material multi-session objective, open branches, acceptance, and return conditions; it is not a scheduler, backlog, or launch authority ([Mission Records](../../../operations/missions/README.md#boundaries)). | The entry projects Mission state and may route explicit input to an existing Mission. It does not create a Mission merely because a conversation exists. |
-| Authorization receipt | One receipt releases only its declared disclosure, budget, paths, and one launch; commit, merge, publish, and product acceptance stay withheld ([authorization receipt](../../../operations/workbench/src/execution-authorization.ts#L65-L111)). | The UI can present and invoke the existing authorization action when explicitly directed. A conversation message cannot imply or enlarge a receipt. |
-| Mission timeline | Ordered input receipts, turns, child delegation settlements, recovery, and reconciliation are durable Mission execution history ([timeline event contract](../../../operations/autonomy/src/delegate-timeline-events.ts), [turn contract](../../../operations/autonomy/src/mission-turn.ts)). | Conversation events refer to timeline event and turn identities. The feed does not rewrite timeline meaning into its own status. |
-| Effect journal | Prepared, started, tool, quiescence, verification, settlement, and uncertainty events own effect evidence; Principal acceptance remains withheld there ([effect journal](../../../operations/autonomy/src/effect-journal.ts#L30-L150)). | The feed projects effect facts and controls only through the owning runtime. It never infers effect completion from coordinator prose. |
-| Work Cell record and task-attempt evidence | One Cell record owns one bounded run's input, driver identity, trace, usage, workspace diff, structural verification, and terminal status; completion is process evidence, not correctness. An ordinary attempt's retained `started` state is start evidence, not a current-running observation ([Work Cell contracts](../../../packages/work-cell/src/contracts.ts#L218-L260), [attempt sources](../../../operations/workbench/src/task-attempts.ts#L11-L108)). | The entry shows selected operational events and evidence references. It neither promotes a run to Task authority nor exposes raw trace as the main conversation, and it renders current liveness unknown unless an exact runtime-owned observation proves it. |
-| **Candidate coordinator and execution-carrier observation** | **Design inference:** current coordinator/attempt liveness and authorized interruption/recovery must be owned by the exact carrier and correlated to durable conversation, Task, and attempt identity. Existing Mission runners expose such live status and controls; ordinary local Task attempts and their control plane do not ([Mission action status](../../../operations/workbench/src/ui/actions.ts#L28-L74), [Task control plane](../../../operations/workbench/src/local-task-control-plane.ts#L49-L66)). | The UI projects only owner-backed liveness/control. For the first persistent-work capability, execution uses an exact carrier with observable liveness and authorized control, such as a live Mission carrier, or start/control remains fail-visible. The final product must still acquire this property for ordinary daily Tasks; its representation is `[owning runtime/planning to determine]`. |
+| Registered project source and current workspace observation | A stable registered project ID owns project identity; a spoken alias resolves only to a routing projection. Project context is valid only from the registered project's current primary observation, and execution requires an exact observed Worktree ([Workbench route](../../../apps/workbench/AGENTS.md#rossovia-workbench-entry), [resolution](../../../apps/workbench/src/resolve.ts#L15-L51), [Task binding](../../../apps/workbench/src/tasks.ts#L793-L850)). | Before a project-bound Task mutation, the coordinator requires one unambiguous registered/current resolution; before execution, it requires the exact retained Worktree binding. Discovered, unregistered, ambiguous, stale, or unwritable results remain visible and cannot fall back to an independent Task or guessed Worktree. The exact pre-action representation is for planning. |
+| Local Task source | `state/tasks.json` owns the explicit local obligation, lifecycle, corrections, result claims, and Principal settlement; reviews add evidence without changing task standing ([Task source](../../../apps/workbench/src/tasks.ts#L147-L260), [review and acceptance](../../../apps/workbench/src/tasks.ts#L330-L384)). | The coordinator calls typed Task operations against current revisions. The journal references returned Task identity and revision; it never copies or decides task lifecycle. |
+| Git Mission record | A Mission record owns a material multi-session objective, open branches, acceptance, and return conditions; it is not a scheduler, backlog, or launch authority ([Mission Records](../../../apps/missions/README.md#boundaries)). | The entry projects Mission state and may route explicit input to an existing Mission. It does not create a Mission merely because a conversation exists. |
+| Authorization receipt | One receipt releases only its declared disclosure, budget, paths, and one launch; commit, merge, publish, and product acceptance stay withheld ([authorization receipt](../../../apps/workbench/src/execution-authorization.ts#L65-L111)). | The UI can present and invoke the existing authorization action when explicitly directed. A conversation message cannot imply or enlarge a receipt. |
+| Mission timeline | Ordered input receipts, turns, child delegation settlements, recovery, and reconciliation are durable Mission execution history ([timeline event contract](../../../apps/autonomy/src/delegate-timeline-events.ts), [turn contract](../../../apps/autonomy/src/mission-turn.ts)). | Conversation events refer to timeline event and turn identities. The feed does not rewrite timeline meaning into its own status. |
+| Effect journal | Prepared, started, tool, quiescence, verification, settlement, and uncertainty events own effect evidence; Principal acceptance remains withheld there ([effect journal](../../../apps/autonomy/src/effect-journal.ts#L30-L150)). | The feed projects effect facts and controls only through the owning runtime. It never infers effect completion from coordinator prose. |
+| Work Cell record and task-attempt evidence | One Cell record owns one bounded run's input, driver identity, trace, usage, workspace diff, structural verification, and terminal status; completion is process evidence, not correctness. An ordinary attempt's retained `started` state is start evidence, not a current-running observation ([Work Cell contracts](../../../packages/work-cell/src/contracts.ts#L218-L260), [attempt sources](../../../apps/workbench/src/task-attempts.ts#L11-L108)). | The entry shows selected operational events and evidence references. It neither promotes a run to Task authority nor exposes raw trace as the main conversation, and it renders current liveness unknown unless an exact runtime-owned observation proves it. |
+| **Candidate coordinator and execution-carrier observation** | **Design inference:** current coordinator/attempt liveness and authorized interruption/recovery must be owned by the exact carrier and correlated to durable conversation, Task, and attempt identity. Existing Mission runners expose such live status and controls; ordinary local Task attempts and their control plane do not ([Mission action status](../../../apps/workbench/src/ui/actions.ts#L28-L74), [Task control plane](../../../apps/workbench/src/local-task-control-plane.ts#L49-L66)). | The UI projects only owner-backed liveness/control. For the first persistent-work capability, execution uses an exact carrier with observable liveness and authorized control, such as a live Mission carrier, or start/control remains fail-visible. The final product must still acquire this property for ordinary daily Tasks; its representation is `[owning runtime/planning to determine]`. |
 | **Candidate interaction journal** | **Design inference:** the smallest missing durable source owns only receipt and settlement of conversational messages, causal correlation between a message/response/action and canonical source references, and reconnect ordering. | It must not own objective, lifecycle, authorization, effect truth, verification, or acceptance. Any work status it shows is rebuilt from the canonical sources above. |
-| Browser UI and provider session | The current UI already builds read-only projections; the draft Principal direction says conversation must not become the backend domain model ([server projection](../../../operations/workbench/src/ui/server.ts#L309-L419), [draft direction](../../AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md#workbench-is-a-perceptual-surface)). | Both are replaceable shells. Neither is a durable work identity or recovery source. |
+| Browser UI and provider session | The current UI already builds read-only projections; the draft Principal direction says conversation must not become the backend domain model ([server projection](../../../apps/workbench/src/ui/server.ts#L309-L419), [draft direction](../../AUTONOMOUS-COLLECTIVE-INTELLIGENCE.md#workbench-is-a-perceptual-surface)). | Both are replaceable shells. Neither is a durable work identity or recovery source. |
 
 ### Why one interaction journal is justified
 
@@ -259,9 +259,9 @@ Principal message
   recovery semantics only where its exact carrier exposes them. Mission input
   already distinguishes contribution from
   `pause`, `resume`, `stop`, and effect approval
-  ([Mission input](../../../operations/autonomy/src/mission-input.ts#L68-L91));
+  ([Mission input](../../../apps/autonomy/src/mission-input.ts#L68-L91));
   turn recovery separately distinguishes resume, replace, and abandon
-  ([turn recovery](../../../operations/autonomy/src/mission-turn.ts#L111-L150)).
+  ([turn recovery](../../../apps/autonomy/src/mission-turn.ts#L111-L150)).
   The ordinary local Task surface exposes no matching control. A stopped
   response therefore cannot be interpreted as a stopped Task, and an ordinary
   Task cannot be presented as interrupted without an owning carrier observation.
@@ -272,12 +272,12 @@ Principal message
 synchronous runner returns, but that record contains neither a process identity
 nor a heartbeat; its projection can therefore show retained start evidence
 without establishing that work is currently running
-([attempt creation](../../../operations/workbench/src/task-run.ts#L423-L471),
-[attempt status](../../../operations/workbench/src/task-attempts.ts#L11-L39)).
+([attempt creation](../../../apps/workbench/src/task-run.ts#L423-L471),
+[attempt status](../../../apps/workbench/src/task-attempts.ts#L11-L39)).
 The ordinary local Task command surface has no pause, resume, stop, or recovery
 command, whereas current Workbench runner controls target an exact live Mission
-runner ([Task commands](../../../operations/workbench/src/local-task-control-plane.ts#L49-L66),
-[Mission controls](../../../operations/workbench/src/ui/actions.ts#L28-L74)).
+runner ([Task commands](../../../apps/workbench/src/local-task-control-plane.ts#L49-L66),
+[Mission controls](../../../apps/workbench/src/ui/actions.ts#L28-L74)).
 
 **Design inference.** Every “currently active” coordinator or attempt indication
 requires a fresh runtime-owned observation correlated to the durable coordinator,
@@ -319,9 +319,9 @@ current primary observation; execution additionally requires one exact observed
 Worktree retained in the Task binding. Ambiguous, unregistered, merely discovered,
 stale, or unwritable resolution produces a settled visible limitation. It cannot
 fall back to an independent unbound Task or a guessed Worktree
-([routing boundary](../../../operations/workbench/AGENTS.md#rossovia-workbench-entry),
-[resolution states](../../../operations/workbench/src/resolve.ts#L15-L51),
-[Task context](../../../operations/workbench/AGENTS.md#rossovia-local-task-entry)).
+([routing boundary](../../../apps/workbench/AGENTS.md#rossovia-workbench-entry),
+[resolution states](../../../apps/workbench/src/resolve.ts#L15-L51),
+[Task context](../../../apps/workbench/AGENTS.md#rossovia-local-task-entry)).
 
 The semantic choices are:
 
@@ -367,8 +367,8 @@ action. It does not own Task acceptance, Mission settlement, effect truth, or
 the correctness of a producer's result. Current delegation already supports
 typed contribution source/obligation/acceptance/capability needs, an optional
 worker catalog, durable batch settlement, and full or metadata-only result reads
-([delegate loop](../../../operations/autonomy/src/delegate-loop.ts#L38-L105),
-[durable batch boundary](../../../operations/autonomy/src/delegate-loop.ts#L188-L255)).
+([delegate loop](../../../apps/autonomy/src/delegate-loop.ts#L38-L105),
+[durable batch boundary](../../../apps/autonomy/src/delegate-loop.ts#L188-L255)).
 
 ### Context arrives when it changes judgment
 
@@ -432,9 +432,9 @@ the selected Cell retains exact worker and execution-profile evidence
 The current host helper offers DeepSeek Flash for text/code and Kimi for vision,
 but the catalog is optional on the delegate loop and is not installed by the
 Workbench server
-([current worker policy](../../../operations/autonomy/src/worker-policy.ts),
-[optional catalog boundary](../../../operations/autonomy/src/delegate-loop.ts#L123-L149),
-[Workbench server](../../../operations/workbench/src/ui/server.ts)). The host
+([current worker policy](../../../apps/autonomy/src/worker-policy.ts),
+[optional catalog boundary](../../../apps/autonomy/src/delegate-loop.ts#L123-L149),
+[Workbench server](../../../apps/workbench/src/ui/server.ts)). The host
 must not rank workers by role name or prose; semantic coordinator judgment chooses
 among structurally capable candidates.
 
@@ -455,8 +455,8 @@ model and thinking policy and passes reasoning effort through provider options
 The OpenCode path accepts Workbench `--model` and `--reasoning-effort`, retains
 the requested values in attempt evidence, and maps reasoning effort to
 OpenCode's provider-specific `--variant`
-([task run carrier](../../../operations/workbench/src/task-run.ts#L95-L126),
-[attempt evidence](../../../operations/workbench/src/task-run.ts#L455-L471),
+([task run carrier](../../../apps/workbench/src/task-run.ts#L95-L126),
+[attempt evidence](../../../apps/workbench/src/task-run.ts#L455-L471),
 [OpenCode adapter](../../../packages/work-cell/src/opencode-cli-driver.ts#L79-L135)).
 DeepSeek's official thinking-mode and chat-completion documentation currently
 list native `low`, `high`, and `max` reasoning effort; compatibility values
@@ -473,7 +473,7 @@ Requested and observed evidence must remain separate:
   provider supplies it. Current Work Cell records already distinguish requested
   input from driver and session observation
   ([Work Cell observation](../../../packages/work-cell/src/contracts.ts#L218-L260),
-  [attempt projection](../../../operations/workbench/src/task-attempts.ts#L46-L81)).
+  [attempt projection](../../../apps/workbench/src/task-attempts.ts#L46-L81)).
 - **Unknown:** accepted repository evidence does not currently prove that a
   `deepseek-v4-pro` coordinator has run successfully, nor that the provider
   returns an independently observable confirmation of `max`. Until such

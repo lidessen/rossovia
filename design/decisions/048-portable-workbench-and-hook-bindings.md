@@ -21,8 +21,8 @@ transcript parsing, and platform drift.
 
 Keep TypeScript and Bun for repository development, tests, and the preferred
 build path. Make the target runtime a checked-in, self-contained Node bundle at
-`operations/workbench/dist/rossovia.mjs`, reached through the stable
-`operations/workbench/rossovia` launcher.
+`apps/workbench/dist/rossovia.mjs`, reached through the stable
+`apps/workbench/rossovia` launcher.
 
 The Workbench source uses Node standard-library runtime APIs. `npm run build`
 uses local Bun when present; `npm run build:docker` builds the same bundle in a
@@ -47,7 +47,7 @@ Agent and acceptance remains outside the hook.
 
 ## Boundary consequences
 
-- `operations/workbench/src/hooks.ts` normalizes host payloads and owns common
+- `apps/workbench/src/hooks.ts` normalizes host payloads and owns common
   behavior; platform JSON files own event names and command wiring.
 - No hook command invokes Bun, parses an unstable transcript, or discovers its
   executable by following the Agent's current target repository.

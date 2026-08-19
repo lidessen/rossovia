@@ -115,7 +115,7 @@ It is used only by effectful Runs.
 the same Worktree. Prompt guidance cannot exclude concurrent processes, while
 Git's short command locks do not cover the whole model/tool loop. The current
 implementation uses an owner-identified lock with explicit reconciliation
-([task-run owner](../../../operations/workbench/src/task-run.ts)).
+([task-run owner](../../../apps/workbench/src/task-run.ts)).
 
 **Destination.** Admit at most one writer and never let one owner release
 another. Do not preserve richer owner history or liveness inference unless it

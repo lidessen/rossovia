@@ -180,7 +180,7 @@ formation and correction boundaries;
 [Decision 015](015-human-initiated-formal-operations.md) keeps the active trigger
 human-authorized; and [Decision 031](031-extensible-work-cell-orchestration.md)
 supplies multi-Cell execution mechanics without semantic scheduling authority.
-The project-local [`operations/autonomy/`](../../operations/autonomy/README.md)
+The project-local [`apps/autonomy/`](../../apps/autonomy/README.md)
 experiment now implements ordered Mission input, bounded turns,
 reconciliation, delegation, and local recovery. Its supported mechanism claims
 remain guarded and do not change those accepted authorities.
@@ -195,7 +195,7 @@ submissions remain non-authoritative intake proposals.
 
 The
 [first-slice settlement](../organization/sessions/2026-07-26-supervised-autonomy-first-slice-settlement.md)
-recognizes `operations/autonomy/` as a maintained, project-local experimental
+recognizes `apps/autonomy/` as a maintained, project-local experimental
 capability. This settles its project status, not an autonomous operating
 transition. It may preserve and exercise its existing local mechanism under
 explicit human authorization. Decision 050 later admits one narrower empirical

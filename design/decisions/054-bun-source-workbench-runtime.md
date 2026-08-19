@@ -9,7 +9,7 @@ checked-in Node bundle, Node-only target runtime, and bundle build carriers
 ## Concrete pressure
 
 Rossovia is still in a personal/development stage. Keeping a generated
-`operations/workbench/dist/rossovia.mjs` in Git made the repository carry two
+`apps/workbench/dist/rossovia.mjs` in Git made the repository carry two
 runtime identities: the TypeScript source that developers changed and a bundled
 projection that hooks and some tests actually executed. Every source change then
 needed a rebuild and a consistency gate before the stable launcher observed it.
@@ -29,8 +29,8 @@ inventing parity or duplicating Workbench behavior.
 ## Decision
 
 During the current personal/development stage, the repository's runtime carrier
-is the tracked TypeScript source at `operations/workbench/src/cli.ts`, executed
-with Bun through the stable `operations/workbench/rossovia` launcher.
+is the tracked TypeScript source at `apps/workbench/src/cli.ts`, executed
+with Bun through the stable `apps/workbench/rossovia` launcher.
 
 The launcher fails clearly when Bun is unavailable. It has no Node, stale
 bundle, or Docker fallback. Package scripts and direct runtime tests execute the
@@ -64,7 +64,7 @@ Only the runtime carrier and its build machinery are superseded.
 
 ## Verification
 
-- `./operations/workbench/rossovia --help` executes `src/cli.ts` with Bun;
+- `./apps/workbench/rossovia --help` executes `src/cli.ts` with Bun;
 - the same launcher returns a clear exit-127 error when Bun is absent from
   `PATH`, without attempting another runtime;
 - correction context names an executable `bun` plus tracked `src/cli.ts`

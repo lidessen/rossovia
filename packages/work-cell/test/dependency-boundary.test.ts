@@ -79,10 +79,10 @@ test("the former core root paths are physically absent, not tombstones or compat
  * focus-selection Cell.
  */
 const ACTIVE_CALLERS = [
-  "operations/workbench/test/ui-task-actions.test.ts",
-  "operations/workbench/test/task-run.test.ts",
-  "operations/autonomy/test/worker-policy.test.ts",
-  "operations/autonomy/src/delegate-loop.ts",
+  "apps/workbench/test/ui-task-actions.test.ts",
+  "apps/workbench/test/task-run.test.ts",
+  "apps/autonomy/test/worker-policy.test.ts",
+  "apps/autonomy/src/delegate-loop.ts",
   "experiments/human-agent-visualization/project-lens-runtime.ts",
 ] as const;
 

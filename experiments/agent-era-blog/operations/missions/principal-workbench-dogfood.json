@@ -6,7 +6,7 @@
     "principal:2026-07-26-supervised-principal-workbench-goal",
     "principal:2026-07-26-agent-era-blog-experiment",
     "source-project:design/decisions/050-principal-workbench-supervised-mvp.md",
-    "source-project:operations/autonomy/README.md"
+    "source-project:apps/autonomy/README.md"
   ],
   "createdAt": "2026-07-27T04:32:51Z",
   "updatedAt": "2026-07-27T05:49:48Z",
@@ -27,7 +27,7 @@
     "proposalId": "agent-era-blog-first-supervised-run-v1",
     "mode": "supervised",
     "status": "awaiting-principal-authorization",
-    "runtimeRef": "source-project:operations/autonomy/experiments/agent-era-blog-mission-runtime.ts",
+    "runtimeRef": "source-project:apps/autonomy/experiments/agent-era-blog-mission-runtime.ts",
     "runtimeDigest": "7072cb6f5d403791d5219263634e527584b0b59874be043579fa3f413728e1e5",
     "externalProvider": {
       "name": "DeepSeek",

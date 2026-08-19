@@ -6,7 +6,7 @@ import {
 const PROJECT_KEY = "registered:rossovia";
 const MISSION_ID = "human-agent-visualization";
 const TASK_SOURCE_REF = ".rosso/state/tasks.json";
-const MISSION_SOURCE_REF = "operations/missions/human-agent-visualization.json";
+const MISSION_SOURCE_REF = "apps/missions/human-agent-visualization.json";
 
 function subject(taskId) {
   return {

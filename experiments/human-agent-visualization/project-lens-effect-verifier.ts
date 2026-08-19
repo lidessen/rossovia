@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { stableStringify } from "../../operations/autonomy/src/canonical-json";
+import { stableStringify } from "../../apps/autonomy/src/canonical-json";
 import {
   EffectVerifiedDataSchema,
   FileEffectJournal,
   type EffectActivity,
-} from "../../operations/autonomy/src/effect-journal";
-import { readGitStatus } from "../../operations/autonomy/src/git-effect-observer";
-import { missionRunnerDirectory } from "../../operations/autonomy/src/mission-runner";
+} from "../../apps/autonomy/src/effect-journal";
+import { readGitStatus } from "../../apps/autonomy/src/git-effect-observer";
+import { missionRunnerDirectory } from "../../apps/autonomy/src/mission-runner";
 import { validateProjectBundle } from "./lib/project-evidence-bundle.js";
 import { validateProjectBundleAgainstRepository } from "./scripts/project-lens-builder.js";
 

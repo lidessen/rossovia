@@ -12,7 +12,7 @@ This record is verification evidence only. It does not revise the [System Case](
 - P7 coordination start: `ab3845b601d704b6fb85fe703e965167d4b6700b`.
 - Disposable Workbench home: `/private/tmp/rossovia-p7-whole-verification.Z65eKl/home` (removed after evidence capture).
 - Registered projects: `p7-skills-dogfood` and `p7-worker-dogfood`; each had a clean primary workspace and a clean linked `dogfood-run` Worktree.
-- Production entry: real `operations/workbench/src/ui/server.ts` at `http://127.0.0.1:51257`, not a diagnostic handler.
+- Production entry: real `apps/workbench/src/ui/server.ts` at `http://127.0.0.1:51257`, not a diagnostic handler.
 - Browser entry: repository-pinned Playwright CLI, session `p7-conversation-520c76`.
 - Conversation: `fcd5fe2d-d0be-4115-80af-512671b1a47f`.
 - No Principal Workbench home, existing Task, Mission source, or product source was mutated by the verifier.

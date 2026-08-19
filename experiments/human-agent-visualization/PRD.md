@@ -109,8 +109,8 @@ Project Lens 对所有仓库的固定分类。
 | 目的与原则 | 为什么存在，哪些方法根保持稳定？ | Founding Mandate、Principle Sequence |
 | 架构与决策 | 哪些责任、权威、状态和反馈关系已经接受？ | `design/DESIGN.md`、`design/decisions/` |
 | Skills | 哪些可复用判断已形成，表达和行为证据到哪里？ | `skills/`、相关 evaluations |
-| Missions 与 Workbench | 当前持续工作和人类任务由谁持有？ | `operations/missions/`、`operations/workbench/` |
-| 执行与认知机制 | Work Cell、Cognition、Autonomy 分别执行或保留什么？ | `packages/`、`operations/autonomy/` |
+| Missions 与 Workbench | 当前持续工作和人类任务由谁持有？ | `apps/missions/`、`apps/workbench/` |
+| 执行与认知机制 | Work Cell、Cognition、Autonomy 分别执行或保留什么？ | `packages/`、`apps/autonomy/` |
 | 证据回路 | 哪些观察、测试和评估支持当前说法？ | tests、`evaluations/`、`chronicle/` |
 | 人类投影 | 人如何看到、质疑和纠正系统？ | Workbench UI、site、Human-Agent Visualization |
 

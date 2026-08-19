@@ -27,7 +27,7 @@ work.
 
 | Statement | Classification | Source and exact status | Verification gap |
 |---|---|---|---|
-| The first founding baseline is integrated. | fact | [founding mission record](../../../operations/missions/founding-baseline.json) is `settled`; [PR #13](https://github.com/lidessen/skills/pull/13) is merged. | Does not settle the later preparation gates. |
+| The first founding baseline is integrated. | fact | [founding mission record](../../../apps/missions/founding-baseline.json) is `settled`; [PR #13](https://github.com/lidessen/skills/pull/13) is merged. | Does not settle the later preparation gates. |
 | Two later mission PRs completed with passing remote verification. | fact | [PR #14](https://github.com/lidessen/skills/pull/14) and [PR #15](https://github.com/lidessen/skills/pull/15) are merged; each `verify` check passed. | The preparation campaign has not yet recorded whether their worktree/template evidence formally satisfies F3. |
 | The preparation campaign has not exited. | fact | [campaign](2026-07-10-formal-operations-preparation.md) remains active; [GitHub settings record](../../operations/GITHUB-SETTINGS.md) remains deferred. | F4 still needs a Principal choice and F5 needs a final disposition. |
 | The current experiment is a large coherent candidate, not accepted mainline. | fact | `experiment/activation-field-scale` at `0099a51` is 12 commits ahead of `origin/main`, touches 199 files, and is clean locally. | It still needs content review, operational review, current CI, and Principal PR disposition. |

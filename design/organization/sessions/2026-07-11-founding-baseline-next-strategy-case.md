@@ -60,7 +60,7 @@ proposal inputs to that separate envelope gate, not an execution authorization.
 
 | Statement | Classification | Source and exact status | Verification gap |
 |---|---|---|---|
-| The founding mission is active and requires a reviewable, human-governed baseline. | fact | [mission record](../../../operations/missions/founding-baseline.json): `active` | It does not itself settle any branch. |
+| The founding mission is active and requires a reviewable, human-governed baseline. | fact | [mission record](../../../apps/missions/founding-baseline.json): `active` | It does not itself settle any branch. |
 | The bounded-deliberation, continuity, AX, and test-value slices are staged locally. | fact | current staged worktree; [decision 020](../../decisions/020-bounded-work-cell-deliberation.md), [021](../../decisions/021-git-tracked-mission-continuity.md), [022](../../decisions/022-project-first-deliberation-interaction.md), and [test-value evaluation](../../../evaluations/2026-07-11-disciplined-development-test-value-gate.md) | They have not received fresh remote CI or independent human review. |
 | Work Cell deterministic verification passes. | fact | `bun run typecheck` and `bun test`: 28 passing tests in the current worktree | This proves deterministic contracts, not revised model quality or cost. |
 | The original deliberation pilot made no valid strategic selection and exhausted its authorized envelope. | fact | [docket disposition](2026-07-11-founding-priority-docket.md) and [Chronicle observation](../../../chronicle/records/2026/07/obs-20260711-deliberation-docket-usability-budget-failure.json) | A revised live pilot requires a new Principal envelope. |

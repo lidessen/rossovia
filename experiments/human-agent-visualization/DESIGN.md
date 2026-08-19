@@ -66,12 +66,12 @@ This is a bounded, source-supported question. The Principal Workbench is
 already a rebuildable projection over separately owned project, Git, task,
 Mission, authorization, and runner sources. Its task assignment names
 responsibility but does not prove Agent start
-([Principal Workbench MVP](../../operations/workbench/README.md#principal-workbench-mvp)).
+([Principal Workbench MVP](../../apps/workbench/README.md#principal-workbench-mvp)).
 The snapshot explicitly describes source authority and freshness
-([snapshot projection](../../operations/workbench/src/ui/projection.ts)), while
+([snapshot projection](../../apps/workbench/src/ui/projection.ts)), while
 the work-item projection keeps lifecycle, next actor, binding, carrier,
 execution standing, and evidence references separate
-([work-item projection](../../operations/workbench/src/ui/work-items.ts)).
+([work-item projection](../../apps/workbench/src/ui/work-items.ts)).
 
 The slice consumes one frozen evidence bundle retained atomically by its fixture
 builder. That bundle binds the exact serialized `WorkbenchSnapshot`, the exact

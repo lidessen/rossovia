@@ -3,7 +3,7 @@
 **Status:** reviewed — independent evidence retained and preparation-verified
 **Review target:** `d66a125d04ad8294dbfe6742ba007ab9a5f3015b`
 **Base:** `origin/main` at `89d6a85725a1be22eaa188c1f1a6b1840c604006`
-**Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json), branch `current-stage-integration`
+**Mission:** [`formal-operations-transition`](../../../apps/missions/formal-operations-transition.json), branch `current-stage-integration`
 **Authority:** evidence packet only; it cannot accept, push, merge, or broaden the review
 
 ## Review question

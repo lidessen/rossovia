@@ -2,7 +2,7 @@
 
 **Status:** review evidence — not integration or merge authorization
 **Scope reviewed:** `d66a125d04ad8294dbfe6742ba007ab9a5f3015b`
-**Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json), branch `current-stage-integration`
+**Mission:** [`formal-operations-transition`](../../../apps/missions/formal-operations-transition.json), branch `current-stage-integration`
 **Independent witness:** Work Cell run `d2325780-4f66-4e06-8822-186231b51b9b`, retained through its [Chronicle receipt](../../../chronicle/records/2026/07/obs-20260715-current-stage-independent-review-rerun.json)
 
 ## Formation and boundary

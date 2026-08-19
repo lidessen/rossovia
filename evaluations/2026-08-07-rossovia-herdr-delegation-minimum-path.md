@@ -21,7 +21,7 @@ rather than converted into a broad prohibition.
 
 ## Observed path
 
-1. `./operations/workbench/rossovia resolve meowask` returned
+1. `./apps/workbench/rossovia resolve meowask` returned
    `/Users/lidessen/workspaces/meowask` as `workspace.path`, with dirty `main`
    at `64a96f7b106f8c1e189f3ef7e3a90a021fdc0d97`.
 2. Herdr 0.8.0 started the named session `rossovia-probe`. The Main Codex ran in

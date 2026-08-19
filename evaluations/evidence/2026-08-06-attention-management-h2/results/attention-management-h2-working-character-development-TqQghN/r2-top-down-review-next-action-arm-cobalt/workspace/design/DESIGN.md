@@ -376,7 +376,7 @@ The carrier is organized as a **根据地** (base area), not a folder tree to ti
 | 纲领 / semantic source | `principles/SEQUENCE.md`, adopted `design/decisions/` |
 | 根据地章程 | `design/DESIGN.md` (+ adopted organization section) |
 | 常备制度 / durable evidence | `principles/adopted/`, `principles/reviews/`, `evaluations/` |
-| 运行连续性 / active operational source | `operations/missions/*.json` — one Git-tracked, active mission record; settled state is retained in Git history then pruned |
+| 运行连续性 / active operational source | `apps/missions/*.json` — one Git-tracked, active mission record; settled state is retained in Git history then pruned |
 | 专业工作队 / living expression | `skills/*/`, `principles/interpretations/` |
 | 领导班子 | Human adoption authority; `COUNCIL.md` as governance projection only |
 | 活动 / sessions | `design/organization/*` — campaign artifacts, not top-level modules |

@@ -1,7 +1,7 @@
 # Legacy Experiment Return — Source, Value, and Status Partition
 
 **Status:** accepted — Principal selected A; privacy/retention probe pending
-**Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json), branch `legacy-experiment-return`
+**Mission:** [`formal-operations-transition`](../../../apps/missions/formal-operations-transition.json), branch `legacy-experiment-return`
 **Review target:** protected staged index in the local `public-expression-readme` worktree
 **Authority:** inventory and recommendation only; this record cannot integrate staged content, publish raw runs, delete the protected worktree, or approve a later mission
 

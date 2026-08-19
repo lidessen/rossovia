@@ -28,10 +28,10 @@ independent batch tools with no demonstrated runtime integration pressure.
 
 ## Decision
 
-Adopt `operations/workbench/` as the active Bun/TypeScript workbench carrier.
+Adopt `apps/workbench/` as the active Bun/TypeScript workbench carrier.
 Retain `~/.rosso`, `ROSSO_HOME`, `rosso.*` record versions, and the underlying
 project identity and resolution contracts. The executable is
-`operations/workbench/src/cli.ts`; the eventual installed command may be
+`apps/workbench/src/cli.ts`; the eventual installed command may be
 `rossovia`, but packaging must not create a second state namespace.
 
 Migrate by bounded command families and compare identity and resolution output

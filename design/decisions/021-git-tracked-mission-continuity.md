@@ -17,7 +17,7 @@ that makes the relation inspectable across a long agent/human session.
 ## Decision
 
 Adopt one Git-tracked **Mission Record** for a material, multi-session mission.
-It lives at `operations/missions/<id>.json` while active and names:
+It lives at `apps/missions/<id>.json` while active and names:
 
 ```text
 mainline contradiction + acceptance
@@ -33,7 +33,7 @@ branch may not disappear because it produced an attractive report or partial
 artifact.
 
 The `mission` command family in
-[`operations/workbench`](../../operations/workbench/src/missions.ts) creates,
+[`apps/workbench`](../../apps/workbench/src/missions.ts) creates,
 updates, validates, and renders the record. It can require that the active record is Git-tracked and, at a critical
 safe point, that its state is committed at `HEAD`. The record must be committed
 with its opening and material updates on the mission branch. A mission settles

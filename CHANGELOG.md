@@ -7,6 +7,22 @@ entry instead of rewriting the applied Git interval.
 
 ## 2026-08-18
 
+### [repo.layout] Rename operations/ to apps/
+
+- Action: `breaking`
+- Change: rename the top-level runtime directory `operations/` to `apps/`
+  (225 files: `apps/workbench`, `apps/autonomy`, `apps/missions`) so the
+  Rossovia runtime modules sit beside `packages/` in the standard monorepo
+  naming and the abstract "operations" label no longer hides an application
+  tree. All active references were synced: code, tests, mission-record
+  convention paths (`join(root, "apps", "missions", ...)`), CLI help, ignore
+  rules, CI workflows, and repository documentation. `design/operations/`
+  (design documents) is untouched.
+- Verify: run the Workbench typecheck and full test suite (820/820) and the
+  Autonomy focused suites; confirm `LOCAL_BIN=<tmp> bun run build:local`
+  installs and serves `rossovia --version` and the workbench UI; confirm no
+  new broken markdown links versus the pre-change tree.
+
 ### [workbench.build] Local single-file build and install
 
 - Action: `none`
@@ -30,7 +46,7 @@ entry instead of rewriting the applied Git interval.
 - Change: add `rossovia ui [--port <port>] [--root <path>]...` (starts-work)
   as the ordinary entry for serving the Principal Workbench web UI on
   127.0.0.1:4317. The CLI form reuses the server's exact option semantics and
-  the leading-global `--home`; `bun run --cwd operations/workbench ui` remains
+  the leading-global `--home`; `bun run --cwd apps/workbench ui` remains
   the equivalent source-checkout entry. Help, the Workbench README, and the
   scoped Workbench agent instructions now route UI startup through the CLI.
 - Verify: run the Workbench typecheck and test suite (new `ui-cli` test spawns

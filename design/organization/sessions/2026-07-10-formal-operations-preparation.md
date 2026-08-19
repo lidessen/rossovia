@@ -71,7 +71,7 @@ contents, checked, and prepared as a PR. It does not authorize a push to
 
 The founding baseline transition above completed through
 [PR #13](https://github.com/lidessen/skills/pull/13), and its
-[Mission Record](../../../operations/missions/founding-baseline.json) is
+[Mission Record](../../../apps/missions/founding-baseline.json) is
 settled. [PR #14](https://github.com/lidessen/skills/pull/14) and
 [PR #15](https://github.com/lidessen/skills/pull/15) subsequently used bounded
 `mission/*` branches and passed the remote `verify` workflow. They are candidate
@@ -87,7 +87,7 @@ mixing them into PR #16. The accepted convergence direction and evidence cutoff
 are retained in the
 [formal-operations transition Strategy Case](2026-07-15-formal-operations-transition-strategy-case.md);
 the active return obligations live in the
-[`formal-operations-transition` Mission Record](../../../operations/missions/formal-operations-transition.json).
+[`formal-operations-transition` Mission Record](../../../apps/missions/formal-operations-transition.json).
 
 The current order is: review and disposition the coherent current stage;
 return PR #16 against that settled substrate; partition the staged legacy

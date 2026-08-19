@@ -727,7 +727,7 @@ than emit a new verbose report for every event.
 
 The first bounded slice now implements the pre-dispatch contribution boundary
 and an explicit AI SDK Core delegation loop in
-[`operations/autonomy/`](../../../operations/autonomy/). A host-prepared
+[`apps/autonomy/`](../../../apps/autonomy/). A host-prepared
 contribution retains its Task Shape reference, capability evidence status,
 disposition, local Cell contract, coverage, reconstruction owner, and overload
 route. The adapter validates the complete same-step batch before creating any
@@ -753,8 +753,8 @@ successfully settled contribution `uncovered`; neither projection claims that
 a worker has verified or closed the Mission obligation.
 
 The deterministic probes in
-[`delegate-admission.test.ts`](../../../operations/autonomy/test/delegate-admission.test.ts)
-and [`delegate-loop.test.ts`](../../../operations/autonomy/test/delegate-loop.test.ts)
+[`delegate-admission.test.ts`](../../../apps/autonomy/test/delegate-admission.test.ts)
+and [`delegate-loop.test.ts`](../../../apps/autonomy/test/delegate-loop.test.ts)
 show that a role label cannot admit an unsupported contribution, one bad
 contribution prevents every sibling from starting, one call lowers directly,
 several calls lower through Swarm, a failed parent checkpoint starts no driver,
@@ -869,7 +869,7 @@ decomposition or general stability; see the
 
 ## Minimum implementation shape
 
-- `operations/autonomy/` owns the project-specific Mission envelope and policy,
+- `apps/autonomy/` owns the project-specific Mission envelope and policy,
   including allowed effect classes and human gates.
 - A small project-local TypeScript adapter owns linked append-only parent/child
   timelines, input watermarks, formation and coverage records,

@@ -47,11 +47,11 @@ publication capability.
 
 ## Evidence
 
-- [`delegate-loop.ts`](../operations/autonomy/src/delegate-loop.ts) owns the
+- [`delegate-loop.ts`](../apps/autonomy/src/delegate-loop.ts) owns the
   batch/key-only parent tool and retained read receipts.
-- [`delegate-timeline.ts`](../operations/autonomy/src/delegate-timeline.ts)
+- [`delegate-timeline.ts`](../apps/autonomy/src/delegate-timeline.ts)
   resolves the verified child settlement and produces the bounded projection.
-- [`mission-turn.ts`](../operations/autonomy/src/mission-turn.ts) retains the
+- [`mission-turn.ts`](../apps/autonomy/src/mission-turn.ts) retains the
   receipts without making them acceptance evidence.
 - The integration test proves that a parent can use one child fact in its final
   reconstruction while cross-parent and unknown-child reads fail.

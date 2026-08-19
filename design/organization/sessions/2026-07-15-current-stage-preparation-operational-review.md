@@ -3,7 +3,7 @@
 **Status:** [PR #17](https://github.com/lidessen/skills/pull/17) merged — `current-stage-integration` settled
 **Content opinion:** [current-stage committee review](2026-07-15-current-stage-content-committee-review.md)
 **Reviewed target:** `d66a125d04ad8294dbfe6742ba007ab9a5f3015b`
-**Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json), branch `current-stage-integration`
+**Mission:** [`formal-operations-transition`](../../../apps/missions/formal-operations-transition.json), branch `current-stage-integration`
 
 ## Object and boundary
 

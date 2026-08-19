@@ -18,16 +18,16 @@ reliability, natural-language authority inference, or safe writable execution.
 ## Frozen shape
 
 The probe runner is
-[`live-mission-input-probe.ts`](../operations/autonomy/experiments/live-mission-input-probe.ts).
+[`live-mission-input-probe.ts`](../apps/autonomy/experiments/live-mission-input-probe.ts).
 It starts the detached Mission through the public CLI, using the trusted
-[`flash-readonly-mission-runtime.ts`](../operations/autonomy/experiments/flash-readonly-mission-runtime.ts)
+[`flash-readonly-mission-runtime.ts`](../apps/autonomy/experiments/flash-readonly-mission-runtime.ts)
 adapter. Every model call used the explicit OpenCode Go `deepseek-v4-flash`
 route with no fallback.
 
 Before execution, the host seeded an authorized watermark-zero intent anchor.
 Every turn start had to carry the digest of the active anchor. The parent could
 form only one host-frozen read-only contribution, and the child could read only
-[`operations/autonomy/package.json`](../operations/autonomy/package.json),
+[`apps/autonomy/package.json`](../apps/autonomy/package.json),
 with no write paths or command authority. The input requested continuation of
 the same operation and explicitly preserved its source, effect, verification,
 and human-authority constraints.

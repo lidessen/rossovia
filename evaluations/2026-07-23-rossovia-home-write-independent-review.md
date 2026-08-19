@@ -15,12 +15,12 @@ The reviewer inspected
 
 Two reachable failures changed the integration decision:
 
-1. [`verifyHomeWrite`](../operations/workbench/src/home.ts) exercised only
+1. [`verifyHomeWrite`](../apps/workbench/src/home.ts) exercised only
    `state/`, although the home root, `config/`, `receipts/`, and `cache/` also
    own mutable state. Read-only `config/` and `receipts/` fixtures still allowed
    `init` to report `writeAccess: "verified"` before later preference writes
    failed.
-2. [`migrateLegacyHome`](../operations/workbench/src/migration.ts) staged at
+2. [`migrateLegacyHome`](../apps/workbench/src/migration.ts) staged at
    a sibling of `ROSSO_HOME`. A runtime granted only the exact selected home
    could therefore pass ordinary in-home writes while the required first-run
    migration failed outside that capability.

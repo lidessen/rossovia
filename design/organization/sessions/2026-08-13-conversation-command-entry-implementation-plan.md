@@ -3,7 +3,7 @@
 **Status:** prepared implementation plan and process artifact. This file turns
 the exact [System Case](./2026-08-13-conversation-command-entry-system-case.md)
 at Git revision `6e8c3fa4edccc2ccf36e28deb23833d68cdbd923` and the committed
-[Mission source](../../../operations/missions/conversation-command-entry.json)
+[Mission source](../../../apps/missions/conversation-command-entry.json)
 into executable contributions. It is not design acceptance, product
 acceptance, implementation evidence, or authority to mutate a Task, Mission,
 provider, repository, or integration surface.
@@ -60,16 +60,16 @@ persistent work, temporary contributors, and UI become safe to add.
 
 | Current symbol/source | Reuse | Minimal extension |
 |---|---|---|
-| [`createWorkbenchRequestHandler` and `Bun.serve`](../../../operations/workbench/src/ui/server.ts) | Loopback origin, bounded requests, static assets, snapshot and action routes | Give the main server a native Bun WebSocket upgrade/data handler and one injected conversation runtime; no transport framework. |
-| [`saveJson`](../../../operations/workbench/src/home.ts) | Atomic rename for current JSON snapshots | Do not use it for the journal. Reuse the fsynced JSONL tail-repair pattern below. |
-| [`FileMissionTimeline`](../../../operations/autonomy/src/delegate-timeline.ts) and [`FileEffectJournal`](../../../operations/autonomy/src/effect-journal.ts) | Process-serialized append, schema validation, newline framing, `sync()`, incomplete-tail truncation, monotonic sequence | Implement the smaller interaction event vocabulary in Workbench; do not import Mission/effect meanings into it. |
-| [`resolveProject`](../../../operations/workbench/src/resolve.ts), [`observeWorkspace`](../../../operations/workbench/src/workspace.ts), and [`buildWorkbenchSnapshot`](../../../operations/workbench/src/ui/projection.ts) | Registered/discovered distinction, current primary identity, current Worktree inventory/head/status | Compose one bounded coordinator projection and re-resolve immediately before a project-bound action. |
-| [`createLocalTaskControlPlane`](../../../operations/workbench/src/local-task-control-plane.ts) and Task mutations in [`tasks.ts`](../../../operations/workbench/src/tasks.ts) | Typed create/correct/revision checks, same-Task corrections, result/acceptance authority | Add a conversation host adapter that supplies causal source refs and exact current revisions; do not add conversation lifecycle to `tasks.json`. |
-| [`runPrincipalTask`](../../../operations/workbench/src/task-run.ts) and [`showPrincipalTaskAttempts`](../../../operations/workbench/src/task-attempts.ts) | Exact Task/Worktree checks, immutable attempt input/start/settlement, requested-versus-observed evidence, same-session constraints | Factor preparation/settlement so a coordinator-owned asynchronous catalog attempt can use the same evidence family and exact lease rather than a parallel task-run database. |
-| [`executeWorkbenchAction`](../../../operations/workbench/src/ui/actions.ts), [`AutonomyCliClient`](../../../operations/workbench/src/ui/autonomy-client.ts), and [`MissionRunnerStatus`](../../../operations/autonomy/src/mission-runner.ts) | Exact live runner identity/state, contribution/control/recovery, causal Mission input receipt | Use for a Task whose current exact execution link resolves to that Mission carrier. Do not infer a link from project/Mission names. |
+| [`createWorkbenchRequestHandler` and `Bun.serve`](../../../apps/workbench/src/ui/server.ts) | Loopback origin, bounded requests, static assets, snapshot and action routes | Give the main server a native Bun WebSocket upgrade/data handler and one injected conversation runtime; no transport framework. |
+| [`saveJson`](../../../apps/workbench/src/home.ts) | Atomic rename for current JSON snapshots | Do not use it for the journal. Reuse the fsynced JSONL tail-repair pattern below. |
+| [`FileMissionTimeline`](../../../apps/autonomy/src/delegate-timeline.ts) and [`FileEffectJournal`](../../../apps/autonomy/src/effect-journal.ts) | Process-serialized append, schema validation, newline framing, `sync()`, incomplete-tail truncation, monotonic sequence | Implement the smaller interaction event vocabulary in Workbench; do not import Mission/effect meanings into it. |
+| [`resolveProject`](../../../apps/workbench/src/resolve.ts), [`observeWorkspace`](../../../apps/workbench/src/workspace.ts), and [`buildWorkbenchSnapshot`](../../../apps/workbench/src/ui/projection.ts) | Registered/discovered distinction, current primary identity, current Worktree inventory/head/status | Compose one bounded coordinator projection and re-resolve immediately before a project-bound action. |
+| [`createLocalTaskControlPlane`](../../../apps/workbench/src/local-task-control-plane.ts) and Task mutations in [`tasks.ts`](../../../apps/workbench/src/tasks.ts) | Typed create/correct/revision checks, same-Task corrections, result/acceptance authority | Add a conversation host adapter that supplies causal source refs and exact current revisions; do not add conversation lifecycle to `tasks.json`. |
+| [`runPrincipalTask`](../../../apps/workbench/src/task-run.ts) and [`showPrincipalTaskAttempts`](../../../apps/workbench/src/task-attempts.ts) | Exact Task/Worktree checks, immutable attempt input/start/settlement, requested-versus-observed evidence, same-session constraints | Factor preparation/settlement so a coordinator-owned asynchronous catalog attempt can use the same evidence family and exact lease rather than a parallel task-run database. |
+| [`executeWorkbenchAction`](../../../apps/workbench/src/ui/actions.ts), [`AutonomyCliClient`](../../../apps/workbench/src/ui/autonomy-client.ts), and [`MissionRunnerStatus`](../../../apps/autonomy/src/mission-runner.ts) | Exact live runner identity/state, contribution/control/recovery, causal Mission input receipt | Use for a Task whose current exact execution link resolves to that Mission carrier. Do not infer a link from project/Mission names. |
 | [`createDeepSeekModel`](../../../packages/work-cell/src/integrations/ai-sdk/providers/deepseek.ts) | Explicit model, thinking policy, reasoning effort, response fingerprint middleware | Add a conversation coordinator in Autonomy using AI SDK already present there; retain requested policy and separately observed step/provider metadata. No fallback route. |
-| [`DelegateLoopSession`](../../../operations/autonomy/src/delegate-loop.ts), [`WorkerCatalog`](../../../packages/work-cell/src/worker-catalog.ts), and [`createCurrentWorkerCatalog`](../../../operations/autonomy/src/worker-policy.ts) | Catalog list/spawn, hard capability filtering, durable batch settlement, cancellation, bounded result reads, host policy | Install the current catalog in the conversation host only after the single-coordinator slice; coordinator chooses semantic suitability, host only filters/validates. |
-| [`app.js`](../../../operations/workbench/ui/app.js), [`index.html`](../../../operations/workbench/ui/index.html), and [`styles.css`](../../../operations/workbench/ui/styles.css) | Current Task/project/activity/result projections and responsive shell | Add composer/feed/reconnect/control presentation last; remove five-second polling as the only live path but retain snapshot refresh for canonical projections. |
+| [`DelegateLoopSession`](../../../apps/autonomy/src/delegate-loop.ts), [`WorkerCatalog`](../../../packages/work-cell/src/worker-catalog.ts), and [`createCurrentWorkerCatalog`](../../../apps/autonomy/src/worker-policy.ts) | Catalog list/spawn, hard capability filtering, durable batch settlement, cancellation, bounded result reads, host policy | Install the current catalog in the conversation host only after the single-coordinator slice; coordinator chooses semantic suitability, host only filters/validates. |
+| [`app.js`](../../../apps/workbench/ui/app.js), [`index.html`](../../../apps/workbench/ui/index.html), and [`styles.css`](../../../apps/workbench/ui/styles.css) | Current Task/project/activity/result projections and responsive shell | Add composer/feed/reconnect/control presentation last; remove five-second polling as the only live path but retain snapshot refresh for canonical projections. |
 
 ## Chosen minimal representations
 
@@ -237,12 +237,12 @@ reconnect from that cursor, and observe no duplicate message or mutation. It
 does not call a model yet.
 
 **Owned paths, one writer per surface.** Packet 1 owns
-`operations/workbench/src/conversation/contracts.ts`,
-`operations/workbench/src/conversation/journal.ts`, and
-`operations/workbench/test/conversation-journal.test.ts`. Packet 2 then owns
-`operations/workbench/src/conversation/transport.ts`,
-`operations/workbench/src/ui/server.ts`,
-`operations/workbench/test/conversation-transport.test.ts`, and the dependency
+`apps/workbench/src/conversation/contracts.ts`,
+`apps/workbench/src/conversation/journal.ts`, and
+`apps/workbench/test/conversation-journal.test.ts`. Packet 2 then owns
+`apps/workbench/src/conversation/transport.ts`,
+`apps/workbench/src/ui/server.ts`,
+`apps/workbench/test/conversation-transport.test.ts`, and the dependency
 change only if Bun typing/runtime proves it necessary (none is expected).
 
 **Inputs and output.** Input is the exact System Case plus the existing JSONL
@@ -278,16 +278,16 @@ visibly unless the route is registered/current, and execution refuses a guessed
 Worktree. Requested and observed provider facts are separate.
 
 **Owned paths.** Packet 3 owns
-`operations/autonomy/src/conversation-coordinator.ts`,
-`operations/autonomy/src/conversation-prompt.ts`,
-`operations/autonomy/src/index.ts`, and
-`operations/autonomy/test/conversation-coordinator.test.ts`. Packet 4 then owns
-`operations/workbench/src/conversation/runtime.ts`,
-`operations/workbench/src/conversation/context.ts`,
-`operations/workbench/src/conversation/operations.ts`,
-`operations/workbench/src/ui/server.ts`,
-`operations/workbench/src/task-run.ts`,
-`operations/workbench/src/task-attempts.ts`, and their focused new/existing
+`apps/autonomy/src/conversation-coordinator.ts`,
+`apps/autonomy/src/conversation-prompt.ts`,
+`apps/autonomy/src/index.ts`, and
+`apps/autonomy/test/conversation-coordinator.test.ts`. Packet 4 then owns
+`apps/workbench/src/conversation/runtime.ts`,
+`apps/workbench/src/conversation/context.ts`,
+`apps/workbench/src/conversation/operations.ts`,
+`apps/workbench/src/ui/server.ts`,
+`apps/workbench/src/task-run.ts`,
+`apps/workbench/src/task-attempts.ts`, and their focused new/existing
 tests. Packet 4 alone changes the shared Task-attempt mechanism.
 
 **Inputs and output.** Input is Wave 1's exact Packet 2 commit, current
@@ -335,16 +335,16 @@ and form temporary evidence/execution/review contributions only when useful,
 then remains the single synthesis owner.
 
 **Owned paths.** Packet 5 owns
-`operations/workbench/src/conversation/execution-carrier.ts`,
-`operations/workbench/src/conversation/runtime.ts`,
-`operations/workbench/src/task-run.ts`,
-`operations/workbench/src/task-attempts.ts`,
-`operations/workbench/src/ui/work-items.ts`,
-`operations/autonomy/src/conversation-coordinator.ts`, and focused tests in
-`operations/workbench/test/conversation-execution-carrier.test.ts`,
-`operations/workbench/test/task-run.test.ts`,
-`operations/workbench/test/ui-work-items.test.ts`, and
-`operations/autonomy/test/conversation-coordinator.test.ts`. This packet is
+`apps/workbench/src/conversation/execution-carrier.ts`,
+`apps/workbench/src/conversation/runtime.ts`,
+`apps/workbench/src/task-run.ts`,
+`apps/workbench/src/task-attempts.ts`,
+`apps/workbench/src/ui/work-items.ts`,
+`apps/autonomy/src/conversation-coordinator.ts`, and focused tests in
+`apps/workbench/test/conversation-execution-carrier.test.ts`,
+`apps/workbench/test/task-run.test.ts`,
+`apps/workbench/test/ui-work-items.test.ts`, and
+`apps/autonomy/test/conversation-coordinator.test.ts`. This packet is
 serial after Packet 4 and is the sole writer to these shared contracts.
 
 **Inputs and output.** Input is Wave 2's exact commit, `DelegateLoopSession`,
@@ -398,12 +398,12 @@ and explicit Principal acceptance separation. It remains usable at desktop and
 mobile sizes.
 
 **Owned paths.** Packet 6 owns only
-`operations/workbench/ui/index.html`,
-`operations/workbench/ui/app.js`,
-`operations/workbench/ui/styles.css`,
-`operations/workbench/test/ui-static-assets.test.ts`,
-`operations/workbench/test/ui-responsive-layout.test.ts`, and
-`operations/workbench/test/ui-conversation.test.ts`. Runtime/server contracts
+`apps/workbench/ui/index.html`,
+`apps/workbench/ui/app.js`,
+`apps/workbench/ui/styles.css`,
+`apps/workbench/test/ui-static-assets.test.ts`,
+`apps/workbench/test/ui-responsive-layout.test.ts`, and
+`apps/workbench/test/ui-conversation.test.ts`. Runtime/server contracts
 are frozen inputs; a discovered runtime defect returns to its owning packet as a
 correction instead of being patched in UI.
 
@@ -463,7 +463,7 @@ plus all three typechecks; retain commands, exit codes, and output digest/text.
 Retain requested provider/model/thinking/effort, observed provider/model,
 observed-effort standing, fingerprint/metadata, request/turn ID, usage, and
 terminal outcome. Use the [pinned browser observation
-entry](../../../operations/workbench/README.md#browser-observation) with one
+entry](../../../apps/workbench/README.md#browser-observation) with one
 session name; retain snapshot, console, geometry, and screenshot evidence at
 both sizes. The narrative links each conclusion to exact raw evidence and
 canonical Task/Mission/attempt/effect refs.
@@ -618,15 +618,15 @@ plan's whole/non-goals, and no authority beyond its explicit paths/effects.
 - **Contribution:** implement the strict interaction schemas and fsynced
   per-conversation JSONL with cursor replay and duplicate reconciliation.
 - **Owned paths/effects:**
-  `operations/workbench/src/conversation/contracts.ts`,
-  `operations/workbench/src/conversation/journal.ts`, and
-  `operations/workbench/test/conversation-journal.test.ts`; local code/test
+  `apps/workbench/src/conversation/contracts.ts`,
+  `apps/workbench/src/conversation/journal.ts`, and
+  `apps/workbench/test/conversation-journal.test.ts`; local code/test
   writes and its Git commit only.
 - **Sources:** System Case journal/lifecycle sections; existing
   `FileMissionTimeline` and `FileEffectJournal` append/repair behavior.
 - **Local acceptance:** `bun test
-  operations/workbench/test/conversation-journal.test.ts` and
-  `bun run --cwd operations/workbench typecheck` pass; no Task/Mission/effect
+  apps/workbench/test/conversation-journal.test.ts` and
+  `bun run --cwd apps/workbench typecheck` pass; no Task/Mission/effect
   meaning appears in the schema.
 - **Output:** code/tests at one exact commit; return changed paths, checks, and
   unresolved crash/storage observations. No wrapper artifact.
@@ -641,13 +641,13 @@ plan's whole/non-goals, and no authority beyond its explicit paths/effects.
 - **Contribution:** expose native Bun WebSocket replay/live delivery over P1's
   contract with an echo/fake runtime.
 - **Owned paths/effects:**
-  `operations/workbench/src/conversation/transport.ts`,
-  `operations/workbench/src/ui/server.ts`, and
-  `operations/workbench/test/conversation-transport.test.ts`; no dependencies
+  `apps/workbench/src/conversation/transport.ts`,
+  `apps/workbench/src/ui/server.ts`, and
+  `apps/workbench/test/conversation-transport.test.ts`; no dependencies
   unless current Bun compilation proves one necessary.
 - **Sources:** P1 commit, current `server.ts`, package/runtime files.
 - **Local acceptance:** `bun test
-  operations/workbench/test/conversation-transport.test.ts`, Workbench
+  apps/workbench/test/conversation-transport.test.ts`, Workbench
   typecheck, and a non-browser submit/stream/reconnect protocol observation
   pass.
 - **Output:** code/tests commit and exact protocol behavior.
@@ -661,16 +661,16 @@ plan's whole/non-goals, and no authority beyond its explicit paths/effects.
   prompt composition, streaming, tools port, requested/observed evidence, and
   response interruption.
 - **Owned paths/effects:**
-  `operations/autonomy/src/conversation-coordinator.ts`,
-  `operations/autonomy/src/conversation-prompt.ts`,
-  `operations/autonomy/src/index.ts`, and
-  `operations/autonomy/test/conversation-coordinator.test.ts`. Fake tests have
+  `apps/autonomy/src/conversation-coordinator.ts`,
+  `apps/autonomy/src/conversation-prompt.ts`,
+  `apps/autonomy/src/index.ts`, and
+  `apps/autonomy/test/conversation-coordinator.test.ts`. Fake tests have
   no spend; the one live probe runs only under the already declared DeepSeek
   credential and disclosure envelope.
 - **Sources:** P2 commit, System Case coordinator/provider sections, DeepSeek
   adapter, AI SDK patterns already in Autonomy.
 - **Local acceptance:** `bun test
-  operations/autonomy/test/conversation-coordinator.test.ts` and Autonomy
+  apps/autonomy/test/conversation-coordinator.test.ts` and Autonomy
   typecheck pass; the live probe records success or a visible non-fallback
   failure.
 - **Output:** code/tests commit plus natural provider observation when run.
@@ -686,12 +686,12 @@ plan's whole/non-goals, and no authority beyond its explicit paths/effects.
   Worktree and existing Task/Mission operations; factor attempt
   preparation/settlement and expose a narrow exact-carrier activity port.
 - **Owned paths/effects:**
-  `operations/workbench/src/conversation/runtime.ts`,
-  `operations/workbench/src/conversation/context.ts`,
-  `operations/workbench/src/conversation/operations.ts`,
-  `operations/workbench/src/ui/server.ts`,
-  `operations/workbench/src/task-run.ts`,
-  `operations/workbench/src/task-attempts.ts`, and their focused new/existing
+  `apps/workbench/src/conversation/runtime.ts`,
+  `apps/workbench/src/conversation/context.ts`,
+  `apps/workbench/src/conversation/operations.ts`,
+  `apps/workbench/src/ui/server.ts`,
+  `apps/workbench/src/task-run.ts`,
+  `apps/workbench/src/task-attempts.ts`, and their focused new/existing
   Workbench tests. Tests use disposable homes/repos; no real Task/Mission
   mutation outside fixtures.
 - **Sources:** P3 commit, Task/project/Worktree/control APIs and tests named in
@@ -715,16 +715,16 @@ plan's whole/non-goals, and no authority beyond its explicit paths/effects.
   constraints; derive the current internal admission/evidence fields in the
   host adapter.
 - **Owned paths/effects:**
-  `operations/workbench/src/conversation/execution-carrier.ts`,
-  `operations/workbench/src/conversation/runtime.ts`,
-  `operations/workbench/src/task-run.ts`,
-  `operations/workbench/src/task-attempts.ts`,
-  `operations/workbench/src/ui/work-items.ts`,
-  `operations/autonomy/src/conversation-coordinator.ts`,
-  `operations/workbench/test/conversation-execution-carrier.test.ts`,
-  `operations/workbench/test/task-run.test.ts`,
-  `operations/workbench/test/ui-work-items.test.ts`, and
-  `operations/autonomy/test/conversation-coordinator.test.ts`. One writer owns
+  `apps/workbench/src/conversation/execution-carrier.ts`,
+  `apps/workbench/src/conversation/runtime.ts`,
+  `apps/workbench/src/task-run.ts`,
+  `apps/workbench/src/task-attempts.ts`,
+  `apps/workbench/src/ui/work-items.ts`,
+  `apps/autonomy/src/conversation-coordinator.ts`,
+  `apps/workbench/test/conversation-execution-carrier.test.ts`,
+  `apps/workbench/test/task-run.test.ts`,
+  `apps/workbench/test/ui-work-items.test.ts`, and
+  `apps/autonomy/test/conversation-coordinator.test.ts`. One writer owns
   these shared contracts for this packet.
 - **Sources:** P4 commit, DelegateLoop/WorkerCatalog/current worker policy,
   Mission runner actions, Work Cell records.
@@ -742,11 +742,11 @@ plan's whole/non-goals, and no authority beyond its explicit paths/effects.
 
 - **Contribution:** implement composer/feed/reconnect/control/evidence UI over
   the frozen runtime, including desktop/mobile and accessibility behavior.
-- **Owned paths/effects:** `operations/workbench/ui/index.html`,
-  `operations/workbench/ui/app.js`, `operations/workbench/ui/styles.css`,
-  `operations/workbench/test/ui-static-assets.test.ts`,
-  `operations/workbench/test/ui-responsive-layout.test.ts`, and
-  `operations/workbench/test/ui-conversation.test.ts`; no runtime contract
+- **Owned paths/effects:** `apps/workbench/ui/index.html`,
+  `apps/workbench/ui/app.js`, `apps/workbench/ui/styles.css`,
+  `apps/workbench/test/ui-static-assets.test.ts`,
+  `apps/workbench/test/ui-responsive-layout.test.ts`, and
+  `apps/workbench/test/ui-conversation.test.ts`; no runtime contract
   edits.
 - **Sources:** P5 exact commit, current UI shell/tests, pinned browser entry.
 - **Local acceptance:** the three focused UI tests, Workbench typecheck, and

@@ -3,7 +3,7 @@
 **Date:** 2026-07-23
 
 **Target:** [`agent-environment`](../skills/agent-environment/SKILL.md) setup
-and verify behavior plus the Rossovia Workbench [`init`](../operations/workbench/src/cli.ts)
+and verify behavior plus the Rossovia Workbench [`init`](../apps/workbench/src/cli.ts)
 entry
 
 **Execution profile:** Work Cell, OpenCode Go `deepseek-v4-flash`, read-only
@@ -38,7 +38,7 @@ The Principal supplied one actual cross-device failure:
 - re-running init and inspecting hooks had not repaired the session.
 
 The runtime change makes this condition observable at the ordinary init entry:
-[`initializeHome`](../operations/workbench/src/home.ts) now performs a
+[`initializeHome`](../apps/workbench/src/home.ts) now performs a
 create–rename–remove probe before it can return `writeAccess: "verified"`.
 
 ## Context-path failure retained

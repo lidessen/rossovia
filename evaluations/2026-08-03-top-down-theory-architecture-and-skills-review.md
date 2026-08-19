@@ -96,7 +96,7 @@ generic P-ID selector may miss.
   layers, not another architecture source.
 - Root `AGENTS.md` retains a compact Workbench route and falls from 437 to 181
   lines. The command and authorization protocol moves intact to
-  `operations/workbench/AGENTS.md`, where it is loaded only for Workbench
+  `apps/workbench/AGENTS.md`, where it is loaded only for Workbench
   requests.
 - Current-effect revalidation is stated as an architecture discipline while
   concrete fields and protocols remain with their testable mechanisms.

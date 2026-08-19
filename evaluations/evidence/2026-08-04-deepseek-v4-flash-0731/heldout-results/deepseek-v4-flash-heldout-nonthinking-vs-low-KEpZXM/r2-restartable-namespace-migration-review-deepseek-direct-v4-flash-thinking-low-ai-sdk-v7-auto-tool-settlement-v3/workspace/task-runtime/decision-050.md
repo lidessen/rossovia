@@ -25,7 +25,7 @@ collapsing distinct identities:
 
 ## Decision
 
-Add a local Principal Workbench to `operations/workbench`. It is a rebuildable
+Add a local Principal Workbench to `apps/workbench`. It is a rebuildable
 projection and a narrow human-participation surface, not a new source of
 project, Mission, Git, or runner truth.
 

@@ -17,7 +17,7 @@ State is session-local under `$ROSSO_HOME/state/interventions/` (default
 `~/.rosso/state/interventions/`). It stores the prompt hash and byte count,
 never prompt text. Rossovia Workbench owns both the location and the generic
 state commands and receipt format in
-[`operations/workbench`](../operations/workbench/src/interventions.ts).
+[`apps/workbench`](../apps/workbench/src/interventions.ts).
 The Codex projection supplies session identity but does not choose a separate
 platform-owned state root. After observing a prompt, it injects a receipt
 endpoint bound to that exact session-state file. It does not rediscover state
@@ -56,7 +56,7 @@ updates.
 
 ## Enable and verify in a fresh Codex session
 
-1. Run `./operations/workbench/rossovia init` through the ordinary agent
+1. Run `./apps/workbench/rossovia init` through the ordinary agent
    session and require `writeAccess: "verified"`. If it fails, reconcile the
    exact user-level grant above and start another fresh session; repeated init
    attempts cannot change a frozen sandbox.
@@ -72,7 +72,7 @@ updates.
 5. Inspect the resulting state:
 
    ```sh
-   ./operations/workbench/rossovia intervention status --session-id "codex:$CODEX_THREAD_ID"
+   ./apps/workbench/rossovia intervention status --session-id "codex:$CODEX_THREAD_ID"
    ```
 
    Set `ROSSO_HOME` or pass Workbench's top-level `--home PATH` when using a

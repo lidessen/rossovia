@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./operations/workbench/rossovia hook intervention codex",
+            "command": "./apps/workbench/rossovia hook intervention codex",
             "timeout": 10,
             "statusMessage": "Checking for a changed task constraint"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./operations/workbench/rossovia hook artifact codex post-tool-use"
+            "command": "./apps/workbench/rossovia hook artifact codex post-tool-use"
           }
         ]
       }
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./operations/workbench/rossovia hook artifact codex stop"
+            "command": "./apps/workbench/rossovia hook artifact codex stop"
           }
         ]
       }

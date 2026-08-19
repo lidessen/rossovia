@@ -11,12 +11,12 @@ ordinary `DelegateCall`, then submit only its path and digest—without starting
 child before the host receives the final delegate step?
 
 The implementation under test is the project-local
-[`DelegateLoopSession`](../operations/autonomy/src/delegate-loop.ts). It uses
+[`DelegateLoopSession`](../apps/autonomy/src/delegate-loop.ts). It uses
 AI SDK 7 `ToolLoopAgent`; `write_file` has a host-scoped executor, while
 `delegate` and `delegate_file` deliberately have none. The complete final
 delegate step is therefore returned to host admission before execution. The
 reproducible probe is
-[`delegate-file-capability-probe.ts`](../operations/autonomy/experiments/delegate-file-capability-probe.ts).
+[`delegate-file-capability-probe.ts`](../apps/autonomy/experiments/delegate-file-capability-probe.ts).
 
 ## Fixed profile and fixture
 
@@ -58,7 +58,7 @@ measurement correction is part of the evidence rather than a hidden cleanup.
 Deterministic integration coverage separately exercises a 16 KB packet,
 post-admission source mutation, parent-context compaction, mixed write/delegate
 rejection, and the no-child-before-admission condition in
-[`delegate-loop.test.ts`](../operations/autonomy/test/delegate-loop.test.ts).
+[`delegate-loop.test.ts`](../apps/autonomy/test/delegate-loop.test.ts).
 
 ## Judgment
 

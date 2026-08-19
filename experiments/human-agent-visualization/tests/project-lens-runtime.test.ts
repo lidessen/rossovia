@@ -31,22 +31,22 @@ import {
   PROJECT_LENS_MATERIALIZER_REF,
   PROJECT_LENS_OUTPUT_PATH,
 } from "../project-lens-effect-verifier";
-import { FileMissionTimeline } from "../../../operations/autonomy/src/delegate-timeline";
-import { FileEffectJournal } from "../../../operations/autonomy/src/effect-journal";
-import { projectMissionActivity } from "../../../operations/autonomy/src/mission-activity";
-import { missionRunnerDirectory } from "../../../operations/autonomy/src/mission-runner";
-import { MISSION_TURN_VERSION } from "../../../operations/autonomy/src/mission-turn";
+import { FileMissionTimeline } from "../../../apps/autonomy/src/delegate-timeline";
+import { FileEffectJournal } from "../../../apps/autonomy/src/effect-journal";
+import { projectMissionActivity } from "../../../apps/autonomy/src/mission-activity";
+import { missionRunnerDirectory } from "../../../apps/autonomy/src/mission-runner";
+import { MISSION_TURN_VERSION } from "../../../apps/autonomy/src/mission-turn";
 import {
   executionAuthorizationReceiptPath,
   type ExecutionAuthorizationReceipt,
-} from "../../../operations/workbench/src/execution-authorization";
-import { missionExecutionProposalDigest } from "../../../operations/workbench/src/mission-execution-proposal";
-import { CurrentEffectProjectionSchema } from "../../../operations/workbench/src/ui/projection";
+} from "../../../apps/workbench/src/execution-authorization";
+import { missionExecutionProposalDigest } from "../../../apps/workbench/src/mission-execution-proposal";
+import { CurrentEffectProjectionSchema } from "../../../apps/workbench/src/ui/projection";
 import {
   WORKBENCH_TASK_EXECUTION_CONTEXT_ENV,
   WorkbenchTaskExecutionContextSchema,
   workbenchTaskExecutionContextRef,
-} from "../../../operations/workbench/src/task-execution-context";
+} from "../../../apps/workbench/src/task-execution-context";
 
 const roots: string[] = [];
 
@@ -108,7 +108,7 @@ test("the Mission contract separates complete local traversal from external prov
 test("the Mission proposal is semantically bound to the loaded runtime bytes", () => {
   const mission = JSON.parse(readFileSync(join(
     import.meta.dir,
-    "../../../operations/missions/project-lens-dogfood.json",
+    "../../../apps/missions/project-lens-dogfood.json",
   ), "utf8"));
   expect(mission.executionProposal).toEqual(projectLensExecutionProposal());
   expect(mission.executionProposal.proposalId).toBe("project-lens-dogfood-v6");
@@ -581,7 +581,7 @@ function authorizationFixture() {
   const proposal = projectLensExecutionProposal();
   const missionPath = join(
     repository,
-    "operations/missions/project-lens-dogfood.json",
+    "apps/missions/project-lens-dogfood.json",
   );
   mkdirSync(join(missionPath, ".."), { recursive: true });
   writeFileSync(missionPath, `${JSON.stringify({
@@ -613,7 +613,7 @@ function authorizationFixture() {
     projectId: "repository:skills-test",
     missionId: "project-lens-dogfood",
     missionSource: {
-      path: "operations/missions/project-lens-dogfood.json",
+      path: "apps/missions/project-lens-dogfood.json",
       gitHead: head,
     },
     proposalId: proposal.proposalId,

@@ -106,7 +106,7 @@ accepted source, involve another reviewer, or be shared remotely, use the
 branch/PR path below.
 
 For a material mission that can survive multiple sessions or fork into more
-than one line of work, create one Git-tracked [Mission Record](../../operations/missions/README.md)
+than one line of work, create one Git-tracked [Mission Record](../../apps/missions/README.md)
 before opening the first side branch. It records the mainline contradiction,
 acceptance, and each branch's source, return condition, and eventual mainline
 delta. It is not required for the local edit above and does not create a task
@@ -158,8 +158,8 @@ After a material branch settles, before switching to another branch, and before
 presenting a phase-complete or merge decision, inspect the active record:
 
 ```text
-./operations/workbench/rossovia mission status <mission-id>
-./operations/workbench/rossovia mission check <mission-id> --git
+./apps/workbench/rossovia mission status <mission-id>
+./apps/workbench/rossovia mission check <mission-id> --git
 ```
 
 A branch returns only through `integrate`, `no-change`, or `abandon`, each with

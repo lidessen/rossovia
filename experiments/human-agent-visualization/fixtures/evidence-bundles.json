@@ -46,7 +46,7 @@
           {
             "kind": "mission-semantic-source",
             "id": "human-agent-visualization",
-            "sourceRef": "operations/missions/human-agent-visualization.json",
+            "sourceRef": "apps/missions/human-agent-visualization.json",
             "revision": "git:7cb8d66"
           },
           {
@@ -78,7 +78,7 @@
                 {
                   "kind": "mission-semantic-source",
                   "id": "human-agent-visualization",
-                  "sourceRef": "operations/missions/human-agent-visualization.json",
+                  "sourceRef": "apps/missions/human-agent-visualization.json",
                   "revision": "git:7cb8d66"
                 },
                 {
@@ -94,7 +94,7 @@
                   "missions": [
                     {
                       "id": "human-agent-visualization",
-                      "sourceRef": "operations/missions/human-agent-visualization.json"
+                      "sourceRef": "apps/missions/human-agent-visualization.json"
                     }
                   ]
                 }
@@ -139,7 +139,7 @@
               "mission": {
                 "id": "human-agent-visualization",
                 "title": "人—Agent 可视化",
-                "sourceRef": "operations/missions/human-agent-visualization.json",
+                "sourceRef": "apps/missions/human-agent-visualization.json",
                 "revision": "git:7cb8d66"
               },
               "authorization": {
@@ -254,7 +254,7 @@
                       ".rosso/missions/human-agent-visualization/runner-status.json",
                       ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
                       ".rosso/state/tasks.json",
-                      "operations/missions/human-agent-visualization.json"
+                      "apps/missions/human-agent-visualization.json"
                     ]
                   },
                   "taskDetail": {
@@ -265,7 +265,7 @@
                       "missionId": "human-agent-visualization",
                       "authority": "context-only",
                       "standing": "observed",
-                      "sourceRef": "operations/missions/human-agent-visualization.json",
+                      "sourceRef": "apps/missions/human-agent-visualization.json",
                       "currentCarrier": {
                         "runnerId": "runner-visual-01",
                         "state": "running",
@@ -360,7 +360,7 @@
           {
             "kind": "mission-semantic-source",
             "id": "human-agent-visualization",
-            "sourceRef": "operations/missions/human-agent-visualization.json",
+            "sourceRef": "apps/missions/human-agent-visualization.json",
             "revision": "git:7cb8d66"
           },
           {
@@ -392,7 +392,7 @@
                 {
                   "kind": "mission-semantic-source",
                   "id": "human-agent-visualization",
-                  "sourceRef": "operations/missions/human-agent-visualization.json",
+                  "sourceRef": "apps/missions/human-agent-visualization.json",
                   "revision": "git:7cb8d66"
                 },
                 {
@@ -408,7 +408,7 @@
                   "missions": [
                     {
                       "id": "human-agent-visualization",
-                      "sourceRef": "operations/missions/human-agent-visualization.json"
+                      "sourceRef": "apps/missions/human-agent-visualization.json"
                     }
                   ]
                 }
@@ -453,7 +453,7 @@
               "mission": {
                 "id": "human-agent-visualization",
                 "title": "人—Agent 可视化",
-                "sourceRef": "operations/missions/human-agent-visualization.json",
+                "sourceRef": "apps/missions/human-agent-visualization.json",
                 "revision": "git:7cb8d66"
               },
               "authorization": {
@@ -568,7 +568,7 @@
                       ".rosso/missions/human-agent-visualization/runner-status.json",
                       ".rosso/missions/human-agent-visualization/turns/runner-visual-01.json",
                       ".rosso/state/tasks.json",
-                      "operations/missions/human-agent-visualization.json"
+                      "apps/missions/human-agent-visualization.json"
                     ]
                   },
                   "taskDetail": {
@@ -579,7 +579,7 @@
                       "missionId": "human-agent-visualization",
                       "authority": "context-only",
                       "standing": "observed",
-                      "sourceRef": "operations/missions/human-agent-visualization.json",
+                      "sourceRef": "apps/missions/human-agent-visualization.json",
                       "currentCarrier": {
                         "runnerId": "runner-visual-01",
                         "state": "running",
@@ -679,7 +679,7 @@
           {
             "kind": "mission-semantic-source",
             "id": "human-agent-visualization",
-            "sourceRef": "operations/missions/human-agent-visualization.json",
+            "sourceRef": "apps/missions/human-agent-visualization.json",
             "revision": "git:7cb8d66"
           },
           {
@@ -711,7 +711,7 @@
                 {
                   "kind": "mission-semantic-source",
                   "id": "human-agent-visualization",
-                  "sourceRef": "operations/missions/human-agent-visualization.json",
+                  "sourceRef": "apps/missions/human-agent-visualization.json",
                   "revision": "git:7cb8d66"
                 },
                 {
@@ -727,7 +727,7 @@
                   "missions": [
                     {
                       "id": "human-agent-visualization",
-                      "sourceRef": "operations/missions/human-agent-visualization.json"
+                      "sourceRef": "apps/missions/human-agent-visualization.json"
                     }
                   ]
                 }
@@ -772,7 +772,7 @@
               "mission": {
                 "id": "human-agent-visualization",
                 "title": "人—Agent 可视化",
-                "sourceRef": "operations/missions/human-agent-visualization.json",
+                "sourceRef": "apps/missions/human-agent-visualization.json",
                 "revision": "git:7cb8d66"
               },
               "authorization": {
@@ -887,7 +887,7 @@
                       ".rosso/missions/human-agent-visualization/runner-status.json",
                       ".rosso/missions/human-agent-visualization/turns/runner-visual-02.json",
                       ".rosso/state/tasks.json",
-                      "operations/missions/human-agent-visualization.json"
+                      "apps/missions/human-agent-visualization.json"
                     ]
                   },
                   "taskDetail": {
@@ -898,7 +898,7 @@
                       "missionId": "human-agent-visualization",
                       "authority": "context-only",
                       "standing": "observed",
-                      "sourceRef": "operations/missions/human-agent-visualization.json",
+                      "sourceRef": "apps/missions/human-agent-visualization.json",
                       "currentCarrier": {
                         "runnerId": "runner-visual-02",
                         "state": "running",

@@ -7,7 +7,7 @@ engineering notes. Its canonical article remains author-owned while summaries,
 source maps, and other agent-facing views remain traceable projections.
 
 Read [DESIGN.md](DESIGN.md) for the product thesis and
-[`operations/missions/principal-workbench-dogfood.json`](operations/missions/principal-workbench-dogfood.json)
+[`apps/missions/principal-workbench-dogfood.json`](apps/missions/principal-workbench-dogfood.json)
 for the retained experiment obligation.
 
 ## Current Status

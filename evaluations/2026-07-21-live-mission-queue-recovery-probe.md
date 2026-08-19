@@ -18,9 +18,9 @@ recovery, or safe writable effects.
 ## Frozen shape
 
 The probe runner is
-[`live-mission-queue-recovery-probe.ts`](../operations/autonomy/experiments/live-mission-queue-recovery-probe.ts).
+[`live-mission-queue-recovery-probe.ts`](../apps/autonomy/experiments/live-mission-queue-recovery-probe.ts).
 It used the trusted
-[`flash-readonly-mission-runtime.ts`](../operations/autonomy/experiments/flash-readonly-mission-runtime.ts)
+[`flash-readonly-mission-runtime.ts`](../apps/autonomy/experiments/flash-readonly-mission-runtime.ts)
 through three distinct detached carrier processes. Every model call used the
 explicit OpenCode Go `deepseek-v4-flash` route with no fallback.
 
@@ -32,7 +32,7 @@ the complete verified commit with a separate `principal:probe-fixture`
 authority reference.
 
 The child could read only
-[`operations/autonomy/package.json`](../operations/autonomy/package.json),
+[`apps/autonomy/package.json`](../apps/autonomy/package.json),
 with no write paths or command authority.
 
 ## Retained accepted run

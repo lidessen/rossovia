@@ -6,8 +6,8 @@ reasonix.toml
 .playwright-cli/
 .vercel/
 packages/*/node_modules/
-operations/*/node_modules/
-/operations/workbench/dist/
+apps/*/node_modules/
+/apps/workbench/dist/
 packages/work-cell/.work-cell/
 site/node_modules/
 site/dist/

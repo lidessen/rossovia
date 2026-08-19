@@ -39,13 +39,13 @@ jobs:
         working-directory: packages/work-cell
         run: bun install --frozen-lockfile
       - name: Install Autonomy dependencies
-        working-directory: operations/autonomy
+        working-directory: apps/autonomy
         run: bun install --frozen-lockfile
       - name: Install Agent-Era Blog dependencies
         working-directory: experiments/agent-era-blog
         run: npm ci
       - name: Install Workbench dependencies
-        working-directory: operations/workbench
+        working-directory: apps/workbench
         run: bun install --frozen-lockfile
       - name: Typecheck Work Cell
         working-directory: packages/work-cell
@@ -54,19 +54,19 @@ jobs:
         working-directory: packages/work-cell
         run: bun test
       - name: Typecheck Autonomy
-        working-directory: operations/autonomy
+        working-directory: apps/autonomy
         run: bun run typecheck
       - name: Test Autonomy
-        working-directory: operations/autonomy
+        working-directory: apps/autonomy
         run: bun test
       - name: Test Agent-Era Blog
         working-directory: experiments/agent-era-blog
         run: npm test
       - name: Typecheck Workbench
-        working-directory: operations/workbench
+        working-directory: apps/workbench
         run: bun run typecheck
       - name: Test Workbench
-        working-directory: operations/workbench
+        working-directory: apps/workbench
         run: bun test
       - name: Typecheck Cognition
         working-directory: packages/cognition

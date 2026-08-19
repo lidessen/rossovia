@@ -10,12 +10,12 @@ const currentCommit = "f1733bba6c7d0a22a00a4e53222be71397eda139";
 await rm(fixture, { recursive: true, force: true });
 
 const snapshots = [
-  [historicalCommit, "operations/workbench/src/migration.ts", "migration/src/migration.ts"],
-  [historicalCommit, "operations/workbench/src/home.ts", "migration/src/home.ts"],
-  [historicalCommit, "operations/workbench/test/migration.test.ts", "migration/test/migration.test.ts"],
+  [historicalCommit, "apps/workbench/src/migration.ts", "migration/src/migration.ts"],
+  [historicalCommit, "apps/workbench/src/home.ts", "migration/src/home.ts"],
+  [historicalCommit, "apps/workbench/test/migration.test.ts", "migration/test/migration.test.ts"],
   [historicalCommit, "design/decisions/044-rosso-identity-and-namespace-migration.md", "migration/decision-044.md"],
   [historicalCommit, "design/decisions/047-bun-workbench-runtime.md", "migration/decision-047.md"],
-  [currentCommit, "operations/workbench/AGENTS.md", "task-runtime/AGENTS.md"],
+  [currentCommit, "apps/workbench/AGENTS.md", "task-runtime/AGENTS.md"],
   [currentCommit, "design/decisions/050-principal-workbench-supervised-mvp.md", "task-runtime/decision-050.md"],
   [currentCommit, "design/decisions/053-principal-created-task-workbench.md", "task-runtime/decision-053.md"],
 ] as const;

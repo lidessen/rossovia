@@ -47,16 +47,16 @@ survived that check:
 - `owner: null` is the intentional update command for deleting an owner in
   [`TaskStore.update`](../packages/work-cell/src/task-store.ts), so resetting
   a failed delegated Task does not violate `TaskSchema`;
-- [`FileMissionTimeline.resolveBatch`](../operations/autonomy/src/delegate-timeline.ts)
+- [`FileMissionTimeline.resolveBatch`](../apps/autonomy/src/delegate-timeline.ts)
   reconstructs the parent ready barrier directly from settled child timelines,
   defeating the proposed crash-window deadlock;
-- one [`DelegateLoopSession`](../operations/autonomy/src/delegate-loop.ts)
+- one [`DelegateLoopSession`](../apps/autonomy/src/delegate-loop.ts)
   serializes batches and marks Task ownership before it can advance again, so
   the proposed same-session double claim is unreachable;
 - a Task Shape profile revision and `execution-profile.v1` are different kinds
   of version: capability-evidence revision versus execution-record schema
   version. Comparing those strings would introduce a false invariant;
-- [`FileMissionTimeline.recoverTurn`](../operations/autonomy/src/delegate-timeline.ts)
+- [`FileMissionTimeline.recoverTurn`](../apps/autonomy/src/delegate-timeline.ts)
   rejects recovery after settlement, so a post-settlement recovery cannot be
   hidden by `missionTurnNeedsRecovery`;
 - CI runs the complete autonomy package test suite, including delegate

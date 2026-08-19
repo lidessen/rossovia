@@ -1,7 +1,7 @@
 # Agent-Era Blog project guidance
 
 Read [DESIGN.md](DESIGN.md) and the active record under
-`operations/missions/` before changing product behavior.
+`apps/missions/` before changing product behavior.
 
 ## Product invariant
 

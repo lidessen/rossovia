@@ -1,7 +1,7 @@
 # Legacy Index Retention
 
 **Status:** pass — sealed local archive restored successfully; live carrier retired
-**Accepted design:** [accepted source/value/status partition](2026-07-15-legacy-experiment-return-partition.md), [formal operations mission](../../../operations/missions/formal-operations-transition.json)
+**Accepted design:** [accepted source/value/status partition](2026-07-15-legacy-experiment-return-partition.md), [formal operations mission](../../../apps/missions/formal-operations-transition.json)
 
 ## Audit
 

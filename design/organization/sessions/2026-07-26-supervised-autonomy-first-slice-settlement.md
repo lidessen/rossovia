@@ -3,7 +3,7 @@
 **Status:** accepted — option A
 **Human mandate:** reconcile the implemented supervised-autonomy first slice
 with the repository's accepted design and evidence boundaries.
-**Decision:** recognize `operations/autonomy/` as an active, bounded
+**Decision:** recognize `apps/autonomy/` as an active, bounded
 experimental capability while retaining human-initiated formal operation.
 **Approver:** Principal
 **Decision date:** 2026-07-26
@@ -38,7 +38,7 @@ production advantage remain unproved.
 |---|---|---|---|
 | The accepted long direction is operational autonomy under human governance. | fact | [Decision 043](../../decisions/043-generative-system-and-human-governed-autonomy.md), accepted | does not itself approve a runtime transition |
 | Ordinary formal operation remains human-initiated. | fact | [Decision 015](../../decisions/015-human-initiated-formal-operations.md), accepted | none for the current default |
-| `operations/autonomy/` implements Mission input, turns, reconciliation, delegation, a local runner, supervision, and recovery. | fact | current [source](../../../operations/autonomy/src/) and [test suite](../../../operations/autonomy/test/) | active experimental status is settled here; broader operating authority remains closed |
+| `apps/autonomy/` implements Mission input, turns, reconciliation, delegation, a local runner, supervision, and recovery. | fact | current [source](../../../apps/autonomy/src/) and [test suite](../../../apps/autonomy/test/) | active experimental status is settled here; broader operating authority remains closed |
 | Read-only detached execution, external-input withholding, and graceful queue recovery have bounded support. | fact | [read-only](../../../evaluations/2026-07-21-flash-readonly-mission-runtime-probe.md), [live-input](../../../evaluations/2026-07-21-live-mission-input-reconciliation-probe.md), and [queue/recovery](../../../evaluations/2026-07-21-live-mission-queue-recovery-probe.md) evaluations | production usefulness and abrupt-crash recovery remain unproved |
 | PR 48 received independent source review and its then-current 45/45 autonomy tests passed. | fact | [independent review](../../../evaluations/2026-07-21-pr48-independent-review.md) | review did not grant semantic or operating authority |
 | The original Strategy Case remained `proposed` with `Human decision: pending` after implementation. | fact | [Strategy Case](2026-07-20-supervised-autonomy-mvp-strategy-case.md) | the later Principal disposition is recorded by this settlement |
@@ -76,7 +76,7 @@ experiment into accepted autonomous operation.
 Option A was recorded after rerunning:
 
 ```bash
-cd operations/autonomy
+cd apps/autonomy
 bun run typecheck
 bun test
 ```

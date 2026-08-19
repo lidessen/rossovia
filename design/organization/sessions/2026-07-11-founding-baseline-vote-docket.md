@@ -30,7 +30,7 @@ must include bounded excerpts, locators, and digests; a member must report a
 material omission rather than read beyond the packet.
 
 1. [Strategy Case](2026-07-11-founding-baseline-next-strategy-case.md)
-2. [Mission record](../../../operations/missions/founding-baseline.json)
+2. [Mission record](../../../apps/missions/founding-baseline.json)
 3. [Founding baseline review](2026-07-11-founding-baseline-review.md)
 4. [Prior priority-docket disposition](2026-07-11-founding-priority-docket.md)
 5. [Deliberation failure observation](../../../chronicle/records/2026/07/obs-20260711-deliberation-docket-usability-budget-failure.json)

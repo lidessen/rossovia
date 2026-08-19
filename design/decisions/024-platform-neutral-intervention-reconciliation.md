@@ -29,7 +29,7 @@ documentation.
 
 The implemented bindings are project-local and intentionally limited to
 `prompt_observation` and `context_injection`. Their portable state commands live
-in [`operations/workbench`](../../operations/workbench/src/interventions.ts);
+in [`apps/workbench`](../../apps/workbench/src/interventions.ts);
 the Codex and Claude projections retain the current platform-specific lifecycle
 shape while sharing the Bun source runtime selected by
 [Decision 054](054-bun-source-workbench-runtime.md). The binding
@@ -98,7 +98,7 @@ evidence and explicit receipts.
 Human inspection selects the exact platform-supplied session identity or the
 exact state file. It must not infer the current session from the newest file for
 a workspace, because [several sessions may share one workbench entry while
-remaining independently selectable](../../operations/workbench/test/interventions.test.ts)
+remaining independently selectable](../../apps/workbench/test/interventions.test.ts)
 and one session may operate different target repositories.
 
 ### Role boundary

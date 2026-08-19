@@ -2,7 +2,7 @@
 
 **Status:** unsettled — the authorized pilot exhausted its allocation without a
 valid position; no option is selected
-**Mission:** [`founding-baseline`](../../../operations/missions/founding-baseline.json)
+**Mission:** [`founding-baseline`](../../../apps/missions/founding-baseline.json)
 **Question:** Which line must receive the next founding priority, given the
 dependencies among PR readiness, the new deliberation/continuity mechanisms,
 and the organization constitution inquiry?

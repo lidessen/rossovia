@@ -3,7 +3,7 @@
 **Date:** 2026-07-16
 **Status:** completed — option A integrated through PR #23
 **Authority:** [decision 015](../../decisions/015-human-initiated-formal-operations.md)
-**Mission:** [`formal-operations-transition`](../../../operations/missions/formal-operations-transition.json)
+**Mission:** [`formal-operations-transition`](../../../apps/missions/formal-operations-transition.json)
 
 ## Question
 
