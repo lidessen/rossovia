@@ -5,10 +5,10 @@ description: >-
   its pages and states, completing representative tasks in a supplied browser,
   and returning a traceable, decision-sized review packet. Use when asked to
   "dogfood the product", "review every page from a user's perspective",
-  "全面 review 页面/流程", "从使用角度检查 UI", or to organize read-only
-  workers for cross-page product review. Do not use for a visual-contract or
-  aesthetic review alone, source-level code review, accessibility/performance
-  audit alone, implementation, or merge authority.
+  "全面 review 页面/流程", or "从使用角度检查 UI". Do not use for a
+  visual-contract or aesthetic review alone, source-level code review,
+  accessibility/performance audit alone, implementation, worker topology, or
+  merge authority.
 argument-hint: "[running instance] [audience/task] [review boundary]"
 ---
 
@@ -18,6 +18,15 @@ argument-hint: "[running instance] [audience/task] [review boundary]"
 
 **Primary:** P16
 **Supporting:** P09, P05, P13
+
+## Principle source
+
+First detect whether the host project declares `principles/SEQUENCE.md` and
+matching interpretations. When it does, that host source governs this task;
+read only P16, P09, P05, and P13. When the host has no such source, use the
+read-only packaged fallback in [references/sequence.md](references/sequence.md).
+The packaged projection is a lineage baseline, not a second canon; never
+silently reconcile it with a host source or edit it during a review.
 
 ## Scope
 
