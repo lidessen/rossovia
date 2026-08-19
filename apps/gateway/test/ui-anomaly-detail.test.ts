@@ -92,9 +92,13 @@ describe("observation peek visibility for anomaly detail", () => {
   test("scan surfaces keep summaries compact and preserve anomaly context", () => {
     expect(stylesCss).toContain(".task-view .work-item-body > span");
     expect(stylesCss).toContain(".conversation-context .context-section:first-child");
-    expect(stylesCss).toContain(".conversation-empty-standing,\n.conversation-boundary {\n  display: none !important;");
+    expect(stylesCss).toContain(".conversation-empty-standing {\n  display: none !important;");
+    expect(stylesCss).toContain(".conversation-boundary {\n    display: none !important;");
+    expect(stylesCss).not.toContain(".conversation-empty-standing,\n.conversation-boundary");
     expect(appJs).toContain('data-work-item-kind="${escapeHtml(text(item.kind, "work"))}"');
     expect(appJs).toContain("renderAnomalyDetail(anomaly, item)");
+    expect(appJs).toContain('class="project-group-disclosure"');
+    expect(stylesCss).toContain(".project-group-disclosure");
     expect(UI_ASSETS["app.js"]).toBe(appJs);
   });
 });

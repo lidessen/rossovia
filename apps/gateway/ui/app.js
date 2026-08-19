@@ -1980,6 +1980,7 @@ export function taskLocatorEmptySummary(locator, context) {
       return `
         <details class="project-group" ${projectItems.length > 0 && projectItems.length <= 3 ? "open" : ""}>
           <summary>
+            <span class="project-group-disclosure" aria-hidden="true"></span>
             <span class="project-group-title">
               <strong>${escapeHtml(summary.name)}</strong>
               <small>${summary.worktreeCount} 个 Worktree · ${summary.taskCount} 项任务${summary.observationCount ? ` · ${summary.observationCount} 项异常` : ""}</small>

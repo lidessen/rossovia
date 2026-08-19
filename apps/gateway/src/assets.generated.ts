@@ -4804,7 +4804,7 @@ body[data-projection-state="loading"] .workbench-shell {
   cursor: pointer;
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
+  grid-template-columns: 12px minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
   list-style: none;
   min-height: 76px;
   padding: 0.8rem 0.25rem;
@@ -4814,17 +4814,30 @@ body[data-projection-state="loading"] .workbench-shell {
   display: none;
 }
 
-.project-group > summary::before {
-  color: var(--ink-faint);
-  content: "›";
-  font-size: 1rem;
-  margin-left: -0.95rem;
-  position: absolute;
-  transform: rotate(0deg);
+.project-group-disclosure {
+  border-bottom: 1px solid var(--ink-soft);
+  border-right: 1px solid var(--ink-soft);
+  height: 8px;
+  justify-self: start;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+  width: 8px;
 }
 
-.project-group[open] > summary::before {
-  transform: rotate(90deg);
+.project-group[open] .project-group-disclosure {
+  transform: rotate(45deg);
+}
+
+.project-group-title {
+  grid-column: 2;
+}
+
+.project-group-focus {
+  grid-column: 3;
+}
+
+.project-observation {
+  grid-column: 4;
 }
 
 .project-group-title strong,
@@ -5982,8 +5995,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
 /* The header is the single persistent connection/status source. The context
    rail retains supervision, next-step, and browser-boundary information. */
-.conversation-empty-standing,
-.conversation-boundary {
+.conversation-empty-standing {
   display: none !important;
 }
 
@@ -6070,6 +6082,10 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .conversation-context .context-section:first-child {
     display: none;
+  }
+
+  .conversation-boundary {
+    display: none !important;
   }
 }
 
@@ -7174,7 +7190,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .project-group > summary {
-    grid-template-columns: minmax(130px, 0.55fr) minmax(220px, 1fr);
+    grid-template-columns: 12px minmax(130px, 0.55fr) minmax(220px, 1fr);
   }
 
   .project-observation {
@@ -7287,12 +7303,18 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .project-group > summary {
     align-items: start;
     gap: 0.45rem;
-    grid-template-columns: 1fr;
+    grid-template-columns: 12px minmax(0, 1fr);
     padding: 0.85rem 0.1rem;
   }
 
-  .project-group > summary::before {
-    display: none;
+  .project-group-title,
+  .project-group-focus,
+  .project-observation {
+    grid-column: 2;
+  }
+
+  .project-group-disclosure {
+    margin-top: 0.28rem;
   }
 
   .project-group-focus {
@@ -9690,6 +9712,7 @@ export function taskLocatorEmptySummary(locator, context) {
       return \`
         <details class="project-group" \${projectItems.length > 0 && projectItems.length <= 3 ? "open" : ""}>
           <summary>
+            <span class="project-group-disclosure" aria-hidden="true"></span>
             <span class="project-group-title">
               <strong>\${escapeHtml(summary.name)}</strong>
               <small>\${summary.worktreeCount} 个 Worktree · \${summary.taskCount} 项任务\${summary.observationCount ? \` · \${summary.observationCount} 项异常\` : ""}</small>
