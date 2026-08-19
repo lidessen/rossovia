@@ -3115,6 +3115,12 @@ body[data-projection-state="loading"] .workbench-shell {
   margin-top: 0.18rem;
 }
 
+.work-item-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .work-item-body > small {
   color: var(--ink-faint);
   font-family: var(--mono);
@@ -3139,6 +3145,25 @@ body[data-projection-state="loading"] .workbench-shell {
   font-size: 0.64rem;
   font-weight: 620;
   margin-top: 0.32rem;
+}
+
+/* Principal and Tasks are scan surfaces. Their existing peek affordance owns
+   the full summary, evidence, and actions; the list keeps only the fields
+   needed to locate the next item. */
+.task-view .work-item {
+  min-height: 58px;
+  padding-block: 0.52rem;
+}
+
+.task-view .work-item-body > span {
+  display: none;
+}
+
+.task-view .work-item-body > small {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-filter-bar {
@@ -4463,6 +4488,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 1rem 1.05rem 1.2rem;
 }
 
+/* The header is the single persistent connection/status source. The context
+   rail retains supervision, next-step, and browser-boundary information. */
+.conversation-empty-standing,
+.conversation-boundary {
+  display: none;
+}
+
 .context-section {
   border-bottom: 1px solid var(--line-light);
   margin-bottom: 0.85rem;
@@ -4542,6 +4574,10 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 @media (min-width: 1280px) {
   .conversation-context {
     display: block;
+  }
+
+  .conversation-context .context-section:first-child {
+    display: none;
   }
 }
 

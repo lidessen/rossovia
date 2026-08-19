@@ -1291,6 +1291,31 @@ export function taskLocatorEmptySummary(locator, context) {
     return "未验证";
   }
 
+  function workItemAnomalyContext(item) {
+    const detail = first(item, ["anomalyDetail"], {});
+    const binding = first(detail, ["binding"], {});
+    const runnerId = text(
+      first(item, ["runnerId"]) || first(binding, ["runnerId"]),
+      "",
+    );
+    const bindingStanding = text(first(binding, ["standing"]), "");
+    const standing = text(
+      first(detail, ["standing", "runnerStanding"]) || first(item, ["runnerState"]),
+      "",
+    );
+    const reason = text(
+      first(binding, ["reason"]) || first(detail, ["reason"]) || first(item, ["reason"]),
+      "",
+    );
+    if (item?.kind !== "observation" && item?.anomalyDetail === undefined) return "";
+    return [
+      runnerId ? `Runner ${runnerId}` : "Runner 身份未投影",
+      bindingStanding ? `绑定 ${bindingStanding}` : "绑定状态未知",
+      standing ? `状态 ${standing}` : "状态未知",
+      reason,
+    ].filter(Boolean).join(" · ");
+  }
+
   function projectWorkSummary(project, index) {
     const id = identifier(project, `project-${index}`);
     const items = workItems().filter(
@@ -1826,18 +1851,20 @@ export function taskLocatorEmptySummary(locator, context) {
       ? `${projectName(project)}${item.missionId ? ` · ${item.missionId}` : ""}`
       : item.context;
     const actor = actorCopy[item.nextActor] || item.nextActor;
+    const anomalyContext = workItemAnomalyContext(item);
     return `
       <button
         class="work-item ${item.id === state.selectedWorkItemId ? "is-selected" : ""}"
         type="button"
         data-work-item-id="${escapeHtml(item.id)}"
         data-lifecycle="${escapeHtml(item.lifecycle)}"
+        data-work-item-kind="${escapeHtml(text(item.kind, "work"))}"
       >
         <span class="work-item-state">${escapeHtml(workItemCopy[item.lifecycle] || item.lifecycle)}</span>
         <span class="work-item-body">
           <strong>${escapeHtml(item.title)}</strong>
-          <span>${escapeHtml(item.summary)}</span>
-          <small>${escapeHtml(context)} · 下一步 ${escapeHtml(actor)}</small>
+          <span class="work-item-summary">${escapeHtml(item.summary)}</span>
+          <small>${escapeHtml(context)} · 下一步 ${escapeHtml(actor)}${anomalyContext ? ` · ${escapeHtml(anomalyContext)}` : ""}</small>
         </span>
         <span class="work-item-meta">
           <small>${escapeHtml(workItemFreshnessLabel(item))}</small>
@@ -1951,7 +1978,7 @@ export function taskLocatorEmptySummary(locator, context) {
       const primary = summary.primary;
       const completeness = "项目新鲜度未单独声明";
       return `
-        <details class="project-group" ${index < 2 ? "open" : ""}>
+        <details class="project-group" ${projectItems.length > 0 && projectItems.length <= 3 ? "open" : ""}>
           <summary>
             <span class="project-group-title">
               <strong>${escapeHtml(summary.name)}</strong>
@@ -2101,6 +2128,7 @@ export function taskLocatorEmptySummary(locator, context) {
 
   function renderUnifiedSurface() {
     const items = workItems();
+    document.body.dataset.uiView = state.activeView;
     const overview = $("#unified-surface");
     const projectDetail = $("#project-detail");
     const taskView = $("#task-view");
@@ -2134,14 +2162,14 @@ export function taskLocatorEmptySummary(locator, context) {
     projectOverview.hidden = !(isOverview || isProjectsView);
 
     const viewMeta = {
-      overview: ["Workbench overview", "总览", "跨项目查看需要你处理、Agent 正在进行和状态未知的工作。"],
+      overview: ["Workbench overview", "总览", "先看最重要的待办、异常与项目摘要；完整证据从详情打开。"],
       projects: ["Projects", "项目", "按项目与 Worktree 查看当前工作，不把观察关系伪装成任务绑定。"],
-      principal: ["Needs you", "待我处理", "只显示下一责任方明确是你的事项；进入详情后再完成决策。"],
+      principal: ["Needs you", "待我处理", "显示完整的待我处理队列；列表只用于定位，决策证据在详情中查看。"],
       agent: ["Agent live", "Agent 运行中", "只显示有实时载体证据的当前 Agent 运行。"],
       "agent-pending": ["Agent queue", "待 Agent 接手", "只显示下一责任方为 Agent、但尚无精确实时执行证据的事项。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
-      tasks: ["Tasks", "任务", "用统一形式查看不同责任方和生命周期的工作。"],
+      tasks: ["Tasks", "任务", "按筛选定位全量任务；状态、责任方和来源先行，长证据在详情中查看。"],
     };
     const [eyebrow, title, summary] = viewMeta[state.activeView] || viewMeta.overview;
     $("#view-eyebrow").textContent = eyebrow;
@@ -2266,24 +2294,43 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    $("#peek-context").textContent = item.context;
+    const anomaly = first(item, ["anomalyDetail"]);
+    const anomalyContext = workItemAnomalyContext(item);
+    const compactAnomalyContext = anomalyContext
+      .split(" · ")
+      .slice(0, 3)
+      .join(" · ");
+    const peekContext = compactAnomalyContext
+      ? `${item.context} · ${compactAnomalyContext}`
+      : item.context;
+    const anomalyReason = text(
+      first(item, ["reason"]),
+      "",
+    );
+    $("#peek-context").textContent = peekContext;
+    $("#peek-context").title = peekContext;
     $("#peek-item-state").textContent = workItemCopy[item.lifecycle] || item.lifecycle;
     $("#peek-item-title").textContent = item.title;
-    $("#peek-item-summary").textContent = item.summary;
-    $("#peek-next-actor").textContent = actorCopy[item.nextActor] || item.nextActor;
+    $("#peek-item-summary").textContent = [
+      item.summary,
+      anomaly === undefined && anomalyReason ? anomalyReason : "",
+    ].filter(Boolean).join(" · ");
+    $("#peek-next-actor").textContent = [
+      actorCopy[item.nextActor] || item.nextActor,
+      compactAnomalyContext,
+    ].filter(Boolean).join(" · ");
     $("#peek-freshness").textContent = state.detailRevalidationPending
       ? "正在重验当前目标"
       : workItemFreshnessLabel(item);
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
-    const anomaly = first(item, ["anomalyDetail"]);
     const anomalySection = $("#anomaly-detail");
     anomalySection.hidden = anomaly === null || anomaly === undefined;
-    if (!anomalySection.hidden) renderAnomalyDetail(anomaly);
+    if (!anomalySection.hidden) renderAnomalyDetail(anomaly, item);
   }
 
-  function renderAnomalyDetail(detail) {
+  function renderAnomalyDetail(detail, item = null) {
     if (!detail || typeof detail !== "object") return;
     const scene = first(detail, ["scene"], {});
     const dedup = first(detail, ["dedup"], {});
@@ -2309,9 +2356,14 @@ export function taskLocatorEmptySummary(locator, context) {
       text(first(evidence, ["meaning"]), ""),
     ].filter(Boolean).join(" · ");
     const bindingStanding = text(first(binding, ["standing"]), "unverified");
+    const runnerId = text(
+      first(item, ["runnerId"]) || first(binding, ["runnerId"]),
+      "身份未投影",
+    );
     const bindingMissionId = text(first(binding, ["missionId"]), "");
     const bindingReason = text(first(binding, ["reason"]), "");
     $("#anomaly-binding").textContent = [
+      "Runner " + runnerId,
       "绑定 " + bindingStanding,
       bindingMissionId ? "声明 Mission " + bindingMissionId : "",
       bindingReason,
