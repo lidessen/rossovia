@@ -3115,6 +3115,12 @@ body[data-projection-state="loading"] .workbench-shell {
   margin-top: 0.18rem;
 }
 
+.work-item-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .work-item-body > small {
   color: var(--ink-faint);
   font-family: var(--mono);
@@ -3139,6 +3145,25 @@ body[data-projection-state="loading"] .workbench-shell {
   font-size: 0.64rem;
   font-weight: 620;
   margin-top: 0.32rem;
+}
+
+/* Principal and Tasks are scan surfaces. Their existing peek affordance owns
+   the full summary, evidence, and actions; the list keeps only the fields
+   needed to locate the next item. */
+.task-view .work-item {
+  min-height: 58px;
+  padding-block: 0.52rem;
+}
+
+.task-view .work-item-body > span {
+  display: none;
+}
+
+.task-view .work-item-body > small {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-filter-bar {
@@ -3287,7 +3312,7 @@ body[data-projection-state="loading"] .workbench-shell {
   cursor: pointer;
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
+  grid-template-columns: 12px minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
   list-style: none;
   min-height: 76px;
   padding: 0.8rem 0.25rem;
@@ -3297,17 +3322,30 @@ body[data-projection-state="loading"] .workbench-shell {
   display: none;
 }
 
-.project-group > summary::before {
-  color: var(--ink-faint);
-  content: "›";
-  font-size: 1rem;
-  margin-left: -0.95rem;
-  position: absolute;
-  transform: rotate(0deg);
+.project-group-disclosure {
+  border-bottom: 1px solid var(--ink-soft);
+  border-right: 1px solid var(--ink-soft);
+  height: 8px;
+  justify-self: start;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+  width: 8px;
 }
 
-.project-group[open] > summary::before {
-  transform: rotate(90deg);
+.project-group[open] .project-group-disclosure {
+  transform: rotate(45deg);
+}
+
+.project-group-title {
+  grid-column: 2;
+}
+
+.project-group-focus {
+  grid-column: 3;
+}
+
+.project-observation {
+  grid-column: 4;
 }
 
 .project-group-title strong,
@@ -4463,6 +4501,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 1rem 1.05rem 1.2rem;
 }
 
+/* The header is the single persistent connection/status source. The context
+   rail retains supervision, next-step, and browser-boundary information. */
+.conversation-empty-standing {
+  display: none !important;
+}
+
 .context-section {
   border-bottom: 1px solid var(--line-light);
   margin-bottom: 0.85rem;
@@ -4542,6 +4586,14 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 @media (min-width: 1280px) {
   .conversation-context {
     display: block;
+  }
+
+  .conversation-context .context-section:first-child {
+    display: none;
+  }
+
+  .conversation-boundary {
+    display: none !important;
   }
 }
 
@@ -5646,7 +5698,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .project-group > summary {
-    grid-template-columns: minmax(130px, 0.55fr) minmax(220px, 1fr);
+    grid-template-columns: 12px minmax(130px, 0.55fr) minmax(220px, 1fr);
   }
 
   .project-observation {
@@ -5759,12 +5811,18 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .project-group > summary {
     align-items: start;
     gap: 0.45rem;
-    grid-template-columns: 1fr;
+    grid-template-columns: 12px minmax(0, 1fr);
     padding: 0.85rem 0.1rem;
   }
 
-  .project-group > summary::before {
-    display: none;
+  .project-group-title,
+  .project-group-focus,
+  .project-observation {
+    grid-column: 2;
+  }
+
+  .project-group-disclosure {
+    margin-top: 0.28rem;
   }
 
   .project-group-focus {
