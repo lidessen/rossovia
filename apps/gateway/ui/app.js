@@ -389,6 +389,37 @@ export function conversationWorkControlFrame(target, control = "stop") {
   return { type: "work.control", turnId, actionId, carrierId, control };
 }
 
+/**
+ * One pure composer standing projection. The factual gates stay separate
+ * from the copy: only a live connection with a non-empty (trimmed) draft is
+ * ever sendable. Connecting, disconnected, unavailable, or any unclassified
+ * connection standing stays blocked with its own reason copy, and a blank
+ * draft is blocked even while live. This only decides the affordance and its
+ * visible reason; the transport/frame authority is untouched.
+ */
+export function conversationComposerStanding(connection, draft) {
+  const live = connection === "live";
+  const value = typeof draft === "string" ? draft : "";
+  const empty = value.trim() === "";
+  if (!live) {
+    const standing = connection === "connecting"
+      || connection === "disconnected"
+      || connection === "unavailable"
+      ? connection
+      : "unknown";
+    const status = {
+      connecting: "对话连接中：暂时不能发送；草稿保留在本地，不会自动重发。",
+      disconnected: "对话连接已断开：草稿保留，恢复连接前不能发送；不会自动重发。",
+      unavailable: "对话连接不可用：草稿保留，不能发送；不会自动重发。",
+    }[standing] || "对话连接状态未知：不发送；草稿保留，不会自动重发。";
+    return { sendable: false, gate: "connection", standing, status };
+  }
+  if (empty) {
+    return { sendable: false, gate: "empty", standing: "empty", status: "" };
+  }
+  return { sendable: true, gate: "ready", standing: "live", status: "" };
+}
+
 /** Server frames are validated enough to render without trusting the wire. */
 export function parseConversationServerFrame(raw) {
   if (typeof raw !== "string") return null;
@@ -5572,8 +5603,21 @@ export function taskLocatorEmptySummary(locator, context) {
   function renderConversationComposer() {
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
-    const live = conversationState.connection === "live";
-    submit.disabled = !live;
+    const status = $("#conversation-composer-status");
+    const standing = conversationComposerStanding(
+      conversationState.connection,
+      conversationState.draft,
+    );
+    submit.disabled = !standing.sendable;
+    submit.setAttribute("aria-disabled", String(!standing.sendable));
+    submit.dataset.sendable = String(standing.sendable);
+    const previousStanding = status.dataset.standing;
+    status.dataset.standing = standing.standing;
+    if (standing.gate === "connection") {
+      status.textContent = standing.status;
+    } else if (previousStanding !== standing.standing) {
+      status.textContent = "";
+    }
     if (
       document.activeElement !== textarea
       && textarea.value !== conversationState.draft
