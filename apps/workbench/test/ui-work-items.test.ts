@@ -2120,3 +2120,371 @@ describe("Workbench work-item shell projection", () => {
     }));
   });
 });
+
+describe("Workbench overview runner anomaly dedup", () => {
+  const runnerStatusPath = "/home/rossovia/missions/legacy/runner-status.json";
+  const runnerSceneSnapshot = {
+    generatedAt: "2026-08-18T10:00:00Z",
+    complete: false,
+    projects: [],
+    errors: [],
+    runners: [{
+      live: false,
+      sourcePath: runnerStatusPath,
+      freshness: {
+        kind: "cached",
+        sourceUpdatedAt: "2026-08-17T09:00:00Z",
+        ageMs: 90_000_000,
+      },
+      status: {
+        runnerId: "8fa671f0",
+        missionId: "legacy-mission",
+        state: "interrupted",
+        updatedAt: "2026-08-17T09:00:00Z",
+      },
+      binding: {
+        kind: "unbound",
+        reason: "no-explicit-mission-id-match",
+      },
+    }],
+    attention: [{
+      priority: "warning",
+      code: "runner-unbound",
+      summary: "Runner 8fa671f0 cannot be bound by Mission ID 'legacy-mission' (no-explicit-mission-id-match)",
+      runnerId: "8fa671f0",
+      missionId: "legacy-mission",
+      source: runnerStatusPath,
+    }, {
+      priority: "principal-decision",
+      code: "runner-interrupted",
+      summary: "Mission legacy-mission requires a recovery decision",
+      runnerId: "8fa671f0",
+      missionId: "legacy-mission",
+      source: runnerStatusPath,
+    }, {
+      priority: "warning",
+      code: "runner-unreachable",
+      summary: "Mission legacy-mission runner is unreachable; interrupted is cached state only",
+      runnerId: "8fa671f0",
+      missionId: "legacy-mission",
+      source: runnerStatusPath,
+    }],
+  };
+
+  test("projects one item per identified runner scene with a traceable dedup basis", () => {
+    const items = buildWorkItemProjection(runnerSceneSnapshot as never).items;
+    const runnerItems = items.filter((item) => item.runnerId === "8fa671f0");
+
+    expect(runnerItems).toHaveLength(1);
+    const item = runnerItems[0]!;
+    expect(item).toMatchObject({
+      id: "attention:runner:8fa671f0",
+      kind: "observation",
+      lifecycle: "blocked",
+      nextActor: "system",
+      attention: "exception",
+      title: "未归属 Runner 8fa671f0",
+      projectKey: null,
+      missionId: null,
+      runnerId: "8fa671f0",
+      attentionCode: "runner-unbound",
+      binding: {
+        kind: "unbound",
+        missionId: "legacy-mission",
+        reason: "no-explicit-mission-id-match",
+      },
+      evidence: {
+        freshness: expect.objectContaining({
+          kind: "cached",
+        }),
+        sourceRefs: [runnerStatusPath],
+      },
+    });
+    expect(item.anomalyDetail).toMatchObject({
+      scene: {
+        kind: "runner-cache",
+        sourcePath: runnerStatusPath,
+        relatedPaths: [runnerStatusPath],
+      },
+      dedup: {
+        basis: "runner-id",
+        key: "8fa671f0",
+        mergedCount: 3,
+      },
+      binding: {
+        standing: "unbound",
+        missionId: "legacy-mission",
+        reason: "no-explicit-mission-id-match",
+      },
+      evidenceStanding: {
+        freshnessKind: "cached",
+        observedAt: null,
+        sourceUpdatedAt: "2026-08-17T09:00:00Z",
+      },
+    });
+    expect(item.anomalyDetail!.facets.map((facet) => facet.code)).toEqual([
+      "runner-unbound",
+      "runner-interrupted",
+      "runner-unreachable",
+    ]);
+    const steps = item.anomalyDetail!.nextSteps;
+    expect(steps.some((step) => step.supported && step.label === "刷新当前投影")).toBeTrue();
+    const rebind = steps.find((step) => step.label === "重新绑定 runner");
+    expect(rebind).toMatchObject({
+      supported: false,
+      blocker: "no-explicit-mission-id-match",
+    });
+    const recovery = steps.find((step) => step.label === "恢复或放弃 interrupted turn");
+    expect(recovery).toMatchObject({
+      supported: false,
+      responsible: "Principal · 需要先恢复载体",
+      blocker: "runner 未绑定 Mission · 无精确恢复目标",
+    });
+    expect(steps.filter((step) => step.supported).map((step) => step.label)).toEqual([
+      "刷新当前投影",
+    ]);
+  });
+
+  test("does not emit the parallel runner-shell observation for a covered runner id", () => {
+    const items = buildWorkItemProjection(runnerSceneSnapshot as never).items;
+
+    expect(items.some((item) => item.id.startsWith("runner-observation:"))).toBeFalse();
+    expect(items.some((item) => item.id.startsWith("attention:runner-unbound:"))).toBeFalse();
+    expect(items.some((item) => item.id.startsWith("attention:runner-interrupted:"))).toBeFalse();
+    expect(items.some((item) => item.id.startsWith("attention:runner-unreachable:"))).toBeFalse();
+    expect(items.filter((item) => item.runnerId === "8fa671f0")).toHaveLength(1);
+  });
+
+  test("keeps two different runner scenes as two distinct items without false merging", () => {
+    const secondStatusPath = "/home/rossovia/missions/other/runner-status.json";
+    const snapshot = {
+      ...runnerSceneSnapshot,
+      runners: [
+        runnerSceneSnapshot.runners[0],
+        {
+          live: null,
+          sourcePath: secondStatusPath,
+          freshness: { kind: "cached", sourceUpdatedAt: "2026-08-17T10:00:00Z" },
+          status: {
+            runnerId: "other",
+            missionId: "other-mission",
+            state: "interrupted",
+            updatedAt: "2026-08-17T11:00:00Z",
+          },
+          binding: { kind: "unbound", reason: "no-explicit-mission-id-match" },
+        },
+      ],
+      attention: [
+        ...runnerSceneSnapshot.attention,
+        {
+          priority: "warning",
+          code: "runner-unbound",
+          summary: "Runner other cannot be bound by Mission ID 'other-mission' (no-explicit-mission-id-match)",
+          runnerId: "other",
+          missionId: "other-mission",
+          source: secondStatusPath,
+        },
+      ],
+    };
+
+    const items = buildWorkItemProjection(snapshot as never).items;
+    const runnerIds = items.filter((item) => item.runnerId !== null)
+      .map((item) => item.runnerId);
+    expect(runnerIds).toEqual(["other", "8fa671f0"]);
+    const other = items.find((item) => item.id === "attention:runner:other")!;
+    expect(other.anomalyDetail!.dedup).toEqual({
+      basis: "runner-id",
+      key: "other",
+      mergedCount: 1,
+    });
+    expect(other.anomalyDetail!.scene.sourcePath).toBe(secondStatusPath);
+  });
+
+  test("keeps a bound principal recovery decision as one persistable decision item with reachability folded in", () => {
+    const statusPath = "/home/rossovia/missions/m1/runner-status.json";
+    const snapshot = {
+      generatedAt: "2026-08-18T10:00:00Z",
+      complete: false,
+      projects: [{
+        projectKey: "registered:skills",
+        identity: { id: "skills", aliases: ["skills"] },
+        worktrees: [],
+        missions: [{
+          id: "m1",
+          title: "Mission one",
+          currentFocus: "mainline",
+          mainline: {
+            contradiction: "contradiction",
+            acceptance: ["accept"],
+            status: "active",
+          },
+          branches: [],
+          sourcePath: "/workspace/skills/m1.json",
+          observedGitContext: {
+            worktreePath: "/workspace/skills",
+            binding: "observation-only",
+          },
+        }],
+      }],
+      errors: [],
+      runners: [{
+        live: false,
+        sourcePath: statusPath,
+        freshness: { kind: "cached", sourceUpdatedAt: "2026-08-17T09:00:00Z" },
+        status: {
+          runnerId: "bound-runner",
+          missionId: "m1",
+          state: "interrupted",
+          updatedAt: "2026-08-17T09:00:00Z",
+        },
+        binding: {
+          kind: "project-mission",
+          projectKey: "registered:skills",
+          missionId: "m1",
+        },
+      }],
+      attention: [{
+        priority: "principal-decision",
+        code: "runner-interrupted",
+        summary: "Mission m1 requires a recovery decision",
+        runnerId: "bound-runner",
+        projectKey: "registered:skills",
+        missionId: "m1",
+        source: statusPath,
+      }, {
+        priority: "warning",
+        code: "runner-unreachable",
+        summary: "Mission m1 runner is unreachable; interrupted is cached state only",
+        runnerId: "bound-runner",
+        projectKey: "registered:skills",
+        missionId: "m1",
+        source: statusPath,
+      }],
+    };
+
+    const items = buildWorkItemProjection(snapshot as never).items;
+    const runnerItems = items.filter((item) => item.runnerId === "bound-runner");
+    expect(runnerItems).toHaveLength(1);
+    const item = runnerItems[0]!;
+    expect(item).toMatchObject({
+      id: "attention:runner:bound-runner",
+      kind: "decision",
+      nextActor: "principal",
+      projectKey: "registered:skills",
+      missionId: "m1",
+      binding: {
+        kind: "project-mission",
+        projectKey: "registered:skills",
+        missionId: "m1",
+      },
+    });
+    expect(item.anomalyDetail!.dedup).toEqual({
+      basis: "runner-id",
+      key: "bound-runner",
+      mergedCount: 2,
+    });
+    expect(item.anomalyDetail!.binding).toEqual({
+      standing: "project-mission",
+      missionId: "m1",
+    });
+    const recovery = item.anomalyDetail!.nextSteps.find(
+      (step) => step.label === "恢复或放弃 interrupted turn",
+    );
+    expect(recovery).toMatchObject({
+      supported: false,
+      blocker: "runner unreachable · cached only",
+    });
+  });
+});
+
+describe("Workbench overview raw source-error projection", () => {
+  const gonePath = "/workspace/skills-wt/gone";
+  const rawGitMessage = `fatal: not a git repository: '${gonePath}'`;
+
+  test("retains the raw git error verbatim while explaining stage, meaning, and impact", () => {
+    const snapshot = {
+      generatedAt: "2026-08-18T10:00:00Z",
+      complete: false,
+      projects: [],
+      runners: [],
+      errors: [{
+        scope: "git",
+        source: gonePath,
+        message: rawGitMessage,
+      }],
+      attention: [{
+        priority: "warning",
+        code: "source-error",
+        summary: rawGitMessage,
+        source: gonePath,
+      }],
+    };
+
+    const items = buildWorkItemProjection(snapshot as never).items;
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    expect(item).toMatchObject({
+      id: `attention:source-error:unbound:0`,
+      kind: "observation",
+      nextActor: "system",
+      evidence: expect.objectContaining({
+        sourceRefs: [gonePath],
+      }),
+    });
+    expect(item.anomalyDetail).toMatchObject({
+      scene: {
+        kind: "git-observation",
+        sourcePath: gonePath,
+        relatedPaths: [],
+      },
+      dedup: {
+        basis: "source-path",
+        key: gonePath,
+        mergedCount: 1,
+      },
+      binding: {
+        standing: "unverified",
+        missionId: null,
+      },
+      evidenceStanding: {
+        freshnessKind: "unverified",
+      },
+    });
+    expect(item.anomalyDetail!.rawErrors).toHaveLength(1);
+    const rawError = item.anomalyDetail!.rawErrors[0]!;
+    expect(rawError.raw).toBe(rawGitMessage);
+    expect(rawError.stage).toBe("git-observation");
+    expect(rawError.normalized).toContain("不是可读取的 Git 仓库");
+    expect(rawError.impact).toContain("Git 观察");
+    expect(item.anomalyDetail!.facets).toEqual([]);
+  });
+
+  test("stays a separate scene from runner facts and marks unrecognized errors as unknown", () => {
+    const snapshot = {
+      generatedAt: "2026-08-18T10:00:00Z",
+      complete: false,
+      projects: [],
+      runners: [],
+      errors: [{
+        scope: "mission",
+        source: "/workspace/skills/missions/broken.json",
+        message: "unexpected token '<' in JSON",
+      }],
+      attention: [{
+        priority: "warning",
+        code: "source-error",
+        summary: "unexpected token '<' in JSON",
+        source: "/workspace/skills/missions/broken.json",
+      }],
+    };
+
+    const items = buildWorkItemProjection(snapshot as never).items;
+    expect(items).toHaveLength(1);
+    const rawError = items[0]!.anomalyDetail!.rawErrors[0]!;
+    expect(rawError.stage).toBe("mission-source");
+    expect(rawError.raw).toBe("unexpected token '<' in JSON");
+    expect(rawError.normalized).toBe(
+      "该错误没有可识别的规范模式；投影保留原文，不推断阶段语义。",
+    );
+  });
+});

@@ -838,6 +838,9 @@ export function refineLiveRunnerAttention(
         code: "runner-reachability-unverified",
         summary:
           `Mission ${runner.status.missionId} runner reachability could not be verified from this observer; cached state does not prove either a live or stopped carrier`,
+        ...(runner.status.runnerId === undefined
+          ? {}
+          : { runnerId: runner.status.runnerId }),
         ...(runner.binding.kind === "project-mission"
           ? { projectKey: runner.binding.projectKey }
           : {}),
@@ -855,6 +858,9 @@ export function refineLiveRunnerAttention(
       code: "runner-unreachable",
       summary:
         `Mission ${runner.status.missionId} runner is unreachable; ${runner.status.state} is cached state only`,
+      ...(runner.status.runnerId === undefined
+        ? {}
+        : { runnerId: runner.status.runnerId }),
       ...(runner.binding.kind === "project-mission"
         ? { projectKey: runner.binding.projectKey }
         : {}),

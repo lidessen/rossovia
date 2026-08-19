@@ -1913,6 +1913,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       $("#peek-next-actor").textContent = "等待重新出现或返回总览";
       $("#peek-freshness").textContent =
         state.source === "live" ? "实时投影已重验" : "实时投影不可用";
+      $("#anomaly-detail").hidden = true;
       return;
     }
 
@@ -1927,6 +1928,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         first(taskSourceCapability(), ["standing"]) === "available"
           ? "实时任务源"
           : "任务源不可用";
+      $("#anomaly-detail").hidden = true;
       return;
     }
 
@@ -1941,6 +1943,98 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
+    const anomaly = first(item, ["anomalyDetail"]);
+    const anomalySection = $("#anomaly-detail");
+    anomalySection.hidden = anomaly === null || anomaly === undefined;
+    if (!anomalySection.hidden) renderAnomalyDetail(anomaly);
+  }
+
+  function renderAnomalyDetail(detail) {
+    if (!detail || typeof detail !== "object") return;
+    const scene = first(detail, ["scene"], {});
+    const dedup = first(detail, ["dedup"], {});
+    const evidence = first(detail, ["evidenceStanding"], {});
+    const binding = first(detail, ["binding"], {});
+    const sourcePath = text(first(scene, ["sourcePath"]), "来源未投影");
+    const relatedPaths = list(first(scene, ["relatedPaths"], []));
+    $("#anomaly-scene").textContent = relatedPaths.length
+      ? sourcePath + " · " + relatedPaths.join(" · ")
+      : sourcePath;
+    $("#anomaly-dedup").textContent = [
+      "依据 " + text(first(dedup, ["basis"]), "未声明"),
+      "键 " + text(first(dedup, ["key"]), "未声明"),
+      "合并 " + String(text(first(dedup, ["mergedCount"]), 1)) + " 条投影事实",
+    ].join(" · ");
+    const freshnessKind = text(first(evidence, ["freshnessKind"]), "unknown");
+    const observedAt = text(first(evidence, ["observedAt"]), "");
+    const sourceUpdatedAt = text(first(evidence, ["sourceUpdatedAt"]), "");
+    $("#anomaly-evidence-standing").textContent = [
+      "证据 " + freshnessKind,
+      observedAt ? "观察 " + formatTime(observedAt) : "",
+      sourceUpdatedAt ? "来源更新 " + formatTime(sourceUpdatedAt) : "",
+      text(first(evidence, ["meaning"]), ""),
+    ].filter(Boolean).join(" · ");
+    const bindingStanding = text(first(binding, ["standing"]), "unverified");
+    const bindingMissionId = text(first(binding, ["missionId"]), "");
+    const bindingReason = text(first(binding, ["reason"]), "");
+    $("#anomaly-binding").textContent = [
+      "绑定 " + bindingStanding,
+      bindingMissionId ? "声明 Mission " + bindingMissionId : "",
+      bindingReason,
+    ].filter(Boolean).join(" · ");
+    const facets = list(first(detail, ["facets"], []));
+    $("#anomaly-facets").innerHTML = facets.length
+      ? facets.map((facet) => {
+        const code = text(first(facet, ["code"]), "未知");
+        const summary = text(first(facet, ["summary"]), "");
+        const source = text(first(facet, ["source"]), "");
+        return '<article class="anomaly-facet">' +
+          "<strong>" + escapeHtml(code) + "</strong>" +
+          "<span>" + escapeHtml(summary) + "</span>" +
+          "<small>" + escapeHtml(source) + "</small>" +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有其它同源投影事实。</p>';
+    const rawErrors = list(first(detail, ["rawErrors"], []));
+    $("#anomaly-errors").innerHTML = rawErrors.length
+      ? rawErrors.map((entry) => {
+        const stage = text(first(entry, ["stage"]), "unknown");
+        const raw = text(first(entry, ["raw"]), "");
+        const normalized = text(first(entry, ["normalized"]), "");
+        const impact = text(first(entry, ["impact"]), "");
+        return '<article class="anomaly-error" data-stage="' + escapeHtml(stage) + '">' +
+          "<strong>" + escapeHtml(stage) + "</strong>" +
+          "<p>" + escapeHtml(normalized) + "</p>" +
+          "<small>影响范围：" + escapeHtml(impact) + "</small>" +
+          "<pre>" + escapeHtml(raw) + "</pre>" +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有原始错误证据；本事项来自状态投影本身。</p>';
+    const steps = list(first(detail, ["nextSteps"], []));
+    $("#anomaly-next-steps").innerHTML = steps.length
+      ? steps.map((step) => {
+        const supported = first(step, ["supported"]) === true;
+        const label = text(first(step, ["label"]), "未命名步骤");
+        const responsible = text(first(step, ["responsible"]), "责任方未声明");
+        const stepDetail = text(first(step, ["detail"]), "");
+        const blocker = text(first(step, ["blocker"]), "");
+        const action = supported && label === "刷新当前投影"
+          ? '<button class="text-action" type="button" data-anomaly-refresh>刷新当前投影</button>'
+          : "";
+        return '<article class="anomaly-step" data-supported="' + (supported ? "true" : "false") + '">' +
+          "<strong>" + escapeHtml(supported ? "可用" : "暂不可用") + "</strong>" +
+          "<span>" + escapeHtml(label) + "</span>" +
+          "<small>责任方：" + escapeHtml(responsible) + " · " + escapeHtml(stepDetail) + "</small>" +
+          (supported ? "" : "<small>阻塞：" + escapeHtml(blocker) + "</small>") +
+          action +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有已声明的下一步。</p>';
+    $$("[data-anomaly-refresh]").forEach((button) => {
+      button.addEventListener("click", () => {
+        loadSnapshot({ manual: true, ensure: true });
+      });
+    });
   }
 
   function renderTaskPanels() {
