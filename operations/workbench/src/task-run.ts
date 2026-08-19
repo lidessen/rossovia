@@ -6,7 +6,6 @@ import {
   realpathSync,
   writeFileSync,
 } from "node:fs";
-import { createRequire } from "node:module";
 import { isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type {
@@ -93,7 +92,6 @@ export const PI_HARNESS_TASK_RUN_ADAPTER = "ai-sdk-harness-pi-v1";
 // this is a broad emergency ceiling rather than a user-facing approval mechanism.
 export const ORDINARY_TASK_MAX_DURATION_MS = 30 * 60 * 1_000;
 
-const requireFromHere = createRequire(import.meta.url);
 
 export interface TaskRunArguments {
   id: string;
@@ -1393,15 +1391,15 @@ export function releaseWorktreeLease(lease: TaskRunLease): void {
 
 
 function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {
-  return requireFromHere("../../../packages/work-cell/src/contracts");
+  return require("../../../packages/work-cell/src/contracts");
 }
 
 function workCellRunCell(): typeof import("../../../packages/work-cell/src/run-cell") {
-  return requireFromHere("../../../packages/work-cell/src/run-cell");
+  return require("../../../packages/work-cell/src/run-cell");
 }
 
 function workCellWorkspace(): typeof import("../../../packages/work-cell/src/workspace") {
-  return requireFromHere("../../../packages/work-cell/src/workspace");
+  return require("../../../packages/work-cell/src/workspace");
 }
 
 // The sibling worker policy is loaded only when worker list/task run actually
@@ -1409,7 +1407,7 @@ function workCellWorkspace(): typeof import("../../../packages/work-cell/src/wor
 // load for setup and other local task commands. currentWorkerCards remains the
 // single worker policy source; there is no fallback or copied default here.
 function currentWorkerPolicy(): typeof import("../../autonomy/src/worker-policy") {
-  return requireFromHere("../../autonomy/src/worker-policy");
+  return require("../../autonomy/src/worker-policy");
 }
 
 /** The one catalog that binds the resolved worker card to its driver. */

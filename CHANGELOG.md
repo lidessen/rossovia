@@ -7,6 +7,23 @@ entry instead of rewriting the applied Git interval.
 
 ## 2026-08-18
 
+### [workbench.build] Local single-file build and install
+
+- Action: `none`
+- Change: add `bun run build:local` (scripts/build-local.ts) that compiles the
+  Workbench CLI and the Autonomy runner into standalone binaries with
+  `bun build --compile` and installs the pair into `~/.local/bin` as
+  `rossovia` and `rossovia-autonomy`. UI assets are embedded through a
+  generated module (`scripts/generate-ui-assets.ts`, `assets:generate`), the
+  package version is inlined as a JSON import, and lazy `createRequire` loads
+  of sibling Work Cell/Autonomy modules became direct `require` calls so the
+  bundler statically includes them. The Workbench binary finds its Autonomy
+  sibling at runtime (`ROSSOVIA_AUTONOMY` overrides).
+- Verify: run `LOCAL_BIN=<tmp> bun run build:local`; assert
+  `<tmp>/rossovia --version`, `worker list`, and `ui` serve the workbench
+  page and snapshot without the source checkout; run the Workbench typecheck
+  and test suite.
+
 ### [workbench.ui] Serve the Principal Workbench through the rossovia CLI
 
 - Action: `none`

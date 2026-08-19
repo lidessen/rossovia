@@ -51,6 +51,23 @@ output, or state owner, and a help query itself reads no stdin and creates
 no home or temporary state. The full record is in
 [CLI-SURFACE-AUDIT.md](CLI-SURFACE-AUDIT.md#t6-implementation-update-post-audit).
 
+## Local build and install
+
+Build the Workbench CLI and the Autonomy runner into standalone binaries and
+install them into `~/.local/bin` (override with `LOCAL_BIN`):
+
+```sh
+bun run --cwd operations/workbench build:local
+```
+
+This regenerates the embedded UI assets from `ui/`, compiles
+`rossovia` and `rossovia-autonomy` with `bun build --compile`, and installs
+the pair. The Workbench binary locates its Autonomy sibling next to itself at
+runtime (`ROSSOVIA_AUTONOMY` overrides it), so install them together. After
+installing, `rossovia ui` and every other command run without the source
+checkout. Regenerate embedded assets after editing files under `ui/` with
+`bun run --cwd operations/workbench assets:generate`.
+
 ## Principal Workbench MVP
 
 The human UI is the **Principal workspace** over that control plane. It is a

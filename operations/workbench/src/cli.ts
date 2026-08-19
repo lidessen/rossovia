@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { createRequire } from "node:module";
 import { attachWorkspace } from "./attach";
 import {
   CliStateError,
@@ -366,8 +365,7 @@ function runContributionReconcileLeaseCli(
   batchId: string,
   key: string,
 ): ContributionLeaseReconcileResult {
-  const requireFromHere = createRequire(import.meta.url);
-  const { createConversationContributionRegistry } = requireFromHere("./conversation/contributions") as
+  const { createConversationContributionRegistry } = require("./conversation/contributions") as
     typeof import("./conversation/contributions");
   const registry = createConversationContributionRegistry(homeArgument);
   return registry.reconcileLease({ conversationId, batchId, key });

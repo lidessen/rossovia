@@ -1,4 +1,5 @@
-import { relative, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { resolveHome } from "../home";
 import { WorkbenchActionError, executeWorkbenchAction } from "./actions";
 import { AutonomyCliClient, type AutonomyClient } from "./autonomy-client";
@@ -73,9 +74,31 @@ export interface WorkbenchRequestHandlerDependencies {
 }
 
 const repositoryRoot = resolve(import.meta.dir, "../../../..");
-const publicRoot = resolve(import.meta.dir, "../../ui");
-const autonomyCli = resolve(import.meta.dir, "../../../autonomy/src/cli.ts");
+const autonomyCliSource = resolve(import.meta.dir, "../../../autonomy/src/cli.ts");
 const maximumRequestBytes = 64 * 1024;
+
+/**
+ * Resolve how the Workbench talks to the Autonomy runner. A compiled
+ * single-file Workbench binary prefers the sibling `rossovia-autonomy`
+ * executable installed next to it; an explicit ROSSOVIA_AUTONOMY path always
+ * wins; the source checkout falls back to running the Autonomy CLI source
+ * with the current runtime.
+ */
+function resolveAutonomyClient(): { path: string; direct: boolean } {
+  if (process.env.ROSSOVIA_AUTONOMY !== undefined && process.env.ROSSOVIA_AUTONOMY !== "") {
+    return { path: process.env.ROSSOVIA_AUTONOMY, direct: true };
+  }
+  const sibling = join(dirname(process.execPath), "rossovia-autonomy");
+  if (existsSync(sibling)) {
+    return { path: sibling, direct: true };
+  }
+  return { path: autonomyCliSource, direct: false };
+}
+
+// Static UI assets are embedded via the generated module so the served
+// surface works from a compiled single-file binary as well as from the source
+// checkout. Regenerate with `bun run assets:generate` after changing ui/.
+import { UI_ASSETS } from "./assets.generated";
 
 export function createWorkbenchRequestHandler(
   options: ServerOptions,
@@ -301,9 +324,8 @@ export function createWorkbenchRequestHandler(
 
     const asset = assetPath(url.pathname);
     if (asset === null) return new Response("Not found", { status: 404 });
-    const file = Bun.file(asset);
-    if (!(await file.exists())) return new Response("Not found", { status: 404 });
-    return new Response(request.method === "HEAD" ? null : file, {
+    const body = UI_ASSETS[asset];
+    return new Response(request.method === "HEAD" ? null : body, {
       headers: {
         "Cache-Control": "no-store",
         "Content-Security-Policy": [
@@ -340,7 +362,8 @@ if (import.meta.main) {
  */
 export function startWorkbenchUi(options: ServerOptions): void {
   const home = resolveHome(options.home);
-  const client = new AutonomyCliClient(home, autonomyCli);
+  const { path: autonomyCli, direct } = resolveAutonomyClient();
+  const client = new AutonomyCliClient(home, autonomyCli, process.execPath, direct);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
@@ -954,16 +977,7 @@ function taskActionErrorResponse(error: unknown): Response {
 
 function assetPath(pathname: string): string | null {
   const relative = pathname === "/" ? "index.html" : decodeURIComponent(pathname).replace(/^\/+/, "");
-  if (![
-    "index.html",
-    "styles.css",
-    "app.js",
-    "execution-proposal.js",
-    "operational-semantics.js",
-  ].includes(relative)) {
-    return null;
-  }
-  return resolve(publicRoot, relative);
+  return relative in UI_ASSETS ? relative : null;
 }
 
 function contentType(path: string): string {

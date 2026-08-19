@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
@@ -7,7 +6,6 @@ import type { CellInput, CellRunRecord } from "../../../packages/work-cell/src/c
 import { resolveHome } from "./home";
 import { showPrincipalTask } from "./tasks";
 
-const requireFromHere = createRequire(import.meta.url);
 
 /** Canonical identifier for every retained ordinary Task attempt directory. */
 export const TaskAttemptIdSchema = z.string().uuid();
@@ -666,7 +664,7 @@ export function readStrictTaskAttemptEvidence(
 }
 
 function workCellContracts(): typeof import("../../../packages/work-cell/src/contracts") {
-  return requireFromHere("../../../packages/work-cell/src/contracts");
+  return require("../../../packages/work-cell/src/contracts");
 }
 
 /** The exact Work Cell adapter a retained attempt execution form produces. */

@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
 import { UsageError } from "./cli-errors";
+import packageManifest from "../package.json" with { type: "json" };
 
 /**
  * One shared help contract for the Workbench CLI. The top-level usage, the
@@ -518,13 +518,10 @@ let cachedVersion: string | undefined;
 
 export function packageVersion(): string {
   if (cachedVersion === undefined) {
-    const manifest = JSON.parse(
-      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-    ) as { name?: unknown; version?: unknown };
-    if (typeof manifest.version !== "string" || manifest.version.length === 0) {
+    if (typeof packageManifest.version !== "string" || packageManifest.version.length === 0) {
       throw new Error("package.json has no version");
     }
-    cachedVersion = manifest.version;
+    cachedVersion = packageManifest.version;
   }
   return cachedVersion;
 }

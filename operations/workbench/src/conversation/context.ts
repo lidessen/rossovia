@@ -1,5 +1,4 @@
 import { realpathSync } from "node:fs";
-import { createRequire } from "node:module";
 import {
   ContributionProjectionSchema,
   ProjectProjectionSchema,
@@ -37,7 +36,6 @@ import {
 } from "./execution-carrier";
 import type { ConversationContributionRegistry } from "./contributions";
 
-const requireFromHere = createRequire(import.meta.url);
 
 const TASK_SOURCE_REF = "workbench:state/tasks.json";
 const PROJECTS_SOURCE_REF = "workbench:config/projects.json";
@@ -677,7 +675,7 @@ function currentWorkerCards(): Array<{
   executionProfile: { provider: string; model: string; reasoningEffort?: string };
   availability: { status: "available" | "unavailable"; reason?: string };
 }> {
-  return requireFromHere("../../../autonomy/src/worker-policy").currentWorkerCards();
+  return require("../../../autonomy/src/worker-policy").currentWorkerCards();
 }
 
 function cardProjection(card: {

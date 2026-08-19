@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
@@ -21,7 +20,6 @@ import {
   type WorktreeWriterOwnerIdentity,
 } from "./worktree-writer";
 
-const requireFromHere = createRequire(import.meta.url);
 
 /**
  * O2 — Run lifecycle owner (Decision 055).
@@ -1432,7 +1430,7 @@ function formatUuid(bytes: Uint8Array): string {
 }
 
 function taskRunHelpers(): typeof import("../task-run") {
-  return requireFromHere("../task-run");
+  return require("../task-run");
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

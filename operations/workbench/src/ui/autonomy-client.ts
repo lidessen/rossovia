@@ -36,6 +36,7 @@ export class AutonomyCliClient implements AutonomyClient {
     private readonly home: string,
     private readonly cliPath: string,
     private readonly executable = process.execPath,
+    private readonly direct = false,
   ) {}
 
   async status(missionId: string): Promise<RunnerStatusProof> {
@@ -157,13 +158,15 @@ export class AutonomyCliClient implements AutonomyClient {
     environment: Readonly<Record<string, string>> = {},
   ): Promise<any> {
     const child = Bun.spawn(
-      [
-        this.executable,
-        resolve(this.cliPath),
-        ...arguments_,
-        "--home",
-        this.home,
-      ],
+      this.direct
+        ? [this.cliPath, ...arguments_, "--home", this.home]
+        : [
+            this.executable,
+            resolve(this.cliPath),
+            ...arguments_,
+            "--home",
+            this.home,
+          ],
       {
         stdin: "ignore",
         stdout: "pipe",

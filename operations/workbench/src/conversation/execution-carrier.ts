@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { CellRunRecord, TraceEvent } from "../../../../packages/work-cell/src/contracts";
@@ -42,7 +41,6 @@ import { expandPath } from "../paths";
 import { observeWorkspace, requiredGit } from "../workspace";
 import { taskActionSourceRef } from "./contracts";
 
-const requireFromHere = createRequire(import.meta.url);
 
 export type ConversationCarrierErrorCode =
   | "task-not-found"
@@ -400,7 +398,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
       ),
       execute: async (cellInput, options) => {
         const outcome = await executeTaskCellRun(this.catalog, cellInput, {
-          host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
+          host: require("../../../../packages/work-cell/src/workspace").createLocalHost(),
           ...(options.signal === undefined ? {} : { signal: options.signal }),
           onTrace: (event) => handle.observeTrace(event),
         });
@@ -1242,7 +1240,7 @@ export function renderCarrierActivity(event: TraceEvent): string | undefined {
 }
 
 function currentCatalog(environment: NodeJS.ProcessEnv): WorkerCatalog {
-  return requireFromHere("../../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
+  return require("../../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
 }
 
 /** One preparation/creation failure becomes a carrier-code-visible refusal. */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
@@ -51,6 +51,7 @@ function fixture() {
   const fixtureWorkbench = join(source, "operations", "workbench");
   mkdirSync(fixtureWorkbench, { recursive: true });
   cpSync(join(workbenchRoot, "src"), join(fixtureWorkbench, "src"), { recursive: true });
+  copyFileSync(join(workbenchRoot, "package.json"), join(fixtureWorkbench, "package.json"));
   symlinkSync(join(workbenchRoot, "node_modules"), join(fixtureWorkbench, "node_modules"), "dir");
   git(source, "add", "CHANGELOG.md", "operations/workbench/src");
   git(source, "commit", "-m", "initial setup source");

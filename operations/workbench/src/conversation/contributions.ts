@@ -11,7 +11,6 @@ import {
   realpathSync,
   unlinkSync,
 } from "node:fs";
-import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import type {
@@ -66,7 +65,6 @@ import {
   renderCarrierActivity,
 } from "./execution-carrier";
 
-const requireFromHere = createRequire(import.meta.url);
 
 /** The bounded convergence wait for a committed action whose reservation exists without a started marker. */
 const CONVERGENCE_POLL_MS = 25;
@@ -1547,7 +1545,7 @@ class WorkbenchConversationContributionRegistry implements ConversationContribut
       // The Workbench contribution registry owns the real process: it
       // explicitly injects the local host adapter for the contribution Cell
       // over its O3-verified bound Worktree.
-      host: requireFromHere("../../../../packages/work-cell/src/workspace").createLocalHost(),
+      host: require("../../../../packages/work-cell/src/workspace").createLocalHost(),
       signal: handle.signal,
       executionObserver: {
         prepare: async () => {},
@@ -2539,7 +2537,7 @@ function verifyContributionSelection(
 }
 
 function currentCatalog(environment: NodeJS.ProcessEnv): WorkerCatalog {
-  return requireFromHere("../../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
+  return require("../../../autonomy/src/worker-policy").createCurrentWorkerCatalog(environment);
 }
 
 function errorMessage(error: unknown): string {
