@@ -441,6 +441,23 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
           </dl>
         </section>
 
+        <section class="anomaly-detail" id="anomaly-detail" aria-labelledby="anomaly-detail-heading" hidden>
+          <header>
+            <p class="eyebrow">Anomaly evidence</p>
+            <h3 id="anomaly-detail-heading">异常现场与证据</h3>
+            <p>只读投影：保留原始证据，不做恢复或绑定推断。</p>
+          </header>
+          <dl class="local-task-facts">
+            <div><dt>来源现场</dt><dd id="anomaly-scene">—</dd></div>
+            <div><dt>去重依据</dt><dd id="anomaly-dedup">—</dd></div>
+            <div><dt>证据状态</dt><dd id="anomaly-evidence-standing">—</dd></div>
+            <div><dt>绑定状态</dt><dd id="anomaly-binding">—</dd></div>
+          </dl>
+          <div class="anomaly-errors" id="anomaly-errors"></div>
+          <div class="anomaly-facets" id="anomaly-facets"></div>
+          <div class="anomaly-next-steps" id="anomaly-next-steps"></div>
+        </section>
+
         <section class="task-create-panel" id="task-create-panel" hidden>
           <header>
             <p class="eyebrow">Workbench-owned task</p>
@@ -4842,7 +4859,7 @@ body[data-peek-open="true"]::after {
   margin: 0.2rem 0 0;
 }
 
-body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary) {
+body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary):not(.anomaly-detail) {
   display: none !important;
 }
 
@@ -7058,6 +7075,118 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     width: 100%;
   }
 }
+
+.anomaly-detail {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.anomaly-detail > header {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.anomaly-detail > header h3 {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.anomaly-detail > header p {
+  color: var(--ink-faint);
+  font-size: 0.6rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.anomaly-errors,
+.anomaly-facets,
+.anomaly-next-steps {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.anomaly-errors > .field-heading,
+.anomaly-facets > .field-heading,
+.anomaly-next-steps > .field-heading {
+  margin: 0;
+}
+
+.anomaly-error,
+.anomaly-facet,
+.anomaly-step {
+  background: var(--paper-light);
+  border: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+}
+
+.anomaly-error {
+  border-left: 3px solid var(--red);
+}
+
+.anomaly-facet {
+  border-left: 3px solid var(--ochre);
+}
+
+.anomaly-step {
+  border-left: 3px solid var(--green);
+}
+
+.anomaly-step[data-supported="false"] {
+  border-left-color: var(--ink-faint);
+}
+
+.anomaly-error > strong,
+.anomaly-facet > strong,
+.anomaly-step > strong {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.anomaly-error > p {
+  font-size: 0.66rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.anomaly-error > small,
+.anomaly-facet > small,
+.anomaly-step > small {
+  color: var(--ink-faint);
+  font-size: 0.59rem;
+  line-height: 1.45;
+}
+
+.anomaly-facet > span {
+  color: var(--ink);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.anomaly-error pre {
+  background: var(--paper-deep);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  padding: 0.4rem;
+  white-space: pre-wrap;
+}
+
+.anomaly-step .text-action {
+  justify-self: start;
+}
 `,
   "app.js": `import {
   buildExecutionAuthorizationRequest,
@@ -8974,6 +9103,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       $("#peek-next-actor").textContent = "等待重新出现或返回总览";
       $("#peek-freshness").textContent =
         state.source === "live" ? "实时投影已重验" : "实时投影不可用";
+      $("#anomaly-detail").hidden = true;
       return;
     }
 
@@ -8988,6 +9118,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         first(taskSourceCapability(), ["standing"]) === "available"
           ? "实时任务源"
           : "任务源不可用";
+      $("#anomaly-detail").hidden = true;
       return;
     }
 
@@ -9002,6 +9133,98 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
+    const anomaly = first(item, ["anomalyDetail"]);
+    const anomalySection = $("#anomaly-detail");
+    anomalySection.hidden = anomaly === null || anomaly === undefined;
+    if (!anomalySection.hidden) renderAnomalyDetail(anomaly);
+  }
+
+  function renderAnomalyDetail(detail) {
+    if (!detail || typeof detail !== "object") return;
+    const scene = first(detail, ["scene"], {});
+    const dedup = first(detail, ["dedup"], {});
+    const evidence = first(detail, ["evidenceStanding"], {});
+    const binding = first(detail, ["binding"], {});
+    const sourcePath = text(first(scene, ["sourcePath"]), "来源未投影");
+    const relatedPaths = list(first(scene, ["relatedPaths"], []));
+    $("#anomaly-scene").textContent = relatedPaths.length
+      ? sourcePath + " · " + relatedPaths.join(" · ")
+      : sourcePath;
+    $("#anomaly-dedup").textContent = [
+      "依据 " + text(first(dedup, ["basis"]), "未声明"),
+      "键 " + text(first(dedup, ["key"]), "未声明"),
+      "合并 " + String(text(first(dedup, ["mergedCount"]), 1)) + " 条投影事实",
+    ].join(" · ");
+    const freshnessKind = text(first(evidence, ["freshnessKind"]), "unknown");
+    const observedAt = text(first(evidence, ["observedAt"]), "");
+    const sourceUpdatedAt = text(first(evidence, ["sourceUpdatedAt"]), "");
+    $("#anomaly-evidence-standing").textContent = [
+      "证据 " + freshnessKind,
+      observedAt ? "观察 " + formatTime(observedAt) : "",
+      sourceUpdatedAt ? "来源更新 " + formatTime(sourceUpdatedAt) : "",
+      text(first(evidence, ["meaning"]), ""),
+    ].filter(Boolean).join(" · ");
+    const bindingStanding = text(first(binding, ["standing"]), "unverified");
+    const bindingMissionId = text(first(binding, ["missionId"]), "");
+    const bindingReason = text(first(binding, ["reason"]), "");
+    $("#anomaly-binding").textContent = [
+      "绑定 " + bindingStanding,
+      bindingMissionId ? "声明 Mission " + bindingMissionId : "",
+      bindingReason,
+    ].filter(Boolean).join(" · ");
+    const facets = list(first(detail, ["facets"], []));
+    $("#anomaly-facets").innerHTML = facets.length
+      ? facets.map((facet) => {
+        const code = text(first(facet, ["code"]), "未知");
+        const summary = text(first(facet, ["summary"]), "");
+        const source = text(first(facet, ["source"]), "");
+        return '<article class="anomaly-facet">' +
+          "<strong>" + escapeHtml(code) + "</strong>" +
+          "<span>" + escapeHtml(summary) + "</span>" +
+          "<small>" + escapeHtml(source) + "</small>" +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有其它同源投影事实。</p>';
+    const rawErrors = list(first(detail, ["rawErrors"], []));
+    $("#anomaly-errors").innerHTML = rawErrors.length
+      ? rawErrors.map((entry) => {
+        const stage = text(first(entry, ["stage"]), "unknown");
+        const raw = text(first(entry, ["raw"]), "");
+        const normalized = text(first(entry, ["normalized"]), "");
+        const impact = text(first(entry, ["impact"]), "");
+        return '<article class="anomaly-error" data-stage="' + escapeHtml(stage) + '">' +
+          "<strong>" + escapeHtml(stage) + "</strong>" +
+          "<p>" + escapeHtml(normalized) + "</p>" +
+          "<small>影响范围：" + escapeHtml(impact) + "</small>" +
+          "<pre>" + escapeHtml(raw) + "</pre>" +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有原始错误证据；本事项来自状态投影本身。</p>';
+    const steps = list(first(detail, ["nextSteps"], []));
+    $("#anomaly-next-steps").innerHTML = steps.length
+      ? steps.map((step) => {
+        const supported = first(step, ["supported"]) === true;
+        const label = text(first(step, ["label"]), "未命名步骤");
+        const responsible = text(first(step, ["responsible"]), "责任方未声明");
+        const stepDetail = text(first(step, ["detail"]), "");
+        const blocker = text(first(step, ["blocker"]), "");
+        const action = supported && label === "刷新当前投影"
+          ? '<button class="text-action" type="button" data-anomaly-refresh>刷新当前投影</button>'
+          : "";
+        return '<article class="anomaly-step" data-supported="' + (supported ? "true" : "false") + '">' +
+          "<strong>" + escapeHtml(supported ? "可用" : "暂不可用") + "</strong>" +
+          "<span>" + escapeHtml(label) + "</span>" +
+          "<small>责任方：" + escapeHtml(responsible) + " · " + escapeHtml(stepDetail) + "</small>" +
+          (supported ? "" : "<small>阻塞：" + escapeHtml(blocker) + "</small>") +
+          action +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有已声明的下一步。</p>';
+    $$("[data-anomaly-refresh]").forEach((button) => {
+      button.addEventListener("click", () => {
+        loadSnapshot({ manual: true, ensure: true });
+      });
+    });
   }
 
   function renderTaskPanels() {

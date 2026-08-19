@@ -13,6 +13,7 @@ import type {
   AttentionItem,
   MissionProjection,
   ProjectProjection,
+  ProjectionError,
   RunnerProjection,
   WorkbenchSnapshot,
 } from "./projection";
@@ -226,6 +227,14 @@ export interface WorkItemProjection {
     | "查看任务";
   readonly consequence: "high" | "normal";
   readonly attentionCode: AttentionItem["code"] | null;
+  /**
+   * Read-only detail for an anomaly/observation scene: the real source path,
+   * raw errors with normalized interpretation, the dedup basis that keeps one
+   * runner scene as one item, the last observed evidence standing, and only
+   * next steps the current implementation actually supports. Unknown states
+   * stay unknown; nothing here invents a Mission binding or recovery result.
+   */
+  readonly anomalyDetail?: AnomalyDetailProjection;
   readonly taskDetail?: {
     readonly sourceRevision: number;
     readonly sourceRef: string;
@@ -385,6 +394,58 @@ export interface WorkItemSetProjection {
       readonly reason?: string;
     };
   };
+}
+
+export interface AnomalyFacetProjection {
+  readonly code: string;
+  readonly summary: string;
+  readonly source: string;
+}
+
+export interface AnomalyRawErrorProjection {
+  readonly stage: string;
+  readonly raw: string;
+  readonly normalized: string;
+  readonly impact: string;
+}
+
+export interface AnomalyEvidenceStandingProjection {
+  readonly freshnessKind: "cached" | "unverified" | "observed-at-build" | "live";
+  readonly observedAt: string | null;
+  readonly sourceUpdatedAt: string | null;
+  readonly meaning: string;
+}
+
+export interface AnomalyBindingProjection {
+  readonly standing: "project-mission" | "unbound" | "ambiguous" | "unverified";
+  readonly missionId: string | null;
+  readonly reason?: string;
+}
+
+export interface AnomalyNextStepProjection {
+  readonly supported: boolean;
+  readonly label: string;
+  readonly responsible: string;
+  readonly detail: string;
+  readonly blocker?: string;
+}
+
+export interface AnomalyDetailProjection {
+  readonly scene: {
+    readonly kind: string;
+    readonly sourcePath: string;
+    readonly relatedPaths: readonly string[];
+  };
+  readonly dedup: {
+    readonly basis: "runner-id" | "source-path";
+    readonly key: string;
+    readonly mergedCount: number;
+  };
+  readonly facets: readonly AnomalyFacetProjection[];
+  readonly rawErrors: readonly AnomalyRawErrorProjection[];
+  readonly evidenceStanding: AnomalyEvidenceStandingProjection;
+  readonly binding: AnomalyBindingProjection;
+  readonly nextSteps: readonly AnomalyNextStepProjection[];
 }
 
 /**
@@ -577,58 +638,580 @@ function attentionLifecycle(item: AttentionItem): WorkItemLifecycle {
     : "waiting";
 }
 
+/**
+ * Primary-facet selection inside one runner scene group. Identity (unbound)
+ * wins because every other facet is unactionable without it; principal
+ * decisions (interrupted, lineage/anchor, reconciliation) come next; pure
+ * reachability/notice facts are lowest so they never displace a decision.
+ */
+const runnerAnomalyPrimaryOrder: Record<string, number> = {
+  "runner-unbound": 0,
+  "runner-anchor-migration-decision": 1,
+  "runner-reconciliation-decision": 2,
+  "mission-execution-awaiting-authorization": 3,
+  "runner-interrupted": 4,
+  "runner-input-pending": 5,
+  "runner-anchor-pending": 6,
+  "runner-legacy-unanchored": 7,
+  "runner-lineage-unavailable": 8,
+  "runner-unreachable": 9,
+  "runner-reachability-unverified": 10,
+  "runner-reconciliation-authorized": 11,
+  "runner-reconciliation-attempt-consumed": 12,
+  "correction-awaiting-system-settlement": 13,
+  "runner-idle": 14,
+  "runner-paused": 15,
+};
+
+function runnerAnomalyPrimary(
+  group: readonly AttentionItem[],
+): AttentionItem {
+  let primary = group[0]!;
+  for (const item of group) {
+    const current = runnerAnomalyPrimaryOrder[item.code] ?? 99;
+    const best = runnerAnomalyPrimaryOrder[primary.code] ?? 99;
+    if (current < best) primary = item;
+  }
+  return primary;
+}
+
+const sourceErrorStageByScope: Record<string, string> = {
+  git: "git-observation",
+  mission: "mission-source",
+  runner: "runner-source",
+  home: "home-source",
+  authorization: "execution-authorization",
+};
+
+const rawAnomalyErrorPatterns: ReadonlyArray<{
+  readonly pattern: RegExp;
+  readonly normalized: string;
+}> = [
+  {
+    pattern: /fatal: not a git repository/iu,
+    normalized:
+      "该路径当前不是可读取的 Git 仓库（.git 缺失、目录被删除或尚未初始化）；投影不能把它当作可观察工作现场。",
+  },
+  {
+    pattern: /workspace path does not exist/iu,
+    normalized:
+      "配置的现场路径当前不存在；投影保留该位置为不可观察，不推断其内容。",
+  },
+  {
+    pattern: /no such file or directory/iu,
+    normalized:
+      "来源文件或目录缺失；投影只保留这次失败的读取观察。",
+  },
+];
+
+/**
+ * Keep the raw evidence verbatim while explaining the failure stage and its
+ * impact. Unrecognized messages stay raw with an explicit unknown standing;
+ * the projection never guesses a meaning it cannot support.
+ */
+export function projectAnomalyRawError(
+  scope: string | null,
+  message: string,
+): AnomalyRawErrorProjection {
+  const stage = (scope === null ? null : sourceErrorStageByScope[scope]) ?? "unknown";
+  const normalized = rawAnomalyErrorPatterns.find((entry) => entry.pattern.test(message))
+    ?.normalized
+    ?? "该错误没有可识别的规范模式；投影保留原文，不推断阶段语义。";
+  const impact = stage === "git-observation"
+    ? "此路径上的 Git 观察（worktree 清单、HEAD、dirty 状态或 Mission 提交比对）失败；该现场不能作为可信工作现场参与投影，其绑定状态保持未知。"
+    : stage === "mission-source"
+      ? "Mission 记录无法读取或校验；该 Mission 及其执行提案与授权不出现在当前投影中。"
+      : stage === "runner-source"
+        ? "runner 状态或活动来源无法读取或校验；该 runner 的缓存事实不进入投影。"
+        : stage === "home-source"
+          ? "Workbench 家目录来源无法读取；相关项目或任务来源缺位。"
+          : stage === "execution-authorization"
+            ? "执行授权或消费证据无法读取或校验；不产生可用的启动授权。"
+            : "投影无法从错误文本确定影响范围；保留原始证据，不做猜测。";
+  return { stage, raw: message, normalized, impact };
+}
+
+function sourceErrorNextSteps(): AnomalyNextStepProjection[] {
+  return [
+    {
+      supported: true,
+      label: "刷新当前投影",
+      responsible: "Workbench · 只读重建",
+      detail: "重新读取该来源并重建投影；来源修复后，本事项会随刷新消失或变化。",
+    },
+    {
+      supported: false,
+      label: "恢复该现场",
+      responsible: "Principal · 宿主环境",
+      detail: "Workbench 不修改现场；需要先在宿主上修复路径或 Git 状态，再刷新投影。",
+      blocker: "现场当前不可观察",
+    },
+  ];
+}
+
+/**
+ * Only steps the current implementation actually supports become actionable;
+ * everything else states the responsible party and the blocking reason instead
+ * of manufacturing an invalid operation.
+ */
+function anomalyNextSteps(input: {
+  readonly code: AttentionItem["code"];
+  readonly runner: LiveRunnerProjection | undefined;
+  readonly binding: AnomalyBindingProjection;
+  readonly codes: ReadonlySet<string>;
+}): AnomalyNextStepProjection[] {
+  const steps: AnomalyNextStepProjection[] = [{
+    supported: true,
+    label: "刷新当前投影",
+    responsible: "Workbench · 只读重建",
+    detail: "重新读取全部投影来源并重建本事项；不会修改现场、缓存或运行状态。",
+  }];
+  if (input.code === "runner-unbound") {
+    steps.push({
+      supported: false,
+      label: "重新绑定 runner",
+      responsible: "Principal · 需要先修正来源",
+      detail: "runner 状态只声明 Mission ID，当前投影没有唯一匹配的注册项目 Mission；不存在可用的 rebind 操作。",
+      blocker: input.binding.reason ?? "no-explicit-mission-id-match",
+    });
+  }
+  const hasInterruptedFacet = input.codes.has("runner-interrupted");
+  const hasReachabilityFacet =
+    input.codes.has("runner-unreachable")
+    || input.codes.has("runner-reachability-unverified");
+  if (
+    input.code === "runner-unreachable"
+    || input.code === "runner-reachability-unverified"
+    || input.code === "runner-interrupted"
+    || hasInterruptedFacet
+    || hasReachabilityFacet
+  ) {
+    const live = input.runner?.live;
+    const resumable =
+      input.code === "runner-interrupted"
+      && live === true
+      && input.runner?.status.state === "interrupted"
+      && input.runner.status.recoveryCapabilities?.resume === true
+      && input.binding.standing === "project-mission";
+    if (resumable) {
+      steps.push({
+        supported: true,
+        label: "续接 interrupted turn（resume）",
+        responsible: "Principal",
+        detail: "该 live 载体声明支持 resume；通过对应 Mission 的现场操作区以精确 runner/state 目标发起。",
+      });
+    } else {
+      const bound = input.binding.standing === "project-mission";
+      steps.push({
+        supported: false,
+        label: hasInterruptedFacet || input.code === "runner-interrupted"
+          ? "恢复或放弃 interrupted turn"
+          : "输入 / 控制 / 恢复该 runner",
+        responsible: "Principal · 需要先恢复载体",
+        detail: bound
+          ? live === null
+            ? "当前观察者无法验证载体可达性；未验证状态不能授权任何动作。"
+            : "载体不可达；缓存状态不能授权任何动作。"
+          : "runner 未绑定 Mission；无法形成精确恢复目标。",
+        blocker: bound
+          ? live === null
+            ? "runner reachability unverified"
+            : "runner unreachable · cached only"
+          : "runner 未绑定 Mission · 无精确恢复目标",
+      });
+    }
+  }
+  if (hasReachabilityFacet || input.code === "runner-unreachable") {
+    steps.push({
+      supported: false,
+      label: "忽略该异常",
+      responsible: "Principal",
+      detail: "投影不会自动忽略或合并任何异常；载体被处置后，应让 runner 状态来源更新并刷新投影。",
+      blocker: "ignore 操作在当前实现不存在",
+    });
+  }
+  return steps;
+}
+
+function runnerEvidenceStanding(
+  runner: LiveRunnerProjection | undefined,
+  generatedAt: string,
+  sourceUnavailableReason?: string,
+): AnomalyEvidenceStandingProjection {
+  if (sourceUnavailableReason !== undefined) {
+    const liveConfirmed = runner?.live === true;
+    return {
+      freshnessKind: "unverified",
+      observedAt: generatedAt,
+      sourceUpdatedAt: runner?.status.updatedAt ?? null,
+      meaning: liveConfirmed
+        ? `载体状态已确认 live，但活动/现场来源读取失败（${sourceUnavailableReason}）；活动内容保持未知，不能确证其正在执行的内容。`
+        : `runner 状态/活动来源读取失败（${sourceUnavailableReason}）；live/stopped 与活动内容保持未知，缓存状态仅供检查。`,
+    };
+  }
+  if (runner === undefined) {
+    return {
+      freshnessKind: "observed-at-build",
+      observedAt: generatedAt,
+      sourceUpdatedAt: null,
+      meaning: "本次投影构建时读取；runner 缓存详情未单独投影。",
+    };
+  }
+  if (runner.live === true && runner.freshness.kind === "live") {
+    return {
+      freshnessKind: "live",
+      observedAt: runner.freshness.observedAt,
+      sourceUpdatedAt: runner.status.updatedAt ?? null,
+      meaning: "实时载体响应；当前可精确寻址。",
+    };
+  }
+  if (runner.live === false) {
+    return {
+      freshnessKind: "cached",
+      observedAt: null,
+      sourceUpdatedAt: runner.status.updatedAt ?? null,
+      meaning: "仅缓存状态；不证明载体 live 或 stopped，最后更新见来源时间。",
+    };
+  }
+  return {
+    freshnessKind: "unverified",
+    observedAt: generatedAt,
+    sourceUpdatedAt: runner.status.updatedAt ?? null,
+    meaning: "观察者未能验证可达性；live/stopped 未知，缓存状态仅供检查。",
+  };
+}
+
+function runnerBindingStanding(
+  runner: LiveRunnerProjection | undefined,
+  group: readonly AttentionItem[],
+): AnomalyBindingProjection {
+  const declaredMissionId = group.find((item) => item.missionId !== undefined)
+    ?.missionId
+    ?? null;
+  const bound = group.some(
+    (item) => item.projectKey !== undefined && item.missionId !== undefined,
+  );
+  if (bound) return { standing: "project-mission", missionId: declaredMissionId };
+  if (runner !== undefined && runner.binding.kind === "unbound") {
+    return {
+      standing: runner.binding.reason === "ambiguous-mission-id"
+        ? "ambiguous"
+        : "unbound",
+      missionId: declaredMissionId,
+      reason: runner.binding.reason,
+    };
+  }
+  if (group.some((item) => item.code === "runner-unbound")) {
+    return {
+      standing: "unbound",
+      missionId: declaredMissionId,
+      reason: "runner 状态声明的 Mission ID 没有唯一匹配的注册项目 Mission",
+    };
+  }
+  return { standing: "unverified", missionId: declaredMissionId };
+}
+
+/**
+ * One overview item per identified runner scene. Every attention fact about
+ * the same runner cache identity folds into this single item as a facet, so
+ * an unbound, interrupted, cached, unreachable runner is one item instead of
+ * several contradictory rows. The declared Mission ID is retained only as a
+ * binding claim with its unbound/unverified standing; it is never promoted to
+ * a real binding.
+ */
+function runnerAnomalyWorkItem(
+  snapshot: WorkItemSnapshot,
+  runnerId: string,
+  group: readonly AttentionItem[],
+): WorkItemProjection {
+  const primary = runnerAnomalyPrimary(group);
+  const runner = snapshot.runners.find(
+    (candidate) => candidate.status.runnerId === runnerId,
+  );
+  // Runner-scope read failures (live activity/lineage could not be read or
+  // validated) stay attributable to this runner's exact source path. The raw
+  // error is retained verbatim so the scene never looks over-determined by a
+  // successful status read alone.
+  const sourcePath = runner?.sourcePath ?? primary.source;
+  const runnerSourceErrors = snapshot.errors.filter(
+    (error) => error.scope === "runner" && error.source === sourcePath,
+  );
+  const runnerSourceUnavailable = runnerSourceErrors.length === 0
+    ? undefined
+    : runnerSourceErrors.map((error) => error.message).join("; ");
+  const binding = runnerBindingStanding(runner, group);
+  const bound = binding.standing === "project-mission";
+  const projectKey = bound
+    ? group.find((item) => item.projectKey !== undefined)?.projectKey ?? null
+    : null;
+  const missionId = bound ? binding.missionId : null;
+  const requiresDecision = decisionRequired(primary);
+  const sources = [...new Set([
+    ...(runner === undefined ? [] : [runner.sourcePath]),
+    ...group.map((item) => item.source),
+  ])];
+  const freshness = runner === undefined
+    ? {
+      kind: "observed-at-build" as const,
+      observedAt: snapshot.generatedAt,
+    }
+    : runnerFreshness(runner, snapshot.generatedAt);
+  // Persistable decision loci keep their legacy id so navigation and
+  // authorization links stay stable; ordinary runner observations use the
+  // runner id as their stable dedup key.
+  const persistableDecision =
+    primary.code === "runner-anchor-migration-decision"
+    || primary.code === "runner-reconciliation-decision"
+    || primary.code === "mission-execution-awaiting-authorization";
+  const unboundBinding = runner !== undefined && runner.binding.kind === "unbound"
+    ? runner.binding
+    : null;
+  return {
+    id: persistableDecision
+      ? `attention:${primary.code}:${projectKey ?? "unbound"}:${binding.missionId ?? runnerId}`
+      : `attention:runner:${runnerId}`,
+    kind: requiresDecision ? "decision" : "observation",
+    lifecycle: attentionLifecycle(primary),
+    nextActor: attentionActor(primary),
+    attention: requiresDecision ? "decision-required" : "exception",
+    title: bound
+      ? missionTitle(snapshot, projectKey, missionId)
+      : `未归属 Runner ${runnerId}`,
+    summary: primary.summary,
+    context: bound && projectKey !== null && missionId !== null
+      ? `${projectKey} · ${missionId}`
+      : "观察异常 · 未按 Mission ID 绑定",
+    projectKey,
+    missionId,
+    runnerId,
+    binding: bound && projectKey !== null && binding.missionId !== null
+      ? { kind: "project-mission", projectKey, missionId: binding.missionId }
+      : unboundBinding !== null
+        ? unboundBinding.reason === "ambiguous-mission-id"
+            && binding.missionId !== null
+          ? {
+            kind: "ambiguous",
+            missionId: binding.missionId,
+            reason: unboundBinding.reason,
+          }
+          : {
+            kind: "unbound",
+            missionId: binding.missionId,
+            reason: unboundBinding.reason,
+          }
+        : {
+          kind: "unbound",
+          missionId: binding.missionId,
+          reason: binding.reason ?? "runner scene has no project Mission binding",
+        },
+    evidence: {
+      freshness,
+      sourceRefs: sources,
+    },
+    updatedAt: runner?.status.updatedAt ?? snapshot.generatedAt,
+    actionLabel: requiresDecision ? "查看并决策" : "查看现场",
+    consequence: requiresDecision ? "high" : "normal",
+    attentionCode: primary.code,
+    anomalyDetail: {
+      scene: {
+        kind: "runner-cache",
+        sourcePath,
+        relatedPaths: sources,
+      },
+      dedup: {
+        basis: "runner-id",
+        key: runnerId,
+        mergedCount: group.length,
+      },
+      facets: group.map((item) => ({
+        code: item.code,
+        summary: item.summary,
+        source: item.source,
+      })),
+      rawErrors: runnerSourceErrors.map((error) =>
+        projectAnomalyRawError(error.scope, error.message)),
+      evidenceStanding: runnerEvidenceStanding(
+        runner,
+        snapshot.generatedAt,
+        runnerSourceUnavailable,
+      ),
+      binding,
+      nextSteps: anomalyNextSteps({
+        code: primary.code,
+        runner,
+        binding,
+        codes: new Set(group.map((item) => item.code)),
+      }),
+    },
+  };
+}
+
+function attentionItemWorkItem(
+  snapshot: WorkItemSnapshot,
+  item: AttentionItem,
+  index: number,
+): WorkItemProjection {
+  const projectKey = item.projectKey ?? null;
+  const missionId = item.missionId ?? null;
+  const requiresDecision = decisionRequired(item);
+  const sourceError = item.code === "source-error";
+  const errorScope = sourceError
+    ? snapshot.errors.find(
+      (error) => error.source === item.source && error.message === item.summary,
+    )?.scope ?? null
+    : null;
+  return {
+    id: `attention:${item.code}:${projectKey ?? "unbound"}:${missionId ?? index}`,
+    kind: requiresDecision
+      ? "decision"
+      : observationCodes.has(item.code) ? "observation" : "system-work",
+    lifecycle: attentionLifecycle(item),
+    nextActor: attentionActor(item),
+    attention: requiresDecision ? "decision-required" : "exception",
+    title: missionTitle(snapshot, projectKey, missionId),
+    summary: item.summary,
+    context: projectKey !== null && missionId !== null
+      ? `${projectKey} · ${missionId}`
+      : projectKey ?? "待归属观察",
+    projectKey,
+    missionId,
+    runnerId: item.runnerId ?? null,
+    binding: projectKey !== null
+      ? missionId !== null
+        ? { kind: "project-mission", projectKey, missionId }
+        : { kind: "project", projectKey }
+      : {
+        kind: "unbound",
+        missionId,
+        reason: "attention has no exact project identity",
+      },
+    evidence: {
+      freshness: sourceError
+        ? {
+          kind: "unverified",
+          observedAt: snapshot.generatedAt,
+          reason: item.summary,
+        }
+        : {
+          kind: "observed-at-build",
+          observedAt: snapshot.generatedAt,
+        },
+      sourceRefs: [item.source],
+    },
+    updatedAt: snapshot.generatedAt,
+    actionLabel: requiresDecision ? "查看并决策" : "查看现场",
+    consequence: requiresDecision ? "high" : "normal",
+    attentionCode: item.code,
+    ...(sourceError
+      ? {
+        anomalyDetail: {
+          scene: {
+            kind: (errorScope === null ? null : sourceErrorStageByScope[errorScope])
+              ?? "unknown",
+            sourcePath: item.source,
+            relatedPaths: [],
+          },
+          dedup: {
+            basis: "source-path",
+            key: item.source,
+            mergedCount: 1,
+          },
+          facets: [],
+          rawErrors: [projectAnomalyRawError(errorScope, item.summary)],
+          evidenceStanding: {
+            freshnessKind: "unverified",
+            observedAt: snapshot.generatedAt,
+            sourceUpdatedAt: null,
+            meaning: "该来源在投影构建时读取失败；原始错误保留，影响范围见错误详情。",
+          },
+          binding: {
+            standing: "unverified",
+            missionId,
+            reason: "来源读取失败，无法形成项目绑定判断",
+          },
+          nextSteps: sourceErrorNextSteps(),
+        },
+      }
+      : {}),
+  };
+}
+
 function attentionWorkItems(
   snapshot: WorkItemSnapshot,
 ): WorkItemProjection[] {
-  return snapshot.attention.map((item, index): WorkItemProjection => {
-    const projectKey = item.projectKey ?? null;
-    const missionId = item.missionId ?? null;
-    const requiresDecision = decisionRequired(item);
-    return {
-      id:
-        `attention:${item.code}:${projectKey ?? "unbound"}:${missionId ?? index}`,
-      kind: requiresDecision
-        ? "decision"
-        : observationCodes.has(item.code) ? "observation" : "system-work",
-      lifecycle: attentionLifecycle(item),
-      nextActor: attentionActor(item),
-      attention: requiresDecision ? "decision-required" : "exception",
-      title: missionTitle(snapshot, projectKey, missionId),
-      summary: item.summary,
-      context: projectKey !== null && missionId !== null
-        ? `${projectKey} · ${missionId}`
-        : projectKey ?? "待归属观察",
-      projectKey,
-      missionId,
-      runnerId: null,
-      binding: projectKey !== null
-        ? missionId !== null
-          ? { kind: "project-mission", projectKey, missionId }
-          : { kind: "project", projectKey }
-        : {
-          kind: "unbound",
-          missionId,
-          reason: "attention has no exact project identity",
-        },
-      evidence: {
-        freshness: item.code === "source-error"
-          ? {
-            kind: "unverified",
-            observedAt: snapshot.generatedAt,
-            reason: item.summary,
-          }
-          : {
-            kind: "observed-at-build",
-            observedAt: snapshot.generatedAt,
-          },
-        sourceRefs: [item.source],
-      },
-      updatedAt: snapshot.generatedAt,
-      actionLabel: requiresDecision ? "查看并决策" : "查看现场",
-      consequence: requiresDecision ? "high" : "normal",
-      attentionCode: item.code,
-    };
-  });
+  const runnerGroups = new Map<string, AttentionItem[]>();
+  const standalone: AttentionItem[] = [];
+  for (const item of snapshot.attention) {
+    if (item.runnerId !== undefined && item.runnerId !== "") {
+      const group = runnerGroups.get(item.runnerId) ?? [];
+      group.push(item);
+      runnerGroups.set(item.runnerId, group);
+    } else {
+      standalone.push(item);
+    }
+  }
+  // Runner-scope read failures (live activity/status) belong on that runner's
+  // single anomaly scene even when its state produced no attention facet: a
+  // live running bound runner whose activity source failed must not keep
+  // projecting as clean agent work while the raw error stays invisible. Only
+  // a live carrier reaches this path without a facet — non-live status
+  // failures already get a reachability attention item, and a deliberately
+  // stopped cache record is not turned into a synthetic anomaly.
+  for (const runner of snapshot.runners) {
+    const runnerId = runner.status.runnerId;
+    if (runnerId === undefined || runnerId === "") continue;
+    if (runner.live !== true) continue;
+    if (!runnerHasSourceError(snapshot, runner)) continue;
+    const group = runnerGroups.get(runnerId) ?? [];
+    if (group.length === 0) {
+      group.push(runnerSourceErrorFacet(runner));
+    }
+    runnerGroups.set(runnerId, group);
+  }
+  return [
+    ...[...runnerGroups.entries()].map(([runnerId, group]) =>
+      runnerAnomalyWorkItem(snapshot, runnerId, group)),
+    ...standalone.map((item, index) => attentionItemWorkItem(snapshot, item, index)),
+  ];
+}
+
+function runnerHasSourceError(
+  snapshot: WorkItemSnapshot,
+  runner: LiveRunnerProjection,
+): boolean {
+  return (snapshot.errors ?? []).some(
+    (error: ProjectionError) =>
+      error.scope === "runner" && error.source === runner.sourcePath,
+  );
+}
+
+/**
+ * Synthetic observation facet for a live runner whose activity/status source
+ * failed to read. It never guesses a state: it only records that the runner's
+ * live source is unreadable, keeps the runner cache identity as the scene's
+ * dedup key, and leaves the verbatim failure to the scene's rawErrors.
+ */
+function runnerSourceErrorFacet(runner: LiveRunnerProjection): AttentionItem {
+  // Only a present, non-empty runner id is assigned to the optional
+  // runnerId property (exactOptionalPropertyTypes); the merge loop already
+  // guarantees the id is valid before the facet is created, so this guard is
+  // type-only and never changes the projected scene.
+  const runnerId = runner.status.runnerId;
+  return {
+    priority: "warning",
+    code: "runner-lineage-unavailable",
+    summary:
+      `Mission ${runner.status.missionId} runner 活动/状态来源读取失败；`
+      + "live 状态不能确证正在执行的内容，缓存状态仅供检查。",
+    ...(runnerId === undefined || runnerId === ""
+      ? {}
+      : { runnerId }),
+    missionId: runner.status.missionId,
+    ...(runner.binding.kind === "project-mission"
+      ? { projectKey: runner.binding.projectKey }
+      : {}),
+    source: runner.sourcePath,
+  };
 }
 
 function runnerFreshness(
@@ -711,6 +1294,11 @@ function runnerWorkItems(
       || runner.status.state !== "running"
       || runnerId === null
     ) return [];
+    // A runner whose live activity/status source failed to read is projected
+    // as its one anomaly scene (raw error, unverified activity standing)
+    // instead of a clean "Agent 正在执行" agent-work item that would hide the
+    // failure from the overview.
+    if (runnerHasSourceError(snapshot, runner)) return [];
     const activity = runner.activity !== null
       && typeof runner.activity === "object"
       ? runner.activity as Record<string, unknown>
@@ -2055,15 +2643,31 @@ export function buildWorkItemProjection(
 ): WorkItemSetProjection {
   const attention = attentionWorkItems(snapshot);
   const runners = runnerWorkItems(snapshot);
+  // One identified runner scene is one item: when the grouped attention
+  // projection already carries an unbound runner observation, the parallel
+  // runner-shell observation for the same runner id is a duplicate and is
+  // dropped. Live agent-work items never share the same identity meaning.
+  const coveredRunnerIds = new Set<string>();
+  for (const item of attention) {
+    if (item.runnerId !== null && item.runnerId !== undefined) {
+      coveredRunnerIds.add(item.runnerId);
+    }
+  }
+  const runnersFiltered = runners.filter((item) =>
+    item.kind !== "observation"
+    || item.runnerId === null
+    || item.runnerId === undefined
+    || !coveredRunnerIds.has(item.runnerId)
+  );
   const activeMissionKeys = new Set<string>();
-  for (const item of [...attention, ...runners]) {
+  for (const item of [...attention, ...runnersFiltered]) {
     if (item.projectKey !== null && item.missionId !== null) {
       activeMissionKeys.add(`${item.projectKey}:${item.missionId}`);
     }
   }
   const items = [
     ...attention,
-    ...runners,
+    ...runnersFiltered,
     ...principalTaskWorkItems(snapshot, taskSource, home, taskAttempts),
     ...missionWorkItems(snapshot, activeMissionKeys),
   ].sort((left, right) => {

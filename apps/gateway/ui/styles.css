@@ -3439,7 +3439,7 @@ body[data-peek-open="true"]::after {
   margin: 0.2rem 0 0;
 }
 
-body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary) {
+body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary):not(.anomaly-detail) {
   display: none !important;
 }
 
@@ -5654,4 +5654,116 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     min-height: 44px;
     width: 100%;
   }
+}
+
+.anomaly-detail {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.anomaly-detail > header {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.anomaly-detail > header h3 {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.anomaly-detail > header p {
+  color: var(--ink-faint);
+  font-size: 0.6rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.anomaly-errors,
+.anomaly-facets,
+.anomaly-next-steps {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.anomaly-errors > .field-heading,
+.anomaly-facets > .field-heading,
+.anomaly-next-steps > .field-heading {
+  margin: 0;
+}
+
+.anomaly-error,
+.anomaly-facet,
+.anomaly-step {
+  background: var(--paper-light);
+  border: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+}
+
+.anomaly-error {
+  border-left: 3px solid var(--red);
+}
+
+.anomaly-facet {
+  border-left: 3px solid var(--ochre);
+}
+
+.anomaly-step {
+  border-left: 3px solid var(--green);
+}
+
+.anomaly-step[data-supported="false"] {
+  border-left-color: var(--ink-faint);
+}
+
+.anomaly-error > strong,
+.anomaly-facet > strong,
+.anomaly-step > strong {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.anomaly-error > p {
+  font-size: 0.66rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.anomaly-error > small,
+.anomaly-facet > small,
+.anomaly-step > small {
+  color: var(--ink-faint);
+  font-size: 0.59rem;
+  line-height: 1.45;
+}
+
+.anomaly-facet > span {
+  color: var(--ink);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.anomaly-error pre {
+  background: var(--paper-deep);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  padding: 0.4rem;
+  white-space: pre-wrap;
+}
+
+.anomaly-step .text-action {
+  justify-self: start;
 }
