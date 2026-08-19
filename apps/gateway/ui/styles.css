@@ -4429,13 +4429,277 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin-right: 0.5rem;
 }
 
+.conversation-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
 .conversation-feed {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1rem 1.4rem 1.4rem;
   scroll-behavior: smooth;
+}
+
+.conversation-feed-inner {
+  margin: 0 auto;
+  max-width: 820px;
+  min-width: 0;
+}
+
+.conversation-context {
+  background: var(--paper-deep);
+  border-left: 1px solid var(--line);
+  display: none;
+  flex: 0 0 264px;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem 1.05rem 1.2rem;
+}
+
+.context-section {
+  border-bottom: 1px solid var(--line-light);
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.context-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.context-section .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.context-connection {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.context-connection > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.context-connection strong {
+  font-size: 0.74rem;
+}
+
+.context-connection code {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+.context-connection .connection-mark[data-connection="live"] {
+  background: var(--green);
+}
+
+.context-connection .connection-mark[data-connection="connecting"] {
+  background: var(--ochre);
+}
+
+.context-connection .connection-mark[data-connection="disconnected"],
+.context-connection .connection-mark[data-connection="unavailable"] {
+  background: var(--red);
+}
+
+.context-section .supervision-relation {
+  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+}
+
+.context-section .supervision-relation strong {
+  font-size: 0.78rem;
+}
+
+.context-next {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.context-boundary-note {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1280px) {
+  .conversation-context {
+    display: block;
+  }
+}
+
+.conversation-empty {
+  background: var(--paper);
+  border: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.15rem 1.2rem 1.2rem;
+}
+
+.conversation-empty-heading {
+  align-items: start;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
+.conversation-empty-mark {
+  align-items: center;
+  border: 1px solid var(--ink);
+  display: flex;
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.conversation-empty-mark::before {
+  content: "R";
+}
+
+.conversation-empty-heading h3 {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.conversation-empty-heading p:not(.eyebrow) {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-empty-standing {
+  border-left: 3px solid var(--line);
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.conversation-empty[data-connection="live"] .conversation-empty-standing {
+  border-left-color: var(--green);
+}
+
+.conversation-empty[data-connection="connecting"] .conversation-empty-standing {
+  border-left-color: var(--ochre);
+}
+
+.conversation-empty[data-connection="disconnected"] .conversation-empty-standing,
+.conversation-empty[data-connection="unavailable"] .conversation-empty-standing {
+  border-left-color: var(--red);
+}
+
+.conversation-empty-standing > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.conversation-empty-standing > strong {
+  font-size: 0.78rem;
+}
+
+.conversation-empty-standing > small {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.conversation-empty-standing > code {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.conversation-examples {
+  border-top: 1px solid var(--line-light);
+  padding-top: 0.85rem;
+}
+
+.conversation-examples-label {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.conversation-example-list {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.conversation-example-list button {
+  align-items: start;
+  background: var(--paper-light);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+}
+
+.conversation-example-list button:hover {
+  border-color: var(--ink);
+}
+
+.conversation-example-list strong {
+  font-size: 0.7rem;
+}
+
+.conversation-example-list span {
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.layer-chip {
+  border: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  padding: 0.14rem 0.32rem;
+  text-transform: uppercase;
+}
+
+.turn-next-step {
+  border-top: 1px dashed var(--line);
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+  padding-top: 0.5rem;
 }
 
 .conversation-item {
@@ -4877,10 +5141,36 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .conversation-composer label {
-  color: var(--ink-faint);
-  font-size: 0.62rem;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.composer-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.composer-live {
+  background: var(--ink-faint);
+  height: 8px;
+  width: 8px;
+}
+
+.composer-live[data-connection="live"] {
+  background: var(--green);
+}
+
+.composer-live[data-connection="connecting"] {
+  background: var(--ochre);
+}
+
+.composer-live[data-connection="disconnected"],
+.composer-live[data-connection="unavailable"] {
+  background: var(--red);
 }
 
 .conversation-composer textarea {
@@ -4908,8 +5198,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
 .composer-hint {
   color: var(--ink-faint);
-  font-size: 0.68rem;
-  margin-right: auto;
+  font-size: 0.66rem;
+  margin-left: auto;
+}
+
+.composer-bar .primary-action {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .conversation-composer .primary-action {
@@ -5661,7 +5956,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .conversation-header p {
-    font-size: 0.72rem;
+    display: none;
   }
 
   .conversation-standing {
@@ -5702,8 +5997,6 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .composer-hint {
     align-self: center;
-    grid-column: 1 / -1;
-    grid-row: 1;
   }
 
   .conversation-composer .primary-action {
@@ -5713,18 +6006,54 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .conversation-composer .conversation-control {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
     min-height: 44px;
     text-align: left;
   }
 
   .conversation-composer .primary-action {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
+  }
+
+  .conversation-context {
+    display: none;
   }
 
   .conversation-boundary {
+    display: none;
     padding: 0.55rem 0.85rem 0.7rem;
+  }
+
+  .conversation-empty {
+    gap: 0.7rem;
+    padding: 0.85rem 0.8rem 0.95rem;
+  }
+
+  .conversation-empty-heading {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .conversation-empty-mark {
+    font-size: 1.05rem;
+    height: 34px;
+    width: 34px;
+  }
+
+  .conversation-empty-heading h3 {
+    font-size: 1rem;
+  }
+
+  .conversation-empty-heading p:not(.eyebrow) {
+    font-size: 0.68rem;
+  }
+
+  .conversation-example-list {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-example-list button {
+    min-height: 44px;
   }
 
   .conversation-carrier footer {

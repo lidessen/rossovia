@@ -191,7 +191,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <p class="eyebrow">Conversation entry</p>
             <h2 id="conversation-heading">对话</h2>
             <p id="conversation-summary">
-              用自然语言发布与纠正任务、观察执行；从这里精确中断一条回复或停止一个已观察的执行载体。
+              发布与纠正任务、观察执行；从这里精确中断回复或停止已观察的执行载体。
             </p>
           </div>
           <div class="conversation-standing">
@@ -211,17 +211,68 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
 
         <div class="conversation-notices" id="conversation-notices" aria-live="polite"></div>
 
-        <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流"></div>
+        <div class="conversation-body">
+          <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流">
+            <div class="conversation-feed-inner" id="conversation-feed-inner"></div>
+          </div>
 
-        <form class="conversation-composer" id="conversation-composer-form">
-          <label for="conversation-composer-text">发给 Agent 系统</label>
+          <aside class="conversation-context" aria-label="对话连接与上下文">
+            <section class="context-section">
+              <p class="eyebrow">对话连接</p>
+              <div class="context-connection">
+                <span class="connection-mark" data-conversation-context-mark aria-hidden="true"></span>
+                <div>
+                  <strong data-conversation-context-label>未连接</strong>
+                  <code data-conversation-context-id>—</code>
+                </div>
+              </div>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">监督关系</p>
+              <div class="supervision-relation">
+                <div>
+                  <span>你</span>
+                  <strong id="conversation-context-supervisor">—</strong>
+                </div>
+                <div class="relation-line" aria-hidden="true">
+                  <i></i>
+                  <span>监督</span>
+                </div>
+                <div>
+                  <span>Agent 系统</span>
+                  <strong id="conversation-context-subject">—</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">下一步</p>
+              <p class="context-next" id="conversation-context-next">发送第一条消息开始。</p>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">浏览器边界</p>
+              <p class="context-boundary-note">
+                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
+                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+              </p>
+            </section>
+          </aside>
+        </div>
+
+        <form class="conversation-composer" id="conversation-composer-form" data-connection="unavailable">
+          <div class="composer-heading">
+            <span class="composer-live" id="conversation-composer-live" aria-hidden="true"></span>
+            <label for="conversation-composer-text">发给 Agent 系统</label>
+            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+          </div>
           <textarea
             id="conversation-composer-text"
             rows="3"
             placeholder="说你想完成或纠正的事。Enter 发送，Shift+Enter 换行。"
           ></textarea>
           <div class="composer-bar">
-            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
             <button
               class="conversation-control"
               id="conversation-tool-interrupt"
@@ -240,8 +291,8 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-          canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
+          刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 
@@ -5870,13 +5921,277 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin-right: 0.5rem;
 }
 
+.conversation-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
 .conversation-feed {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1rem 1.4rem 1.4rem;
   scroll-behavior: smooth;
+}
+
+.conversation-feed-inner {
+  margin: 0 auto;
+  max-width: 820px;
+  min-width: 0;
+}
+
+.conversation-context {
+  background: var(--paper-deep);
+  border-left: 1px solid var(--line);
+  display: none;
+  flex: 0 0 264px;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem 1.05rem 1.2rem;
+}
+
+.context-section {
+  border-bottom: 1px solid var(--line-light);
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.context-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.context-section .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.context-connection {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.context-connection > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.context-connection strong {
+  font-size: 0.74rem;
+}
+
+.context-connection code {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+.context-connection .connection-mark[data-connection="live"] {
+  background: var(--green);
+}
+
+.context-connection .connection-mark[data-connection="connecting"] {
+  background: var(--ochre);
+}
+
+.context-connection .connection-mark[data-connection="disconnected"],
+.context-connection .connection-mark[data-connection="unavailable"] {
+  background: var(--red);
+}
+
+.context-section .supervision-relation {
+  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+}
+
+.context-section .supervision-relation strong {
+  font-size: 0.78rem;
+}
+
+.context-next {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.context-boundary-note {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1280px) {
+  .conversation-context {
+    display: block;
+  }
+}
+
+.conversation-empty {
+  background: var(--paper);
+  border: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.15rem 1.2rem 1.2rem;
+}
+
+.conversation-empty-heading {
+  align-items: start;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
+.conversation-empty-mark {
+  align-items: center;
+  border: 1px solid var(--ink);
+  display: flex;
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.conversation-empty-mark::before {
+  content: "R";
+}
+
+.conversation-empty-heading h3 {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.conversation-empty-heading p:not(.eyebrow) {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-empty-standing {
+  border-left: 3px solid var(--line);
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.conversation-empty[data-connection="live"] .conversation-empty-standing {
+  border-left-color: var(--green);
+}
+
+.conversation-empty[data-connection="connecting"] .conversation-empty-standing {
+  border-left-color: var(--ochre);
+}
+
+.conversation-empty[data-connection="disconnected"] .conversation-empty-standing,
+.conversation-empty[data-connection="unavailable"] .conversation-empty-standing {
+  border-left-color: var(--red);
+}
+
+.conversation-empty-standing > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.conversation-empty-standing > strong {
+  font-size: 0.78rem;
+}
+
+.conversation-empty-standing > small {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.conversation-empty-standing > code {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.conversation-examples {
+  border-top: 1px solid var(--line-light);
+  padding-top: 0.85rem;
+}
+
+.conversation-examples-label {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.conversation-example-list {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.conversation-example-list button {
+  align-items: start;
+  background: var(--paper-light);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+}
+
+.conversation-example-list button:hover {
+  border-color: var(--ink);
+}
+
+.conversation-example-list strong {
+  font-size: 0.7rem;
+}
+
+.conversation-example-list span {
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.layer-chip {
+  border: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  padding: 0.14rem 0.32rem;
+  text-transform: uppercase;
+}
+
+.turn-next-step {
+  border-top: 1px dashed var(--line);
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+  padding-top: 0.5rem;
 }
 
 .conversation-item {
@@ -6318,10 +6633,36 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .conversation-composer label {
-  color: var(--ink-faint);
-  font-size: 0.62rem;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.composer-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.composer-live {
+  background: var(--ink-faint);
+  height: 8px;
+  width: 8px;
+}
+
+.composer-live[data-connection="live"] {
+  background: var(--green);
+}
+
+.composer-live[data-connection="connecting"] {
+  background: var(--ochre);
+}
+
+.composer-live[data-connection="disconnected"],
+.composer-live[data-connection="unavailable"] {
+  background: var(--red);
 }
 
 .conversation-composer textarea {
@@ -6349,8 +6690,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
 .composer-hint {
   color: var(--ink-faint);
-  font-size: 0.68rem;
-  margin-right: auto;
+  font-size: 0.66rem;
+  margin-left: auto;
+}
+
+.composer-bar .primary-action {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .conversation-composer .primary-action {
@@ -7102,7 +7448,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .conversation-header p {
-    font-size: 0.72rem;
+    display: none;
   }
 
   .conversation-standing {
@@ -7143,8 +7489,6 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .composer-hint {
     align-self: center;
-    grid-column: 1 / -1;
-    grid-row: 1;
   }
 
   .conversation-composer .primary-action {
@@ -7154,18 +7498,54 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .conversation-composer .conversation-control {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
     min-height: 44px;
     text-align: left;
   }
 
   .conversation-composer .primary-action {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
+  }
+
+  .conversation-context {
+    display: none;
   }
 
   .conversation-boundary {
+    display: none;
     padding: 0.55rem 0.85rem 0.7rem;
+  }
+
+  .conversation-empty {
+    gap: 0.7rem;
+    padding: 0.85rem 0.8rem 0.95rem;
+  }
+
+  .conversation-empty-heading {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .conversation-empty-mark {
+    font-size: 1.05rem;
+    height: 34px;
+    width: 34px;
+  }
+
+  .conversation-empty-heading h3 {
+    font-size: 1rem;
+  }
+
+  .conversation-empty-heading p:not(.eyebrow) {
+    font-size: 0.68rem;
+  }
+
+  .conversation-example-list {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-example-list button {
+    min-height: 44px;
   }
 
   .conversation-carrier footer {
@@ -12642,7 +13022,8 @@ export function taskLocatorEmptySummary(locator, context) {
     return \`
       <div class="conversation-carrier" data-carrier-control="\${carrier.control}" data-carrier-terminal="\${terminal === undefined ? (unknown ? "unknown" : "live") : escapeHtml(terminal.status)}">
         <header>
-          <span>执行载体 · owner-backed 活动</span>
+          <small class="layer-chip">3 · 执行载体</small>
+          <span>owner-backed 活动</span>
           <b>\${escapeHtml(standingLabel)}</b>
         </header>
         <p class="carrier-identity">
@@ -12705,8 +13086,8 @@ export function taskLocatorEmptySummary(locator, context) {
     return \`
       <div class="conversation-action" data-action-status="\${action.status}">
         <header>
-          <span>\${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)}</span>
-          <code>\${escapeHtml(shortConversationId(action.actionId))}</code>
+          <small class="layer-chip">2 · 执行动作</small>
+          <code>\${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)} · \${escapeHtml(shortConversationId(action.actionId))}</code>
           <b>\${escapeHtml(conversationActionStatusCopy[action.status] || action.status)}</b>
         </header>
         <dl class="action-facts">
@@ -12757,7 +13138,7 @@ export function taskLocatorEmptySummary(locator, context) {
     return \`
       <article class="conversation-item turn-item" data-turn-status="\${entry.status}" data-turn-id="\${escapeHtml(entry.turnId)}">
         <header>
-          <span class="item-role">Coordinator</span>
+          <small class="layer-chip">1 · 协调回复</small>
           <code>turn \${escapeHtml(shortConversationId(entry.turnId))}</code>
           <b>\${escapeHtml(conversationTurnStatusCopy[entry.status] || entry.status)}</b>
           \${
@@ -12787,6 +13168,15 @@ export function taskLocatorEmptySummary(locator, context) {
                   ? \`<p class="turn-provisional" data-provisional="true">\${escapeHtml(entry.provisional)}</p>\`
                   : '<p class="turn-waiting">正在生成回复…（流式内容为临时状态，不会伪装成 durable）</p>'
         }
+        \${
+          entry.status === "settled"
+            ? '<p class="turn-next-step">已结算 · 下一步：查看上方执行卡片的 canonical 证据链接，或在下方继续提出、纠正。</p>'
+            : entry.status === "failed"
+              ? '<p class="turn-next-step">失败 · 下一步：在下方补充说明或纠正后重新提出；回复不会自动重试。</p>'
+              : entry.status === "interrupted"
+                ? '<p class="turn-next-step">已中断 · 下一步：在下方继续提出要求；相关执行载体仍保留其精确停止控制（若 live）。</p>'
+                : ""
+        }
       </article>
     \`;
   }
@@ -12814,17 +13204,62 @@ export function taskLocatorEmptySummary(locator, context) {
     \`;
   }
 
+  function renderConversationEmptyState() {
+    const connection = conversationState.connection;
+    const connectionCopy = {
+      live: ["已连接 · 实时", "可以发送；示例只填入草稿，不会自动发送。"],
+      connecting: ["正在连接", "草稿与示例仍可用；连接恢复后才能发送。"],
+      disconnected: ["已断开 · 正在重连", "草稿保留，不会自动重发；只恢复已结算事件。"],
+      unavailable: ["不可用", "草稿保留；恢复连接前不能发送，不会自动重发。"],
+    }[connection] || ["连接状态未知", "不发送；草稿保留，不会自动重发。"];
+    const examples = [
+      ["查看待办", "当前有哪些事项需要我处理？"],
+      ["观察执行", "请说明当前执行进展与下一步。"],
+      ["纠正任务", "纠正正在进行的任务：……"],
+    ];
+    return \`
+      <div class="conversation-empty" data-connection="\${escapeHtml(connection)}">
+        <div class="conversation-empty-heading">
+          <div class="conversation-empty-mark" aria-hidden="true"></div>
+          <div>
+            <p class="eyebrow">Rossovia · 受监督对话入口</p>
+            <h3>向 Agent 系统提出事情</h3>
+            <p>发布任务、纠正方向、观察协调回复与执行进展。浏览器只保留对话 ID、光标与草稿；任务与执行证据以 canonical 所有者为准。</p>
+          </div>
+        </div>
+        <div class="conversation-empty-standing">
+          <span>对话连接</span>
+          <strong>\${escapeHtml(connectionCopy[0])}</strong>
+          <small>\${escapeHtml(connectionCopy[1])}</small>
+          <code>会话 \${escapeHtml(shortConversationId(conversationState.conversationId))}</code>
+        </div>
+        <div class="conversation-examples">
+          <p class="conversation-examples-label">从这里开始 · 示例只填入草稿，不会自动发送，也不改变任何后端状态</p>
+          <div class="conversation-example-list">
+            \${examples.map(([label, draft]) => \`
+              <button type="button" data-conversation-example="\${escapeHtml(draft)}">
+                <strong>\${escapeHtml(label)}</strong>
+                <span>\${escapeHtml(draft)}</span>
+              </button>
+            \`).join("")}
+          </div>
+        </div>
+      </div>
+    \`;
+  }
+
   function renderConversationFeed() {
     const feed = $("#conversation-feed");
+    const inner = $("#conversation-feed-inner");
     const wasStuck = conversationState.stickToBottom;
     const previousScroll = feed.scrollTop;
-    feed.innerHTML = conversationState.feed.length
+    inner.innerHTML = conversationState.feed.length
       ? conversationState.feed.map((entry) =>
         entry.kind === "turn"
           ? renderConversationTurn(entry)
           : renderConversationMessage(entry),
       ).join("")
-      : '<div class="surface-empty"><span>—</span><p>还没有消息。发送第一条消息开始；断线重连后，这里只按 journal 顺序恢复已结算事件。</p></div>';
+      : renderConversationEmptyState();
     if (wasStuck) {
       feed.scrollTop = feed.scrollHeight;
     } else {
@@ -12846,6 +13281,19 @@ export function taskLocatorEmptySummary(locator, context) {
     $$("[data-conversation-retry]").forEach((button) => {
       button.addEventListener("click", () => {
         retryConversationMessage(button.dataset.conversationRetry);
+      });
+    });
+    $$("[data-conversation-example]").forEach((button) => {
+      button.addEventListener("click", () => {
+        // Example starters only fill the local draft: they never send a frame
+        // and never touch backend state. The user confirms with Enter.
+        const textarea = $("#conversation-composer-text");
+        const value = button.dataset.conversationExample ?? "";
+        conversationState.draft = value;
+        textarea.value = value;
+        persistConversationDraft();
+        renderConversationComposer();
+        textarea.focus({ preventScroll: true });
       });
     });
     $$("[data-evidence-task]").forEach((button) => {
@@ -12895,6 +13343,10 @@ export function taskLocatorEmptySummary(locator, context) {
   }
 
   function renderConversationComposer() {
+    const form = $("#conversation-composer-form");
+    const live = $("#conversation-composer-live");
+    form.dataset.connection = conversationState.connection;
+    live.dataset.connection = conversationState.connection;
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
     const status = $("#conversation-composer-status");
@@ -12920,6 +13372,64 @@ export function taskLocatorEmptySummary(locator, context) {
     }
   }
 
+  function conversationNextStep() {
+    for (let index = conversationState.feed.length - 1; index >= 0; index -= 1) {
+      const entry = conversationState.feed[index];
+      if (entry.kind === "turn" && !entry.terminal) {
+        return "正在生成协调回复：可以随时中断这条回复，或等待它结算。";
+      }
+    }
+    for (const carrier of conversationState.carriers.values()) {
+      if (carrier.terminal === undefined && carrier.standing === "live") {
+        return "存在 live 执行载体：可以用“停止该工作”精确停止，只作用于该 turn/action/carrier。";
+      }
+    }
+    if (conversationState.connection !== "live") {
+      return "对话连接不可用：草稿保留，恢复连接前不能发送；不会自动重发。";
+    }
+    if (conversationState.draft !== "") {
+      return "草稿已保留在本地：确认内容后按 Enter 发送。";
+    }
+    return "发送第一条消息开始；示例只填充草稿，不会自动发送，也不改变后端状态。";
+  }
+
+  function renderConversationContext() {
+    const context = $("#conversation-context");
+    if (context === null) return;
+    const connection = conversationState.connection;
+    const copy = {
+      connecting: "正在连接",
+      live: "已连接 · 实时",
+      disconnected: "已断开 · 正在重连",
+      unavailable: "不可用",
+    };
+    const mark = context.querySelector("[data-conversation-context-mark]");
+    if (mark) mark.dataset.connection = connection;
+    const label = context.querySelector("[data-conversation-context-label]");
+    if (label) label.textContent = copy[connection] || "未连接";
+    const id = context.querySelector("[data-conversation-context-id]");
+    if (id) id.textContent = shortConversationId(conversationState.conversationId);
+    const supervisor = $("#conversation-context-supervisor");
+    const subject = $("#conversation-context-subject");
+    if (supervisor !== null || subject !== null) {
+      const supervision = first(state.snapshot, ["supervision"], {});
+      if (supervisor !== null) {
+        supervisor.textContent = text(
+          first(supervision, ["supervisor", "supervisorName", "actor"]),
+          "Codex",
+        );
+      }
+      if (subject !== null) {
+        subject.textContent = text(
+          first(supervision, ["subject", "subjectName", "system"]),
+          "Agent system",
+        );
+      }
+    }
+    const next = $("#conversation-context-next");
+    if (next !== null) next.textContent = conversationNextStep();
+  }
+
   function renderConversationSurface() {
     const surface = $("#conversation-surface");
     const active = state.activeView === "conversation";
@@ -12929,6 +13439,7 @@ export function taskLocatorEmptySummary(locator, context) {
     renderConversationConnection();
     renderConversationFeed();
     bindConversationFeedActions();
+    renderConversationContext();
     renderConversationComposer();
   }
 

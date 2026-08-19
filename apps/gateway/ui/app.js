@@ -5348,7 +5348,8 @@ export function taskLocatorEmptySummary(locator, context) {
     return `
       <div class="conversation-carrier" data-carrier-control="${carrier.control}" data-carrier-terminal="${terminal === undefined ? (unknown ? "unknown" : "live") : escapeHtml(terminal.status)}">
         <header>
-          <span>执行载体 · owner-backed 活动</span>
+          <small class="layer-chip">3 · 执行载体</small>
+          <span>owner-backed 活动</span>
           <b>${escapeHtml(standingLabel)}</b>
         </header>
         <p class="carrier-identity">
@@ -5411,8 +5412,8 @@ export function taskLocatorEmptySummary(locator, context) {
     return `
       <div class="conversation-action" data-action-status="${action.status}">
         <header>
-          <span>${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)}</span>
-          <code>${escapeHtml(shortConversationId(action.actionId))}</code>
+          <small class="layer-chip">2 · 执行动作</small>
+          <code>${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)} · ${escapeHtml(shortConversationId(action.actionId))}</code>
           <b>${escapeHtml(conversationActionStatusCopy[action.status] || action.status)}</b>
         </header>
         <dl class="action-facts">
@@ -5463,7 +5464,7 @@ export function taskLocatorEmptySummary(locator, context) {
     return `
       <article class="conversation-item turn-item" data-turn-status="${entry.status}" data-turn-id="${escapeHtml(entry.turnId)}">
         <header>
-          <span class="item-role">Coordinator</span>
+          <small class="layer-chip">1 · 协调回复</small>
           <code>turn ${escapeHtml(shortConversationId(entry.turnId))}</code>
           <b>${escapeHtml(conversationTurnStatusCopy[entry.status] || entry.status)}</b>
           ${
@@ -5493,6 +5494,15 @@ export function taskLocatorEmptySummary(locator, context) {
                   ? `<p class="turn-provisional" data-provisional="true">${escapeHtml(entry.provisional)}</p>`
                   : '<p class="turn-waiting">正在生成回复…（流式内容为临时状态，不会伪装成 durable）</p>'
         }
+        ${
+          entry.status === "settled"
+            ? '<p class="turn-next-step">已结算 · 下一步：查看上方执行卡片的 canonical 证据链接，或在下方继续提出、纠正。</p>'
+            : entry.status === "failed"
+              ? '<p class="turn-next-step">失败 · 下一步：在下方补充说明或纠正后重新提出；回复不会自动重试。</p>'
+              : entry.status === "interrupted"
+                ? '<p class="turn-next-step">已中断 · 下一步：在下方继续提出要求；相关执行载体仍保留其精确停止控制（若 live）。</p>'
+                : ""
+        }
       </article>
     `;
   }
@@ -5520,17 +5530,62 @@ export function taskLocatorEmptySummary(locator, context) {
     `;
   }
 
+  function renderConversationEmptyState() {
+    const connection = conversationState.connection;
+    const connectionCopy = {
+      live: ["已连接 · 实时", "可以发送；示例只填入草稿，不会自动发送。"],
+      connecting: ["正在连接", "草稿与示例仍可用；连接恢复后才能发送。"],
+      disconnected: ["已断开 · 正在重连", "草稿保留，不会自动重发；只恢复已结算事件。"],
+      unavailable: ["不可用", "草稿保留；恢复连接前不能发送，不会自动重发。"],
+    }[connection] || ["连接状态未知", "不发送；草稿保留，不会自动重发。"];
+    const examples = [
+      ["查看待办", "当前有哪些事项需要我处理？"],
+      ["观察执行", "请说明当前执行进展与下一步。"],
+      ["纠正任务", "纠正正在进行的任务：……"],
+    ];
+    return `
+      <div class="conversation-empty" data-connection="${escapeHtml(connection)}">
+        <div class="conversation-empty-heading">
+          <div class="conversation-empty-mark" aria-hidden="true"></div>
+          <div>
+            <p class="eyebrow">Rossovia · 受监督对话入口</p>
+            <h3>向 Agent 系统提出事情</h3>
+            <p>发布任务、纠正方向、观察协调回复与执行进展。浏览器只保留对话 ID、光标与草稿；任务与执行证据以 canonical 所有者为准。</p>
+          </div>
+        </div>
+        <div class="conversation-empty-standing">
+          <span>对话连接</span>
+          <strong>${escapeHtml(connectionCopy[0])}</strong>
+          <small>${escapeHtml(connectionCopy[1])}</small>
+          <code>会话 ${escapeHtml(shortConversationId(conversationState.conversationId))}</code>
+        </div>
+        <div class="conversation-examples">
+          <p class="conversation-examples-label">从这里开始 · 示例只填入草稿，不会自动发送，也不改变任何后端状态</p>
+          <div class="conversation-example-list">
+            ${examples.map(([label, draft]) => `
+              <button type="button" data-conversation-example="${escapeHtml(draft)}">
+                <strong>${escapeHtml(label)}</strong>
+                <span>${escapeHtml(draft)}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderConversationFeed() {
     const feed = $("#conversation-feed");
+    const inner = $("#conversation-feed-inner");
     const wasStuck = conversationState.stickToBottom;
     const previousScroll = feed.scrollTop;
-    feed.innerHTML = conversationState.feed.length
+    inner.innerHTML = conversationState.feed.length
       ? conversationState.feed.map((entry) =>
         entry.kind === "turn"
           ? renderConversationTurn(entry)
           : renderConversationMessage(entry),
       ).join("")
-      : '<div class="surface-empty"><span>—</span><p>还没有消息。发送第一条消息开始；断线重连后，这里只按 journal 顺序恢复已结算事件。</p></div>';
+      : renderConversationEmptyState();
     if (wasStuck) {
       feed.scrollTop = feed.scrollHeight;
     } else {
@@ -5552,6 +5607,19 @@ export function taskLocatorEmptySummary(locator, context) {
     $$("[data-conversation-retry]").forEach((button) => {
       button.addEventListener("click", () => {
         retryConversationMessage(button.dataset.conversationRetry);
+      });
+    });
+    $$("[data-conversation-example]").forEach((button) => {
+      button.addEventListener("click", () => {
+        // Example starters only fill the local draft: they never send a frame
+        // and never touch backend state. The user confirms with Enter.
+        const textarea = $("#conversation-composer-text");
+        const value = button.dataset.conversationExample ?? "";
+        conversationState.draft = value;
+        textarea.value = value;
+        persistConversationDraft();
+        renderConversationComposer();
+        textarea.focus({ preventScroll: true });
       });
     });
     $$("[data-evidence-task]").forEach((button) => {
@@ -5601,6 +5669,10 @@ export function taskLocatorEmptySummary(locator, context) {
   }
 
   function renderConversationComposer() {
+    const form = $("#conversation-composer-form");
+    const live = $("#conversation-composer-live");
+    form.dataset.connection = conversationState.connection;
+    live.dataset.connection = conversationState.connection;
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
     const status = $("#conversation-composer-status");
@@ -5626,6 +5698,64 @@ export function taskLocatorEmptySummary(locator, context) {
     }
   }
 
+  function conversationNextStep() {
+    for (let index = conversationState.feed.length - 1; index >= 0; index -= 1) {
+      const entry = conversationState.feed[index];
+      if (entry.kind === "turn" && !entry.terminal) {
+        return "正在生成协调回复：可以随时中断这条回复，或等待它结算。";
+      }
+    }
+    for (const carrier of conversationState.carriers.values()) {
+      if (carrier.terminal === undefined && carrier.standing === "live") {
+        return "存在 live 执行载体：可以用“停止该工作”精确停止，只作用于该 turn/action/carrier。";
+      }
+    }
+    if (conversationState.connection !== "live") {
+      return "对话连接不可用：草稿保留，恢复连接前不能发送；不会自动重发。";
+    }
+    if (conversationState.draft !== "") {
+      return "草稿已保留在本地：确认内容后按 Enter 发送。";
+    }
+    return "发送第一条消息开始；示例只填充草稿，不会自动发送，也不改变后端状态。";
+  }
+
+  function renderConversationContext() {
+    const context = $("#conversation-context");
+    if (context === null) return;
+    const connection = conversationState.connection;
+    const copy = {
+      connecting: "正在连接",
+      live: "已连接 · 实时",
+      disconnected: "已断开 · 正在重连",
+      unavailable: "不可用",
+    };
+    const mark = context.querySelector("[data-conversation-context-mark]");
+    if (mark) mark.dataset.connection = connection;
+    const label = context.querySelector("[data-conversation-context-label]");
+    if (label) label.textContent = copy[connection] || "未连接";
+    const id = context.querySelector("[data-conversation-context-id]");
+    if (id) id.textContent = shortConversationId(conversationState.conversationId);
+    const supervisor = $("#conversation-context-supervisor");
+    const subject = $("#conversation-context-subject");
+    if (supervisor !== null || subject !== null) {
+      const supervision = first(state.snapshot, ["supervision"], {});
+      if (supervisor !== null) {
+        supervisor.textContent = text(
+          first(supervision, ["supervisor", "supervisorName", "actor"]),
+          "Codex",
+        );
+      }
+      if (subject !== null) {
+        subject.textContent = text(
+          first(supervision, ["subject", "subjectName", "system"]),
+          "Agent system",
+        );
+      }
+    }
+    const next = $("#conversation-context-next");
+    if (next !== null) next.textContent = conversationNextStep();
+  }
+
   function renderConversationSurface() {
     const surface = $("#conversation-surface");
     const active = state.activeView === "conversation";
@@ -5635,6 +5765,7 @@ export function taskLocatorEmptySummary(locator, context) {
     renderConversationConnection();
     renderConversationFeed();
     bindConversationFeedActions();
+    renderConversationContext();
     renderConversationComposer();
   }
 
