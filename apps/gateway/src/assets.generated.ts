@@ -4859,7 +4859,7 @@ body[data-peek-open="true"]::after {
   margin: 0.2rem 0 0;
 }
 
-body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary) {
+body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary):not(.anomaly-detail) {
   display: none !important;
 }
 
