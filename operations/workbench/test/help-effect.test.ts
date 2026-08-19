@@ -159,12 +159,12 @@ describe("Rossovia CLI help effect contract", () => {
     }
   });
 
-  test("starts-work regressions: task run launches, hook artifact may continue an active run", () => {
+  test("starts-work regressions: task run launches, hook artifact may continue an active run, ui serves the control plane", () => {
     expect(
       verbEntries.filter((entry) => entry.effect === "starts-work")
         .map((entry) => entry.path.join(" "))
         .sort(),
-    ).toEqual(["hook artifact", "task run"]);
+    ).toEqual(["hook artifact", "task run", "ui"]);
 
     const run = cli(["help", "task", "run"], { stdin: "" });
     expect(run.exitCode).toBe(0);
@@ -175,6 +175,12 @@ describe("Rossovia CLI help effect contract", () => {
     expect(artifact.exitCode).toBe(0);
     expect(artifact.stdout).toContain("effect: starts-work");
     expect(artifact.stdout).not.toContain("effect: read-only");
+
+    const ui = cli(["help", "ui"], { stdin: "" });
+    expect(ui.exitCode).toBe(0);
+    expect(ui.stdout).toContain("effect: starts-work");
+    expect(ui.stdout).not.toContain("effect: read-only");
+    expect(ui.stdout).toContain("Serve the Rossovia Principal Workbench web UI");
 
     const intervention = cli(["help", "hook", "intervention"], { stdin: "" });
     expect(intervention.exitCode).toBe(0);

@@ -85,12 +85,14 @@ natural expression, perception, and correction.
 Run the current UI with:
 
 ```sh
-bun run --cwd operations/workbench ui
+./operations/workbench/rossovia ui
 ```
 
 Open `http://127.0.0.1:4317`. Add another explicitly selected local repository
-with `bun run --cwd operations/workbench ui -- --root <git-root>` or select
-another port with `--port <port>`.
+with `./operations/workbench/rossovia ui --root <git-root>` or select another
+port with `--port <port>`. The equivalent development entry
+`bun run --cwd operations/workbench ui` serves the same surface from the source
+checkout.
 
 ### Browser observation
 

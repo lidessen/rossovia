@@ -157,6 +157,9 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
     case "statusline":
       dispatchStatusLine(home, args);
       return;
+    case "ui":
+      await dispatchUi(home, args);
+      return;
     default:
       throw new UsageError(`unknown command: ${command}`, []);
   }
@@ -330,6 +333,16 @@ function dispatchStatusLine(home: string | undefined, args: string[]): void {
   const input = statusLineInput(process.stdin.isTTY);
   const host = statusLineHostContext(input, options.cwd);
   console.log(renderStatusLine(statusLineProjection(home, host.cwd, host.projectName)));
+}
+
+async function dispatchUi(home: string | undefined, args: string[]): Promise<void> {
+  // Lazy-load the UI module tree so ordinary CLI invocations never pay for the
+  // server, conversation runtime, or autonomy client imports.
+  const { parseServerArguments, startWorkbenchUi } = await import("./ui/server");
+  const options = parseServerArguments(args.slice(1));
+  // The CLI's leading-global --home is the single home authority for the UI
+  // entry; an explicit server-side --home after `ui` keeps its own semantics.
+  startWorkbenchUi(home === undefined ? options : { ...options, home });
 }
 
 function parseStatusLineOptions(raw: string[]): { cwd?: string } {

@@ -327,12 +327,18 @@ export function createWorkbenchRequestHandler(
 }
 
 if (import.meta.main) {
-  const options = parseArguments(process.argv.slice(2));
-  // One concrete home resolution for the whole production entry: an explicit
-  // --home keeps its exact semantics, and the default Rossovia home is
-  // normalized exactly once and shared by the autonomy client, carrier and
-  // contribution registries, the request handler, every snapshot/attempt
-  // projection, and every Task action authority.
+  startWorkbenchUi(parseServerArguments(process.argv.slice(2)));
+}
+
+/**
+ * Start the Rossovia Principal Workbench web UI on 127.0.0.1. Long-running:
+ * returns only when the server stops. One concrete home resolution for the
+ * whole production entry: an explicit --home keeps its exact semantics, and
+ * the default Rossovia home is normalized exactly once and shared by the
+ * autonomy client, carrier and contribution registries, the request handler,
+ * every snapshot/attempt projection, and every Task action authority.
+ */
+export function startWorkbenchUi(options: ServerOptions): void {
   const home = resolveHome(options.home);
   const client = new AutonomyCliClient(home, autonomyCli);
   const carrierRegistry = createConversationExecutionCarrierRegistry(home);
@@ -836,7 +842,7 @@ export function refineLiveRunnerAttention(
   return refined;
 }
 
-function parseArguments(arguments_: readonly string[]): ServerOptions {
+export function parseServerArguments(arguments_: readonly string[]): ServerOptions {
   let home: string | undefined;
   let port = 4317;
   const roots = [repositoryRoot];

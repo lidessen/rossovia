@@ -7,6 +7,19 @@ entry instead of rewriting the applied Git interval.
 
 ## 2026-08-18
 
+### [workbench.ui] Serve the Principal Workbench through the rossovia CLI
+
+- Action: `none`
+- Change: add `rossovia ui [--port <port>] [--root <path>]...` (starts-work)
+  as the ordinary entry for serving the Principal Workbench web UI on
+  127.0.0.1:4317. The CLI form reuses the server's exact option semantics and
+  the leading-global `--home`; `bun run --cwd operations/workbench ui` remains
+  the equivalent source-checkout entry. Help, the Workbench README, and the
+  scoped Workbench agent instructions now route UI startup through the CLI.
+- Verify: run the Workbench typecheck and test suite (new `ui-cli` test spawns
+  the launcher, waits for `/api/snapshot`, asserts the served page and
+  snapshot, and confirms a clean SIGTERM stop); open `http://127.0.0.1:4317`.
+
 ### [repo.layout] Upgrade repository directory structure
 
 - Action: `breaking`

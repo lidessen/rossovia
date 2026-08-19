@@ -285,6 +285,26 @@ judgment scoped to the project that produced it. The combined answer is a
 read-only projection: it neither copies task facts into Rossovia nor authorizes
 work in a target project.
 
+## Rossovia UI entry
+
+Treat a natural-language request to open, start, or use the Rossovia web UI
+("open the workbench", "启动工作台", "show me the UI") as authority to serve
+the Principal Workbench through the CLI and report its URL:
+
+```sh
+./operations/workbench/rossovia ui
+```
+
+Default surface: `http://127.0.0.1:4317` (loopback only). Add explicitly
+selected local repositories with one `--root <path>` each and change the port
+with `--port <port>`; the leading-global `--home` applies as usual. The
+command is long-running: keep it in the foreground of a dedicated session and
+stop it by interrupting that session — do not background it and forget it.
+`bun run --cwd operations/workbench ui` is the equivalent source-checkout
+entry; use the CLI form as the ordinary path. Serving the UI enables
+controlling Tasks and Missions through the browser; it does not by itself run,
+authorize, or accept any work.
+
 ## Workbench browser observation entry
 
 When a request requires inspecting the Workbench UI in a real browser,
