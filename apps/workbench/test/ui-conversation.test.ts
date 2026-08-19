@@ -584,6 +584,21 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("conversationState.protocolNotices");
   });
 
+  test("keeps a healthy live conversation when snapshot refresh alone fails", () => {
+    expect(app).toContain('socket.addEventListener("error"');
+    expect(app).toContain("conversationState.socketFaulted");
+    expect(app).toContain("conversationSocketNeedsConvergence()");
+    const loadStart = app.indexOf("async function loadSnapshot");
+    const catchStart = app.indexOf("} catch (error) {", loadStart);
+    const finallyStart = app.indexOf("} finally {", catchStart);
+    expect(loadStart).toBeGreaterThan(-1);
+    expect(catchStart).toBeGreaterThan(loadStart);
+    expect(finallyStart).toBeGreaterThan(catchStart);
+    const snapshotFailure = app.slice(catchStart, finallyStart);
+    expect(snapshotFailure).toContain("if (conversationSocketNeedsConvergence())");
+    expect(snapshotFailure).toContain("convergeConversationConnection(");
+  });
+
   test("keeps the composer focused and the feed scroll as presentation focus", () => {
     expect(app).toContain('$("#conversation-composer-text").focus({ preventScroll: true })');
     expect(app).toContain("conversationState.stickToBottom");

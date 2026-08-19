@@ -784,6 +784,7 @@ export function taskLocatorEmptySummary(locator, context) {
     cursor: -1,
     buffered: [],
     socket: null,
+    socketFaulted: false,
     connection: "unavailable",
     reconnectAttempt: 0,
     reconnectTimer: null,
@@ -4723,6 +4724,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const current = conversationState.socket;
     if (current !== null && current.readyState === WebSocket.OPEN) return;
     conversationState.connection = "connecting";
+    conversationState.socketFaulted = false;
     renderConversationSurface();
     let socket;
     try {
@@ -4737,6 +4739,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     conversationState.socket = socket;
     socket.addEventListener("open", () => {
+      conversationState.socketFaulted = false;
       conversationState.connection = "live";
       conversationState.reconnectAttempt = 0;
       conversationState.protocolNotices = [];
@@ -4748,9 +4751,16 @@ export function taskLocatorEmptySummary(locator, context) {
     socket.addEventListener("message", (messageEvent) => {
       handleConversationMessage(messageEvent.data);
     });
+    socket.addEventListener("error", () => {
+      if (conversationState.socket !== socket) return;
+      conversationState.socketFaulted = true;
+      conversationState.connection = "unavailable";
+      renderConversationSurface();
+    });
     socket.addEventListener("close", () => {
       if (conversationState.socket !== socket) return;
       conversationState.socket = null;
+      conversationState.socketFaulted = false;
       clearConversationProvisional();
       for (const entry of conversationState.feed) {
         if (entry.kind === "message" && entry.status === "pending") {
@@ -4771,6 +4781,7 @@ export function taskLocatorEmptySummary(locator, context) {
   function convergeConversationConnection(connection) {
     const socket = conversationState.socket;
     conversationState.socket = null;
+    conversationState.socketFaulted = false;
     if (socket !== null && socket.readyState !== WebSocket.CLOSED) {
       socket.close();
     }
@@ -4783,6 +4794,15 @@ export function taskLocatorEmptySummary(locator, context) {
     conversationState.connection = connection;
     renderConversationSurface();
     scheduleConversationReconnect();
+  }
+
+  function conversationSocketNeedsConvergence() {
+    if (window.navigator.onLine === false) return true;
+    const socket = conversationState.socket;
+    return socket === null
+      || conversationState.socketFaulted
+      || socket.readyState === WebSocket.CLOSING
+      || socket.readyState === WebSocket.CLOSED;
   }
 
   function scheduleConversationReconnect() {
@@ -5875,9 +5895,11 @@ export function taskLocatorEmptySummary(locator, context) {
         markActionObserved(snapshot);
       } catch (error) {
         state.snapshotError = error instanceof Error ? error.message : text(error);
-        convergeConversationConnection(
-          window.navigator.onLine === false ? "disconnected" : "unavailable",
-        );
+        if (conversationSocketNeedsConvergence()) {
+          convergeConversationConnection(
+            window.navigator.onLine === false ? "disconnected" : "unavailable",
+          );
+        }
         if (state.lastLiveSnapshot) {
           state.snapshot = state.lastLiveSnapshot;
           state.source = "stale";
