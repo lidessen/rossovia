@@ -96,6 +96,17 @@ Presentation, concentrated whole-product verification, fresh review, and a
 separate authorized merge. Before acting, run the official Mission status and
 check surfaces from the current authoritative workspace.
 
+### Post-merge product dogfood review
+
+After a merged product slice has a reachable runtime, use the read-only
+[product dogfood review skill](../../skills/product-dogfood-review/SKILL.md) in
+this order: inventory the in-scope pages and states, form a representative
+task matrix, exercise the desktop and mobile paths against the exact runtime,
+and return the [page-review packet](../../skills/product-dogfood-review/references/page-review-packet.md).
+This is review evidence only: it does not change source, Mission, product
+data, PRs, or acceptance. Any repair discovered by the packet is a separate
+authorized Task.
+
 The remaining work falls into five bounded outcomes:
 
 1. **Finish the ordinary single-Run control path.** Preserve the canonical Run

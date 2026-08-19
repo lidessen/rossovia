@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Dogfood Review"
+  short_description: "Review real product use across pages and states."
+  default_prompt: "Use $product-dogfood-review to inspect the supplied running product from a real user's task perspective, cover the page/state inventory with browser evidence, and return at most three traceable findings without changing code or product state."
