@@ -421,6 +421,23 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("只恢复已结算事件");
   });
 
+  test("converges offline before reconnecting and never auto-sends the retained draft", () => {
+    expect(app).toContain("function convergeConversationConnection(connection)");
+    expect(app).toContain('window.addEventListener("offline"');
+    expect(app).toContain('window.addEventListener("online"');
+    expect(app).toContain('convergeConversationConnection("disconnected")');
+    expect(app).toContain('window.navigator.onLine === false');
+    expect(app).toContain("socket.close()");
+    const offlineStart = app.indexOf('window.addEventListener("offline"');
+    const onlineStart = app.indexOf('window.addEventListener("online"');
+    expect(offlineStart).toBeGreaterThan(-1);
+    expect(onlineStart).toBeGreaterThan(offlineStart);
+    const offlineHandler = app.slice(offlineStart, onlineStart);
+    expect(offlineHandler).not.toContain("submitConversationMessage()");
+    expect(offlineHandler).not.toContain("socket.send");
+    expect(app).toContain("草稿保留，恢复连接前不能发送");
+  });
+
   test("renders provisional deltas as provisional and settled replies as durable", () => {
     expect(app).toContain('data-provisional="true"');
     expect(app).toContain("临时流式内容");

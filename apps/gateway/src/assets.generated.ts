@@ -12389,6 +12389,11 @@ export function taskLocatorEmptySummary(locator, context) {
     const id = conversationState.conversationId;
     if (id === null) return;
     window.clearTimeout(conversationState.reconnectTimer);
+    if (window.navigator.onLine === false) {
+      conversationState.connection = "disconnected";
+      renderConversationSurface();
+      return;
+    }
     const current = conversationState.socket;
     if (current !== null && current.readyState === WebSocket.OPEN) return;
     conversationState.connection = "connecting";
@@ -12437,8 +12442,25 @@ export function taskLocatorEmptySummary(locator, context) {
     });
   }
 
+  function convergeConversationConnection(connection) {
+    const socket = conversationState.socket;
+    conversationState.socket = null;
+    if (socket !== null && socket.readyState !== WebSocket.CLOSED) {
+      socket.close();
+    }
+    clearConversationProvisional();
+    for (const entry of conversationState.feed) {
+      if (entry.kind === "message" && entry.status === "pending") {
+        entry.status = "failed";
+      }
+    }
+    conversationState.connection = connection;
+    renderConversationSurface();
+    scheduleConversationReconnect();
+  }
+
   function scheduleConversationReconnect() {
-    if (conversationState.closedDeliberately) return;
+    if (conversationState.closedDeliberately || window.navigator.onLine === false) return;
     window.clearTimeout(conversationState.reconnectTimer);
     const delay = Math.min(
       15_000,
@@ -13527,6 +13549,9 @@ export function taskLocatorEmptySummary(locator, context) {
         markActionObserved(snapshot);
       } catch (error) {
         state.snapshotError = error instanceof Error ? error.message : text(error);
+        convergeConversationConnection(
+          window.navigator.onLine === false ? "disconnected" : "unavailable",
+        );
         if (state.lastLiveSnapshot) {
           state.snapshot = state.lastLiveSnapshot;
           state.source = "stale";
@@ -14215,6 +14240,16 @@ export function taskLocatorEmptySummary(locator, context) {
       renderPeek();
       render();
       loadSnapshot({ manual: true, ensure: true });
+    });
+
+    window.addEventListener("offline", () => {
+      if (conversationState.closedDeliberately) return;
+      convergeConversationConnection("disconnected");
+    });
+    window.addEventListener("online", () => {
+      if (conversationState.closedDeliberately) return;
+      conversationState.reconnectAttempt = 0;
+      connectConversation();
     });
 
     $$(".kind-button").forEach((button) => {
