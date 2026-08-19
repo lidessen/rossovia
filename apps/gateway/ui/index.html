@@ -188,7 +188,7 @@
             <p class="eyebrow">Conversation entry</p>
             <h2 id="conversation-heading">对话</h2>
             <p id="conversation-summary">
-              用自然语言发布与纠正任务、观察执行；从这里精确中断一条回复或停止一个已观察的执行载体。
+              发布与纠正任务、观察执行；从这里精确中断回复或停止已观察的执行载体。
             </p>
           </div>
           <div class="conversation-standing">
@@ -208,17 +208,68 @@
 
         <div class="conversation-notices" id="conversation-notices" aria-live="polite"></div>
 
-        <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流"></div>
+        <div class="conversation-body">
+          <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流">
+            <div class="conversation-feed-inner" id="conversation-feed-inner"></div>
+          </div>
 
-        <form class="conversation-composer" id="conversation-composer-form">
-          <label for="conversation-composer-text">发给 Agent 系统</label>
+          <aside class="conversation-context" id="conversation-context" aria-label="对话连接与上下文">
+            <section class="context-section">
+              <p class="eyebrow">对话连接</p>
+              <div class="context-connection">
+                <span class="connection-mark" data-conversation-context-mark aria-hidden="true"></span>
+                <div>
+                  <strong data-conversation-context-label>未连接</strong>
+                  <code data-conversation-context-id>—</code>
+                </div>
+              </div>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">监督关系</p>
+              <div class="supervision-relation">
+                <div>
+                  <span>你</span>
+                  <strong id="conversation-context-supervisor">—</strong>
+                </div>
+                <div class="relation-line" aria-hidden="true">
+                  <i></i>
+                  <span>监督</span>
+                </div>
+                <div>
+                  <span>Agent 系统</span>
+                  <strong id="conversation-context-subject">—</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">下一步</p>
+              <p class="context-next" id="conversation-context-next">发送第一条消息开始。</p>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">浏览器边界</p>
+              <p class="context-boundary-note">
+                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
+                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+              </p>
+            </section>
+          </aside>
+        </div>
+
+        <form class="conversation-composer" id="conversation-composer-form" data-connection="unavailable">
+          <div class="composer-heading">
+            <span class="composer-live" id="conversation-composer-live" aria-hidden="true"></span>
+            <label for="conversation-composer-text">发给 Agent 系统</label>
+            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+          </div>
           <textarea
             id="conversation-composer-text"
             rows="3"
             placeholder="说你想完成或纠正的事。Enter 发送，Shift+Enter 换行。"
           ></textarea>
           <div class="composer-bar">
-            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
             <button
               class="conversation-control"
               id="conversation-tool-interrupt"
@@ -237,8 +288,8 @@
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-          canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
+          刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 

@@ -330,6 +330,49 @@ describe("conversation evidence links", () => {
   });
 });
 
+describe("conversation empty state and desktop context layering", () => {
+  test("orients the empty state with connection standing and example starters that only fill the draft", () => {
+    expect(app).toContain("renderConversationEmptyState");
+    expect(app).toContain('data-conversation-example="');
+    expect(app).toContain("示例只填入草稿");
+    expect(app).toContain("不改变任何后端状态");
+    // Starters only write the local draft: they never send a frame and never
+    // touch backend state; the submit path keeps its own factual gates.
+    expect(app).toContain("conversationState.draft = value");
+    expect(app).toContain("persistConversationDraft()");
+    expect(app).toContain("textarea.focus({ preventScroll: true });");
+    expect(app).toContain('payload.trim() === ""');
+    // The empty-state connection standing reuses the honest vocabulary.
+    expect(app).toContain("已连接 · 实时");
+    expect(app).toContain("已断开 · 正在重连");
+    expect(app).toContain("恢复连接前不能发送");
+  });
+
+  test("separates the desktop reading column from connection/context and keeps next-step guidance honest", () => {
+    expect(html).toContain('id="conversation-feed-inner"');
+    expect(html).toContain('class="conversation-context"');
+    // The context renderer targets the aside by id; the id must exist so the
+    // connection, supervision, and next-step updates apply instead of the
+    // renderer returning early on a null lookup.
+    expect(html).toContain('<aside class="conversation-context" id="conversation-context"');
+    expect(app).toContain('$("#conversation-context")');
+    expect(html).toContain('id="conversation-composer-live"');
+    expect(app).toContain("renderConversationContext()");
+    expect(app).toContain("conversationNextStep");
+    expect(app).toContain("正在生成协调回复");
+    expect(app).toContain("存在 live 执行载体");
+    expect(app).toContain("layer-chip");
+    expect(app).toContain("turn-next-step");
+    expect(styles).toMatch(
+      /\.conversation-feed-inner\s*\{[^}]*margin:\s*0 auto;[^}]*max-width:\s*820px;/s,
+    );
+    expect(styles).toMatch(/\.conversation-context\s*\{[^}]*display:\s*none;/s);
+    expect(styles).toMatch(
+      /@media \(min-width: 1280px\)[\s\S]*?\.conversation-context\s*\{[^}]*display:\s*block;/s,
+    );
+  });
+});
+
 describe("conversation projection DOM contract", () => {
   test("provides a stable conversation destination in desktop and mobile navigation", () => {
     expect(html).toContain('data-view="conversation"');
