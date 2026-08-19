@@ -320,6 +320,26 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
               </div>
               <strong id="task-view-count">—</strong>
             </div>
+            <div class="task-locator" id="task-locator" hidden>
+              <label class="task-locator-field">
+                <span>关键词</span>
+                <input id="task-locator-keyword" type="search" placeholder="标题 / 目标 / 纠正…" autocomplete="off" />
+              </label>
+              <label class="task-locator-field">
+                <span>项目</span>
+                <select id="task-locator-project" aria-label="按项目收窄任务">
+                  <option value="">全部项目</option>
+                </select>
+              </label>
+              <label class="task-locator-field">
+                <span>状态</span>
+                <select id="task-locator-status" aria-label="按状态收窄任务">
+                  <option value="">全部状态</option>
+                </select>
+              </label>
+              <button class="text-action" id="task-locator-clear" type="button">清除过滤</button>
+              <p class="task-locator-note" id="task-locator-note" role="status"></p>
+            </div>
             <div class="work-item-list" id="task-view-list"></div>
           </section>
         </section>
@@ -4592,6 +4612,89 @@ body[data-projection-state="loading"] .workbench-shell {
   color: var(--paper-light);
 }
 
+.task-locator {
+  align-items: end;
+  display: grid;
+  gap: 0.45rem 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  padding: 0.85rem 0 0.2rem;
+}
+
+.task-locator-field {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.62rem;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.task-locator-field span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  text-transform: uppercase;
+}
+
+.task-locator input,
+.task-locator select {
+  background: var(--paper-light);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  color: inherit;
+  font-size: 0.68rem;
+  min-height: 30px;
+  padding: 0.3rem 0.4rem;
+  width: 100%;
+}
+
+.task-locator-note {
+  color: var(--ochre);
+  font-size: 0.62rem;
+  grid-column: 1 / -1;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.task-locator-note:empty {
+  display: none;
+}
+
+.task-locator-empty {
+  background: var(--paper-deep);
+  border-left: 3px solid var(--line);
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.task-locator-empty[data-standing="source-unavailable"] {
+  border-left-color: var(--ochre);
+}
+
+.task-locator-empty p {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.task-locator-empty p:first-child {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.task-locator-conditions code {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.task-locator-empty .text-action {
+  justify-self: start;
+  margin-top: 0.2rem;
+}
+
 .unified-header-actions {
   align-items: flex-end;
   display: flex;
@@ -7679,6 +7782,217 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     : null;
 }
 
+/**
+ * Task-page locator: keyword, project, and status narrowing over the existing
+ * read-only work-item projection. Every value comes from fields already
+ * present on projected items (title/summary/context and, for Workbench-owned
+ * tasks, the retained task objective, acceptance, todos, correction
+ * statements, and result summaries). No Task schema, lifecycle, project, or
+ * authority change is introduced; the locator is pure presentation.
+ */
+const TASK_LOCATOR_LIFECYCLE_ORDER = [
+  "open",
+  "in-progress",
+  "waiting",
+  "paused",
+  "blocked",
+  "verifying",
+  "settled",
+  "invalidated",
+];
+
+function taskLocatorListText(task, key) {
+  const entries = task[key];
+  if (!Array.isArray(entries)) return "";
+  return entries
+    .filter((entry) => typeof entry === "string")
+    .join(" ");
+}
+
+function taskLocatorObjectTexts(value) {
+  const texts = [];
+  if (!value || typeof value !== "object") return texts;
+  for (const key of ["title", "objective", "statement", "summary"]) {
+    const entry = value[key];
+    if (typeof entry === "string" && entry !== "") texts.push(entry);
+  }
+  return texts;
+}
+
+/**
+ * The normalized searchable text of one projected item, lowercased. It only
+ * mirrors existing projection fields; an unavailable task source simply
+ * yields the fields that were still projected.
+ */
+export function taskLocatorSearchText(item) {
+  const texts = [];
+  if (item && typeof item === "object") {
+    for (const key of ["title", "summary", "context"]) {
+      const value = item[key];
+      if (typeof value === "string" && value !== "") texts.push(value);
+    }
+    const taskDetail = item.taskDetail;
+    const task = taskDetail && typeof taskDetail === "object"
+      ? taskDetail.task
+      : undefined;
+    if (task && typeof task === "object") {
+      for (const key of ["title", "objective"]) {
+        const value = task[key];
+        if (typeof value === "string" && value !== "") texts.push(value);
+      }
+      for (const key of ["acceptance", "todos"]) {
+        const value = taskLocatorListText(task, key);
+        if (value !== "") texts.push(value);
+      }
+      for (const key of ["corrections", "resultClaims"]) {
+        const entries = task[key];
+        if (Array.isArray(entries)) {
+          for (const entry of entries) {
+            texts.push(...taskLocatorObjectTexts(entry));
+          }
+        }
+      }
+    }
+  }
+  return texts.join(" ").toLowerCase();
+}
+
+/**
+ * One locator predicate over existing fields only: trimmed case-insensitive
+ * keyword substring on the projected searchable text, exact projectKey, and
+ * exact lifecycle. An empty locator matches everything.
+ */
+export function workItemMatchesTaskLocator(item, locator) {
+  const keyword = typeof locator?.keyword === "string"
+    ? locator.keyword.trim().toLowerCase()
+    : "";
+  if (keyword !== "" && !taskLocatorSearchText(item).includes(keyword)) {
+    return false;
+  }
+  const project = typeof locator?.project === "string" && locator.project !== ""
+    ? locator.project
+    : null;
+  if (project !== null && item?.projectKey !== project) return false;
+  const status = typeof locator?.status === "string" && locator.status !== ""
+    ? locator.status
+    : null;
+  if (status !== null && item?.lifecycle !== status) return false;
+  return true;
+}
+
+/**
+ * Select options derived from the current item list: only project keys and
+ * lifecycle values that actually appear, each with the number of items. The
+ * project label comes from the caller (the snapshot project name); statuses
+ * are ordered by the existing lifecycle vocabulary.
+ */
+export function taskLocatorOptions(items, projectLabel) {
+  const projectCounts = new Map();
+  const statusCounts = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== "object") continue;
+    const projectKey = typeof item.projectKey === "string" && item.projectKey !== ""
+      ? item.projectKey
+      : null;
+    if (projectKey !== null) {
+      projectCounts.set(projectKey, (projectCounts.get(projectKey) ?? 0) + 1);
+    }
+    const lifecycle = typeof item.lifecycle === "string" && item.lifecycle !== ""
+      ? item.lifecycle
+      : null;
+    if (lifecycle !== null) {
+      statusCounts.set(lifecycle, (statusCounts.get(lifecycle) ?? 0) + 1);
+    }
+  }
+  const orderOf = (key) => {
+    const index = TASK_LOCATOR_LIFECYCLE_ORDER.indexOf(key);
+    return index === -1 ? TASK_LOCATOR_LIFECYCLE_ORDER.length : index;
+  };
+  return {
+    projects: [...projectCounts.entries()]
+      .map(([key, count]) => ({
+        key,
+        label: typeof projectLabel === "function" ? projectLabel(key) : key,
+        count,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
+    statuses: [...statusCounts.entries()]
+      .map(([key, count]) => ({ key, count }))
+      .sort((left, right) =>
+        orderOf(left.key) - orderOf(right.key)
+        || left.key.localeCompare(right.key)),
+  };
+}
+
+/**
+ * Whether the current list can be trusted as the complete task set. Only a
+ * live snapshot that is complete and whose task source is available supports
+ * a factual zero; anything else keeps the partial/unknown semantics.
+ */
+export function taskLocatorSourceStanding(input) {
+  if (
+    input?.source === "live"
+    && input?.complete === true
+    && input?.taskSourceStanding === "available"
+  ) {
+    return "complete";
+  }
+  return "partial";
+}
+
+/**
+ * The empty-state summary for the current locator. It separates three cases:
+ * an unavailable/incomplete source (must not read as zero), a genuine
+ * no-match under explicit conditions, and a factual empty complete source.
+ */
+export function taskLocatorEmptySummary(locator, context) {
+  const conditions = [];
+  const keyword = typeof locator?.keyword === "string"
+    ? locator.keyword.trim()
+    : "";
+  if (keyword !== "") conditions.push("关键词 “" + keyword + "”");
+  const project = typeof locator?.project === "string" && locator.project !== ""
+    ? locator.project
+    : null;
+  if (project !== null) {
+    const label = typeof context?.projectLabel === "function"
+      ? context.projectLabel(project)
+      : project;
+    conditions.push("项目 “" + label + "”");
+  }
+  const status = typeof locator?.status === "string" && locator.status !== ""
+    ? locator.status
+    : null;
+  if (status !== null) {
+    const label = typeof context?.statusLabel === "function"
+      ? context.statusLabel(status)
+      : status;
+    conditions.push("状态 “" + label + "”");
+  }
+  if (context?.sourceStanding !== "complete") {
+    return {
+      standing: "source-unavailable",
+      summary: "任务来源不可用或投影不完整：无法确认是否真的没有匹配项。",
+      detail: "当前计数只覆盖可读来源；请刷新投影后重试，不要把它当作“零条”结论。",
+      conditions,
+    };
+  }
+  if (conditions.length === 0) {
+    return {
+      standing: "no-items",
+      summary: "当前实时投影完整：没有可显示的任务（事实结果，非来源错误）。",
+      detail: "这是完整来源下的事实结果；列表为空不代表来源不可用。",
+      conditions,
+    };
+  }
+  return {
+    standing: "no-match",
+    summary: "没有匹配" + conditions.join(" · ") + "的任务。",
+    detail: "请调整或清除过滤条件后重试。",
+    conditions,
+  };
+}
+
 (() => {
   "use strict";
 
@@ -7696,6 +8010,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     selectedWorkItemId: null,
     activeView: "conversation",
     taskFilter: "all",
+    taskLocator: { keyword: "", project: null, status: null },
     peekOpen: false,
     taskCreateOpen: false,
     detailRevalidationPending: false,
@@ -8700,6 +9015,70 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     return true;
   }
 
+  function taskLocatorProjectLabel(key) {
+    const project = projects().find(
+      (candidate, index) => identifier(candidate, "project-" + index) === key,
+    );
+    return project ? projectName(project) : key;
+  }
+
+  function renderTaskLocatorEmptyNote(empty) {
+    const conditions = (empty.conditions || [])
+      .map((entry) => "<code>" + escapeHtml(entry) + "</code>")
+      .join(" · ");
+    const recover = empty.standing === "no-items"
+      ? ""
+      : '<button class="text-action" type="button" data-clear-task-locator>清除过滤</button>';
+    return '<div class="task-locator-empty" data-standing="' + escapeHtml(empty.standing) + '">' +
+      "<p>" + escapeHtml(empty.summary) + "</p>" +
+      (conditions === "" ? "" : '<p class="task-locator-conditions">' + conditions + "</p>") +
+      "<p>" + escapeHtml(empty.detail) + "</p>" +
+      recover +
+      "</div>";
+  }
+
+  function renderTaskLocatorControls(baseItems) {
+    const sourceStanding = taskLocatorSourceStanding({
+      source: state.source,
+      complete: first(state.snapshot, ["complete"]),
+      taskSourceStanding: first(taskSourceCapability(), ["standing"]),
+    });
+    const options = taskLocatorOptions(baseItems, taskLocatorProjectLabel);
+    const projectSelect = $("#task-locator-project");
+    const statusSelect = $("#task-locator-status");
+    const retainedProject = projectSelect.value;
+    const retainedStatus = statusSelect.value;
+    projectSelect.innerHTML = [
+      '<option value="">全部项目</option>',
+      ...options.projects.map((entry) =>
+        '<option value="' + escapeHtml(entry.key) + '">' +
+        escapeHtml(entry.label + " · " + entry.count) + "</option>"),
+    ].join("");
+    statusSelect.innerHTML = [
+      '<option value="">全部状态</option>',
+      ...options.statuses.map((entry) =>
+        '<option value="' + escapeHtml(entry.key) + '">' +
+        escapeHtml((workItemCopy[entry.key] || entry.key) + " · " + entry.count) + "</option>"),
+    ].join("");
+    if ([...projectSelect.options].some((option) => option.value === retainedProject)) {
+      projectSelect.value = retainedProject;
+    }
+    if ([...statusSelect.options].some((option) => option.value === retainedStatus)) {
+      statusSelect.value = retainedStatus;
+    }
+    $("#task-locator-note").textContent = sourceStanding === "complete"
+      ? ""
+      : "任务来源不可用或投影不完整：当前计数只覆盖可读来源，不代表完整集合。";
+  }
+
+  function clearTaskLocator() {
+    state.taskLocator = { keyword: "", project: null, status: null };
+    $("#task-locator-keyword").value = "";
+    $("#task-locator-project").value = "";
+    $("#task-locator-status").value = "";
+    render();
+  }
+
   function workItemRow(item) {
     const project = projects().find(
       (candidate, index) => identifier(candidate, \`project-\${index}\`) === item.projectKey,
@@ -8769,6 +9148,11 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
+    if (state.activeView === "tasks") {
+      counts.all = items.filter(
+        (item) => workItemMatchesView(item) && workItemMatchesTaskLocator(item, state.taskLocator),
+      ).length;
+    }
     $("#all-task-count").textContent = String(counts.all);
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
@@ -9064,13 +9448,34 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     if (isOverview || isProjectsView) renderOverviewProjects();
 
     if (!isOverview && !isProjectView && !isProjectsView) {
-      const filtered = items.filter((item) => workItemMatchesView(item));
+      const base = items.filter((item) => workItemMatchesView(item));
+      const locatorActive = state.activeView === "tasks";
+      const filtered = locatorActive
+        ? base.filter((item) => workItemMatchesTaskLocator(item, state.taskLocator))
+        : base;
       $("#task-view-heading").textContent = title;
       $("#task-view-count").textContent = String(filtered.length);
+      $("#task-locator").hidden = !locatorActive;
+      if (locatorActive) renderTaskLocatorControls(base);
+      const empty = locatorActive
+        ? taskLocatorEmptySummary(state.taskLocator, {
+          sourceStanding: taskLocatorSourceStanding({
+            source: state.source,
+            complete: first(state.snapshot, ["complete"]),
+            taskSourceStanding: first(taskSourceCapability(), ["standing"]),
+          }),
+          projectLabel: taskLocatorProjectLabel,
+          statusLabel: (key) => workItemCopy[key] || key,
+        })
+        : null;
       $("#task-view-list").innerHTML = filtered.length
         ? filtered.map(workItemRow).join("")
-        : '<p class="empty-note">当前投影没有符合这个视图的任务。</p>';
+        : locatorActive
+          ? renderTaskLocatorEmptyNote(empty)
+          : '<p class="empty-note">当前投影没有符合这个视图的任务。</p>';
       bindWorkItemRows($("#task-view-list"));
+      const clear = $("[data-clear-task-locator]");
+      if (clear) clear.addEventListener("click", clearTaskLocator);
     }
   }
 
@@ -13008,6 +13413,19 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     };
     $("#refresh-button").addEventListener("click", refreshFromCurrentLocation);
     $("#retry-button").addEventListener("click", refreshFromCurrentLocation);
+    $("#task-locator-keyword").addEventListener("input", () => {
+      state.taskLocator = { ...state.taskLocator, keyword: $("#task-locator-keyword").value };
+      render();
+    });
+    $("#task-locator-project").addEventListener("change", () => {
+      state.taskLocator = { ...state.taskLocator, project: $("#task-locator-project").value || null };
+      render();
+    });
+    $("#task-locator-status").addEventListener("change", () => {
+      state.taskLocator = { ...state.taskLocator, status: $("#task-locator-status").value || null };
+      render();
+    });
+    $("#task-locator-clear").addEventListener("click", clearTaskLocator);
     $("#create-task-button").addEventListener("click", () => {
       state.unavailableLocus = null;
       state.taskCreateOpen = true;
