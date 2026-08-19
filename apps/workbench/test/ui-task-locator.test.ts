@@ -27,6 +27,57 @@ const assetBundle = readFileSync(
   "utf8",
 );
 
+type Lifecycle =
+  | "open"
+  | "in-progress"
+  | "waiting"
+  | "paused"
+  | "blocked"
+  | "verifying"
+  | "settled";
+
+type FixtureWorkItem = {
+  id: string;
+  kind: "principal-task" | "observation" | "mission";
+  lifecycle: Lifecycle;
+  nextActor: string;
+  title: string;
+  summary: string;
+  context: string;
+  projectKey: string | null;
+  missionId: string | null;
+  taskDetail?: {
+    task: {
+      id: string;
+      title: string;
+      objective: string;
+      acceptance: string[];
+      todos: string[];
+      corrections: Array<{ statement: string }>;
+      resultClaims: Array<{ summary: string }>;
+    };
+  };
+};
+
+type WorkItemInput = {
+  index: number;
+  title: string;
+  objective?: string;
+  summary?: string;
+  context?: string;
+  projectKey: string | null;
+  lifecycle: Lifecycle;
+  corrections?: readonly string[];
+  claims?: readonly string[];
+};
+
+type LocatorOption = { key: string; count: number };
+
+type LocatorOptions = {
+  projects: LocatorOption[];
+  statuses: LocatorOption[];
+};
+
 function workItem({
   index,
   title,
@@ -37,7 +88,7 @@ function workItem({
   lifecycle,
   corrections = [],
   claims = [],
-}) {
+}: WorkItemInput): FixtureWorkItem {
   return {
     id: "principal-task:" + index,
     kind: "principal-task",
@@ -67,14 +118,14 @@ function workItem({
  * lifecycle vocabulary: 132 Workbench tasks, one independent task (no project
  * key), one runner observation, and two Mission items.
  */
-function buildScenario() {
-  const items = [];
+function buildScenario(): FixtureWorkItem[] {
+  const items: FixtureWorkItem[] = [];
   const projects = [
     "registered:skills",
     "registered:blog",
     "registered:appgprj_blog",
   ];
-  const lifecycles = [
+  const lifecycles: Lifecycle[] = [
     "open",
     "in-progress",
     "waiting",
@@ -90,8 +141,8 @@ function buildScenario() {
       objective: index % 13 === 0
         ? "定位 reconciliation 证据链的关键任务 " + index
         : "普通目标 " + index,
-      projectKey: projects[index % projects.length],
-      lifecycle: lifecycles[index % lifecycles.length],
+      projectKey: projects[index % projects.length]!,
+      lifecycle: lifecycles[index % lifecycles.length]!,
       ...(index % 5 === 0
         ? { corrections: ["修正说明：使用已接受的 source 而不是缓存投影"] }
         : {}),
@@ -193,8 +244,8 @@ describe("Task-page locator", () => {
     const items = buildScenario();
     const options = taskLocatorOptions(
       items,
-      (key) => key.replace("registered:", ""),
-    );
+      (key: string) => key.replace("registered:", ""),
+    ) as LocatorOptions;
 
     expect(options.projects.map((entry) => entry.key)).toEqual([
       "registered:appgprj_blog",
@@ -250,8 +301,8 @@ describe("Task-page locator", () => {
       { keyword: "nonexistent-term", project: "registered:skills", status: "verifying" },
       {
         sourceStanding: "complete",
-        projectLabel: (key) => key.replace("registered:", ""),
-        statusLabel: (key) => key,
+        projectLabel: (key: string) => key.replace("registered:", ""),
+        statusLabel: (key: string) => key,
       },
     );
     expect(noMatch.standing).toBe("no-match");
@@ -268,7 +319,11 @@ describe("Task-page locator", () => {
     // The same query under a partial source must not read as zero matches.
     const partial = taskLocatorEmptySummary(
       { keyword: "nonexistent-term", project: null, status: null },
-      { sourceStanding: "partial", projectLabel: (key) => key, statusLabel: (key) => key },
+      {
+        sourceStanding: "partial",
+        projectLabel: (key: string) => key,
+        statusLabel: (key: string) => key,
+      },
     );
     expect(partial.standing).toBe("source-unavailable");
     expect(partial.summary.startsWith("任务来源不可用或投影不完整")).toBeTrue();
@@ -299,7 +354,11 @@ describe("Task-page locator", () => {
     // A factual empty complete source without filters is not an error.
     const noItems = taskLocatorEmptySummary(
       { keyword: "", project: null, status: null },
-      { sourceStanding: "complete", projectLabel: (key) => key, statusLabel: (key) => key },
+      {
+        sourceStanding: "complete",
+        projectLabel: (key: string) => key,
+        statusLabel: (key: string) => key,
+      },
     );
     expect(noItems.standing).toBe("no-items");
     expect(noItems.summary).toContain("事实结果");
