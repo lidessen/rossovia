@@ -4492,7 +4492,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
    rail retains supervision, next-step, and browser-boundary information. */
 .conversation-empty-standing,
 .conversation-boundary {
-  display: none;
+  display: none !important;
 }
 
 .context-section {
