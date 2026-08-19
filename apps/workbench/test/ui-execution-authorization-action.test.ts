@@ -21,11 +21,11 @@ import {
 import { registerProject } from "../src/register";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
 import { buildWorkbenchSnapshot } from "../src/ui/projection";
-import { createWorkbenchRequestHandler } from "../src/ui/server";
+import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 import {
   executionAuthorizationEligibility,
   executionProposalView,
-} from "../ui/execution-proposal.js";
+} from "../../gateway/ui/execution-proposal.js";
 
 const temporaryRoots: string[] = [];
 const origin = "http://127.0.0.1:4317";

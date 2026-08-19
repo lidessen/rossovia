@@ -7,6 +7,7 @@ reasonix.toml
 .vercel/
 packages/*/node_modules/
 apps/*/node_modules/
+apps/gateway/node_modules
 /apps/workbench/dist/
 packages/work-cell/.work-cell/
 site/node_modules/

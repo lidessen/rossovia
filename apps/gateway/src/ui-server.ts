@@ -1,66 +1,66 @@
 import { existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { resolveHome } from "../home";
-import { WorkbenchActionError, executeWorkbenchAction } from "./actions";
-import { AutonomyCliClient, type AutonomyClient } from "./autonomy-client";
+import { resolveHome } from "../../workbench/src/home";
+import { WorkbenchActionError, executeWorkbenchAction } from "../../workbench/src/ui/actions";
+import { AutonomyCliClient, type AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import {
   ExecutionAuthorizationActionError,
   executeExecutionAuthorizationAction,
-} from "./execution-authorization-action";
+} from "../../workbench/src/ui/execution-authorization-action";
 import {
   buildWorkbenchSnapshot,
   missionSourceMatchesHead,
   WorkbenchRunnerActivityProjectionSchema,
   type AttentionItem,
-} from "./projection";
+} from "../../workbench/src/ui/projection";
 import {
   anchorMigrationDecisionBriefPresentation,
   intentLineagePresentation,
   reconciliationActionDecisionBriefPresentation,
   verifiedCorrectionAwaitsSystemSettlement,
-} from "../../ui/operational-semantics.js";
+} from "../ui/operational-semantics.js";
 import {
   buildWorkItemProjection,
   taskAttemptsSourceRef,
   type PrincipalTaskSourceObservation,
   type TaskAttemptSourceObservation,
-} from "./work-items";
+} from "../../workbench/src/ui/work-items";
 import {
   executeTaskCreateAction,
   executeTaskMutationAction,
   TaskActionError,
-} from "./task-actions";
+} from "../../workbench/src/ui/task-actions";
 import {
   prepareTaskCorrectionDelivery,
   recordTaskCorrectionDelivery,
-} from "./task-correction-delivery";
+} from "../../workbench/src/ui/task-correction-delivery";
 import {
   executeTaskExecutionLaunch,
   prepareTaskExecutionLaunch,
   TaskExecutionLaunchError,
   type TaskExecutionLaunchResult,
-} from "./task-execution-launch";
-import { executeTaskExecutionRecovery } from "./task-execution-recovery";
+} from "../../workbench/src/ui/task-execution-launch";
+import { executeTaskExecutionRecovery } from "../../workbench/src/ui/task-execution-recovery";
 import {
   acceptTaskResult,
   submitVerifiedTaskResult,
-} from "./task-verified-result";
-import { loadPrincipalTasks, principalTasksPath } from "../tasks";
-import { showPrincipalTaskAttempts } from "../task-attempts";
+} from "../../workbench/src/ui/task-verified-result";
+import { loadPrincipalTasks, principalTasksPath } from "../../workbench/src/tasks";
+import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
 import {
   createLocalTaskControlPlane,
   type LocalTaskControlPlane,
-} from "../local-task-control-plane";
+} from "../../workbench/src/local-task-control-plane";
 import {
   ConversationSocketPathPrefix,
   ConversationSocketRuntime,
   type ConversationSocketData,
-} from "../conversation/transport";
-import { createCoordinatorTurnOwner } from "../conversation/turn-owner";
-import { createConversationContextProvider } from "../conversation/context";
-import { createConversationTaskOperationHost } from "../conversation/operations";
-import { createConversationExecutionCarrierRegistry } from "../conversation/execution-carrier";
-import { createConversationContributionRegistry } from "../conversation/contributions";
+} from "../../workbench/src/conversation/transport";
+import { createCoordinatorTurnOwner } from "../../workbench/src/conversation/turn-owner";
+import { createConversationContextProvider } from "../../workbench/src/conversation/context";
+import { createConversationTaskOperationHost } from "../../workbench/src/conversation/operations";
+import { createConversationExecutionCarrierRegistry } from "../../workbench/src/conversation/execution-carrier";
+import { createConversationContributionRegistry } from "../../workbench/src/conversation/contributions";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -73,8 +73,8 @@ export interface WorkbenchRequestHandlerDependencies {
   readonly conversationSocket?: ConversationSocketRuntime;
 }
 
-const repositoryRoot = resolve(import.meta.dir, "../../../..");
-const autonomyCliSource = resolve(import.meta.dir, "../../../autonomy/src/cli.ts");
+const repositoryRoot = resolve(import.meta.dir, "../../..");
+const autonomyCliSource = resolve(import.meta.dir, "../../autonomy/src/cli.ts");
 const maximumRequestBytes = 64 * 1024;
 
 /**

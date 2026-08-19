@@ -9,7 +9,7 @@ import {
 } from "../src/conversation/transport";
 import { createCoordinatorTurnOwner } from "../src/conversation/turn-owner";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
-import { createWorkbenchRequestHandler } from "../src/ui/server";
+import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 
 const PROBE_ID = "conversation-socket-deepseek-live-probe";
 const outputArgument = process.argv.find((argument, index) => index > 1 && !argument.startsWith("--"));

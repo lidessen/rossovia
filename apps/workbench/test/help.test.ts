@@ -3,10 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
-import { HELP } from "../src/help";
+import { HELP } from "../../gateway/src/help";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const launcher = join(repositoryRoot, "apps", "workbench", "rossovia");
+const launcher = join(repositoryRoot, "apps", "gateway", "rossovia");
 const manifest = JSON.parse(
   await Bun.file(join(repositoryRoot, "apps", "workbench", "package.json")).text(),
 ) as { name: string; version: string };

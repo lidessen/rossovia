@@ -68,6 +68,12 @@ jobs:
       - name: Test Workbench
         working-directory: apps/workbench
         run: bun test
+      - name: Typecheck Gateway
+        working-directory: apps/gateway
+        run: bun run typecheck
+      - name: Test Gateway
+        working-directory: apps/gateway
+        run: bun test
       - name: Typecheck Cognition
         working-directory: packages/cognition
         run: bun run typecheck

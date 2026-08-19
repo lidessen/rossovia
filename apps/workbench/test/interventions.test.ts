@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "apps", "workbench", "src", "cli.ts");
+const cli = join(repositoryRoot, "apps", "gateway", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

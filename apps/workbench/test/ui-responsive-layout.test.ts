@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const styles = readFileSync(
-  resolve(import.meta.dir, "../ui/styles.css"),
+  resolve(import.meta.dir, "../../gateway/ui/styles.css"),
   "utf8",
 );
-const html = readFileSync(resolve(import.meta.dir, "../ui/index.html"), "utf8");
-const app = readFileSync(resolve(import.meta.dir, "../ui/app.js"), "utf8");
+const html = readFileSync(resolve(import.meta.dir, "../../gateway/ui/index.html"), "utf8");
+const app = readFileSync(resolve(import.meta.dir, "../../gateway/ui/app.js"), "utf8");
 
 function mediaSection(start: string, end: string): string {
   const startIndex = styles.indexOf(start);

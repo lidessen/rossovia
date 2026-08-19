@@ -15,20 +15,20 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const workbenchRoot = resolve(import.meta.dir, "..");
-const autonomyRoot = resolve(workbenchRoot, "..", "autonomy");
+const gatewayRoot = resolve(import.meta.dir, "..");
+const autonomyRoot = resolve(gatewayRoot, "..", "autonomy");
 const binDir = process.env.LOCAL_BIN ?? join(homedir(), ".local", "bin");
 
-const WORKBENCH_ENTRY = join(workbenchRoot, "src", "cli.ts");
+const GATEWAY_ENTRY = join(gatewayRoot, "src", "cli.ts");
 const AUTONOMY_ENTRY = join(autonomyRoot, "src", "cli.ts");
 const TARGETS = [
-  { name: "rossovia", entry: WORKBENCH_ENTRY },
+  { name: "rossovia", entry: GATEWAY_ENTRY },
   { name: "rossovia-autonomy", entry: AUTONOMY_ENTRY },
 ];
 
 function run(label: string, command: string, args: readonly string[]): void {
   console.log(`\n[${label}] ${command} ${args.join(" ")}`);
-  const result = spawnSync(command, args, { cwd: workbenchRoot, stdio: "inherit" });
+  const result = spawnSync(command, args, { cwd: gatewayRoot, stdio: "inherit" });
   if (result.status !== 0) {
     console.error(`[${label}] failed with exit ${result.status}`);
     process.exit(result.status ?? 1);

@@ -3,7 +3,7 @@
 - **Method:** [improve-agent-workflow](../../skills/improve-agent-workflow/SKILL.md), command path
   [cli-surface.md](../../skills/improve-agent-workflow/commands/cli-surface.md)
 - **Audited revision:** `4efe51852d6d9f188452ad33fd2ac5a5a01eb726` (worktree HEAD at audit time)
-- **CLI entry:** `./apps/workbench/rossovia` → [`src/cli.ts`](src/cli.ts)
+- **CLI entry:** `./apps/gateway/rossovia` → [`src/cli.ts`](src/cli.ts)
 - **Mode:** read-only review. Mutating probes ran only against a disposable
   `--home` fixture under the pre-approved session temp directory
   (`/var/folders/wt/qwnhkx2n49b68l8ds407lkc00000gn/T/opencode/rosso-audit-home`),
@@ -54,13 +54,13 @@ probes are labeled `[fixture]` and used `--home <disposable>`.
 Representative raw evidence (command text, exit code, first output bytes):
 
 ```text
-$ ./apps/workbench/rossovia task --help            -> exit 2, stderr: "rosso: missing required task command argument"
-$ ./apps/workbench/rossovia mission --help          -> exit 2, stderr: "rosso: unknown mission command: --help"
-$ ./apps/workbench/rossovia init --help             -> exit 2, stderr: "rosso: invalid init option sequence: --help"
-$ ./apps/workbench/rossovia --version               -> exit 2, stderr: "rosso: invalid command; run rossovia --help"
-$ ./apps/workbench/rossovia task list --home <tmp>  -> exit 2, stderr: "rosso: task list accepts no arguments"   # --home only accepted as leading global
-$ ./apps/workbench/rossovia --home <tmp> init       -> exit 0, JSON {"home": ..., "writeAccess": "verified", ...}   # idempotent on re-run
-$ ./apps/workbench/rossovia --home <tmp> task create --title "audit probe task" ... --expected-source-revision 0
+$ ./apps/gateway/rossovia task --help            -> exit 2, stderr: "rosso: missing required task command argument"
+$ ./apps/gateway/rossovia mission --help          -> exit 2, stderr: "rosso: unknown mission command: --help"
+$ ./apps/gateway/rossovia init --help             -> exit 2, stderr: "rosso: invalid init option sequence: --help"
+$ ./apps/gateway/rossovia --version               -> exit 2, stderr: "rosso: invalid command; run rossovia --help"
+$ ./apps/gateway/rossovia task list --home <tmp>  -> exit 2, stderr: "rosso: task list accepts no arguments"   # --home only accepted as leading global
+$ ./apps/gateway/rossovia --home <tmp> init       -> exit 0, JSON {"home": ..., "writeAccess": "verified", ...}   # idempotent on re-run
+$ ./apps/gateway/rossovia --home <tmp> task create --title "audit probe task" ... --expected-source-revision 0
     first run: exit 0 (task created, sourceRevision 1)
     identical retry: exit 2, stderr: "rosso: Principal task source revision is stale: expected 0, current 1"
 ```

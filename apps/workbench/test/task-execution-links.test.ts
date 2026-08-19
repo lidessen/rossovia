@@ -40,7 +40,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const bunCli = join(repositoryRoot, "apps", "workbench", "src", "cli.ts");
+const bunCli = join(repositoryRoot, "apps", "gateway", "src", "cli.ts");
 const projectId = "repository:task-execution-link";
 const missionId = "daily-task-loop";
 const proposalId = "task-execution";

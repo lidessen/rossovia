@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
-import { createWorkbenchRequestHandler } from "../src/ui/server";
+import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 
 const unusedClient = {} as AutonomyClient;
 const handler = createWorkbenchRequestHandler({

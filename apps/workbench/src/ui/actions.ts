@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { intentLineagePresentation } from "../../ui/operational-semantics.js";
+import { intentLineagePresentation } from "../../../gateway/ui/operational-semantics.js";
 
 export const RunnerTargetSchema = z.object({
   missionId: z.string().min(1),

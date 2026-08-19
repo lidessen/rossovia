@@ -24,7 +24,7 @@ import {
 } from "../src/mission-execution-proposal";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const bunCli = join(repositoryRoot, "apps", "workbench", "src", "cli.ts");
+const bunCli = join(repositoryRoot, "apps", "gateway", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

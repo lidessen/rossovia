@@ -100,7 +100,7 @@ async function startProductionUi(
 ): Promise<{ child: { readonly exited: Promise<number>; kill(): void } }> {
   const workbenchRoot = join(import.meta.dir, "..");
   const child = Bun.spawn({
-    cmd: [process.execPath, "src/ui/server.ts", "--port", String(port), "--home", home],
+    cmd: [process.execPath, "../gateway/src/ui-server.ts", "--port", String(port), "--home", home],
     cwd: workbenchRoot,
     stdout: "pipe",
     stderr: "pipe",
@@ -362,7 +362,7 @@ test("production default home exposes one valid ordinary-attempt candidate and r
   const port = disposablePort();
   const workbenchRoot = join(import.meta.dir, "..");
   const child = Bun.spawn({
-    cmd: [process.execPath, "src/ui/server.ts", "--port", String(port)],
+    cmd: [process.execPath, "../gateway/src/ui-server.ts", "--port", String(port)],
     cwd: workbenchRoot,
     env: {
       ...Object.fromEntries(

@@ -10,9 +10,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const workbenchRoot = resolve(import.meta.dir, "..");
-const uiDir = join(workbenchRoot, "ui");
-const outputPath = join(workbenchRoot, "src", "ui", "assets.generated.ts");
+const gatewayRoot = resolve(import.meta.dir, "..");
+const uiDir = join(gatewayRoot, "ui");
+const outputPath = join(gatewayRoot, "src", "assets.generated.ts");
 
 const ASSET_FILES = [
   "index.html",

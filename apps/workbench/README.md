@@ -4,7 +4,7 @@ Workbench is Rossovia's Agent-facing project, task, Mission, preference, and
 hook control plane. Its checked-in entrypoint is:
 
 ```sh
-./apps/workbench/rossovia --help
+./apps/gateway/rossovia --help
 ```
 
 During the current personal/development stage, the stable launcher runs the
@@ -57,7 +57,7 @@ Build the Workbench CLI and the Autonomy runner into standalone binaries and
 install them into `~/.local/bin` (override with `LOCAL_BIN`):
 
 ```sh
-bun run --cwd apps/workbench build:local
+bun run --cwd apps/gateway build:local
 ```
 
 This regenerates the embedded UI assets from `ui/`, compiles
@@ -66,7 +66,7 @@ the pair. The Workbench binary locates its Autonomy sibling next to itself at
 runtime (`ROSSOVIA_AUTONOMY` overrides it), so install them together. After
 installing, `rossovia ui` and every other command run without the source
 checkout. Regenerate embedded assets after editing files under `ui/` with
-`bun run --cwd apps/workbench assets:generate`.
+`bun run --cwd apps/gateway assets:generate`.
 
 ## Principal Workbench MVP
 
@@ -102,13 +102,13 @@ natural expression, perception, and correction.
 Run the current UI with:
 
 ```sh
-./apps/workbench/rossovia ui
+./apps/gateway/rossovia ui
 ```
 
 Open `http://127.0.0.1:4317`. Add another explicitly selected local repository
-with `./apps/workbench/rossovia ui --root <git-root>` or select another
+with `./apps/gateway/rossovia ui --root <git-root>` or select another
 port with `--port <port>`. The equivalent development entry
-`bun run --cwd apps/workbench ui` serves the same surface from the source
+`bun run --cwd apps/gateway ui` serves the same surface from the source
 checkout.
 
 ### Browser observation
@@ -118,15 +118,15 @@ the running UI in a real browser. Start Workbench separately, then give each
 Agent or worktree its own session name and repeat that name for every command:
 
 ```sh
-bun run --cwd apps/workbench browser -- -s=workbench-visual open http://127.0.0.1:4317
-bun run --cwd apps/workbench browser -- -s=workbench-visual resize 1440 900
-bun run --cwd apps/workbench browser -- -s=workbench-visual screenshot --filename=/tmp/workbench-desktop.png
-bun run --cwd apps/workbench browser -- -s=workbench-visual snapshot --filename=/tmp/workbench-desktop.md
-bun run --cwd apps/workbench browser -- -s=workbench-visual console
-bun run --cwd apps/workbench browser -- -s=workbench-visual eval "() => ({ pageWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth })"
-bun run --cwd apps/workbench browser -- -s=workbench-visual resize 390 844
-bun run --cwd apps/workbench browser -- -s=workbench-visual screenshot --filename=/tmp/workbench-mobile.png
-bun run --cwd apps/workbench browser -- -s=workbench-visual close
+bun run --cwd apps/gateway browser -- -s=workbench-visual open http://127.0.0.1:4317
+bun run --cwd apps/gateway browser -- -s=workbench-visual resize 1440 900
+bun run --cwd apps/gateway browser -- -s=workbench-visual screenshot --filename=/tmp/workbench-desktop.png
+bun run --cwd apps/gateway browser -- -s=workbench-visual snapshot --filename=/tmp/workbench-desktop.md
+bun run --cwd apps/gateway browser -- -s=workbench-visual console
+bun run --cwd apps/gateway browser -- -s=workbench-visual eval "() => ({ pageWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth })"
+bun run --cwd apps/gateway browser -- -s=workbench-visual resize 390 844
+bun run --cwd apps/gateway browser -- -s=workbench-visual screenshot --filename=/tmp/workbench-mobile.png
+bun run --cwd apps/gateway browser -- -s=workbench-visual close
 ```
 
 The CLI keeps transient session artifacts under `.playwright-cli/`; they are
@@ -134,7 +134,7 @@ ignored rather than treated as repository evidence. If `open` reports that its
 browser is missing, install the pinned CLI's browser once with:
 
 ```sh
-bun run --cwd apps/workbench browser -- install-browser
+bun run --cwd apps/gateway browser -- install-browser
 ```
 
 Screenshots, snapshots, console output, and evaluated geometry are observations
@@ -205,8 +205,8 @@ Initialize or complete the current Workbench home before the first task
 operation:
 
 ```sh
-./apps/workbench/rossovia init
-./apps/workbench/rossovia task list
+./apps/gateway/rossovia init
+./apps/gateway/rossovia task list
 ```
 
 The UI is the normal interaction path. The CLI exposes the same source for
@@ -690,7 +690,7 @@ closed rather than restoring reusable launch authority.
 Before asking for a launch choice, inspect the exact committed proposal:
 
 ```sh
-./apps/workbench/rossovia --home <ROSSO_HOME> execution inspect \
+./apps/gateway/rossovia --home <ROSSO_HOME> execution inspect \
   <project> <mission-id>
 ```
 
@@ -710,7 +710,7 @@ explicit Principal answer in an authority-bearing conversation, the trusted
 supervisor can bind the displayed proposal ID and digest to those choices:
 
 ```sh
-./apps/workbench/rossovia --home <ROSSO_HOME> execution authorize \
+./apps/gateway/rossovia --home <ROSSO_HOME> execution authorize \
   <project> <mission-id> \
   --proposal-id <id> \
   --proposal-digest <sha256> \
@@ -767,7 +767,7 @@ and multi-Agent detail; those belong to Workbench or the host's Agent view.
 The fallback renderer can be probed directly:
 
 ```sh
-./apps/workbench/rossovia statusline --cwd <git-path>
+./apps/gateway/rossovia statusline --cwd <git-path>
 ```
 
 When the host supplies a session/thread name, that name is the handled-project

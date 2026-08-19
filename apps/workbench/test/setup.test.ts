@@ -7,6 +7,7 @@ import { setupAdapter } from "../src/setup-adapters";
 import { multiAgentDelegationModule } from "../src/setup-modules";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
+const gatewayRoot = join(repositoryRoot, "apps", "gateway");
 const workbenchRoot = join(repositoryRoot, "apps", "workbench");
 const temporaryRoots: string[] = [];
 
@@ -48,12 +49,16 @@ function fixture() {
   git(source, "config", "user.name", "Rossovia Test");
   git(source, "config", "user.email", "rossovia@example.test");
   writeFileSync(join(source, "CHANGELOG.md"), "# Changelog\n", "utf8");
+  const fixtureGateway = join(source, "apps", "gateway");
   const fixtureWorkbench = join(source, "apps", "workbench");
+  mkdirSync(fixtureGateway, { recursive: true });
   mkdirSync(fixtureWorkbench, { recursive: true });
+  cpSync(join(gatewayRoot, "src"), join(fixtureGateway, "src"), { recursive: true });
   cpSync(join(workbenchRoot, "src"), join(fixtureWorkbench, "src"), { recursive: true });
+  copyFileSync(join(gatewayRoot, "package.json"), join(fixtureGateway, "package.json"));
   copyFileSync(join(workbenchRoot, "package.json"), join(fixtureWorkbench, "package.json"));
-  symlinkSync(join(workbenchRoot, "node_modules"), join(fixtureWorkbench, "node_modules"), "dir");
-  git(source, "add", "CHANGELOG.md", "apps/workbench/src");
+  symlinkSync(join(gatewayRoot, "node_modules"), join(fixtureGateway, "node_modules"), "dir");
+  git(source, "add", "CHANGELOG.md", "apps/gateway/src", "apps/workbench/src");
   git(source, "commit", "-m", "initial setup source");
   const baseline = git(source, "rev-parse", "HEAD");
   writeFileSync(join(codex, "AGENTS.md"), "# Personal instructions\n\nKeep this content.\n", "utf8");
@@ -61,7 +66,7 @@ function fixture() {
 }
 
 function workbench(source: string, home: string, ...args: string[]) {
-  return command([process.execPath, join(source, "apps", "workbench", "src", "cli.ts"), "--home", home, ...args]);
+  return command([process.execPath, join(source, "apps", "gateway", "src", "cli.ts"), "--home", home, ...args]);
 }
 
 describe("user-level setup reconciliation", () => {

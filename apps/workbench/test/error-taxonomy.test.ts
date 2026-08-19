@@ -13,7 +13,7 @@ import { join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE, USAGE_EXIT_CODE } from "../src/cli-errors";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const launcher = join(repositoryRoot, "apps", "workbench", "rossovia");
+const launcher = join(repositoryRoot, "apps", "gateway", "rossovia");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

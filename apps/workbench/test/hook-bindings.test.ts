@@ -17,19 +17,19 @@ describe("project hook bindings", () => {
     expect(serialized).not.toContain("jq ");
 
     expect(commands(bindings.codex)).toEqual([
-      "./apps/workbench/rossovia hook intervention codex",
-      "./apps/workbench/rossovia hook artifact codex post-tool-use",
-      "./apps/workbench/rossovia hook artifact codex stop",
+      "./apps/gateway/rossovia hook intervention codex",
+      "./apps/gateway/rossovia hook artifact codex post-tool-use",
+      "./apps/gateway/rossovia hook artifact codex stop",
     ]);
     expect(commands(bindings.claude)).toEqual([
-      "\"$(git rev-parse --show-toplevel)/apps/workbench/rossovia\" statusline claude",
-      "./apps/workbench/rossovia hook intervention claude",
-      "./apps/workbench/rossovia hook artifact claude post-tool-use",
-      "./apps/workbench/rossovia hook artifact claude stop",
+      "\"$(git rev-parse --show-toplevel)/apps/gateway/rossovia\" statusline claude",
+      "./apps/gateway/rossovia hook intervention claude",
+      "./apps/gateway/rossovia hook artifact claude post-tool-use",
+      "./apps/gateway/rossovia hook artifact claude stop",
     ]);
     expect(commands(bindings.cursor)).toEqual([
-      "./apps/workbench/rossovia hook artifact cursor after-file-edit",
-      "./apps/workbench/rossovia hook artifact cursor stop",
+      "./apps/gateway/rossovia hook artifact cursor after-file-edit",
+      "./apps/gateway/rossovia hook artifact cursor stop",
     ]);
   });
 });

@@ -56,17 +56,17 @@ skill 则是在具体语境中对所选条目的表达。
 主目录，不会自动登记扫描到的仓库，也不要求使用者记住命令参数。
 
 如果旧版本已初始化 `~/.atthis`，可以直接让 Agent“迁移 Rossovia 工作台”，或在
-普通初始化前运行 `./apps/workbench/rossovia migrate`。迁移会保留旧来源并写入
+普通初始化前运行 `./apps/gateway/rossovia migrate`。迁移会保留旧来源并写入
 回执，不会维持两个可写 home。
 
 在自动化、调试或没有 Agent 的环境中，仍可使用等价的手动入口：
 
 ```sh
-./apps/workbench/rossovia init --workspace-root /path/to/workspaces
-./apps/workbench/rossovia root add /path/to/another-workspace-root
-./apps/workbench/rossovia project list
-./apps/workbench/rossovia resolve example-project
-./apps/workbench/rossovia preference list --project example-project
+./apps/gateway/rossovia init --workspace-root /path/to/workspaces
+./apps/gateway/rossovia root add /path/to/another-workspace-root
+./apps/gateway/rossovia project list
+./apps/gateway/rossovia resolve example-project
+./apps/gateway/rossovia preference list --project example-project
 ```
 
 日常管理任务时，可以打开 Principal Workbench UI，或通过 control-plane CLI
@@ -74,8 +74,8 @@ skill 则是在具体语境中对所选条目的表达。
 
 ```sh
 bun run --cwd apps/workbench ui
-./apps/workbench/rossovia task list
-./apps/workbench/rossovia task show <task-id>
+./apps/gateway/rossovia task list
+./apps/gateway/rossovia task show <task-id>
 ```
 
 UI 支持创建、指派、纠正、提交、接受和重新打开本地 Principal-attributed 任务。
@@ -92,9 +92,9 @@ help 会列出已支持的本地任务变更及其必需的 revision guards。
 runtime，也不能替代 `agent-delegation` Skill：
 
 ```sh
-./apps/workbench/rossovia init --setup multi-agent-delegation
-./apps/workbench/rossovia setup status
-./apps/workbench/rossovia setup apply
+./apps/gateway/rossovia init --setup multi-agent-delegation
+./apps/gateway/rossovia setup status
+./apps/gateway/rossovia setup apply
 ```
 
 Workbench 会记录已应用的 Git revision 和 managed-block digest。仓库更新后，

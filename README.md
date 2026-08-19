@@ -66,7 +66,7 @@ missing value. It does not scan an unspecified home directory, auto-register
 discovered repositories, or make the user remember command flags.
 
 If a previous checkout initialized `~/.atthis`, ask the agent to migrate the
-workbench, or run `./apps/workbench/rossovia migrate`, before ordinary Rossovia
+workbench, or run `./apps/gateway/rossovia migrate`, before ordinary Rossovia
 initialization. The migration preserves the old source and records a receipt;
 it does not keep two writable homes.
 
@@ -74,11 +74,11 @@ For automation, debugging, or an environment without an agent, the equivalent
 manual entry remains available:
 
 ```sh
-./apps/workbench/rossovia init --workspace-root /path/to/workspaces
-./apps/workbench/rossovia root add /path/to/another-workspace-root
-./apps/workbench/rossovia project list
-./apps/workbench/rossovia resolve example-project
-./apps/workbench/rossovia preference list --project example-project
+./apps/gateway/rossovia init --workspace-root /path/to/workspaces
+./apps/gateway/rossovia root add /path/to/another-workspace-root
+./apps/gateway/rossovia project list
+./apps/gateway/rossovia resolve example-project
+./apps/gateway/rossovia preference list --project example-project
 ```
 
 For daily task work, open the Principal Workbench UI or inspect the same durable
@@ -86,8 +86,8 @@ local task source through the control-plane CLI:
 
 ```sh
 bun run --cwd apps/workbench ui
-./apps/workbench/rossovia task list
-./apps/workbench/rossovia task show <task-id>
+./apps/gateway/rossovia task list
+./apps/gateway/rossovia task show <task-id>
 ```
 
 The UI supports creating, assigning, correcting, submitting, accepting, and
@@ -108,9 +108,9 @@ is persistent setup guidance, not a delegation runtime or a replacement for
 the `agent-delegation` Skill:
 
 ```sh
-./apps/workbench/rossovia init --setup multi-agent-delegation
-./apps/workbench/rossovia setup status
-./apps/workbench/rossovia setup apply
+./apps/gateway/rossovia init --setup multi-agent-delegation
+./apps/gateway/rossovia setup status
+./apps/gateway/rossovia setup apply
 ```
 
 The Workbench records the applied Git revision and managed-block digest. After

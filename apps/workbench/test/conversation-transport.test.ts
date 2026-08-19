@@ -16,7 +16,7 @@ import {
 import type { MessageReceivedEvent } from "../src/conversation/contracts";
 import { FileConversationJournal } from "../src/conversation/journal";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
-import { createWorkbenchRequestHandler } from "../src/ui/server";
+import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 import {
   startPreparedConversationTurn,
   type ConversationTurnPortEvent,

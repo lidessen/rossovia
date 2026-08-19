@@ -13,7 +13,7 @@ import {
   executionAuthorizationEligibility,
   executionAuthorizationRefreshVerdict,
   executionProposalView,
-} from "../ui/execution-proposal.js";
+} from "../../gateway/ui/execution-proposal.js";
 
 const proposal = {
   version: "mission-execution-proposal.v1",
@@ -194,7 +194,7 @@ function authorizationInput(
 }
 
 describe("Principal Workbench pending execution proposal presentation", () => {
-  const root = join(import.meta.dir, "..", "ui");
+  const root = join(import.meta.dir, "..", "..", "gateway", "ui");
   const html = readFileSync(join(root, "index.html"), "utf8");
   const app = readFileSync(join(root, "app.js"), "utf8");
   const styles = readFileSync(join(root, "styles.css"), "utf8");

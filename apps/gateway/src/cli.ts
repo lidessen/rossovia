@@ -1,41 +1,41 @@
 #!/usr/bin/env bun
 
-import { attachWorkspace } from "./attach";
+import { attachWorkspace } from "../../workbench/src/attach";
 import {
   CliStateError,
   ParseUsageError,
   STATE_FAILURE_EXIT_CODE,
   UsageError,
   USAGE_EXIT_CODE,
-} from "./cli-errors";
-import { createForegroundRunSignalAdapter } from "./integrations/foreground-run-signals";
-import type { ContributionLeaseReconcileResult } from "./conversation/contributions";
-import { authorizeExecution, inspectExecution } from "./execution-authorization";
+} from "../../workbench/src/cli-errors";
+import { createForegroundRunSignalAdapter } from "../../workbench/src/integrations/foreground-run-signals";
+import type { ContributionLeaseReconcileResult } from "../../workbench/src/conversation/contributions";
+import { authorizeExecution, inspectExecution } from "../../workbench/src/execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
-import { initializeHome, loadHome, resolveHome } from "./home";
-import { runHookCommand } from "./hooks";
-import { runCorrectionCommand, runInterventionCommand } from "./interventions";
-import { createLocalTaskControlPlane, LocalTaskControlError } from "./local-task-control-plane";
-import { migrateLegacyHome } from "./migration";
-import { runMissionCommand } from "./missions";
-import { listPreferences, retirePreference, setPreference } from "./preferences";
-import { listProjects } from "./projects";
-import { registerProject } from "./register";
-import { resolveProject } from "./resolve";
-import { addRoots, scanRoots } from "./roots";
-import { applySetup, selectSetupModules, setupStatus } from "./setup";
+import { initializeHome, loadHome, resolveHome } from "../../workbench/src/home";
+import { runHookCommand } from "../../workbench/src/hooks";
+import { runCorrectionCommand, runInterventionCommand } from "../../workbench/src/interventions";
+import { createLocalTaskControlPlane, LocalTaskControlError } from "../../workbench/src/local-task-control-plane";
+import { migrateLegacyHome } from "../../workbench/src/migration";
+import { runMissionCommand } from "../../workbench/src/missions";
+import { listPreferences, retirePreference, setPreference } from "../../workbench/src/preferences";
+import { listProjects } from "../../workbench/src/projects";
+import { registerProject } from "../../workbench/src/register";
+import { resolveProject } from "../../workbench/src/resolve";
+import { addRoots, scanRoots } from "../../workbench/src/roots";
+import { applySetup, selectSetupModules, setupStatus } from "../../workbench/src/setup";
 import {
   renderStatusLine,
   statusLineHostContext,
   statusLineInput,
   statusLineProjection,
-} from "./statusline";
-import { showPrincipalTaskAttempts } from "./task-attempts";
+} from "../../workbench/src/statusline";
+import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
 import {
   listPrincipalTaskWorkers,
   reconcilePrincipalTaskAttempt,
   runPrincipalTask,
-} from "./task-run";
+} from "../../workbench/src/task-run";
 
 const TASK_SUBCOMMANDS = new Set([
   "list",
@@ -337,7 +337,7 @@ function dispatchStatusLine(home: string | undefined, args: string[]): void {
 async function dispatchUi(home: string | undefined, args: string[]): Promise<void> {
   // Lazy-load the UI module tree so ordinary CLI invocations never pay for the
   // server, conversation runtime, or autonomy client imports.
-  const { parseServerArguments, startWorkbenchUi } = await import("./ui/server");
+  const { parseServerArguments, startWorkbenchUi } = await import("./ui-server");
   const options = parseServerArguments(args.slice(1));
   // The CLI's leading-global --home is the single home authority for the UI
   // entry; an explicit server-side --home after `ui` keeps its own semantics.
@@ -365,8 +365,8 @@ function runContributionReconcileLeaseCli(
   batchId: string,
   key: string,
 ): ContributionLeaseReconcileResult {
-  const { createConversationContributionRegistry } = require("./conversation/contributions") as
-    typeof import("./conversation/contributions");
+  const { createConversationContributionRegistry } = require("../../workbench/src/conversation/contributions") as
+    typeof import("../../workbench/src/conversation/contributions");
   const registry = createConversationContributionRegistry(homeArgument);
   return registry.reconcileLease({ conversationId, batchId, key });
 }

@@ -22,7 +22,7 @@ transcript parsing, and platform drift.
 Keep TypeScript and Bun for repository development, tests, and the preferred
 build path. Make the target runtime a checked-in, self-contained Node bundle at
 `apps/workbench/dist/rossovia.mjs`, reached through the stable
-`apps/workbench/rossovia` launcher.
+`apps/gateway/rossovia` launcher.
 
 The Workbench source uses Node standard-library runtime APIs. `npm run build`
 uses local Bun when present; `npm run build:docker` builds the same bundle in a

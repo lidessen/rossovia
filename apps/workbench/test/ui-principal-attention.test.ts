@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure attention export.
-import { classifyWorkbenchAttention } from "../ui/app.js";
+import { classifyWorkbenchAttention } from "../../gateway/ui/app.js";
 
 describe("Workbench Principal attention", () => {
   test("separates Principal decisions from system recovery by next-actor truth", () => {

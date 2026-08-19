@@ -247,7 +247,7 @@ describe("Principal Workbench current writable effect projection", () => {
   });
 
   test("keeps effect presentation observational and exposes no integration action", () => {
-    const root = join(import.meta.dir, "..", "ui");
+    const root = join(import.meta.dir, "..", "..", "gateway", "ui");
     const html = readFileSync(join(root, "index.html"), "utf8");
     const app = readFileSync(join(root, "app.js"), "utf8");
 
@@ -266,7 +266,7 @@ describe("Principal Workbench current writable effect projection", () => {
   });
 
   test("renders a host writer with its Cell source while preserving the legacy Cell writer", () => {
-    const app = readFileSync(join(import.meta.dir, "..", "ui", "app.js"), "utf8");
+    const app = readFileSync(join(import.meta.dir, "..", "..", "gateway", "ui", "app.js"), "utf8");
 
     expect(app).toMatch(
       /writerRef\s*\? `host writer \$\{text\(writerRef\)\}`\s*: `cell \$\{text\(first\(writer, \["cellId"\]\), "—"\)\} \/ run \$\{text\(first\(writer, \["runId"\]\), "—"\)\}`/s,

@@ -9,18 +9,18 @@ import {
   reconciliationActionDecisionBriefPresentation,
   runnerPresentation,
   verifiedCorrectionAwaitsSystemSettlement,
-} from "../ui/operational-semantics.js";
+} from "../../gateway/ui/operational-semantics.js";
 import {
   refineLiveRunnerAttention,
   validateRunnerActivityProjection,
-} from "../src/ui/server";
+} from "../../gateway/src/ui-server";
 import {
   WorkbenchRunnerActivityProjectionSchema,
 } from "../src/ui/projection";
 
-const app = readFileSync(resolve(import.meta.dir, "../ui/app.js"), "utf8");
-const html = readFileSync(resolve(import.meta.dir, "../ui/index.html"), "utf8");
-const styles = readFileSync(resolve(import.meta.dir, "../ui/styles.css"), "utf8");
+const app = readFileSync(resolve(import.meta.dir, "../../gateway/ui/app.js"), "utf8");
+const html = readFileSync(resolve(import.meta.dir, "../../gateway/ui/index.html"), "utf8");
+const styles = readFileSync(resolve(import.meta.dir, "../../gateway/ui/styles.css"), "utf8");
 
 const correction = {
   correctionId: "blog-index-import-v1",

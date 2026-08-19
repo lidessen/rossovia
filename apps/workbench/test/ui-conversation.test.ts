@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure conversation exports.
-import * as conversation from "../ui/app.js";
+import * as conversation from "../../gateway/ui/app.js";
 
 const {
   buildConversationSocketUrl,
@@ -16,9 +16,9 @@ const {
   taskEvidenceLinkTarget,
 } = conversation;
 
-const html = readFileSync(resolve(import.meta.dir, "../ui/index.html"), "utf8");
-const app = readFileSync(resolve(import.meta.dir, "../ui/app.js"), "utf8");
-const styles = readFileSync(resolve(import.meta.dir, "../ui/styles.css"), "utf8");
+const html = readFileSync(resolve(import.meta.dir, "../../gateway/ui/index.html"), "utf8");
+const app = readFileSync(resolve(import.meta.dir, "../../gateway/ui/app.js"), "utf8");
+const styles = readFileSync(resolve(import.meta.dir, "../../gateway/ui/styles.css"), "utf8");
 
 const conversationId = "11111111-1111-4111-8111-111111111111";
 const turnId = "22222222-2222-4222-8222-222222222222";

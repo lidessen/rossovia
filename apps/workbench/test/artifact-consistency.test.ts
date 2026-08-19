@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "apps", "workbench", "src", "cli.ts");
+const cli = join(repositoryRoot, "apps", "gateway", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

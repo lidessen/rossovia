@@ -158,8 +158,8 @@ After a material branch settles, before switching to another branch, and before
 presenting a phase-complete or merge decision, inspect the active record:
 
 ```text
-./apps/workbench/rossovia mission status <mission-id>
-./apps/workbench/rossovia mission check <mission-id> --git
+./apps/gateway/rossovia mission status <mission-id>
+./apps/gateway/rossovia mission check <mission-id> --git
 ```
 
 A branch returns only through `integrate`, `no-change`, or `abandon`, each with

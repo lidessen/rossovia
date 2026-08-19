@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const cli = join(repositoryRoot, "apps", "workbench", "src", "cli.ts");
+const cli = join(repositoryRoot, "apps", "gateway", "src", "cli.ts");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
@@ -152,7 +152,7 @@ describe("Rossovia status-line projection", () => {
     const claude = JSON.parse(readFileSync(join(repositoryRoot, ".claude", "settings.json"), "utf8"));
     expect(claude.statusLine).toEqual({
       type: "command",
-      command: "\"$(git rev-parse --show-toplevel)/apps/workbench/rossovia\" statusline claude",
+      command: "\"$(git rev-parse --show-toplevel)/apps/gateway/rossovia\" statusline claude",
     });
     expect(claude.subagentStatusLine).toBeUndefined();
 

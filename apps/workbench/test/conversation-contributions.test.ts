@@ -67,7 +67,7 @@ import {
 } from "../../autonomy/src/conversation-coordinator";
 import type { ChildSummary, FullChildResult } from "../../autonomy/src/conversation-prompt";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
-import { createWorkbenchRequestHandler } from "../src/ui/server";
+import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 
 const temporaryRoots: string[] = [];
 
@@ -274,7 +274,7 @@ function fakeCatalog(createDriver: () => CellDriver = fastContributionDriver, ca
 
 /** The Workbench CLI entry exercised by the production-reachable reconcile tests. */
 function cliPath(): string {
-  return join(import.meta.dir, "../src/cli.ts");
+  return join(import.meta.dir, "../../gateway/src/cli.ts");
 }
 
 /** The exact durable lease binding retained by a settled effectful spawn reservation. */

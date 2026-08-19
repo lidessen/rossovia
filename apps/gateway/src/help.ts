@@ -1,4 +1,4 @@
-import { UsageError } from "./cli-errors";
+import { UsageError } from "../../workbench/src/cli-errors";
 import packageManifest from "../package.json" with { type: "json" };
 
 /**

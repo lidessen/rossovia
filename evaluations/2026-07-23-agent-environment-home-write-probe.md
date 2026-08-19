@@ -3,7 +3,7 @@
 **Date:** 2026-07-23
 
 **Target:** [`agent-environment`](../skills/agent-environment/SKILL.md) setup
-and verify behavior plus the Rossovia Workbench [`init`](../apps/workbench/src/cli.ts)
+and verify behavior plus the Rossovia Workbench [`init`](../apps/gateway/src/cli.ts)
 entry
 
 **Execution profile:** Work Cell, OpenCode Go `deepseek-v4-flash`, read-only

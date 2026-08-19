@@ -3,12 +3,12 @@
   "hooks": {
     "afterFileEdit": [
       {
-        "command": "./apps/workbench/rossovia hook artifact cursor after-file-edit"
+        "command": "./apps/gateway/rossovia hook artifact cursor after-file-edit"
       }
     ],
     "stop": [
       {
-        "command": "./apps/workbench/rossovia hook artifact cursor stop",
+        "command": "./apps/gateway/rossovia hook artifact cursor stop",
         "loop_limit": 2
       }
     ]

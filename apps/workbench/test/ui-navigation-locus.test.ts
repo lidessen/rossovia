@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure locus exports.
-import * as principalLocus from "../ui/app.js";
+import * as principalLocus from "../../gateway/ui/app.js";
 
 const {
   hasPrincipalLocusRequest,
@@ -14,7 +14,7 @@ const {
 } = principalLocus;
 
 const appSource = readFileSync(
-  resolve(import.meta.dir, "../ui/app.js"),
+  resolve(import.meta.dir, "../../gateway/ui/app.js"),
   "utf8",
 );
 const projection = {

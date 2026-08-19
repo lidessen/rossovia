@@ -56,7 +56,7 @@ updates.
 
 ## Enable and verify in a fresh Codex session
 
-1. Run `./apps/workbench/rossovia init` through the ordinary agent
+1. Run `./apps/gateway/rossovia init` through the ordinary agent
    session and require `writeAccess: "verified"`. If it fails, reconcile the
    exact user-level grant above and start another fresh session; repeated init
    attempts cannot change a frozen sandbox.
@@ -72,7 +72,7 @@ updates.
 5. Inspect the resulting state:
 
    ```sh
-   ./apps/workbench/rossovia intervention status --session-id "codex:$CODEX_THREAD_ID"
+   ./apps/gateway/rossovia intervention status --session-id "codex:$CODEX_THREAD_ID"
    ```
 
    Set `ROSSO_HOME` or pass Workbench's top-level `--home PATH` when using a

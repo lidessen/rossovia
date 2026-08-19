@@ -29,7 +29,7 @@ import {
 } from "../src/tasks";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const launcher = join(repositoryRoot, "apps", "workbench", "rossovia");
+const launcher = join(repositoryRoot, "apps", "gateway", "rossovia");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {

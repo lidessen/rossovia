@@ -7,6 +7,22 @@ entry instead of rewriting the applied Git interval.
 
 ## 2026-08-18
 
+### [gateway] Introduce the Presentation assembly layer
+
+- Action: `breaking`
+- Change: create `apps/gateway/` as the Presentation assembly layer per
+  decision 055's module boundaries: the CLI entry (`rossovia` launcher,
+  `src/cli.ts`, `src/help.ts`) and the web UI server (`src/ui-server.ts`,
+  `ui/` assets) moved here from `apps/workbench`, which retains the domain
+  operations (Project/Task/Mission, execution, adapters). A
+  `src/domain-client.ts` boundary marks the single place where the surfaces
+  reach domain operations — today direct calls, later the resident gateway
+  daemon's HTTP client. `build:local` now compiles from `apps/gateway`.
+- Verify: run the Workbench full suite (820/820), the Gateway typecheck and
+  launcher tests, and `LOCAL_BIN=<tmp> bun run --cwd apps/gateway build:local`
+  then confirm `rossovia --version` and the workbench UI serve without the
+  source checkout.
+
 ### [repo.layout] Rename operations/ to apps/
 
 - Action: `breaking`

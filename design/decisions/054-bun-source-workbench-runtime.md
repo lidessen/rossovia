@@ -29,8 +29,8 @@ inventing parity or duplicating Workbench behavior.
 ## Decision
 
 During the current personal/development stage, the repository's runtime carrier
-is the tracked TypeScript source at `apps/workbench/src/cli.ts`, executed
-with Bun through the stable `apps/workbench/rossovia` launcher.
+is the tracked TypeScript source at `apps/gateway/src/cli.ts`, executed
+with Bun through the stable `apps/gateway/rossovia` launcher.
 
 The launcher fails clearly when Bun is unavailable. It has no Node, stale
 bundle, or Docker fallback. Package scripts and direct runtime tests execute the
@@ -64,7 +64,7 @@ Only the runtime carrier and its build machinery are superseded.
 
 ## Verification
 
-- `./apps/workbench/rossovia --help` executes `src/cli.ts` with Bun;
+- `./apps/gateway/rossovia --help` executes `src/cli.ts` with Bun;
 - the same launcher returns a clear exit-127 error when Bun is absent from
   `PATH`, without attempting another runtime;
 - correction context names an executable `bun` plus tracked `src/cli.ts`

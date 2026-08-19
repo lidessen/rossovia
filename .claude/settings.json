@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "\"$(git rev-parse --show-toplevel)/apps/workbench/rossovia\" statusline claude"
+    "command": "\"$(git rev-parse --show-toplevel)/apps/gateway/rossovia\" statusline claude"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./apps/workbench/rossovia hook intervention claude",
+            "command": "./apps/gateway/rossovia hook intervention claude",
             "timeout": 10
           }
         ]
@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./apps/workbench/rossovia hook artifact claude post-tool-use"
+            "command": "./apps/gateway/rossovia hook artifact claude post-tool-use"
           }
         ]
       }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "./apps/workbench/rossovia hook artifact claude stop"
+            "command": "./apps/gateway/rossovia hook artifact claude stop"
           }
         ]
       }

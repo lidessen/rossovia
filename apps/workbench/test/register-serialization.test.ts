@@ -28,7 +28,7 @@ import { migrateLegacyHome } from "../src/migration";
 import { nodeRegistrationIo, transitionRegistration, type RegistrationIo } from "../src/registration";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const launcher = join(repositoryRoot, "apps", "workbench", "rossovia");
+const launcher = join(repositoryRoot, "apps", "gateway", "rossovia");
 const initExclusiveCreateHolder = join(import.meta.dir, "init-exclusive-create-holder.ts");
 const lockName = "registration.lock";
 const temporaryRoots: string[] = [];

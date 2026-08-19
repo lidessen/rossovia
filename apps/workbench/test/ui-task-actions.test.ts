@@ -65,7 +65,7 @@ import type {
   ContributionAttribution,
   RunnerTarget,
 } from "../src/ui/actions";
-import { createWorkbenchRequestHandler } from "../src/ui/server";
+import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 import { TaskMutationRequestSchema } from "../src/ui/task-actions";
 import { TaskVerifiedResultRequestSchema } from "../src/ui/task-verified-result";
 

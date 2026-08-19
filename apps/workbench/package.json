@@ -10,7 +10,7 @@
     "browser": "playwright-cli",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "ui": "bun src/ui/server.ts",
+    "ui": "bun --cwd ../gateway run ui",
     "workbench": "bun src/cli.ts",
     "assets:generate": "bun run scripts/generate-ui-assets.ts",
     "build:local": "bun run scripts/build-local.ts"

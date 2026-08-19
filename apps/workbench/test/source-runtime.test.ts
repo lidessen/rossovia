@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
-const launcher = join(repositoryRoot, "apps", "workbench", "rossovia");
+const launcher = join(repositoryRoot, "apps", "gateway", "rossovia");
 
 describe("Workbench source runtime", () => {
   test("runs the stable launcher against TypeScript source with Bun", () => {
