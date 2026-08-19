@@ -2446,6 +2446,207 @@ describe("Workbench overview runner anomaly dedup", () => {
   });
 });
 
+describe("Workbench runner source-failure scenes", () => {
+  const statusPath = "/home/rossovia/missions/m1/runner-status.json";
+  const m1Project = {
+    projectKey: "registered:skills",
+    identity: { id: "skills", aliases: ["skills"] },
+    worktrees: [],
+    missions: [{
+      id: "m1",
+      title: "Mission one",
+      currentFocus: "mainline",
+      mainline: {
+        contradiction: "contradiction",
+        acceptance: ["accept"],
+        status: "active",
+      },
+      branches: [],
+      sourcePath: "/workspace/skills/m1.json",
+      observedGitContext: {
+        worktreePath: "/workspace/skills",
+        binding: "observation-only",
+      },
+    }],
+  };
+
+  test("folds a live running runner's activity-source failure into its one anomaly scene", () => {
+    const activityError =
+      "cannot read Mission activity: socket /home/rossovia/missions/m1/runner.sock is unreachable";
+    const items = buildWorkItemProjection({
+      generatedAt: "2026-08-18T10:00:00Z",
+      complete: false,
+      projects: [m1Project],
+      errors: [{ scope: "runner", source: statusPath, message: activityError }],
+      runners: [{
+        live: true,
+        sourcePath: statusPath,
+        freshness: { kind: "live", observedAt: "2026-08-18T10:00:00Z" },
+        status: {
+          runnerId: "live-runner",
+          missionId: "m1",
+          state: "running",
+          updatedAt: "2026-08-18T09:59:00Z",
+        },
+        binding: {
+          kind: "project-mission",
+          projectKey: "registered:skills",
+          missionId: "m1",
+        },
+      }],
+      attention: [],
+    } as never).items;
+
+    const runnerItems = items.filter((item) => item.runnerId === "live-runner");
+    expect(runnerItems).toHaveLength(1);
+    const item = runnerItems[0]!;
+    expect(item).toMatchObject({
+      id: "attention:runner:live-runner",
+      kind: "observation",
+      lifecycle: "blocked",
+      nextActor: "system",
+      attention: "exception",
+      title: "Mission one",
+      runnerId: "live-runner",
+      attentionCode: "runner-lineage-unavailable",
+      binding: {
+        kind: "project-mission",
+        projectKey: "registered:skills",
+        missionId: "m1",
+      },
+    });
+    // The clean "Agent 正在执行" agent-work item must not hide the unreadable
+    // activity source; the failure scene is the runner's only item.
+    expect(items.some((candidate) => candidate.id === "runner:live-runner")).toBeFalse();
+    expect(item.anomalyDetail).toMatchObject({
+      scene: {
+        kind: "runner-cache",
+        sourcePath: statusPath,
+        relatedPaths: [statusPath],
+      },
+      dedup: {
+        basis: "runner-id",
+        key: "live-runner",
+        mergedCount: 1,
+      },
+      facets: [{ code: "runner-lineage-unavailable" }],
+    });
+    expect(item.anomalyDetail!.rawErrors).toHaveLength(1);
+    expect(item.anomalyDetail!.rawErrors[0]).toMatchObject({
+      stage: "runner-source",
+      raw: activityError,
+    });
+    // Status live is confirmed, but the activity content stays explicitly
+    // unknown: the standing never claims a clean in-progress execution.
+    expect(item.anomalyDetail!.evidenceStanding).toMatchObject({
+      freshnessKind: "unverified",
+      observedAt: "2026-08-18T10:00:00Z",
+      sourceUpdatedAt: "2026-08-18T09:59:00Z",
+    });
+    expect(item.anomalyDetail!.evidenceStanding.meaning).toContain("live");
+    expect(item.anomalyDetail!.evidenceStanding.meaning).toContain("活动内容保持未知");
+    // No invented recovery step for an unreadable activity source.
+    expect(item.anomalyDetail!.nextSteps
+      .filter((step) => step.supported)
+      .map((step) => step.label)).toEqual(["刷新当前投影"]);
+  });
+
+  test("keeps the live agent-work item when the runner-source failure belongs to another source", () => {
+    const items = buildWorkItemProjection({
+      generatedAt: "2026-08-18T10:00:00Z",
+      complete: false,
+      projects: [m1Project],
+      errors: [{
+        scope: "git",
+        source: "/workspace/skills-wt/gone",
+        message: "fatal: not a git repository: '/workspace/skills-wt/gone'",
+      }],
+      runners: [{
+        live: true,
+        sourcePath: statusPath,
+        freshness: { kind: "live", observedAt: "2026-08-18T10:00:00Z" },
+        status: {
+          runnerId: "live-runner",
+          missionId: "m1",
+          state: "running",
+          updatedAt: "2026-08-18T09:59:00Z",
+        },
+        binding: {
+          kind: "project-mission",
+          projectKey: "registered:skills",
+          missionId: "m1",
+        },
+      }],
+      attention: [],
+    } as never).items;
+
+    expect(items).toContainEqual(expect.objectContaining({
+      id: "runner:live-runner",
+      kind: "agent-work",
+      runnerId: "live-runner",
+    }));
+    expect(items.some((item) =>
+      item.runnerId === "live-runner" && item.anomalyDetail !== undefined
+    )).toBeFalse();
+  });
+
+  test("joins a failed live status read into the runner scene with its verbatim error", () => {
+    const statusError =
+      "autonomy runner status failed: socket /home/rossovia/missions/m1/runner.sock is unreachable";
+    const items = buildWorkItemProjection({
+      generatedAt: "2026-08-18T10:00:00Z",
+      complete: false,
+      projects: [m1Project],
+      errors: [{ scope: "runner", source: statusPath, message: statusError }],
+      runners: [{
+        live: null,
+        sourcePath: statusPath,
+        freshness: { kind: "cached", sourceUpdatedAt: "2026-08-17T09:00:00Z" },
+        status: {
+          runnerId: "status-failed-runner",
+          missionId: "m1",
+          state: "interrupted",
+          updatedAt: "2026-08-17T09:00:00Z",
+        },
+        binding: {
+          kind: "project-mission",
+          projectKey: "registered:skills",
+          missionId: "m1",
+        },
+        liveError: statusError,
+      }],
+      attention: [{
+        priority: "warning",
+        code: "runner-reachability-unverified",
+        summary:
+          "Mission m1 runner reachability could not be verified from this observer; cached state does not prove either a live or stopped carrier",
+        runnerId: "status-failed-runner",
+        projectKey: "registered:skills",
+        missionId: "m1",
+        source: statusPath,
+      }],
+    } as never).items;
+    const item = items.find(
+      (candidate) => candidate.runnerId === "status-failed-runner",
+    )!;
+
+    expect(items.filter((candidate) => candidate.runnerId === "status-failed-runner"))
+      .toHaveLength(1);
+    expect(item.anomalyDetail!.rawErrors).toHaveLength(1);
+    expect(item.anomalyDetail!.rawErrors[0]).toMatchObject({
+      stage: "runner-source",
+      raw: statusError,
+    });
+    // The status failure keeps the standing unknown: no fake live or stopped
+    // claim is made, and the raw failure is part of the standing's meaning.
+    expect(item.anomalyDetail!.evidenceStanding).toMatchObject({
+      freshnessKind: "unverified",
+    });
+    expect(item.anomalyDetail!.evidenceStanding.meaning).toContain("未知");
+    expect(item.anomalyDetail!.evidenceStanding.meaning).toContain(statusError);
+  });
+});
+
 describe("Workbench overview raw source-error projection", () => {
   const gonePath = "/workspace/skills-wt/gone";
   const rawGitMessage = `fatal: not a git repository: '${gonePath}'`;

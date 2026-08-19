@@ -13,6 +13,7 @@ import type {
   AttentionItem,
   MissionProjection,
   ProjectProjection,
+  ProjectionError,
   RunnerProjection,
   WorkbenchSnapshot,
 } from "./projection";
@@ -838,13 +839,14 @@ function runnerEvidenceStanding(
   sourceUnavailableReason?: string,
 ): AnomalyEvidenceStandingProjection {
   if (sourceUnavailableReason !== undefined) {
+    const liveConfirmed = runner?.live === true;
     return {
       freshnessKind: "unverified",
       observedAt: generatedAt,
       sourceUpdatedAt: runner?.status.updatedAt ?? null,
-      meaning:
-        `runner 状态/活动来源读取失败（${sourceUnavailableReason}）；`
-        + "live/stopped 与活动内容保持未知，缓存状态仅供检查。",
+      meaning: liveConfirmed
+        ? `载体状态已确认 live，但活动/现场来源读取失败（${sourceUnavailableReason}）；活动内容保持未知，不能确证其正在执行的内容。`
+        : `runner 状态/活动来源读取失败（${sourceUnavailableReason}）；live/stopped 与活动内容保持未知，缓存状态仅供检查。`,
     };
   }
   if (runner === undefined) {
@@ -1148,11 +1150,68 @@ function attentionWorkItems(
       standalone.push(item);
     }
   }
+  // Runner-scope read failures (live activity/status) belong on that runner's
+  // single anomaly scene even when its state produced no attention facet: a
+  // live running bound runner whose activity source failed must not keep
+  // projecting as clean agent work while the raw error stays invisible. Only
+  // a live carrier reaches this path without a facet — non-live status
+  // failures already get a reachability attention item, and a deliberately
+  // stopped cache record is not turned into a synthetic anomaly.
+  for (const runner of snapshot.runners) {
+    const runnerId = runner.status.runnerId;
+    if (runnerId === undefined || runnerId === "") continue;
+    if (runner.live !== true) continue;
+    if (!runnerHasSourceError(snapshot, runner)) continue;
+    const group = runnerGroups.get(runnerId) ?? [];
+    if (group.length === 0) {
+      group.push(runnerSourceErrorFacet(runner));
+    }
+    runnerGroups.set(runnerId, group);
+  }
   return [
     ...[...runnerGroups.entries()].map(([runnerId, group]) =>
       runnerAnomalyWorkItem(snapshot, runnerId, group)),
     ...standalone.map((item, index) => attentionItemWorkItem(snapshot, item, index)),
   ];
+}
+
+function runnerHasSourceError(
+  snapshot: WorkItemSnapshot,
+  runner: LiveRunnerProjection,
+): boolean {
+  return (snapshot.errors ?? []).some(
+    (error: ProjectionError) =>
+      error.scope === "runner" && error.source === runner.sourcePath,
+  );
+}
+
+/**
+ * Synthetic observation facet for a live runner whose activity/status source
+ * failed to read. It never guesses a state: it only records that the runner's
+ * live source is unreadable, keeps the runner cache identity as the scene's
+ * dedup key, and leaves the verbatim failure to the scene's rawErrors.
+ */
+function runnerSourceErrorFacet(runner: LiveRunnerProjection): AttentionItem {
+  // Only a present, non-empty runner id is assigned to the optional
+  // runnerId property (exactOptionalPropertyTypes); the merge loop already
+  // guarantees the id is valid before the facet is created, so this guard is
+  // type-only and never changes the projected scene.
+  const runnerId = runner.status.runnerId;
+  return {
+    priority: "warning",
+    code: "runner-lineage-unavailable",
+    summary:
+      `Mission ${runner.status.missionId} runner 活动/状态来源读取失败；`
+      + "live 状态不能确证正在执行的内容，缓存状态仅供检查。",
+    ...(runnerId === undefined || runnerId === ""
+      ? {}
+      : { runnerId }),
+    missionId: runner.status.missionId,
+    ...(runner.binding.kind === "project-mission"
+      ? { projectKey: runner.binding.projectKey }
+      : {}),
+    source: runner.sourcePath,
+  };
 }
 
 function runnerFreshness(
@@ -1235,6 +1294,11 @@ function runnerWorkItems(
       || runner.status.state !== "running"
       || runnerId === null
     ) return [];
+    // A runner whose live activity/status source failed to read is projected
+    // as its one anomaly scene (raw error, unverified activity standing)
+    // instead of a clean "Agent 正在执行" agent-work item that would hide the
+    // failure from the overview.
+    if (runnerHasSourceError(snapshot, runner)) return [];
     const activity = runner.activity !== null
       && typeof runner.activity === "object"
       ? runner.activity as Record<string, unknown>
