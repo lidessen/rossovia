@@ -216,7 +216,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <div class="conversation-feed-inner" id="conversation-feed-inner"></div>
           </div>
 
-          <aside class="conversation-context" aria-label="对话连接与上下文">
+          <aside class="conversation-context" id="conversation-context" aria-label="对话连接与上下文">
             <section class="context-section">
               <p class="eyebrow">对话连接</p>
               <div class="context-connection">

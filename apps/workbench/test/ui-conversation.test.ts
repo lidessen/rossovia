@@ -351,6 +351,11 @@ describe("conversation empty state and desktop context layering", () => {
   test("separates the desktop reading column from connection/context and keeps next-step guidance honest", () => {
     expect(html).toContain('id="conversation-feed-inner"');
     expect(html).toContain('class="conversation-context"');
+    // The context renderer targets the aside by id; the id must exist so the
+    // connection, supervision, and next-step updates apply instead of the
+    // renderer returning early on a null lookup.
+    expect(html).toContain('<aside class="conversation-context" id="conversation-context"');
+    expect(app).toContain('$("#conversation-context")');
     expect(html).toContain('id="conversation-composer-live"');
     expect(app).toContain("renderConversationContext()");
     expect(app).toContain("conversationNextStep");
@@ -361,7 +366,7 @@ describe("conversation empty state and desktop context layering", () => {
     expect(styles).toMatch(
       /\.conversation-feed-inner\s*\{[^}]*margin:\s*0 auto;[^}]*max-width:\s*820px;/s,
     );
-    expect(styles).toMatch(/\\.conversation-context\s*\{[^}]*display:\s*none;/s);
+    expect(styles).toMatch(/\.conversation-context\s*\{[^}]*display:\s*none;/s);
     expect(styles).toMatch(
       /@media \(min-width: 1280px\)[\s\S]*?\.conversation-context\s*\{[^}]*display:\s*block;/s,
     );

@@ -352,9 +352,9 @@ describe("Workbench responsive layout", () => {
   test("keeps the mobile first screen compact: header and boundary copy out of the feed, composer stable", () => {
     const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
 
-    expect(mobile).toMatch(/\\.conversation-header p\s*\{[^}]*display:\s*none;/s);
-    expect(mobile).toMatch(/\\.conversation-boundary\s*\{[^}]*display:\s*none;/s);
-    expect(mobile).toMatch(/\\.conversation-context\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).toMatch(/\.conversation-header p\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).toMatch(/\.conversation-boundary\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).toMatch(/\.conversation-context\s*\{[^}]*display:\s*none;/s);
     expect(mobile).toMatch(
       /\.conversation-example-list\s*\{[^}]*grid-template-columns:\s*1fr;/s,
     );
