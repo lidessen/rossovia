@@ -78,8 +78,12 @@ describe("observation peek visibility for anomaly detail", () => {
     // The served UI (source checkout and single-file binary) reads the
     // embedded copy; it must be byte-identical to the edited source so the
     // fix is actually delivered to the receiver.
-    expect(UI_ASSETS["styles.css"]).toBe(stylesCss);
-    expect(contextRule(UI_ASSETS["styles.css"], "observation")).toContain(
+    const embeddedStylesCss = UI_ASSETS["styles.css"];
+    if (embeddedStylesCss === undefined) {
+      throw new Error("missing embedded styles.css asset");
+    }
+    expect(embeddedStylesCss).toBe(stylesCss);
+    expect(contextRule(embeddedStylesCss, "observation")).toContain(
       ":not(.anomaly-detail)",
     );
   });
