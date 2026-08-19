@@ -2255,6 +2255,55 @@ describe("Workbench overview runner anomaly dedup", () => {
     expect(items.filter((item) => item.runnerId === "8fa671f0")).toHaveLength(1);
   });
 
+  test("retains the raw runner-source error and keeps evidence standing unverified when activity/lineage is unavailable", () => {
+    const activityError =
+      "cannot read Mission activity: socket /home/rossovia/missions/legacy/runner.sock is unreachable";
+    const items = buildWorkItemProjection({
+      ...runnerSceneSnapshot,
+      errors: [{
+        scope: "runner",
+        source: runnerStatusPath,
+        message: activityError,
+      }],
+    } as never).items;
+    const item = items.find((candidate) => candidate.runnerId === "8fa671f0")!;
+
+    expect(item.anomalyDetail!.rawErrors).toHaveLength(1);
+    expect(item.anomalyDetail!.rawErrors[0]).toMatchObject({
+      stage: "runner-source",
+      raw: activityError,
+    });
+    expect(item.anomalyDetail!.rawErrors[0]!.normalized).toBe(
+      "该错误没有可识别的规范模式；投影保留原文，不推断阶段语义。",
+    );
+    expect(item.anomalyDetail!.rawErrors[0]!.impact).toContain(
+      "runner 状态或活动来源无法读取或校验",
+    );
+    // The scene must not look over-determined by the cached status read:
+    // activity/lineage is unavailable, so the standing stays unknown.
+    expect(item.anomalyDetail!.evidenceStanding).toMatchObject({
+      freshnessKind: "unverified",
+      observedAt: "2026-08-18T10:00:00Z",
+      sourceUpdatedAt: "2026-08-17T09:00:00Z",
+    });
+    expect(item.anomalyDetail!.evidenceStanding.meaning).toContain("未知");
+  });
+
+  test("does not join unrelated source errors into a runner scene", () => {
+    const items = buildWorkItemProjection({
+      ...runnerSceneSnapshot,
+      errors: [{
+        scope: "git",
+        source: "/workspace/skills-wt/gone",
+        message: "fatal: not a git repository: '/workspace/skills-wt/gone'",
+      }],
+    } as never).items;
+    const item = items.find((candidate) => candidate.runnerId === "8fa671f0")!;
+
+    expect(item.anomalyDetail!.rawErrors).toEqual([]);
+    expect(item.anomalyDetail!.evidenceStanding.freshnessKind).toBe("cached");
+  });
+
   test("keeps two different runner scenes as two distinct items without false merging", () => {
     const secondStatusPath = "/home/rossovia/missions/other/runner-status.json";
     const snapshot = {

@@ -835,7 +835,18 @@ function anomalyNextSteps(input: {
 function runnerEvidenceStanding(
   runner: LiveRunnerProjection | undefined,
   generatedAt: string,
+  sourceUnavailableReason?: string,
 ): AnomalyEvidenceStandingProjection {
+  if (sourceUnavailableReason !== undefined) {
+    return {
+      freshnessKind: "unverified",
+      observedAt: generatedAt,
+      sourceUpdatedAt: runner?.status.updatedAt ?? null,
+      meaning:
+        `runner 状态/活动来源读取失败（${sourceUnavailableReason}）；`
+        + "live/stopped 与活动内容保持未知，缓存状态仅供检查。",
+    };
+  }
   if (runner === undefined) {
     return {
       freshnessKind: "observed-at-build",
@@ -915,6 +926,17 @@ function runnerAnomalyWorkItem(
   const runner = snapshot.runners.find(
     (candidate) => candidate.status.runnerId === runnerId,
   );
+  // Runner-scope read failures (live activity/lineage could not be read or
+  // validated) stay attributable to this runner's exact source path. The raw
+  // error is retained verbatim so the scene never looks over-determined by a
+  // successful status read alone.
+  const sourcePath = runner?.sourcePath ?? primary.source;
+  const runnerSourceErrors = snapshot.errors.filter(
+    (error) => error.scope === "runner" && error.source === sourcePath,
+  );
+  const runnerSourceUnavailable = runnerSourceErrors.length === 0
+    ? undefined
+    : runnerSourceErrors.map((error) => error.message).join("; ");
   const binding = runnerBindingStanding(runner, group);
   const bound = binding.standing === "project-mission";
   const projectKey = bound
@@ -991,7 +1013,7 @@ function runnerAnomalyWorkItem(
     anomalyDetail: {
       scene: {
         kind: "runner-cache",
-        sourcePath: runner?.sourcePath ?? primary.source,
+        sourcePath,
         relatedPaths: sources,
       },
       dedup: {
@@ -1004,8 +1026,13 @@ function runnerAnomalyWorkItem(
         summary: item.summary,
         source: item.source,
       })),
-      rawErrors: [],
-      evidenceStanding: runnerEvidenceStanding(runner, snapshot.generatedAt),
+      rawErrors: runnerSourceErrors.map((error) =>
+        projectAnomalyRawError(error.scope, error.message)),
+      evidenceStanding: runnerEvidenceStanding(
+        runner,
+        snapshot.generatedAt,
+        runnerSourceUnavailable,
+      ),
       binding,
       nextSteps: anomalyNextSteps({
         code: primary.code,
