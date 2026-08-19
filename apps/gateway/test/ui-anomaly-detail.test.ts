@@ -5,6 +5,7 @@ import { UI_ASSETS } from "../src/assets.generated";
 
 const gatewayRoot = resolve(import.meta.dir, "..");
 const stylesCss = readFileSync(join(gatewayRoot, "ui", "styles.css"), "utf8");
+const appJs = readFileSync(join(gatewayRoot, "ui", "app.js"), "utf8");
 
 /**
  * Extract one full peek-context rule (selector + declaration block) from the
@@ -86,5 +87,18 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(contextRule(embeddedStylesCss, "observation")).toContain(
       ":not(.anomaly-detail)",
     );
+  });
+
+  test("scan surfaces keep summaries compact and preserve anomaly context", () => {
+    expect(stylesCss).toContain(".task-view .work-item-body > span");
+    expect(stylesCss).toContain(".conversation-context .context-section:first-child");
+    expect(stylesCss).toContain(".conversation-empty-standing {\n  display: none !important;");
+    expect(stylesCss).toContain(".conversation-boundary {\n    display: none !important;");
+    expect(stylesCss).not.toContain(".conversation-empty-standing,\n.conversation-boundary");
+    expect(appJs).toContain('data-work-item-kind="${escapeHtml(text(item.kind, "work"))}"');
+    expect(appJs).toContain("renderAnomalyDetail(anomaly, item)");
+    expect(appJs).toContain('class="project-group-disclosure"');
+    expect(stylesCss).toContain(".project-group-disclosure");
+    expect(UI_ASSETS["app.js"]).toBe(appJs);
   });
 });
