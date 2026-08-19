@@ -449,19 +449,40 @@ async function buildLiveSnapshot(
     ...runner,
     anchorMigrationSource: projectAnchorMigrationSource(snapshot, runner),
   }));
-  const activityErrors = runners.flatMap((runner) => {
+  // Runner-scope read failures join the snapshot as attributable errors so
+  // the projection can fold them into that runner's single anomaly scene: an
+  // unreadable live activity AND a failed live status read are both raw
+  // evidence, never a silent fallback to the cached record.
+  const runnerSourceErrors = runners.flatMap((runner) => {
+    const errors: Array<{
+      scope: "runner";
+      source: string;
+      message: string;
+    }> = [];
     const activity = runner.activity;
     if (
-      activity === null
-      || typeof activity !== "object"
-      || !("error" in activity)
-      || typeof activity.error !== "string"
-    ) return [];
-    return [{
-      scope: "runner" as const,
-      source: runner.sourcePath,
-      message: activity.error,
-    }];
+      activity !== null
+      && typeof activity === "object"
+      && "error" in activity
+      && typeof activity.error === "string"
+    ) {
+      errors.push({
+        scope: "runner",
+        source: runner.sourcePath,
+        message: activity.error,
+      });
+    }
+    if (runner.live === null && "liveError" in runner) {
+      const liveError = runner.liveError;
+      if (typeof liveError === "string") {
+        errors.push({
+          scope: "runner",
+          source: runner.sourcePath,
+          message: liveError,
+        });
+      }
+    }
+    return errors;
   });
   const taskErrors = taskSource.standing === "available"
     ? []
@@ -483,14 +504,14 @@ async function buildLiveSnapshot(
     ...snapshot,
     complete:
       snapshot.complete
-      && activityErrors.length === 0
+      && runnerSourceErrors.length === 0
       && taskSource.standing === "available",
     runners,
     attention: [
       ...refineLiveRunnerAttention(snapshot.attention, runners),
       ...taskAttention,
     ],
-    errors: [...snapshot.errors, ...activityErrors, ...taskErrors],
+    errors: [...snapshot.errors, ...runnerSourceErrors, ...taskErrors],
   };
   return {
     ...liveSnapshot,
@@ -838,6 +859,9 @@ export function refineLiveRunnerAttention(
         code: "runner-reachability-unverified",
         summary:
           `Mission ${runner.status.missionId} runner reachability could not be verified from this observer; cached state does not prove either a live or stopped carrier`,
+        ...(runner.status.runnerId === undefined
+          ? {}
+          : { runnerId: runner.status.runnerId }),
         ...(runner.binding.kind === "project-mission"
           ? { projectKey: runner.binding.projectKey }
           : {}),
@@ -855,6 +879,9 @@ export function refineLiveRunnerAttention(
       code: "runner-unreachable",
       summary:
         `Mission ${runner.status.missionId} runner is unreachable; ${runner.status.state} is cached state only`,
+      ...(runner.status.runnerId === undefined
+        ? {}
+        : { runnerId: runner.status.runnerId }),
       ...(runner.binding.kind === "project-mission"
         ? { projectKey: runner.binding.projectKey }
         : {}),

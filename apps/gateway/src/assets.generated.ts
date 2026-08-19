@@ -191,7 +191,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <p class="eyebrow">Conversation entry</p>
             <h2 id="conversation-heading">对话</h2>
             <p id="conversation-summary">
-              用自然语言发布与纠正任务、观察执行；从这里精确中断一条回复或停止一个已观察的执行载体。
+              发布与纠正任务、观察执行；从这里精确中断回复或停止已观察的执行载体。
             </p>
           </div>
           <div class="conversation-standing">
@@ -211,23 +211,75 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
 
         <div class="conversation-notices" id="conversation-notices" aria-live="polite"></div>
 
-        <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流"></div>
+        <div class="conversation-body">
+          <div class="conversation-feed" id="conversation-feed" role="log" aria-label="对话事件流">
+            <div class="conversation-feed-inner" id="conversation-feed-inner"></div>
+          </div>
 
-        <form class="conversation-composer" id="conversation-composer-form">
-          <label for="conversation-composer-text">发给 Agent 系统</label>
+          <aside class="conversation-context" id="conversation-context" aria-label="对话连接与上下文">
+            <section class="context-section">
+              <p class="eyebrow">对话连接</p>
+              <div class="context-connection">
+                <span class="connection-mark" data-conversation-context-mark aria-hidden="true"></span>
+                <div>
+                  <strong data-conversation-context-label>未连接</strong>
+                  <code data-conversation-context-id>—</code>
+                </div>
+              </div>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">监督关系</p>
+              <div class="supervision-relation">
+                <div>
+                  <span>你</span>
+                  <strong id="conversation-context-supervisor">—</strong>
+                </div>
+                <div class="relation-line" aria-hidden="true">
+                  <i></i>
+                  <span>监督</span>
+                </div>
+                <div>
+                  <span>Agent 系统</span>
+                  <strong id="conversation-context-subject">—</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">下一步</p>
+              <p class="context-next" id="conversation-context-next">发送第一条消息开始。</p>
+            </section>
+
+            <section class="context-section">
+              <p class="eyebrow">浏览器边界</p>
+              <p class="context-boundary-note">
+                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
+                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+              </p>
+            </section>
+          </aside>
+        </div>
+
+        <form class="conversation-composer" id="conversation-composer-form" data-connection="unavailable">
+          <div class="composer-heading">
+            <span class="composer-live" id="conversation-composer-live" aria-hidden="true"></span>
+            <label for="conversation-composer-text">发给 Agent 系统</label>
+            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+          </div>
           <textarea
             id="conversation-composer-text"
             rows="3"
             placeholder="说你想完成或纠正的事。Enter 发送，Shift+Enter 换行。"
           ></textarea>
           <div class="composer-bar">
-            <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
             <button
               class="conversation-control"
               id="conversation-tool-interrupt"
               type="button"
               disabled
-              title="工具中断不属于当前 conversation 运行时；它不会伪装成可用控制。"
+              aria-disabled="true"
+              title="工具中断不属于当前 conversation 运行时：该帧会被协议明确拒绝，因此不会伪装成可用控制。可用的精确控制是“中断这条回复”与“停止该工作”，两者都只作用于精确目标。"
             >
               工具中断 · 运行时不支持
             </button>
@@ -239,8 +291,8 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-          canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
+          刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 
@@ -319,6 +371,26 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
                 <h3 id="task-view-heading">当前视图</h3>
               </div>
               <strong id="task-view-count">—</strong>
+            </div>
+            <div class="task-locator" id="task-locator" hidden>
+              <label class="task-locator-field">
+                <span>关键词</span>
+                <input id="task-locator-keyword" type="search" placeholder="标题 / 目标 / 纠正…" autocomplete="off" />
+              </label>
+              <label class="task-locator-field">
+                <span>项目</span>
+                <select id="task-locator-project" aria-label="按项目收窄任务">
+                  <option value="">全部项目</option>
+                </select>
+              </label>
+              <label class="task-locator-field">
+                <span>状态</span>
+                <select id="task-locator-status" aria-label="按状态收窄任务">
+                  <option value="">全部状态</option>
+                </select>
+              </label>
+              <button class="text-action" id="task-locator-clear" type="button">清除过滤</button>
+              <p class="task-locator-note" id="task-locator-note" role="status"></p>
             </div>
             <div class="work-item-list" id="task-view-list"></div>
           </section>
@@ -439,6 +511,23 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <div><dt>下一责任方</dt><dd id="peek-next-actor">—</dd></div>
             <div><dt>证据状态</dt><dd id="peek-freshness">—</dd></div>
           </dl>
+        </section>
+
+        <section class="anomaly-detail" id="anomaly-detail" aria-labelledby="anomaly-detail-heading" hidden>
+          <header>
+            <p class="eyebrow">Anomaly evidence</p>
+            <h3 id="anomaly-detail-heading">异常现场与证据</h3>
+            <p>只读投影：保留原始证据，不做恢复或绑定推断。</p>
+          </header>
+          <dl class="local-task-facts">
+            <div><dt>来源现场</dt><dd id="anomaly-scene">—</dd></div>
+            <div><dt>去重依据</dt><dd id="anomaly-dedup">—</dd></div>
+            <div><dt>证据状态</dt><dd id="anomaly-evidence-standing">—</dd></div>
+            <div><dt>绑定状态</dt><dd id="anomaly-binding">—</dd></div>
+          </dl>
+          <div class="anomaly-errors" id="anomaly-errors"></div>
+          <div class="anomaly-facets" id="anomaly-facets"></div>
+          <div class="anomaly-next-steps" id="anomaly-next-steps"></div>
         </section>
 
         <section class="task-create-panel" id="task-create-panel" hidden>
@@ -4575,6 +4664,89 @@ body[data-projection-state="loading"] .workbench-shell {
   color: var(--paper-light);
 }
 
+.task-locator {
+  align-items: end;
+  display: grid;
+  gap: 0.45rem 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  padding: 0.85rem 0 0.2rem;
+}
+
+.task-locator-field {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.62rem;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.task-locator-field span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  text-transform: uppercase;
+}
+
+.task-locator input,
+.task-locator select {
+  background: var(--paper-light);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  color: inherit;
+  font-size: 0.68rem;
+  min-height: 30px;
+  padding: 0.3rem 0.4rem;
+  width: 100%;
+}
+
+.task-locator-note {
+  color: var(--ochre);
+  font-size: 0.62rem;
+  grid-column: 1 / -1;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.task-locator-note:empty {
+  display: none;
+}
+
+.task-locator-empty {
+  background: var(--paper-deep);
+  border-left: 3px solid var(--line);
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.task-locator-empty[data-standing="source-unavailable"] {
+  border-left-color: var(--ochre);
+}
+
+.task-locator-empty p {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.task-locator-empty p:first-child {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.task-locator-conditions code {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.task-locator-empty .text-action {
+  justify-self: start;
+  margin-top: 0.2rem;
+}
+
 .unified-header-actions {
   align-items: flex-end;
   display: flex;
@@ -4842,7 +5014,7 @@ body[data-peek-open="true"]::after {
   margin: 0.2rem 0 0;
 }
 
-body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary) {
+body[data-peek-context="observation"] .action-surface > :not(.peek-bar):not(.peek-summary):not(.anomaly-detail) {
   display: none !important;
 }
 
@@ -5749,13 +5921,277 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin-right: 0.5rem;
 }
 
+.conversation-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
 .conversation-feed {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1rem 1.4rem 1.4rem;
   scroll-behavior: smooth;
+}
+
+.conversation-feed-inner {
+  margin: 0 auto;
+  max-width: 820px;
+  min-width: 0;
+}
+
+.conversation-context {
+  background: var(--paper-deep);
+  border-left: 1px solid var(--line);
+  display: none;
+  flex: 0 0 264px;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem 1.05rem 1.2rem;
+}
+
+.context-section {
+  border-bottom: 1px solid var(--line-light);
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.context-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.context-section .eyebrow {
+  margin-bottom: 0.45rem;
+}
+
+.context-connection {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.context-connection > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.context-connection strong {
+  font-size: 0.74rem;
+}
+
+.context-connection code {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+.context-connection .connection-mark[data-connection="live"] {
+  background: var(--green);
+}
+
+.context-connection .connection-mark[data-connection="connecting"] {
+  background: var(--ochre);
+}
+
+.context-connection .connection-mark[data-connection="disconnected"],
+.context-connection .connection-mark[data-connection="unavailable"] {
+  background: var(--red);
+}
+
+.context-section .supervision-relation {
+  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+}
+
+.context-section .supervision-relation strong {
+  font-size: 0.78rem;
+}
+
+.context-next {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.context-boundary-note {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.55;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1280px) {
+  .conversation-context {
+    display: block;
+  }
+}
+
+.conversation-empty {
+  background: var(--paper);
+  border: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.15rem 1.2rem 1.2rem;
+}
+
+.conversation-empty-heading {
+  align-items: start;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: 42px minmax(0, 1fr);
+}
+
+.conversation-empty-mark {
+  align-items: center;
+  border: 1px solid var(--ink);
+  display: flex;
+  font-family: var(--serif);
+  font-size: 1.3rem;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.conversation-empty-mark::before {
+  content: "R";
+}
+
+.conversation-empty-heading h3 {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+.conversation-empty-heading p:not(.eyebrow) {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-empty-standing {
+  border-left: 3px solid var(--line);
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.conversation-empty[data-connection="live"] .conversation-empty-standing {
+  border-left-color: var(--green);
+}
+
+.conversation-empty[data-connection="connecting"] .conversation-empty-standing {
+  border-left-color: var(--ochre);
+}
+
+.conversation-empty[data-connection="disconnected"] .conversation-empty-standing,
+.conversation-empty[data-connection="unavailable"] .conversation-empty-standing {
+  border-left-color: var(--red);
+}
+
+.conversation-empty-standing > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.conversation-empty-standing > strong {
+  font-size: 0.78rem;
+}
+
+.conversation-empty-standing > small {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.conversation-empty-standing > code {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  margin-top: 0.2rem;
+  overflow-wrap: anywhere;
+}
+
+.conversation-examples {
+  border-top: 1px solid var(--line-light);
+  padding-top: 0.85rem;
+}
+
+.conversation-examples-label {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.conversation-example-list {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.conversation-example-list button {
+  align-items: start;
+  background: var(--paper-light);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+}
+
+.conversation-example-list button:hover {
+  border-color: var(--ink);
+}
+
+.conversation-example-list strong {
+  font-size: 0.7rem;
+}
+
+.conversation-example-list span {
+  color: var(--ink-soft);
+  font-size: 0.64rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.layer-chip {
+  border: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  padding: 0.14rem 0.32rem;
+  text-transform: uppercase;
+}
+
+.turn-next-step {
+  border-top: 1px dashed var(--line);
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0.6rem 0 0;
+  overflow-wrap: anywhere;
+  padding-top: 0.5rem;
 }
 
 .conversation-item {
@@ -6197,10 +6633,36 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .conversation-composer label {
-  color: var(--ink-faint);
-  font-size: 0.62rem;
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.composer-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.composer-live {
+  background: var(--ink-faint);
+  height: 8px;
+  width: 8px;
+}
+
+.composer-live[data-connection="live"] {
+  background: var(--green);
+}
+
+.composer-live[data-connection="connecting"] {
+  background: var(--ochre);
+}
+
+.composer-live[data-connection="disconnected"],
+.composer-live[data-connection="unavailable"] {
+  background: var(--red);
 }
 
 .conversation-composer textarea {
@@ -6228,8 +6690,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
 .composer-hint {
   color: var(--ink-faint);
-  font-size: 0.68rem;
-  margin-right: auto;
+  font-size: 0.66rem;
+  margin-left: auto;
+}
+
+.composer-bar .primary-action {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .conversation-composer .primary-action {
@@ -6981,7 +7448,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .conversation-header p {
-    font-size: 0.72rem;
+    display: none;
   }
 
   .conversation-standing {
@@ -7022,8 +7489,6 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .composer-hint {
     align-self: center;
-    grid-column: 1 / -1;
-    grid-row: 1;
   }
 
   .conversation-composer .primary-action {
@@ -7033,18 +7498,54 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .conversation-composer .conversation-control {
     grid-column: 1;
-    grid-row: 2;
+    grid-row: 1;
     min-height: 44px;
     text-align: left;
   }
 
   .conversation-composer .primary-action {
     grid-column: 2;
-    grid-row: 2;
+    grid-row: 1;
+  }
+
+  .conversation-context {
+    display: none;
   }
 
   .conversation-boundary {
+    display: none;
     padding: 0.55rem 0.85rem 0.7rem;
+  }
+
+  .conversation-empty {
+    gap: 0.7rem;
+    padding: 0.85rem 0.8rem 0.95rem;
+  }
+
+  .conversation-empty-heading {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .conversation-empty-mark {
+    font-size: 1.05rem;
+    height: 34px;
+    width: 34px;
+  }
+
+  .conversation-empty-heading h3 {
+    font-size: 1rem;
+  }
+
+  .conversation-empty-heading p:not(.eyebrow) {
+    font-size: 0.68rem;
+  }
+
+  .conversation-example-list {
+    grid-template-columns: 1fr;
+  }
+
+  .conversation-example-list button {
+    min-height: 44px;
   }
 
   .conversation-carrier footer {
@@ -7057,6 +7558,118 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     min-height: 44px;
     width: 100%;
   }
+}
+
+.anomaly-detail {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem 1rem;
+}
+
+.anomaly-detail > header {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.anomaly-detail > header h3 {
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.anomaly-detail > header p {
+  color: var(--ink-faint);
+  font-size: 0.6rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.anomaly-errors,
+.anomaly-facets,
+.anomaly-next-steps {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.anomaly-errors > .field-heading,
+.anomaly-facets > .field-heading,
+.anomaly-next-steps > .field-heading {
+  margin: 0;
+}
+
+.anomaly-error,
+.anomaly-facet,
+.anomaly-step {
+  background: var(--paper-light);
+  border: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+}
+
+.anomaly-error {
+  border-left: 3px solid var(--red);
+}
+
+.anomaly-facet {
+  border-left: 3px solid var(--ochre);
+}
+
+.anomaly-step {
+  border-left: 3px solid var(--green);
+}
+
+.anomaly-step[data-supported="false"] {
+  border-left-color: var(--ink-faint);
+}
+
+.anomaly-error > strong,
+.anomaly-facet > strong,
+.anomaly-step > strong {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.anomaly-error > p {
+  font-size: 0.66rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.anomaly-error > small,
+.anomaly-facet > small,
+.anomaly-step > small {
+  color: var(--ink-faint);
+  font-size: 0.59rem;
+  line-height: 1.45;
+}
+
+.anomaly-facet > span {
+  color: var(--ink);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.anomaly-error pre {
+  background: var(--paper-deep);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+  padding: 0.4rem;
+  white-space: pre-wrap;
+}
+
+.anomaly-step .text-action {
+  justify-self: start;
 }
 `,
   "app.js": `import {
@@ -7450,6 +8063,37 @@ export function conversationWorkControlFrame(target, control = "stop") {
   return { type: "work.control", turnId, actionId, carrierId, control };
 }
 
+/**
+ * One pure composer standing projection. The factual gates stay separate
+ * from the copy: only a live connection with a non-empty (trimmed) draft is
+ * ever sendable. Connecting, disconnected, unavailable, or any unclassified
+ * connection standing stays blocked with its own reason copy, and a blank
+ * draft is blocked even while live. This only decides the affordance and its
+ * visible reason; the transport/frame authority is untouched.
+ */
+export function conversationComposerStanding(connection, draft) {
+  const live = connection === "live";
+  const value = typeof draft === "string" ? draft : "";
+  const empty = value.trim() === "";
+  if (!live) {
+    const standing = connection === "connecting"
+      || connection === "disconnected"
+      || connection === "unavailable"
+      ? connection
+      : "unknown";
+    const status = {
+      connecting: "对话连接中：暂时不能发送；草稿保留在本地，不会自动重发。",
+      disconnected: "对话连接已断开：草稿保留，恢复连接前不能发送；不会自动重发。",
+      unavailable: "对话连接不可用：草稿保留，不能发送；不会自动重发。",
+    }[standing] || "对话连接状态未知：不发送；草稿保留，不会自动重发。";
+    return { sendable: false, gate: "connection", standing, status };
+  }
+  if (empty) {
+    return { sendable: false, gate: "empty", standing: "empty", status: "" };
+  }
+  return { sendable: true, gate: "ready", standing: "live", status: "" };
+}
+
 /** Server frames are validated enough to render without trusting the wire. */
 export function parseConversationServerFrame(raw) {
   if (typeof raw !== "string") return null;
@@ -7550,6 +8194,217 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     : null;
 }
 
+/**
+ * Task-page locator: keyword, project, and status narrowing over the existing
+ * read-only work-item projection. Every value comes from fields already
+ * present on projected items (title/summary/context and, for Workbench-owned
+ * tasks, the retained task objective, acceptance, todos, correction
+ * statements, and result summaries). No Task schema, lifecycle, project, or
+ * authority change is introduced; the locator is pure presentation.
+ */
+const TASK_LOCATOR_LIFECYCLE_ORDER = [
+  "open",
+  "in-progress",
+  "waiting",
+  "paused",
+  "blocked",
+  "verifying",
+  "settled",
+  "invalidated",
+];
+
+function taskLocatorListText(task, key) {
+  const entries = task[key];
+  if (!Array.isArray(entries)) return "";
+  return entries
+    .filter((entry) => typeof entry === "string")
+    .join(" ");
+}
+
+function taskLocatorObjectTexts(value) {
+  const texts = [];
+  if (!value || typeof value !== "object") return texts;
+  for (const key of ["title", "objective", "statement", "summary"]) {
+    const entry = value[key];
+    if (typeof entry === "string" && entry !== "") texts.push(entry);
+  }
+  return texts;
+}
+
+/**
+ * The normalized searchable text of one projected item, lowercased. It only
+ * mirrors existing projection fields; an unavailable task source simply
+ * yields the fields that were still projected.
+ */
+export function taskLocatorSearchText(item) {
+  const texts = [];
+  if (item && typeof item === "object") {
+    for (const key of ["title", "summary", "context"]) {
+      const value = item[key];
+      if (typeof value === "string" && value !== "") texts.push(value);
+    }
+    const taskDetail = item.taskDetail;
+    const task = taskDetail && typeof taskDetail === "object"
+      ? taskDetail.task
+      : undefined;
+    if (task && typeof task === "object") {
+      for (const key of ["title", "objective"]) {
+        const value = task[key];
+        if (typeof value === "string" && value !== "") texts.push(value);
+      }
+      for (const key of ["acceptance", "todos"]) {
+        const value = taskLocatorListText(task, key);
+        if (value !== "") texts.push(value);
+      }
+      for (const key of ["corrections", "resultClaims"]) {
+        const entries = task[key];
+        if (Array.isArray(entries)) {
+          for (const entry of entries) {
+            texts.push(...taskLocatorObjectTexts(entry));
+          }
+        }
+      }
+    }
+  }
+  return texts.join(" ").toLowerCase();
+}
+
+/**
+ * One locator predicate over existing fields only: trimmed case-insensitive
+ * keyword substring on the projected searchable text, exact projectKey, and
+ * exact lifecycle. An empty locator matches everything.
+ */
+export function workItemMatchesTaskLocator(item, locator) {
+  const keyword = typeof locator?.keyword === "string"
+    ? locator.keyword.trim().toLowerCase()
+    : "";
+  if (keyword !== "" && !taskLocatorSearchText(item).includes(keyword)) {
+    return false;
+  }
+  const project = typeof locator?.project === "string" && locator.project !== ""
+    ? locator.project
+    : null;
+  if (project !== null && item?.projectKey !== project) return false;
+  const status = typeof locator?.status === "string" && locator.status !== ""
+    ? locator.status
+    : null;
+  if (status !== null && item?.lifecycle !== status) return false;
+  return true;
+}
+
+/**
+ * Select options derived from the current item list: only project keys and
+ * lifecycle values that actually appear, each with the number of items. The
+ * project label comes from the caller (the snapshot project name); statuses
+ * are ordered by the existing lifecycle vocabulary.
+ */
+export function taskLocatorOptions(items, projectLabel) {
+  const projectCounts = new Map();
+  const statusCounts = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item || typeof item !== "object") continue;
+    const projectKey = typeof item.projectKey === "string" && item.projectKey !== ""
+      ? item.projectKey
+      : null;
+    if (projectKey !== null) {
+      projectCounts.set(projectKey, (projectCounts.get(projectKey) ?? 0) + 1);
+    }
+    const lifecycle = typeof item.lifecycle === "string" && item.lifecycle !== ""
+      ? item.lifecycle
+      : null;
+    if (lifecycle !== null) {
+      statusCounts.set(lifecycle, (statusCounts.get(lifecycle) ?? 0) + 1);
+    }
+  }
+  const orderOf = (key) => {
+    const index = TASK_LOCATOR_LIFECYCLE_ORDER.indexOf(key);
+    return index === -1 ? TASK_LOCATOR_LIFECYCLE_ORDER.length : index;
+  };
+  return {
+    projects: [...projectCounts.entries()]
+      .map(([key, count]) => ({
+        key,
+        label: typeof projectLabel === "function" ? projectLabel(key) : key,
+        count,
+      }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
+    statuses: [...statusCounts.entries()]
+      .map(([key, count]) => ({ key, count }))
+      .sort((left, right) =>
+        orderOf(left.key) - orderOf(right.key)
+        || left.key.localeCompare(right.key)),
+  };
+}
+
+/**
+ * Whether the current list can be trusted as the complete task set. Only a
+ * live snapshot that is complete and whose task source is available supports
+ * a factual zero; anything else keeps the partial/unknown semantics.
+ */
+export function taskLocatorSourceStanding(input) {
+  if (
+    input?.source === "live"
+    && input?.complete === true
+    && input?.taskSourceStanding === "available"
+  ) {
+    return "complete";
+  }
+  return "partial";
+}
+
+/**
+ * The empty-state summary for the current locator. It separates three cases:
+ * an unavailable/incomplete source (must not read as zero), a genuine
+ * no-match under explicit conditions, and a factual empty complete source.
+ */
+export function taskLocatorEmptySummary(locator, context) {
+  const conditions = [];
+  const keyword = typeof locator?.keyword === "string"
+    ? locator.keyword.trim()
+    : "";
+  if (keyword !== "") conditions.push("关键词 “" + keyword + "”");
+  const project = typeof locator?.project === "string" && locator.project !== ""
+    ? locator.project
+    : null;
+  if (project !== null) {
+    const label = typeof context?.projectLabel === "function"
+      ? context.projectLabel(project)
+      : project;
+    conditions.push("项目 “" + label + "”");
+  }
+  const status = typeof locator?.status === "string" && locator.status !== ""
+    ? locator.status
+    : null;
+  if (status !== null) {
+    const label = typeof context?.statusLabel === "function"
+      ? context.statusLabel(status)
+      : status;
+    conditions.push("状态 “" + label + "”");
+  }
+  if (context?.sourceStanding !== "complete") {
+    return {
+      standing: "source-unavailable",
+      summary: "任务来源不可用或投影不完整：无法确认是否真的没有匹配项。",
+      detail: "当前计数只覆盖可读来源；请刷新投影后重试，不要把它当作“零条”结论。",
+      conditions,
+    };
+  }
+  if (conditions.length === 0) {
+    return {
+      standing: "no-items",
+      summary: "当前实时投影完整：没有可显示的任务（事实结果，非来源错误）。",
+      detail: "这是完整来源下的事实结果；列表为空不代表来源不可用。",
+      conditions,
+    };
+  }
+  return {
+    standing: "no-match",
+    summary: "没有匹配" + conditions.join(" · ") + "的任务。",
+    detail: "请调整或清除过滤条件后重试。",
+    conditions,
+  };
+}
+
 (() => {
   "use strict";
 
@@ -7567,6 +8422,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     selectedWorkItemId: null,
     activeView: "conversation",
     taskFilter: "all",
+    taskLocator: { keyword: "", project: null, status: null },
     peekOpen: false,
     taskCreateOpen: false,
     detailRevalidationPending: false,
@@ -7602,6 +8458,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     cursor: -1,
     buffered: [],
     socket: null,
+    socketFaulted: false,
     connection: "unavailable",
     reconnectAttempt: 0,
     reconnectTimer: null,
@@ -8571,6 +9428,70 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     return true;
   }
 
+  function taskLocatorProjectLabel(key) {
+    const project = projects().find(
+      (candidate, index) => identifier(candidate, "project-" + index) === key,
+    );
+    return project ? projectName(project) : key;
+  }
+
+  function renderTaskLocatorEmptyNote(empty) {
+    const conditions = (empty.conditions || [])
+      .map((entry) => "<code>" + escapeHtml(entry) + "</code>")
+      .join(" · ");
+    const recover = empty.standing === "no-items"
+      ? ""
+      : '<button class="text-action" type="button" data-clear-task-locator>清除过滤</button>';
+    return '<div class="task-locator-empty" data-standing="' + escapeHtml(empty.standing) + '">' +
+      "<p>" + escapeHtml(empty.summary) + "</p>" +
+      (conditions === "" ? "" : '<p class="task-locator-conditions">' + conditions + "</p>") +
+      "<p>" + escapeHtml(empty.detail) + "</p>" +
+      recover +
+      "</div>";
+  }
+
+  function renderTaskLocatorControls(baseItems) {
+    const sourceStanding = taskLocatorSourceStanding({
+      source: state.source,
+      complete: first(state.snapshot, ["complete"]),
+      taskSourceStanding: first(taskSourceCapability(), ["standing"]),
+    });
+    const options = taskLocatorOptions(baseItems, taskLocatorProjectLabel);
+    const projectSelect = $("#task-locator-project");
+    const statusSelect = $("#task-locator-status");
+    const retainedProject = projectSelect.value;
+    const retainedStatus = statusSelect.value;
+    projectSelect.innerHTML = [
+      '<option value="">全部项目</option>',
+      ...options.projects.map((entry) =>
+        '<option value="' + escapeHtml(entry.key) + '">' +
+        escapeHtml(entry.label + " · " + entry.count) + "</option>"),
+    ].join("");
+    statusSelect.innerHTML = [
+      '<option value="">全部状态</option>',
+      ...options.statuses.map((entry) =>
+        '<option value="' + escapeHtml(entry.key) + '">' +
+        escapeHtml((workItemCopy[entry.key] || entry.key) + " · " + entry.count) + "</option>"),
+    ].join("");
+    if ([...projectSelect.options].some((option) => option.value === retainedProject)) {
+      projectSelect.value = retainedProject;
+    }
+    if ([...statusSelect.options].some((option) => option.value === retainedStatus)) {
+      statusSelect.value = retainedStatus;
+    }
+    $("#task-locator-note").textContent = sourceStanding === "complete"
+      ? ""
+      : "任务来源不可用或投影不完整：当前计数只覆盖可读来源，不代表完整集合。";
+  }
+
+  function clearTaskLocator() {
+    state.taskLocator = { keyword: "", project: null, status: null };
+    $("#task-locator-keyword").value = "";
+    $("#task-locator-project").value = "";
+    $("#task-locator-status").value = "";
+    render();
+  }
+
   function workItemRow(item) {
     const project = projects().find(
       (candidate, index) => identifier(candidate, \`project-\${index}\`) === item.projectKey,
@@ -8640,6 +9561,11 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
+    if (state.activeView === "tasks") {
+      counts.all = items.filter(
+        (item) => workItemMatchesView(item) && workItemMatchesTaskLocator(item, state.taskLocator),
+      ).length;
+    }
     $("#all-task-count").textContent = String(counts.all);
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
@@ -8935,13 +9861,34 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     if (isOverview || isProjectsView) renderOverviewProjects();
 
     if (!isOverview && !isProjectView && !isProjectsView) {
-      const filtered = items.filter((item) => workItemMatchesView(item));
+      const base = items.filter((item) => workItemMatchesView(item));
+      const locatorActive = state.activeView === "tasks";
+      const filtered = locatorActive
+        ? base.filter((item) => workItemMatchesTaskLocator(item, state.taskLocator))
+        : base;
       $("#task-view-heading").textContent = title;
       $("#task-view-count").textContent = String(filtered.length);
+      $("#task-locator").hidden = !locatorActive;
+      if (locatorActive) renderTaskLocatorControls(base);
+      const empty = locatorActive
+        ? taskLocatorEmptySummary(state.taskLocator, {
+          sourceStanding: taskLocatorSourceStanding({
+            source: state.source,
+            complete: first(state.snapshot, ["complete"]),
+            taskSourceStanding: first(taskSourceCapability(), ["standing"]),
+          }),
+          projectLabel: taskLocatorProjectLabel,
+          statusLabel: (key) => workItemCopy[key] || key,
+        })
+        : null;
       $("#task-view-list").innerHTML = filtered.length
         ? filtered.map(workItemRow).join("")
-        : '<p class="empty-note">当前投影没有符合这个视图的任务。</p>';
+        : locatorActive
+          ? renderTaskLocatorEmptyNote(empty)
+          : '<p class="empty-note">当前投影没有符合这个视图的任务。</p>';
       bindWorkItemRows($("#task-view-list"));
+      const clear = $("[data-clear-task-locator]");
+      if (clear) clear.addEventListener("click", clearTaskLocator);
     }
   }
 
@@ -8974,6 +9921,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       $("#peek-next-actor").textContent = "等待重新出现或返回总览";
       $("#peek-freshness").textContent =
         state.source === "live" ? "实时投影已重验" : "实时投影不可用";
+      $("#anomaly-detail").hidden = true;
       return;
     }
 
@@ -8988,6 +9936,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         first(taskSourceCapability(), ["standing"]) === "available"
           ? "实时任务源"
           : "任务源不可用";
+      $("#anomaly-detail").hidden = true;
       return;
     }
 
@@ -9002,6 +9951,98 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
+    const anomaly = first(item, ["anomalyDetail"]);
+    const anomalySection = $("#anomaly-detail");
+    anomalySection.hidden = anomaly === null || anomaly === undefined;
+    if (!anomalySection.hidden) renderAnomalyDetail(anomaly);
+  }
+
+  function renderAnomalyDetail(detail) {
+    if (!detail || typeof detail !== "object") return;
+    const scene = first(detail, ["scene"], {});
+    const dedup = first(detail, ["dedup"], {});
+    const evidence = first(detail, ["evidenceStanding"], {});
+    const binding = first(detail, ["binding"], {});
+    const sourcePath = text(first(scene, ["sourcePath"]), "来源未投影");
+    const relatedPaths = list(first(scene, ["relatedPaths"], []));
+    $("#anomaly-scene").textContent = relatedPaths.length
+      ? sourcePath + " · " + relatedPaths.join(" · ")
+      : sourcePath;
+    $("#anomaly-dedup").textContent = [
+      "依据 " + text(first(dedup, ["basis"]), "未声明"),
+      "键 " + text(first(dedup, ["key"]), "未声明"),
+      "合并 " + String(text(first(dedup, ["mergedCount"]), 1)) + " 条投影事实",
+    ].join(" · ");
+    const freshnessKind = text(first(evidence, ["freshnessKind"]), "unknown");
+    const observedAt = text(first(evidence, ["observedAt"]), "");
+    const sourceUpdatedAt = text(first(evidence, ["sourceUpdatedAt"]), "");
+    $("#anomaly-evidence-standing").textContent = [
+      "证据 " + freshnessKind,
+      observedAt ? "观察 " + formatTime(observedAt) : "",
+      sourceUpdatedAt ? "来源更新 " + formatTime(sourceUpdatedAt) : "",
+      text(first(evidence, ["meaning"]), ""),
+    ].filter(Boolean).join(" · ");
+    const bindingStanding = text(first(binding, ["standing"]), "unverified");
+    const bindingMissionId = text(first(binding, ["missionId"]), "");
+    const bindingReason = text(first(binding, ["reason"]), "");
+    $("#anomaly-binding").textContent = [
+      "绑定 " + bindingStanding,
+      bindingMissionId ? "声明 Mission " + bindingMissionId : "",
+      bindingReason,
+    ].filter(Boolean).join(" · ");
+    const facets = list(first(detail, ["facets"], []));
+    $("#anomaly-facets").innerHTML = facets.length
+      ? facets.map((facet) => {
+        const code = text(first(facet, ["code"]), "未知");
+        const summary = text(first(facet, ["summary"]), "");
+        const source = text(first(facet, ["source"]), "");
+        return '<article class="anomaly-facet">' +
+          "<strong>" + escapeHtml(code) + "</strong>" +
+          "<span>" + escapeHtml(summary) + "</span>" +
+          "<small>" + escapeHtml(source) + "</small>" +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有其它同源投影事实。</p>';
+    const rawErrors = list(first(detail, ["rawErrors"], []));
+    $("#anomaly-errors").innerHTML = rawErrors.length
+      ? rawErrors.map((entry) => {
+        const stage = text(first(entry, ["stage"]), "unknown");
+        const raw = text(first(entry, ["raw"]), "");
+        const normalized = text(first(entry, ["normalized"]), "");
+        const impact = text(first(entry, ["impact"]), "");
+        return '<article class="anomaly-error" data-stage="' + escapeHtml(stage) + '">' +
+          "<strong>" + escapeHtml(stage) + "</strong>" +
+          "<p>" + escapeHtml(normalized) + "</p>" +
+          "<small>影响范围：" + escapeHtml(impact) + "</small>" +
+          "<pre>" + escapeHtml(raw) + "</pre>" +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有原始错误证据；本事项来自状态投影本身。</p>';
+    const steps = list(first(detail, ["nextSteps"], []));
+    $("#anomaly-next-steps").innerHTML = steps.length
+      ? steps.map((step) => {
+        const supported = first(step, ["supported"]) === true;
+        const label = text(first(step, ["label"]), "未命名步骤");
+        const responsible = text(first(step, ["responsible"]), "责任方未声明");
+        const stepDetail = text(first(step, ["detail"]), "");
+        const blocker = text(first(step, ["blocker"]), "");
+        const action = supported && label === "刷新当前投影"
+          ? '<button class="text-action" type="button" data-anomaly-refresh>刷新当前投影</button>'
+          : "";
+        return '<article class="anomaly-step" data-supported="' + (supported ? "true" : "false") + '">' +
+          "<strong>" + escapeHtml(supported ? "可用" : "暂不可用") + "</strong>" +
+          "<span>" + escapeHtml(label) + "</span>" +
+          "<small>责任方：" + escapeHtml(responsible) + " · " + escapeHtml(stepDetail) + "</small>" +
+          (supported ? "" : "<small>阻塞：" + escapeHtml(blocker) + "</small>") +
+          action +
+          "</article>";
+      }).join("")
+      : '<p class="empty-note">没有已声明的下一步。</p>';
+    $$("[data-anomaly-refresh]").forEach((button) => {
+      button.addEventListener("click", () => {
+        loadSnapshot({ manual: true, ensure: true });
+      });
+    });
   }
 
   function renderTaskPanels() {
@@ -11349,9 +12390,15 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     const id = conversationState.conversationId;
     if (id === null) return;
     window.clearTimeout(conversationState.reconnectTimer);
+    if (window.navigator.onLine === false) {
+      conversationState.connection = "disconnected";
+      renderConversationSurface();
+      return;
+    }
     const current = conversationState.socket;
     if (current !== null && current.readyState === WebSocket.OPEN) return;
     conversationState.connection = "connecting";
+    conversationState.socketFaulted = false;
     renderConversationSurface();
     let socket;
     try {
@@ -11366,6 +12413,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     }
     conversationState.socket = socket;
     socket.addEventListener("open", () => {
+      conversationState.socketFaulted = false;
       conversationState.connection = "live";
       conversationState.reconnectAttempt = 0;
       conversationState.protocolNotices = [];
@@ -11377,9 +12425,16 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     socket.addEventListener("message", (messageEvent) => {
       handleConversationMessage(messageEvent.data);
     });
+    socket.addEventListener("error", () => {
+      if (conversationState.socket !== socket) return;
+      conversationState.socketFaulted = true;
+      conversationState.connection = "unavailable";
+      renderConversationSurface();
+    });
     socket.addEventListener("close", () => {
       if (conversationState.socket !== socket) return;
       conversationState.socket = null;
+      conversationState.socketFaulted = false;
       clearConversationProvisional();
       for (const entry of conversationState.feed) {
         if (entry.kind === "message" && entry.status === "pending") {
@@ -11397,8 +12452,35 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     });
   }
 
+  function convergeConversationConnection(connection) {
+    const socket = conversationState.socket;
+    conversationState.socket = null;
+    conversationState.socketFaulted = false;
+    if (socket !== null && socket.readyState !== WebSocket.CLOSED) {
+      socket.close();
+    }
+    clearConversationProvisional();
+    for (const entry of conversationState.feed) {
+      if (entry.kind === "message" && entry.status === "pending") {
+        entry.status = "failed";
+      }
+    }
+    conversationState.connection = connection;
+    renderConversationSurface();
+    scheduleConversationReconnect();
+  }
+
+  function conversationSocketNeedsConvergence() {
+    if (window.navigator.onLine === false) return true;
+    const socket = conversationState.socket;
+    return socket === null
+      || conversationState.socketFaulted
+      || socket.readyState === WebSocket.CLOSING
+      || socket.readyState === WebSocket.CLOSED;
+  }
+
   function scheduleConversationReconnect() {
-    if (conversationState.closedDeliberately) return;
+    if (conversationState.closedDeliberately || window.navigator.onLine === false) return;
     window.clearTimeout(conversationState.reconnectTimer);
     const delay = Math.min(
       15_000,
@@ -11982,7 +13064,8 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     return \`
       <div class="conversation-carrier" data-carrier-control="\${carrier.control}" data-carrier-terminal="\${terminal === undefined ? (unknown ? "unknown" : "live") : escapeHtml(terminal.status)}">
         <header>
-          <span>执行载体 · owner-backed 活动</span>
+          <small class="layer-chip">3 · 执行载体</small>
+          <span>owner-backed 活动</span>
           <b>\${escapeHtml(standingLabel)}</b>
         </header>
         <p class="carrier-identity">
@@ -12045,8 +13128,8 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     return \`
       <div class="conversation-action" data-action-status="\${action.status}">
         <header>
-          <span>\${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)}</span>
-          <code>\${escapeHtml(shortConversationId(action.actionId))}</code>
+          <small class="layer-chip">2 · 执行动作</small>
+          <code>\${escapeHtml(conversationActionKindCopy[action.actionKind] || action.actionKind)} · \${escapeHtml(shortConversationId(action.actionId))}</code>
           <b>\${escapeHtml(conversationActionStatusCopy[action.status] || action.status)}</b>
         </header>
         <dl class="action-facts">
@@ -12097,7 +13180,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     return \`
       <article class="conversation-item turn-item" data-turn-status="\${entry.status}" data-turn-id="\${escapeHtml(entry.turnId)}">
         <header>
-          <span class="item-role">Coordinator</span>
+          <small class="layer-chip">1 · 协调回复</small>
           <code>turn \${escapeHtml(shortConversationId(entry.turnId))}</code>
           <b>\${escapeHtml(conversationTurnStatusCopy[entry.status] || entry.status)}</b>
           \${
@@ -12127,6 +13210,15 @@ export function taskEvidenceLinkTarget(ref, workItems) {
                   ? \`<p class="turn-provisional" data-provisional="true">\${escapeHtml(entry.provisional)}</p>\`
                   : '<p class="turn-waiting">正在生成回复…（流式内容为临时状态，不会伪装成 durable）</p>'
         }
+        \${
+          entry.status === "settled"
+            ? '<p class="turn-next-step">已结算 · 下一步：查看上方执行卡片的 canonical 证据链接，或在下方继续提出、纠正。</p>'
+            : entry.status === "failed"
+              ? '<p class="turn-next-step">失败 · 下一步：在下方补充说明或纠正后重新提出；回复不会自动重试。</p>'
+              : entry.status === "interrupted"
+                ? '<p class="turn-next-step">已中断 · 下一步：在下方继续提出要求；相关执行载体仍保留其精确停止控制（若 live）。</p>'
+                : ""
+        }
       </article>
     \`;
   }
@@ -12154,17 +13246,62 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     \`;
   }
 
+  function renderConversationEmptyState() {
+    const connection = conversationState.connection;
+    const connectionCopy = {
+      live: ["已连接 · 实时", "可以发送；示例只填入草稿，不会自动发送。"],
+      connecting: ["正在连接", "草稿与示例仍可用；连接恢复后才能发送。"],
+      disconnected: ["已断开 · 正在重连", "草稿保留，不会自动重发；只恢复已结算事件。"],
+      unavailable: ["不可用", "草稿保留；恢复连接前不能发送，不会自动重发。"],
+    }[connection] || ["连接状态未知", "不发送；草稿保留，不会自动重发。"];
+    const examples = [
+      ["查看待办", "当前有哪些事项需要我处理？"],
+      ["观察执行", "请说明当前执行进展与下一步。"],
+      ["纠正任务", "纠正正在进行的任务：……"],
+    ];
+    return \`
+      <div class="conversation-empty" data-connection="\${escapeHtml(connection)}">
+        <div class="conversation-empty-heading">
+          <div class="conversation-empty-mark" aria-hidden="true"></div>
+          <div>
+            <p class="eyebrow">Rossovia · 受监督对话入口</p>
+            <h3>向 Agent 系统提出事情</h3>
+            <p>发布任务、纠正方向、观察协调回复与执行进展。浏览器只保留对话 ID、光标与草稿；任务与执行证据以 canonical 所有者为准。</p>
+          </div>
+        </div>
+        <div class="conversation-empty-standing">
+          <span>对话连接</span>
+          <strong>\${escapeHtml(connectionCopy[0])}</strong>
+          <small>\${escapeHtml(connectionCopy[1])}</small>
+          <code>会话 \${escapeHtml(shortConversationId(conversationState.conversationId))}</code>
+        </div>
+        <div class="conversation-examples">
+          <p class="conversation-examples-label">从这里开始 · 示例只填入草稿，不会自动发送，也不改变任何后端状态</p>
+          <div class="conversation-example-list">
+            \${examples.map(([label, draft]) => \`
+              <button type="button" data-conversation-example="\${escapeHtml(draft)}">
+                <strong>\${escapeHtml(label)}</strong>
+                <span>\${escapeHtml(draft)}</span>
+              </button>
+            \`).join("")}
+          </div>
+        </div>
+      </div>
+    \`;
+  }
+
   function renderConversationFeed() {
     const feed = $("#conversation-feed");
+    const inner = $("#conversation-feed-inner");
     const wasStuck = conversationState.stickToBottom;
     const previousScroll = feed.scrollTop;
-    feed.innerHTML = conversationState.feed.length
+    inner.innerHTML = conversationState.feed.length
       ? conversationState.feed.map((entry) =>
         entry.kind === "turn"
           ? renderConversationTurn(entry)
           : renderConversationMessage(entry),
       ).join("")
-      : '<div class="surface-empty"><span>—</span><p>还没有消息。发送第一条消息开始；断线重连后，这里只按 journal 顺序恢复已结算事件。</p></div>';
+      : renderConversationEmptyState();
     if (wasStuck) {
       feed.scrollTop = feed.scrollHeight;
     } else {
@@ -12186,6 +13323,19 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     $$("[data-conversation-retry]").forEach((button) => {
       button.addEventListener("click", () => {
         retryConversationMessage(button.dataset.conversationRetry);
+      });
+    });
+    $$("[data-conversation-example]").forEach((button) => {
+      button.addEventListener("click", () => {
+        // Example starters only fill the local draft: they never send a frame
+        // and never touch backend state. The user confirms with Enter.
+        const textarea = $("#conversation-composer-text");
+        const value = button.dataset.conversationExample ?? "";
+        conversationState.draft = value;
+        textarea.value = value;
+        persistConversationDraft();
+        renderConversationComposer();
+        textarea.focus({ preventScroll: true });
       });
     });
     $$("[data-evidence-task]").forEach((button) => {
@@ -12235,16 +13385,91 @@ export function taskEvidenceLinkTarget(ref, workItems) {
   }
 
   function renderConversationComposer() {
+    const form = $("#conversation-composer-form");
+    const live = $("#conversation-composer-live");
+    form.dataset.connection = conversationState.connection;
+    live.dataset.connection = conversationState.connection;
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
-    const live = conversationState.connection === "live";
-    submit.disabled = !live;
+    const status = $("#conversation-composer-status");
+    const standing = conversationComposerStanding(
+      conversationState.connection,
+      conversationState.draft,
+    );
+    submit.disabled = !standing.sendable;
+    submit.setAttribute("aria-disabled", String(!standing.sendable));
+    submit.dataset.sendable = String(standing.sendable);
+    const previousStanding = status.dataset.standing;
+    status.dataset.standing = standing.standing;
+    if (standing.gate === "connection") {
+      status.textContent = standing.status;
+    } else if (previousStanding !== standing.standing) {
+      status.textContent = "";
+    }
     if (
       document.activeElement !== textarea
       && textarea.value !== conversationState.draft
     ) {
       textarea.value = conversationState.draft;
     }
+  }
+
+  function conversationNextStep() {
+    for (let index = conversationState.feed.length - 1; index >= 0; index -= 1) {
+      const entry = conversationState.feed[index];
+      if (entry.kind === "turn" && !entry.terminal) {
+        return "正在生成协调回复：可以随时中断这条回复，或等待它结算。";
+      }
+    }
+    for (const carrier of conversationState.carriers.values()) {
+      if (carrier.terminal === undefined && carrier.standing === "live") {
+        return "存在 live 执行载体：可以用“停止该工作”精确停止，只作用于该 turn/action/carrier。";
+      }
+    }
+    if (conversationState.connection !== "live") {
+      return "对话连接不可用：草稿保留，恢复连接前不能发送；不会自动重发。";
+    }
+    if (conversationState.draft !== "") {
+      return "草稿已保留在本地：确认内容后按 Enter 发送。";
+    }
+    return "发送第一条消息开始；示例只填充草稿，不会自动发送，也不改变后端状态。";
+  }
+
+  function renderConversationContext() {
+    const context = $("#conversation-context");
+    if (context === null) return;
+    const connection = conversationState.connection;
+    const copy = {
+      connecting: "正在连接",
+      live: "已连接 · 实时",
+      disconnected: "已断开 · 正在重连",
+      unavailable: "不可用",
+    };
+    const mark = context.querySelector("[data-conversation-context-mark]");
+    if (mark) mark.dataset.connection = connection;
+    const label = context.querySelector("[data-conversation-context-label]");
+    if (label) label.textContent = copy[connection] || "未连接";
+    const id = context.querySelector("[data-conversation-context-id]");
+    if (id) id.textContent = shortConversationId(conversationState.conversationId);
+    const supervisor = $("#conversation-context-supervisor");
+    const subject = $("#conversation-context-subject");
+    if (supervisor !== null || subject !== null) {
+      const supervision = first(state.snapshot, ["supervision"], {});
+      if (supervisor !== null) {
+        supervisor.textContent = text(
+          first(supervision, ["supervisor", "supervisorName", "actor"]),
+          "Codex",
+        );
+      }
+      if (subject !== null) {
+        subject.textContent = text(
+          first(supervision, ["subject", "subjectName", "system"]),
+          "Agent system",
+        );
+      }
+    }
+    const next = $("#conversation-context-next");
+    if (next !== null) next.textContent = conversationNextStep();
   }
 
   function renderConversationSurface() {
@@ -12256,6 +13481,7 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     renderConversationConnection();
     renderConversationFeed();
     bindConversationFeedActions();
+    renderConversationContext();
     renderConversationComposer();
   }
 
@@ -12343,6 +13569,11 @@ export function taskEvidenceLinkTarget(ref, workItems) {
         markActionObserved(snapshot);
       } catch (error) {
         state.snapshotError = error instanceof Error ? error.message : text(error);
+        if (conversationSocketNeedsConvergence()) {
+          convergeConversationConnection(
+            window.navigator.onLine === false ? "disconnected" : "unavailable",
+          );
+        }
         if (state.lastLiveSnapshot) {
           state.snapshot = state.lastLiveSnapshot;
           state.source = "stale";
@@ -12785,6 +14016,19 @@ export function taskEvidenceLinkTarget(ref, workItems) {
     };
     $("#refresh-button").addEventListener("click", refreshFromCurrentLocation);
     $("#retry-button").addEventListener("click", refreshFromCurrentLocation);
+    $("#task-locator-keyword").addEventListener("input", () => {
+      state.taskLocator = { ...state.taskLocator, keyword: $("#task-locator-keyword").value };
+      render();
+    });
+    $("#task-locator-project").addEventListener("change", () => {
+      state.taskLocator = { ...state.taskLocator, project: $("#task-locator-project").value || null };
+      render();
+    });
+    $("#task-locator-status").addEventListener("change", () => {
+      state.taskLocator = { ...state.taskLocator, status: $("#task-locator-status").value || null };
+      render();
+    });
+    $("#task-locator-clear").addEventListener("click", clearTaskLocator);
     $("#create-task-button").addEventListener("click", () => {
       state.unavailableLocus = null;
       state.taskCreateOpen = true;
@@ -13018,6 +14262,16 @@ export function taskEvidenceLinkTarget(ref, workItems) {
       renderPeek();
       render();
       loadSnapshot({ manual: true, ensure: true });
+    });
+
+    window.addEventListener("offline", () => {
+      if (conversationState.closedDeliberately) return;
+      convergeConversationConnection("disconnected");
+    });
+    window.addEventListener("online", () => {
+      if (conversationState.closedDeliberately) return;
+      conversationState.reconnectAttempt = 0;
+      connectConversation();
     });
 
     $$(".kind-button").forEach((button) => {

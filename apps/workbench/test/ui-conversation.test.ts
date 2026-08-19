@@ -7,6 +7,7 @@ import * as conversation from "../../gateway/ui/app.js";
 const {
   buildConversationSocketUrl,
   classifyConversationEvent,
+  conversationComposerStanding,
   conversationMessageSubmitFrame,
   conversationResponseInterruptFrame,
   conversationWorkControlFrame,
@@ -243,6 +244,69 @@ describe("conversation event classification", () => {
   });
 });
 
+describe("conversation composer standing projection", () => {
+  test("empty or whitespace-only draft is never sendable, even while live", () => {
+    for (const draft of ["", "   ", "\n\t ", "  \n  "]) {
+      const standing = conversationComposerStanding("live", draft);
+      expect(standing.sendable).toBe(false);
+      expect(standing.gate).toBe("empty");
+      expect(standing.standing).toBe("empty");
+    }
+    expect(conversationComposerStanding("live", "  send  ").sendable).toBe(true);
+    // The submit button derives its disabled semantics from the projection.
+    expect(app).toContain("submit.disabled = !standing.sendable");
+    expect(app).toContain('submit.setAttribute("aria-disabled"');
+    expect(app).toContain('submit.dataset.sendable = String(standing.sendable)');
+    // The submit path still refuses blank payloads without faking execution.
+    expect(app).toContain('payload.trim() === ""');
+    expect(app).toContain("空消息不会发送");
+  });
+
+  test("unavailable connections keep the draft and explain the cannot-send boundary per standing", () => {
+    for (const connection of ["connecting", "disconnected", "unavailable", "unknown"]) {
+      const standing = conversationComposerStanding(connection, "草稿保留");
+      expect(standing.sendable).toBe(false);
+      expect(standing.gate).toBe("connection");
+      expect(standing.status).not.toBe("");
+      expect(standing.status).toContain("草稿保留");
+      expect(standing.status).toContain("不会自动重发");
+    }
+    // Unknown or unclassified connection standing is never guessed sendable.
+    expect(conversationComposerStanding("whatever", "text").sendable).toBe(false);
+    expect(conversationComposerStanding("whatever", "text").standing).toBe("unknown");
+    // The composer renderer projects the connection reason into the status line.
+    expect(app).toContain("conversationComposerStanding(");
+    expect(app).toContain('standing.gate === "connection"');
+    expect(app).toContain("对话连接不可用：草稿保留");
+    expect(app).toContain("恢复连接前不能发送");
+  });
+
+  test("live connection with non-empty draft is sendable through the existing frame path", () => {
+    expect(conversationComposerStanding("live", "发送这条消息")).toEqual({
+      sendable: true,
+      gate: "ready",
+      standing: "live",
+      status: "",
+    });
+    // The existing transport/frame authority is unchanged.
+    expect(conversationMessageSubmitFrame(conversationId, "发送这条消息")).toEqual({
+      type: "message.submit",
+      clientMessageId: conversationId,
+      payload: "发送这条消息",
+    });
+    // Tool interrupt stays truthfully unavailable: disabled in the DOM, with
+    // unavailability, reason, and the next understandable boundary in copy.
+    expect(html).toMatch(
+      /id="conversation-tool-interrupt"\s+type="button"\s+disabled/s,
+    );
+    expect(html).toContain("工具中断 · 运行时不支持");
+    expect(html).toContain("不属于当前 conversation 运行时");
+    expect(html).toContain("中断这条回复");
+    expect(html).toContain("停止该工作");
+    expect(app).not.toContain('type: "tool.interrupt"');
+  });
+});
+
 describe("conversation evidence links", () => {
   test("links a task receipt ref only when the task is present in the current snapshot", () => {
     const workItems = [
@@ -263,6 +327,49 @@ describe("conversation evidence links", () => {
     ).toBeNull();
     expect(taskEvidenceLinkTarget("state/task-attempts", workItems)).toBeNull();
     expect(taskEvidenceLinkTarget(42, workItems)).toBeNull();
+  });
+});
+
+describe("conversation empty state and desktop context layering", () => {
+  test("orients the empty state with connection standing and example starters that only fill the draft", () => {
+    expect(app).toContain("renderConversationEmptyState");
+    expect(app).toContain('data-conversation-example="');
+    expect(app).toContain("示例只填入草稿");
+    expect(app).toContain("不改变任何后端状态");
+    // Starters only write the local draft: they never send a frame and never
+    // touch backend state; the submit path keeps its own factual gates.
+    expect(app).toContain("conversationState.draft = value");
+    expect(app).toContain("persistConversationDraft()");
+    expect(app).toContain("textarea.focus({ preventScroll: true });");
+    expect(app).toContain('payload.trim() === ""');
+    // The empty-state connection standing reuses the honest vocabulary.
+    expect(app).toContain("已连接 · 实时");
+    expect(app).toContain("已断开 · 正在重连");
+    expect(app).toContain("恢复连接前不能发送");
+  });
+
+  test("separates the desktop reading column from connection/context and keeps next-step guidance honest", () => {
+    expect(html).toContain('id="conversation-feed-inner"');
+    expect(html).toContain('class="conversation-context"');
+    // The context renderer targets the aside by id; the id must exist so the
+    // connection, supervision, and next-step updates apply instead of the
+    // renderer returning early on a null lookup.
+    expect(html).toContain('<aside class="conversation-context" id="conversation-context"');
+    expect(app).toContain('$("#conversation-context")');
+    expect(html).toContain('id="conversation-composer-live"');
+    expect(app).toContain("renderConversationContext()");
+    expect(app).toContain("conversationNextStep");
+    expect(app).toContain("正在生成协调回复");
+    expect(app).toContain("存在 live 执行载体");
+    expect(app).toContain("layer-chip");
+    expect(app).toContain("turn-next-step");
+    expect(styles).toMatch(
+      /\.conversation-feed-inner\s*\{[^}]*margin:\s*0 auto;[^}]*max-width:\s*820px;/s,
+    );
+    expect(styles).toMatch(/\.conversation-context\s*\{[^}]*display:\s*none;/s);
+    expect(styles).toMatch(
+      /@media \(min-width: 1280px\)[\s\S]*?\.conversation-context\s*\{[^}]*display:\s*block;/s,
+    );
   });
 });
 
@@ -312,6 +419,23 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("正在重连");
     expect(html).toContain('id="conversation-reconnect"');
     expect(app).toContain("只恢复已结算事件");
+  });
+
+  test("converges offline before reconnecting and never auto-sends the retained draft", () => {
+    expect(app).toContain("function convergeConversationConnection(connection)");
+    expect(app).toContain('window.addEventListener("offline"');
+    expect(app).toContain('window.addEventListener("online"');
+    expect(app).toContain('convergeConversationConnection("disconnected")');
+    expect(app).toContain('window.navigator.onLine === false');
+    expect(app).toContain("socket.close()");
+    const offlineStart = app.indexOf('window.addEventListener("offline"');
+    const onlineStart = app.indexOf('window.addEventListener("online"');
+    expect(offlineStart).toBeGreaterThan(-1);
+    expect(onlineStart).toBeGreaterThan(offlineStart);
+    const offlineHandler = app.slice(offlineStart, onlineStart);
+    expect(offlineHandler).not.toContain("submitConversationMessage()");
+    expect(offlineHandler).not.toContain("socket.send");
+    expect(app).toContain("草稿保留，恢复连接前不能发送");
   });
 
   test("renders provisional deltas as provisional and settled replies as durable", () => {
@@ -458,6 +582,21 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain('case "projection.changed"');
     expect(app).toContain("loadSnapshot({ manual: true, ensure: true })");
     expect(app).toContain("conversationState.protocolNotices");
+  });
+
+  test("keeps a healthy live conversation when snapshot refresh alone fails", () => {
+    expect(app).toContain('socket.addEventListener("error"');
+    expect(app).toContain("conversationState.socketFaulted");
+    expect(app).toContain("conversationSocketNeedsConvergence()");
+    const loadStart = app.indexOf("async function loadSnapshot");
+    const catchStart = app.indexOf("} catch (error) {", loadStart);
+    const finallyStart = app.indexOf("} finally {", catchStart);
+    expect(loadStart).toBeGreaterThan(-1);
+    expect(catchStart).toBeGreaterThan(loadStart);
+    expect(finallyStart).toBeGreaterThan(catchStart);
+    const snapshotFailure = app.slice(catchStart, finallyStart);
+    expect(snapshotFailure).toContain("if (conversationSocketNeedsConvergence())");
+    expect(snapshotFailure).toContain("convergeConversationConnection(");
   });
 
   test("keeps the composer focused and the feed scroll as presentation focus", () => {

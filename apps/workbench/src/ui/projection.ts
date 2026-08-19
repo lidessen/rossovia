@@ -266,6 +266,12 @@ export interface ProjectionError {
 
 export interface AttentionItem {
   readonly priority: "principal-decision" | "warning" | "notice";
+  /**
+   * The runner cache identity this item was projected from, when one exists.
+   * Presentation uses it as the dedup basis so one runner scene never becomes
+   * several unrelated overview items; it never invents a Mission binding.
+   */
+  readonly runnerId?: string;
   readonly code:
     | "runner-interrupted"
     | "runner-input-pending"
@@ -1582,6 +1588,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
             priority: "warning",
             code: "runner-unbound",
             summary: `Runner ${status.runnerId} cannot be bound by Mission ID '${status.missionId}' (${binding.reason})`,
+            runnerId: status.runnerId,
             missionId: status.missionId,
             source: path,
           });
@@ -1592,6 +1599,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
             code: "runner-anchor-pending",
             summary:
               `Mission ${status.missionId} has no authorized intent anchor; guarded adoption or migration is required before semantic work`,
+            runnerId: status.runnerId,
             ...(binding.kind === "project-mission" ? { projectKey: binding.projectKey } : {}),
             missionId: status.missionId,
             source: path,
@@ -1602,6 +1610,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
             code: "runner-idle",
             summary:
               `Mission ${status.missionId} has an authorized anchor but no runtime or current executor`,
+            runnerId: status.runnerId,
             ...(binding.kind === "project-mission" ? { projectKey: binding.projectKey } : {}),
             missionId: status.missionId,
             source: path,
@@ -1611,6 +1620,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
             priority: "principal-decision",
             code: "runner-interrupted",
             summary: `Mission ${status.missionId} requires a recovery decision`,
+            runnerId: status.runnerId,
             ...(binding.kind === "project-mission" ? { projectKey: binding.projectKey } : {}),
             missionId: status.missionId,
             source: path,
@@ -1620,6 +1630,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
             priority: "principal-decision",
             code: "runner-input-pending",
             summary: `Mission ${status.missionId} has unreconciled Principal input`,
+            runnerId: status.runnerId,
             ...(binding.kind === "project-mission" ? { projectKey: binding.projectKey } : {}),
             missionId: status.missionId,
             source: path,
@@ -1629,6 +1640,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
             priority: "notice",
             code: "runner-paused",
             summary: `Mission ${status.missionId} is paused`,
+            runnerId: status.runnerId,
             ...(binding.kind === "project-mission" ? { projectKey: binding.projectKey } : {}),
             missionId: status.missionId,
             source: path,

@@ -68,6 +68,9 @@ jobs:
       - name: Test Workbench
         working-directory: apps/workbench
         run: bun test
+      - name: Install Gateway dependencies
+        working-directory: apps/gateway
+        run: bun add --no-save --dev @types/bun@1.3.14 typescript@5.9.3
       - name: Typecheck Gateway
         working-directory: apps/gateway
         run: bun run typecheck

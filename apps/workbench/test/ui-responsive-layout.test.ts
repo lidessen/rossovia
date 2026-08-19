@@ -348,4 +348,33 @@ describe("Workbench responsive layout", () => {
     expect(app).toContain("await loadSnapshot({ manual: true, ensure: true })");
     expect(app).toContain("实时 · 部分来源不可用");
   });
+
+  test("keeps the mobile first screen compact: header and boundary copy out of the feed, composer stable", () => {
+    const mobile = styles.slice(styles.lastIndexOf("@media (max-width: 700px)"));
+
+    expect(mobile).toMatch(/\.conversation-header p\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).toMatch(/\.conversation-boundary\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).toMatch(/\.conversation-context\s*\{[^}]*display:\s*none;/s);
+    expect(mobile).toMatch(
+      /\.conversation-example-list\s*\{[^}]*grid-template-columns:\s*1fr;/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-example-list button\s*\{[^}]*min-height:\s*44px;/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-composer\s*\{[^}]*padding:\s*0\.55rem 0\.85rem/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-composer \.primary-action\s*\{[^}]*min-height:\s*44px;/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-composer \.conversation-control\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*1;/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-composer \.primary-action\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,
+    );
+    expect(mobile).toMatch(
+      /\.conversation-surface\s*\{[^}]*height:\s*calc\(100dvh - 62px\);[^}]*padding-bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom\)\);[^}]*position:\s*fixed;[^}]*top:\s*62px;/s,
+    );
+  });
 });
