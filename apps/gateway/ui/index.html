@@ -317,6 +317,26 @@
               </div>
               <strong id="task-view-count">—</strong>
             </div>
+            <div class="task-locator" id="task-locator" hidden>
+              <label class="task-locator-field">
+                <span>关键词</span>
+                <input id="task-locator-keyword" type="search" placeholder="标题 / 目标 / 纠正…" autocomplete="off" />
+              </label>
+              <label class="task-locator-field">
+                <span>项目</span>
+                <select id="task-locator-project" aria-label="按项目收窄任务">
+                  <option value="">全部项目</option>
+                </select>
+              </label>
+              <label class="task-locator-field">
+                <span>状态</span>
+                <select id="task-locator-status" aria-label="按状态收窄任务">
+                  <option value="">全部状态</option>
+                </select>
+              </label>
+              <button class="text-action" id="task-locator-clear" type="button">清除过滤</button>
+              <p class="task-locator-note" id="task-locator-note" role="status"></p>
+            </div>
             <div class="work-item-list" id="task-view-list"></div>
           </section>
         </section>
