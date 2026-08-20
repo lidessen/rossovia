@@ -107,7 +107,9 @@ refactoring boundaries, research questions, or project policy.
    carriers. Keep work direct when coordination costs more than it changes
    evidence or latency. Preserve two hard boundaries: shared mutable effects
    have one writer, and a review counts as independent only when its context is
-   isolated from producer reasoning.
+   isolated from producer reasoning. For open research, parallelize only
+   differentiated questions or source families that Main can later reconcile;
+   the exploration carrier is not a Plan primitive or a second lifecycle.
 3. **Contract each contribution.** Read `references/delegation.md`. Give every
    child four receiver-facing parts in this order: a concrete contribution
    relation only when it changes attention or responsibility; the concise
@@ -167,6 +169,11 @@ refactoring boundaries, research questions, or project policy.
    reconstructable evidence, and its actual attention, latency, and
    coordination consequences—not by conformance to a preferred depth. Route a
    result that changes the next practice to `practice-cycle`.
+
+For a named acceptance or mechanism condition, express the returned judgment as
+`yes`, `no`, or `uncertain` with its evidence. Do not turn independent returns
+into a vote or numeric quality/confidence score; Main synthesizes against the
+condition and retains acceptance.
 
 ## Progressive loading
 

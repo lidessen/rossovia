@@ -7,7 +7,7 @@ description: >-
   receiver-specific main/worker/reviewer prompts, and closes the loop through
   verification, rebuild/restart, observation, and rollback. Triggers include
   "develop Rossovia", "改进 Rossovia", "自我开发", "dogfood", "修一下项目",
-  and "用 Rossovia 修改自己".
+  "用 Rossovia 修改自己", "重要设计多轮迭代", and "并行研究后综合".
 argument-hint: "[project or repository] [requested improvement]"
 ---
 
@@ -35,6 +35,46 @@ If local dogfood is enabled, observer startup is part of that mode. Do not add a
 second `--enable-observer` requirement. A future/current launcher may expose
 `--dogfood`, with an explicit observer opt-out; check the active Workbench help
 before using a flag and report an unimplemented flag as a capability gap.
+
+## Method-expression modes
+
+The stable harness base supplies the real Task/Run/Cell, tools, workspace,
+effect, evidence, and acceptance boundaries. Skills, system prompts, and
+receiver-facing plans form the **runtime method-expression layer**: they choose
+how an Agent approaches the task while preserving those base contracts. “Post-
+training” is a useful analogy for this layer, not a runtime component or a
+request to change model weights.
+
+Select a method from the task relation, not from a preferred workflow:
+
+- For a consequential design, use [`practice-cycle`](../practice-cycle/SKILL.md)
+  when the first practice cannot honestly settle the question. Each bounded
+  round records its observation, what changed, remaining uncertainty, and the
+  next smallest practice. This is not an automatic retry, fixed iteration
+  count, or second lifecycle.
+- For an open research question with genuinely separable directions, use
+  [`agent-delegation`](../agent-delegation/SKILL.md) to form differentiated,
+  usually read-only explorations, then have Main reconstruct and synthesize the
+  whole against the same sources and acceptance relation. Do not concatenate,
+  vote, or select by a numeric score.
+
+The Plan remains semantic: outcome, constraints, sources, contribution
+boundaries, dependencies, coverage, evidence, acceptance, and round/rejoin
+relations. It must not encode provider, worker count, concurrency, topology
+depth, or a swarm runtime. Those are replaceable method/carrier choices. When a
+named condition is judged, use `yes`, `no`, or `uncertain`; do not substitute a
+numeric quality or confidence scale.
+
+Before changing the Harness base, complete the mechanism admission check in the
+[Harness theory](../../design/harness/THEORY.md#mechanism-admission-check):
+name the observed action gap, the existing method/context/task-shaping/policy
+response, the hard property that fails, the current owner, and the smallest
+probe that distinguishes a method problem from a mechanism problem. A prompt
+failure or a request for a convenient check is not enough to add lifecycle,
+registry, queue, retry, role, or projection machinery. Keep the change in the
+method-expression layer when the existing base already preserves the property;
+change the base or adapter only when a real lifecycle, effect, permission,
+concurrency, recovery, or evidence invariant is not preserved.
 
 ## Main operating posture
 
@@ -83,6 +123,9 @@ Dogfood mode: enabled | disabled | unknown
 External harness and delegation capability:
 One write owner and exact worktree/effect boundary:
 Main-retained whole, ordering, and verification obligations:
+Method expression: direct | multi-round practice | parallel exploration | nested
+  (why this relation is needed):
+Plan obligations, dependencies, coverage, acceptance, and round/rejoin relation:
 Candidate bounded contributions and their owners:
 Owner branch/worktree, conflict, rejoin/merge, cleanup, and unmerged state:
 Human intervention or acceptance still required:
@@ -99,10 +142,12 @@ a worker.
    registering unspecified folders.
 2. Shape one bounded change: outcome, in-scope effect, non-goals, disconfirming
    checks, and a reconstructible return. Identify contributions that can settle
-   independently and the whole obligations Main retains. If there are multiple
-   owners, record the owner/branch/worktree/conflict/state/dependency/
-   acceptance/rejoin/cleanup/unmerged map in the existing plan/todo/task
-   surface before dispatch.
+   independently and the whole obligations Main retains. Choose a method
+   expression only after this relation is clear. Keep the Plan's semantic
+   obligations, dependencies, coverage, acceptance, and round/rejoin relation
+   separate from the execution carrier. If there are multiple owners, record
+   the owner/branch/worktree/conflict/state/dependency/acceptance/rejoin/
+   cleanup/unmerged map in the existing plan/todo/task surface before dispatch.
 3. Determine the mode above and assign each contribution to one producer or
    reviewer. Never run the same write contribution through Rossovia and an
    external harness at once.
