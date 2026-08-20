@@ -1713,8 +1713,18 @@ button:disabled {
 
 body[data-projection-state="loading"] .target-strip,
 body[data-projection-state="loading"] .principal-snapshot,
-body[data-projection-state="loading"] .workbench-shell {
+body[data-projection-state="loading"] .workbench-shell > .principal-rail,
+body[data-projection-state="loading"] .workbench-shell > .project-surface {
   display: none;
+}
+
+body[data-projection-state="loading"] .workbench-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .target-strip {
