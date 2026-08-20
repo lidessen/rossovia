@@ -149,7 +149,7 @@ describe("Rossovia CLI help effect contract", () => {
       "mission close",
       "mission prune",
       "intervention observe",
-      "correct",
+      "intervention correct",
       "hook intervention",
     ]) {
       const result = cli(["help", ...path.split(" ")], { stdin: "" });
