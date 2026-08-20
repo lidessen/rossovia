@@ -5,6 +5,7 @@ import { UI_ASSETS } from "../src/assets.generated";
 
 const gatewayRoot = resolve(import.meta.dir, "..");
 const stylesCss = readFileSync(join(gatewayRoot, "ui", "styles.css"), "utf8");
+const appJs = readFileSync(join(gatewayRoot, "ui", "app.js"), "utf8");
 
 /**
  * Extract one full peek-context rule (selector + declaration block) from the
@@ -78,9 +79,70 @@ describe("observation peek visibility for anomaly detail", () => {
     // The served UI (source checkout and single-file binary) reads the
     // embedded copy; it must be byte-identical to the edited source so the
     // fix is actually delivered to the receiver.
-    expect(UI_ASSETS["styles.css"]).toBe(stylesCss);
-    expect(contextRule(UI_ASSETS["styles.css"], "observation")).toContain(
+    const embeddedStylesCss = UI_ASSETS["styles.css"];
+    if (embeddedStylesCss === undefined) {
+      throw new Error("missing embedded styles.css asset");
+    }
+    expect(embeddedStylesCss).toBe(stylesCss);
+    expect(contextRule(embeddedStylesCss, "observation")).toContain(
       ":not(.anomaly-detail)",
     );
+  });
+
+  test("scan surfaces keep summaries compact and preserve anomaly context", () => {
+    expect(stylesCss).toContain(".task-view .work-item-body > span");
+    expect(stylesCss).toContain(".conversation-context .context-section:first-child");
+    expect(stylesCss).toContain(".conversation-empty-standing {\n  display: none !important;");
+    expect(stylesCss).toContain(".conversation-boundary {\n    display: none !important;");
+    expect(stylesCss).not.toContain(".conversation-empty-standing,\n.conversation-boundary");
+    expect(appJs).toContain('data-work-item-kind="${escapeHtml(text(item.kind, "work"))}"');
+    expect(appJs).toContain("renderAnomalyDetail(anomaly, item)");
+    expect(appJs).toContain('class="project-group-disclosure"');
+    expect(stylesCss).toContain(".project-group-disclosure");
+    expect(UI_ASSETS["app.js"]).toBe(appJs);
+  });
+
+  test("loading keeps the conversation shell visible while snapshot surfaces wait", () => {
+    expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .principal-rail');
+    expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .project-surface');
+    expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .conversation-surface');
+    expect(stylesCss).toContain('grid-template-columns: minmax(0, 1fr);');
+  });
+
+  test("settled conversation replies use escaped, limited Markdown rendering", () => {
+    expect(appJs).toContain("function renderConversationMarkdown(value)");
+    expect(appJs).toContain("function renderConversationInlineMarkdown(value)");
+    expect(appJs).toContain("escapeHtml(value)");
+    expect(appJs).toContain("https?:\\/\\/");
+    expect(appJs).toContain('rel="noreferrer"');
+    expect(appJs).toContain("const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*$/u);");
+    expect(appJs).toContain("function isConversationMarkdownTableSeparator(value, columnCount)");
+    expect(appJs).toContain("/^:?-{3,}:?$/u");
+    expect(appJs).toContain('class=\"turn-table-wrap\"');
+    expect(appJs).toContain("<thead>");
+    expect(appJs).toContain("<tbody>");
+    expect(stylesCss).toContain(".turn-table-wrap {");
+    expect(stylesCss).toContain("overflow-x: auto;");
+    expect(appJs).toContain('class="turn-response turn-response-markdown"');
+    expect(appJs).toContain("renderConversationMarkdown(entry.response)");
+  });
+
+  test("source disclosure explains its purpose before preserving raw evidence", () => {
+    expect(appJs).toContain("已向协调器披露 ${sourceCount} 项材料");
+    expect(appJs).toContain("展开查看依据");
+    expect(appJs).toContain("这里列出披露给协调器的材料和版本记录");
+    expect(appJs).toContain("ref: ${escapeHtml");
+    expect(appJs).toContain("digest: ${escapeHtml");
+    expect(appJs).toContain("source: ${escapeHtml");
+    expect(appJs).toContain("revision: ${escapeHtml");
+    expect(appJs).toContain("协调器读取的来源版本");
+  });
+
+  test("mobile conversation header leaves the global connection status as the only status", () => {
+    expect(stylesCss).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(stylesCss).toContain(".conversation-standing {\n  display: none;\n}");
+    expect(stylesCss).not.toContain(".conversation-standing strong");
+    expect(stylesCss).not.toContain(".conversation-standing code");
+    expect(appJs).toContain('$("#connection-label").textContent = "实时 · 已连接";');
   });
 });

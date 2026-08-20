@@ -879,6 +879,7 @@ export function taskLocatorEmptySummary(locator, context) {
     cursor: -1,
     buffered: [],
     socket: null,
+    socketFaulted: false,
     connection: "unavailable",
     reconnectAttempt: 0,
     reconnectTimer: null,
@@ -1255,6 +1256,170 @@ export function taskLocatorEmptySummary(locator, context) {
       .replaceAll("'", "&#039;");
   }
 
+  // Conversation responses are model-authored text, so render only the small
+  // Markdown vocabulary the feed needs after escaping every user-controlled
+  // character. Raw HTML never enters the returned markup.
+  function renderConversationInlineMarkdown(value) {
+    const tokens = [];
+    const token = (html) => {
+      const marker = `\uE000${tokens.length}\uE001`;
+      tokens.push(html);
+      return marker;
+    };
+    let rendered = escapeHtml(value);
+    rendered = rendered.replace(/`([^`\n]+)`/gu, (_, code) =>
+      token(`<code>${code}</code>`),
+    );
+    rendered = rendered.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/giu, (_, label, href) =>
+      token(`<a href="${href}" target="_blank" rel="noreferrer">${label}</a>`),
+    );
+    rendered = rendered
+      .replace(/\*\*([^*\n]+)\*\*/gu, "<strong>$1</strong>")
+      .replace(/__([^_\n]+)__/gu, "<strong>$1</strong>")
+      .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/gu, "<em>$1</em>")
+      .replace(/(?<!_)_([^_\n]+)_(?!_)/gu, "<em>$1</em>");
+    return rendered.replace(/\uE000(\d+)\uE001/gu, (_, index) => tokens[Number(index)]);
+  }
+
+  function conversationMarkdownTableCells(value) {
+    const line = text(value, "").trim();
+    if (!line.includes("|")) return null;
+    const content = line.startsWith("|") ? line.slice(1) : line;
+    const withoutTrailingPipe = content.endsWith("|")
+      ? content.slice(0, -1)
+      : content;
+    const cells = [];
+    let cell = "";
+    let escaped = false;
+    for (const character of withoutTrailingPipe) {
+      if (character === "|" && !escaped) {
+        cells.push(cell.trim().replaceAll("\\|", "|"));
+        cell = "";
+      } else {
+        cell += character;
+      }
+      escaped = character === "\\" && !escaped;
+      if (character !== "\\") escaped = false;
+    }
+    cells.push(cell.trim().replaceAll("\\|", "|"));
+    return cells;
+  }
+
+  function isConversationMarkdownTableSeparator(value, columnCount) {
+    const cells = conversationMarkdownTableCells(value);
+    return cells !== null
+      && cells.length === columnCount
+      && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+  }
+
+  function renderConversationMarkdown(value) {
+    const lines = text(value, "").replaceAll("\r\n", "\n").split("\n");
+    const blocks = [];
+    let paragraph = [];
+    let list = null;
+    let code = null;
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      blocks.push(`<p>${paragraph.map(renderConversationInlineMarkdown).join("<br>")}</p>`);
+      paragraph = [];
+    };
+    const flushList = () => {
+      if (!list) return;
+      blocks.push(`<${list.kind}>${list.items.map((item) =>
+        `<li>${renderConversationInlineMarkdown(item)}</li>`,
+      ).join("")}</${list.kind}>`);
+      list = null;
+    };
+    const flushCode = () => {
+      if (!code) return;
+      const language = code.language
+        ? ` class="language-${escapeHtml(code.language)}"`
+        : "";
+      blocks.push(`<pre><code${language}>${escapeHtml(code.lines.join("\n"))}</code></pre>`);
+      code = null;
+    };
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      const fence = line.match(/^\s*```\s*([\w-]+)?\s*$/u);
+      if (code) {
+        if (fence) flushCode();
+        else code.lines.push(line);
+        continue;
+      }
+      const tableHeader = conversationMarkdownTableCells(line);
+      if (tableHeader !== null
+        && tableHeader.length > 0
+        && lineIndex + 1 < lines.length
+        && isConversationMarkdownTableSeparator(lines[lineIndex + 1], tableHeader.length)) {
+        flushParagraph();
+        flushList();
+        const tableRows = [];
+        lineIndex += 1;
+        while (lineIndex + 1 < lines.length) {
+          const row = conversationMarkdownTableCells(lines[lineIndex + 1]);
+          if (row === null) break;
+          tableRows.push(row);
+          lineIndex += 1;
+        }
+        const normalizeRow = (row) => {
+          const normalized = row.slice(0, tableHeader.length);
+          if (row.length > tableHeader.length) {
+            normalized[tableHeader.length - 1] = row
+              .slice(tableHeader.length - 1)
+              .join(" | ");
+          }
+          while (normalized.length < tableHeader.length) normalized.push("");
+          return normalized;
+        };
+        const renderTableRow = (row, tag) => `<tr>${normalizeRow(row).map((cell) =>
+          `<${tag}>${renderConversationInlineMarkdown(cell)}</${tag}>`,
+        ).join("")}</tr>`;
+        blocks.push(`<div class="turn-table-wrap"><table>
+          <thead>${renderTableRow(tableHeader, "th")}</thead>
+          <tbody>${tableRows.map((row) => renderTableRow(row, "td")).join("")}</tbody>
+        </table></div>`);
+        continue;
+      }
+      if (fence) {
+        flushParagraph();
+        flushList();
+        code = { language: fence[1] || "", lines: [] };
+        continue;
+      }
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        continue;
+      }
+      const heading = line.match(/^\s*(#{1,3})\s+(.+?)\s*$/u);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const level = heading[1].length;
+        blocks.push(`<h${level}>${renderConversationInlineMarkdown(heading[2])}</h${level}>`);
+        continue;
+      }
+      const unordered = line.match(/^\s*[-*+]\s+(.+)$/u);
+      const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/u);
+      if (unordered || ordered) {
+        flushParagraph();
+        const kind = unordered ? "ul" : "ol";
+        if (list && list.kind !== kind) flushList();
+        if (!list) list = { kind, items: [] };
+        list.items.push((unordered || ordered)[1]);
+        continue;
+      }
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph();
+    flushList();
+    flushCode();
+    return blocks.join("");
+  }
+
   function first(object, keys, fallback = undefined) {
     if (!object || typeof object !== "object") return fallback;
     for (const key of keys) {
@@ -1383,6 +1548,31 @@ export function taskLocatorEmptySummary(locator, context) {
     if (kind === "observed-at-build") return "本次投影";
     if (kind === "cached") return "缓存";
     return "未验证";
+  }
+
+  function workItemAnomalyContext(item) {
+    const detail = first(item, ["anomalyDetail"], {});
+    const binding = first(detail, ["binding"], {});
+    const runnerId = text(
+      first(item, ["runnerId"]) || first(binding, ["runnerId"]),
+      "",
+    );
+    const bindingStanding = text(first(binding, ["standing"]), "");
+    const standing = text(
+      first(detail, ["standing", "runnerStanding"]) || first(item, ["runnerState"]),
+      "",
+    );
+    const reason = text(
+      first(binding, ["reason"]) || first(detail, ["reason"]) || first(item, ["reason"]),
+      "",
+    );
+    if (item?.kind !== "observation" && item?.anomalyDetail === undefined) return "";
+    return [
+      runnerId ? `Runner ${runnerId}` : "Runner 身份未投影",
+      bindingStanding ? `绑定 ${bindingStanding}` : "绑定状态未知",
+      standing ? `状态 ${standing}` : "状态未知",
+      reason,
+    ].filter(Boolean).join(" · ");
   }
 
   function projectWorkSummary(project, index) {
@@ -1920,18 +2110,20 @@ export function taskLocatorEmptySummary(locator, context) {
       ? `${projectName(project)}${item.missionId ? ` · ${item.missionId}` : ""}`
       : item.context;
     const actor = actorCopy[item.nextActor] || item.nextActor;
+    const anomalyContext = workItemAnomalyContext(item);
     return `
       <button
         class="work-item ${item.id === state.selectedWorkItemId ? "is-selected" : ""}"
         type="button"
         data-work-item-id="${escapeHtml(item.id)}"
         data-lifecycle="${escapeHtml(item.lifecycle)}"
+        data-work-item-kind="${escapeHtml(text(item.kind, "work"))}"
       >
         <span class="work-item-state">${escapeHtml(workItemCopy[item.lifecycle] || item.lifecycle)}</span>
         <span class="work-item-body">
           <strong>${escapeHtml(item.title)}</strong>
-          <span>${escapeHtml(item.summary)}</span>
-          <small>${escapeHtml(context)} · 下一步 ${escapeHtml(actor)}</small>
+          <span class="work-item-summary">${escapeHtml(item.summary)}</span>
+          <small>${escapeHtml(context)} · 下一步 ${escapeHtml(actor)}${anomalyContext ? ` · ${escapeHtml(anomalyContext)}` : ""}</small>
         </span>
         <span class="work-item-meta">
           <small>${escapeHtml(workItemFreshnessLabel(item))}</small>
@@ -2049,8 +2241,9 @@ export function taskLocatorEmptySummary(locator, context) {
       const primary = summary.primary;
       const completeness = "项目新鲜度未单独声明";
       return `
-        <details class="project-group" ${index < 2 ? "open" : ""}>
+        <details class="project-group" ${projectItems.length > 0 && projectItems.length <= 3 ? "open" : ""}>
           <summary>
+            <span class="project-group-disclosure" aria-hidden="true"></span>
             <span class="project-group-title">
               <strong>${escapeHtml(summary.name)}</strong>
               <small>${summary.worktreeCount} 个 Worktree · ${summary.taskCount} 项任务${summary.observationCount ? ` · ${summary.observationCount} 项异常` : ""}</small>
@@ -2199,6 +2392,7 @@ export function taskLocatorEmptySummary(locator, context) {
 
   function renderUnifiedSurface() {
     const items = workItems();
+    document.body.dataset.uiView = state.activeView;
     const overview = $("#unified-surface");
     const projectDetail = $("#project-detail");
     const taskView = $("#task-view");
@@ -2239,14 +2433,14 @@ export function taskLocatorEmptySummary(locator, context) {
     settingsSurface.hidden = !isSettings;
 
     const viewMeta = {
-      overview: ["Workbench overview", "总览", "跨项目查看需要你处理、Agent 正在进行和状态未知的工作。"],
+      overview: ["Workbench overview", "总览", "先看最重要的待办、异常与项目摘要；完整证据从详情打开。"],
       projects: ["Projects", "项目", "按项目与 Worktree 查看当前工作，不把观察关系伪装成任务绑定。"],
-      principal: ["Needs you", "待我处理", "只显示下一责任方明确是你的事项；进入详情后再完成决策。"],
+      principal: ["Needs you", "待我处理", "显示完整的待我处理队列；列表只用于定位，决策证据在详情中查看。"],
       agent: ["Agent live", "Agent 运行中", "只显示有实时载体证据的当前 Agent 运行。"],
       "agent-pending": ["Agent queue", "待 Agent 接手", "只显示下一责任方为 Agent、但尚无精确实时执行证据的事项。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
-      tasks: ["Tasks", "任务", "用统一形式查看不同责任方和生命周期的工作。"],
+      tasks: ["Tasks", "任务", "按筛选定位全量任务；状态、责任方和来源先行，长证据在详情中查看。"],
       observer: ["Observation", "观察记录", "查看 observer 对最近执行留下的意见、证据引用与可处理的缺口。"],
       settings: ["Settings", "设置", "查看当前生效的 Worker、Provider、凭据状态与用户偏好。"],
     };
@@ -2489,24 +2683,43 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    $("#peek-context").textContent = item.context;
+    const anomaly = first(item, ["anomalyDetail"]);
+    const anomalyContext = workItemAnomalyContext(item);
+    const compactAnomalyContext = anomalyContext
+      .split(" · ")
+      .slice(0, 3)
+      .join(" · ");
+    const peekContext = compactAnomalyContext
+      ? `${item.context} · ${compactAnomalyContext}`
+      : item.context;
+    const anomalyReason = text(
+      first(item, ["reason"]),
+      "",
+    );
+    $("#peek-context").textContent = peekContext;
+    $("#peek-context").title = peekContext;
     $("#peek-item-state").textContent = workItemCopy[item.lifecycle] || item.lifecycle;
     $("#peek-item-title").textContent = item.title;
-    $("#peek-item-summary").textContent = item.summary;
-    $("#peek-next-actor").textContent = actorCopy[item.nextActor] || item.nextActor;
+    $("#peek-item-summary").textContent = [
+      item.summary,
+      anomaly === undefined && anomalyReason ? anomalyReason : "",
+    ].filter(Boolean).join(" · ");
+    $("#peek-next-actor").textContent = [
+      actorCopy[item.nextActor] || item.nextActor,
+      compactAnomalyContext,
+    ].filter(Boolean).join(" · ");
     $("#peek-freshness").textContent = state.detailRevalidationPending
       ? "正在重验当前目标"
       : workItemFreshnessLabel(item);
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
-    const anomaly = first(item, ["anomalyDetail"]);
     const anomalySection = $("#anomaly-detail");
     anomalySection.hidden = anomaly === null || anomaly === undefined;
-    if (!anomalySection.hidden) renderAnomalyDetail(anomaly);
+    if (!anomalySection.hidden) renderAnomalyDetail(anomaly, item);
   }
 
-  function renderAnomalyDetail(detail) {
+  function renderAnomalyDetail(detail, item = null) {
     if (!detail || typeof detail !== "object") return;
     const scene = first(detail, ["scene"], {});
     const dedup = first(detail, ["dedup"], {});
@@ -2532,9 +2745,14 @@ export function taskLocatorEmptySummary(locator, context) {
       text(first(evidence, ["meaning"]), ""),
     ].filter(Boolean).join(" · ");
     const bindingStanding = text(first(binding, ["standing"]), "unverified");
+    const runnerId = text(
+      first(item, ["runnerId"]) || first(binding, ["runnerId"]),
+      "身份未投影",
+    );
     const bindingMissionId = text(first(binding, ["missionId"]), "");
     const bindingReason = text(first(binding, ["reason"]), "");
     $("#anomaly-binding").textContent = [
+      "Runner " + runnerId,
       "绑定 " + bindingStanding,
       bindingMissionId ? "声明 Mission " + bindingMissionId : "",
       bindingReason,
@@ -4957,9 +5175,15 @@ export function taskLocatorEmptySummary(locator, context) {
     const id = conversationState.conversationId;
     if (id === null) return;
     window.clearTimeout(conversationState.reconnectTimer);
+    if (window.navigator.onLine === false) {
+      conversationState.connection = "disconnected";
+      renderConversationSurface();
+      return;
+    }
     const current = conversationState.socket;
     if (current !== null && current.readyState === WebSocket.OPEN) return;
     conversationState.connection = "connecting";
+    conversationState.socketFaulted = false;
     renderConversationSurface();
     let socket;
     try {
@@ -4974,6 +5198,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     conversationState.socket = socket;
     socket.addEventListener("open", () => {
+      conversationState.socketFaulted = false;
       conversationState.connection = "live";
       conversationState.reconnectAttempt = 0;
       conversationState.protocolNotices = [];
@@ -4985,9 +5210,16 @@ export function taskLocatorEmptySummary(locator, context) {
     socket.addEventListener("message", (messageEvent) => {
       handleConversationMessage(messageEvent.data);
     });
+    socket.addEventListener("error", () => {
+      if (conversationState.socket !== socket) return;
+      conversationState.socketFaulted = true;
+      conversationState.connection = "unavailable";
+      renderConversationSurface();
+    });
     socket.addEventListener("close", () => {
       if (conversationState.socket !== socket) return;
       conversationState.socket = null;
+      conversationState.socketFaulted = false;
       clearConversationProvisional();
       for (const entry of conversationState.feed) {
         if (entry.kind === "message" && entry.status === "pending") {
@@ -5005,8 +5237,35 @@ export function taskLocatorEmptySummary(locator, context) {
     });
   }
 
+  function convergeConversationConnection(connection) {
+    const socket = conversationState.socket;
+    conversationState.socket = null;
+    conversationState.socketFaulted = false;
+    if (socket !== null && socket.readyState !== WebSocket.CLOSED) {
+      socket.close();
+    }
+    clearConversationProvisional();
+    for (const entry of conversationState.feed) {
+      if (entry.kind === "message" && entry.status === "pending") {
+        entry.status = "failed";
+      }
+    }
+    conversationState.connection = connection;
+    renderConversationSurface();
+    scheduleConversationReconnect();
+  }
+
+  function conversationSocketNeedsConvergence() {
+    if (window.navigator.onLine === false) return true;
+    const socket = conversationState.socket;
+    return socket === null
+      || conversationState.socketFaulted
+      || socket.readyState === WebSocket.CLOSING
+      || socket.readyState === WebSocket.CLOSED;
+  }
+
   function scheduleConversationReconnect() {
-    if (conversationState.closedDeliberately) return;
+    if (conversationState.closedDeliberately || window.navigator.onLine === false) return;
     window.clearTimeout(conversationState.reconnectTimer);
     const delay = Math.min(
       15_000,
@@ -5692,14 +5951,36 @@ export function taskLocatorEmptySummary(locator, context) {
       && !entry.terminal
       && activeConversationTurn()?.turnId === entry.turnId;
     const interruptSent = entry.interruptRequested === true;
-    const sources = entry.disclosedSources.length
+    const sourceCount = entry.disclosedSources.length;
+    const selectorCount = entry.sourceRevisionSelectors.length;
+    const disclosureSummary = sourceCount && selectorCount
+      ? `已向协调器披露 ${sourceCount} 项材料，并记录 ${selectorCount} 条版本选择`
+      : sourceCount
+        ? `已向协调器披露 ${sourceCount} 项材料`
+        : `已向协调器记录 ${selectorCount} 条版本选择`;
+    const sources = sourceCount || selectorCount
       ? `<details class="turn-sources">
-           <summary>披露来源 ${entry.disclosedSources.length} · 版本选择 ${entry.sourceRevisionSelectors.length}</summary>
+           <summary>${disclosureSummary} · 展开查看依据</summary>
+           <p class="turn-sources-explainer">这里列出披露给协调器的材料和版本记录；展开后可核对原始标识。</p>
            <ul>
              ${entry.disclosedSources.map((source) =>
-               `<li><code>${escapeHtml(text(first(source, ["ref"]), "—"))}</code></li>`).join("")}
+               `<li>
+                  <span>披露材料</span>
+                  <div>
+                    <strong>协调器材料引用</strong>
+                    <code>ref: ${escapeHtml(text(first(source, ["ref"]), "—"))}</code>
+                    <code>digest: ${escapeHtml(text(first(source, ["digest"]), "—"))}</code>
+                  </div>
+                </li>`).join("")}
              ${entry.sourceRevisionSelectors.map((selector) =>
-               `<li><span>selector</span> <code>${escapeHtml(text(first(selector, ["source"]), "—"))}@${escapeHtml(text(first(selector, ["revision"]), "—"))}</code></li>`).join("")}
+               `<li>
+                  <span>版本选择</span>
+                  <div>
+                    <strong>协调器读取的来源版本</strong>
+                    <code>source: ${escapeHtml(text(first(selector, ["source"]), "—"))}</code>
+                    <code>revision: ${escapeHtml(text(first(selector, ["revision"]), "—"))}</code>
+                  </div>
+                </li>`).join("")}
            </ul>
          </details>`
       : "";
@@ -5727,7 +6008,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </div>
         ${
           entry.status === "settled"
-            ? `<div class="turn-response">${renderConversationMarkdown(entry.response)}</div>`
+            ? `<div class="turn-response turn-response-markdown">${renderConversationMarkdown(entry.response)}</div>`
             : entry.status === "failed"
               ? `<p class="turn-failure">${escapeHtml(entry.reason || "原因未说明")}</p>`
               : entry.status === "interrupted"
@@ -6098,6 +6379,11 @@ export function taskLocatorEmptySummary(locator, context) {
         markActionObserved(snapshot);
       } catch (error) {
         state.snapshotError = error instanceof Error ? error.message : text(error);
+        if (conversationSocketNeedsConvergence()) {
+          convergeConversationConnection(
+            window.navigator.onLine === false ? "disconnected" : "unavailable",
+          );
+        }
         if (state.lastLiveSnapshot) {
           state.snapshot = state.lastLiveSnapshot;
           state.source = "stale";
@@ -6786,6 +7072,16 @@ export function taskLocatorEmptySummary(locator, context) {
       renderPeek();
       render();
       loadSnapshot({ manual: true, ensure: true });
+    });
+
+    window.addEventListener("offline", () => {
+      if (conversationState.closedDeliberately) return;
+      convergeConversationConnection("disconnected");
+    });
+    window.addEventListener("online", () => {
+      if (conversationState.closedDeliberately) return;
+      conversationState.reconnectAttempt = 0;
+      connectConversation();
     });
 
     $$(".kind-button").forEach((button) => {

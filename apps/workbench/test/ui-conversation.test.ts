@@ -424,6 +424,23 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("只恢复已结算事件");
   });
 
+  test("converges offline before reconnecting and never auto-sends the retained draft", () => {
+    expect(app).toContain("function convergeConversationConnection(connection)");
+    expect(app).toContain('window.addEventListener("offline"');
+    expect(app).toContain('window.addEventListener("online"');
+    expect(app).toContain('convergeConversationConnection("disconnected")');
+    expect(app).toContain('window.navigator.onLine === false');
+    expect(app).toContain("socket.close()");
+    const offlineStart = app.indexOf('window.addEventListener("offline"');
+    const onlineStart = app.indexOf('window.addEventListener("online"');
+    expect(offlineStart).toBeGreaterThan(-1);
+    expect(onlineStart).toBeGreaterThan(offlineStart);
+    const offlineHandler = app.slice(offlineStart, onlineStart);
+    expect(offlineHandler).not.toContain("submitConversationMessage()");
+    expect(offlineHandler).not.toContain("socket.send");
+    expect(app).toContain("草稿保留，恢复连接前不能发送");
+  });
+
   test("renders provisional deltas as provisional and settled replies as durable", () => {
     expect(app).toContain('data-provisional="true"');
     expect(app).toContain("临时流式内容");
@@ -583,6 +600,21 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain('case "projection.changed"');
     expect(app).toContain("loadSnapshot({ manual: true, ensure: true })");
     expect(app).toContain("conversationState.protocolNotices");
+  });
+
+  test("keeps a healthy live conversation when snapshot refresh alone fails", () => {
+    expect(app).toContain('socket.addEventListener("error"');
+    expect(app).toContain("conversationState.socketFaulted");
+    expect(app).toContain("conversationSocketNeedsConvergence()");
+    const loadStart = app.indexOf("async function loadSnapshot");
+    const catchStart = app.indexOf("} catch (error) {", loadStart);
+    const finallyStart = app.indexOf("} finally {", catchStart);
+    expect(loadStart).toBeGreaterThan(-1);
+    expect(catchStart).toBeGreaterThan(loadStart);
+    expect(finallyStart).toBeGreaterThan(catchStart);
+    const snapshotFailure = app.slice(catchStart, finallyStart);
+    expect(snapshotFailure).toContain("if (conversationSocketNeedsConvergence())");
+    expect(snapshotFailure).toContain("convergeConversationConnection(");
   });
 
   test("keeps the composer focused and the feed scroll as presentation focus", () => {

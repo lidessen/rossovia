@@ -221,8 +221,18 @@ button:disabled {
 
 body[data-projection-state="loading"] .target-strip,
 body[data-projection-state="loading"] .principal-snapshot,
-body[data-projection-state="loading"] .workbench-shell {
+body[data-projection-state="loading"] .workbench-shell > .principal-rail,
+body[data-projection-state="loading"] .workbench-shell > .project-surface {
   display: none;
+}
+
+body[data-projection-state="loading"] .workbench-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .target-strip {
@@ -3458,6 +3468,12 @@ body[data-projection-state="loading"] .workbench-shell {
   margin-top: 0.18rem;
 }
 
+.work-item-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .work-item-body > small {
   color: var(--ink-faint);
   font-family: var(--mono);
@@ -3482,6 +3498,25 @@ body[data-projection-state="loading"] .workbench-shell {
   font-size: 0.64rem;
   font-weight: 620;
   margin-top: 0.32rem;
+}
+
+/* Principal and Tasks are scan surfaces. Their existing peek affordance owns
+   the full summary, evidence, and actions; the list keeps only the fields
+   needed to locate the next item. */
+.task-view .work-item {
+  min-height: 58px;
+  padding-block: 0.52rem;
+}
+
+.task-view .work-item-body > span {
+  display: none;
+}
+
+.task-view .work-item-body > small {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-filter-bar {
@@ -3630,7 +3665,7 @@ body[data-projection-state="loading"] .workbench-shell {
   cursor: pointer;
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
+  grid-template-columns: 12px minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
   list-style: none;
   min-height: 76px;
   padding: 0.8rem 0.25rem;
@@ -3640,17 +3675,30 @@ body[data-projection-state="loading"] .workbench-shell {
   display: none;
 }
 
-.project-group > summary::before {
-  color: var(--ink-faint);
-  content: "›";
-  font-size: 1rem;
-  margin-left: -0.95rem;
-  position: absolute;
-  transform: rotate(0deg);
+.project-group-disclosure {
+  border-bottom: 1px solid var(--ink-soft);
+  border-right: 1px solid var(--ink-soft);
+  height: 8px;
+  justify-self: start;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+  width: 8px;
 }
 
-.project-group[open] > summary::before {
-  transform: rotate(90deg);
+.project-group[open] .project-group-disclosure {
+  transform: rotate(45deg);
+}
+
+.project-group-title {
+  grid-column: 2;
+}
+
+.project-group-focus {
+  grid-column: 3;
+}
+
+.project-observation {
+  grid-column: 4;
 }
 
 .project-group-title strong,
@@ -4686,6 +4734,10 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 0.9rem 1.4rem;
 }
 
+.conversation-header > div:first-child {
+  min-width: 0;
+}
+
 .conversation-header h2 {
   font-size: 1.35rem;
   margin: 0;
@@ -4704,35 +4756,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .conversation-standing {
-  align-items: center;
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.6rem;
-}
-
-.conversation-standing > div {
-  display: grid;
-  gap: 0.1rem;
-  text-align: right;
-}
-
-.conversation-standing span {
-  color: var(--ink-faint);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.conversation-standing strong {
-  font-size: 0.8rem;
-}
-
-.conversation-standing code {
-  color: var(--ink-faint);
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  max-width: 24ch;
-  overflow-wrap: anywhere;
+  display: none;
 }
 
 .conversation-reconnect {
@@ -4804,6 +4828,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1rem 1.05rem 1.2rem;
+}
+
+/* The header is the single persistent connection/status source. The context
+   rail retains supervision, next-step, and browser-boundary information. */
+.conversation-empty-standing {
+  display: none !important;
 }
 
 .context-section {
@@ -4885,6 +4915,14 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 @media (min-width: 1280px) {
   .conversation-context {
     display: block;
+  }
+
+  .conversation-context .context-section:first-child {
+    display: none;
+  }
+
+  .conversation-boundary {
+    display: none !important;
   }
 }
 
@@ -5170,6 +5208,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   cursor: pointer;
 }
 
+.turn-sources-explainer {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0.45rem 0 0;
+}
+
 .turn-sources ul {
   display: grid;
   gap: 0.25rem;
@@ -5179,6 +5224,27 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .turn-sources li {
+  align-items: start;
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+.turn-sources li > span {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+}
+
+.turn-sources li > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.turn-sources li strong {
+  font-size: 0.68rem;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
 
@@ -5440,79 +5506,103 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin: 0.65rem 0 0;
   overflow-wrap: anywhere;
   padding-top: 0.65rem;
-  white-space: normal;
 }
 
-.turn-response p,
-.turn-response h1,
-.turn-response h2,
-.turn-response h3,
-.turn-response ul,
-.turn-response ol,
-.turn-response pre {
-  margin: 0 0 0.7rem;
+.turn-response-markdown > :first-child {
+  margin-top: 0;
 }
 
-.turn-response h1,
-.turn-response h2,
-.turn-response h3 {
-  font-family: var(--serif);
+.turn-response-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.turn-response-markdown p,
+.turn-response-markdown h1,
+.turn-response-markdown h2,
+.turn-response-markdown h3,
+.turn-response-markdown ul,
+.turn-response-markdown ol,
+.turn-response-markdown pre {
+  margin: 0.7rem 0;
+}
+
+.turn-response-markdown h1,
+.turn-response-markdown h2,
+.turn-response-markdown h3 {
   line-height: 1.3;
 }
 
-.turn-response h1 { font-size: 1.05rem; }
-.turn-response h2 { font-size: 0.98rem; }
-.turn-response h3 { font-size: 0.92rem; }
-
-.turn-response ul,
-.turn-response ol {
-  padding-left: 1.35rem;
+.turn-response-markdown h1 {
+  font-size: 1.15rem;
 }
 
-.turn-response code {
+.turn-response-markdown h2 {
+  font-size: 1.02rem;
+}
+
+.turn-response-markdown h3 {
+  font-size: 0.92rem;
+}
+
+.turn-response-markdown ul,
+.turn-response-markdown ol {
+  padding-left: 1.3rem;
+}
+
+.turn-response-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.turn-response-markdown code {
   background: var(--paper-deep);
-  border-radius: 3px;
+  border: 1px solid var(--line-light);
   font-family: var(--mono);
-  font-size: 0.88em;
-  padding: 0.08rem 0.25rem;
+  font-size: 0.82em;
+  padding: 0.08rem 0.24rem;
 }
 
-.turn-response pre {
-  background: var(--ink);
-  color: var(--paper-light);
+.turn-response-markdown pre {
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
   max-width: 100%;
   overflow-x: auto;
   padding: 0.65rem 0.75rem;
   white-space: pre;
 }
 
-.turn-response pre code {
+.turn-response-markdown pre code {
   background: transparent;
+  border: 0;
+  display: block;
   padding: 0;
 }
 
-.markdown-table-wrap {
+.turn-response-markdown a {
+  overflow-wrap: anywhere;
+}
+
+.turn-table-wrap {
   max-width: 100%;
   overflow-x: auto;
-  margin: 0 0 0.7rem;
+  -webkit-overflow-scrolling: touch;
 }
 
-.turn-response table {
+.turn-response-markdown table {
   border-collapse: collapse;
-  font-size: 0.78rem;
   min-width: 100%;
-  white-space: normal;
+  width: max-content;
 }
 
-.turn-response th,
-.turn-response td {
+.turn-response-markdown th,
+.turn-response-markdown td {
   border: 1px solid var(--line);
-  padding: 0.38rem 0.5rem;
+  padding: 0.35rem 0.5rem;
   text-align: left;
   vertical-align: top;
+  white-space: nowrap;
 }
 
-.turn-response th {
+.turn-response-markdown th {
   background: var(--paper-deep);
   font-weight: 650;
 }
@@ -6117,7 +6207,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .project-group > summary {
-    grid-template-columns: minmax(130px, 0.55fr) minmax(220px, 1fr);
+    grid-template-columns: 12px minmax(130px, 0.55fr) minmax(220px, 1fr);
   }
 
   .project-observation {
@@ -6230,12 +6320,18 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .project-group > summary {
     align-items: start;
     gap: 0.45rem;
-    grid-template-columns: 1fr;
+    grid-template-columns: 12px minmax(0, 1fr);
     padding: 0.85rem 0.1rem;
   }
 
-  .project-group > summary::before {
-    display: none;
+  .project-group-title,
+  .project-group-focus,
+  .project-observation {
+    grid-column: 2;
+  }
+
+  .project-group-disclosure {
+    margin-top: 0.28rem;
   }
 
   .project-group-focus {
@@ -6441,18 +6537,16 @@ body[data-active-view="conversation"] .conversation-standing {
 }
 
   .conversation-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    align-items: stretch;
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     padding: 0.8rem 0.85rem;
   }
 
   .conversation-header p {
     display: none;
-  }
-
-  .conversation-standing {
-    align-self: flex-end;
   }
 
   .conversation-reconnect {

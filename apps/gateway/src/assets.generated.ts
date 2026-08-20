@@ -1795,8 +1795,18 @@ button:disabled {
 
 body[data-projection-state="loading"] .target-strip,
 body[data-projection-state="loading"] .principal-snapshot,
-body[data-projection-state="loading"] .workbench-shell {
+body[data-projection-state="loading"] .workbench-shell > .principal-rail,
+body[data-projection-state="loading"] .workbench-shell > .project-surface {
   display: none;
+}
+
+body[data-projection-state="loading"] .workbench-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .target-strip {
@@ -5032,6 +5042,12 @@ body[data-projection-state="loading"] .workbench-shell {
   margin-top: 0.18rem;
 }
 
+.work-item-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .work-item-body > small {
   color: var(--ink-faint);
   font-family: var(--mono);
@@ -5056,6 +5072,25 @@ body[data-projection-state="loading"] .workbench-shell {
   font-size: 0.64rem;
   font-weight: 620;
   margin-top: 0.32rem;
+}
+
+/* Principal and Tasks are scan surfaces. Their existing peek affordance owns
+   the full summary, evidence, and actions; the list keeps only the fields
+   needed to locate the next item. */
+.task-view .work-item {
+  min-height: 58px;
+  padding-block: 0.52rem;
+}
+
+.task-view .work-item-body > span {
+  display: none;
+}
+
+.task-view .work-item-body > small {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-filter-bar {
@@ -5204,7 +5239,7 @@ body[data-projection-state="loading"] .workbench-shell {
   cursor: pointer;
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
+  grid-template-columns: 12px minmax(150px, 0.55fr) minmax(260px, 1fr) auto;
   list-style: none;
   min-height: 76px;
   padding: 0.8rem 0.25rem;
@@ -5214,17 +5249,30 @@ body[data-projection-state="loading"] .workbench-shell {
   display: none;
 }
 
-.project-group > summary::before {
-  color: var(--ink-faint);
-  content: "›";
-  font-size: 1rem;
-  margin-left: -0.95rem;
-  position: absolute;
-  transform: rotate(0deg);
+.project-group-disclosure {
+  border-bottom: 1px solid var(--ink-soft);
+  border-right: 1px solid var(--ink-soft);
+  height: 8px;
+  justify-self: start;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+  width: 8px;
 }
 
-.project-group[open] > summary::before {
-  transform: rotate(90deg);
+.project-group[open] .project-group-disclosure {
+  transform: rotate(45deg);
+}
+
+.project-group-title {
+  grid-column: 2;
+}
+
+.project-group-focus {
+  grid-column: 3;
+}
+
+.project-observation {
+  grid-column: 4;
 }
 
 .project-group-title strong,
@@ -6260,6 +6308,10 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 0.9rem 1.4rem;
 }
 
+.conversation-header > div:first-child {
+  min-width: 0;
+}
+
 .conversation-header h2 {
   font-size: 1.35rem;
   margin: 0;
@@ -6278,35 +6330,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .conversation-standing {
-  align-items: center;
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.6rem;
-}
-
-.conversation-standing > div {
-  display: grid;
-  gap: 0.1rem;
-  text-align: right;
-}
-
-.conversation-standing span {
-  color: var(--ink-faint);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.conversation-standing strong {
-  font-size: 0.8rem;
-}
-
-.conversation-standing code {
-  color: var(--ink-faint);
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  max-width: 24ch;
-  overflow-wrap: anywhere;
+  display: none;
 }
 
 .conversation-reconnect {
@@ -6378,6 +6402,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1rem 1.05rem 1.2rem;
+}
+
+/* The header is the single persistent connection/status source. The context
+   rail retains supervision, next-step, and browser-boundary information. */
+.conversation-empty-standing {
+  display: none !important;
 }
 
 .context-section {
@@ -6459,6 +6489,14 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 @media (min-width: 1280px) {
   .conversation-context {
     display: block;
+  }
+
+  .conversation-context .context-section:first-child {
+    display: none;
+  }
+
+  .conversation-boundary {
+    display: none !important;
   }
 }
 
@@ -6744,6 +6782,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   cursor: pointer;
 }
 
+.turn-sources-explainer {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0.45rem 0 0;
+}
+
 .turn-sources ul {
   display: grid;
   gap: 0.25rem;
@@ -6753,6 +6798,27 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .turn-sources li {
+  align-items: start;
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+.turn-sources li > span {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+}
+
+.turn-sources li > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.turn-sources li strong {
+  font-size: 0.68rem;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
 
@@ -7014,79 +7080,103 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin: 0.65rem 0 0;
   overflow-wrap: anywhere;
   padding-top: 0.65rem;
-  white-space: normal;
 }
 
-.turn-response p,
-.turn-response h1,
-.turn-response h2,
-.turn-response h3,
-.turn-response ul,
-.turn-response ol,
-.turn-response pre {
-  margin: 0 0 0.7rem;
+.turn-response-markdown > :first-child {
+  margin-top: 0;
 }
 
-.turn-response h1,
-.turn-response h2,
-.turn-response h3 {
-  font-family: var(--serif);
+.turn-response-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.turn-response-markdown p,
+.turn-response-markdown h1,
+.turn-response-markdown h2,
+.turn-response-markdown h3,
+.turn-response-markdown ul,
+.turn-response-markdown ol,
+.turn-response-markdown pre {
+  margin: 0.7rem 0;
+}
+
+.turn-response-markdown h1,
+.turn-response-markdown h2,
+.turn-response-markdown h3 {
   line-height: 1.3;
 }
 
-.turn-response h1 { font-size: 1.05rem; }
-.turn-response h2 { font-size: 0.98rem; }
-.turn-response h3 { font-size: 0.92rem; }
-
-.turn-response ul,
-.turn-response ol {
-  padding-left: 1.35rem;
+.turn-response-markdown h1 {
+  font-size: 1.15rem;
 }
 
-.turn-response code {
+.turn-response-markdown h2 {
+  font-size: 1.02rem;
+}
+
+.turn-response-markdown h3 {
+  font-size: 0.92rem;
+}
+
+.turn-response-markdown ul,
+.turn-response-markdown ol {
+  padding-left: 1.3rem;
+}
+
+.turn-response-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.turn-response-markdown code {
   background: var(--paper-deep);
-  border-radius: 3px;
+  border: 1px solid var(--line-light);
   font-family: var(--mono);
-  font-size: 0.88em;
-  padding: 0.08rem 0.25rem;
+  font-size: 0.82em;
+  padding: 0.08rem 0.24rem;
 }
 
-.turn-response pre {
-  background: var(--ink);
-  color: var(--paper-light);
+.turn-response-markdown pre {
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
   max-width: 100%;
   overflow-x: auto;
   padding: 0.65rem 0.75rem;
   white-space: pre;
 }
 
-.turn-response pre code {
+.turn-response-markdown pre code {
   background: transparent;
+  border: 0;
+  display: block;
   padding: 0;
 }
 
-.markdown-table-wrap {
+.turn-response-markdown a {
+  overflow-wrap: anywhere;
+}
+
+.turn-table-wrap {
   max-width: 100%;
   overflow-x: auto;
-  margin: 0 0 0.7rem;
+  -webkit-overflow-scrolling: touch;
 }
 
-.turn-response table {
+.turn-response-markdown table {
   border-collapse: collapse;
-  font-size: 0.78rem;
   min-width: 100%;
-  white-space: normal;
+  width: max-content;
 }
 
-.turn-response th,
-.turn-response td {
+.turn-response-markdown th,
+.turn-response-markdown td {
   border: 1px solid var(--line);
-  padding: 0.38rem 0.5rem;
+  padding: 0.35rem 0.5rem;
   text-align: left;
   vertical-align: top;
+  white-space: nowrap;
 }
 
-.turn-response th {
+.turn-response-markdown th {
   background: var(--paper-deep);
   font-weight: 650;
 }
@@ -7691,7 +7781,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .project-group > summary {
-    grid-template-columns: minmax(130px, 0.55fr) minmax(220px, 1fr);
+    grid-template-columns: 12px minmax(130px, 0.55fr) minmax(220px, 1fr);
   }
 
   .project-observation {
@@ -7804,12 +7894,18 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .project-group > summary {
     align-items: start;
     gap: 0.45rem;
-    grid-template-columns: 1fr;
+    grid-template-columns: 12px minmax(0, 1fr);
     padding: 0.85rem 0.1rem;
   }
 
-  .project-group > summary::before {
-    display: none;
+  .project-group-title,
+  .project-group-focus,
+  .project-observation {
+    grid-column: 2;
+  }
+
+  .project-group-disclosure {
+    margin-top: 0.28rem;
   }
 
   .project-group-focus {
@@ -8015,18 +8111,16 @@ body[data-active-view="conversation"] .conversation-standing {
 }
 
   .conversation-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    align-items: stretch;
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     padding: 0.8rem 0.85rem;
   }
 
   .conversation-header p {
     display: none;
-  }
-
-  .conversation-standing {
-    align-self: flex-end;
   }
 
   .conversation-reconnect {
@@ -9127,6 +9221,7 @@ export function taskLocatorEmptySummary(locator, context) {
     cursor: -1,
     buffered: [],
     socket: null,
+    socketFaulted: false,
     connection: "unavailable",
     reconnectAttempt: 0,
     reconnectTimer: null,
@@ -9503,6 +9598,170 @@ export function taskLocatorEmptySummary(locator, context) {
       .replaceAll("'", "&#039;");
   }
 
+  // Conversation responses are model-authored text, so render only the small
+  // Markdown vocabulary the feed needs after escaping every user-controlled
+  // character. Raw HTML never enters the returned markup.
+  function renderConversationInlineMarkdown(value) {
+    const tokens = [];
+    const token = (html) => {
+      const marker = \`\\uE000\${tokens.length}\\uE001\`;
+      tokens.push(html);
+      return marker;
+    };
+    let rendered = escapeHtml(value);
+    rendered = rendered.replace(/\`([^\`\\n]+)\`/gu, (_, code) =>
+      token(\`<code>\${code}</code>\`),
+    );
+    rendered = rendered.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/giu, (_, label, href) =>
+      token(\`<a href="\${href}" target="_blank" rel="noreferrer">\${label}</a>\`),
+    );
+    rendered = rendered
+      .replace(/\\*\\*([^*\\n]+)\\*\\*/gu, "<strong>$1</strong>")
+      .replace(/__([^_\\n]+)__/gu, "<strong>$1</strong>")
+      .replace(/(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)/gu, "<em>$1</em>")
+      .replace(/(?<!_)_([^_\\n]+)_(?!_)/gu, "<em>$1</em>");
+    return rendered.replace(/\\uE000(\\d+)\\uE001/gu, (_, index) => tokens[Number(index)]);
+  }
+
+  function conversationMarkdownTableCells(value) {
+    const line = text(value, "").trim();
+    if (!line.includes("|")) return null;
+    const content = line.startsWith("|") ? line.slice(1) : line;
+    const withoutTrailingPipe = content.endsWith("|")
+      ? content.slice(0, -1)
+      : content;
+    const cells = [];
+    let cell = "";
+    let escaped = false;
+    for (const character of withoutTrailingPipe) {
+      if (character === "|" && !escaped) {
+        cells.push(cell.trim().replaceAll("\\\\|", "|"));
+        cell = "";
+      } else {
+        cell += character;
+      }
+      escaped = character === "\\\\" && !escaped;
+      if (character !== "\\\\") escaped = false;
+    }
+    cells.push(cell.trim().replaceAll("\\\\|", "|"));
+    return cells;
+  }
+
+  function isConversationMarkdownTableSeparator(value, columnCount) {
+    const cells = conversationMarkdownTableCells(value);
+    return cells !== null
+      && cells.length === columnCount
+      && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+  }
+
+  function renderConversationMarkdown(value) {
+    const lines = text(value, "").replaceAll("\\r\\n", "\\n").split("\\n");
+    const blocks = [];
+    let paragraph = [];
+    let list = null;
+    let code = null;
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      blocks.push(\`<p>\${paragraph.map(renderConversationInlineMarkdown).join("<br>")}</p>\`);
+      paragraph = [];
+    };
+    const flushList = () => {
+      if (!list) return;
+      blocks.push(\`<\${list.kind}>\${list.items.map((item) =>
+        \`<li>\${renderConversationInlineMarkdown(item)}</li>\`,
+      ).join("")}</\${list.kind}>\`);
+      list = null;
+    };
+    const flushCode = () => {
+      if (!code) return;
+      const language = code.language
+        ? \` class="language-\${escapeHtml(code.language)}"\`
+        : "";
+      blocks.push(\`<pre><code\${language}>\${escapeHtml(code.lines.join("\\n"))}</code></pre>\`);
+      code = null;
+    };
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      const fence = line.match(/^\\s*\`\`\`\\s*([\\w-]+)?\\s*$/u);
+      if (code) {
+        if (fence) flushCode();
+        else code.lines.push(line);
+        continue;
+      }
+      const tableHeader = conversationMarkdownTableCells(line);
+      if (tableHeader !== null
+        && tableHeader.length > 0
+        && lineIndex + 1 < lines.length
+        && isConversationMarkdownTableSeparator(lines[lineIndex + 1], tableHeader.length)) {
+        flushParagraph();
+        flushList();
+        const tableRows = [];
+        lineIndex += 1;
+        while (lineIndex + 1 < lines.length) {
+          const row = conversationMarkdownTableCells(lines[lineIndex + 1]);
+          if (row === null) break;
+          tableRows.push(row);
+          lineIndex += 1;
+        }
+        const normalizeRow = (row) => {
+          const normalized = row.slice(0, tableHeader.length);
+          if (row.length > tableHeader.length) {
+            normalized[tableHeader.length - 1] = row
+              .slice(tableHeader.length - 1)
+              .join(" | ");
+          }
+          while (normalized.length < tableHeader.length) normalized.push("");
+          return normalized;
+        };
+        const renderTableRow = (row, tag) => \`<tr>\${normalizeRow(row).map((cell) =>
+          \`<\${tag}>\${renderConversationInlineMarkdown(cell)}</\${tag}>\`,
+        ).join("")}</tr>\`;
+        blocks.push(\`<div class="turn-table-wrap"><table>
+          <thead>\${renderTableRow(tableHeader, "th")}</thead>
+          <tbody>\${tableRows.map((row) => renderTableRow(row, "td")).join("")}</tbody>
+        </table></div>\`);
+        continue;
+      }
+      if (fence) {
+        flushParagraph();
+        flushList();
+        code = { language: fence[1] || "", lines: [] };
+        continue;
+      }
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        continue;
+      }
+      const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*$/u);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const level = heading[1].length;
+        blocks.push(\`<h\${level}>\${renderConversationInlineMarkdown(heading[2])}</h\${level}>\`);
+        continue;
+      }
+      const unordered = line.match(/^\\s*[-*+]\\s+(.+)$/u);
+      const ordered = line.match(/^\\s*\\d+[.)]\\s+(.+)$/u);
+      if (unordered || ordered) {
+        flushParagraph();
+        const kind = unordered ? "ul" : "ol";
+        if (list && list.kind !== kind) flushList();
+        if (!list) list = { kind, items: [] };
+        list.items.push((unordered || ordered)[1]);
+        continue;
+      }
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph();
+    flushList();
+    flushCode();
+    return blocks.join("");
+  }
+
   function first(object, keys, fallback = undefined) {
     if (!object || typeof object !== "object") return fallback;
     for (const key of keys) {
@@ -9631,6 +9890,31 @@ export function taskLocatorEmptySummary(locator, context) {
     if (kind === "observed-at-build") return "本次投影";
     if (kind === "cached") return "缓存";
     return "未验证";
+  }
+
+  function workItemAnomalyContext(item) {
+    const detail = first(item, ["anomalyDetail"], {});
+    const binding = first(detail, ["binding"], {});
+    const runnerId = text(
+      first(item, ["runnerId"]) || first(binding, ["runnerId"]),
+      "",
+    );
+    const bindingStanding = text(first(binding, ["standing"]), "");
+    const standing = text(
+      first(detail, ["standing", "runnerStanding"]) || first(item, ["runnerState"]),
+      "",
+    );
+    const reason = text(
+      first(binding, ["reason"]) || first(detail, ["reason"]) || first(item, ["reason"]),
+      "",
+    );
+    if (item?.kind !== "observation" && item?.anomalyDetail === undefined) return "";
+    return [
+      runnerId ? \`Runner \${runnerId}\` : "Runner 身份未投影",
+      bindingStanding ? \`绑定 \${bindingStanding}\` : "绑定状态未知",
+      standing ? \`状态 \${standing}\` : "状态未知",
+      reason,
+    ].filter(Boolean).join(" · ");
   }
 
   function projectWorkSummary(project, index) {
@@ -10168,18 +10452,20 @@ export function taskLocatorEmptySummary(locator, context) {
       ? \`\${projectName(project)}\${item.missionId ? \` · \${item.missionId}\` : ""}\`
       : item.context;
     const actor = actorCopy[item.nextActor] || item.nextActor;
+    const anomalyContext = workItemAnomalyContext(item);
     return \`
       <button
         class="work-item \${item.id === state.selectedWorkItemId ? "is-selected" : ""}"
         type="button"
         data-work-item-id="\${escapeHtml(item.id)}"
         data-lifecycle="\${escapeHtml(item.lifecycle)}"
+        data-work-item-kind="\${escapeHtml(text(item.kind, "work"))}"
       >
         <span class="work-item-state">\${escapeHtml(workItemCopy[item.lifecycle] || item.lifecycle)}</span>
         <span class="work-item-body">
           <strong>\${escapeHtml(item.title)}</strong>
-          <span>\${escapeHtml(item.summary)}</span>
-          <small>\${escapeHtml(context)} · 下一步 \${escapeHtml(actor)}</small>
+          <span class="work-item-summary">\${escapeHtml(item.summary)}</span>
+          <small>\${escapeHtml(context)} · 下一步 \${escapeHtml(actor)}\${anomalyContext ? \` · \${escapeHtml(anomalyContext)}\` : ""}</small>
         </span>
         <span class="work-item-meta">
           <small>\${escapeHtml(workItemFreshnessLabel(item))}</small>
@@ -10297,8 +10583,9 @@ export function taskLocatorEmptySummary(locator, context) {
       const primary = summary.primary;
       const completeness = "项目新鲜度未单独声明";
       return \`
-        <details class="project-group" \${index < 2 ? "open" : ""}>
+        <details class="project-group" \${projectItems.length > 0 && projectItems.length <= 3 ? "open" : ""}>
           <summary>
+            <span class="project-group-disclosure" aria-hidden="true"></span>
             <span class="project-group-title">
               <strong>\${escapeHtml(summary.name)}</strong>
               <small>\${summary.worktreeCount} 个 Worktree · \${summary.taskCount} 项任务\${summary.observationCount ? \` · \${summary.observationCount} 项异常\` : ""}</small>
@@ -10447,6 +10734,7 @@ export function taskLocatorEmptySummary(locator, context) {
 
   function renderUnifiedSurface() {
     const items = workItems();
+    document.body.dataset.uiView = state.activeView;
     const overview = $("#unified-surface");
     const projectDetail = $("#project-detail");
     const taskView = $("#task-view");
@@ -10487,14 +10775,14 @@ export function taskLocatorEmptySummary(locator, context) {
     settingsSurface.hidden = !isSettings;
 
     const viewMeta = {
-      overview: ["Workbench overview", "总览", "跨项目查看需要你处理、Agent 正在进行和状态未知的工作。"],
+      overview: ["Workbench overview", "总览", "先看最重要的待办、异常与项目摘要；完整证据从详情打开。"],
       projects: ["Projects", "项目", "按项目与 Worktree 查看当前工作，不把观察关系伪装成任务绑定。"],
-      principal: ["Needs you", "待我处理", "只显示下一责任方明确是你的事项；进入详情后再完成决策。"],
+      principal: ["Needs you", "待我处理", "显示完整的待我处理队列；列表只用于定位，决策证据在详情中查看。"],
       agent: ["Agent live", "Agent 运行中", "只显示有实时载体证据的当前 Agent 运行。"],
       "agent-pending": ["Agent queue", "待 Agent 接手", "只显示下一责任方为 Agent、但尚无精确实时执行证据的事项。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
-      tasks: ["Tasks", "任务", "用统一形式查看不同责任方和生命周期的工作。"],
+      tasks: ["Tasks", "任务", "按筛选定位全量任务；状态、责任方和来源先行，长证据在详情中查看。"],
       observer: ["Observation", "观察记录", "查看 observer 对最近执行留下的意见、证据引用与可处理的缺口。"],
       settings: ["Settings", "设置", "查看当前生效的 Worker、Provider、凭据状态与用户偏好。"],
     };
@@ -10737,24 +11025,43 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    $("#peek-context").textContent = item.context;
+    const anomaly = first(item, ["anomalyDetail"]);
+    const anomalyContext = workItemAnomalyContext(item);
+    const compactAnomalyContext = anomalyContext
+      .split(" · ")
+      .slice(0, 3)
+      .join(" · ");
+    const peekContext = compactAnomalyContext
+      ? \`\${item.context} · \${compactAnomalyContext}\`
+      : item.context;
+    const anomalyReason = text(
+      first(item, ["reason"]),
+      "",
+    );
+    $("#peek-context").textContent = peekContext;
+    $("#peek-context").title = peekContext;
     $("#peek-item-state").textContent = workItemCopy[item.lifecycle] || item.lifecycle;
     $("#peek-item-title").textContent = item.title;
-    $("#peek-item-summary").textContent = item.summary;
-    $("#peek-next-actor").textContent = actorCopy[item.nextActor] || item.nextActor;
+    $("#peek-item-summary").textContent = [
+      item.summary,
+      anomaly === undefined && anomalyReason ? anomalyReason : "",
+    ].filter(Boolean).join(" · ");
+    $("#peek-next-actor").textContent = [
+      actorCopy[item.nextActor] || item.nextActor,
+      compactAnomalyContext,
+    ].filter(Boolean).join(" · ");
     $("#peek-freshness").textContent = state.detailRevalidationPending
       ? "正在重验当前目标"
       : workItemFreshnessLabel(item);
     if (state.detailRevalidationPending) {
       $("#proposal-authorize-button").disabled = true;
     }
-    const anomaly = first(item, ["anomalyDetail"]);
     const anomalySection = $("#anomaly-detail");
     anomalySection.hidden = anomaly === null || anomaly === undefined;
-    if (!anomalySection.hidden) renderAnomalyDetail(anomaly);
+    if (!anomalySection.hidden) renderAnomalyDetail(anomaly, item);
   }
 
-  function renderAnomalyDetail(detail) {
+  function renderAnomalyDetail(detail, item = null) {
     if (!detail || typeof detail !== "object") return;
     const scene = first(detail, ["scene"], {});
     const dedup = first(detail, ["dedup"], {});
@@ -10780,9 +11087,14 @@ export function taskLocatorEmptySummary(locator, context) {
       text(first(evidence, ["meaning"]), ""),
     ].filter(Boolean).join(" · ");
     const bindingStanding = text(first(binding, ["standing"]), "unverified");
+    const runnerId = text(
+      first(item, ["runnerId"]) || first(binding, ["runnerId"]),
+      "身份未投影",
+    );
     const bindingMissionId = text(first(binding, ["missionId"]), "");
     const bindingReason = text(first(binding, ["reason"]), "");
     $("#anomaly-binding").textContent = [
+      "Runner " + runnerId,
       "绑定 " + bindingStanding,
       bindingMissionId ? "声明 Mission " + bindingMissionId : "",
       bindingReason,
@@ -13205,9 +13517,15 @@ export function taskLocatorEmptySummary(locator, context) {
     const id = conversationState.conversationId;
     if (id === null) return;
     window.clearTimeout(conversationState.reconnectTimer);
+    if (window.navigator.onLine === false) {
+      conversationState.connection = "disconnected";
+      renderConversationSurface();
+      return;
+    }
     const current = conversationState.socket;
     if (current !== null && current.readyState === WebSocket.OPEN) return;
     conversationState.connection = "connecting";
+    conversationState.socketFaulted = false;
     renderConversationSurface();
     let socket;
     try {
@@ -13222,6 +13540,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     conversationState.socket = socket;
     socket.addEventListener("open", () => {
+      conversationState.socketFaulted = false;
       conversationState.connection = "live";
       conversationState.reconnectAttempt = 0;
       conversationState.protocolNotices = [];
@@ -13233,9 +13552,16 @@ export function taskLocatorEmptySummary(locator, context) {
     socket.addEventListener("message", (messageEvent) => {
       handleConversationMessage(messageEvent.data);
     });
+    socket.addEventListener("error", () => {
+      if (conversationState.socket !== socket) return;
+      conversationState.socketFaulted = true;
+      conversationState.connection = "unavailable";
+      renderConversationSurface();
+    });
     socket.addEventListener("close", () => {
       if (conversationState.socket !== socket) return;
       conversationState.socket = null;
+      conversationState.socketFaulted = false;
       clearConversationProvisional();
       for (const entry of conversationState.feed) {
         if (entry.kind === "message" && entry.status === "pending") {
@@ -13253,8 +13579,35 @@ export function taskLocatorEmptySummary(locator, context) {
     });
   }
 
+  function convergeConversationConnection(connection) {
+    const socket = conversationState.socket;
+    conversationState.socket = null;
+    conversationState.socketFaulted = false;
+    if (socket !== null && socket.readyState !== WebSocket.CLOSED) {
+      socket.close();
+    }
+    clearConversationProvisional();
+    for (const entry of conversationState.feed) {
+      if (entry.kind === "message" && entry.status === "pending") {
+        entry.status = "failed";
+      }
+    }
+    conversationState.connection = connection;
+    renderConversationSurface();
+    scheduleConversationReconnect();
+  }
+
+  function conversationSocketNeedsConvergence() {
+    if (window.navigator.onLine === false) return true;
+    const socket = conversationState.socket;
+    return socket === null
+      || conversationState.socketFaulted
+      || socket.readyState === WebSocket.CLOSING
+      || socket.readyState === WebSocket.CLOSED;
+  }
+
   function scheduleConversationReconnect() {
-    if (conversationState.closedDeliberately) return;
+    if (conversationState.closedDeliberately || window.navigator.onLine === false) return;
     window.clearTimeout(conversationState.reconnectTimer);
     const delay = Math.min(
       15_000,
@@ -13940,14 +14293,36 @@ export function taskLocatorEmptySummary(locator, context) {
       && !entry.terminal
       && activeConversationTurn()?.turnId === entry.turnId;
     const interruptSent = entry.interruptRequested === true;
-    const sources = entry.disclosedSources.length
+    const sourceCount = entry.disclosedSources.length;
+    const selectorCount = entry.sourceRevisionSelectors.length;
+    const disclosureSummary = sourceCount && selectorCount
+      ? \`已向协调器披露 \${sourceCount} 项材料，并记录 \${selectorCount} 条版本选择\`
+      : sourceCount
+        ? \`已向协调器披露 \${sourceCount} 项材料\`
+        : \`已向协调器记录 \${selectorCount} 条版本选择\`;
+    const sources = sourceCount || selectorCount
       ? \`<details class="turn-sources">
-           <summary>披露来源 \${entry.disclosedSources.length} · 版本选择 \${entry.sourceRevisionSelectors.length}</summary>
+           <summary>\${disclosureSummary} · 展开查看依据</summary>
+           <p class="turn-sources-explainer">这里列出披露给协调器的材料和版本记录；展开后可核对原始标识。</p>
            <ul>
              \${entry.disclosedSources.map((source) =>
-               \`<li><code>\${escapeHtml(text(first(source, ["ref"]), "—"))}</code></li>\`).join("")}
+               \`<li>
+                  <span>披露材料</span>
+                  <div>
+                    <strong>协调器材料引用</strong>
+                    <code>ref: \${escapeHtml(text(first(source, ["ref"]), "—"))}</code>
+                    <code>digest: \${escapeHtml(text(first(source, ["digest"]), "—"))}</code>
+                  </div>
+                </li>\`).join("")}
              \${entry.sourceRevisionSelectors.map((selector) =>
-               \`<li><span>selector</span> <code>\${escapeHtml(text(first(selector, ["source"]), "—"))}@\${escapeHtml(text(first(selector, ["revision"]), "—"))}</code></li>\`).join("")}
+               \`<li>
+                  <span>版本选择</span>
+                  <div>
+                    <strong>协调器读取的来源版本</strong>
+                    <code>source: \${escapeHtml(text(first(selector, ["source"]), "—"))}</code>
+                    <code>revision: \${escapeHtml(text(first(selector, ["revision"]), "—"))}</code>
+                  </div>
+                </li>\`).join("")}
            </ul>
          </details>\`
       : "";
@@ -13975,7 +14350,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </div>
         \${
           entry.status === "settled"
-            ? \`<div class="turn-response">\${renderConversationMarkdown(entry.response)}</div>\`
+            ? \`<div class="turn-response turn-response-markdown">\${renderConversationMarkdown(entry.response)}</div>\`
             : entry.status === "failed"
               ? \`<p class="turn-failure">\${escapeHtml(entry.reason || "原因未说明")}</p>\`
               : entry.status === "interrupted"
@@ -14346,6 +14721,11 @@ export function taskLocatorEmptySummary(locator, context) {
         markActionObserved(snapshot);
       } catch (error) {
         state.snapshotError = error instanceof Error ? error.message : text(error);
+        if (conversationSocketNeedsConvergence()) {
+          convergeConversationConnection(
+            window.navigator.onLine === false ? "disconnected" : "unavailable",
+          );
+        }
         if (state.lastLiveSnapshot) {
           state.snapshot = state.lastLiveSnapshot;
           state.source = "stale";
@@ -15034,6 +15414,16 @@ export function taskLocatorEmptySummary(locator, context) {
       renderPeek();
       render();
       loadSnapshot({ manual: true, ensure: true });
+    });
+
+    window.addEventListener("offline", () => {
+      if (conversationState.closedDeliberately) return;
+      convergeConversationConnection("disconnected");
+    });
+    window.addEventListener("online", () => {
+      if (conversationState.closedDeliberately) return;
+      conversationState.reconnectAttempt = 0;
+      connectConversation();
     });
 
     $$(".kind-button").forEach((button) => {
