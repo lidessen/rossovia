@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import type { CellInput, CellRunRecord } from "../../../packages/work-cell/src/contracts";
+import { z } from "zod";
+import { UsageSchema, type CellInput } from "../../../packages/work-cell/src/contracts";
 import { resolveHome } from "./home";
 import {
   readStrictTaskAttemptEvidence,
@@ -38,29 +39,38 @@ export interface DogfoodObserverResult {
   readonly finding: string;
 }
 
-interface DogfoodReviewLogRecord {
-  readonly version: typeof DOGFOOD_REVIEW_LOG_VERSION;
-  readonly reviewId: string;
-  readonly recordedAt: string;
-  readonly subject: {
-    readonly type: "dogfood-task-attempt";
-    readonly taskId?: string;
-    readonly attemptId: string;
-  };
-  readonly observer: {
-    readonly kind: "agent";
-    readonly workerId: string;
-  };
-  readonly standing: "recorded" | "query-gap" | "runner-failed";
-  readonly evidenceRefs: readonly string[];
-  readonly finding: string;
-  readonly reviewText?: string;
-  readonly observerRun?: {
-    readonly runId: string;
-    readonly status: CellRunRecord["status"];
-    readonly usage: CellRunRecord["usage"];
-  };
-}
+const DogfoodReviewLogRecordSchema = z.object({
+  version: z.literal(DOGFOOD_REVIEW_LOG_VERSION),
+  reviewId: z.string().min(1),
+  recordedAt: z.string().min(1),
+  subject: z.object({
+    type: z.literal("dogfood-task-attempt"),
+    taskId: z.string().min(1).optional(),
+    attemptId: z.string().min(1),
+  }).strict(),
+  observer: z.object({
+    kind: z.literal("agent"),
+    workerId: z.string().min(1),
+  }).strict(),
+  standing: z.enum(["recorded", "query-gap", "runner-failed"]),
+  evidenceRefs: z.array(z.string().min(1)),
+  finding: z.string().min(1),
+  reviewText: z.string().optional(),
+  observerRun: z.object({
+    runId: z.string().min(1),
+    status: z.enum([
+      "passed",
+      "failed",
+      "verification_failed",
+      "protocol_error",
+      "capability_mismatch",
+      "cancelled",
+    ]),
+    usage: UsageSchema,
+  }).strict().optional(),
+}).strict();
+
+export type DogfoodReviewLogRecord = z.infer<typeof DogfoodReviewLogRecordSchema>;
 
 export function dogfoodReviewLogPath(homeArgument?: string): string {
   return join(resolveHome(homeArgument), "state", "dogfood-reviews.jsonl");
@@ -75,10 +85,57 @@ export function appendDogfoodReview(
   homeArgument: string | undefined,
   record: DogfoodReviewLogRecord,
 ): string {
+  const validated = DogfoodReviewLogRecordSchema.parse(record);
   const path = dogfoodReviewLogPath(homeArgument);
   mkdirSync(join(resolveHome(homeArgument), "state"), { recursive: true });
-  appendFileSync(path, `${JSON.stringify(record)}\n`, "utf8");
+  appendFileSync(path, `${JSON.stringify(validated)}\n`, "utf8");
   return path;
+}
+
+/** Read and validate the source-native review store for a later ordinary Task. */
+export function readDogfoodReviews(homeArgument?: string): DogfoodReviewLogRecord[] {
+  const path = dogfoodReviewLogPath(homeArgument);
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line, index) => {
+      try {
+        return DogfoodReviewLogRecordSchema.parse(JSON.parse(line));
+      } catch (error) {
+        throw new Error(
+          `dogfood review store record ${index + 1} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
+}
+
+/** Record a launch failure without allowing the detached child error to crash the Task CLI. */
+export function recordDogfoodObserverLaunchFailure(
+  arguments_: DogfoodObserverArguments,
+  finding: string,
+): DogfoodObserverResult {
+  const home = resolveHome(arguments_.home);
+  const reviewId = `review-${arguments_.attemptId}-${randomUUID()}`;
+  const path = appendDogfoodReview(home, {
+    version: DOGFOOD_REVIEW_LOG_VERSION,
+    reviewId,
+    recordedAt: new Date().toISOString(),
+    subject: { type: "dogfood-task-attempt", attemptId: arguments_.attemptId },
+    observer: { kind: "agent", workerId: arguments_.workerId },
+    standing: "runner-failed",
+    evidenceRefs: [],
+    finding,
+  });
+  return {
+    version: "rosso.dogfood-observer-result.v1",
+    reviewId,
+    attemptId: arguments_.attemptId,
+    workerId: arguments_.workerId,
+    standing: "runner-failed",
+    logRef: relative(home, path),
+    finding,
+  };
 }
 
 /**
@@ -90,8 +147,14 @@ export async function runDogfoodObserver(
 ): Promise<DogfoodObserverResult> {
   const home = resolveHome(arguments_.home);
   const reviewId = `review-${arguments_.attemptId}-${randomUUID()}`;
-  const evidence = readStrictTaskAttemptEvidence(home, arguments_.attemptId);
-  const taskId = evidence.attempt?.taskId;
+  let evidence: StrictTaskAttemptEvidence | undefined;
+  let evidenceError: string | undefined;
+  try {
+    evidence = readStrictTaskAttemptEvidence(home, arguments_.attemptId);
+  } catch (error: unknown) {
+    evidenceError = error instanceof Error ? error.message : String(error);
+  }
+  const taskId = evidence?.attempt?.taskId;
   const base = {
     version: DOGFOOD_REVIEW_LOG_VERSION,
     reviewId,
@@ -102,7 +165,7 @@ export async function runDogfoodObserver(
       attemptId: arguments_.attemptId,
     },
     observer: { kind: "agent" as const, workerId: arguments_.workerId },
-    evidenceRefs: [
+    evidenceRefs: evidence === undefined ? [] : [
       evidence.refs.attemptRef,
       evidence.refs.inputRef,
       evidence.refs.finalRecordRef,
@@ -111,12 +174,15 @@ export async function runDogfoodObserver(
   };
 
   if (
-    evidence.standing !== "available"
+    evidenceError !== undefined
+    || evidence === undefined
+    || evidence.standing !== "available"
     || evidence.input === undefined
     || evidence.finalRecord === undefined
     || evidence.settlement === undefined
   ) {
-    const finding = evidence.error
+    const finding = evidenceError
+      ?? evidence?.error
       ?? "standard attempt API did not expose a complete terminal evidence family";
     const path = appendDogfoodReview(home, {
       ...base,
@@ -136,11 +202,12 @@ export async function runDogfoodObserver(
   }
 
   try {
+    const availableEvidence = evidence;
     const policy = require("../../autonomy/src/worker-policy") as typeof import("../../autonomy/src/worker-policy");
     const catalog = policy.createCurrentWorkerCatalog();
     const worker = catalog.card(arguments_.workerId);
-    const worktree = evidence.input.workspace.root;
-    const context = observerContext(evidence);
+    const worktree = availableEvidence.input!.workspace.root;
+    const context = observerContext(availableEvidence);
     const input: CellInput = {
       id: `dogfood-observer-${reviewId}`,
       workerId: worker.id,
@@ -149,7 +216,7 @@ export async function runDogfoodObserver(
         "Review one settled Rossovia dogfood task. Return only evidence-backed findings and visibility gaps; do not edit or accept work.",
       workspace: {
         root: worktree,
-        readPaths: ["."],
+        readPaths: [],
         writePaths: [],
         excludePaths: safeExcludes(worktree),
         allowedCommands: [],

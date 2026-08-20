@@ -263,7 +263,8 @@ supplies its description, capability labels, provider, model, reasoning effort,
 and current availability. Driver and provider syntax are not caller inputs.
 The optional `--enable-observer --observer <worker-id>` pair starts one
 detached, read-only dogfood review after terminal settlement and appends its
-opinion to `ROSSO_HOME/state/dogfood-reviews.jsonl`; observer failure or a
+schema-validated opinion to the Workbench-owned
+`ROSSO_HOME/state/dogfood-reviews.jsonl`; observer failure or a
 query gap does not change the task result or block the next run. The direct
 `observer --attempt <attempt-id> --worker <worker-id>` command reviews one
 already-settled attempt through the same standard evidence path.

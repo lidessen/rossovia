@@ -11,6 +11,7 @@ import {
 } from "../../workbench/src/cli-errors";
 import { createForegroundRunSignalAdapter } from "../../workbench/src/integrations/foreground-run-signals";
 import {
+  recordDogfoodObserverLaunchFailure,
   runDogfoodObserver,
 } from "../../workbench/src/dogfood-observer";
 import type { ContributionLeaseReconcileResult } from "../../workbench/src/conversation/contributions";
@@ -396,6 +397,17 @@ function spawnDogfoodObserver(input: {
     detached: true,
     stdio: "ignore",
     env: process.env,
+  });
+  child.once("error", (error) => {
+    try {
+      recordDogfoodObserverLaunchFailure(
+        { home: input.home, attemptId: input.attemptId, workerId: input.workerId },
+        `observer launch failed: ${error.message}`,
+      );
+    } catch {
+      // The observer is best-effort; a launch-recording failure must not crash
+      // or change the already-settled parent Task result.
+    }
   });
   child.unref();
   return {

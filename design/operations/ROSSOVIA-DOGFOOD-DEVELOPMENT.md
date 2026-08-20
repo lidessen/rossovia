@@ -119,9 +119,11 @@ for a settled attempt:
 rossovia observer --attempt <attempt-id> --worker <observer-worker-id>
 ```
 
-The opinion is appended to the local `ROSSO_HOME/state/dogfood-reviews.jsonl`
-projection. That file is only an append-only local observation record; the
-source Task, attempt, settlement, and any later disposition remain authoritative.
+The opinion is appended to the Workbench-owned source-native
+`ROSSO_HOME/state/dogfood-reviews.jsonl` store. Each line is a versioned,
+schema-validated review record and can be read back through the Workbench
+observer reader. It is not a Chronicle projection or an authority over the
+source Task, attempt, settlement, or any later disposition.
 If the observer cannot query enough evidence, or its own run fails, it records
 `query-gap`/`runner-failed` and exits. It must not block the completed task,
 the next snapshot, a rebuild/restart, or a human repair.
@@ -142,8 +144,9 @@ Give the worker a complete, receiver-facing prompt similar to:
 The worker should append a small review-like observation to an existing
 log/Chronicle surface when that surface is available. Keep the original task
 and transcript as the source; do not copy a full transcript into a second
-log. The current thin path uses the local JSONL projection above until a
-different existing observation surface is deliberately selected. A useful
+log. The current thin path uses the small Workbench source-native JSONL store
+above; it does not copy a full transcript or claim to be a Chronicle receipt.
+A useful
 record names the target task/attempt, snapshot identity, sources
 consulted, findings, limitations, and a suggested next probe. An inability to
 query a transcript or trace is itself a valid observability finding.
