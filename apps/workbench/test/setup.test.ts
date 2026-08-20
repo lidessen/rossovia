@@ -51,14 +51,21 @@ function fixture() {
   writeFileSync(join(source, "CHANGELOG.md"), "# Changelog\n", "utf8");
   const fixtureGateway = join(source, "apps", "gateway");
   const fixtureWorkbench = join(source, "apps", "workbench");
+  const fixtureWorkCell = join(source, "packages", "work-cell");
   mkdirSync(fixtureGateway, { recursive: true });
   mkdirSync(fixtureWorkbench, { recursive: true });
+  mkdirSync(join(fixtureWorkCell, "src"), { recursive: true });
   cpSync(join(gatewayRoot, "src"), join(fixtureGateway, "src"), { recursive: true });
   cpSync(join(workbenchRoot, "src"), join(fixtureWorkbench, "src"), { recursive: true });
+  copyFileSync(
+    join(repositoryRoot, "packages", "work-cell", "src", "contracts.ts"),
+    join(fixtureWorkCell, "src", "contracts.ts"),
+  );
   copyFileSync(join(gatewayRoot, "package.json"), join(fixtureGateway, "package.json"));
   copyFileSync(join(workbenchRoot, "package.json"), join(fixtureWorkbench, "package.json"));
   symlinkSync(join(gatewayRoot, "node_modules"), join(fixtureGateway, "node_modules"), "dir");
-  git(source, "add", "CHANGELOG.md", "apps/gateway/src", "apps/workbench/src");
+  symlinkSync(join(gatewayRoot, "node_modules"), join(fixtureWorkCell, "node_modules"), "dir");
+  git(source, "add", "CHANGELOG.md", "apps/gateway/src", "apps/workbench/src", "packages/work-cell/src/contracts.ts");
   git(source, "commit", "-m", "initial setup source");
   const baseline = git(source, "rev-parse", "HEAD");
   writeFileSync(join(codex, "AGENTS.md"), "# Personal instructions\n\nKeep this content.\n", "utf8");
@@ -282,6 +289,8 @@ describe("user-level setup reconciliation", () => {
   test("loads the CLI in a minimal Workbench-only fixture without the sibling worker policy", () => {
     const { source, home, codex } = fixture();
     expect(existsSync(join(source, "apps", "autonomy"))).toBe(false);
+    expect(existsSync(join(source, "packages", "work-cell", "src", "contracts.ts"))).toBe(true);
+    expect(existsSync(join(source, "packages", "work-cell", "src", "swarm.ts"))).toBe(false);
     const help = workbench(source, home, "--help");
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("task run <id> --worker <worker-id> [--continue <attempt-id>]");
