@@ -29,6 +29,7 @@ import { registerProject } from "../../workbench/src/register";
 import { resolveProject } from "../../workbench/src/resolve";
 import { addRoots, scanRoots } from "../../workbench/src/roots";
 import { applySetup, selectSetupModules, setupStatus } from "../../workbench/src/setup";
+import { runSelfCheck } from "../../workbench/src/self-check";
 import {
   renderStatusLine,
   statusLineHostContext,
@@ -163,6 +164,9 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
       return;
     case "observer":
       console.log(JSON.stringify(await dispatchObserver(home, args), null, 2));
+      return;
+    case "self-check":
+      console.log(JSON.stringify(await dispatchSelfCheck(home, args), null, 2));
       return;
     default:
       throw new UsageError(`unknown command: ${command}`, []);
@@ -364,6 +368,24 @@ async function dispatchObserver(
     ...(home === undefined ? {} : { home }),
     attemptId: taskOption(parsed, "--attempt"),
     workerId: taskOption(parsed, "--worker"),
+  });
+}
+
+async function dispatchSelfCheck(home: string | undefined, args: string[]): Promise<Awaited<ReturnType<typeof runSelfCheck>>> {
+  const options = parseSelfCheckOptions(args.slice(1));
+  return runSelfCheck({
+    ...(home === undefined ? {} : { home }),
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.baselineHead === undefined ? {} : { baselineHead: options.baselineHead }),
+    ...(options.workerId === undefined ? {} : { workerId: options.workerId }),
+    ...(options.opinion ? { opinion: true } : {}),
+    ...(options.timeoutMs === undefined ? {} : { opinionTimeoutMs: options.timeoutMs }),
+    trigger: options.trigger ?? (options.baselineHead === undefined ? "manual" : "changed"),
+    ...(options.progress ? {
+      onProgress: (event) => process.stderr.write(
+        `${event.phase} ${event.itemId} ${event.state} — ${event.detail}\n`,
+      ),
+    } : {}),
   });
 }
 
@@ -1018,6 +1040,68 @@ function parseSetupOptions(raw: string[], helpPath: string[]): { targetRoot?: st
   const options = namedOptions(raw, new Set(["--target-root"]), helpPath);
   return {
     ...(options.has("--target-root") ? { targetRoot: options.get("--target-root")! } : {}),
+  };
+}
+
+function parseSelfCheckOptions(raw: string[]): {
+  cwd?: string;
+  baselineHead?: string;
+  workerId?: string;
+  opinion: boolean;
+  timeoutMs?: number;
+  trigger?: "manual" | "startup" | "changed";
+  progress: boolean;
+} {
+  let cwd: string | undefined;
+  let baselineHead: string | undefined;
+  let workerId: string | undefined;
+  let timeoutMs: number | undefined;
+  let trigger: "manual" | "startup" | "changed" | undefined;
+  let opinion = false;
+  let progress = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const option = raw[index];
+    if (option === "--opinion") {
+      if (opinion) throw new UsageError("duplicate --opinion", ["self-check"]);
+      opinion = true;
+      continue;
+    }
+    if (option === "--progress") {
+      if (progress) throw new UsageError("duplicate --progress", ["self-check"]);
+      progress = true;
+      continue;
+    }
+    const value = raw[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new UsageError(`invalid self-check option sequence: ${raw.join(" ")}`, ["self-check"]);
+    }
+    if (option === "--cwd" && cwd === undefined) cwd = value;
+    else if (option === "--baseline-head" && baselineHead === undefined) baselineHead = value;
+    else if (option === "--worker" && workerId === undefined) workerId = value;
+    else if (option === "--timeout-ms" && timeoutMs === undefined) {
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || parsed < 1) {
+        throw new UsageError("self-check --timeout-ms must be a positive integer", ["self-check"]);
+      }
+      timeoutMs = parsed;
+    } else if (option === "--trigger" && trigger === undefined) {
+      if (value !== "manual" && value !== "startup" && value !== "changed") {
+        throw new UsageError("self-check --trigger must be manual, startup, or changed", ["self-check"]);
+      }
+      trigger = value;
+    } else {
+      throw new UsageError(`invalid self-check option sequence: ${raw.join(" ")}`, ["self-check"]);
+    }
+    index += 1;
+  }
+  return {
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(baselineHead === undefined ? {} : { baselineHead }),
+    ...(workerId === undefined ? {} : { workerId }),
+    opinion,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    ...(trigger === undefined ? {} : { trigger }),
+    progress,
   };
 }
 
