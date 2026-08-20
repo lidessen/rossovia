@@ -9,11 +9,6 @@ import {
   UsageError,
   USAGE_EXIT_CODE,
 } from "../../workbench/src/cli-errors";
-import { createForegroundRunSignalAdapter } from "../../workbench/src/integrations/foreground-run-signals";
-import {
-  recordWorkflowObserverLaunchFailure,
-  runWorkflowObserver,
-} from "../../workbench/src/workflow-observer";
 import type { ContributionLeaseReconcileResult } from "../../workbench/src/conversation/contributions";
 import { authorizeExecution, inspectExecution } from "../../workbench/src/execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
@@ -29,19 +24,12 @@ import { registerProject } from "../../workbench/src/register";
 import { resolveProject } from "../../workbench/src/resolve";
 import { addRoots, scanRoots } from "../../workbench/src/roots";
 import { applySetup, selectSetupModules, setupStatus } from "../../workbench/src/setup";
-import { runSelfCheck } from "../../workbench/src/self-check";
 import {
   renderStatusLine,
   statusLineHostContext,
   statusLineInput,
   statusLineProjection,
 } from "../../workbench/src/statusline";
-import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
-import {
-  listPrincipalTaskWorkers,
-  reconcilePrincipalTaskAttempt,
-  runPrincipalTask,
-} from "../../workbench/src/task-run";
 
 const TASK_SUBCOMMANDS = new Set([
   "list",
@@ -112,7 +100,7 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
       dispatchProject(home, args);
       return;
     case "worker":
-      dispatchWorker(args);
+      await dispatchWorker(args);
       return;
     case "setup":
       dispatchSetup(home, args);
@@ -222,11 +210,12 @@ function dispatchProject(home: string | undefined, args: string[]): void {
   }
 }
 
-function dispatchWorker(args: string[]): void {
+async function dispatchWorker(args: string[]): Promise<void> {
   const subcommand = args[1];
   if (subcommand === undefined) throw new UsageError("worker requires a subcommand", ["worker"]);
   if (subcommand !== "list") throw new UsageError(`unknown worker command: ${subcommand}`, ["worker"]);
   if (args.length !== 2) throw new UsageError("worker list accepts no arguments", ["worker", "list"]);
+  const { listPrincipalTaskWorkers } = await import("../../workbench/src/task-run");
   console.log(JSON.stringify(listPrincipalTaskWorkers(), null, 2));
 }
 
@@ -356,7 +345,8 @@ async function dispatchUi(home: string | undefined, args: string[]): Promise<voi
 async function dispatchObserver(
   home: string | undefined,
   args: string[],
-): Promise<Awaited<ReturnType<typeof runWorkflowObserver>>> {
+): Promise<unknown> {
+  const { runWorkflowObserver } = await import("../../workbench/src/workflow-observer");
   const parsed = parseTaskOptions(
     args.slice(1),
     0,
@@ -371,7 +361,8 @@ async function dispatchObserver(
   });
 }
 
-async function dispatchSelfCheck(home: string | undefined, args: string[]): Promise<Awaited<ReturnType<typeof runSelfCheck>>> {
+async function dispatchSelfCheck(home: string | undefined, args: string[]): Promise<unknown> {
+  const { runSelfCheck } = await import("../../workbench/src/self-check");
   const options = parseSelfCheckOptions(args.slice(1));
   return runSelfCheck({
     ...(home === undefined ? {} : { home }),
@@ -420,6 +411,8 @@ function spawnWorkflowObserver(input: {
   });
   child.once("error", (error) => {
     try {
+      const { recordWorkflowObserverLaunchFailure } = require("../../workbench/src/workflow-observer") as
+        typeof import("../../workbench/src/workflow-observer");
       recordWorkflowObserverLaunchFailure(
         { home: input.home, attemptId: input.attemptId, workerId: input.workerId },
         `observer launch failed: ${error.message}`,
@@ -498,6 +491,7 @@ async function dispatchTaskCommand(
   }
   if (command === "attempts") {
     if (raw.length !== 2) throw new ParseUsageError("task attempts requires exactly one task id");
+    const { showPrincipalTaskAttempts } = await import("../../workbench/src/task-attempts");
     return showPrincipalTaskAttempts(home, raw[1]!);
   }
   if (command === "reconcile-attempt") {
@@ -508,6 +502,7 @@ async function dispatchTaskCommand(
       new Set(),
     );
     assertTaskOptions(parsed, new Set(["--attempt"]));
+    const { reconcilePrincipalTaskAttempt } = await import("../../workbench/src/task-run");
     return reconcilePrincipalTaskAttempt(home, {
       id: parsed.positionals[0]!,
       attemptId: taskOption(parsed, "--attempt"),
@@ -565,8 +560,12 @@ async function dispatchTaskCommand(
       );
     }
     const runHome = resolveHome(home);
+    const { createForegroundRunSignalAdapter } = await import(
+      "../../workbench/src/integrations/foreground-run-signals"
+    );
     const adapter = createForegroundRunSignalAdapter({ home: runHome });
     try {
+      const { runPrincipalTask } = await import("../../workbench/src/task-run");
       const result = await runPrincipalTask(home, {
         id: parsed.positionals[0]!,
         workerId: taskOption(parsed, "--worker"),

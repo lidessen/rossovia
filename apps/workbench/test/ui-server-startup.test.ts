@@ -368,6 +368,9 @@ test("production default home exposes one valid ordinary-attempt candidate and r
       ...Object.fromEntries(
         Object.entries(process.env).filter((entry): entry is [string, string] =>
           entry[1] !== undefined
+          && entry[0] !== "DEEPSEEK_API_KEY"
+          && entry[0] !== "OPENCODE_API_KEY"
+          && entry[0] !== "KIMI_CODE_API_KEY"
         ),
       ),
       ROSSO_HOME: home,
@@ -381,6 +384,13 @@ test("production default home exposes one valid ordinary-attempt candidate and r
     const snapshotResponse = await fetch(`${origin}/api/snapshot`);
     expect(snapshotResponse.status).toBe(200);
     const snapshot = await snapshotResponse.json() as {
+      readonly startup: {
+        readonly mode: string;
+        readonly startupStatus: string;
+        readonly mechanical: {
+          readonly checks: readonly { readonly id: string; readonly status: string }[];
+        };
+      };
       readonly workItems: {
         readonly items: Array<{
           readonly id: string;
@@ -396,6 +406,10 @@ test("production default home exposes one valid ordinary-attempt candidate and r
         }>;
       };
     };
+    expect(snapshot.startup.mode).toBe("normal");
+    expect(snapshot.startup.startupStatus).toBe("healthy");
+    expect(snapshot.startup.mechanical.checks.find((check) => check.id === "worker-policy")?.status)
+      .toBe("attention");
     const item = snapshot.workItems.items.find(
       (candidate) => candidate.id === `principal-task:${created.task.id}`,
     );

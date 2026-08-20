@@ -309,5 +309,7 @@ describe("user-level setup reconciliation", () => {
       harness: "codex",
       status: "current",
     }));
+    const status = workbench(source, home, "setup", "status", "--target-root", codex);
+    expect(status.exitCode).toBe(0);
   });
 });

@@ -132,6 +132,7 @@ export type SelfCheckStartupMode = "normal" | "safe-diagnostic";
 export interface SelfCheckStartupGate {
   readonly version: typeof SELF_CHECK_VERSION;
   readonly mode: SelfCheckStartupMode;
+  readonly startupStatus: SelfCheckStatus;
   readonly mechanical: SelfCheckMechanical;
   readonly checkedAt: string;
 }
@@ -145,9 +146,13 @@ const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
  */
 export function runSelfCheckStartupGate(options: SelfCheckOptions = {}): SelfCheckStartupGate {
   const mechanical = runMechanicalSelfCheck(options);
+  const startupStatus = aggregateStatus(
+    mechanical.checks.filter((check) => check.id !== "worker-policy"),
+  );
   return {
     version: SELF_CHECK_VERSION,
-    mode: mechanical.status === "healthy" ? "normal" : "safe-diagnostic",
+    mode: startupStatus === "healthy" ? "normal" : "safe-diagnostic",
+    startupStatus,
     mechanical,
     checkedAt: new Date().toISOString(),
   };
@@ -369,16 +374,16 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
     const available = workers.filter((worker) => worker.availability.status === "available");
     checks.push({
       id: "worker-policy",
-      status: available.length === 0 ? "degraded" : available.length < workers.length ? "attention" : "ok",
+      status: available.length === 0 ? "attention" : available.length < workers.length ? "attention" : "ok",
       detail: available.length === 0
-        ? "Host worker policy is present but no provider is currently available."
+        ? "Host worker policy is present but no provider is currently available; optional worker opinion is unavailable."
         : `${available.length} of ${workers.length} configured workers are available.`,
       evidenceRefs: ["worker-policy:apps/autonomy/src/worker-policy.ts"],
     });
   } catch (error: unknown) {
     checks.push({
       id: "worker-policy",
-      status: "degraded",
+      status: "attention",
       detail: message(error),
       evidenceRefs: ["worker-policy:apps/autonomy/src/worker-policy.ts"],
     });
