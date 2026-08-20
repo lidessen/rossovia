@@ -71,6 +71,7 @@ describe("intervention reconciliation", () => {
     expect(readFileSync(statePath, "utf8")).not.toContain(prompt);
 
     const correction = workbench(
+      "intervention",
       "correct",
       "--state-file",
       statePath,
@@ -87,11 +88,32 @@ describe("intervention reconciliation", () => {
     );
     expect(correction.exitCode).toBe(0);
     expect(JSON.parse(correction.stdout).statePath).toBe(statePath);
+    const correctionRecord = JSON.parse(correction.stdout).record as {
+      kind: string;
+      sourceRef: string;
+      evidenceRefs: string[];
+      affectedSurfaces: string[];
+    };
+    expect(correctionRecord.kind).toBe("principal-correction");
+    expect(correctionRecord.sourceRef).toContain(`${statePath}.receipts/`);
+    expect(existsSync(correctionRecord.sourceRef)).toBe(true);
+    expect(correctionRecord.evidenceRefs).toEqual([]);
+    expect(correctionRecord.affectedSurfaces).toEqual(["contracts", "tests"]);
     const status = workbench("intervention", "status", "--state-file", statePath);
     expect(status.exitCode).toBe(0);
     expect(JSON.parse(status.stdout)).toEqual(expect.objectContaining({
       observations: 1,
       receipts: [expect.objectContaining({ affectedSurfaces: ["contracts", "tests"] })],
+      records: expect.arrayContaining([
+        expect.objectContaining({ kind: "prompt-observation", origin: "hook", disposition: "observed" }),
+        expect.objectContaining({
+          kind: "principal-correction",
+          origin: "principal",
+          disposition: "directed",
+          evidenceRefs: [],
+          affectedSurfaces: ["contracts", "tests"],
+        }),
+      ]),
     }));
 
     const laterObservation = command(
@@ -173,6 +195,7 @@ describe("intervention reconciliation", () => {
     const corrections = Array.from({ length: receiptCount }, (_, index) => commandAsync([
       process.execPath,
       cli,
+      "intervention",
       "correct",
       "--state-file",
       statePath,
@@ -236,6 +259,7 @@ describe("intervention reconciliation", () => {
     const missing = command([
       process.execPath,
       cli,
+      "intervention",
       "correct",
       "--state-file",
       missingState,
@@ -255,6 +279,7 @@ describe("intervention reconciliation", () => {
     const malformed = command([
       process.execPath,
       cli,
+      "intervention",
       "correct",
       "--state-file",
       statePath,
@@ -295,7 +320,7 @@ describe("intervention reconciliation", () => {
       expect(context).toContain("Otherwise proceed without ceremony");
       expect(context).toContain("not a mutation or authorization gate");
       expect(context).toContain("do not request broader filesystem permission");
-      expect(context).toContain(`'${process.execPath}' '${cli}' 'correct'`);
+      expect(context).toContain(`'${process.execPath}' '${cli}' 'intervention' 'correct'`);
       expect(context).not.toContain("dist/rossovia.mjs");
       expect(context).not.toContain("compare it with the active task");
 
@@ -327,6 +352,7 @@ describe("intervention reconciliation", () => {
         const correction = command([
           process.execPath,
           cli,
+          "intervention",
           "correct",
           "--state-file",
           statePath,
@@ -377,6 +403,7 @@ describe("intervention reconciliation", () => {
     chmodSync(directory, 0o555);
     try {
       const correction = workbench(
+        "intervention",
         "correct",
         "--state-file",
         statePath,

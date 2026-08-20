@@ -107,6 +107,7 @@ function interventionOutput(
   ) as { statePath: string };
   const receiptEndpoint = [
     ...currentInvocation(),
+    "intervention",
     "correct",
     "--state-file",
     observed.statePath,

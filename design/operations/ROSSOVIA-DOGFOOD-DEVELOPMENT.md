@@ -89,7 +89,7 @@ make the runtime unsafe or unusable, keep moving forward and record it as a
 review observation. When uncertain, keep the old runtime as known-good and do
 not silently label the new one current.
 
-## 3. Dogfood task evidence
+## 3. Settled project task evidence
 
 Use the real runtime for a real task. At the end, retain only enough evidence
 to reconstruct what happened:
@@ -140,7 +140,7 @@ rossovia observer --attempt <attempt-id> --worker <observer-worker-id>
 ```
 
 The opinion is appended to the Workbench-owned source-native
-`ROSSO_HOME/state/dogfood-reviews.jsonl` store. Each line is a versioned,
+`ROSSO_HOME/state/workflow-reviews.jsonl` store. Each line is a versioned,
 schema-validated review record and can be read back through the Workbench
 observer reader. It is not a Chronicle projection or an authority over the
 source Task, attempt, settlement, or any later disposition.
@@ -180,7 +180,7 @@ ordering belong to host policy, not to this document.
 ## 5. Process recent reviews when asked
 
 At a human-chosen safe point, use an ordinary Task with a prefilled prompt such
-as “process recent Rossovia dogfood reviews”. The prompt should ask the worker
+as “process recent Rossovia workflow reviews”. The prompt should ask the worker
 to read the recent review observations through standard APIs, avoid duplicates,
 and for each item record one of: read/commented, routed to an ordinary change
 Task, deferred with a reason, or no change.

@@ -141,9 +141,8 @@ function usageCases(): Array<{ args: string[]; helpPath: string[] }> {
     { args: ["intervention"], helpPath: ["intervention"] },
     { args: ["intervention", "bogus"], helpPath: ["intervention"] },
     { args: ["intervention", "observe", "--bad", "x"], helpPath: ["intervention", "observe"] },
+    { args: ["intervention", "correct", "--bad", "x"], helpPath: ["intervention", "correct"] },
     { args: ["intervention", "status", "--state-root", "/tmp"], helpPath: ["intervention", "status"] },
-    { args: ["correct"], helpPath: ["correct"] },
-    { args: ["correct", "--bad", "x"], helpPath: ["correct"] },
     { args: ["hook"], helpPath: ["hook"] },
     { args: ["hook", "intervention", "bogus"], helpPath: ["hook"] },
     { args: ["hook", "artifact"], helpPath: ["hook"] },
@@ -165,6 +164,12 @@ describe("Rossovia CLI error taxonomy through the ordinary launcher", () => {
         expect(result.stderr).not.toMatch(/rosso:/);
       });
     }
+
+    test("intervention family names every available subcommand", () => {
+      const result = cli(["intervention"]);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("intervention requires observe, correct, or status");
+    });
   });
 
   test("usage classification tracks the command location, not the message wording", () => {
@@ -356,7 +361,7 @@ describe("Rossovia CLI error taxonomy through the ordinary launcher", () => {
       const root = mkdtempSync(join(tmpdir(), "rossovia-taxonomy-state-"));
       temporaryRoots.push(root);
       const result = cli([
-        "correct", "--state-file", join(root, "missing.json"),
+        "intervention", "correct", "--state-file", join(root, "missing.json"),
         "--rejected-assumption", "a",
         "--new-invariant", "i",
         "--affected-surface", "s",

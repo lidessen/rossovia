@@ -35,7 +35,7 @@ new preference file, or let a browser invent a worker card.
 | User defaults and project-scoped defaults | Workbench preferences (`config/preferences.json` and `preferences.ts`) | read the applicable projection; future edits must use the preference command semantics |
 | Provider routing and fallback order | owning host/runtime policy | display the current source and route an edit there; do not duplicate policy in the browser |
 | Observer enablement and worker selection | UI server launch options | display current process setting; changing it belongs to the next local restart |
-| Review opinions | `state/dogfood-reviews.jsonl` | read-only list; no inbox, queue, or review lifecycle |
+| Workflow review opinions | `state/workflow-reviews.jsonl` | read-only list; no inbox, queue, or review lifecycle |
 | Main Agent and worker skill sources | host skill-source policy and harness adapter | project separate source families and visibility; never treat the root `skills/` collection as an automatic worker catalog |
 
 This keeps mechanism, adapter, and policy separate: the UI explains the

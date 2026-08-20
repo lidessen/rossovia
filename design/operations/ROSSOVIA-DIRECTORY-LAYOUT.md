@@ -45,7 +45,7 @@ The user home is a boundary, not a dump of every agent tool's home directory:
 │   ├── workspaces.json           # registered workspace bindings
 │   ├── conversation-events/      # durable conversation journal
 │   ├── task-attempts/            # attempt/final/settlement evidence
-│   ├── dogfood-reviews.jsonl     # observer opinions, append-only records
+│   ├── workflow-reviews.jsonl    # project observer opinions, append-only records
 │   ├── interventions/            # session-local correction observations
 │   └── results/                   # source-native result projections
 ├── receipts/                     # preference/setup/authorization receipts

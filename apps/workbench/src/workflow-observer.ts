@@ -13,24 +13,25 @@ import {
   ordinaryOpenCodeExcludes,
 } from "./task-run";
 
-export const DOGFOOD_REVIEW_LOG_VERSION = "rosso.dogfood-review.v1" as const;
-export const DEFAULT_DOGFOOD_OBSERVER_WORKER = "deepseek-flash" as const;
+export const WORKFLOW_REVIEW_LOG_VERSION = "rossovia.workflow-review.v1" as const;
+export const LEGACY_DOGFOOD_REVIEW_LOG_VERSION = "rosso.dogfood-review.v1" as const;
+export const DEFAULT_WORKFLOW_OBSERVER_WORKER = "deepseek-flash" as const;
 
-export interface DogfoodObserverArguments {
+export interface WorkflowObserverArguments {
   readonly home?: string;
   readonly attemptId: string;
   readonly workerId: string;
 }
 
-export interface DogfoodObserverLaunchResult {
-  readonly version: "rosso.dogfood-observer-launch.v1";
+export interface WorkflowObserverLaunchResult {
+  readonly version: "rossovia.workflow-observer-launch.v1";
   readonly status: "started";
   readonly attemptId: string;
   readonly workerId: string;
 }
 
-export interface DogfoodObserverResult {
-  readonly version: "rosso.dogfood-observer-result.v1";
+export interface WorkflowObserverResult {
+  readonly version: "rossovia.workflow-observer-result.v1";
   readonly reviewId: string;
   readonly attemptId: string;
   readonly taskId?: string;
@@ -40,8 +41,39 @@ export interface DogfoodObserverResult {
   readonly finding: string;
 }
 
-const DogfoodReviewLogRecordSchema = z.object({
-  version: z.literal(DOGFOOD_REVIEW_LOG_VERSION),
+const WorkflowReviewLogRecordSchema = z.object({
+  version: z.literal(WORKFLOW_REVIEW_LOG_VERSION),
+  reviewId: z.string().min(1),
+  recordedAt: z.string().min(1),
+  subject: z.object({
+    type: z.literal("workflow-task-attempt"),
+    taskId: z.string().min(1).optional(),
+    attemptId: z.string().min(1),
+  }).strict(),
+  observer: z.object({
+    kind: z.literal("agent"),
+    workerId: z.string().min(1),
+  }).strict(),
+  standing: z.enum(["recorded", "query-gap", "runner-failed"]),
+  evidenceRefs: z.array(z.string().min(1)),
+  finding: z.string().min(1),
+  reviewText: z.string().optional(),
+  observerRun: z.object({
+    runId: z.string().min(1),
+    status: z.enum([
+      "passed",
+      "failed",
+      "verification_failed",
+      "protocol_error",
+      "capability_mismatch",
+      "cancelled",
+    ]),
+    usage: UsageSchema,
+  }).strict().optional(),
+}).strict();
+
+const LegacyDogfoodReviewLogRecordSchema = z.object({
+  version: z.literal(LEGACY_DOGFOOD_REVIEW_LOG_VERSION),
   reviewId: z.string().min(1),
   recordedAt: z.string().min(1),
   subject: z.object({
@@ -70,11 +102,26 @@ const DogfoodReviewLogRecordSchema = z.object({
     usage: UsageSchema,
   }).strict().optional(),
 }).strict();
+const StoredWorkflowReviewLogRecordSchema = z.union([
+  WorkflowReviewLogRecordSchema,
+  LegacyDogfoodReviewLogRecordSchema,
+]);
 
-export type DogfoodReviewLogRecord = z.infer<typeof DogfoodReviewLogRecordSchema>;
+export type WorkflowReviewLogRecord = z.infer<typeof WorkflowReviewLogRecordSchema>;
 
-export function dogfoodReviewLogPath(homeArgument?: string): string {
+export function workflowReviewLogPath(homeArgument?: string): string {
+  return join(resolveHome(homeArgument), "state", "workflow-reviews.jsonl");
+}
+
+/** Read-only compatibility location for records written by the old dogfood-only observer. */
+export function legacyDogfoodReviewLogPath(homeArgument?: string): string {
   return join(resolveHome(homeArgument), "state", "dogfood-reviews.jsonl");
+}
+
+/** Return the exact append-only files participating in a workflow review read. */
+export function workflowReviewReadPaths(homeArgument?: string): string[] {
+  return [workflowReviewLogPath(homeArgument), legacyDogfoodReviewLogPath(homeArgument)]
+    .filter((path, index, all) => all.indexOf(path) === index && existsSync(path));
 }
 
 /**
@@ -82,54 +129,57 @@ export function dogfoodReviewLogPath(homeArgument?: string): string {
  * review state. The source task and attempt remain authoritative; this file is
  * only a local, append-only observation projection.
  */
-export function appendDogfoodReview(
+export function appendWorkflowReview(
   homeArgument: string | undefined,
-  record: DogfoodReviewLogRecord,
+  record: WorkflowReviewLogRecord,
 ): string {
-  const validated = DogfoodReviewLogRecordSchema.parse(record);
-  const path = dogfoodReviewLogPath(homeArgument);
+  const validated = WorkflowReviewLogRecordSchema.parse(record);
+  const path = workflowReviewLogPath(homeArgument);
   mkdirSync(join(resolveHome(homeArgument), "state"), { recursive: true });
   appendFileSync(path, `${JSON.stringify(validated)}\n`, "utf8");
   return path;
 }
 
 /** Read and validate the source-native review store for a later ordinary Task. */
-export function readDogfoodReviews(homeArgument?: string): DogfoodReviewLogRecord[] {
-  const path = dogfoodReviewLogPath(homeArgument);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8")
+export function readWorkflowReviews(homeArgument?: string): WorkflowReviewLogRecord[] {
+  return workflowReviewReadPaths(homeArgument).flatMap((path) => readFileSync(path, "utf8")
     .split("\n")
     .filter((line) => line.trim().length > 0)
     .map((line, index) => {
       try {
-        return DogfoodReviewLogRecordSchema.parse(JSON.parse(line));
+        const parsed = StoredWorkflowReviewLogRecordSchema.parse(JSON.parse(line));
+        return {
+          ...parsed,
+          version: WORKFLOW_REVIEW_LOG_VERSION,
+          subject: { ...parsed.subject, type: "workflow-task-attempt" as const },
+        };
       } catch (error) {
         throw new Error(
-          `dogfood review store record ${index + 1} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+          `workflow review store record ${index + 1} is invalid: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-    });
+    })).sort((left, right) => left.recordedAt.localeCompare(right.recordedAt));
 }
 
 /** Record a launch failure without allowing the detached child error to crash the Task CLI. */
-export function recordDogfoodObserverLaunchFailure(
-  arguments_: DogfoodObserverArguments,
+export function recordWorkflowObserverLaunchFailure(
+  arguments_: WorkflowObserverArguments,
   finding: string,
-): DogfoodObserverResult {
+): WorkflowObserverResult {
   const home = resolveHome(arguments_.home);
   const reviewId = `review-${arguments_.attemptId}-${randomUUID()}`;
-  const path = appendDogfoodReview(home, {
-    version: DOGFOOD_REVIEW_LOG_VERSION,
+  const path = appendWorkflowReview(home, {
+    version: WORKFLOW_REVIEW_LOG_VERSION,
     reviewId,
     recordedAt: new Date().toISOString(),
-    subject: { type: "dogfood-task-attempt", attemptId: arguments_.attemptId },
+    subject: { type: "workflow-task-attempt", attemptId: arguments_.attemptId },
     observer: { kind: "agent", workerId: arguments_.workerId },
     standing: "runner-failed",
     evidenceRefs: [],
     finding,
   });
   return {
-    version: "rosso.dogfood-observer-result.v1",
+    version: "rossovia.workflow-observer-result.v1",
     reviewId,
     attemptId: arguments_.attemptId,
     workerId: arguments_.workerId,
@@ -143,9 +193,9 @@ export function recordDogfoodObserverLaunchFailure(
  * Run one optional read-only review against the strict attempt evidence. No
  * Task lifecycle or writer lease is created for the observer itself.
  */
-export async function runDogfoodObserver(
-  arguments_: DogfoodObserverArguments,
-): Promise<DogfoodObserverResult> {
+export async function runWorkflowObserver(
+  arguments_: WorkflowObserverArguments,
+): Promise<WorkflowObserverResult> {
   const home = resolveHome(arguments_.home);
   const reviewId = `review-${arguments_.attemptId}-${randomUUID()}`;
   let evidence: StrictTaskAttemptEvidence | undefined;
@@ -157,11 +207,11 @@ export async function runDogfoodObserver(
   }
   const taskId = evidence?.attempt?.taskId;
   const base = {
-    version: DOGFOOD_REVIEW_LOG_VERSION,
+    version: WORKFLOW_REVIEW_LOG_VERSION,
     reviewId,
     recordedAt: new Date().toISOString(),
     subject: {
-      type: "dogfood-task-attempt" as const,
+      type: "workflow-task-attempt" as const,
       ...(taskId === undefined ? {} : { taskId }),
       attemptId: arguments_.attemptId,
     },
@@ -185,13 +235,13 @@ export async function runDogfoodObserver(
     const finding = evidenceError
       ?? evidence?.error
       ?? "standard attempt API did not expose a complete terminal evidence family";
-    const path = appendDogfoodReview(home, {
+    const path = appendWorkflowReview(home, {
       ...base,
       standing: "query-gap",
       finding,
     });
     return {
-      version: "rosso.dogfood-observer-result.v1",
+      version: "rossovia.workflow-observer-result.v1",
       reviewId,
       attemptId: arguments_.attemptId,
       ...(taskId === undefined ? {} : { taskId }),
@@ -210,11 +260,11 @@ export async function runDogfoodObserver(
     const worktree = availableEvidence.input!.workspace.root;
     const context = observerContext(availableEvidence);
     const input: CellInput = {
-      id: `dogfood-observer-${reviewId}`,
+      id: `workflow-observer-${reviewId}`,
       workerId: worker.id,
       executionProfile: worker.executionProfile,
       intent:
-        "Review one settled Rossovia dogfood task. Return only evidence-backed findings and visibility gaps; do not edit or accept work.",
+        "Review one settled project task or conversation Run. Return only evidence-backed findings and visibility gaps; do not edit or accept work.",
       workspace: {
         root: worktree,
         readPaths: [],
@@ -230,8 +280,8 @@ export async function runDogfoodObserver(
       ],
       capabilities: [],
       context: [{
-        id: "dogfood-attempt-evidence",
-        title: "Settled dogfood task evidence",
+        id: "workflow-attempt-evidence",
+        title: "Settled project task evidence",
         content: context,
         sources: base.evidenceRefs,
       }],
@@ -243,13 +293,13 @@ export async function runDogfoodObserver(
       host: require("../../../packages/work-cell/src/workspace").createLocalHost(),
     });
     if (execution.status === "failed") {
-      const path = appendDogfoodReview(home, {
+      const path = appendWorkflowReview(home, {
         ...base,
         standing: "runner-failed",
         finding: execution.error,
       });
       return {
-        version: "rosso.dogfood-observer-result.v1",
+        version: "rossovia.workflow-observer-result.v1",
         reviewId,
         attemptId: arguments_.attemptId,
         ...(taskId === undefined ? {} : { taskId }),
@@ -260,7 +310,7 @@ export async function runDogfoodObserver(
       };
     }
     const finding = execution.record.finalText.trim() || "observer returned no review text";
-    const path = appendDogfoodReview(home, {
+    const path = appendWorkflowReview(home, {
       ...base,
       standing: "recorded",
       finding,
@@ -272,7 +322,7 @@ export async function runDogfoodObserver(
       },
     });
     return {
-      version: "rosso.dogfood-observer-result.v1",
+      version: "rossovia.workflow-observer-result.v1",
       reviewId,
       attemptId: arguments_.attemptId,
       ...(taskId === undefined ? {} : { taskId }),
@@ -283,13 +333,13 @@ export async function runDogfoodObserver(
     };
   } catch (error: unknown) {
     const finding = error instanceof Error ? error.message : String(error);
-    const path = appendDogfoodReview(home, {
+    const path = appendWorkflowReview(home, {
       ...base,
       standing: "runner-failed",
       finding,
     });
     return {
-      version: "rosso.dogfood-observer-result.v1",
+      version: "rossovia.workflow-observer-result.v1",
       reviewId,
       attemptId: arguments_.attemptId,
       ...(taskId === undefined ? {} : { taskId }),

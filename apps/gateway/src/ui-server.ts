@@ -49,7 +49,11 @@ import { loadPrincipalTasks, principalTasksPath } from "../../workbench/src/task
 import { listPreferences } from "../../workbench/src/preferences";
 import { listPrincipalTaskWorkers } from "../../workbench/src/task-run";
 import { currentSkillSourceProjection } from "../../workbench/src/skill-sources";
-import { readDogfoodReviews, dogfoodReviewLogPath } from "../../workbench/src/dogfood-observer";
+import {
+  readWorkflowReviews,
+  workflowReviewLogPath,
+  workflowReviewReadPaths,
+} from "../../workbench/src/workflow-observer";
 import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
 import {
   createLocalTaskControlPlane,
@@ -65,7 +69,7 @@ import { createConversationContextProvider } from "../../workbench/src/conversat
 import { createConversationTaskOperationHost } from "../../workbench/src/conversation/operations";
 import { createConversationExecutionCarrierRegistry } from "../../workbench/src/conversation/execution-carrier";
 import { createConversationContributionRegistry } from "../../workbench/src/conversation/contributions";
-import { DEFAULT_DOGFOOD_OBSERVER_WORKER } from "../../workbench/src/dogfood-observer";
+import { DEFAULT_WORKFLOW_OBSERVER_WORKER } from "../../workbench/src/workflow-observer";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -552,21 +556,24 @@ async function buildLiveSnapshot(
 }
 
 function readObserverReviews(home: string | undefined) {
-  const sourceRef = dogfoodReviewLogPath(home);
+  const sourcePaths = workflowReviewReadPaths(home);
+  const sourceRef = sourcePaths.length === 0
+    ? workflowReviewLogPath(home)
+    : sourcePaths.join(",");
   try {
-    const reviews = readDogfoodReviews(home).map((review) => ({
+    const reviews = readWorkflowReviews(home).map((review) => ({
       ...review,
       relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
     }));
     return {
-      version: "rosso.dogfood-review-projection.v1" as const,
+      version: "rossovia.workflow-review-projection.v1" as const,
       standing: "available" as const,
       sourceRef,
       reviews,
     };
   } catch (error: unknown) {
     return {
-      version: "rosso.dogfood-review-projection.v1" as const,
+      version: "rossovia.workflow-review-projection.v1" as const,
       standing: "unavailable" as const,
       sourceRef,
       reviews: [],
@@ -1020,7 +1027,7 @@ export function refineLiveRunnerAttention(
 export function parseServerArguments(arguments_: readonly string[]): ServerOptions {
   let home: string | undefined;
   let port = 4317;
-  let observerWorkerId: string | undefined = DEFAULT_DOGFOOD_OBSERVER_WORKER;
+  let observerWorkerId: string | undefined = DEFAULT_WORKFLOW_OBSERVER_WORKER;
   const roots = [repositoryRoot];
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]!;
@@ -1028,7 +1035,7 @@ export function parseServerArguments(arguments_: readonly string[]): ServerOptio
     if (argument === "--disable-observer" || argument === "--enable-observer") {
       observerWorkerId = argument === "--disable-observer"
         ? undefined
-        : DEFAULT_DOGFOOD_OBSERVER_WORKER;
+        : DEFAULT_WORKFLOW_OBSERVER_WORKER;
       continue;
     }
     if (argument === "--observer") {

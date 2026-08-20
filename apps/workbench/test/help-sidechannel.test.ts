@@ -88,8 +88,8 @@ const SIDE_CHANNEL_HELP_CONTRACT: Record<string, string[]> = {
   "intervention": [
     "Intervention state lives under a state root: <home>/state/interventions by default",
     "overridden by --state-root",
-    "observe writes state from stdin; status only reads",
-    "the top-level correct verb appends receipts to a state file observe created",
+    "observe writes prompt evidence, correct appends a Principal correction",
+    "status reads the intervention-local append-only record projection",
   ],
   "intervention observe": [
     "usage: rossovia intervention observe [--state-root <path>]",
@@ -106,16 +106,16 @@ const SIDE_CHANNEL_HELP_CONTRACT: Record<string, string[]> = {
     "input: flags only, no stdin",
     "--state-file cannot combine with --session-id or --state-root",
     "read boundary: never creates or mutates state",
-    'output: {"statePath":..., "sessionId":..., "observations":<n>, "receipts":[...]} on stdout, exit 0',
+    'output: {"statePath":..., "sessionId":..., "observations":<n>, "receipts":[...], "records":[...]} on stdout, exit 0',
     "nearest recovery is rossovia intervention observe",
-    "use rossovia correct --state-file <path> to append a receipt",
+    "use rossovia intervention correct --state-file <path> to append a receipt",
   ],
-  "correct": [
-    "usage: rossovia correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>",
+  "intervention correct": [
+    "usage: rossovia intervention correct --state-file <path> --rejected-assumption <text> --new-invariant <text> --affected-surface <name>... --next-probe <text>",
     "input: flags only, no stdin",
     "--affected-surface <name> repeats",
     "appends one receipt witness under <state-file>.receipts/",
-    'output: {"statePath":..., "receipt":{...}} on stdout, exit 0',
+    'output: {"statePath":..., "receipt":{...}, "record":{...}} on stdout, exit 0',
     "A missing state file exits 1",
     "recover with rossovia intervention observe first",
   ],
@@ -313,7 +313,7 @@ describe("Rossovia CLI side-channel help contract (T6)", () => {
     }));
 
     const corrected = cli([
-      "correct",
+      "intervention", "correct",
       "--state-file", observedJson.statePath,
       "--rejected-assumption", "a1",
       "--new-invariant", "i1",
@@ -337,7 +337,7 @@ describe("Rossovia CLI side-channel help contract (T6)", () => {
     expect(projected.receipts).toHaveLength(1);
     expect(projected.receipts[0].rejectedAssumption).toBe("a1");
 
-    const missing = cli(["correct", "--state-file", join(root, "absent.json"),
+    const missing = cli(["intervention", "correct", "--state-file", join(root, "absent.json"),
       "--rejected-assumption", "a", "--new-invariant", "i",
       "--affected-surface", "s", "--next-probe", "p"]);
     expect(missing.exitCode).toBe(1);
@@ -409,7 +409,7 @@ describe("Rossovia CLI side-channel help contract (T6)", () => {
       ["hook artifact", "effect: starts-work"],
       ["intervention observe", "effect: writes-state"],
       ["intervention status", "effect: read-only"],
-      ["correct", "effect: writes-state"],
+      ["intervention correct", "effect: writes-state"],
       ["statusline", "effect: read-only"],
     ];
     for (const [path, effectLine] of expectations) {
@@ -427,8 +427,8 @@ describe("Rossovia CLI side-channel help contract (T6)", () => {
 
     const badCorrect = cli(["correct"]);
     expect(badCorrect.exitCode).toBe(2);
-    expect(badCorrect.stderr).toContain("missing required option: --state-file");
-    expect(badCorrect.stderr).toContain("run 'rossovia help correct' for usage");
+    expect(badCorrect.stderr).toContain("unknown command: correct");
+    expect(badCorrect.stderr).toContain("run 'rossovia help' for usage");
 
     const badIntervention = cli(["intervention", "frobnicate"]);
     expect(badIntervention.exitCode).toBe(2);

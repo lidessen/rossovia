@@ -27,7 +27,7 @@ test("snapshot exposes observer reviews and safe settings projections", async ()
   const response = await handler(new Request("http://127.0.0.1:4317/api/snapshot"));
   expect(response.status).toBe(200);
   const snapshot = await response.json() as Record<string, any>;
-  expect(snapshot.observerReviews.version).toBe("rosso.dogfood-review-projection.v1");
+  expect(snapshot.observerReviews.version).toBe("rossovia.workflow-review-projection.v1");
   expect(snapshot.observerReviews.standing).toBe("available");
   expect(snapshot.observerReviews.reviews).toEqual([]);
   expect(snapshot.settings.version).toBe("rosso.settings-projection.v1");

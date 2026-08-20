@@ -11,15 +11,15 @@ import {
 } from "../../workbench/src/cli-errors";
 import { createForegroundRunSignalAdapter } from "../../workbench/src/integrations/foreground-run-signals";
 import {
-  recordDogfoodObserverLaunchFailure,
-  runDogfoodObserver,
-} from "../../workbench/src/dogfood-observer";
+  recordWorkflowObserverLaunchFailure,
+  runWorkflowObserver,
+} from "../../workbench/src/workflow-observer";
 import type { ContributionLeaseReconcileResult } from "../../workbench/src/conversation/contributions";
 import { authorizeExecution, inspectExecution } from "../../workbench/src/execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
 import { initializeHome, loadHome, resolveHome } from "../../workbench/src/home";
 import { runHookCommand } from "../../workbench/src/hooks";
-import { runCorrectionCommand, runInterventionCommand } from "../../workbench/src/interventions";
+import { runInterventionCommand } from "../../workbench/src/interventions";
 import { createLocalTaskControlPlane, LocalTaskControlError } from "../../workbench/src/local-task-control-plane";
 import { migrateLegacyHome } from "../../workbench/src/migration";
 import { runMissionCommand } from "../../workbench/src/missions";
@@ -149,9 +149,6 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
     }
     case "intervention":
       console.log(JSON.stringify(runInterventionCommand(args.slice(1), "", home), null, 2));
-      return;
-    case "correct":
-      console.log(JSON.stringify(runCorrectionCommand(args.slice(1)), null, 2));
       return;
     case "hook": {
       const result = runHookCommand(args.slice(1), "", home);
@@ -355,7 +352,7 @@ async function dispatchUi(home: string | undefined, args: string[]): Promise<voi
 async function dispatchObserver(
   home: string | undefined,
   args: string[],
-): Promise<Awaited<ReturnType<typeof runDogfoodObserver>>> {
+): Promise<Awaited<ReturnType<typeof runWorkflowObserver>>> {
   const parsed = parseTaskOptions(
     args.slice(1),
     0,
@@ -363,19 +360,19 @@ async function dispatchObserver(
     new Set(),
   );
   assertTaskOptions(parsed, new Set(["--attempt", "--worker"]));
-  return runDogfoodObserver({
+  return runWorkflowObserver({
     ...(home === undefined ? {} : { home }),
     attemptId: taskOption(parsed, "--attempt"),
     workerId: taskOption(parsed, "--worker"),
   });
 }
 
-function spawnDogfoodObserver(input: {
+function spawnWorkflowObserver(input: {
   readonly home: string;
   readonly attemptId: string;
   readonly workerId: string;
 }): {
-  readonly version: "rosso.dogfood-observer-launch.v1";
+  readonly version: "rossovia.workflow-observer-launch.v1";
   readonly status: "started";
   readonly attemptId: string;
   readonly workerId: string;
@@ -400,7 +397,7 @@ function spawnDogfoodObserver(input: {
   });
   child.once("error", (error) => {
     try {
-      recordDogfoodObserverLaunchFailure(
+      recordWorkflowObserverLaunchFailure(
         { home: input.home, attemptId: input.attemptId, workerId: input.workerId },
         `observer launch failed: ${error.message}`,
       );
@@ -411,7 +408,7 @@ function spawnDogfoodObserver(input: {
   });
   child.unref();
   return {
-    version: "rosso.dogfood-observer-launch.v1",
+    version: "rossovia.workflow-observer-launch.v1",
     status: "started",
     attemptId: input.attemptId,
     workerId: input.workerId,
@@ -560,7 +557,7 @@ async function dispatchTaskCommand(
       if (observerWorker === undefined) return result;
       return {
         ...result,
-        observer: spawnDogfoodObserver({
+        observer: spawnWorkflowObserver({
           home: runHome,
           attemptId: result.attemptId,
           workerId: observerWorker,
