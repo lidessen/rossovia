@@ -160,9 +160,9 @@ separate from this `AGENTS.md`: this file guides an Agent working on the
 repository, while `ROSSOVIA.md` points the Rossovia coordinator to the
 project's runtime, Settings, dogfood, and skill-source maps. The skill-source
 map is [`design/operations/ROSSOVIA-SKILL-SOURCES.md`](design/operations/ROSSOVIA-SKILL-SOURCES.md);
-it keeps Main Agent and worker source lists separate and treats Pick,
-built-in, and user-custom skills as distinct families with explicit loading
-timing.
+it keeps Main Agent and worker source lists separate. Pick is a package-owned
+curated subset of built-in skills, while user-custom is a separate source with
+its own grant boundary and explicit loading timing.
 
 ## Principle Sequence
 

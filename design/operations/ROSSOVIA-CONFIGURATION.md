@@ -90,8 +90,8 @@ settings
   observer
     enabled, worker id, review source
   skill sources
-    Main Agent: Pick / built-in / user-custom
-    Worker: Pick / built-in / user-custom (user-custom not granted by default)
+    Main Agent: package Pick / package built-in / user-custom
+    Worker: package Pick / package built-in / user-custom (not granted by default)
     visibility: always-visible / on-demand / searchable
   source and boundaries
 ```
@@ -118,8 +118,9 @@ Skill source settings follow the same rule, but have a separate audience
 boundary. The host Agent has its own project entry (`ROSSOVIA.md`) and source
 policy. A worker receives a compact, receiver-specific projection; it does not
 inherit `AGENTS.md`, the host's complete skill list, or user-custom skills by
-default. Settings can show this distinction, but it does not edit skill bodies
-or silently grant a worker a source.
+default. Pick is a curated package-owned subset of built-in skills, not a user
+directory. Settings can show this distinction, but it does not edit skill
+bodies or silently grant a worker a source.
 
 ## Review and reopening signals
 

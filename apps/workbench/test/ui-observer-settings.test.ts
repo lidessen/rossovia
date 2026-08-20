@@ -43,8 +43,12 @@ test("snapshot exposes observer reviews and safe settings projections", async ()
     "user-custom",
   ]);
   expect(snapshot.settings.skillSources.audiences[1].sources[2].standing).toBe("not-granted");
+  expect(snapshot.settings.skillSources.audiences[0].sources[0].ownership).toBe("host-package");
+  expect(snapshot.settings.skillSources.audiences[0].sources[2].ownership).toBe("user");
   expect(snapshot.settings.directories.currentDefault).toBe("~/.rosso");
   expect(snapshot.settings.directories.targetDefault).toBe("~/.rossovia");
+  expect(snapshot.settings.directories.skillCustom).toBe("~/.rossovia/skills/custom");
+  expect(snapshot.settings.directories.skillPackages).toContain("{picked,builtin}");
   expect(JSON.stringify(snapshot.settings)).not.toContain("API_KEY=");
 });
 
@@ -62,5 +66,6 @@ test("system surfaces remain secondary to conversation", async () => {
   expect(app).toContain("未记录直接对话关联");
   expect(app).toContain("function renderSettingsSurface");
   expect(app).toContain("settings-skill-source-count");
+  expect(app).toContain("安装包内置技能");
   expect(app).toContain("function renderObserverSurface");
 });

@@ -38,8 +38,7 @@ The user home is a boundary, not a dump of every agent tool's home directory:
 │   ├── preferences.json          # user/project defaults, no secrets
 │   ├── setup.json                # selected Workbench setup projections
 │   └── skill-sources.json        # future host source selection, non-secret
-├── skills/                       # user-owned skill selection and authoring
-│   ├── picked/                   # selected references/manifests, not copied bodies
+├── skills/                       # user-owned skill authoring only
 │   └── custom/                   # user-authored skills for the Main Agent
 ├── state/
 │   ├── tasks.json                # Principal task source
@@ -64,29 +63,29 @@ feature is initialized. `cache/` may be regenerated; `state/` and `receipts/`
 are evidence-bearing; `backups/` are recovery aids; none becomes a semantic
 source merely because it is readable.
 
-`skills/picked/` is a selection surface: it may contain a manifest, stable
-source references, or links to skills selected for a task. It must not become a
-second copied skill catalog. `skills/custom/` is the user-authored source for
-the Main Agent and is not granted to workers by default. Built-in skills are
-owned by the installed Rossovia/harness package, not by the user home; Main
-Agent and worker built-ins may therefore be different compact packages.
+`skills/custom/` is the user-authored source for the Main Agent and is not
+granted to workers by default. Picked and builtin skills are both owned by the
+installed Rossovia/harness package, not by the user home; `picked/` is simply
+the package's curated built-in subset. Main Agent and worker packages may
+therefore expose different compact sets.
 
 The future host adapter may project these logical families to concrete roots as
 follows (this is a target mapping, not a current filesystem contract):
 
 ```text
-Main Agent = <host installation>/skills/builtin
-             + ~/.rossovia/skills/picked
+Main Agent = <host installation>/skills/picked
+             + <host installation>/skills/builtin
              + ~/.rossovia/skills/custom
-Worker     = <worker package>/skills/builtin
-             + task-selected picked references
+Worker     = <worker package>/skills/picked
+             + <worker package>/skills/builtin
              + user-custom only when an explicit capability policy grants it
 ```
 
-Project-local `.rossovia/config/skill-sources.json` can select or narrow the
-picked set, but it must not silently turn the whole repository `skills/`
-collection into a built-in root. The active harness adapter remains responsible
-for resolving the concrete roots, checking source digests, and loading bodies.
+Project-local `.rossovia/config/skill-sources.json` can select or narrow which
+package export is active, but it must not silently turn the whole repository
+`skills/` collection into a built-in root or add user-authored bodies to
+`picked/`. The active harness adapter remains responsible for resolving the
+concrete roots, checking source digests, and loading bodies.
 
 Provider credentials stay in the environment's supported secret store or
 environment variables. Rossovia may project configured/unavailable status, but

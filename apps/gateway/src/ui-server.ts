@@ -610,6 +610,8 @@ function readSettingsProjection(
         targetDefault: "~/.rossovia",
         projectNamespace: ".rossovia/",
         hostEntry: "ROSSOVIA.md",
+        skillCustom: "~/.rossovia/skills/custom",
+        skillPackages: "<host/worker package>/skills/{picked,builtin}",
         source: "design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md",
       },
     };
@@ -633,6 +635,8 @@ function readSettingsProjection(
         targetDefault: "~/.rossovia",
         projectNamespace: ".rossovia/",
         hostEntry: "ROSSOVIA.md",
+        skillCustom: "~/.rossovia/skills/custom",
+        skillPackages: "<host/worker package>/skills/{picked,builtin}",
         source: "design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md",
       },
       reason: error instanceof Error ? error.message : String(error),

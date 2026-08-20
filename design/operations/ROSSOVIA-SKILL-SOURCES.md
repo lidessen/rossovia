@@ -30,29 +30,29 @@ part.
 ## Source families and audiences
 
 The host policy exposes separate source lists for the Main Agent and workers.
-Each list has the same three conceptual families, but the worker list is
-deliberately smaller:
+Each list has two package-owned built-in tiers plus a separate user-custom
+source. The worker list is deliberately smaller:
 
 | Family | Main Agent | Worker | Meaning |
 | --- | --- | --- | --- |
-| **Pick skills** | allowed | allowed | skills explicitly selected for the current task or turn; the smallest useful working set |
-| **Built-in skills** | host-owned list | worker-owned compact list | stable capabilities supplied by the harness; not every skill in this repository |
+| **Pick skills** | host-package-owned | worker-package-owned | a curated subset of the corresponding built-in package; it is not a user source and cannot contain user-authored skills |
+| **Built-in skills** | host-owned list | worker-owned compact list | stable capabilities supplied by the package; not every skill in this repository |
 | **User-custom skills** | allowed and discoverable | not granted by default | user-authored procedures; a worker receives one only after an explicit capability policy grants it |
 
 The root [`skills/`](../../skills/) directory is the installable methodology
 collection for this repository. It is not automatically the Main Agent's
 built-in directory, and it is never automatically the worker's complete list.
-The host/runtime policy decides which entries are picked, packaged as built-in,
-or exposed as user-custom. Until a harness adapter supplies a concrete root,
-the Settings surface reports the logical source locator and standing rather
-than inventing a filesystem path.
+The host/runtime package owns both its `picked/` and `builtin/` exports; the
+worker package owns its own two exports. User-custom is a separate source and
+cannot be smuggled into either package directory. Until a harness adapter
+supplies a concrete root, the Settings surface reports the logical source
+locator and ownership rather than inventing a filesystem path.
 
-The target home layout gives the user-owned half of this mapping a concrete
-place: `~/.rossovia/skills/picked` contains selections or manifests and
-`~/.rossovia/skills/custom` contains Main-Agent user-authored skills. Built-in
-skill bodies remain package-owned. A project may narrow the picked set through
-`.rossovia/config/skill-sources.json`, but that file is a selector, not a new
-skill body store.
+The target home layout gives only the user-owned half of this mapping a
+concrete place: `~/.rossovia/skills/custom` contains Main-Agent user-authored
+skills. Picked and built-in skill bodies remain package-owned. A project or
+user policy may choose which package export is active, but that selector cannot
+add a custom body to `picked/` or `builtin/`.
 
 The Rossovia host configuration is therefore a projection of policy, while the
 active harness remains the authority for actual discovery, precedence, and
@@ -85,8 +85,8 @@ For the Main Agent, the conceptual precedence is:
 
 ```text
 host instructions (ROSSOVIA.md + host policy)
-  → picked skills for this task
-  → Main Agent built-in skill catalog
+  → host-package picked skills for this task
+  → host-package built-in skill catalog
   → explicitly granted user-custom skill search
 ```
 
@@ -94,8 +94,8 @@ For a worker:
 
 ```text
 receiver-specific task contract
-  → picked worker skills
-  → worker built-in compact catalog
+  → worker-package picked skills
+  → worker-package built-in compact catalog
   → no user-custom skills unless capability policy says otherwise
 ```
 

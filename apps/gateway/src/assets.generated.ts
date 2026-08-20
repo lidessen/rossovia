@@ -561,7 +561,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
                 <div><span>Context delivery</span><h3 id="settings-skills-heading">Skill 来源与加载</h3></div>
                 <strong id="settings-skill-source-count">—</strong>
               </header>
-              <p class="settings-card-intro">主 Agent 与 worker 的来源集合分开；这里显示目录与加载时机，不显示正文。</p>
+              <p class="settings-card-intro">Pick 与 builtin 都是安装包内置技能，user-custom 是单独的用户来源；这里显示目录与加载时机，不显示正文。</p>
               <div id="settings-skill-source-list"><p class="empty-note">正在读取 skill 来源。</p></div>
             </section>
             <section class="settings-card settings-directory-card" aria-labelledby="settings-directories-heading">
@@ -10661,13 +10661,18 @@ export function taskLocatorEmptySummary(locator, context) {
     if (boundary) boundary.textContent = text(first(boundaries, ["policy"]), boundary.textContent);
     const skillProjection = first(projection, ["skillSources"], {});
     const audiences = list(first(skillProjection, ["audiences"], []));
+    const skillOwnershipCopy = {
+      "host-package": "安装包内置技能",
+      "worker-package": "Worker 安装包内置技能",
+      user: "用户自定义来源",
+    };
     const sourceCount = audiences.reduce((count, audience) => count + list(first(audience, ["sources"], [])).length, 0);
     $("#settings-skill-source-count").textContent = String(sourceCount);
     skillRoot.innerHTML = audiences.length ? audiences.map((audience) => {
       const sources = list(first(audience, ["sources"], []));
       return \`<section class="settings-skill-audience"><header><strong>\${escapeHtml(text(first(audience, ["label"]), "Agent"))}</strong><span>\${escapeHtml(text(first(audience, ["boundary"]), ""))}</span></header><div class="settings-skill-source-items">\${sources.map((source) => \`
         <article class="settings-skill-source" data-standing="\${escapeHtml(text(first(source, ["standing"]), "unknown"))}">
-          <div class="settings-skill-source-title"><strong>\${escapeHtml(text(first(source, ["label"]), "skill source"))}</strong><span>\${escapeHtml(text(first(source, ["visibility"]), "unknown"))}</span></div>
+          <div class="settings-skill-source-title"><strong>\${escapeHtml(text(first(source, ["label"]), "skill source"))}</strong><span>\${escapeHtml(text(skillOwnershipCopy[text(first(source, ["ownership"]), "")] || "来源归属未知"))} · \${escapeHtml(text(first(source, ["visibility"]), "unknown"))}</span></div>
           <p>\${escapeHtml(text(first(source, ["note"]), ""))}</p>
           <code>\${escapeHtml(text(first(source, ["sourceRef"]), "source unavailable"))}</code>
         </article>\`).join("")}</div></section>\`;
@@ -10679,6 +10684,7 @@ export function taskLocatorEmptySummary(locator, context) {
         <div><dt>当前运行时 Home</dt><dd><code>\${escapeHtml(text(first(directories, ["environment"]), "ROSSO_HOME"))}</code> · \${escapeHtml(text(first(directories, ["currentDefault"]), "~/.rosso"))}</dd></div>
         <div><dt>目标公共命名</dt><dd><code>\${escapeHtml(text(first(directories, ["targetDefault"]), "~/.rossovia"))}</code></dd></div>
         <div><dt>项目级命名空间</dt><dd><code>\${escapeHtml(text(first(directories, ["projectNamespace"]), ".rossovia/"))}</code> · host entry <code>\${escapeHtml(text(first(directories, ["hostEntry"]), "ROSSOVIA.md"))}</code></dd></div>
+        <div><dt>Skill 目录归属</dt><dd>用户 custom <code>\${escapeHtml(text(first(directories, ["skillCustom"]), "~/.rossovia/skills/custom"))}</code> · 内置 <code>\${escapeHtml(text(first(directories, ["skillPackages"]), "<host/worker package>/skills/{picked,builtin}"))}</code></dd></div>
       </dl>\`;
     }
   }
