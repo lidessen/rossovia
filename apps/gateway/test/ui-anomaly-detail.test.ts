@@ -116,6 +116,13 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(appJs).toContain("https?:\\/\\/");
     expect(appJs).toContain('rel="noreferrer"');
     expect(appJs).toContain("const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*$/u);");
+    expect(appJs).toContain("function isConversationMarkdownTableSeparator(value, columnCount)");
+    expect(appJs).toContain("/^:?-{3,}:?$/u");
+    expect(appJs).toContain('class=\"turn-table-wrap\"');
+    expect(appJs).toContain("<thead>");
+    expect(appJs).toContain("<tbody>");
+    expect(stylesCss).toContain(".turn-table-wrap {");
+    expect(stylesCss).toContain("overflow-x: auto;");
     expect(appJs).toContain('class="turn-response turn-response-markdown"');
     expect(appJs).toContain("renderConversationMarkdown(entry.response)");
   });
@@ -131,10 +138,11 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(appJs).toContain("协调器读取的来源版本");
   });
 
-  test("mobile connection status gets its own flexible row and elides long IDs", () => {
+  test("mobile conversation header leaves the global connection status as the only status", () => {
     expect(stylesCss).toContain("grid-template-columns: minmax(0, 1fr);");
-    expect(stylesCss).toContain(".conversation-standing strong,\n  .conversation-standing code");
-    expect(stylesCss).toContain("text-overflow: ellipsis;");
-    expect(stylesCss).toContain("white-space: nowrap;");
+    expect(stylesCss).toContain(".conversation-standing {\n  display: none;\n}");
+    expect(stylesCss).not.toContain(".conversation-standing strong");
+    expect(stylesCss).not.toContain(".conversation-standing code");
+    expect(appJs).toContain('$("#connection-label").textContent = "实时 · 已连接";');
   });
 });
