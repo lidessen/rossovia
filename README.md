@@ -38,7 +38,8 @@ method.
 ## Ways to use Rossovia
 
 - Develop Rossovia itself through this repository's full operating and evidence
-  system.
+  system; the optional [dogfood development profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md)
+  describes the local rebuild, restart, observation, and rollback loop.
 - Install one self-contained Skill into another project for a specific method.
 - Enter this checkout with a coding agent as the Main-Agent work entry for
   other projects. The agent may use the current harness's native sub-agents

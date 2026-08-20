@@ -11,6 +11,7 @@ not a second semantic source or a permanent agent headquarters.
 | [DECISION-BRIEF.md](DECISION-BRIEF.md) | Compact option set and recommendation at a material human gate | Does not decide, turn silence into consent, or replace source evidence |
 | [GITHUB-SETTINGS.md](GITHUB-SETTINGS.md) | Evidence-gated manual configuration for the remote repository | Does not change remote settings by itself |
 | [Mission Records](../../apps/missions/README.md) | Git-tracked continuity source for one material mission and its return branches | Does not create a queue, accept facts, or schedule work |
+| [Rossovia Dogfood Development](ROSSOVIA-DOGFOOD-DEVELOPMENT.md) | Optional prompt-like profile for rebuilding, replacing, observing, and recovering a local Rossovia runtime | Does not create a daemon, review queue, task lifecycle, or automatic authority |
 
 The first founding transition is retained as a completed finite campaign at
 [`design/organization/sessions/2026-07-10-formal-operations-preparation.md`](../organization/sessions/2026-07-10-formal-operations-preparation.md).
