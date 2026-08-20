@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { parseServerArguments } from "../../gateway/src/ui-server";
 
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const launcher = join(repositoryRoot, "apps", "gateway", "rossovia");
@@ -26,6 +27,12 @@ function freePort(): number {
 }
 
 describe("rossovia ui command", () => {
+  test("local UI startup enables the default observer and supports explicit overrides", () => {
+    expect(parseServerArguments([]).observerWorkerId).toBe("deepseek-flash");
+    expect(parseServerArguments(["--observer", "kimi-coding-plan"]).observerWorkerId).toBe("kimi-coding-plan");
+    expect(parseServerArguments(["--disable-observer"]).observerWorkerId).toBeUndefined();
+  });
+
   test("help lists the ui command as starts-work", () => {
     const result = Bun.spawnSync([launcher, "help", "ui"], {
       stdout: "pipe",

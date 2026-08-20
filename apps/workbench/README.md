@@ -105,9 +105,12 @@ Run the current UI with:
 ./apps/gateway/rossovia ui
 ```
 
-Open `http://127.0.0.1:4317`. Add another explicitly selected local repository
-with `./apps/gateway/rossovia ui --root <git-root>` or select another
-port with `--port <port>`. The equivalent development entry
+Open `http://127.0.0.1:4317`. Local UI startup enables the `deepseek-flash`
+observer for each settled conversation Run; choose another worker with
+`--observer <worker-id>` or disable it with `--disable-observer`. Add another
+explicitly selected local repository with
+`./apps/gateway/rossovia ui --root <git-root>` or select another port with
+`--port <port>`. The equivalent development entry
 `bun run --cwd apps/gateway ui` serves the same surface from the source
 checkout.
 
@@ -224,6 +227,7 @@ task attempts <id>
 task reconcile-attempt <id> --attempt <attempt-id>
 worker list
 task run <id> --worker <worker-id> [--continue]
+  [--enable-observer --observer <worker-id>]
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
 task correct <id> --statement <text> --source-ref <reference>
@@ -260,6 +264,13 @@ fresh run without `--continue` still requires that Worktree to be Git-clean.
 The caller selects one ID from `worker list`; the host-owned worker policy
 supplies its description, capability labels, provider, model, reasoning effort,
 and current availability. Driver and provider syntax are not caller inputs.
+The optional `--enable-observer --observer <worker-id>` pair starts one
+detached, read-only workflow review after terminal settlement and appends its
+schema-validated opinion to the Workbench-owned
+`ROSSO_HOME/state/workflow-reviews.jsonl`; observer failure or a
+query gap does not change the task result or block the next run. The direct
+`observer --attempt <attempt-id> --worker <worker-id>` command reviews one
+already-settled attempt through the same standard evidence path.
 Immediately before creating the attempt, Workbench rereads the Task and lowers
 its current objective, acceptance conditions, and corrections into an immutable
 attempt-specific Work Cell input. Any Principal-supplied ordinary todos lower

@@ -135,9 +135,11 @@ function persistObservationWitness(path: string, observation: Observation): void
   }
 }
 
-function persistReceiptWitness(path: string, receipt: Receipt): void {
+function persistReceiptWitness(path: string, receipt: Receipt): string {
+  const witnessPath = join(receiptWitnessDirectory(path), witnessFilename());
   try {
-    saveJson(join(receiptWitnessDirectory(path), witnessFilename()), ReceiptSchema.parse(receipt));
+    saveJson(witnessPath, ReceiptSchema.parse(receipt));
+    return witnessPath;
   } catch (error: unknown) {
     throw persistenceError(path, error);
   }
@@ -208,8 +210,8 @@ function selectedState(parsed: ParsedOptions, homeArgument?: string): string {
 
 export function runInterventionCommand(raw: string[], stdin = "", homeArgument?: string): unknown {
   const command = raw[0];
-  if (!command) throw new UsageError("intervention requires observe or status", ["intervention"]);
-  if (command !== "observe" && command !== "status") {
+  if (!command) throw new UsageError("intervention requires observe, correct, or status", ["intervention"]);
+  if (command !== "observe" && command !== "correct" && command !== "status") {
     throw new UsageError(`unknown intervention command: ${command}`, ["intervention"]);
   }
   try {
@@ -223,12 +225,15 @@ export function runInterventionCommand(raw: string[], stdin = "", homeArgument?:
 }
 
 function dispatchInterventionCommand(
-  command: "observe" | "status",
+  command: "observe" | "correct" | "status",
   raw: string[],
   stdin: string,
   homeArgument?: string,
 ): unknown {
-  const parsed = parseOptions(raw);
+  const parsed = parseOptions(
+    raw,
+    command === "correct" ? new Set(["--affected-surface"]) : new Set(),
+  );
 
   if (command === "observe") {
     rejectUnknown(parsed, new Set(["--state-root"]));
@@ -256,6 +261,21 @@ function dispatchInterventionCommand(
     return { statePath: path, observation };
   }
 
+  if (command === "correct") {
+    const result = dispatchCorrectionCommand(raw);
+    const state = readState(result.statePath);
+    return {
+      statePath: result.statePath,
+      receipt: result.receipt,
+      record: projectPrincipalCorrectionRecord(
+        result.statePath,
+        state.sessionId,
+        result.receipt,
+        result.receiptSourceRef,
+      ),
+    };
+  }
+
   rejectUnknown(parsed, new Set(["--state-root", "--state-file", "--session-id"]));
   const path = selectedState(parsed, homeArgument);
   const state = readState(path);
@@ -268,21 +288,101 @@ function dispatchInterventionCommand(
     sessionId: state.sessionId,
     observations: state.observations.length,
     receipts: state.receipts,
+    records: projectInterventionRecords(path, state),
   };
 }
 
-export function runCorrectionCommand(raw: string[]): unknown {
-  try {
-    return dispatchCorrectionCommand(raw);
-  } catch (error: unknown) {
-    if (error instanceof ParseUsageError) {
-      throw new UsageError(error.message, ["correct"], { cause: error });
-    }
-    throw error;
-  }
+type InterventionRecord = {
+  readonly kind: "prompt-observation" | "principal-correction";
+  readonly origin: "hook" | "principal";
+  readonly at: string;
+  readonly sourceRef: string;
+  readonly subject: { readonly sessionId: string; readonly turnId?: string };
+  readonly statement: string;
+  readonly evidenceRefs: string[];
+  readonly affectedSurfaces?: string[];
+  readonly disposition: "observed" | "directed";
+};
+
+/**
+ * A read-only local projection for intervention records. Prompt observations
+ * and Principal corrections intentionally keep different source payloads and
+ * authority; this envelope makes their provenance and disposition inspectable
+ * without claiming to be the workflow observer review source.
+ */
+function projectInterventionRecords(path: string, state: State): InterventionRecord[] {
+  const observationSourceRefs = interventionRecordSourceRefs(path, "observation");
+  const receiptSourceRefs = interventionRecordSourceRefs(path, "receipt");
+  const observations: InterventionRecord[] = state.observations.map((observation, index) => ({
+    kind: "prompt-observation",
+    origin: "hook",
+    at: observation.at,
+    sourceRef: observationSourceRefs[index] ?? `${path}#observation:${index}`,
+    subject: {
+      sessionId: state.sessionId,
+      ...(observation.turnId === "unknown" ? {} : { turnId: observation.turnId }),
+    },
+    statement: `Principal prompt observed; content retained only as ${observation.promptBytes} bytes and a SHA-256 digest.`,
+    evidenceRefs: [`sha256:${observation.promptSha256}`],
+    disposition: "observed",
+  }));
+  const corrections: InterventionRecord[] = state.receipts.map((receipt, index) =>
+    projectPrincipalCorrectionRecord(
+      path,
+      state.sessionId,
+      receipt,
+      receiptSourceRefs[index] ?? `${path}#receipt:${index}`,
+    ));
+  return [...observations, ...corrections].sort((left, right) => left.at.localeCompare(right.at));
 }
 
-function dispatchCorrectionCommand(raw: string[]): unknown {
+function projectPrincipalCorrectionRecord(
+  path: string,
+  sessionId: string,
+  receipt: Receipt,
+  sourceRef: string,
+): InterventionRecord {
+  return {
+    kind: "principal-correction",
+    origin: "principal",
+    at: receipt.at,
+    sourceRef,
+    subject: { sessionId },
+    statement: `${receipt.rejectedAssumption} → ${receipt.newInvariant}`,
+    evidenceRefs: [],
+    affectedSurfaces: receipt.affectedSurfaces,
+    disposition: "directed",
+  };
+}
+
+function interventionRecordSourceRefs(
+  path: string,
+  kind: "observation" | "receipt",
+): string[] {
+  const state = readStateSource(path);
+  const directory = kind === "observation"
+    ? observationWitnessDirectory(path)
+    : receiptWitnessDirectory(path);
+  const witnessPaths = existsSync(directory)
+    ? readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((entry) => join(directory, entry.name))
+    : [];
+  const embeddedCount = kind === "observation" ? state.observations.length : state.receipts.length;
+  const embeddedRefs = Array.from(
+    { length: embeddedCount },
+    (_, index) => `${path}#${kind}:${index}`,
+  );
+  const refs = [...embeddedRefs, ...witnessPaths];
+  return kind === "observation" ? refs.slice(-50) : refs;
+}
+
+function dispatchCorrectionCommand(raw: string[]): {
+  statePath: string;
+  receipt: Receipt;
+  receiptSourceRef: string;
+} {
   const parsed = parseOptions(raw, new Set(["--affected-surface"]));
   rejectUnknown(parsed, new Set([
     "--state-file",
@@ -300,6 +400,6 @@ function dispatchCorrectionCommand(raw: string[]): unknown {
     affectedSurfaces: repeatedOption(parsed, "--affected-surface"),
     nextProbe: option(parsed, "--next-probe"),
   });
-  persistReceiptWitness(path, receipt);
-  return { statePath: path, receipt };
+  const receiptSourceRef = persistReceiptWitness(path, receipt);
+  return { statePath: path, receipt, receiptSourceRef };
 }

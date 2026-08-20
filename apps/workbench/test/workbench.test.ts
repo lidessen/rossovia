@@ -61,6 +61,9 @@ function fixture() {
   const registered = join(root, "survey");
   const discovered = join(pool, "unregistered");
   createRepository(registered, "https://example.test/lidessen/meowask.git");
+  writeFileSync(join(registered, "ROSSOVIA.md"), "# Rossovia host pointer\n");
+  git(registered, "add", "ROSSOVIA.md");
+  git(registered, "commit", "-m", "add host pointer");
   createRepository(discovered, "https://example.test/lidessen/discovered.git");
   expect(workbench(home, "init", "--workspace-root", pool).exitCode).toBe(0);
   expect(workbench(home, "register", registered, "--id", "repository:1304098496", "--alias", "survey").exitCode).toBe(0);
@@ -214,7 +217,12 @@ describe("Rossovia workbench", () => {
       query: "survey",
       registration: "registered",
       project: expect.objectContaining({ id: "repository:1304098496" }),
-      workspace: expect.objectContaining({ path: realpathSync(registered), dirty: false, orientationFiles: ["README.md"] }),
+      workspace: expect.objectContaining({
+        path: realpathSync(registered),
+        dirty: false,
+        orientationFiles: ["README.md"],
+        hostConfigFiles: ["ROSSOVIA.md"],
+      }),
     }));
     const listing = JSON.parse(workbench(home, "project", "list").stdout);
     expect(listing.complete).toBe(true);

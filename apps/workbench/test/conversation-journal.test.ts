@@ -195,6 +195,17 @@ describe("FileConversationJournal strict schema", () => {
 });
 
 describe("FileConversationJournal sequence and replay", () => {
+  test("finds the most recently written durable conversation for a fresh browser profile", async () => {
+    const journal = createJournal();
+    const first = conversationId();
+    const second = conversationId();
+    await receiptedMessage(journal, first, "first conversation");
+    await Bun.sleep(5);
+    await receiptedMessage(journal, second, "latest conversation");
+
+    expect(await journal.latestConversationId()).toBe(second);
+  });
+
   test("assigns monotonic sequences from zero and replays after a cursor without duplicates", async () => {
     const journal = createJournal();
     const conversation = conversationId();

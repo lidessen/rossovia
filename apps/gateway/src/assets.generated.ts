@@ -179,6 +179,19 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
           </button>
         </nav>
 
+        <nav class="rail-section secondary-view-nav system-view-nav" aria-label="系统工具">
+          <p class="eyebrow">系统</p>
+          <button class="view-button" type="button" data-view="observer">
+            <span>观察记录</span>
+            <strong id="observer-review-count">—</strong>
+            <small>Review、处理与证据</small>
+          </button>
+          <button class="view-button" type="button" data-view="settings">
+            <span>设置</span>
+            <small>Provider、Worker 与偏好</small>
+          </button>
+        </nav>
+
         <footer class="rail-footer">
           <span id="projection-completeness">投影完整性未知</span>
           <span id="snapshot-version">版本 —</span>
@@ -254,8 +267,9 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <section class="context-section">
               <p class="eyebrow">浏览器边界</p>
               <p class="context-boundary-note">
-                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+                消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、已应用的光标、草稿与展示焦点。
+                任务状态、执行证据与验收始终以各自 canonical 所有者为准。刷新只重建 projection 与 journal replay，
+                不会重放任何已发送动作。
               </p>
             </section>
           </aside>
@@ -291,8 +305,8 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
-          刷新只重建 journal replay，不重放已发送动作。
+          消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标、草稿与展示焦点。
+          任务与执行证据以 canonical 所有者为准，刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 
@@ -493,6 +507,74 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
           </div>
         </section>
         </div>
+
+        <section class="system-surface" id="observer-surface" aria-labelledby="observer-title" hidden>
+          <header class="unified-header system-surface-header">
+            <div>
+              <p class="eyebrow">Observation · secondary surface</p>
+              <h2 id="observer-title">观察记录</h2>
+              <p>这里是 observer 的只读意见面，不是对话入口，也不自动处理任何 review。</p>
+            </div>
+            <div class="observation-state">
+              <span>来源</span>
+              <strong id="observer-source-state">正在读取</strong>
+            </div>
+          </header>
+          <div class="system-surface-note">
+            <strong>怎么使用</strong>
+            <span>每条记录都保留原始 attempt、证据引用和 observer 意见。处理它仍然是一次普通 Task：阅览、评论、转成改进任务，或明确暂缓。</span>
+          </div>
+          <div class="observer-review-list" id="observer-review-list">
+            <p class="empty-note">正在读取 observer 记录。</p>
+          </div>
+        </section>
+
+        <section class="system-surface" id="settings-surface" aria-labelledby="settings-title" hidden>
+          <header class="unified-header system-surface-header">
+            <div>
+              <p class="eyebrow">Workbench · secondary surface</p>
+              <h2 id="settings-title">设置</h2>
+              <p>查看当前生效的运行配置。Provider 密钥只由宿主环境提供，界面不会读取或保存密钥内容。</p>
+            </div>
+            <div class="observation-state">
+              <span>配置来源</span>
+              <strong id="settings-source-state">正在读取</strong>
+            </div>
+          </header>
+          <div class="settings-grid">
+            <section class="settings-card" aria-labelledby="settings-providers-heading">
+              <div class="surface-section-heading">
+                <div><span>Execution policy</span><h3 id="settings-providers-heading">Provider 与 Worker</h3></div>
+                <strong id="settings-provider-count">—</strong>
+              </div>
+              <div id="settings-provider-list"><p class="empty-note">正在读取 worker policy。</p></div>
+            </section>
+            <section class="settings-card" aria-labelledby="settings-preferences-heading">
+              <div class="surface-section-heading">
+                <div><span>User defaults</span><h3 id="settings-preferences-heading">偏好</h3></div>
+                <strong id="settings-preference-count">—</strong>
+              </div>
+              <div id="settings-preference-list"><p class="empty-note">正在读取偏好。</p></div>
+            </section>
+            <section class="settings-card settings-skill-card" aria-labelledby="settings-skills-heading">
+              <header class="settings-card-heading">
+                <div><span>Context delivery</span><h3 id="settings-skills-heading">Skill 来源与加载</h3></div>
+                <strong id="settings-skill-source-count">—</strong>
+              </header>
+              <p class="settings-card-intro">Pick 与 builtin 都是安装包内置技能，user-custom 是单独的用户来源；这里显示目录与加载时机，不显示正文。</p>
+              <div id="settings-skill-source-list"><p class="empty-note">正在读取 skill 来源。</p></div>
+            </section>
+            <section class="settings-card settings-directory-card" aria-labelledby="settings-directories-heading">
+              <header class="settings-card-heading">
+                <div><span>Ownership</span><h3 id="settings-directories-heading">目录归属</h3></div>
+              </header>
+              <div id="settings-directory-list"><p class="empty-note">正在读取目录边界。</p></div>
+            </section>
+          </div>
+          <p class="settings-boundary" id="settings-boundary">
+            当前页只投影 host worker policy 与 Workbench preferences；Provider 路由、credential、模型顺序等运行策略必须先在其 owning policy/config source 中落地，再由这里读取。
+          </p>
+        </section>
       </section>
 
       <aside class="action-surface" id="work-item-peek" aria-labelledby="action-heading" hidden>
@@ -4437,6 +4519,349 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   font-weight: 500;
 }
 
+.system-view-nav {
+  border-top: 1px solid var(--line-light);
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+.system-view-nav > .eyebrow {
+  margin: 0.1rem 0.55rem 0.35rem;
+}
+
+.system-surface {
+  background: var(--paper-light);
+  min-height: 100%;
+  padding: 1.25rem;
+}
+
+.system-surface-header {
+  margin: -1.25rem -1.25rem 1rem;
+}
+
+.system-surface-note,
+.settings-boundary {
+  border-left: 3px solid var(--ochre);
+  background: var(--ochre-pale);
+  color: var(--ink-soft);
+  display: flex;
+  gap: 0.8rem;
+  line-height: 1.55;
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.system-surface-note strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.observer-review-list {
+  display: grid;
+  gap: 0.85rem;
+  max-width: 920px;
+}
+
+.observer-review-card,
+.settings-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 1rem;
+}
+
+.observer-review-card > header,
+.settings-provider-card > header,
+.settings-preference-card > header {
+  align-items: start;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+.observer-review-card > header > div,
+.settings-provider-card > header,
+.settings-preference-card > header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.observer-review-card time {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+}
+
+.observer-review-status {
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.observer-review-status[data-standing="recorded"] {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.observer-review-status[data-standing="query-gap"],
+.observer-review-status[data-standing="runner-failed"] {
+  border-color: var(--ochre);
+  color: var(--ochre);
+}
+
+.observer-review-finding {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  margin: 0.9rem 0;
+  white-space: pre-wrap;
+}
+
+.observer-review-finding > :first-child {
+  margin-top: 0;
+}
+
+.observer-review-finding > :last-child {
+  margin-bottom: 0;
+}
+
+.observer-review-facts {
+  border-top: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-top: 0.7rem;
+}
+
+.observer-review-facts > div {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+
+.observer-review-facts dt,
+.observer-review-facts dd {
+  font-size: 0.68rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.observer-review-facts dt {
+  color: var(--ink-faint);
+}
+
+.observer-review-facts dd {
+  color: var(--ink-soft);
+}
+
+.observer-review-facts code,
+.observer-review-evidence code {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.observer-review-evidence {
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+}
+
+.observer-review-evidence summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.68rem;
+}
+
+.observer-review-evidence ul {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.55rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.observer-review-card > footer {
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+}
+
+.system-empty {
+  border: 1px dashed var(--line);
+  color: var(--ink-soft);
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.1rem;
+}
+
+.system-empty span {
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: 1100px;
+}
+
+.settings-card {
+  min-width: 0;
+}
+
+.settings-provider-card,
+.settings-preference-card {
+  border-top: 1px solid var(--line-light);
+  padding: 0.75rem 0;
+}
+
+.settings-provider-card:first-child,
+.settings-preference-card:first-child {
+  border-top: 0;
+}
+
+.settings-provider-card strong,
+.settings-preference-card strong {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.settings-provider-card header span,
+.settings-preference-card header span {
+  color: var(--ink-faint);
+  font-size: 0.65rem;
+}
+
+.settings-provider-card p,
+.settings-preference-card p {
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  margin: 0.45rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-card-intro {
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  margin: 0.65rem 0 0.85rem;
+}
+
+.settings-skill-card {
+  grid-column: 1 / -1;
+}
+
+.settings-skill-audience {
+  border-top: 1px solid var(--line-light);
+  padding-top: 0.85rem;
+}
+
+.settings-skill-audience + .settings-skill-audience {
+  margin-top: 0.85rem;
+}
+
+.settings-skill-audience > header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.settings-skill-audience > header span {
+  color: var(--ink-faint);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.settings-skill-source-items {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-skill-source {
+  background: var(--paper-soft);
+  border: 1px solid var(--line-light);
+  min-width: 0;
+  padding: 0.7rem;
+}
+
+.settings-skill-source[data-standing="not-granted"] {
+  opacity: 0.68;
+}
+
+.settings-skill-source-title {
+  align-items: start;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.settings-skill-source-title span {
+  color: var(--green-dark);
+  font-family: var(--mono);
+  font-size: 0.61rem;
+  white-space: nowrap;
+}
+
+.settings-skill-source p {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 0.45rem 0 0.65rem;
+}
+
+.settings-skill-source code {
+  color: var(--ink-faint);
+  display: block;
+  font-size: 0.6rem;
+  overflow-wrap: anywhere;
+}
+
+.settings-directory-card {
+  grid-column: 1 / -1;
+}
+
+.settings-directory-facts {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.settings-directory-facts > div {
+  align-items: baseline;
+  border-top: 1px solid var(--line-light);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  padding-top: 0.5rem;
+}
+
+.settings-directory-facts dt {
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+}
+
+.settings-directory-facts dd {
+  color: var(--ink);
+  font-size: 0.7rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-boundary {
+  font-size: 0.7rem;
+  margin-top: 1rem;
+  max-width: 1100px;
+}
+
 .project-section .section-heading {
   padding: 0 0.05rem;
 }
@@ -7097,6 +7522,60 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     order: 3;
   }
 
+  .system-surface {
+    padding: 0.85rem;
+  }
+
+  .system-surface-header {
+    margin: -0.85rem -0.85rem 0.85rem;
+  }
+
+  .system-surface-note,
+  .settings-boundary {
+    align-items: start;
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+  }
+
+  .observer-review-card,
+  .settings-card {
+    padding: 0.85rem;
+  }
+
+  .observer-review-card > header {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .observer-review-facts > div {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-skill-source-items {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-skill-audience > header {
+    align-items: start;
+    display: grid;
+    gap: 0.25rem;
+  }
+
+  .settings-skill-audience > header span {
+    text-align: left;
+  }
+
+  .settings-directory-facts > div {
+    gap: 0.2rem;
+    grid-template-columns: 1fr;
+  }
+
   .principal-position,
   .attention-section {
     display: block;
@@ -7609,6 +8088,27 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     width: 100%;
     z-index: 10;
   }
+
+  /* The conversation is the mobile shell, not a panel below the target
+     address. The latter is useful on overview/task surfaces but duplicates
+     the conversation connection context and used to slip underneath this
+     fixed surface, leaving a clipped dark band above the title. */
+  body[data-active-view="conversation"] {
+    overflow: hidden;
+  }
+
+body[data-active-view="conversation"] .target-strip,
+body[data-active-view="conversation"] .principal-snapshot {
+  display: none;
+}
+
+/* The masthead already owns the page-level runtime standing. Keeping a
+   second "对话连接" badge in the conversation header made the mobile shell
+   read like two competing headers; the context panel still retains the
+   conversation id for anyone who needs to inspect the exact journal. */
+body[data-active-view="conversation"] .conversation-standing {
+  display: none;
+}
 
   .conversation-header {
     align-items: stretch;
@@ -8131,6 +8631,101 @@ export function restoredPrincipalLocusState(resolved) {
 export const CONVERSATION_ID_STORAGE_KEY = "rosso.conversation.id";
 export function conversationDraftStorageKey(conversationId) {
   return \`rosso.conversation.draft.\${conversationId}\`;
+}
+
+function escapeConversationMarkdownHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderConversationMarkdownInline(value) {
+  let rendered = escapeConversationMarkdownHtml(value);
+  rendered = rendered.replace(/\`([^\`\\n]+)\`/gu, "<code>$1</code>");
+  rendered = rendered.replace(/\\*\\*([^*\\n]+)\\*\\*/gu, "<strong>$1</strong>");
+  rendered = rendered.replace(/\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^)\\s]+)\\)/gu, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  return rendered;
+}
+
+function conversationMarkdownTableRow(line) {
+  const trimmed = line.trim().replace(/^\\|/u, "").replace(/\\|$/u, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function isConversationMarkdownTableDivider(line) {
+  const cells = conversationMarkdownTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+}
+
+/** Safe, deliberately small Markdown projection for settled conversation replies. */
+export function renderConversationMarkdown(value) {
+  const lines = String(value ?? "").replace(/\\r\\n?/gu, "\\n").split("\\n");
+  const blocks = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") {
+      index += 1;
+      continue;
+    }
+    if (/^\\s*\`\`\`/u.test(line)) {
+      const language = line.trim().slice(3).trim();
+      index += 1;
+      const code = [];
+      while (index < lines.length && !/^\\s*\`\`\`\\s*$/u.test(lines[index] ?? "")) {
+        code.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const className = language ? \` class="language-\${escapeConversationMarkdownHtml(language)}"\` : "";
+      blocks.push(\`<pre><code\${className}>\${escapeConversationMarkdownHtml(code.join("\\n"))}</code></pre>\`);
+      continue;
+    }
+    const next = lines[index + 1] ?? "";
+    if (line.includes("|") && isConversationMarkdownTableDivider(next)) {
+      const heading = conversationMarkdownTableRow(line);
+      index += 2;
+      const rows = [];
+      while (index < lines.length && (lines[index] ?? "").trim() !== "" && (lines[index] ?? "").includes("|")) {
+        rows.push(conversationMarkdownTableRow(lines[index] ?? ""));
+        index += 1;
+      }
+      blocks.push(\`<div class="markdown-table-wrap"><table><thead><tr>\${heading.map((cell) => \`<th>\${renderConversationMarkdownInline(cell)}</th>\`).join("")}</tr></thead><tbody>\${rows.map((row) => \`<tr>\${heading.map((_, cellIndex) => \`<td>\${renderConversationMarkdownInline(row[cellIndex] ?? "")}</td>\`).join("")}</tr>\`).join("")}</tbody></table></div>\`);
+      continue;
+    }
+    const heading = /^(#{1,3})\\s+(.+)$/u.exec(line.trim());
+    if (heading !== null) {
+      const level = heading[1].length;
+      blocks.push(\`<h\${level}>\${renderConversationMarkdownInline(heading[2])}</h\${level}>\`);
+      index += 1;
+      continue;
+    }
+    const list = /^\\s*([-*]|\\d+\\.)\\s+(.+)$/u.exec(line);
+    if (list !== null) {
+      const ordered = /^\\d+\\./u.test(list[1]);
+      const items = [];
+      while (index < lines.length) {
+        const item = /^\\s*([-*]|\\d+\\.)\\s+(.+)$/u.exec(lines[index] ?? "");
+        if (item === null || /^\\d+\\./u.test(item[1]) !== ordered) break;
+        items.push(\`<li>\${renderConversationMarkdownInline(item[2])}</li>\`);
+        index += 1;
+      }
+      blocks.push(\`<\${ordered ? "ol" : "ul"}>\${items.join("")}</\${ordered ? "ol" : "ul"}>\`);
+      continue;
+    }
+    const paragraph = [line];
+    index += 1;
+    while (index < lines.length && (lines[index] ?? "").trim() !== "") {
+      if (/^\\s*\`\`\`/u.test(lines[index] ?? "") || /^(#{1,3})\\s+/.test(lines[index] ?? "")) break;
+      paragraph.push(lines[index] ?? "");
+      index += 1;
+    }
+    blocks.push(\`<p>\${renderConversationMarkdownInline(paragraph.join("\\n")).replaceAll("\\n", "<br>")}</p>\`);
+  }
+  return blocks.join("");
 }
 
 export const CONVERSATION_TURN_TERMINAL_EVENTS = new Set([
@@ -9937,6 +10532,10 @@ export function taskLocatorEmptySummary(locator, context) {
         ? "—"
         : String(counts.independent);
     $("#completed-task-count").textContent = String(counts.completed);
+    const observerProjection = first(state.snapshot, ["observerReviews"], {});
+    const observerReviews = list(first(observerProjection, ["reviews"], []));
+    const observerCount = document.querySelector("#observer-review-count");
+    if (observerCount) observerCount.textContent = String(observerReviews.length);
 
     $$("[data-view]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === state.activeView);
@@ -10143,9 +10742,14 @@ export function taskLocatorEmptySummary(locator, context) {
     const attentionOverview = $("#attention-overview");
     const systemOverview = $("#system-overview");
     const projectOverview = $("#project-overview");
+    const observerSurface = $("#observer-surface");
+    const settingsSurface = $("#settings-surface");
     const isProjectView = state.activeView === "project";
     const isProjectsView = state.activeView === "projects";
     const isOverview = state.activeView === "overview";
+    const isObserver = state.activeView === "observer";
+    const isSettings = state.activeView === "settings";
+    const isSystemSurface = isObserver || isSettings;
 
     if (state.locusRestorePending || state.unavailableLocus !== null) {
       renderLocusGate({
@@ -10160,13 +10764,15 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    overview.hidden = isProjectView;
-    projectDetail.hidden = !isProjectView;
-    taskView.hidden = isOverview || isProjectView || isProjectsView;
+    overview.hidden = isSystemSurface || isProjectView;
+    projectDetail.hidden = isSystemSurface || !isProjectView;
+    taskView.hidden = isSystemSurface || isOverview || isProjectView || isProjectsView;
     taskFilters.hidden = state.activeView !== "tasks";
     attentionOverview.hidden = !isOverview;
     systemOverview.hidden = !isOverview;
     projectOverview.hidden = !(isOverview || isProjectsView);
+    observerSurface.hidden = !isObserver;
+    settingsSurface.hidden = !isSettings;
 
     const viewMeta = {
       overview: ["Workbench overview", "总览", "先看最重要的待办、异常与项目摘要；完整证据从详情打开。"],
@@ -10177,6 +10783,8 @@ export function taskLocatorEmptySummary(locator, context) {
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
       tasks: ["Tasks", "任务", "按筛选定位全量任务；状态、责任方和来源先行，长证据在详情中查看。"],
+      observer: ["Observation", "观察记录", "查看 observer 对最近执行留下的意见、证据引用与可处理的缺口。"],
+      settings: ["Settings", "设置", "查看当前生效的 Worker、Provider、凭据状态与用户偏好。"],
     };
     const [eyebrow, title, summary] = viewMeta[state.activeView] || viewMeta.overview;
     $("#view-eyebrow").textContent = eyebrow;
@@ -10250,6 +10858,122 @@ export function taskLocatorEmptySummary(locator, context) {
       bindWorkItemRows($("#task-view-list"));
       const clear = $("[data-clear-task-locator]");
       if (clear) clear.addEventListener("click", clearTaskLocator);
+    }
+  }
+
+  function reviewStandingCopy(value) {
+    return {
+      recorded: "已记录",
+      "query-gap": "查询缺口",
+      "runner-failed": "observer 失败",
+    }[value] || "状态未知";
+  }
+
+  function renderObserverSurface() {
+    const projection = first(state.snapshot, ["observerReviews"], {});
+    const sourceState = $("#observer-source-state");
+    const listRoot = $("#observer-review-list");
+    if (!sourceState || !listRoot || state.activeView !== "observer") return;
+    const standing = text(first(projection, ["standing"]), "unavailable");
+    sourceState.textContent = standing === "available"
+      ? \`\${list(first(projection, ["reviews"], [])).length} 条 · 只读\`
+      : "来源不可用";
+    const reviews = list(first(projection, ["reviews"], [])).slice().reverse();
+    if (!reviews.length) {
+      listRoot.innerHTML = \`<div class="system-empty"><strong>还没有 observer 记录</strong><span>下一次 settled Task 或 conversation Run 完成后，observer 会把意见追加到本地记录。</span></div>\`;
+      return;
+    }
+    listRoot.innerHTML = reviews.map((review) => {
+      const refs = list(first(review, ["evidenceRefs"], []));
+      const conversationRefs = list(first(review, ["relatedConversationRefs"], []));
+      const subject = first(review, ["subject"], {});
+      const taskId = text(first(subject, ["taskId"]), "");
+      const attemptId = text(first(subject, ["attemptId"]), "");
+      const workerId = text(first(review, ["observer", "workerId"]), "unknown");
+      const status = text(first(review, ["standing"]), "unknown");
+      const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
+      return \`<article class="observer-review-card" data-review-id="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
+        <header>
+          <div><span class="observer-review-status" data-standing="\${escapeHtml(status)}">\${escapeHtml(reviewStandingCopy(status))}</span><strong>\${escapeHtml(workerId)}</strong></div>
+          <time>\${escapeHtml(text(first(review, ["recordedAt"]), "时间未知"))}</time>
+        </header>
+        <div class="observer-review-finding">\${renderConversationMarkdown(reviewText)}</div>
+        <dl class="observer-review-facts">
+          <div><dt>观察对象</dt><dd>\${escapeHtml(taskId ? \`Task \${taskId}\` : "未关联 Task")} · attempt \${escapeHtml(shortConversationId(attemptId))}</dd></div>
+          <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
+          <div><dt>关联对话</dt><dd>\${conversationRefs.length ? conversationRefs.map((ref) => \`<code>\${escapeHtml(ref)}</code>\`).join(" ") : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
+        </dl>
+        <details class="observer-review-evidence"><summary>证据引用 · \${refs.length} 项</summary><ul>\${refs.length ? refs.map((ref) => \`<li><code>\${escapeHtml(ref)}</code></li>\`).join("") : "<li>未提供证据引用</li>"}</ul></details>
+        <footer><button type="button" class="text-action" data-observer-process="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button></footer>
+      </article>\`;
+    }).join("");
+    listRoot.querySelectorAll("[data-observer-process]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const review = reviews.find((candidate) => text(first(candidate, ["reviewId"]), "") === button.dataset.observerProcess);
+        if (!review) return;
+        const attemptId = text(first(first(review, ["subject"], {}), ["attemptId"]), "");
+        const finding = text(first(review, ["finding"]), "");
+        conversationState.draft = \`处理 observer review \${text(first(review, ["reviewId"]), "")}:\\n观察 attempt: \${attemptId}\\n意见：\${finding}\\n请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。\`;
+        persistConversationDraft();
+        state.activeView = "conversation";
+        render();
+        writePrincipalLocus();
+        $("#conversation-composer-text")?.focus({ preventScroll: true });
+      });
+    });
+  }
+
+  function renderSettingsSurface() {
+    const projection = first(state.snapshot, ["settings"], {});
+    const sourceState = $("#settings-source-state");
+    const providerRoot = $("#settings-provider-list");
+    const preferenceRoot = $("#settings-preference-list");
+    const skillRoot = $("#settings-skill-source-list");
+    if (!sourceState || !providerRoot || !preferenceRoot || !skillRoot || state.activeView !== "settings") return;
+    const standing = text(first(projection, ["standing"]), "unavailable");
+    sourceState.textContent = standing === "available" ? "当前 host policy" : "来源不可用";
+    const providers = list(first(projection, ["providers"], []));
+    $("#settings-provider-count").textContent = String(providers.length);
+    providerRoot.innerHTML = providers.length ? providers.map((provider) => \`
+      <article class="settings-provider-card">
+        <header><strong>\${escapeHtml(text(first(provider, ["id"]), "provider"))}</strong><span>\${escapeHtml(text(first(provider, ["credential"]), "凭据状态未知"))}</span></header>
+        <p>Worker：\${escapeHtml(list(first(provider, ["workerIds"], [])).join(" · ") || "未声明")}</p>
+        <p>Model：\${escapeHtml(list(first(provider, ["models"], [])).join(" · ") || "未声明")}</p>
+      </article>\`).join("") : '<p class="empty-note">当前没有可投影的 provider。</p>';
+    const preferences = list(first(first(projection, ["preferences"], {}), ["preferences"], []));
+    $("#settings-preference-count").textContent = String(preferences.length);
+    preferenceRoot.innerHTML = preferences.length ? preferences.map((preference) => \`
+      <article class="settings-preference-card"><header><strong>\${escapeHtml(text(first(preference, ["id"]), "偏好"))}</strong><span>\${escapeHtml(text(first(preference, ["scope"]), "user"))}</span></header><p>\${escapeHtml(text(first(preference, ["statement"]), ""))}</p></article>\`).join("") : '<p class="empty-note">尚未设置用户偏好。</p>';
+    const boundary = $("#settings-boundary");
+    const boundaries = first(projection, ["boundaries"], {});
+    if (boundary) boundary.textContent = text(first(boundaries, ["policy"]), boundary.textContent);
+    const skillProjection = first(projection, ["skillSources"], {});
+    const audiences = list(first(skillProjection, ["audiences"], []));
+    const skillOwnershipCopy = {
+      "host-package": "安装包内置技能",
+      "worker-package": "Worker 安装包内置技能",
+      user: "用户自定义来源",
+    };
+    const sourceCount = audiences.reduce((count, audience) => count + list(first(audience, ["sources"], [])).length, 0);
+    $("#settings-skill-source-count").textContent = String(sourceCount);
+    skillRoot.innerHTML = audiences.length ? audiences.map((audience) => {
+      const sources = list(first(audience, ["sources"], []));
+      return \`<section class="settings-skill-audience"><header><strong>\${escapeHtml(text(first(audience, ["label"]), "Agent"))}</strong><span>\${escapeHtml(text(first(audience, ["boundary"]), ""))}</span></header><div class="settings-skill-source-items">\${sources.map((source) => \`
+        <article class="settings-skill-source" data-standing="\${escapeHtml(text(first(source, ["standing"]), "unknown"))}">
+          <div class="settings-skill-source-title"><strong>\${escapeHtml(text(first(source, ["label"]), "skill source"))}</strong><span>\${escapeHtml(text(skillOwnershipCopy[text(first(source, ["ownership"]), "")] || "来源归属未知"))} · \${escapeHtml(text(first(source, ["visibility"]), "unknown"))}</span></div>
+          <p>\${escapeHtml(text(first(source, ["note"]), ""))}</p>
+          <code>\${escapeHtml(text(first(source, ["sourceRef"]), "source unavailable"))}</code>
+        </article>\`).join("")}</div></section>\`;
+    }).join("") : '<p class="empty-note">当前没有可投影的 skill 来源。</p>';
+    const directoryRoot = $("#settings-directory-list");
+    const directories = first(projection, ["directories"], {});
+    if (directoryRoot) {
+      directoryRoot.innerHTML = \`<dl class="settings-directory-facts">
+        <div><dt>当前运行时 Home</dt><dd><code>\${escapeHtml(text(first(directories, ["environment"]), "ROSSO_HOME"))}</code> · \${escapeHtml(text(first(directories, ["currentDefault"]), "~/.rosso"))}</dd></div>
+        <div><dt>目标公共命名</dt><dd><code>\${escapeHtml(text(first(directories, ["targetDefault"]), "~/.rossovia"))}</code></dd></div>
+        <div><dt>项目级命名空间</dt><dd><code>\${escapeHtml(text(first(directories, ["projectNamespace"]), ".rossovia/"))}</code> · host entry <code>\${escapeHtml(text(first(directories, ["hostEntry"]), "ROSSOVIA.md"))}</code></dd></div>
+        <div><dt>Skill 目录归属</dt><dd>用户 custom <code>\${escapeHtml(text(first(directories, ["skillCustom"]), "~/.rossovia/skills/custom"))}</code> · 内置 <code>\${escapeHtml(text(first(directories, ["skillPackages"]), "<host/worker package>/skills/{picked,builtin}"))}</code></dd></div>
+      </dl>\`;
     }
   }
 
@@ -12726,7 +13450,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }
   }
 
-  function restoreConversationIdentity() {
+  async function restoreConversationIdentity() {
     let stored = null;
     try {
       stored = window.localStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
@@ -12734,7 +13458,25 @@ export function taskLocatorEmptySummary(locator, context) {
       stored = null;
     }
     if (!isConversationUuid(stored)) {
-      stored = crypto.randomUUID();
+      // A new browser profile (or a mobile webview that does not retain
+      // localStorage) must first adopt the most recent durable conversation
+      // from this Workbench home. Generating a UUID immediately made the
+      // journal look empty even though the server could replay it.
+      try {
+        const response = await fetch("/api/conversations/latest", {
+          headers: { Accept: "application/json" },
+        });
+        if (response.ok) {
+          const body = await response.json();
+          if (isConversationUuid(body?.conversationId)) {
+            stored = body.conversationId;
+          }
+        }
+      } catch {
+        // A new local conversation remains a truthful fallback when the
+        // server cannot provide a durable identity yet.
+      }
+      stored = isConversationUuid(stored) ? stored : crypto.randomUUID();
       try {
         window.localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, stored);
       } catch {
@@ -13673,7 +14415,7 @@ export function taskLocatorEmptySummary(locator, context) {
           <div>
             <p class="eyebrow">Rossovia · 受监督对话入口</p>
             <h3>向 Agent 系统提出事情</h3>
-            <p>发布任务、纠正方向、观察协调回复与执行进展。浏览器只保留对话 ID、光标与草稿；任务与执行证据以 canonical 所有者为准。</p>
+            <p>发布任务、纠正方向、观察协调回复与执行进展。消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标与草稿。</p>
           </div>
         </div>
         <div class="conversation-empty-standing">
@@ -13882,6 +14624,7 @@ export function taskLocatorEmptySummary(locator, context) {
   function renderConversationSurface() {
     const surface = $("#conversation-surface");
     const active = state.activeView === "conversation";
+    document.body.dataset.activeView = state.activeView;
     surface.hidden = !active;
     $("#project-surface").hidden = active;
     if (!active) return;
@@ -13925,6 +14668,8 @@ export function taskLocatorEmptySummary(locator, context) {
     renderProjects();
     renderViewNavigation();
     renderUnifiedSurface();
+    renderObserverSurface();
+    renderSettingsSurface();
     renderProjectSurface();
     renderConversationSurface();
     renderTarget();
@@ -14742,11 +15487,13 @@ export function taskLocatorEmptySummary(locator, context) {
     bindConversationEvents();
   }
 
-  restoreConversationIdentity();
   bindEvents();
   render();
-  loadSnapshot();
-  connectConversation();
+  void restoreConversationIdentity().finally(() => {
+    render();
+    loadSnapshot();
+    connectConversation();
+  });
 })();
 `,
   "execution-proposal.js": `const authorityOrder = [

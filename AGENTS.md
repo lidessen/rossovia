@@ -57,6 +57,17 @@ does not take over producer work or treat a producer's checks or self-report as
 independent review. This proxy relation does not transfer the human Principal's
 approval, budget, acceptance, or merge authority.
 
+When delegated work is parallel or has multiple owners, Main must use the
+existing plan/todo/task tools as a small coordination projection: record each
+owner, independent branch/worktree, conflict boundary, state, dependency,
+acceptance/evidence, rejoin or merge action, cleanup condition, and unmerged
+progress, and refresh it at dispatch, blockage, reassignment, merge, archival,
+and settlement. A commit is not completion: require a verifiable merge/rejoin
+result or an explicit blocked, suspended, or archived disposition with its
+remaining progress and cleanup/reactivation condition. This is a recoverable
+scheduling view, not a new authority, approval gate, queue, or lifecycle; the
+canonical method is in `rossovia-development`.
+
 When an execution owner cannot progress, the Main Agent may intervene in the
 conditions of that owner's performance: clarify the objective or acceptance,
 restore missing context, improve tool or strategy guidance, give feedback, or
@@ -107,6 +118,39 @@ runtime migration plan owns stage order and exit evidence, the scoped
 Workbench instructions own commands and their authority limits, and the
 Mission status is a current coordination projection only.
 
+When an Agent or external harness is asked to develop Rossovia or a named
+project, or to delegate/schedule the concrete work for that development,
+activate the on-demand
+[Rossovia Development Skill](skills/rossovia-development/SKILL.md). It owns
+the Main Agent's coordinator posture and the mode decision between local
+Rossovia dogfood and external-harness delegation; it does not implement domain
+code or become a new authority.
+
+This distinction is load-bearing for external harnesses working on this
+repository:
+
+- If a local Rossovia runtime is available and dogfood is enabled, Rossovia is
+  the preferred and normally sole producer. The external harness is an
+  observer, task shaper, verifier, or explicitly bounded fallback only when
+  Rossovia cannot cross a named implementation, provider, tool, or evidence
+  boundary. It must not start a competing write for the same effect.
+- Enabling dogfood implies the ordinary read-only observer; do not require a
+  second observer-enable option. An explicit disable is a diagnostic escape,
+  not the default. Check the active launcher help because the flag is a runtime
+  contract still being implemented, not a reason to invent a command.
+- If dogfood is unavailable or disabled, the external harness owns the active
+  development session and follows
+  [`agent-delegation`](skills/agent-delegation/SKILL.md): Main retains the
+  whole, while independent design, implementation, and verification workers
+  are used only when the task warrants the split.
+
+The Rossovia Development Skill supplies the Main-side mode prompt and compact
+worker/reviewer prompt carriers. Do not send workers this file, `AGENTS.md`,
+`ROSSOVIA.md`, or an entire skill catalog. Load the detailed local-mode
+[dogfood profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md) only when
+the local runtime loop is relevant, and follow Workbench, Chronicle, Task, and
+Operating Protocol sources for actual commands and state.
+
 ## Integration entry
 
 When the human asks to create or operate a branch, worktree, PR, review, or
@@ -132,6 +176,28 @@ withheld or granted authority, and the source of any decision already made.
 Before settling or pruning the integration Mission, re-read the source PR and
 give every late review observation a traced disposition. A local reversible
 task that does not enter shared integration remains outside this entry.
+
+## Rossovia observer and Settings route
+
+When a request concerns workflow observer records, the secondary Workbench
+surface, provider/worker visibility, or Settings configuration, begin with
+[the observation model](design/observations/README.md) and then the
+[Rossovia configuration map](design/operations/ROSSOVIA-CONFIGURATION.md).
+Observer records are read-only evidence; processing a review is an ordinary
+Task prompt, not a new inbox or lifecycle. Settings projects the effective
+host worker policy and applicable preferences without exposing credentials or
+creating a second provider policy. The owning runtime/config source remains
+authoritative for provider routes, model order, credential setup, and restart
+semantics.
+
+The project-local Rossovia host entry is [`ROSSOVIA.md`](ROSSOVIA.md). Keep it
+separate from this `AGENTS.md`: this file guides an Agent working on the
+repository, while `ROSSOVIA.md` points the Rossovia coordinator to the
+project's runtime, Settings, dogfood, and skill-source maps. The skill-source
+map is [`design/operations/ROSSOVIA-SKILL-SOURCES.md`](design/operations/ROSSOVIA-SKILL-SOURCES.md);
+it keeps Main Agent and worker source lists separate. Pick is a package-owned
+curated subset of built-in skills, while user-custom is a separate source with
+its own grant boundary and explicit loading timing.
 
 ## Principle Sequence
 

@@ -342,6 +342,11 @@ export class ConversationSocketRuntime {
     this.replayDelayMs = options.replayDelayMs ?? 0;
   }
 
+  /** Read-only recovery identity for a fresh browser profile. */
+  async latestConversationId(): Promise<string | undefined> {
+    return await this.journal.latestConversationId();
+  }
+
   /**
    * Validate one upgrade request for the exact socket route, loopback
    * origin, UUID conversation identity, and `after` cursor, then upgrade it.

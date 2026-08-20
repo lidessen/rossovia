@@ -176,6 +176,19 @@
           </button>
         </nav>
 
+        <nav class="rail-section secondary-view-nav system-view-nav" aria-label="系统工具">
+          <p class="eyebrow">系统</p>
+          <button class="view-button" type="button" data-view="observer">
+            <span>观察记录</span>
+            <strong id="observer-review-count">—</strong>
+            <small>Review、处理与证据</small>
+          </button>
+          <button class="view-button" type="button" data-view="settings">
+            <span>设置</span>
+            <small>Provider、Worker 与偏好</small>
+          </button>
+        </nav>
+
         <footer class="rail-footer">
           <span id="projection-completeness">投影完整性未知</span>
           <span id="snapshot-version">版本 —</span>
@@ -251,8 +264,9 @@
             <section class="context-section">
               <p class="eyebrow">浏览器边界</p>
               <p class="context-boundary-note">
-                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+                消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、已应用的光标、草稿与展示焦点。
+                任务状态、执行证据与验收始终以各自 canonical 所有者为准。刷新只重建 projection 与 journal replay，
+                不会重放任何已发送动作。
               </p>
             </section>
           </aside>
@@ -288,8 +302,8 @@
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
-          刷新只重建 journal replay，不重放已发送动作。
+          消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标、草稿与展示焦点。
+          任务与执行证据以 canonical 所有者为准，刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 
@@ -490,6 +504,74 @@
           </div>
         </section>
         </div>
+
+        <section class="system-surface" id="observer-surface" aria-labelledby="observer-title" hidden>
+          <header class="unified-header system-surface-header">
+            <div>
+              <p class="eyebrow">Observation · secondary surface</p>
+              <h2 id="observer-title">观察记录</h2>
+              <p>这里是 observer 的只读意见面，不是对话入口，也不自动处理任何 review。</p>
+            </div>
+            <div class="observation-state">
+              <span>来源</span>
+              <strong id="observer-source-state">正在读取</strong>
+            </div>
+          </header>
+          <div class="system-surface-note">
+            <strong>怎么使用</strong>
+            <span>每条记录都保留原始 attempt、证据引用和 observer 意见。处理它仍然是一次普通 Task：阅览、评论、转成改进任务，或明确暂缓。</span>
+          </div>
+          <div class="observer-review-list" id="observer-review-list">
+            <p class="empty-note">正在读取 observer 记录。</p>
+          </div>
+        </section>
+
+        <section class="system-surface" id="settings-surface" aria-labelledby="settings-title" hidden>
+          <header class="unified-header system-surface-header">
+            <div>
+              <p class="eyebrow">Workbench · secondary surface</p>
+              <h2 id="settings-title">设置</h2>
+              <p>查看当前生效的运行配置。Provider 密钥只由宿主环境提供，界面不会读取或保存密钥内容。</p>
+            </div>
+            <div class="observation-state">
+              <span>配置来源</span>
+              <strong id="settings-source-state">正在读取</strong>
+            </div>
+          </header>
+          <div class="settings-grid">
+            <section class="settings-card" aria-labelledby="settings-providers-heading">
+              <div class="surface-section-heading">
+                <div><span>Execution policy</span><h3 id="settings-providers-heading">Provider 与 Worker</h3></div>
+                <strong id="settings-provider-count">—</strong>
+              </div>
+              <div id="settings-provider-list"><p class="empty-note">正在读取 worker policy。</p></div>
+            </section>
+            <section class="settings-card" aria-labelledby="settings-preferences-heading">
+              <div class="surface-section-heading">
+                <div><span>User defaults</span><h3 id="settings-preferences-heading">偏好</h3></div>
+                <strong id="settings-preference-count">—</strong>
+              </div>
+              <div id="settings-preference-list"><p class="empty-note">正在读取偏好。</p></div>
+            </section>
+            <section class="settings-card settings-skill-card" aria-labelledby="settings-skills-heading">
+              <header class="settings-card-heading">
+                <div><span>Context delivery</span><h3 id="settings-skills-heading">Skill 来源与加载</h3></div>
+                <strong id="settings-skill-source-count">—</strong>
+              </header>
+              <p class="settings-card-intro">Pick 与 builtin 都是安装包内置技能，user-custom 是单独的用户来源；这里显示目录与加载时机，不显示正文。</p>
+              <div id="settings-skill-source-list"><p class="empty-note">正在读取 skill 来源。</p></div>
+            </section>
+            <section class="settings-card settings-directory-card" aria-labelledby="settings-directories-heading">
+              <header class="settings-card-heading">
+                <div><span>Ownership</span><h3 id="settings-directories-heading">目录归属</h3></div>
+              </header>
+              <div id="settings-directory-list"><p class="empty-note">正在读取目录边界。</p></div>
+            </section>
+          </div>
+          <p class="settings-boundary" id="settings-boundary">
+            当前页只投影 host worker policy 与 Workbench preferences；Provider 路由、credential、模型顺序等运行策略必须先在其 owning policy/config source 中落地，再由这里读取。
+          </p>
+        </section>
       </section>
 
       <aside class="action-surface" id="work-item-peek" aria-labelledby="action-heading" hidden>

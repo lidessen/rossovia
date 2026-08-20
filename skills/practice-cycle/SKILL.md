@@ -101,6 +101,11 @@ formatting request that leaves the active decision unchanged.
   method is needed, identify the unresolved domain question and route it.
 - Do not decide whether a new Skill, runtime, artifact, or projection should
   exist; that is the low-frequency `form-guidance` judgment.
+- When several delegated contributions are active, preserve their owner,
+  state, dependency, acceptance, and rejoin projection in the existing
+  development plan/task surface. This Skill selects the next smallest practice
+  from observed results; it does not replace Main's coordination or create a
+  second task board.
 - Do not let the actor that performed a durable change accept it without the
   designated verifier or human authority.
 - Do not treat repeated motion as learning. P08 requires an observation capable

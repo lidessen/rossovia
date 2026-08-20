@@ -302,6 +302,23 @@ async function turnIdAt(runtime: ConversationSocketRuntime, conversationId: stri
 }
 
 describe("conversation socket route validation", () => {
+  test("exposes the latest durable conversation identity for a fresh browser profile", async () => {
+    const { runtime, handler, server } = routeFixture();
+    const conversationId = randomUUID();
+    await runtime.journal.submitMessage(conversationId, {
+      clientMessageId: randomUUID(),
+      payload: "recover this conversation",
+    });
+
+    const response = await handler(
+      new Request("http://127.0.0.1:4317/api/conversations/latest"),
+      server,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ conversationId });
+  });
+
   test("upgrades the exact socket route with a UUID conversationId and the after cursor", async () => {
     const { runtime, handler, server, upgrades } = routeFixture();
     const conversationId = randomUUID();

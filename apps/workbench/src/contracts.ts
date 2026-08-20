@@ -425,6 +425,8 @@ export interface WorkspaceObservation {
   status: string[];
   instructionFiles: string[];
   orientationFiles: string[];
+  /** Host-only project pointers such as ROSSOVIA.md; never worker guidance. */
+  hostConfigFiles?: string[];
 }
 
 export interface Resolution {

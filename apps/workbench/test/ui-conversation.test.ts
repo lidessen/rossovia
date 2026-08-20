@@ -13,6 +13,7 @@ const {
   conversationWorkControlFrame,
   CONVERSATION_TURN_TERMINAL_EVENTS,
   parseConversationServerFrame,
+  renderConversationMarkdown,
   reduceDurableEvents,
   taskEvidenceLinkTarget,
 } = conversation;
@@ -400,6 +401,8 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("送达未确认");
     expect(app).toContain("pending · 发送中");
     expect(app).toContain("failed · 送达未确认");
+    expect(app).toContain("/api/conversations/latest");
+    expect(app).toContain("most recent durable conversation");
   });
 
   test("never resends a message or work control automatically", () => {
@@ -445,6 +448,21 @@ describe("conversation projection DOM contract", () => {
     expect(app).toContain("coordinator.turn-settled");
     expect(app).toContain("turn-response");
     expect(app).toContain("settled · 已结算");
+  });
+
+  test("renders settled replies as safe Markdown, including tables", () => {
+    const rendered = renderConversationMarkdown(
+      "**状态**\n\n| 项目 | 状态 |\n| --- | :---: |\n| Rossovia | `ready` |\n\n- 下一步",
+    );
+    expect(rendered).toContain("<strong>状态</strong>");
+    expect(rendered).toContain("<table>");
+    expect(rendered).toContain("<th>项目</th>");
+    expect(rendered).toContain("<td><code>ready</code></td>");
+    expect(rendered).toContain("<ul>");
+    expect(renderConversationMarkdown("<script>alert(1)</script>")).toContain(
+      "&lt;script&gt;alert(1)&lt;/script&gt;",
+    );
+    expect(rendered).not.toContain("<script>");
   });
 
   test("shows requested vs observed provider/model with unknown for an unobserved started turn", () => {

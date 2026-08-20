@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
-import { mkdir, open, readFile, rename, rmdir, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   CONVERSATION_EVENT_VERSION,
@@ -200,6 +200,34 @@ export class FileConversationJournal {
   async lastCursor(conversationId: string): Promise<number> {
     const events = await this.read(conversationId);
     return events.length === 0 ? -1 : events.at(-1)!.sequence;
+  }
+
+  /**
+   * Return the most recently written conversation identity for a fresh local
+   * browser profile. The browser still owns its selected identity once it has
+   * one; this is only the recovery bridge that lets a new/mobile profile
+   * reconnect to the latest durable journal instead of inventing an empty ID.
+   */
+  async latestConversationId(): Promise<string | undefined> {
+    const directory = join(this.root, "state", "conversation-events");
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (isMissing(error)) return undefined;
+      throw error;
+    }
+    const candidates = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+      const candidate = entry.name.slice(0, -".jsonl".length);
+      if (!ConversationIdSchema.safeParse(candidate).success) continue;
+      const metadata = await stat(join(directory, entry.name));
+      candidates.push({ conversationId: candidate, modifiedAt: metadata.mtimeMs });
+    }
+    candidates.sort((left, right) =>
+      right.modifiedAt - left.modifiedAt || right.conversationId.localeCompare(left.conversationId));
+    return candidates[0]?.conversationId;
   }
 
   private async mutate(

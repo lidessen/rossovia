@@ -229,6 +229,11 @@ describe("Workbench responsive layout", () => {
     );
     expect(app).toContain("renderConversationSurface()");
     expect(app).toContain('state.activeView === "conversation"');
+    expect(app).toContain('document.body.dataset.activeView = state.activeView');
+    expect(mobile).toMatch(
+      /body\[data-active-view="conversation"\]\s+\.target-strip[\s\S]*?display:\s*none;/s,
+    );
+    expect(mobile).toContain('body[data-active-view="conversation"] .conversation-standing');
     expect(html).toContain("Enter 发送，Shift+Enter 换行");
   });
 

@@ -28,6 +28,15 @@ mechanical checks and independent verification occur, reconstructs that
 evidence against the mandate and authoritative sources, and does not treat a
 producer's checks or self-report as independent review.
 
+When the team has parallel owners, Main keeps the existing mission/plan/task
+projection current with each owner's independent branch/worktree, conflict
+boundary, state, dependency, acceptance/evidence, rejoin or merge action,
+cleanup condition, and unmerged progress. A commit is a handoff, not a settled
+mission result; each line remains open until its checks and merge/rejoin are
+verifiable, or it has an explicit suspended, blocked, returned, or abandoned
+disposition. This records coordination state without adding a queue, approval
+gate, or second lifecycle.
+
 When an execution owner cannot progress, the Main Agent may intervene in the
 conditions of that owner's performance: clarify the objective or acceptance,
 restore missing context, improve tool or strategy guidance, give feedback, or

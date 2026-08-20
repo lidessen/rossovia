@@ -46,6 +46,14 @@ import {
   submitVerifiedTaskResult,
 } from "../../workbench/src/ui/task-verified-result";
 import { loadPrincipalTasks, principalTasksPath } from "../../workbench/src/tasks";
+import { listPreferences } from "../../workbench/src/preferences";
+import { listPrincipalTaskWorkers } from "../../workbench/src/task-run";
+import { currentSkillSourceProjection } from "../../workbench/src/skill-sources";
+import {
+  readWorkflowReviews,
+  workflowReviewLogPath,
+  workflowReviewReadPaths,
+} from "../../workbench/src/workflow-observer";
 import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
 import {
   createLocalTaskControlPlane,
@@ -61,11 +69,14 @@ import { createConversationContextProvider } from "../../workbench/src/conversat
 import { createConversationTaskOperationHost } from "../../workbench/src/conversation/operations";
 import { createConversationExecutionCarrierRegistry } from "../../workbench/src/conversation/execution-carrier";
 import { createConversationContributionRegistry } from "../../workbench/src/conversation/contributions";
+import { DEFAULT_WORKFLOW_OBSERVER_WORKER } from "../../workbench/src/workflow-observer";
 
 export interface ServerOptions {
   readonly home?: string;
   readonly port: number;
   readonly roots: readonly string[];
+  /** Local startup defaults to one observer per settled conversation Run. */
+  readonly observerWorkerId?: string;
 }
 
 export interface WorkbenchRequestHandlerDependencies {
@@ -113,6 +124,22 @@ export function createWorkbenchRequestHandler(
 
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/api/conversations/latest") {
+      if (dependencies.conversationSocket === undefined) {
+        return json({ conversationId: null }, 200);
+      }
+      try {
+        return json({
+          conversationId: await dependencies.conversationSocket.latestConversationId() ?? null,
+        }, 200);
+      } catch (error: unknown) {
+        return json({
+          error: "journal-error",
+          message: error instanceof Error ? error.message : String(error),
+        }, 500);
+      }
+    }
 
     if (request.method === "GET" && url.pathname.startsWith(ConversationSocketPathPrefix)) {
       if (dependencies.conversationSocket === undefined) {
@@ -364,7 +391,12 @@ export function startWorkbenchUi(options: ServerOptions): void {
   const home = resolveHome(options.home);
   const { path: autonomyCli, direct } = resolveAutonomyClient();
   const client = new AutonomyCliClient(home, autonomyCli, process.execPath, direct);
-  const carrierRegistry = createConversationExecutionCarrierRegistry(home);
+  const carrierRegistry = createConversationExecutionCarrierRegistry(
+    home,
+    options.observerWorkerId === undefined
+      ? {}
+      : { observerWorkerId: options.observerWorkerId },
+  );
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
     turnOwner: createCoordinatorTurnOwner(),
@@ -500,6 +532,8 @@ async function buildLiveSnapshot(
       source: taskSource.sourceRef,
     }];
   const taskAttempts = readTaskAttemptsProjections(options.home, taskSource);
+  const observerReviews = readObserverReviews(options.home);
+  const settings = readSettingsProjection(options, observerReviews);
   const liveSnapshot = {
     ...snapshot,
     complete:
@@ -516,7 +550,105 @@ async function buildLiveSnapshot(
   return {
     ...liveSnapshot,
     workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts, options.home),
+    observerReviews,
+    settings,
   };
+}
+
+function readObserverReviews(home: string | undefined) {
+  const sourcePaths = workflowReviewReadPaths(home);
+  const sourceRef = sourcePaths.length === 0
+    ? workflowReviewLogPath(home)
+    : sourcePaths.join(",");
+  try {
+    const reviews = readWorkflowReviews(home).map((review) => ({
+      ...review,
+      relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
+    }));
+    return {
+      version: "rossovia.workflow-review-projection.v1" as const,
+      standing: "available" as const,
+      sourceRef,
+      reviews,
+    };
+  } catch (error: unknown) {
+    return {
+      version: "rossovia.workflow-review-projection.v1" as const,
+      standing: "unavailable" as const,
+      sourceRef,
+      reviews: [],
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function readSettingsProjection(
+  options: ServerOptions,
+  observerReviews: ReturnType<typeof readObserverReviews>,
+) {
+  const sourceRef = "apps/autonomy/src/worker-policy.ts";
+  try {
+    const workers = listPrincipalTaskWorkers();
+    return {
+      version: "rossovia.settings-projection.v1" as const,
+      standing: "available" as const,
+      workerPolicySource: sourceRef,
+      workers: workers.workers,
+      providers: [...new Map(workers.workers.map((worker) => [worker.provider, {
+        id: worker.provider,
+        workerIds: workers.workers.filter((candidate) => candidate.provider === worker.provider).map((candidate) => candidate.id),
+        models: [...new Set(workers.workers.filter((candidate) => candidate.provider === worker.provider).map((candidate) => candidate.model))],
+        credential: [...new Set(workers.workers.filter((candidate) => candidate.provider === worker.provider).map((candidate) => candidate.availability.status))].join(" / "),
+      }])).values()],
+      preferences: listPreferences(options.home),
+      skillSources: currentSkillSourceProjection(),
+      observer: {
+        enabled: options.observerWorkerId !== undefined,
+        workerId: options.observerWorkerId ?? null,
+        reviewSource: observerReviews.sourceRef,
+      },
+      boundaries: {
+        credentials: "环境变量存在性只投影为 available/unavailable；密钥不进入 Workbench UI。",
+        policy: "worker/provider/model/reasoning 由当前 host worker policy 提供；Settings 不复制第二份运行策略。",
+      },
+      directories: {
+        environment: "ROSSO_HOME",
+        currentDefault: "~/.rosso",
+        targetDefault: "~/.rossovia",
+        projectNamespace: ".rossovia/",
+        hostEntry: "ROSSOVIA.md",
+        skillCustom: "~/.rossovia/skills/custom",
+        skillPackages: "<host/worker package>/skills/{picked,builtin}",
+        source: "design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md",
+      },
+    };
+  } catch (error: unknown) {
+    return {
+      version: "rossovia.settings-projection.v1" as const,
+      standing: "unavailable" as const,
+      workerPolicySource: sourceRef,
+      workers: [],
+      providers: [],
+      preferences: { version: "rosso.preference-projection.v2" as const, projectId: null, preferences: [] },
+      skillSources: currentSkillSourceProjection(),
+      observer: {
+        enabled: options.observerWorkerId !== undefined,
+        workerId: options.observerWorkerId ?? null,
+        reviewSource: observerReviews.sourceRef,
+      },
+      directories: {
+        environment: "ROSSO_HOME",
+        currentDefault: "~/.rosso",
+        targetDefault: "~/.rossovia",
+        projectNamespace: ".rossovia/",
+        hostEntry: "ROSSOVIA.md",
+        skillCustom: "~/.rossovia/skills/custom",
+        skillPackages: "<host/worker package>/skills/{picked,builtin}",
+        source: "design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md",
+      },
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /**
@@ -895,10 +1027,25 @@ export function refineLiveRunnerAttention(
 export function parseServerArguments(arguments_: readonly string[]): ServerOptions {
   let home: string | undefined;
   let port = 4317;
+  let observerWorkerId: string | undefined = DEFAULT_WORKFLOW_OBSERVER_WORKER;
   const roots = [repositoryRoot];
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]!;
     const value = arguments_[index + 1];
+    if (argument === "--disable-observer" || argument === "--enable-observer") {
+      observerWorkerId = argument === "--disable-observer"
+        ? undefined
+        : DEFAULT_WORKFLOW_OBSERVER_WORKER;
+      continue;
+    }
+    if (argument === "--observer") {
+      if (value === undefined || value.startsWith("--") || value.trim() === "") {
+        throw new Error("--observer requires a worker id");
+      }
+      observerWorkerId = value;
+      index += 1;
+      continue;
+    }
     if (argument === "--home" || argument === "--root" || argument === "--port") {
       if (value === undefined) throw new Error(`${argument} requires a value`);
       if (argument === "--home") home = resolve(value);
@@ -918,6 +1065,7 @@ export function parseServerArguments(arguments_: readonly string[]): ServerOptio
     ...(home === undefined ? {} : { home }),
     port,
     roots: [...new Set(roots)],
+    ...(observerWorkerId === undefined ? {} : { observerWorkerId }),
   };
 }
 

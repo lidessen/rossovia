@@ -34,6 +34,11 @@ without becoming owner of its parent's whole. Own one judgment:
 > context and effect boundary should each role receive, and how should their
 > evidence be reconnected to the whole?
 
+For whole-project development, the coordinator posture and default work
+assignment live in [`rossovia-development`](../rossovia-development/SKILL.md).
+Use this Skill as its supporting method for forming and supervising a bounded
+delegation; do not make it a second project-development entry.
+
 This Skill forms one semantic organization, then maps each bounded contribution
 to the current harness. A session-local harness may use native delegates. A
 Main Agent executing inside a generic Work Cell may receive one caller-injected
@@ -52,6 +57,15 @@ Do not pass this file wholesale to a worker or reviewer. Main-side construction
 lives in [delegation.md](references/delegation.md); worker-only and
 reviewer-only contracts live in [worker.md](references/worker.md) and
 [reviewer.md](references/reviewer.md).
+
+When a delegation has multiple owners, the parent Main keeps owner,
+independent branch/worktree, conflict boundary, state, dependency,
+acceptance/evidence, rejoin/merge action, cleanup condition, and unmerged
+progress in the host's existing plan/todo/task surface. A child commit is a
+handoff, not settlement: Main reconnects it through a verifiable merge/rejoin
+or records an explicit blocked, suspended, or archived disposition. This Skill
+does not create that surface or turn it into an approval or lifecycle
+authority.
 
 ## Principle source
 
