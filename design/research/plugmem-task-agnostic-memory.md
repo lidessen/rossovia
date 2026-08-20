@@ -153,10 +153,12 @@ source and making unsupported inheritance visible.
 
 ## Strongest no-proposal case
 
-No new principle and no immediate runtime subsystem are warranted. P09 already
-governs attention-layer placement; P12 governs durable inheritance; P13 keeps
-claims, verification, and acceptance separate; P14 keeps rebuildable indexes
-and views from acquiring fact authority; and P15 favors the smallest effective
+No new principle and no immediate runtime subsystem are warranted. [P09](../../principles/interpretations/P09.md)
+already governs attention-layer placement; [P12](../../principles/interpretations/P12.md)
+governs durable inheritance; [P13](../../principles/interpretations/P13.md)
+keeps claims, verification, and acceptance separate; [P14](../../principles/interpretations/P14.md)
+keeps rebuildable indexes and views from acquiring fact authority; and
+[P15](../../principles/interpretations/P15.md) favors the smallest effective
 probe. The existing cognition-memory research and Observation Chronicle pilot
 cover the same decision tensions with Rossovia-specific ownership and
 correction boundaries.
