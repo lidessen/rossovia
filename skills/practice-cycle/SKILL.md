@@ -29,6 +29,13 @@ the everyday evidence, restraint, and verification discipline expressed by
 practice and the next. It is not a mandatory preflight, project planner, form
 selector, task board, or acceptance authority.
 
+For an important design, this Skill can express a bounded multi-round mode:
+form the acceptance relation, make one smallest practice, observe its result,
+and let the reflection change the next practice or settle the question. Keep
+the relation in the existing Plan/Task/Run evidence surface; do not introduce a
+round counter, automatic retry, or new runtime lifecycle. If the condition is
+not settled, report `uncertain` rather than manufacturing progress.
+
 ## Principle source
 
 Use a host Sequence and its matching interpretations when the host declares
@@ -89,6 +96,8 @@ formatting request that leaves the active decision unchanged.
    - **route:** a form contradiction goes to `form-guidance`; a reusable
      principle question goes to `principle-cultivation`; a domain contradiction
      goes to its owning methodology.
+   For a named binary condition, use `yes`, `no`, or `uncertain` with the
+   observation that supports it; do not use a numeric score or confidence scale.
 7. **Externalize only decision-changing learning.** Leave a durable record only
    when handoff, approval, or a later decision would otherwise repeat or
    contradict the learning. The record is evidence, not a permanent workflow.

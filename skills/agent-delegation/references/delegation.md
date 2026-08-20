@@ -30,6 +30,13 @@ would require repeating every delegated investigation.
 | Consequential candidate | maker then fresh reviewer | reviewer stays read-only |
 | Strict dependency | sequential work or targeted follow-up | preserve one owner |
 
+For open research, use the first row only when the directions are genuinely
+different: give each investigator a bounded question or source family, an
+explicit non-goal, and a read-only or isolated effect surface. Main owns the
+later synthesis: reconstruct coverage, contradictions, source standing, and
+unknowns against the whole acceptance relation. This is an execution method,
+not a Plan field, swarm primitive, or new runtime lifecycle.
+
 ## Child prompt construction
 
 Build every worker, reviewer, and nested-child prompt from four compact parts,
@@ -62,6 +69,7 @@ Portable method:
 - Keep the result connected to the requested overall outcome and choose the smallest change that closes this contribution without weakening its constraints.
 - Stay inside the stated read, change, and decision boundaries. Stop when completion needs a broader owner or changed premise.
 - Record observations and check results separately from your claims. Independent semantic review and named-owner acceptance remain separate decisions.
+- For a named condition, state `yes`, `no`, or `uncertain` and show its evidence; do not use numeric quality, confidence, or vote-based selection.
 - Run the requested local verification. Return the conclusion, source/change evidence, unknowns, and hand-off relation needed to reconstruct the result.
 - If narrower delegation is explicitly allowed, give that child these same four prompt parts with the same or tighter boundaries.
 ```
