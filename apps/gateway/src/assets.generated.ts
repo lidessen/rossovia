@@ -9100,7 +9100,7 @@ export function taskLocatorEmptySummary(locator, context) {
         flushList();
         continue;
       }
-      const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*#*\\s*$/u);
+      const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*$/u);
       if (heading) {
         flushParagraph();
         flushList();
@@ -13514,21 +13514,22 @@ export function taskLocatorEmptySummary(locator, context) {
     const sourceCount = entry.disclosedSources.length;
     const selectorCount = entry.sourceRevisionSelectors.length;
     const disclosureSummary = sourceCount && selectorCount
-      ? \`回答参考了 \${sourceCount} 项材料，并记录了 \${selectorCount} 条版本选择\`
+      ? \`已向协调器披露 \${sourceCount} 项材料，并记录 \${selectorCount} 条版本选择\`
       : sourceCount
-        ? \`回答参考了 \${sourceCount} 项材料\`
-        : \`回答记录了 \${selectorCount} 条版本选择\`;
+        ? \`已向协调器披露 \${sourceCount} 项材料\`
+        : \`已向协调器记录 \${selectorCount} 条版本选择\`;
     const sources = sourceCount || selectorCount
       ? \`<details class="turn-sources">
            <summary>\${disclosureSummary} · 展开查看依据</summary>
-           <p class="turn-sources-explainer">这里说明回答引用了哪些材料，以及使用了哪些版本选择记录；展开后可核对原始标识。</p>
+           <p class="turn-sources-explainer">这里列出披露给协调器的材料和版本记录；展开后可核对原始标识。</p>
            <ul>
              \${entry.disclosedSources.map((source) =>
                \`<li>
-                  <span>来源材料</span>
+                  <span>披露材料</span>
                   <div>
-                    <strong>\${escapeHtml(text(first(source, ["title", "label", "name", "description"]), "来源记录"))}</strong>
+                    <strong>协调器材料引用</strong>
                     <code>ref: \${escapeHtml(text(first(source, ["ref"]), "—"))}</code>
+                    <code>digest: \${escapeHtml(text(first(source, ["digest"]), "—"))}</code>
                   </div>
                 </li>\`).join("")}
              \${entry.sourceRevisionSelectors.map((selector) =>

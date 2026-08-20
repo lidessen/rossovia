@@ -115,15 +115,17 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(appJs).toContain("escapeHtml(value)");
     expect(appJs).toContain("https?:\\/\\/");
     expect(appJs).toContain('rel="noreferrer"');
+    expect(appJs).toContain("const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*$/u);");
     expect(appJs).toContain('class="turn-response turn-response-markdown"');
     expect(appJs).toContain("renderConversationMarkdown(entry.response)");
   });
 
   test("source disclosure explains its purpose before preserving raw evidence", () => {
-    expect(appJs).toContain("回答参考了 ${sourceCount} 项材料");
+    expect(appJs).toContain("已向协调器披露 ${sourceCount} 项材料");
     expect(appJs).toContain("展开查看依据");
-    expect(appJs).toContain("这里说明回答引用了哪些材料，以及使用了哪些版本选择记录");
+    expect(appJs).toContain("这里列出披露给协调器的材料和版本记录");
     expect(appJs).toContain("ref: ${escapeHtml");
+    expect(appJs).toContain("digest: ${escapeHtml");
     expect(appJs).toContain("source: ${escapeHtml");
     expect(appJs).toContain("revision: ${escapeHtml");
   });
