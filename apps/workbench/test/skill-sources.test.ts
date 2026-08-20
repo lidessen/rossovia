@@ -3,7 +3,7 @@ import { currentSkillSourceProjection } from "../src/skill-sources";
 
 test("skill source projection separates Main Agent and worker audiences", () => {
   const projection = currentSkillSourceProjection();
-  expect(projection.version).toBe("rosso.skill-source-projection.v1");
+  expect(projection.version).toBe("rossovia.skill-source-projection.v1");
   expect(projection.audiences.map((audience) => audience.audience)).toEqual([
     "main-agent",
     "worker",

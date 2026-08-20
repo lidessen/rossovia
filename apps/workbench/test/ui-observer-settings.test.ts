@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
@@ -30,12 +30,14 @@ test("snapshot exposes observer reviews and safe settings projections", async ()
   expect(snapshot.observerReviews.version).toBe("rossovia.workflow-review-projection.v1");
   expect(snapshot.observerReviews.standing).toBe("available");
   expect(snapshot.observerReviews.reviews).toEqual([]);
-  expect(snapshot.settings.version).toBe("rosso.settings-projection.v1");
+  expect(snapshot.settings.version).toBe("rossovia.settings-projection.v1");
   expect(snapshot.settings.standing).toBe("available");
+  expect(snapshot.settings.workerPolicySource).toBe("apps/autonomy/src/worker-policy.ts");
+  expect(existsSync(join(import.meta.dir, "../../autonomy/src/worker-policy.ts"))).toBe(true);
   expect(snapshot.settings.observer.enabled).toBe(true);
   expect(snapshot.settings.workers.length).toBeGreaterThan(0);
   expect(snapshot.settings.providers.length).toBeGreaterThan(0);
-  expect(snapshot.settings.skillSources.version).toBe("rosso.skill-source-projection.v1");
+  expect(snapshot.settings.skillSources.version).toBe("rossovia.skill-source-projection.v1");
   expect(snapshot.settings.skillSources.audiences).toHaveLength(2);
   expect(snapshot.settings.skillSources.audiences[0].sources.map((source: any) => source.kind)).toEqual([
     "picked",

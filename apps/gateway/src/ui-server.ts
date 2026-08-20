@@ -586,11 +586,11 @@ function readSettingsProjection(
   options: ServerOptions,
   observerReviews: ReturnType<typeof readObserverReviews>,
 ) {
-  const sourceRef = "operations/autonomy/src/worker-policy.ts";
+  const sourceRef = "apps/autonomy/src/worker-policy.ts";
   try {
     const workers = listPrincipalTaskWorkers();
     return {
-      version: "rosso.settings-projection.v1" as const,
+      version: "rossovia.settings-projection.v1" as const,
       standing: "available" as const,
       workerPolicySource: sourceRef,
       workers: workers.workers,
@@ -624,7 +624,7 @@ function readSettingsProjection(
     };
   } catch (error: unknown) {
     return {
-      version: "rosso.settings-projection.v1" as const,
+      version: "rossovia.settings-projection.v1" as const,
       standing: "unavailable" as const,
       workerPolicySource: sourceRef,
       workers: [],

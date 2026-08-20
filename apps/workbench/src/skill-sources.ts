@@ -7,7 +7,7 @@
  * their metadata/body may enter context.
  */
 
-export const SKILL_SOURCE_PROJECTION_VERSION = "rosso.skill-source-projection.v1";
+export const SKILL_SOURCE_PROJECTION_VERSION = "rossovia.skill-source-projection.v1";
 
 export type SkillAudience = "main-agent" | "worker";
 export type SkillSourceKind = "picked" | "builtin" | "user-custom";
