@@ -34,6 +34,7 @@ import {
   type ParsedTaskRunSettlement,
   type StrictTaskAttemptEvidence,
 } from "../task-attempts";
+import { runDogfoodObserver } from "../dogfood-observer";
 import { PrincipalTaskError } from "../tasks";
 import type { PrincipalTask } from "../contracts";
 import { loadHome, resolveHome, workspaceFor } from "../home";
@@ -250,6 +251,8 @@ export interface ConversationExecutionCarrierOptions {
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
+  /** Local UI default: review each settled conversation Run asynchronously. */
+  readonly observerWorkerId?: string;
 }
 
 export function createConversationExecutionCarrierRegistry(
@@ -258,20 +261,22 @@ export function createConversationExecutionCarrierRegistry(
 ): ConversationExecutionCarrierRegistry {
   const home = resolveHome(homeArgument);
   const catalog = options.catalog ?? currentCatalog(options.environment ?? process.env);
-  return new WorkbenchConversationCarrierRegistry(home, catalog);
+  return new WorkbenchConversationCarrierRegistry(home, catalog, options.observerWorkerId);
 }
 
 class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarrierRegistry {
   readonly home: string;
   private readonly catalog: WorkerCatalog;
+  private readonly observerWorkerId: string | undefined;
   /** The canonical Run control registry the O2 owner registers live Runs into. */
   private readonly runControlRegistry = new RunControlRegistry();
   private readonly handles = new Map<string, TaskRunCellCarrier>();
   private readonly startedByCommittedAction = new Map<string, string>();
 
-  constructor(home: string, catalog: WorkerCatalog) {
+  constructor(home: string, catalog: WorkerCatalog, observerWorkerId?: string) {
     this.home = home;
     this.catalog = catalog;
+    this.observerWorkerId = observerWorkerId;
   }
 
   startCarrier(input: {
@@ -438,6 +443,15 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     }
     const standing = runStanding(this.home, handle.identity.carrierId);
     handle.finishTerminal(settlementFromRunStanding(standing, handle.identity.carrierId));
+    if (this.observerWorkerId !== undefined) {
+      void runDogfoodObserver({
+        home: this.home,
+        attemptId: handle.identity.carrierId,
+        workerId: this.observerWorkerId,
+      }).catch(() => {
+        // Observation is best-effort and must never alter the settled Run.
+      });
+    }
   }
 
   /** The retained Run's own evidence projected as the converged start receipt. */

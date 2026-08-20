@@ -14,6 +14,7 @@ import {
 } from "./task-run";
 
 export const DOGFOOD_REVIEW_LOG_VERSION = "rosso.dogfood-review.v1" as const;
+export const DEFAULT_DOGFOOD_OBSERVER_WORKER = "deepseek-flash" as const;
 
 export interface DogfoodObserverArguments {
   readonly home?: string;

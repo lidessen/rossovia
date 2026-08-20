@@ -105,9 +105,12 @@ Run the current UI with:
 ./apps/gateway/rossovia ui
 ```
 
-Open `http://127.0.0.1:4317`. Add another explicitly selected local repository
-with `./apps/gateway/rossovia ui --root <git-root>` or select another
-port with `--port <port>`. The equivalent development entry
+Open `http://127.0.0.1:4317`. Local UI startup enables the `deepseek-flash`
+observer for each settled conversation Run; choose another worker with
+`--observer <worker-id>` or disable it with `--disable-observer`. Add another
+explicitly selected local repository with
+`./apps/gateway/rossovia ui --root <git-root>` or select another port with
+`--port <port>`. The equivalent development entry
 `bun run --cwd apps/gateway ui` serves the same surface from the source
 checkout.
 

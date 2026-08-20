@@ -61,11 +61,14 @@ import { createConversationContextProvider } from "../../workbench/src/conversat
 import { createConversationTaskOperationHost } from "../../workbench/src/conversation/operations";
 import { createConversationExecutionCarrierRegistry } from "../../workbench/src/conversation/execution-carrier";
 import { createConversationContributionRegistry } from "../../workbench/src/conversation/contributions";
+import { DEFAULT_DOGFOOD_OBSERVER_WORKER } from "../../workbench/src/dogfood-observer";
 
 export interface ServerOptions {
   readonly home?: string;
   readonly port: number;
   readonly roots: readonly string[];
+  /** Local startup defaults to one observer per settled conversation Run. */
+  readonly observerWorkerId?: string;
 }
 
 export interface WorkbenchRequestHandlerDependencies {
@@ -364,7 +367,12 @@ export function startWorkbenchUi(options: ServerOptions): void {
   const home = resolveHome(options.home);
   const { path: autonomyCli, direct } = resolveAutonomyClient();
   const client = new AutonomyCliClient(home, autonomyCli, process.execPath, direct);
-  const carrierRegistry = createConversationExecutionCarrierRegistry(home);
+  const carrierRegistry = createConversationExecutionCarrierRegistry(
+    home,
+    options.observerWorkerId === undefined
+      ? {}
+      : { observerWorkerId: options.observerWorkerId },
+  );
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
     turnOwner: createCoordinatorTurnOwner(),
@@ -895,10 +903,25 @@ export function refineLiveRunnerAttention(
 export function parseServerArguments(arguments_: readonly string[]): ServerOptions {
   let home: string | undefined;
   let port = 4317;
+  let observerWorkerId: string | undefined = DEFAULT_DOGFOOD_OBSERVER_WORKER;
   const roots = [repositoryRoot];
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]!;
     const value = arguments_[index + 1];
+    if (argument === "--disable-observer" || argument === "--enable-observer") {
+      observerWorkerId = argument === "--disable-observer"
+        ? undefined
+        : DEFAULT_DOGFOOD_OBSERVER_WORKER;
+      continue;
+    }
+    if (argument === "--observer") {
+      if (value === undefined || value.startsWith("--") || value.trim() === "") {
+        throw new Error("--observer requires a worker id");
+      }
+      observerWorkerId = value;
+      index += 1;
+      continue;
+    }
     if (argument === "--home" || argument === "--root" || argument === "--port") {
       if (value === undefined) throw new Error(`${argument} requires a value`);
       if (argument === "--home") home = resolve(value);
@@ -918,6 +941,7 @@ export function parseServerArguments(arguments_: readonly string[]): ServerOptio
     ...(home === undefined ? {} : { home }),
     port,
     roots: [...new Set(roots)],
+    ...(observerWorkerId === undefined ? {} : { observerWorkerId }),
   };
 }
 

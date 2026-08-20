@@ -22,7 +22,7 @@ local source change → paired build → restart and smoke check
         ↓                         ↘ serious regression → rebuild last tag
      dogfood task
         ↓
-optional read-only observer worker
+default local read-only observer worker
         ↓
 existing observation/log record
         ↓
@@ -99,21 +99,28 @@ Worker success is not correctness. A product-facing pass can use the
 tool, or evidence-surface questions can use the existing code-review,
 context-engineering, or agent-tooling methods.
 
-## 4. Optional observer prompt
+## 4. Local observer default
 
-When useful, explicitly enable one ordinary read-only background worker after
-a dogfood task has reached terminal settlement. The current thin CLI path is:
+When Rossovia starts locally through the Workbench UI, it enables one ordinary
+read-only background worker for each settled conversation Run. The default
+worker is the host-policy `deepseek-flash` card. Choose another worker or turn
+the local default off at startup:
+
+```text
+rossovia ui --observer <worker-id>
+rossovia ui --disable-observer
+```
+
+The per-task CLI opt-in remains available when running outside the UI:
 
 ```text
 rossovia task run <task-id> --worker <worker-id> \
   --enable-observer --observer <observer-worker-id>
 ```
 
-`--enable-observer` and `--observer` are an explicit opt-in for one detached,
-read-only observer after the task has a terminal attempt. The observer is a
-thin adapter around the existing Work Cell and standard attempt-evidence API,
-not a resident daemon or a second Task. A direct invocation is also available
-for a settled attempt:
+The observer is a thin adapter around the existing Work Cell and standard
+attempt-evidence API, not a resident daemon or a second Task. A direct
+invocation is also available for a settled attempt:
 
 ```text
 rossovia observer --attempt <attempt-id> --worker <observer-worker-id>
@@ -208,9 +215,11 @@ build/restart, after the replacement smoke check, and before branch/PR/merge or
 session handoff. Use Mission continuity only when the obligation genuinely
 crosses a session; it is not a backlog or scheduler.
 
-This profile does not make the following automatic: observer startup,
-retries, fixes, task creation, acceptance, merge, rollback, protocol changes,
-or Skill changes. It also does not turn a local tag into a published release.
+This profile does not make the following automatic: retries, fixes, task
+creation, acceptance, merge, rollback, protocol changes, or Skill changes.
+Observer startup is the one local UI default described above and can be
+disabled explicitly. This profile also does not turn a local tag into a
+published release.
 Those actions remain ordinary, explicitly authorized work.
 
 ## Small implementation backlog (not a new mechanism)
@@ -219,8 +228,8 @@ If this working profile proves useful, implement only the smallest missing
 pieces through normal Tasks:
 
 1. make runtime snapshot identity easy to inspect;
-2. keep the thin optional launch/prompt path (`--enable-observer` and
-   `--observer`) useful without turning it into a resident service;
+2. keep the thin local observer default and its explicit disable/worker-choice
+   flags useful without turning it into a resident service;
 3. expose the standard evidence needed for review, or make its absence clear;
 4. append review opinions to the existing observation/log surface;
 5. keep “process recent reviews” as a reusable ordinary Task prompt;
