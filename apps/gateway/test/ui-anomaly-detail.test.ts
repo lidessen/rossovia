@@ -101,4 +101,11 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(stylesCss).toContain(".project-group-disclosure");
     expect(UI_ASSETS["app.js"]).toBe(appJs);
   });
+
+  test("loading keeps the conversation shell visible while snapshot surfaces wait", () => {
+    expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .principal-rail');
+    expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .project-surface');
+    expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .conversation-surface');
+    expect(stylesCss).toContain('grid-template-columns: minmax(0, 1fr);');
+  });
 });
