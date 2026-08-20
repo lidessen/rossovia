@@ -127,7 +127,31 @@ export interface SelfCheckDependencies {
   readonly taskRead?: SelfCheckTaskReadPort;
 }
 
+export type SelfCheckStartupMode = "normal" | "safe-diagnostic";
+
+export interface SelfCheckStartupGate {
+  readonly version: typeof SELF_CHECK_VERSION;
+  readonly mode: SelfCheckStartupMode;
+  readonly mechanical: SelfCheckMechanical;
+  readonly checkedAt: string;
+}
+
 const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
+
+/**
+ * Run the startup mechanical gate once. A healthy projection opens the
+ * normal UI/write surface; every other standing keeps the server in a
+ * read-only diagnostic mode. This never invokes the optional worker opinion.
+ */
+export function runSelfCheckStartupGate(options: SelfCheckOptions = {}): SelfCheckStartupGate {
+  const mechanical = runMechanicalSelfCheck(options);
+  return {
+    version: SELF_CHECK_VERSION,
+    mode: mechanical.status === "healthy" ? "normal" : "safe-diagnostic",
+    mechanical,
+    checkedAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Run the fast, read-only health projection. Mechanical checks remain the
@@ -441,7 +465,7 @@ function revalidateTask(
   } catch (error: unknown) {
     const detail = `Task re-read after worker opinion failed: ${message(error)}`;
     return {
-      stale: true,
+      stale: false,
       mechanical: {
         ...mechanical,
         status: "degraded",
@@ -603,9 +627,6 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
         "Do not edit, run commands, persist state, accept work, or call this self-check again.",
       ],
       capabilities: [],
-      ...(input.task === undefined ? {} : {
-        tasks: input.task.todos.map((todo) => ({ subject: todo, description: todo })),
-      }),
       context: [{
         id: "self-check-mechanical-evidence",
         title: "Mechanical self-check evidence",

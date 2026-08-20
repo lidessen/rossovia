@@ -12,7 +12,10 @@ import {
   type SelfCheckTaskSnapshot,
   type SelfCheckWorker,
 } from "../src/self-check";
+import { defaultSelfCheckTaskReadPort } from "../src/self-check-task";
 import { runCommand } from "../src/process";
+import { parseTaskReceiptEvidenceRef, taskReceiptEvidenceRef } from "../src/conversation/contracts";
+import { createPrincipalTask } from "../src/tasks";
 
 const temporaryRoots: string[] = [];
 
@@ -35,7 +38,7 @@ const taskSnapshot: SelfCheckTaskSnapshot = {
   acceptance: ["Return evidence-backed attention items."],
   todos: ["Read the mechanical checklist", "Report stale evidence"],
   lifecycle: "open",
-  evidenceRefs: ["workbench:state/tasks.json#task-self-check@source-4/task-2"],
+  evidenceRefs: [taskReceiptEvidenceRef("task-self-check", 4)],
 };
 
 function worker(id: string, status: "available" | "unavailable"): SelfCheckWorker {
@@ -109,6 +112,25 @@ test("forward: clean home and source return healthy mechanical evidence", async 
   expect(progress.at(-1)).toBe("complete:self-check:healthy");
   expect(result.mechanical.checks.flatMap((check) => check.evidenceRefs))
     .toContain(`git:${result.mechanical.source?.root}@${head}`);
+});
+
+test("the existing Task snapshot uses the canonical parseable receipt evidence ref", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-task-evidence-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  const created = createPrincipalTask(root, {
+    title: "Canonical Task source",
+    objective: "Read the existing Task without creating a second source.",
+    acceptance: ["The receipt reference is parseable."],
+    nextActor: "agent",
+    sourceRef: "test:self-check-task-evidence",
+    expectedSourceRevision: 0,
+  });
+  const snapshot = defaultSelfCheckTaskReadPort.read(root, created.task.id);
+  expect(parseTaskReceiptEvidenceRef(snapshot.evidenceRefs[0]!)).toEqual({
+    taskId: created.task.id,
+    sourceRevision: created.sourceRevision,
+  });
 });
 
 test("changed-after-start and stale baseline are explicit rather than healthy claims", async () => {
@@ -280,7 +302,7 @@ test("Task revision change after the opinion is reported stale without a subscri
     ...taskSnapshot,
     sourceRevision: 5,
     taskRevision: 3,
-    evidenceRefs: ["workbench:state/tasks.json#task-self-check@source-5/task-3"],
+    evidenceRefs: [taskReceiptEvidenceRef("task-self-check", 5)],
   };
   const taskRead: SelfCheckTaskReadPort = {
     read: () => {
@@ -311,6 +333,48 @@ test("Task revision change after the opinion is reported stale without a subscri
   expect(result.mechanical.task?.standing).toBe("stale");
   expect(result.opinion).toEqual(expect.objectContaining({ standing: "attention", status: "stale" }));
   expect(result.status).toBe("attention");
+});
+
+test("Task re-read failure is degraded evidence, not an invented stale change", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-task-reread-failure-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+  let reads = 0;
+  const taskRead: SelfCheckTaskReadPort = {
+    read: () => {
+      reads += 1;
+      if (reads > 1) throw new Error("task source disappeared during re-read");
+      return taskSnapshot;
+    },
+  };
+  const result = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    opinion: true,
+    taskId: "task-self-check",
+    workerId: "test-worker",
+    dependencies: dependencies([worker("test-worker", "available")], async ({ evidenceRefs }) => ({
+      requested: true,
+      workerId: "test-worker",
+      standing: "opinion",
+      status: "recorded",
+      confidence: "low",
+      items: [{ id: "task", state: "healthy", detail: "snapshot read", evidenceRefs: [...evidenceRefs] }],
+      evidenceRefs: [...evidenceRefs],
+      summary: "snapshot opinion",
+    }), taskRead),
+  });
+
+  expect(result.mechanical.status).toBe("degraded");
+  expect(result.mechanical.task?.standing).toBe("unavailable");
+  expect(result.opinion).toEqual(expect.objectContaining({ standing: "opinion", status: "recorded" }));
+  if (result.opinion.requested) {
+    expect(result.opinion.summary).not.toContain("changed");
+    expect(result.opinion.summary).not.toContain("stale");
+  }
 });
 
 test("degraded mechanical preflight does not start the worker", async () => {

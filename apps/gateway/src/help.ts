@@ -327,7 +327,7 @@ export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: tr
   { kind: "verb", path: ["self-check"], topLevel: true,
     usage: "self-check [--cwd PATH] [--task <task-id>] [--baseline-head SHA] [--trigger manual|startup|changed] [--progress] [--opinion --worker <worker-id> --timeout-ms MS]",
     description: "Run a fast read-only mechanical preflight and optionally request a bounded worker opinion.",
-    effect: "read-only",
+    effect: "starts-work",
     notes: "Mechanical checks own health facts and include source references. --task reads one existing Principal Task/Todo through the canonical read port and re-reads its revision after the opinion; no synthetic Task is created. The current host has no transient Task subscription, so the result labels snapshot-only standing and changes as stale. --progress streams checking and terminal item states to stderr without writing state. --opinion is optional and non-authoritative: without --task it reports a Task/Todo query-gap and does not start a worker; provider unavailability or timeout never blocks startup or changes mechanical evidence." },
   { kind: "family", path: ["root"], topLevel: false,
     summary: "root <subcommand> [arguments]",

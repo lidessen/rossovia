@@ -70,6 +70,10 @@ import { createConversationTaskOperationHost } from "../../workbench/src/convers
 import { createConversationExecutionCarrierRegistry } from "../../workbench/src/conversation/execution-carrier";
 import { createConversationContributionRegistry } from "../../workbench/src/conversation/contributions";
 import { DEFAULT_WORKFLOW_OBSERVER_WORKER } from "../../workbench/src/workflow-observer";
+import {
+  runSelfCheckStartupGate,
+  type SelfCheckStartupGate,
+} from "../../workbench/src/self-check";
 
 export interface ServerOptions {
   readonly home?: string;
@@ -77,6 +81,8 @@ export interface ServerOptions {
   readonly roots: readonly string[];
   /** Local startup defaults to one observer per settled conversation Run. */
   readonly observerWorkerId?: string;
+  /** Set only by the production startup entry after its mechanical gate. */
+  readonly startupGate?: SelfCheckStartupGate;
 }
 
 export interface WorkbenchRequestHandlerDependencies {
@@ -125,6 +131,27 @@ export function createWorkbenchRequestHandler(
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
 
+    if (
+      options.startupGate?.mode === "safe-diagnostic"
+      && (request.method === "POST"
+        || request.method === "PUT"
+        || request.method === "PATCH"
+        || request.method === "DELETE"
+        || url.pathname.startsWith(ConversationSocketPathPrefix))
+    ) {
+      return startupDiagnosticResponse(options.startupGate);
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/startup") {
+      return options.startupGate === undefined
+        ? json({
+          version: "rossovia.self-check.v1",
+          mode: "not-checked",
+          message: "The production startup gate is installed only by the ui entry.",
+        }, 200)
+        : json(options.startupGate, 200);
+    }
+
     if (request.method === "GET" && url.pathname === "/api/conversations/latest") {
       if (dependencies.conversationSocket === undefined) {
         return json({ conversationId: null }, 200);
@@ -162,11 +189,16 @@ export function createWorkbenchRequestHandler(
 
     if (request.method === "GET" && url.pathname === "/api/snapshot") {
       try {
-        return json(await buildLiveSnapshot(options, client), 200);
+        const snapshot = await buildLiveSnapshot(options, client);
+        return json({
+          ...snapshot,
+          ...(options.startupGate === undefined ? {} : { startup: options.startupGate }),
+        }, 200);
       } catch (error: unknown) {
         return json({
           error: "snapshot-failed",
           message: error instanceof Error ? error.message : String(error),
+          ...(options.startupGate === undefined ? {} : { startup: options.startupGate }),
         }, 500);
       }
     }
@@ -389,6 +421,7 @@ if (import.meta.main) {
  */
 export function startWorkbenchUi(options: ServerOptions): void {
   const home = resolveHome(options.home);
+  const startupGate = runSelfCheckStartupGate({ home, cwd: process.cwd() });
   const { path: autonomyCli, direct } = resolveAutonomyClient();
   const client = new AutonomyCliClient(home, autonomyCli, process.execPath, direct);
   const carrierRegistry = createConversationExecutionCarrierRegistry(
@@ -406,7 +439,7 @@ export function startWorkbenchUi(options: ServerOptions): void {
     contributionRegistry,
   });
   const requestHandler = createWorkbenchRequestHandler(
-    { ...options, home },
+    { ...options, home, startupGate },
     client,
     { conversationSocket },
   );
@@ -416,6 +449,11 @@ export function startWorkbenchUi(options: ServerOptions): void {
     fetch: (request, server) => requestHandler(request, server),
     websocket: conversationSocket.websocket,
   });
+  if (startupGate.mode === "safe-diagnostic") {
+    console.error(
+      `Rossovia startup entered safe diagnostic mode (${startupGate.mechanical.status}); normal Task/write routes are disabled.`,
+    );
+  }
   console.log(`Rossovia Principal Workbench: ${server.url}`);
   console.log(`Supervision: Codex supervises Rossovia Workbench; unsupervised operation is unavailable.`);
 }
@@ -1170,4 +1208,12 @@ function json(value: unknown, status: number): Response {
       "X-Content-Type-Options": "nosniff",
     },
   });
+}
+
+function startupDiagnosticResponse(gate: SelfCheckStartupGate): Response {
+  return json({
+    error: "startup-diagnostic-mode",
+    message: "Mechanical startup checks are not healthy; Task and write routes remain disabled.",
+    startup: gate,
+  }, 503);
 }

@@ -1,4 +1,5 @@
 import { showPrincipalTask } from "./tasks";
+import { taskReceiptEvidenceRef } from "./conversation/contracts";
 
 export type SelfCheckTaskLifecycle = "open" | "in-progress" | "waiting" | "verifying" | "settled";
 
@@ -35,9 +36,7 @@ export const defaultSelfCheckTaskReadPort: SelfCheckTaskReadPort = {
       acceptance: [...shown.task.acceptance],
       todos: [...shown.task.todos],
       lifecycle: shown.task.lifecycle,
-      evidenceRefs: [
-        `workbench:state/tasks.json#${shown.task.id}@source-${shown.sourceRevision}/task-${shown.task.revision}`,
-      ],
+      evidenceRefs: [taskReceiptEvidenceRef(shown.task.id, shown.sourceRevision)],
     };
   },
 };
