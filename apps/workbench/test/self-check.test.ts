@@ -7,6 +7,7 @@ import {
   runSelfCheck,
   type SelfCheckOpinion,
   type SelfCheckOpinionInput,
+  type SelfCheckProgress,
   type SelfCheckTaskReadPort,
   type SelfCheckTaskSnapshot,
   type SelfCheckWorker,
@@ -171,6 +172,7 @@ test("provider unavailable is an opinion attention, never a mechanical health fa
 
 test("without an existing Task/Todo, the missing transient subscription is an explicit query-gap", async () => {
   let started = false;
+  const progress: SelfCheckProgress[] = [];
   const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-task-gap-"));
   temporaryRoots.push(root);
   const home = join(root, "home");
@@ -182,6 +184,7 @@ test("without an existing Task/Todo, the missing transient subscription is an ex
     baselineHead: git(repo, "rev-parse", "HEAD"),
     opinion: true,
     workerId: "test-worker",
+    onProgress: (entry) => progress.push(entry),
     dependencies: dependencies([worker("test-worker", "available")], async () => {
       started = true;
       throw new Error("worker must not start without Task/Todo source");
@@ -191,9 +194,15 @@ test("without an existing Task/Todo, the missing transient subscription is an ex
   expect(result.mechanical.status).toBe("healthy");
   expect(result.opinion).toEqual(expect.objectContaining({
     standing: "attention",
-    status: "unavailable",
+    status: "query-gap",
   }));
-  if (result.opinion.requested) expect(result.opinion.summary).toContain("no transient Task subscription API");
+  if (result.opinion.requested) {
+    expect(result.opinion.summary).toContain("no transient Task subscription API");
+    expect(result.opinion.summary).not.toContain("worker unavailable");
+    expect(result.opinion.items[0]?.detail).not.toContain("worker unavailable");
+  }
+  expect(progress.some((entry) => entry.itemId === "worker-opinion" && entry.state === "checking")).toBe(false);
+  expect(progress.some((entry) => entry.detail.includes("Task/Todo query-gap"))).toBe(true);
   expect(started).toBe(false);
 });
 
@@ -331,7 +340,7 @@ test("degraded mechanical preflight does not start the worker", async () => {
   expect(result.mechanical.status).toBe("degraded");
   expect(result.opinion).toEqual(expect.objectContaining({
     standing: "attention",
-    status: "failed",
+    status: "not-started",
   }));
   expect(started).toBe(false);
 });

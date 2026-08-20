@@ -81,7 +81,7 @@ export type SelfCheckOpinion =
       readonly requested: true;
       readonly workerId: string;
       readonly standing: "opinion" | "attention";
-      readonly status: "recorded" | "unavailable" | "timeout" | "failed" | "stale";
+      readonly status: "recorded" | "unavailable" | "timeout" | "failed" | "stale" | "not-started" | "query-gap";
       readonly items: readonly SelfCheckOpinionItem[];
       readonly evidenceRefs: readonly string[];
       readonly confidence?: "low" | "medium" | "high";
@@ -160,18 +160,17 @@ export async function runSelfCheck(options: SelfCheckOptions = {}): Promise<Self
       evidenceRefs: [...check.evidenceRefs],
     });
   }
-  if (options.opinion === true) {
-    emitProgress(options, {
-      phase: "checking",
-      itemId: "worker-opinion",
-      state: "checking",
-      standing: "opinion",
-      detail: "optional worker opinion is running after mechanical preflight",
-      evidenceRefs: baseEvidence,
-    });
-  }
   const opinion = options.opinion === true
-    ? await runOpinion(options, mechanicalPreflight, baseEvidence)
+    ? await runOpinion(options, mechanicalPreflight, baseEvidence, () => {
+        emitProgress(options, {
+          phase: "checking",
+          itemId: "worker-opinion",
+          state: "checking",
+          standing: "opinion",
+          detail: "optional worker opinion is running after mechanical preflight",
+          evidenceRefs: baseEvidence,
+        });
+      })
     : {
         requested: false as const,
         standing: "not-requested" as const,
@@ -479,6 +478,7 @@ async function runOpinion(
   options: SelfCheckOptions,
   mechanical: SelfCheckMechanical,
   evidenceRefs: readonly string[],
+  onRunnerStart: () => void,
 ): Promise<SelfCheckOpinion> {
   const workerId = options.workerId ?? "deepseek-flash";
   if (mechanical.status === "degraded") {
@@ -486,7 +486,7 @@ async function runOpinion(
       requested: true,
       workerId,
       standing: "attention",
-      status: "failed",
+      status: "not-started",
       items: [opinionItem("preflight", "degraded", "mechanical preflight is degraded; worker opinion was not started", evidenceRefs)],
       evidenceRefs,
       summary: "mechanical preflight is degraded; worker opinion was not started",
@@ -547,6 +547,7 @@ async function runOpinion(
     }), { once: true });
   });
   try {
+    onRunnerStart();
     const result = await Promise.race([
       runner({ worker, mechanical, task: mechanical.task.snapshot, evidenceRefs, signal }),
       timedOut,
@@ -693,7 +694,16 @@ function taskOpinionGap(
   evidenceRefs: readonly string[],
   summary: string,
 ): SelfCheckOpinion {
-  return unavailableOpinion(workerId, evidenceRefs, `Task/Todo query-gap: ${summary}`);
+  const detail = `Task/Todo query-gap: ${summary}`;
+  return {
+    requested: true,
+    workerId,
+    standing: "attention",
+    status: "query-gap",
+    items: [opinionItem("task-query-gap", "attention", detail, evidenceRefs)],
+    evidenceRefs,
+    summary: `${detail}; worker opinion was not started`,
+  };
 }
 
 function aggregateStatus(checks: readonly SelfCheckCheck[]): SelfCheckStatus {
