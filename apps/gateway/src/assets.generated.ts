@@ -13536,7 +13536,7 @@ export function taskLocatorEmptySummary(locator, context) {
                \`<li>
                   <span>版本选择</span>
                   <div>
-                    <strong>回答使用的来源版本</strong>
+                    <strong>协调器读取的来源版本</strong>
                     <code>source: \${escapeHtml(text(first(selector, ["source"]), "—"))}</code>
                     <code>revision: \${escapeHtml(text(first(selector, ["revision"]), "—"))}</code>
                   </div>

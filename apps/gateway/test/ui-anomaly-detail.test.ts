@@ -128,6 +128,7 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(appJs).toContain("digest: ${escapeHtml");
     expect(appJs).toContain("source: ${escapeHtml");
     expect(appJs).toContain("revision: ${escapeHtml");
+    expect(appJs).toContain("协调器读取的来源版本");
   });
 
   test("mobile connection status gets its own flexible row and elides long IDs", () => {
