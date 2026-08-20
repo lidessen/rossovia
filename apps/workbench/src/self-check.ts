@@ -3,6 +3,13 @@ import { resolve } from "node:path";
 import { loadHome, resolveHome } from "./home";
 import { setupStatus as readSetupStatus } from "./setup";
 import { runCommand, type CommandResult } from "./process";
+import {
+  defaultSelfCheckTaskReadPort,
+  sameSelfCheckTaskRevision,
+  type SelfCheckTaskReadPort,
+  type SelfCheckTaskSnapshot,
+} from "./self-check-task";
+export type { SelfCheckTaskReadPort, SelfCheckTaskSnapshot } from "./self-check-task";
 
 export const SELF_CHECK_VERSION = "rossovia.self-check.v1" as const;
 
@@ -20,7 +27,7 @@ export interface SelfCheckWorker {
 }
 
 export interface SelfCheckCheck {
-  readonly id: "home" | "source" | "worker-policy" | "setup" | "observer";
+  readonly id: "home" | "source" | "worker-policy" | "setup" | "observer" | "task";
   readonly status: MechanicalCheckStatus;
   readonly detail: string;
   readonly evidenceRefs: readonly string[];
@@ -29,6 +36,11 @@ export interface SelfCheckCheck {
 export interface SelfCheckMechanical {
   readonly status: SelfCheckStatus;
   readonly checks: readonly SelfCheckCheck[];
+  readonly task?: {
+    readonly snapshot: SelfCheckTaskSnapshot;
+    readonly subscription: "unavailable";
+    readonly standing: "available" | "stale" | "unavailable";
+  };
   readonly source?: {
     readonly cwd: string;
     readonly root: string;
@@ -69,7 +81,7 @@ export type SelfCheckOpinion =
       readonly requested: true;
       readonly workerId: string;
       readonly standing: "opinion" | "attention";
-      readonly status: "recorded" | "unavailable" | "timeout" | "failed";
+      readonly status: "recorded" | "unavailable" | "timeout" | "failed" | "stale";
       readonly items: readonly SelfCheckOpinionItem[];
       readonly evidenceRefs: readonly string[];
       readonly confidence?: "low" | "medium" | "high";
@@ -88,6 +100,7 @@ export interface SelfCheckResult {
 export interface SelfCheckOptions {
   readonly home?: string;
   readonly cwd?: string;
+  readonly taskId?: string;
   readonly baselineHead?: string;
   readonly trigger?: "manual" | "startup" | "changed";
   readonly opinion?: boolean;
@@ -102,6 +115,7 @@ export interface SelfCheckOpinionInput {
   readonly worker: SelfCheckWorker;
   readonly mechanical: SelfCheckMechanical;
   readonly evidenceRefs: readonly string[];
+  readonly task?: SelfCheckTaskSnapshot;
   readonly signal: AbortSignal;
 }
 
@@ -110,6 +124,7 @@ export interface SelfCheckDependencies {
   readonly workerCards?: (environment: NodeJS.ProcessEnv) => readonly SelfCheckWorker[];
   readonly setup?: (home: string) => ReturnType<typeof readSetupStatus>;
   readonly opinionRunner?: (input: SelfCheckOpinionInput) => Promise<SelfCheckOpinion>;
+  readonly taskRead?: SelfCheckTaskReadPort;
 }
 
 const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
@@ -118,9 +133,10 @@ const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
  * Run the fast, read-only health projection. Mechanical checks remain the
  * source of health facts; an optional Worker Cell can only add an opinion.
  * Nothing is persisted and no startup path calls this function implicitly.
- * The checklist is invocation-local: Principal Tasks/Todos are durable task
- * lifecycle state, so self-check does not create a synthetic Task or subscribe
- * to a second task stream merely to display transient item progress.
+ * The checklist is a read-only projection of an explicitly selected existing
+ * Task/Todo snapshot when `taskId` is supplied. Principal Tasks/Todos are
+ * durable lifecycle state, so self-check does not create a synthetic Task or
+ * subscribe to a second task stream merely to display transient progress.
  */
 export async function runSelfCheck(options: SelfCheckOptions = {}): Promise<SelfCheckResult> {
   const checkedAt = new Date().toISOString();
@@ -132,9 +148,9 @@ export async function runSelfCheck(options: SelfCheckOptions = {}): Promise<Self
     detail: "mechanical preflight is running",
     evidenceRefs: [],
   });
-  const mechanical = runMechanicalSelfCheck(options);
-  const baseEvidence = mechanical.checks.flatMap((check) => check.evidenceRefs);
-  for (const check of mechanical.checks) {
+  const mechanicalPreflight = runMechanicalSelfCheck(options);
+  const baseEvidence = mechanicalPreflight.checks.flatMap((check) => check.evidenceRefs);
+  for (const check of mechanicalPreflight.checks) {
     emitProgress(options, {
       phase: "checking",
       itemId: check.id,
@@ -155,7 +171,7 @@ export async function runSelfCheck(options: SelfCheckOptions = {}): Promise<Self
     });
   }
   const opinion = options.opinion === true
-    ? await runOpinion(options, mechanical, baseEvidence)
+    ? await runOpinion(options, mechanicalPreflight, baseEvidence)
     : {
         requested: false as const,
         standing: "not-requested" as const,
@@ -174,7 +190,24 @@ export async function runSelfCheck(options: SelfCheckOptions = {}): Promise<Self
       });
     }
   }
-  const status = opinion.requested && opinion.standing === "attention"
+  const taskRevalidation = revalidateTask(options, mechanicalPreflight);
+  const mechanical = taskRevalidation.mechanical;
+  const finalOpinion = taskRevalidation.stale
+    ? staleOpinion(opinion, mechanical.task?.snapshot, baseEvidence)
+    : opinion;
+  if (taskRevalidation.stale && finalOpinion.requested) {
+    for (const item of finalOpinion.items.slice(-1)) {
+      emitProgress(options, {
+        phase: "checking",
+        itemId: `opinion.${item.id}`,
+        state: item.state,
+        standing: "opinion",
+        detail: item.detail,
+        evidenceRefs: [...item.evidenceRefs],
+      });
+    }
+  }
+  const status = finalOpinion.requested && finalOpinion.standing === "attention"
     ? promoteAttention(mechanical.status)
     : mechanical.status;
   emitProgress(options, {
@@ -190,7 +223,7 @@ export async function runSelfCheck(options: SelfCheckOptions = {}): Promise<Self
     trigger: options.trigger ?? "manual",
     status,
     mechanical,
-    opinion,
+    opinion: finalOpinion,
     checkedAt,
   };
 }
@@ -281,6 +314,30 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
     });
   }
 
+  let taskSnapshot: SelfCheckTaskSnapshot | undefined;
+  if (options.taskId !== undefined) {
+    try {
+      const reader = dependencies.taskRead ?? defaultSelfCheckTaskReadPort;
+      taskSnapshot = reader.read(home, options.taskId);
+      const settled = taskSnapshot.lifecycle === "settled";
+      checks.push({
+        id: "task",
+        status: settled ? "attention" : "ok",
+        detail: settled
+          ? "The selected Principal Task is settled; its Todo snapshot is stale for a new opinion."
+          : "The selected Principal Task and its Todo snapshot are readable.",
+        evidenceRefs: [...taskSnapshot.evidenceRefs],
+      });
+    } catch (error: unknown) {
+      checks.push({
+        id: "task",
+        status: "degraded",
+        detail: message(error),
+        evidenceRefs: ["workbench:state/tasks.json"],
+      });
+    }
+  }
+
   let workers: readonly SelfCheckWorker[] = [];
   try {
     workers = dependencies.workerCards
@@ -345,7 +402,76 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
   return {
     status: aggregateStatus(checks),
     checks,
+    ...(taskSnapshot === undefined ? {} : {
+      task: {
+        snapshot: taskSnapshot,
+        subscription: "unavailable" as const,
+        standing: taskSnapshot.lifecycle === "settled" ? "stale" as const : "available" as const,
+      },
+    }),
     ...(source === undefined ? {} : { source }),
+  };
+}
+
+function revalidateTask(
+  options: SelfCheckOptions,
+  mechanical: SelfCheckMechanical,
+): { mechanical: SelfCheckMechanical; stale: boolean } {
+  if (options.taskId === undefined || mechanical.task === undefined) {
+    return { mechanical, stale: false };
+  }
+  try {
+    const reader = options.dependencies?.taskRead ?? defaultSelfCheckTaskReadPort;
+    const after = reader.read(resolveHome(options.home), options.taskId);
+    if (sameSelfCheckTaskRevision(mechanical.task.snapshot, after)) {
+      return { mechanical, stale: false };
+    }
+    const detail = `Task ${options.taskId} changed from source ${mechanical.task.snapshot.sourceRevision}/task ${mechanical.task.snapshot.taskRevision} to source ${after.sourceRevision}/task ${after.taskRevision} during self-check.`;
+    return {
+      stale: true,
+      mechanical: {
+        ...mechanical,
+        status: promoteAttention(mechanical.status),
+        task: { ...mechanical.task, snapshot: after, standing: "stale" },
+        checks: [
+          ...mechanical.checks,
+          { id: "task", status: "attention", detail, evidenceRefs: [...after.evidenceRefs] },
+        ],
+      },
+    };
+  } catch (error: unknown) {
+    const detail = `Task re-read after worker opinion failed: ${message(error)}`;
+    return {
+      stale: true,
+      mechanical: {
+        ...mechanical,
+        status: "degraded",
+        task: { ...mechanical.task, standing: "unavailable" },
+        checks: [
+          ...mechanical.checks,
+          { id: "task", status: "degraded", detail, evidenceRefs: ["workbench:state/tasks.json"] },
+        ],
+      },
+    };
+  }
+}
+
+function staleOpinion(
+  opinion: SelfCheckOpinion,
+  task: SelfCheckTaskSnapshot | undefined,
+  evidenceRefs: readonly string[],
+): SelfCheckOpinion {
+  if (!opinion.requested) return opinion;
+  const detail = task === undefined
+    ? "Task evidence became unavailable after the worker opinion."
+    : `Task ${task.taskId} changed while the worker opinion was running; the opinion is stale.`;
+  return {
+    ...opinion,
+    standing: "attention",
+    status: "stale",
+    items: [...opinion.items, opinionItem("task", "attention", detail, task?.evidenceRefs ?? evidenceRefs)],
+    evidenceRefs: [...new Set([...opinion.evidenceRefs, ...evidenceRefs, ...(task?.evidenceRefs ?? [])])],
+    summary: `${opinion.summary}; ${detail}`,
   };
 }
 
@@ -365,6 +491,20 @@ async function runOpinion(
       evidenceRefs,
       summary: "mechanical preflight is degraded; worker opinion was not started",
     };
+  }
+  if (options.taskId === undefined) {
+    return taskOpinionGap(
+      workerId,
+      evidenceRefs,
+      "no existing Principal Task/Todo was selected; the host has no transient Task subscription API",
+    );
+  }
+  if (mechanical.task === undefined || mechanical.task.standing !== "available") {
+    return taskOpinionGap(
+      workerId,
+      evidenceRefs,
+      "the selected Principal Task/Todo snapshot is unavailable or settled; worker opinion was not started",
+    );
   }
   let workers: readonly SelfCheckWorker[];
   try {
@@ -408,7 +548,7 @@ async function runOpinion(
   });
   try {
     const result = await Promise.race([
-      runner({ worker, mechanical, evidenceRefs, signal }),
+      runner({ worker, mechanical, task: mechanical.task.snapshot, evidenceRefs, signal }),
       timedOut,
     ]);
     return signal.aborted && result.requested && "status" in result && result.status === "recorded"
@@ -462,10 +602,13 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
         "Do not edit, run commands, persist state, accept work, or call this self-check again.",
       ],
       capabilities: [],
+      ...(input.task === undefined ? {} : {
+        tasks: input.task.todos.map((todo) => ({ subject: todo, description: todo })),
+      }),
       context: [{
         id: "self-check-mechanical-evidence",
         title: "Mechanical self-check evidence",
-        content: JSON.stringify(input.mechanical),
+        content: JSON.stringify({ mechanical: input.mechanical, task: input.task }),
         sources: [...input.evidenceRefs],
       }],
       capabilitiesRequired: [],
@@ -543,6 +686,14 @@ function unavailableOpinion(workerId: string, evidenceRefs: readonly string[], s
     evidenceRefs,
     summary: `worker unavailable: ${summary}; mechanical result remains authoritative`,
   };
+}
+
+function taskOpinionGap(
+  workerId: string,
+  evidenceRefs: readonly string[],
+  summary: string,
+): SelfCheckOpinion {
+  return unavailableOpinion(workerId, evidenceRefs, `Task/Todo query-gap: ${summary}`);
 }
 
 function aggregateStatus(checks: readonly SelfCheckCheck[]): SelfCheckStatus {

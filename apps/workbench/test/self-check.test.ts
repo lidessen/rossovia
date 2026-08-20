@@ -7,6 +7,8 @@ import {
   runSelfCheck,
   type SelfCheckOpinion,
   type SelfCheckOpinionInput,
+  type SelfCheckTaskReadPort,
+  type SelfCheckTaskSnapshot,
   type SelfCheckWorker,
 } from "../src/self-check";
 import { runCommand } from "../src/process";
@@ -21,6 +23,18 @@ const setup = {
   version: "rosso.setup-status.v1" as const,
   sourceRevision: "test-source",
   modules: [],
+};
+
+const taskSnapshot: SelfCheckTaskSnapshot = {
+  taskId: "task-self-check",
+  sourceRevision: 4,
+  taskRevision: 2,
+  title: "Existing bounded Task",
+  objective: "Inspect the current system evidence.",
+  acceptance: ["Return evidence-backed attention items."],
+  todos: ["Read the mechanical checklist", "Report stale evidence"],
+  lifecycle: "open",
+  evidenceRefs: ["workbench:state/tasks.json#task-self-check@source-4/task-2"],
 };
 
 function worker(id: string, status: "available" | "unavailable"): SelfCheckWorker {
@@ -55,12 +69,14 @@ function repository(root: string): string {
 function dependencies(
   workers: readonly SelfCheckWorker[],
   opinionRunner?: (input: SelfCheckOpinionInput) => Promise<SelfCheckOpinion>,
+  taskRead: SelfCheckTaskReadPort = { read: () => taskSnapshot },
 ) {
   // The explicit object keeps policy and setup injectable without changing
   // the production owner or loading the provider runtime in mechanical tests.
   return {
     workerCards: () => workers,
     setup: () => setup,
+    taskRead,
     ...(opinionRunner === undefined ? {} : { opinionRunner }),
   };
 }
@@ -137,6 +153,7 @@ test("provider unavailable is an opinion attention, never a mechanical health fa
     cwd: repo,
     baselineHead: git(repo, "rev-parse", "HEAD"),
     opinion: true,
+    taskId: "task-self-check",
     workerId: "unavailable-worker",
     dependencies: dependencies([
       worker("available-worker", "available"),
@@ -152,6 +169,34 @@ test("provider unavailable is an opinion attention, never a mechanical health fa
   expect(result.status).toBe("attention");
 });
 
+test("without an existing Task/Todo, the missing transient subscription is an explicit query-gap", async () => {
+  let started = false;
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-task-gap-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+  const result = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    opinion: true,
+    workerId: "test-worker",
+    dependencies: dependencies([worker("test-worker", "available")], async () => {
+      started = true;
+      throw new Error("worker must not start without Task/Todo source");
+    }),
+  });
+
+  expect(result.mechanical.status).toBe("healthy");
+  expect(result.opinion).toEqual(expect.objectContaining({
+    standing: "attention",
+    status: "unavailable",
+  }));
+  if (result.opinion.requested) expect(result.opinion.summary).toContain("no transient Task subscription API");
+  expect(started).toBe(false);
+});
+
 test("recorded worker output remains an opinion projection separate from healthy facts", async () => {
   const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-opinion-"));
   temporaryRoots.push(root);
@@ -163,17 +208,18 @@ test("recorded worker output remains an opinion projection separate from healthy
     cwd: repo,
     baselineHead: git(repo, "rev-parse", "HEAD"),
     opinion: true,
+    taskId: "task-self-check",
     workerId: "test-worker",
-    dependencies: dependencies([worker("test-worker", "available")], async ({ evidenceRefs }) => ({
+    dependencies: dependencies([worker("test-worker", "available")], async ({ evidenceRefs, task }) => ({
       requested: true,
       workerId: "test-worker",
       standing: "opinion",
       status: "recorded",
       confidence: "medium",
       items: [{
-        id: "source",
+        id: "task",
         state: "healthy",
-        detail: "worker sees no semantic anomaly in the supplied source evidence",
+        detail: `worker consumed ${task?.todos.join(", ")}`,
         evidenceRefs: [...evidenceRefs],
       }],
       evidenceRefs: [...evidenceRefs],
@@ -185,6 +231,7 @@ test("recorded worker output remains an opinion projection separate from healthy
   expect(result.opinion.requested).toBe(true);
   expect(result.opinion.standing).toBe("opinion");
   if (result.opinion.requested) expect(result.opinion.confidence).toBe("medium");
+  if (result.opinion.requested) expect(result.opinion.items[0]?.detail).toContain("Read the mechanical checklist");
   expect(result.status).toBe("healthy");
 });
 
@@ -199,6 +246,7 @@ test("worker opinion timeout is bounded and labeled attention", async () => {
     cwd: repo,
     baselineHead: git(repo, "rev-parse", "HEAD"),
     opinion: true,
+    taskId: "task-self-check",
     workerId: "test-worker",
     opinionTimeoutMs: 10,
     dependencies: dependencies([worker("test-worker", "available")], async () => new Promise(() => {})),
@@ -209,6 +257,50 @@ test("worker opinion timeout is bounded and labeled attention", async () => {
     standing: "attention",
     status: "timeout",
   }));
+  expect(result.status).toBe("attention");
+});
+
+test("Task revision change after the opinion is reported stale without a subscription claim", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-task-stale-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+  let reads = 0;
+  const changedTask: SelfCheckTaskSnapshot = {
+    ...taskSnapshot,
+    sourceRevision: 5,
+    taskRevision: 3,
+    evidenceRefs: ["workbench:state/tasks.json#task-self-check@source-5/task-3"],
+  };
+  const taskRead: SelfCheckTaskReadPort = {
+    read: () => {
+      reads += 1;
+      return reads === 1 ? taskSnapshot : changedTask;
+    },
+  };
+  const result = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    opinion: true,
+    taskId: "task-self-check",
+    workerId: "test-worker",
+    dependencies: dependencies([worker("test-worker", "available")], async ({ evidenceRefs }) => ({
+      requested: true,
+      workerId: "test-worker",
+      standing: "opinion",
+      status: "recorded",
+      confidence: "low",
+      items: [{ id: "task", state: "healthy", detail: "snapshot read", evidenceRefs: [...evidenceRefs] }],
+      evidenceRefs: [...evidenceRefs],
+      summary: "snapshot opinion",
+    }), taskRead),
+  });
+
+  expect(result.mechanical.task?.subscription).toBe("unavailable");
+  expect(result.mechanical.task?.standing).toBe("stale");
+  expect(result.opinion).toEqual(expect.objectContaining({ standing: "attention", status: "stale" }));
   expect(result.status).toBe("attention");
 });
 

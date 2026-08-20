@@ -376,6 +376,7 @@ async function dispatchSelfCheck(home: string | undefined, args: string[]): Prom
   return runSelfCheck({
     ...(home === undefined ? {} : { home }),
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.taskId === undefined ? {} : { taskId: options.taskId }),
     ...(options.baselineHead === undefined ? {} : { baselineHead: options.baselineHead }),
     ...(options.workerId === undefined ? {} : { workerId: options.workerId }),
     ...(options.opinion ? { opinion: true } : {}),
@@ -1045,6 +1046,7 @@ function parseSetupOptions(raw: string[], helpPath: string[]): { targetRoot?: st
 
 function parseSelfCheckOptions(raw: string[]): {
   cwd?: string;
+  taskId?: string;
   baselineHead?: string;
   workerId?: string;
   opinion: boolean;
@@ -1053,6 +1055,7 @@ function parseSelfCheckOptions(raw: string[]): {
   progress: boolean;
 } {
   let cwd: string | undefined;
+  let taskId: string | undefined;
   let baselineHead: string | undefined;
   let workerId: string | undefined;
   let timeoutMs: number | undefined;
@@ -1076,6 +1079,7 @@ function parseSelfCheckOptions(raw: string[]): {
       throw new UsageError(`invalid self-check option sequence: ${raw.join(" ")}`, ["self-check"]);
     }
     if (option === "--cwd" && cwd === undefined) cwd = value;
+    else if (option === "--task" && taskId === undefined) taskId = value;
     else if (option === "--baseline-head" && baselineHead === undefined) baselineHead = value;
     else if (option === "--worker" && workerId === undefined) workerId = value;
     else if (option === "--timeout-ms" && timeoutMs === undefined) {
@@ -1096,6 +1100,7 @@ function parseSelfCheckOptions(raw: string[]): {
   }
   return {
     ...(cwd === undefined ? {} : { cwd }),
+    ...(taskId === undefined ? {} : { taskId }),
     ...(baselineHead === undefined ? {} : { baselineHead }),
     ...(workerId === undefined ? {} : { workerId }),
     opinion,
