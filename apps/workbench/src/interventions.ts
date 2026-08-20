@@ -311,11 +311,13 @@ type InterventionRecord = {
  * without claiming to be the workflow observer review source.
  */
 function projectInterventionRecords(path: string, state: State): InterventionRecord[] {
-  const observations: InterventionRecord[] = state.observations.map((observation) => ({
+  const observationSourceRefs = interventionRecordSourceRefs(path, "observation");
+  const receiptSourceRefs = interventionRecordSourceRefs(path, "receipt");
+  const observations: InterventionRecord[] = state.observations.map((observation, index) => ({
     kind: "prompt-observation",
     origin: "hook",
     at: observation.at,
-    sourceRef: interventionWitnessSourceRef(path, "observation", observation),
+    sourceRef: observationSourceRefs[index] ?? `${path}#observation:${index}`,
     subject: {
       sessionId: state.sessionId,
       ...(observation.turnId === "unknown" ? {} : { turnId: observation.turnId }),
@@ -324,8 +326,13 @@ function projectInterventionRecords(path: string, state: State): InterventionRec
     evidenceRefs: [`sha256:${observation.promptSha256}`],
     disposition: "observed",
   }));
-  const corrections: InterventionRecord[] = state.receipts.map((receipt) =>
-    projectPrincipalCorrectionRecord(path, state.sessionId, receipt));
+  const corrections: InterventionRecord[] = state.receipts.map((receipt, index) =>
+    projectPrincipalCorrectionRecord(
+      path,
+      state.sessionId,
+      receipt,
+      receiptSourceRefs[index] ?? `${path}#receipt:${index}`,
+    ));
   return [...observations, ...corrections].sort((left, right) => left.at.localeCompare(right.at));
 }
 
@@ -333,13 +340,13 @@ function projectPrincipalCorrectionRecord(
   path: string,
   sessionId: string,
   receipt: Receipt,
-  sourceRef?: string,
+  sourceRef: string,
 ): InterventionRecord {
   return {
     kind: "principal-correction",
     origin: "principal",
     at: receipt.at,
-    sourceRef: sourceRef ?? interventionWitnessSourceRef(path, "receipt", receipt),
+    sourceRef,
     subject: { sessionId },
     statement: `${receipt.rejectedAssumption} → ${receipt.newInvariant}`,
     evidenceRefs: [],
@@ -348,31 +355,27 @@ function projectPrincipalCorrectionRecord(
   };
 }
 
-function interventionWitnessSourceRef(
+function interventionRecordSourceRefs(
   path: string,
   kind: "observation" | "receipt",
-  value: Observation | Receipt,
-): string {
+): string[] {
+  const state = readStateSource(path);
   const directory = kind === "observation"
     ? observationWitnessDirectory(path)
     : receiptWitnessDirectory(path);
-  if (existsSync(directory)) {
-    const entries = readdirSync(directory, { withFileTypes: true })
+  const witnessPaths = existsSync(directory)
+    ? readdirSync(directory, { withFileTypes: true })
       .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-      .sort((left, right) => left.name.localeCompare(right.name));
-    const schema = kind === "observation" ? ObservationSchema : ReceiptSchema;
-    for (const entry of entries) {
-      try {
-        const candidate = schema.parse(JSON.parse(readFileSync(join(directory, entry.name), "utf8")));
-        if (JSON.stringify(candidate) === JSON.stringify(value)) {
-          return join(directory, entry.name);
-        }
-      } catch {
-        // readState already reports malformed witnesses; keep this projection best-effort.
-      }
-    }
-  }
-  return `${path}#${kind}:${digest(JSON.stringify(value))}`;
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((entry) => join(directory, entry.name))
+    : [];
+  const embeddedCount = kind === "observation" ? state.observations.length : state.receipts.length;
+  const embeddedRefs = Array.from(
+    { length: embeddedCount },
+    (_, index) => `${path}#${kind}:${index}`,
+  );
+  const refs = [...embeddedRefs, ...witnessPaths];
+  return kind === "observation" ? refs.slice(-50) : refs;
 }
 
 function dispatchCorrectionCommand(raw: string[]): {
