@@ -84,7 +84,7 @@ export type SelfCheckOpinion =
       readonly status: "recorded" | "unavailable" | "timeout" | "failed" | "stale" | "not-started" | "query-gap";
       readonly items: readonly SelfCheckOpinionItem[];
       readonly evidenceRefs: readonly string[];
-      readonly confidence?: "low" | "medium" | "high";
+      readonly verdict: "yes" | "no" | "uncertain";
       readonly summary: string;
     };
 
@@ -511,6 +511,7 @@ async function runOpinion(
       workerId,
       standing: "attention",
       status: "not-started",
+      verdict: "uncertain",
       items: [opinionItem("preflight", "degraded", "mechanical preflight is degraded; worker opinion was not started", evidenceRefs)],
       evidenceRefs,
       summary: "mechanical preflight is degraded; worker opinion was not started",
@@ -541,6 +542,7 @@ async function runOpinion(
       workerId,
       standing: "attention",
       status: "failed",
+      verdict: "uncertain",
       items: [opinionItem("worker-policy", "attention", "worker policy could not be loaded; worker opinion was not started", evidenceRefs)],
       evidenceRefs,
       summary: `worker policy unavailable; worker opinion was not started: ${message(error)}`,
@@ -565,6 +567,7 @@ async function runOpinion(
       workerId,
       standing: "attention",
       status: "timeout",
+      verdict: "uncertain",
       items: [opinionItem("worker-opinion", "attention", `worker opinion exceeded ${timeoutMs}ms`, evidenceRefs)],
       evidenceRefs,
       summary: `worker opinion exceeded ${timeoutMs}ms; mechanical result remains authoritative`,
@@ -582,6 +585,7 @@ async function runOpinion(
           workerId,
           standing: "attention",
           status: "timeout",
+          verdict: "uncertain",
           items: [opinionItem("worker-opinion", "attention", `worker opinion exceeded ${timeoutMs}ms`, evidenceRefs)],
           evidenceRefs,
           summary: `worker opinion exceeded ${timeoutMs}ms; mechanical result remains authoritative`,
@@ -593,6 +597,7 @@ async function runOpinion(
       workerId,
       standing: "attention",
       status: "failed",
+      verdict: "uncertain",
       items: [opinionItem("worker-opinion", "attention", `worker opinion failed: ${message(error)}`, evidenceRefs)],
       evidenceRefs,
       summary: `worker opinion failed: ${message(error)}`,
@@ -621,7 +626,7 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
         allowedCommands: [],
       },
       instructions: [
-        "Return JSON only: {summary, confidence: low|medium|high, items:[{id,state: healthy|attention|degraded, detail, evidenceRefs}]}.",
+        "Return JSON only: {summary, verdict: yes|no|uncertain, items:[{id,state: healthy|attention|degraded, detail, evidenceRefs}]}.",
         "Include one item for each supplied checklist item and cite only supplied evidenceRefs.",
         "Separate observed evidence from interpretation and uncertainty.",
         "Do not edit, run commands, persist state, accept work, or call this self-check again.",
@@ -634,7 +639,7 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
         sources: [...input.evidenceRefs],
       }],
       capabilitiesRequired: [],
-      acceptance: ["Return one concise opinion with confidence and attention items."],
+      acceptance: ["Return one concise opinion with a tri-state verdict and attention items."],
       budget: { maxDurationMs: 1_200, maxCommandOutputBytes: 16_000 },
     };
     const result = await executeTaskCellRun(catalog, cellInput, {
@@ -647,6 +652,7 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
         workerId: input.worker.id,
         standing: "attention",
         status: "failed",
+        verdict: "uncertain",
         items: [opinionItem("worker-opinion", "attention", result.error, input.evidenceRefs)],
         evidenceRefs: input.evidenceRefs,
         summary: result.error,
@@ -658,6 +664,7 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
         workerId: input.worker.id,
         standing: "attention",
         status: "timeout",
+        verdict: "uncertain",
         items: [opinionItem("worker-opinion", "attention", "worker opinion was cancelled at the bounded timeout", input.evidenceRefs)],
         evidenceRefs: input.evidenceRefs,
         summary: "worker opinion was cancelled at the bounded timeout; mechanical result remains authoritative",
@@ -670,8 +677,8 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
       workerId: input.worker.id,
       standing: "opinion",
       status: "recorded",
+      verdict: parsed?.verdict ?? "uncertain",
       evidenceRefs: input.evidenceRefs,
-      confidence: parsed?.confidence ?? "low",
       items: parsed?.items ?? [opinionItem("worker-opinion", "attention", "worker returned unstructured opinion text", input.evidenceRefs)],
       summary: parsed?.summary ?? summary,
     };
@@ -681,6 +688,7 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
       workerId: input.worker.id,
       standing: "attention",
       status: "failed",
+      verdict: "uncertain",
       items: [opinionItem("worker-opinion", "attention", message(error), input.evidenceRefs)],
       evidenceRefs: input.evidenceRefs,
       summary: message(error),
@@ -704,6 +712,7 @@ function unavailableOpinion(workerId: string, evidenceRefs: readonly string[], s
     workerId,
     standing: "attention",
     status: "unavailable",
+    verdict: "uncertain",
     items: [opinionItem("worker-opinion", "attention", `worker unavailable: ${summary}`, evidenceRefs)],
     evidenceRefs,
     summary: `worker unavailable: ${summary}; mechanical result remains authoritative`,
@@ -721,6 +730,7 @@ function taskOpinionGap(
     workerId,
     standing: "attention",
     status: "query-gap",
+    verdict: "uncertain",
     items: [opinionItem("task-query-gap", "attention", detail, evidenceRefs)],
     evidenceRefs,
     summary: `${detail}; worker opinion was not started`,
@@ -749,16 +759,16 @@ function opinionItem(
 function parseOpinionPayload(
   text: string,
   fallbackEvidenceRefs: readonly string[],
-): { summary: string; confidence: "low" | "medium" | "high"; items: SelfCheckOpinionItem[] } | undefined {
+): { summary: string; verdict: "yes" | "no" | "uncertain"; items: SelfCheckOpinionItem[] } | undefined {
   try {
     const value = JSON.parse(text) as {
       summary?: unknown;
-      confidence?: unknown;
+      verdict?: unknown;
       items?: unknown;
     };
     if (
       typeof value.summary !== "string"
-      || (value.confidence !== "low" && value.confidence !== "medium" && value.confidence !== "high")
+      || (value.verdict !== "yes" && value.verdict !== "no" && value.verdict !== "uncertain")
       || !Array.isArray(value.items)
       || value.items.length === 0
     ) return undefined;
@@ -781,7 +791,7 @@ function parseOpinionPayload(
         evidenceRefs: item.evidenceRefs,
       });
     }
-    return { summary: value.summary, confidence: value.confidence, items };
+    return { summary: value.summary, verdict: value.verdict, items };
   } catch {
     // The worker is allowed to return ordinary prose, but prose is not a
     // per-item checklist result and therefore remains an attention opinion.

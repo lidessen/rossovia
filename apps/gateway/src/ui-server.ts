@@ -137,7 +137,7 @@ export function createWorkbenchRequestHandler(
         || request.method === "PUT"
         || request.method === "PATCH"
         || request.method === "DELETE"
-        || url.pathname.startsWith(ConversationSocketPathPrefix))
+        || isConversationSocketUpgrade(request, url))
     ) {
       return startupDiagnosticResponse(options.startupGate);
     }
@@ -1216,4 +1216,10 @@ function startupDiagnosticResponse(gate: SelfCheckStartupGate): Response {
     message: "Mechanical startup checks are not healthy; Task and write routes remain disabled.",
     startup: gate,
   }, 503);
+}
+
+function isConversationSocketUpgrade(request: Request, url: URL): boolean {
+  return request.method === "GET"
+    && request.headers.get("upgrade")?.toLowerCase() === "websocket"
+    && /^\/api\/conversations\/[^/]+\/socket$/u.test(url.pathname);
 }

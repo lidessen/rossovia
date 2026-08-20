@@ -246,7 +246,7 @@ test("recorded worker output remains an opinion projection separate from healthy
       workerId: "test-worker",
       standing: "opinion",
       status: "recorded",
-      confidence: "medium",
+      verdict: "yes",
       items: [{
         id: "task",
         state: "healthy",
@@ -261,7 +261,7 @@ test("recorded worker output remains an opinion projection separate from healthy
   expect(result.mechanical.status).toBe("healthy");
   expect(result.opinion.requested).toBe(true);
   expect(result.opinion.standing).toBe("opinion");
-  if (result.opinion.requested) expect(result.opinion.confidence).toBe("medium");
+  if (result.opinion.requested) expect(result.opinion.verdict).toBe("yes");
   if (result.opinion.requested) expect(result.opinion.items[0]?.detail).toContain("Read the mechanical checklist");
   expect(result.status).toBe("healthy");
 });
@@ -322,7 +322,7 @@ test("Task revision change after the opinion is reported stale without a subscri
       workerId: "test-worker",
       standing: "opinion",
       status: "recorded",
-      confidence: "low",
+      verdict: "no",
       items: [{ id: "task", state: "healthy", detail: "snapshot read", evidenceRefs: [...evidenceRefs] }],
       evidenceRefs: [...evidenceRefs],
       summary: "snapshot opinion",
@@ -332,6 +332,7 @@ test("Task revision change after the opinion is reported stale without a subscri
   expect(result.mechanical.task?.subscription).toBe("unavailable");
   expect(result.mechanical.task?.standing).toBe("stale");
   expect(result.opinion).toEqual(expect.objectContaining({ standing: "attention", status: "stale" }));
+  if (result.opinion.requested) expect(result.opinion.verdict).toBe("no");
   expect(result.status).toBe("attention");
 });
 
@@ -361,7 +362,7 @@ test("Task re-read failure is degraded evidence, not an invented stale change", 
       workerId: "test-worker",
       standing: "opinion",
       status: "recorded",
-      confidence: "low",
+      verdict: "uncertain",
       items: [{ id: "task", state: "healthy", detail: "snapshot read", evidenceRefs: [...evidenceRefs] }],
       evidenceRefs: [...evidenceRefs],
       summary: "snapshot opinion",
@@ -393,7 +394,7 @@ test("degraded mechanical preflight does not start the worker", async () => {
         workerId: "test-worker",
         standing: "opinion",
         status: "recorded",
-        confidence: "low",
+        verdict: "uncertain",
         items: [],
         evidenceRefs: [],
         summary: "should not run",

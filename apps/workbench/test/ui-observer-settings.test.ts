@@ -90,6 +90,16 @@ test("startup mechanical degradation serves diagnostics but blocks Task writes",
   expect(startup.status).toBe(200);
   expect(await startup.json()).toMatchObject({ mode: "safe-diagnostic", mechanical: { status: gate.mechanical.status } });
 
+  const latestConversation = await handler(new Request("http://127.0.0.1:4317/api/conversations/latest"));
+  expect(latestConversation.status).toBe(200);
+  expect(await latestConversation.json()).toEqual({ conversationId: null });
+
+  const socketUpgrade = await handler(new Request(
+    "http://127.0.0.1:4317/api/conversations/00000000-0000-4000-8000-000000000000/socket",
+    { headers: { Upgrade: "websocket" } },
+  ));
+  expect(socketUpgrade.status).toBe(503);
+
   const write = await handler(new Request("http://127.0.0.1:4317/api/tasks", {
     method: "POST",
     headers: { Origin: "http://127.0.0.1:4317", "Content-Type": "application/json" },
