@@ -51,6 +51,84 @@ unauthorized or irreversible consequence escapes. A simple harness may be more
 reliable than a comprehensive-looking one when it creates a better executable
 task with fewer false records, lifecycle branches, and recovery stories.
 
+## Harness base and runtime method expression
+
+The useful analogy to a model's **base and post-training** is architectural,
+not a claim about model weights. In this document, the latter is provisionally
+called the **runtime method-expression layer**: Skills, system prompts,
+receiver-facing task expression, and the plans and returns they shape. It may
+teach an Agent how to decompose, reflect, investigate, collaborate, or choose a
+next practice. It does not mean SFT, RL, or any other parameter update. The
+source-bound inquiry [Harness base and method expression](../research/harness-base-vs-method-expression-and-topology.md)
+records this distinction and its still-open evidence status.
+
+The harness base is the smallest stable mechanism that makes an invocation
+real and recoverable. It owns the properties that must survive a confused
+prompt, a provider substitution, a process restart, concurrency, or a caller
+that bypasses the preferred wording:
+
+- binding the actual context, tools, workspace, isolation, model adapter, and
+  effect boundary;
+- preserving Task, Run, Work Cell, identity, lifecycle, cancellation, and
+  recovery semantics;
+- enforcing permissions, single-writer or transaction boundaries, and the
+  separation between execution, verification, and acceptance;
+- emitting evidence whose scope, source, uncertainty, and terminal meaning can
+  be reconstructed; and
+- translating external protocols without moving their quirks into generic
+  lifecycle or Task meaning.
+
+The method-expression layer owns the variable way an Agent approaches a
+semantic task:
+
+- forming the current contradiction and the smallest coherent contribution;
+- selecting and timing sources, activating a Skill, and explaining terms for
+  this receiver;
+- choosing direct work, sequential practice, multi-round reflection, or
+  differentiated parallel exploration when the task warrants it;
+- asking for a source-linked return with explicit unknowns and a next action;
+  and
+- allowing the Main Agent to synthesize partial claims and change the next
+  practice without granting any worker new effect or acceptance authority.
+
+This division is not a new runtime layer or a mandatory workflow. It is an
+ownership test. If a method can be changed while the same Task, Run, Cell,
+effect, evidence, and acceptance contracts remain truthful, it belongs in the
+method expression. If changing it requires new lifecycle state, causal
+identity, concurrency control, recovery, permission enforcement, or durable
+evidence, the proposed change has crossed into the base or an adapter.
+
+### Why behavior patterns should not become mechanism
+
+There are four recurring reasons to resist encoding a behavior pattern in the
+base:
+
+1. **Methods are conditional.** Iteration, role differentiation, and parallel
+   investigation are useful only under particular uncertainty, coupling, and
+   effect conditions. A fixed runtime path turns a judgment into a ceremony.
+2. **Methods evolve faster than invariants.** A new prompt, Skill, model, or
+   receiver may improve the approach without changing what a Run or effect
+   means. Encoding it in the base makes harmless method evolution a lifecycle
+   migration.
+3. **Mechanism cannot manufacture semantic judgment.** A scheduler can start
+   Runs and collect returns; it cannot decide whether a design is coherent or
+   whether two research claims genuinely reconcile. Treating orchestration as
+   that judgment creates false acceptance signals.
+4. **Mechanism coupling hides substitution failures.** A provider, model,
+   prompt, or topology should be replaceable when the contribution contract and
+   effect boundary remain unchanged. If every method needs a new role enum,
+   graph schema, queue, or terminal state, the base has absorbed semantics it
+   does not own.
+
+The contrary case is equally important. Add or change mechanism when a named
+hard property is otherwise not preserved: for example, two writers can mutate
+the same Worktree, a restart loses the only causal identity, a cancellation
+cannot stop an external effect, or a result that must be reconstructible has no
+authoritative evidence. A repeated prompt failure alone is **no** mechanism
+evidence; it is **yes** evidence for a method/context probe and **uncertain**
+evidence for any architectural change. Use `yes / no / uncertain`, not a
+numeric quality or confidence score, for this judgment.
+
 ## Primary object: task transformation
 
 A Task is not merely the user's sentence, a prompt, a database row, or a Todo
@@ -105,6 +183,92 @@ by themselves define valid units. Keep work whole when its constraints or
 effects remain coupled. Recomposition is therefore not concatenation or
 majority vote: it restores cross-unit invariants, resolves contradictions, and
 forms one candidate for the original acceptance owner.
+
+## Plan is obligation; topology is a replaceable method
+
+The semantic Plan answers what the whole must accomplish and how a later owner
+can know that it has been accomplished. It should retain the outcome, hard
+constraints, authoritative sources, contribution boundaries, dependencies,
+evidence and acceptance conditions, synthesis owner, and rejoin/merge
+condition. It should not encode a provider, a worker count, a fixed depth, a
+role enum, or a particular swarm runtime. Those are execution choices, and
+coupling them to the Plan would make a change of carrier look like a change of
+meaning.
+
+The Main Agent chooses an execution topology from the Plan's actual relations:
+
+| Topology | Use when | Required return and boundary |
+| --- | --- | --- |
+| Direct or sequential | constraints, effects, or the next judgment are coupled | one owner preserves the whole relation; each step changes a named source, decision, or effect |
+| Multi-round practice | an important design needs observation, reflection, and a changed next practice | each round records what was learned, what remains unknown, and the smallest changed next attempt; repeating the same attempt is not an iteration |
+| Independent parallel exploration | source families, hypotheses, or read-only investigations can be separated and later reconciled | each contributor has a differentiated question/source facet and returns evidence, coverage, boundaries, and unknowns |
+| Nested or multi-layer parallelism | a later contribution genuinely depends on a completed earlier contribution and the dependency reduces context or effect conflict | every layer has a real interface and synthesis/rejoin owner; extra depth must earn its coordination cost |
+
+“Swarm” is therefore a convenient name for one parallel carrier, not a Plan
+primitive or runtime species. A Plan can move from direct execution to a
+single-layer or nested carrier without changing its semantic obligation. The
+reverse is also true: if changing the topology changes Task meaning, effect
+authority, lifecycle, or evidence semantics, the issue is a broken boundary in
+the harness or adapter, not a reason to make the Plan prescribe a swarm.
+
+### Multi-round practice
+
+For a consequential design, the method-expression layer may ask the Agent to
+work through several bounded rounds:
+
+```text
+form the question and acceptance relation
+        -> make one smallest useful practice
+        -> inspect result and remaining uncertainty
+        -> change the method, context, or partition
+        -> make the next practice
+        -> synthesize and submit for review/acceptance
+```
+
+This is not an automatic retry loop, a new lifecycle, or permission to keep
+working indefinitely. A round is useful only when its observation changes a
+decision-relevant relation. The existing Task/Run/Cell and evidence contracts
+remain the source of identity and settlement; the Skill or prompt expresses
+how the next round should be formed. If no relation changes, the honest result
+is `uncertain` or a bounded failure requiring a new decision, not an invented
+progress score.
+
+### Parallel exploration and synthesis
+
+When the principal uncertainty has genuinely independent directions, the Main
+Agent may form parallel contributors. Each gets a receiver-specific
+environment, a distinct source family or hypothesis, an explicit non-goal, and
+the same whole question and acceptance relation. The Main then reconstructs
+the whole against source authority, coverage, contradictions, cross-unit
+relations, and unresolved uncertainty. It does not concatenate reports, run a
+majority vote, or select a result from 1–5/1–10 scores. For each candidate or
+claim, use `yes`, `no`, or `uncertain` against an explicit condition; “best” is
+meaningful only after the acceptance owner has named the condition that is
+being optimized.
+
+Parallelism is not automatically independent. Identical prompts, correlated
+sources, shared mutable effects, or a missing synthesis owner produce more
+returns but not more evidence. Keep the work direct when the contributions
+cannot be reconstructed independently. Make a topology change only after
+answering these qualitative probes:
+
+- **Isolation:** Can each contribution proceed without changing another's
+  inputs or effects? `yes` permits parallel consideration; `no` keeps it
+  coupled; `uncertain` requires a read-only probe or an explicit interface.
+- **Composition:** Can a named owner reconcile each return against the whole
+  without guessing? `yes` permits partition; `no` means the cut is invalid;
+  `uncertain` means do not treat the returns as independent acceptance evidence.
+- **Iteration:** Does the next round change context, sources, task shape,
+  capability, partition, or review relation? `yes` is a useful iteration;
+  `no` is a retry or repetition; `uncertain` remains open until observed.
+- **Mechanism:** Must software preserve a hard lifecycle, effect, recovery,
+  concurrency, or evidence property? `yes` is a mechanism candidate; `no`
+  keeps the change in method expression; `uncertain` calls for a bounded
+  matched probe rather than a new runtime.
+
+These probes are decision aids, not a scoring rubric. The Plan remains the
+stable semantic object while the method expression chooses a suitable carrier
+and changes it when evidence warrants.
 
 ## Agent working environment: a receiver-specific local world
 
