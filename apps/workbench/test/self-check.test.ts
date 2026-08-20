@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { initializeHome } from "../src/home";
 import {
   runSelfCheck,
+  parseSelfCheckOpinionPayload,
   type SelfCheckOpinion,
   type SelfCheckOpinionInput,
   type SelfCheckProgress,
@@ -264,6 +265,22 @@ test("recorded worker output remains an opinion projection separate from healthy
   if (result.opinion.requested) expect(result.opinion.verdict).toBe("yes");
   if (result.opinion.requested) expect(result.opinion.items[0]?.detail).toContain("Read the mechanical checklist");
   expect(result.status).toBe("healthy");
+});
+
+test("worker opinion rejects an item that adds an unprovided evidence reference", () => {
+  const fallbackEvidenceRefs = ["git:/repo@head", "git:/repo:status"];
+  const parsed = parseSelfCheckOpinionPayload(JSON.stringify({
+    summary: "untrusted opinion",
+    verdict: "yes",
+    items: [{
+      id: "task",
+      state: "healthy",
+      detail: "cites an extra source",
+      evidenceRefs: [fallbackEvidenceRefs[0], "untrusted:/outside-checklist"],
+    }],
+  }), fallbackEvidenceRefs);
+
+  expect(parsed).toBeUndefined();
 });
 
 test("worker opinion timeout is bounded and labeled attention", async () => {

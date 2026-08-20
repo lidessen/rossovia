@@ -676,7 +676,7 @@ async function runDefaultOpinion(input: SelfCheckOpinionInput): Promise<SelfChec
       };
     }
     const summary = result.record.finalText.trim().slice(0, 2_000) || "worker returned no opinion text";
-    const parsed = parseOpinionPayload(result.record.finalText, input.evidenceRefs);
+    const parsed = parseSelfCheckOpinionPayload(result.record.finalText, input.evidenceRefs);
     return {
       requested: true,
       workerId: input.worker.id,
@@ -761,7 +761,7 @@ function opinionItem(
   return { id, state, detail, evidenceRefs: [...evidenceRefs] };
 }
 
-function parseOpinionPayload(
+export function parseSelfCheckOpinionPayload(
   text: string,
   fallbackEvidenceRefs: readonly string[],
 ): { summary: string; verdict: "yes" | "no" | "uncertain"; items: SelfCheckOpinionItem[] } | undefined {
@@ -786,8 +786,9 @@ function parseOpinionPayload(
         || (item.state !== "healthy" && item.state !== "attention" && item.state !== "degraded")
         || typeof item.detail !== "string"
         || !Array.isArray(item.evidenceRefs)
+        || item.evidenceRefs.length === 0
         || item.evidenceRefs.some((ref) => typeof ref !== "string" || ref.length === 0)
-        || !item.evidenceRefs.some((ref) => fallbackEvidenceRefs.includes(ref))
+        || !item.evidenceRefs.every((ref) => fallbackEvidenceRefs.includes(ref))
       ) return undefined;
       items.push({
         id: item.id,
