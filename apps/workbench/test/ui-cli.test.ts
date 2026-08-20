@@ -76,7 +76,7 @@ describe("rossovia ui command", () => {
       expect(body.version).toBe("rosso.principal-workbench-snapshot.v1");
       expect(body.supervision?.mode).toBe("supervised");
       expect(body.startup?.version).toBe("rossovia.self-check.v1");
-      expect(["normal", "safe-diagnostic"]).toContain(body.startup?.mode);
+      expect(body.startup?.mode === "normal" || body.startup?.mode === "safe-diagnostic").toBe(true);
 
       const exitPromise = new Promise<number | null>((resolveExit) => {
         child!.on("exit", (code, signal) => resolveExit(code ?? (signal === undefined ? null : -1)));
