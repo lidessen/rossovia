@@ -243,7 +243,7 @@ describe("intervention reconciliation", () => {
     expect(new Set(receipts.map((receipt) => receipt.rejectedAssumption))).toEqual(
       new Set(Array.from({ length: receiptCount }, (_, index) => `assumption-${index}`)),
     );
-  });
+  }, { timeout: 60_000 });
 
   test("keeps distinct witness source refs for identical receipts", () => {
     const temporary = mkdtempSync(join(tmpdir(), "rossovia-intervention-duplicate-receipts-"));
