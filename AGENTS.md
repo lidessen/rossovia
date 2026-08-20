@@ -108,10 +108,12 @@ Workbench instructions own commands and their authority limits, and the
 Mission status is a current coordination projection only.
 
 When an Agent or external harness is asked to develop Rossovia or a named
-project, activate the on-demand
+project, or to delegate/schedule the concrete work for that development,
+activate the on-demand
 [Rossovia Development Skill](skills/rossovia-development/SKILL.md). It owns
-the mode decision between local Rossovia dogfood and external-harness
-delegation; it does not implement domain code or become a new authority.
+the Main Agent's coordinator posture and the mode decision between local
+Rossovia dogfood and external-harness delegation; it does not implement domain
+code or become a new authority.
 
 This distinction is load-bearing for external harnesses working on this
 repository:
@@ -166,9 +168,10 @@ task that does not enter shared integration remains outside this entry.
 
 ## Rossovia observer and Settings route
 
-When a request concerns observer review records, the secondary Workbench
+When a request concerns workflow observer records, the secondary Workbench
 surface, provider/worker visibility, or Settings configuration, begin with
-[the Rossovia configuration map](design/operations/ROSSOVIA-CONFIGURATION.md).
+[the observation model](design/observations/README.md) and then the
+[Rossovia configuration map](design/operations/ROSSOVIA-CONFIGURATION.md).
 Observer records are read-only evidence; processing a review is an ordinary
 Task prompt, not a new inbox or lifecycle. Settings projects the effective
 host worker policy and applicable preferences without exposing credentials or

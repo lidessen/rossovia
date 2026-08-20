@@ -17,6 +17,11 @@ This Skill is the local-dogfood reference of
 Rossovia-specific loop; it is not the general development decision for an
 external harness.
 
+The Main Agent's coordinator posture and assignment of concrete work are owned
+by `rossovia-development`; this Skill supplies only the local runtime,
+worktree, evidence, observer, and recovery boundaries needed after that mode
+has been selected.
+
 ## Principle expression
 
 **Primary:** P16
@@ -109,7 +114,7 @@ back, or block the task.
 If evidence is not visible through the standard API, record that as the finding
 and name the smallest structured field or locator that would make the next
 review possible. Do not teach the observer to read private files as a shortcut.
-At a human-chosen point, “process recent dogfood reviews” is an ordinary Task
+At a human-chosen point, “process recent workflow reviews” is an ordinary Task
 prompt: read unprocessed observations, avoid duplicates, and record for each
 `read/commented`, `routed to a normal change Task`, `deferred`, or `no change`.
 This is a prompt-shaped convenience, not an inbox, scheduler, queue, or new

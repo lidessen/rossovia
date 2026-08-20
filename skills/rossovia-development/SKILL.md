@@ -36,6 +36,23 @@ second `--enable-observer` requirement. A future/current launcher may expose
 `--dogfood`, with an explicit observer opt-out; check the active Workbench help
 before using a flag and report an unimplemented flag as a capability gap.
 
+## Main operating posture
+
+The Main Agent is the development coordinator. It keeps the whole outcome and
+raises its attention above individual edits: shape bounded contributions,
+assign each to one producer or reviewer, order dependencies, steer named gaps,
+and reconstruct the result from source and check evidence. Main retains
+whole-task direction, shared-contract judgment, exception handling, independent
+verification, integration, and the final handoff; a worker's return never
+transfers those responsibilities.
+
+Concrete work is assigned by default when it can settle independently. Keep a
+change direct when it is trivial, tightly coupled to one contract or mutable
+state, or crosses a named permission, security, privacy, or unavailable
+capability boundary. This is a task-shaping exception, not a new authority,
+approval gate, queue, or reason to fan out unconditionally. Main should not
+duplicate a delegated implementation merely to retain local control.
+
 ## Start
 
 Recover this small object before changing anything:
@@ -47,6 +64,8 @@ Local Rossovia runtime: available | unavailable | unknown
 Dogfood mode: enabled | disabled | unknown
 External harness and delegation capability:
 One write owner and exact worktree/effect boundary:
+Main-retained whole, ordering, and verification obligations:
+Candidate bounded contributions and their owners:
 Human intervention or acceptance still required:
 ```
 
@@ -60,9 +79,11 @@ a worker.
 1. Resolve the project and current source/worktree without scanning or
    registering unspecified folders.
 2. Shape one bounded change: outcome, in-scope effect, non-goals, disconfirming
-   checks, and a reconstructible return.
-3. Determine the mode above before selecting a producer. Never run the same
-   write contribution through Rossovia and an external harness at once.
+   checks, and a reconstructible return. Identify contributions that can settle
+   independently and the whole obligations Main retains.
+3. Determine the mode above and assign each contribution to one producer or
+   reviewer. Never run the same write contribution through Rossovia and an
+   external harness at once.
 4. Execute through the selected owner and keep claims separate from
    verification and Principal acceptance.
 5. Observe the settled result through standard evidence. Missing visibility is
@@ -92,8 +113,9 @@ accept, merge, rollback, or create a review lifecycle.
 When local Rossovia is unavailable or explicitly disabled, use
 [`agent-delegation`](../agent-delegation/SKILL.md) for non-trivial work:
 
-- Main keeps the whole outcome, source context, effect boundary, synthesis,
-  and final verification.
+- Main coordinates the whole outcome, source context, effect boundary, order,
+  synthesis, and final verification; concrete bounded work belongs to its
+  assigned owner.
 - A design/investigation worker, implementation worker, and independent
   verification worker are separate contributions only when the split reduces a
   named attention, conflict, latency, or independence problem.
@@ -103,7 +125,9 @@ When local Rossovia is unavailable or explicitly disabled, use
 - A worker return is evidence, never acceptance, merge, publication, or a new
   authority. Main reconnects every claim to source and check evidence.
 
-For a trivial local change, stay direct. Delegation is not a mandatory preflight.
+For a trivial, tightly coupled, or authority-bound change, stay direct.
+Delegation is a default work-shaping posture for bounded work, not a mandatory
+preflight or an unconditional fan-out.
 
 ## Human intervention
 

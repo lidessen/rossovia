@@ -35,6 +35,14 @@ Both modes retain the same project source, one write owner, worktree boundary,
 verification boundary, human intervention rule, and return contract. Only the
 producer and context carrier change.
 
+The Main Agent is the coordinator in both modes: it keeps the whole, assigns
+independent bounded contributions, orders and steers them, and reconstructs
+the result from source-linked evidence. It retains shared-contract judgment,
+independent verification, integration, and the final handoff. Direct work is
+reserved for trivial or tightly coupled changes and named permission,
+security, privacy, or unavailable-capability boundaries; this is a topology
+choice, not a new approval gate or mandatory fan-out.
+
 ## Mode selection
 
 The Skill must inspect the current runtime rather than infer mode from a
@@ -84,7 +92,7 @@ observer; it is the active Main environment. Use `agent-delegation` only when a
 named split buys attention, isolation, latency, or independent evidence:
 
 ```text
-Main: whole, source context, synthesis, final verification
+Main: whole, source context, scheduling, steering, synthesis, final verification
 design worker: bounded investigation/proposal (read-only unless granted)
 implementation worker: one write owner for exact paths
 review worker: fresh, read-only, independent from producer reasoning
@@ -110,3 +118,20 @@ dogfood mode enables a worker only through a second lifecycle; observer output
 cannot be read through standard APIs; the launcher claims dogfood but does not
 make observer behavior observable; or the worker/reviewer prompt cannot be
 reconstructed from the task contract and source revisions.
+
+## Open development TODO
+
+These are prompt-shaped follow-up items, not mandatory gates or a new queue:
+
+- decide whether the append-only JSON/evidence sources need a SQLite index for
+  cross-project queries, and keep authority in the existing source files unless
+  that decision is separately accepted;
+- expose workflow observer and Principal-correction records through one
+  secondary read-only surface with origin, authority, source refs, and
+  disposition visible;
+- finish the provider/worker/skill/home configuration map and its Settings
+  projection without creating a second policy source;
+- exercise local snapshot tag → rebuild → restart → smoke-check → rollback on
+  a real Rossovia self-change;
+- use product dogfood review for mobile conversation layout, Markdown/table
+  rendering, source disclosure, and information density.

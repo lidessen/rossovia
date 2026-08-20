@@ -34,6 +34,11 @@ without becoming owner of its parent's whole. Own one judgment:
 > context and effect boundary should each role receive, and how should their
 > evidence be reconnected to the whole?
 
+For whole-project development, the coordinator posture and default work
+assignment live in [`rossovia-development`](../rossovia-development/SKILL.md).
+Use this Skill as its supporting method for forming and supervising a bounded
+delegation; do not make it a second project-development entry.
+
 This Skill forms one semantic organization, then maps each bounded contribution
 to the current harness. A session-local harness may use native delegates. A
 Main Agent executing inside a generic Work Cell may receive one caller-injected
