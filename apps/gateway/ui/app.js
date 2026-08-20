@@ -1998,6 +1998,10 @@ export function taskLocatorEmptySummary(locator, context) {
         ? "—"
         : String(counts.independent);
     $("#completed-task-count").textContent = String(counts.completed);
+    const observerProjection = first(state.snapshot, ["observerReviews"], {});
+    const observerReviews = list(first(observerProjection, ["reviews"], []));
+    const observerCount = document.querySelector("#observer-review-count");
+    if (observerCount) observerCount.textContent = String(observerReviews.length);
 
     $$("[data-view]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === state.activeView);
@@ -2202,9 +2206,14 @@ export function taskLocatorEmptySummary(locator, context) {
     const attentionOverview = $("#attention-overview");
     const systemOverview = $("#system-overview");
     const projectOverview = $("#project-overview");
+    const observerSurface = $("#observer-surface");
+    const settingsSurface = $("#settings-surface");
     const isProjectView = state.activeView === "project";
     const isProjectsView = state.activeView === "projects";
     const isOverview = state.activeView === "overview";
+    const isObserver = state.activeView === "observer";
+    const isSettings = state.activeView === "settings";
+    const isSystemSurface = isObserver || isSettings;
 
     if (state.locusRestorePending || state.unavailableLocus !== null) {
       renderLocusGate({
@@ -2219,13 +2228,15 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    overview.hidden = isProjectView;
-    projectDetail.hidden = !isProjectView;
-    taskView.hidden = isOverview || isProjectView || isProjectsView;
+    overview.hidden = isSystemSurface || isProjectView;
+    projectDetail.hidden = isSystemSurface || !isProjectView;
+    taskView.hidden = isSystemSurface || isOverview || isProjectView || isProjectsView;
     taskFilters.hidden = state.activeView !== "tasks";
     attentionOverview.hidden = !isOverview;
     systemOverview.hidden = !isOverview;
     projectOverview.hidden = !(isOverview || isProjectsView);
+    observerSurface.hidden = !isObserver;
+    settingsSurface.hidden = !isSettings;
 
     const viewMeta = {
       overview: ["Workbench overview", "总览", "跨项目查看需要你处理、Agent 正在进行和状态未知的工作。"],
@@ -2236,6 +2247,8 @@ export function taskLocatorEmptySummary(locator, context) {
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
       tasks: ["Tasks", "任务", "用统一形式查看不同责任方和生命周期的工作。"],
+      observer: ["Observation", "观察记录", "查看 observer 对最近执行留下的意见、证据引用与可处理的缺口。"],
+      settings: ["Settings", "设置", "查看当前生效的 Worker、Provider、凭据状态与用户偏好。"],
     };
     const [eyebrow, title, summary] = viewMeta[state.activeView] || viewMeta.overview;
     $("#view-eyebrow").textContent = eyebrow;
@@ -2309,6 +2322,116 @@ export function taskLocatorEmptySummary(locator, context) {
       bindWorkItemRows($("#task-view-list"));
       const clear = $("[data-clear-task-locator]");
       if (clear) clear.addEventListener("click", clearTaskLocator);
+    }
+  }
+
+  function reviewStandingCopy(value) {
+    return {
+      recorded: "已记录",
+      "query-gap": "查询缺口",
+      "runner-failed": "observer 失败",
+    }[value] || "状态未知";
+  }
+
+  function renderObserverSurface() {
+    const projection = first(state.snapshot, ["observerReviews"], {});
+    const sourceState = $("#observer-source-state");
+    const listRoot = $("#observer-review-list");
+    if (!sourceState || !listRoot || state.activeView !== "observer") return;
+    const standing = text(first(projection, ["standing"]), "unavailable");
+    sourceState.textContent = standing === "available"
+      ? `${list(first(projection, ["reviews"], [])).length} 条 · 只读`
+      : "来源不可用";
+    const reviews = list(first(projection, ["reviews"], [])).slice().reverse();
+    if (!reviews.length) {
+      listRoot.innerHTML = `<div class="system-empty"><strong>还没有 observer 记录</strong><span>下一次 settled Task 或 conversation Run 完成后，observer 会把意见追加到本地记录。</span></div>`;
+      return;
+    }
+    listRoot.innerHTML = reviews.map((review) => {
+      const refs = list(first(review, ["evidenceRefs"], []));
+      const conversationRefs = list(first(review, ["relatedConversationRefs"], []));
+      const subject = first(review, ["subject"], {});
+      const taskId = text(first(subject, ["taskId"]), "");
+      const attemptId = text(first(subject, ["attemptId"]), "");
+      const workerId = text(first(review, ["observer", "workerId"]), "unknown");
+      const status = text(first(review, ["standing"]), "unknown");
+      const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
+      return `<article class="observer-review-card" data-review-id="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
+        <header>
+          <div><span class="observer-review-status" data-standing="${escapeHtml(status)}">${escapeHtml(reviewStandingCopy(status))}</span><strong>${escapeHtml(workerId)}</strong></div>
+          <time>${escapeHtml(text(first(review, ["recordedAt"]), "时间未知"))}</time>
+        </header>
+        <div class="observer-review-finding">${renderConversationMarkdown(reviewText)}</div>
+        <dl class="observer-review-facts">
+          <div><dt>观察对象</dt><dd>${escapeHtml(taskId ? `Task ${taskId}` : "未关联 Task")} · attempt ${escapeHtml(shortConversationId(attemptId))}</dd></div>
+          <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
+          <div><dt>关联对话</dt><dd>${conversationRefs.length ? conversationRefs.map((ref) => `<code>${escapeHtml(ref)}</code>`).join(" ") : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
+        </dl>
+        <details class="observer-review-evidence"><summary>证据引用 · ${refs.length} 项</summary><ul>${refs.length ? refs.map((ref) => `<li><code>${escapeHtml(ref)}</code></li>`).join("") : "<li>未提供证据引用</li>"}</ul></details>
+        <footer><button type="button" class="text-action" data-observer-process="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button></footer>
+      </article>`;
+    }).join("");
+    listRoot.querySelectorAll("[data-observer-process]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const review = reviews.find((candidate) => text(first(candidate, ["reviewId"]), "") === button.dataset.observerProcess);
+        if (!review) return;
+        const attemptId = text(first(first(review, ["subject"], {}), ["attemptId"]), "");
+        const finding = text(first(review, ["finding"]), "");
+        conversationState.draft = `处理 observer review ${text(first(review, ["reviewId"]), "")}:\n观察 attempt: ${attemptId}\n意见：${finding}\n请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。`;
+        persistConversationDraft();
+        state.activeView = "conversation";
+        render();
+        writePrincipalLocus();
+        $("#conversation-composer-text")?.focus({ preventScroll: true });
+      });
+    });
+  }
+
+  function renderSettingsSurface() {
+    const projection = first(state.snapshot, ["settings"], {});
+    const sourceState = $("#settings-source-state");
+    const providerRoot = $("#settings-provider-list");
+    const preferenceRoot = $("#settings-preference-list");
+    const skillRoot = $("#settings-skill-source-list");
+    if (!sourceState || !providerRoot || !preferenceRoot || !skillRoot || state.activeView !== "settings") return;
+    const standing = text(first(projection, ["standing"]), "unavailable");
+    sourceState.textContent = standing === "available" ? "当前 host policy" : "来源不可用";
+    const providers = list(first(projection, ["providers"], []));
+    $("#settings-provider-count").textContent = String(providers.length);
+    providerRoot.innerHTML = providers.length ? providers.map((provider) => `
+      <article class="settings-provider-card">
+        <header><strong>${escapeHtml(text(first(provider, ["id"]), "provider"))}</strong><span>${escapeHtml(text(first(provider, ["credential"]), "凭据状态未知"))}</span></header>
+        <p>Worker：${escapeHtml(list(first(provider, ["workerIds"], [])).join(" · ") || "未声明")}</p>
+        <p>Model：${escapeHtml(list(first(provider, ["models"], [])).join(" · ") || "未声明")}</p>
+      </article>`).join("") : '<p class="empty-note">当前没有可投影的 provider。</p>';
+    const preferences = list(first(first(projection, ["preferences"], {}), ["preferences"], []));
+    $("#settings-preference-count").textContent = String(preferences.length);
+    preferenceRoot.innerHTML = preferences.length ? preferences.map((preference) => `
+      <article class="settings-preference-card"><header><strong>${escapeHtml(text(first(preference, ["id"]), "偏好"))}</strong><span>${escapeHtml(text(first(preference, ["scope"]), "user"))}</span></header><p>${escapeHtml(text(first(preference, ["statement"]), ""))}</p></article>`).join("") : '<p class="empty-note">尚未设置用户偏好。</p>';
+    const boundary = $("#settings-boundary");
+    const boundaries = first(projection, ["boundaries"], {});
+    if (boundary) boundary.textContent = text(first(boundaries, ["policy"]), boundary.textContent);
+    const skillProjection = first(projection, ["skillSources"], {});
+    const audiences = list(first(skillProjection, ["audiences"], []));
+    const sourceCount = audiences.reduce((count, audience) => count + list(first(audience, ["sources"], [])).length, 0);
+    $("#settings-skill-source-count").textContent = String(sourceCount);
+    skillRoot.innerHTML = audiences.length ? audiences.map((audience) => {
+      const sources = list(first(audience, ["sources"], []));
+      return `<section class="settings-skill-audience"><header><strong>${escapeHtml(text(first(audience, ["label"]), "Agent"))}</strong><span>${escapeHtml(text(first(audience, ["boundary"]), ""))}</span></header><div class="settings-skill-source-items">${sources.map((source) => `
+        <article class="settings-skill-source" data-standing="${escapeHtml(text(first(source, ["standing"]), "unknown"))}">
+          <div class="settings-skill-source-title"><strong>${escapeHtml(text(first(source, ["label"]), "skill source"))}</strong><span>${escapeHtml(text(first(source, ["visibility"]), "unknown"))}</span></div>
+          <p>${escapeHtml(text(first(source, ["note"]), ""))}</p>
+          <code>${escapeHtml(text(first(source, ["sourceRef"]), "source unavailable"))}</code>
+        </article>`).join("")}</div></section>`;
+    }).join("") : '<p class="empty-note">当前没有可投影的 skill 来源。</p>';
+    const directoryRoot = $("#settings-directory-list");
+    const directories = first(projection, ["directories"], {});
+    if (directoryRoot) {
+      directoryRoot.innerHTML = `<dl class="settings-directory-facts">
+        <div><dt>当前运行时 Home</dt><dd><code>${escapeHtml(text(first(directories, ["environment"]), "ROSSO_HOME"))}</code> · ${escapeHtml(text(first(directories, ["currentDefault"]), "~/.rosso"))}</dd></div>
+        <div><dt>目标公共命名</dt><dd><code>${escapeHtml(text(first(directories, ["targetDefault"]), "~/.rossovia"))}</code></dd></div>
+        <div><dt>项目级命名空间</dt><dd><code>${escapeHtml(text(first(directories, ["projectNamespace"]), ".rossovia/"))}</code> · host entry <code>${escapeHtml(text(first(directories, ["hostEntry"]), "ROSSOVIA.md"))}</code></dd></div>
+      </dl>`;
     }
   }
 
@@ -5916,6 +6039,8 @@ export function taskLocatorEmptySummary(locator, context) {
     renderProjects();
     renderViewNavigation();
     renderUnifiedSurface();
+    renderObserverSurface();
+    renderSettingsSurface();
     renderProjectSurface();
     renderConversationSurface();
     renderTarget();

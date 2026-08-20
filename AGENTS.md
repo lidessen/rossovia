@@ -143,6 +143,27 @@ Before settling or pruning the integration Mission, re-read the source PR and
 give every late review observation a traced disposition. A local reversible
 task that does not enter shared integration remains outside this entry.
 
+## Rossovia observer and Settings route
+
+When a request concerns observer review records, the secondary Workbench
+surface, provider/worker visibility, or Settings configuration, begin with
+[the Rossovia configuration map](design/operations/ROSSOVIA-CONFIGURATION.md).
+Observer records are read-only evidence; processing a review is an ordinary
+Task prompt, not a new inbox or lifecycle. Settings projects the effective
+host worker policy and applicable preferences without exposing credentials or
+creating a second provider policy. The owning runtime/config source remains
+authoritative for provider routes, model order, credential setup, and restart
+semantics.
+
+The project-local Rossovia host entry is [`ROSSOVIA.md`](ROSSOVIA.md). Keep it
+separate from this `AGENTS.md`: this file guides an Agent working on the
+repository, while `ROSSOVIA.md` points the Rossovia coordinator to the
+project's runtime, Settings, dogfood, and skill-source maps. The skill-source
+map is [`design/operations/ROSSOVIA-SKILL-SOURCES.md`](design/operations/ROSSOVIA-SKILL-SOURCES.md);
+it keeps Main Agent and worker source lists separate and treats Pick,
+built-in, and user-custom skills as distinct families with explicit loading
+timing.
+
 ## Principle Sequence
 
 `principles/SEQUENCE.md` is the collection's only semantic root of core principles. It contains one stable, unexplained principle per line. `principles/interpretations/P<id>.md` is that P-ID's living, source-bound reading: it reduces agent interpretation drift but cannot redefine or extend the source line. Skills and target-project guidance are downstream expressions.

@@ -45,6 +45,14 @@ method.
   other projects. The agent may use the current harness's native sub-agents
   directly; this does not require initializing Rossovia Workbench.
 
+When this repository is the target of Rossovia itself, keep the readers
+separate: [`AGENTS.md`](AGENTS.md) is for an Agent working on this repository,
+while [`ROSSOVIA.md`](ROSSOVIA.md) is the project-local pointer for Rossovia's
+coordinating Agent. The user-home, project `.rossovia/`, Workbench state, and
+skill-source boundaries are mapped in
+[`ROSSOVIA-DIRECTORY-LAYOUT.md`](design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md)
+and [`ROSSOVIA-SKILL-SOURCES.md`](design/operations/ROSSOVIA-SKILL-SOURCES.md).
+
 For the optional persistent Workbench path, ask the agent directly:
 
 ```text

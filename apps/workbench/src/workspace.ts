@@ -98,5 +98,6 @@ export function observeWorkspace(
     status,
     instructionFiles: names(["AGENTS.md", "CLAUDE.md"]),
     orientationFiles: names(["DESIGN.md", "README.md"]),
+    hostConfigFiles: names(["ROSSOVIA.md"]),
   };
 }

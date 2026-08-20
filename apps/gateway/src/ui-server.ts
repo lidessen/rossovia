@@ -46,6 +46,10 @@ import {
   submitVerifiedTaskResult,
 } from "../../workbench/src/ui/task-verified-result";
 import { loadPrincipalTasks, principalTasksPath } from "../../workbench/src/tasks";
+import { listPreferences } from "../../workbench/src/preferences";
+import { listPrincipalTaskWorkers } from "../../workbench/src/task-run";
+import { currentSkillSourceProjection } from "../../workbench/src/skill-sources";
+import { readDogfoodReviews, dogfoodReviewLogPath } from "../../workbench/src/dogfood-observer";
 import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
 import {
   createLocalTaskControlPlane,
@@ -524,6 +528,8 @@ async function buildLiveSnapshot(
       source: taskSource.sourceRef,
     }];
   const taskAttempts = readTaskAttemptsProjections(options.home, taskSource);
+  const observerReviews = readObserverReviews(options.home);
+  const settings = readSettingsProjection(options, observerReviews);
   const liveSnapshot = {
     ...snapshot,
     complete:
@@ -540,7 +546,98 @@ async function buildLiveSnapshot(
   return {
     ...liveSnapshot,
     workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts, options.home),
+    observerReviews,
+    settings,
   };
+}
+
+function readObserverReviews(home: string | undefined) {
+  const sourceRef = dogfoodReviewLogPath(home);
+  try {
+    const reviews = readDogfoodReviews(home).map((review) => ({
+      ...review,
+      relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
+    }));
+    return {
+      version: "rosso.dogfood-review-projection.v1" as const,
+      standing: "available" as const,
+      sourceRef,
+      reviews,
+    };
+  } catch (error: unknown) {
+    return {
+      version: "rosso.dogfood-review-projection.v1" as const,
+      standing: "unavailable" as const,
+      sourceRef,
+      reviews: [],
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function readSettingsProjection(
+  options: ServerOptions,
+  observerReviews: ReturnType<typeof readObserverReviews>,
+) {
+  const sourceRef = "operations/autonomy/src/worker-policy.ts";
+  try {
+    const workers = listPrincipalTaskWorkers();
+    return {
+      version: "rosso.settings-projection.v1" as const,
+      standing: "available" as const,
+      workerPolicySource: sourceRef,
+      workers: workers.workers,
+      providers: [...new Map(workers.workers.map((worker) => [worker.provider, {
+        id: worker.provider,
+        workerIds: workers.workers.filter((candidate) => candidate.provider === worker.provider).map((candidate) => candidate.id),
+        models: [...new Set(workers.workers.filter((candidate) => candidate.provider === worker.provider).map((candidate) => candidate.model))],
+        credential: [...new Set(workers.workers.filter((candidate) => candidate.provider === worker.provider).map((candidate) => candidate.availability.status))].join(" / "),
+      }])).values()],
+      preferences: listPreferences(options.home),
+      skillSources: currentSkillSourceProjection(),
+      observer: {
+        enabled: options.observerWorkerId !== undefined,
+        workerId: options.observerWorkerId ?? null,
+        reviewSource: observerReviews.sourceRef,
+      },
+      boundaries: {
+        credentials: "环境变量存在性只投影为 available/unavailable；密钥不进入 Workbench UI。",
+        policy: "worker/provider/model/reasoning 由当前 host worker policy 提供；Settings 不复制第二份运行策略。",
+      },
+      directories: {
+        environment: "ROSSO_HOME",
+        currentDefault: "~/.rosso",
+        targetDefault: "~/.rossovia",
+        projectNamespace: ".rossovia/",
+        hostEntry: "ROSSOVIA.md",
+        source: "design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md",
+      },
+    };
+  } catch (error: unknown) {
+    return {
+      version: "rosso.settings-projection.v1" as const,
+      standing: "unavailable" as const,
+      workerPolicySource: sourceRef,
+      workers: [],
+      providers: [],
+      preferences: { version: "rosso.preference-projection.v2" as const, projectId: null, preferences: [] },
+      skillSources: currentSkillSourceProjection(),
+      observer: {
+        enabled: options.observerWorkerId !== undefined,
+        workerId: options.observerWorkerId ?? null,
+        reviewSource: observerReviews.sourceRef,
+      },
+      directories: {
+        environment: "ROSSO_HOME",
+        currentDefault: "~/.rosso",
+        targetDefault: "~/.rossovia",
+        projectNamespace: ".rossovia/",
+        hostEntry: "ROSSOVIA.md",
+        source: "design/operations/ROSSOVIA-DIRECTORY-LAYOUT.md",
+      },
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /**
