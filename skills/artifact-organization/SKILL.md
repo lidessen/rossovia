@@ -67,6 +67,13 @@ needs durable handoff, approval, or multi-session continuation. That record
 contains audit, gap, transition, verification, and disposition together; use
 [references/artifact-paths.md](references/artifact-paths.md).
 
+For a multi-owner development record, preserve the owner, independent
+branch/worktree, conflict boundary, current unmerged state, rejoin/merge
+action, and cleanup condition until the contribution is merged, returned, or
+explicitly archived. A commit alone is not a settled artifact. Do not remove
+branch/worktree evidence merely because a producer stopped responding; retain
+the smallest reactivation or cleanup condition needed to recover it.
+
 ## Conditional boundaries
 
 - A change to semantic authority, public index, or irreversible evidence

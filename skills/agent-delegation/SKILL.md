@@ -58,10 +58,14 @@ lives in [delegation.md](references/delegation.md); worker-only and
 reviewer-only contracts live in [worker.md](references/worker.md) and
 [reviewer.md](references/reviewer.md).
 
-When a delegation has multiple owners, the parent Main keeps owner, state,
-dependency, acceptance/evidence, and rejoin information in the host's existing
-plan/todo/task surface. This Skill does not create that surface or turn it into
-an approval or lifecycle authority.
+When a delegation has multiple owners, the parent Main keeps owner,
+independent branch/worktree, conflict boundary, state, dependency,
+acceptance/evidence, rejoin/merge action, cleanup condition, and unmerged
+progress in the host's existing plan/todo/task surface. A child commit is a
+handoff, not settlement: Main reconnects it through a verifiable merge/rejoin
+or records an explicit blocked, suspended, or archived disposition. This Skill
+does not create that surface or turn it into an approval or lifecycle
+authority.
 
 ## Principle source
 

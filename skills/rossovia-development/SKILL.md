@@ -55,13 +55,21 @@ duplicate a delegated implementation merely to retain local control.
 
 When work is parallel or has multiple owners, Main must maintain a small
 coordination projection in the existing plan/todo/task tools before releasing
-the work and as owners return. For every contribution, make the owner, state,
-dependencies, acceptance/evidence, and rejoin or merge action explicit. Keep
-that projection current when work starts, blocks, changes owner, or settles.
-It is a recoverable scheduling view, not a new task database, approval gate,
-authority, or lifecycle; `attention-management` may restore the governing
-relation, and `practice-cycle` may choose the next practice, but neither
-replaces this coordination responsibility.
+the work and as owners return. For every contribution, make the owner,
+independent branch/worktree, conflict boundary, state, dependencies,
+acceptance/evidence, rejoin or merge action, cleanup condition, and unmerged
+progress explicit. Keep that projection current when work starts, blocks,
+changes owner, merges, is archived, or settles. It is a recoverable scheduling
+view, not a new task database, approval gate, authority, or lifecycle;
+`attention-management` may restore the governing relation, and
+`practice-cycle` may choose the next practice, but neither replaces this
+coordination responsibility.
+
+A commit is a handoff, not the end of parallel work. The contribution is
+complete only after its checks and a verifiable merge/rejoin result; otherwise
+Main records it as open, suspended, blocked, or explicitly archived with the
+remaining progress and a reactivation or cleanup condition. Do not silently
+leave an unmerged branch or worktree behind.
 
 ## Start
 
@@ -76,6 +84,7 @@ External harness and delegation capability:
 One write owner and exact worktree/effect boundary:
 Main-retained whole, ordering, and verification obligations:
 Candidate bounded contributions and their owners:
+Owner branch/worktree, conflict, rejoin/merge, cleanup, and unmerged state:
 Human intervention or acceptance still required:
 ```
 
@@ -91,8 +100,9 @@ a worker.
 2. Shape one bounded change: outcome, in-scope effect, non-goals, disconfirming
    checks, and a reconstructible return. Identify contributions that can settle
    independently and the whole obligations Main retains. If there are multiple
-   owners, record the owner/state/dependency/acceptance/rejoin map in the
-   existing plan/todo/task surface before dispatch.
+   owners, record the owner/branch/worktree/conflict/state/dependency/
+   acceptance/rejoin/cleanup/unmerged map in the existing plan/todo/task
+   surface before dispatch.
 3. Determine the mode above and assign each contribution to one producer or
    reviewer. Never run the same write contribution through Rossovia and an
    external harness at once.
@@ -167,7 +177,8 @@ Producer and effect boundary:
 Change and observable result:
 Checks and independent evidence:
 Runtime snapshot/restart/observer status:
-Plan/todo/task owner-state-dependency-acceptance/rejoin status:
+Plan/todo/task owner-branch-worktree-conflict-state-dependency-acceptance/
+rejoin-cleanup-unmerged status:
 Limitations, query gaps, or human intervention:
 Next ordinary action and Principal decision:
 ```

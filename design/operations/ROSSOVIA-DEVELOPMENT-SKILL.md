@@ -43,6 +43,15 @@ reserved for trivial or tightly coupled changes and named permission,
 security, privacy, or unavailable-capability boundaries; this is a topology
 choice, not a new approval gate or mandatory fan-out.
 
+For each parallel contribution, the coordination projection records its owner,
+independent branch/worktree, conflict boundary, state, dependencies,
+acceptance/evidence, rejoin or merge action, cleanup condition, and unmerged
+progress. A commit is a handoff, not completion: the contribution settles only
+after checks and a verifiable merge/rejoin result. Otherwise Main keeps it open,
+suspended, blocked, or explicitly archived with remaining progress and a
+reactivation or cleanup condition. Use existing plan/task/Mission and operating
+protocol surfaces; this does not create a second tracker or lifecycle.
+
 ## Mode selection
 
 The Skill must inspect the current runtime rather than infer mode from a

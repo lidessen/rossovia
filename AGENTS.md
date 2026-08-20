@@ -59,10 +59,14 @@ approval, budget, acceptance, or merge authority.
 
 When delegated work is parallel or has multiple owners, Main must use the
 existing plan/todo/task tools as a small coordination projection: record each
-owner, state, dependency, acceptance/evidence, and rejoin or merge action, and
-refresh it at dispatch, blockage, reassignment, and settlement. This is a
-recoverable scheduling view, not a new authority, approval gate, queue, or
-lifecycle; the canonical method is in `rossovia-development`.
+owner, independent branch/worktree, conflict boundary, state, dependency,
+acceptance/evidence, rejoin or merge action, cleanup condition, and unmerged
+progress, and refresh it at dispatch, blockage, reassignment, merge, archival,
+and settlement. A commit is not completion: require a verifiable merge/rejoin
+result or an explicit blocked, suspended, or archived disposition with its
+remaining progress and cleanup/reactivation condition. This is a recoverable
+scheduling view, not a new authority, approval gate, queue, or lifecycle; the
+canonical method is in `rossovia-development`.
 
 When an execution owner cannot progress, the Main Agent may intervene in the
 conditions of that owner's performance: clarify the objective or acceptance,
