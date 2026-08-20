@@ -927,6 +927,34 @@ mandatory admission form, runtime preflight, registry, or approval queue.
 6. **Name the reopening evidence.** State which observation would show the
    simpler form insufficient or the added mechanism non-beneficial.
 
+### Mechanism admission check
+
+Before an Agent proposes a new Harness check, lifecycle state, registry,
+queue, role, retry path, or other base mechanism, answer these questions in
+plain language:
+
+```text
+Observed action gap and affected actor:
+Existing Skill / prompt / context / task-shaping / policy response:
+Hard property that currently fails, if any:
+Existing owner that should preserve that property:
+Smallest source-backed probe that distinguishes method failure from mechanism failure:
+Disposition: yes | no | uncertain
+```
+
+`no` means the current mechanism can already preserve the hard property and
+the next change belongs in method expression, context, task shaping, or policy.
+`yes` means a named lifecycle, effect, permission, concurrency, recovery, or
+evidence invariant is not preserved by the existing owner; only then is a base
+or adapter change admissible. `uncertain` means do not add infrastructure yet:
+run the smallest probe that could change the disposition. A prompt failure,
+an Agent's desire for more checks, or a missing convenience projection is not
+by itself mechanism evidence.
+
+This check prevents a behavior pattern from becoming a runtime contract. It
+does not forbid mechanisms; it makes their burden explicit: owner, identity,
+writer, reader, normal path, failure/recovery path, evidence, and retirement.
+
 The strongest simpler alternative is part of the derivation. A prompt is enough
 when ordinary review can observe and correct the result before material effects
 escape. A lock, journal, authorization check, or idempotency owner earns itself

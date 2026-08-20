@@ -85,6 +85,14 @@ report the lineage difference. Do not merge, edit, or silently reconcile them.
    reference, or a project-local adapter when it already enables the action.
    Create a new skill only when it has a distinct repeated trigger, judgment,
    and durable artifact or decision gate.
+   Treat a request for a new runtime check, lifecycle, registry, queue, role,
+   retry path, or projection as a separate mechanism question. First record
+   the observed action gap, the existing method/context/task-shaping/policy
+   response, the hard property that fails, its current owner, and the smallest
+   probe that distinguishes method failure from mechanism failure. If the
+   existing base preserves the hard property, keep the repair in this
+   expression layer; only route to mechanism design when a real lifecycle,
+   effect, permission, concurrency, recovery, or evidence invariant fails.
 4. **Make the expression actionable.** Put stable trigger and scope signals in
    frontmatter; put the active judgment and short work loop in SKILL.md; put
    volatile detail, variants, and long protocols behind direct references.

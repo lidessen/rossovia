@@ -65,6 +65,17 @@ depth, or a swarm runtime. Those are replaceable method/carrier choices. When a
 named condition is judged, use `yes`, `no`, or `uncertain`; do not substitute a
 numeric quality or confidence scale.
 
+Before changing the Harness base, complete the mechanism admission check in the
+[Harness theory](../../design/harness/THEORY.md#mechanism-admission-check):
+name the observed action gap, the existing method/context/task-shaping/policy
+response, the hard property that fails, the current owner, and the smallest
+probe that distinguishes a method problem from a mechanism problem. A prompt
+failure or a request for a convenient check is not enough to add lifecycle,
+registry, queue, retry, role, or projection machinery. Keep the change in the
+method-expression layer when the existing base already preserves the property;
+change the base or adapter only when a real lifecycle, effect, permission,
+concurrency, recovery, or evidence invariant is not preserved.
+
 ## Main operating posture
 
 The Main Agent is the development coordinator. It keeps the whole outcome and
