@@ -68,9 +68,15 @@ describe("rossovia ui command", () => {
 
       const snapshot = await fetch(`http://127.0.0.1:${port}/api/snapshot`);
       expect(snapshot.status).toBe(200);
-      const body = await snapshot.json() as { version?: string; supervision?: { mode?: string } };
+      const body = await snapshot.json() as {
+        version?: string;
+        supervision?: { mode?: string };
+        startup?: { version?: string; mode?: string };
+      };
       expect(body.version).toBe("rosso.principal-workbench-snapshot.v1");
       expect(body.supervision?.mode).toBe("supervised");
+      expect(body.startup?.version).toBe("rossovia.self-check.v1");
+      expect(body.startup?.mode === "normal" || body.startup?.mode === "safe-diagnostic").toBe(true);
 
       const exitPromise = new Promise<number | null>((resolveExit) => {
         child!.on("exit", (code, signal) => resolveExit(code ?? (signal === undefined ? null : -1)));

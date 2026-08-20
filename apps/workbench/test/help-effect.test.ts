@@ -164,7 +164,7 @@ describe("Rossovia CLI help effect contract", () => {
       verbEntries.filter((entry) => entry.effect === "starts-work")
         .map((entry) => entry.path.join(" "))
         .sort(),
-    ).toEqual(["hook artifact", "observer", "task run", "ui"]);
+    ).toEqual(["hook artifact", "observer", "self-check", "task run", "ui"]);
 
     const run = cli(["help", "task", "run"], { stdin: "" });
     expect(run.exitCode).toBe(0);
@@ -181,6 +181,11 @@ describe("Rossovia CLI help effect contract", () => {
     expect(ui.stdout).toContain("effect: starts-work");
     expect(ui.stdout).not.toContain("effect: read-only");
     expect(ui.stdout).toContain("Serve the Rossovia Principal Workbench web UI");
+
+    const selfCheck = cli(["help", "self-check"], { stdin: "" });
+    expect(selfCheck.exitCode).toBe(0);
+    expect(selfCheck.stdout).toContain("effect: starts-work");
+    expect(selfCheck.stdout).not.toContain("effect: read-only");
 
     const intervention = cli(["help", "hook", "intervention"], { stdin: "" });
     expect(intervention.exitCode).toBe(0);

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AutonomyClient } from "../src/ui/autonomy-client";
 import { initializeHome } from "../src/home";
+import { runSelfCheckStartupGate } from "../src/self-check";
 import { createWorkbenchRequestHandler } from "../../gateway/src/ui-server";
 
 const roots: string[] = [];
@@ -70,4 +71,40 @@ test("system surfaces remain secondary to conversation", async () => {
   expect(app).toContain("settings-skill-source-count");
   expect(app).toContain("安装包内置技能");
   expect(app).toContain("function renderObserverSurface");
+});
+
+test("startup mechanical degradation serves diagnostics but blocks Task writes", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-ui-startup-diagnostic-"));
+  roots.push(root);
+  const missingHome = join(root, "missing-home");
+  const gate = runSelfCheckStartupGate({ home: missingHome, cwd: process.cwd() });
+  expect(gate.mode).toBe("safe-diagnostic");
+
+  const handler = createWorkbenchRequestHandler({
+    home: missingHome,
+    port: 4317,
+    roots: [],
+    startupGate: gate,
+  }, unusedClient);
+  const startup = await handler(new Request("http://127.0.0.1:4317/api/startup"));
+  expect(startup.status).toBe(200);
+  expect(await startup.json()).toMatchObject({ mode: "safe-diagnostic", mechanical: { status: gate.mechanical.status } });
+
+  const latestConversation = await handler(new Request("http://127.0.0.1:4317/api/conversations/latest"));
+  expect(latestConversation.status).toBe(200);
+  expect(await latestConversation.json()).toEqual({ conversationId: null });
+
+  const socketUpgrade = await handler(new Request(
+    "http://127.0.0.1:4317/api/conversations/00000000-0000-4000-8000-000000000000/socket",
+    { headers: { Upgrade: "websocket" } },
+  ));
+  expect(socketUpgrade.status).toBe(503);
+
+  const write = await handler(new Request("http://127.0.0.1:4317/api/tasks", {
+    method: "POST",
+    headers: { Origin: "http://127.0.0.1:4317", "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  }));
+  expect(write.status).toBe(503);
+  expect(await write.json()).toMatchObject({ error: "startup-diagnostic-mode" });
 });

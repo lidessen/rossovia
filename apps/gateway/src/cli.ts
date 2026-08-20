@@ -9,11 +9,6 @@ import {
   UsageError,
   USAGE_EXIT_CODE,
 } from "../../workbench/src/cli-errors";
-import { createForegroundRunSignalAdapter } from "../../workbench/src/integrations/foreground-run-signals";
-import {
-  recordWorkflowObserverLaunchFailure,
-  runWorkflowObserver,
-} from "../../workbench/src/workflow-observer";
 import type { ContributionLeaseReconcileResult } from "../../workbench/src/conversation/contributions";
 import { authorizeExecution, inspectExecution } from "../../workbench/src/execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
@@ -35,12 +30,6 @@ import {
   statusLineInput,
   statusLineProjection,
 } from "../../workbench/src/statusline";
-import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
-import {
-  listPrincipalTaskWorkers,
-  reconcilePrincipalTaskAttempt,
-  runPrincipalTask,
-} from "../../workbench/src/task-run";
 
 const TASK_SUBCOMMANDS = new Set([
   "list",
@@ -111,7 +100,7 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
       dispatchProject(home, args);
       return;
     case "worker":
-      dispatchWorker(args);
+      await dispatchWorker(args);
       return;
     case "setup":
       dispatchSetup(home, args);
@@ -163,6 +152,9 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
       return;
     case "observer":
       console.log(JSON.stringify(await dispatchObserver(home, args), null, 2));
+      return;
+    case "self-check":
+      console.log(JSON.stringify(await dispatchSelfCheck(home, args), null, 2));
       return;
     default:
       throw new UsageError(`unknown command: ${command}`, []);
@@ -218,11 +210,12 @@ function dispatchProject(home: string | undefined, args: string[]): void {
   }
 }
 
-function dispatchWorker(args: string[]): void {
+async function dispatchWorker(args: string[]): Promise<void> {
   const subcommand = args[1];
   if (subcommand === undefined) throw new UsageError("worker requires a subcommand", ["worker"]);
   if (subcommand !== "list") throw new UsageError(`unknown worker command: ${subcommand}`, ["worker"]);
   if (args.length !== 2) throw new UsageError("worker list accepts no arguments", ["worker", "list"]);
+  const { listPrincipalTaskWorkers } = await import("../../workbench/src/task-run");
   console.log(JSON.stringify(listPrincipalTaskWorkers(), null, 2));
 }
 
@@ -352,7 +345,8 @@ async function dispatchUi(home: string | undefined, args: string[]): Promise<voi
 async function dispatchObserver(
   home: string | undefined,
   args: string[],
-): Promise<Awaited<ReturnType<typeof runWorkflowObserver>>> {
+): Promise<unknown> {
+  const { runWorkflowObserver } = await import("../../workbench/src/workflow-observer");
   const parsed = parseTaskOptions(
     args.slice(1),
     0,
@@ -364,6 +358,26 @@ async function dispatchObserver(
     ...(home === undefined ? {} : { home }),
     attemptId: taskOption(parsed, "--attempt"),
     workerId: taskOption(parsed, "--worker"),
+  });
+}
+
+async function dispatchSelfCheck(home: string | undefined, args: string[]): Promise<unknown> {
+  const { runSelfCheck } = await import("../../workbench/src/self-check");
+  const options = parseSelfCheckOptions(args.slice(1));
+  return runSelfCheck({
+    ...(home === undefined ? {} : { home }),
+    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.taskId === undefined ? {} : { taskId: options.taskId }),
+    ...(options.baselineHead === undefined ? {} : { baselineHead: options.baselineHead }),
+    ...(options.workerId === undefined ? {} : { workerId: options.workerId }),
+    ...(options.opinion ? { opinion: true } : {}),
+    ...(options.timeoutMs === undefined ? {} : { opinionTimeoutMs: options.timeoutMs }),
+    trigger: options.trigger ?? (options.baselineHead === undefined ? "manual" : "changed"),
+    ...(options.progress ? {
+      onProgress: (event) => process.stderr.write(
+        `${event.phase} ${event.itemId} ${event.state} — ${event.detail}\n`,
+      ),
+    } : {}),
   });
 }
 
@@ -397,6 +411,8 @@ function spawnWorkflowObserver(input: {
   });
   child.once("error", (error) => {
     try {
+      const { recordWorkflowObserverLaunchFailure } = require("../../workbench/src/workflow-observer") as
+        typeof import("../../workbench/src/workflow-observer");
       recordWorkflowObserverLaunchFailure(
         { home: input.home, attemptId: input.attemptId, workerId: input.workerId },
         `observer launch failed: ${error.message}`,
@@ -475,6 +491,7 @@ async function dispatchTaskCommand(
   }
   if (command === "attempts") {
     if (raw.length !== 2) throw new ParseUsageError("task attempts requires exactly one task id");
+    const { showPrincipalTaskAttempts } = await import("../../workbench/src/task-attempts");
     return showPrincipalTaskAttempts(home, raw[1]!);
   }
   if (command === "reconcile-attempt") {
@@ -485,6 +502,7 @@ async function dispatchTaskCommand(
       new Set(),
     );
     assertTaskOptions(parsed, new Set(["--attempt"]));
+    const { reconcilePrincipalTaskAttempt } = await import("../../workbench/src/task-run");
     return reconcilePrincipalTaskAttempt(home, {
       id: parsed.positionals[0]!,
       attemptId: taskOption(parsed, "--attempt"),
@@ -542,8 +560,12 @@ async function dispatchTaskCommand(
       );
     }
     const runHome = resolveHome(home);
+    const { createForegroundRunSignalAdapter } = await import(
+      "../../workbench/src/integrations/foreground-run-signals"
+    );
     const adapter = createForegroundRunSignalAdapter({ home: runHome });
     try {
+      const { runPrincipalTask } = await import("../../workbench/src/task-run");
       const result = await runPrincipalTask(home, {
         id: parsed.positionals[0]!,
         workerId: taskOption(parsed, "--worker"),
@@ -1018,6 +1040,72 @@ function parseSetupOptions(raw: string[], helpPath: string[]): { targetRoot?: st
   const options = namedOptions(raw, new Set(["--target-root"]), helpPath);
   return {
     ...(options.has("--target-root") ? { targetRoot: options.get("--target-root")! } : {}),
+  };
+}
+
+function parseSelfCheckOptions(raw: string[]): {
+  cwd?: string;
+  taskId?: string;
+  baselineHead?: string;
+  workerId?: string;
+  opinion: boolean;
+  timeoutMs?: number;
+  trigger?: "manual" | "startup" | "changed";
+  progress: boolean;
+} {
+  let cwd: string | undefined;
+  let taskId: string | undefined;
+  let baselineHead: string | undefined;
+  let workerId: string | undefined;
+  let timeoutMs: number | undefined;
+  let trigger: "manual" | "startup" | "changed" | undefined;
+  let opinion = false;
+  let progress = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const option = raw[index];
+    if (option === "--opinion") {
+      if (opinion) throw new UsageError("duplicate --opinion", ["self-check"]);
+      opinion = true;
+      continue;
+    }
+    if (option === "--progress") {
+      if (progress) throw new UsageError("duplicate --progress", ["self-check"]);
+      progress = true;
+      continue;
+    }
+    const value = raw[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new UsageError(`invalid self-check option sequence: ${raw.join(" ")}`, ["self-check"]);
+    }
+    if (option === "--cwd" && cwd === undefined) cwd = value;
+    else if (option === "--task" && taskId === undefined) taskId = value;
+    else if (option === "--baseline-head" && baselineHead === undefined) baselineHead = value;
+    else if (option === "--worker" && workerId === undefined) workerId = value;
+    else if (option === "--timeout-ms" && timeoutMs === undefined) {
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || parsed < 1) {
+        throw new UsageError("self-check --timeout-ms must be a positive integer", ["self-check"]);
+      }
+      timeoutMs = parsed;
+    } else if (option === "--trigger" && trigger === undefined) {
+      if (value !== "manual" && value !== "startup" && value !== "changed") {
+        throw new UsageError("self-check --trigger must be manual, startup, or changed", ["self-check"]);
+      }
+      trigger = value;
+    } else {
+      throw new UsageError(`invalid self-check option sequence: ${raw.join(" ")}`, ["self-check"]);
+    }
+    index += 1;
+  }
+  return {
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(taskId === undefined ? {} : { taskId }),
+    ...(baselineHead === undefined ? {} : { baselineHead }),
+    ...(workerId === undefined ? {} : { workerId }),
+    opinion,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    ...(trigger === undefined ? {} : { trigger }),
+    progress,
   };
 }
 
