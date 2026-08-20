@@ -251,8 +251,9 @@
             <section class="context-section">
               <p class="eyebrow">浏览器边界</p>
               <p class="context-boundary-note">
-                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+                消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、已应用的光标、草稿与展示焦点。
+                任务状态、执行证据与验收始终以各自 canonical 所有者为准。刷新只重建 projection 与 journal replay，
+                不会重放任何已发送动作。
               </p>
             </section>
           </aside>
@@ -288,8 +289,8 @@
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
-          刷新只重建 journal replay，不重放已发送动作。
+          消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标、草稿与展示焦点。
+          任务与执行证据以 canonical 所有者为准，刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 

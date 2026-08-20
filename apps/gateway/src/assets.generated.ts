@@ -254,8 +254,9 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <section class="context-section">
               <p class="eyebrow">浏览器边界</p>
               <p class="context-boundary-note">
-                浏览器只保留对话 ID、已应用的光标、草稿与展示焦点；任务状态、执行证据与验收始终以各自
-                canonical 所有者为准。刷新只重建 projection 与 journal replay，不会重放任何已发送动作。
+                消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、已应用的光标、草稿与展示焦点。
+                任务状态、执行证据与验收始终以各自 canonical 所有者为准。刷新只重建 projection 与 journal replay，
+                不会重放任何已发送动作。
               </p>
             </section>
           </aside>
@@ -291,8 +292,8 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
         </form>
 
         <p class="conversation-boundary">
-          浏览器只保留对话 ID、光标、草稿与展示焦点；任务与执行证据以 canonical 所有者为准，
-          刷新只重建 journal replay，不重放已发送动作。
+          消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标、草稿与展示焦点。
+          任务与执行证据以 canonical 所有者为准，刷新只重建 journal replay，不重放已发送动作。
         </p>
       </section>
 
@@ -6589,7 +6590,81 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin: 0.65rem 0 0;
   overflow-wrap: anywhere;
   padding-top: 0.65rem;
-  white-space: pre-wrap;
+  white-space: normal;
+}
+
+.turn-response p,
+.turn-response h1,
+.turn-response h2,
+.turn-response h3,
+.turn-response ul,
+.turn-response ol,
+.turn-response pre {
+  margin: 0 0 0.7rem;
+}
+
+.turn-response h1,
+.turn-response h2,
+.turn-response h3 {
+  font-family: var(--serif);
+  line-height: 1.3;
+}
+
+.turn-response h1 { font-size: 1.05rem; }
+.turn-response h2 { font-size: 0.98rem; }
+.turn-response h3 { font-size: 0.92rem; }
+
+.turn-response ul,
+.turn-response ol {
+  padding-left: 1.35rem;
+}
+
+.turn-response code {
+  background: var(--paper-deep);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.88em;
+  padding: 0.08rem 0.25rem;
+}
+
+.turn-response pre {
+  background: var(--ink);
+  color: var(--paper-light);
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.65rem 0.75rem;
+  white-space: pre;
+}
+
+.turn-response pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 0.7rem;
+}
+
+.turn-response table {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  min-width: 100%;
+  white-space: normal;
+}
+
+.turn-response th,
+.turn-response td {
+  border: 1px solid var(--line);
+  padding: 0.38rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.turn-response th {
+  background: var(--paper-deep);
+  font-weight: 650;
 }
 
 .turn-provisional {
@@ -7440,6 +7515,27 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     z-index: 10;
   }
 
+  /* The conversation is the mobile shell, not a panel below the target
+     address. The latter is useful on overview/task surfaces but duplicates
+     the conversation connection context and used to slip underneath this
+     fixed surface, leaving a clipped dark band above the title. */
+  body[data-active-view="conversation"] {
+    overflow: hidden;
+  }
+
+body[data-active-view="conversation"] .target-strip,
+body[data-active-view="conversation"] .principal-snapshot {
+  display: none;
+}
+
+/* The masthead already owns the page-level runtime standing. Keeping a
+   second "对话连接" badge in the conversation header made the mobile shell
+   read like two competing headers; the context panel still retains the
+   conversation id for anyone who needs to inspect the exact journal. */
+body[data-active-view="conversation"] .conversation-standing {
+  display: none;
+}
+
   .conversation-header {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -7963,6 +8059,101 @@ export function restoredPrincipalLocusState(resolved) {
 export const CONVERSATION_ID_STORAGE_KEY = "rosso.conversation.id";
 export function conversationDraftStorageKey(conversationId) {
   return \`rosso.conversation.draft.\${conversationId}\`;
+}
+
+function escapeConversationMarkdownHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderConversationMarkdownInline(value) {
+  let rendered = escapeConversationMarkdownHtml(value);
+  rendered = rendered.replace(/\`([^\`\\n]+)\`/gu, "<code>$1</code>");
+  rendered = rendered.replace(/\\*\\*([^*\\n]+)\\*\\*/gu, "<strong>$1</strong>");
+  rendered = rendered.replace(/\\[([^\\]\\n]+)\\]\\((https?:\\/\\/[^)\\s]+)\\)/gu, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  return rendered;
+}
+
+function conversationMarkdownTableRow(line) {
+  const trimmed = line.trim().replace(/^\\|/u, "").replace(/\\|$/u, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function isConversationMarkdownTableDivider(line) {
+  const cells = conversationMarkdownTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+}
+
+/** Safe, deliberately small Markdown projection for settled conversation replies. */
+export function renderConversationMarkdown(value) {
+  const lines = String(value ?? "").replace(/\\r\\n?/gu, "\\n").split("\\n");
+  const blocks = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") {
+      index += 1;
+      continue;
+    }
+    if (/^\\s*\`\`\`/u.test(line)) {
+      const language = line.trim().slice(3).trim();
+      index += 1;
+      const code = [];
+      while (index < lines.length && !/^\\s*\`\`\`\\s*$/u.test(lines[index] ?? "")) {
+        code.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const className = language ? \` class="language-\${escapeConversationMarkdownHtml(language)}"\` : "";
+      blocks.push(\`<pre><code\${className}>\${escapeConversationMarkdownHtml(code.join("\\n"))}</code></pre>\`);
+      continue;
+    }
+    const next = lines[index + 1] ?? "";
+    if (line.includes("|") && isConversationMarkdownTableDivider(next)) {
+      const heading = conversationMarkdownTableRow(line);
+      index += 2;
+      const rows = [];
+      while (index < lines.length && (lines[index] ?? "").trim() !== "" && (lines[index] ?? "").includes("|")) {
+        rows.push(conversationMarkdownTableRow(lines[index] ?? ""));
+        index += 1;
+      }
+      blocks.push(\`<div class="markdown-table-wrap"><table><thead><tr>\${heading.map((cell) => \`<th>\${renderConversationMarkdownInline(cell)}</th>\`).join("")}</tr></thead><tbody>\${rows.map((row) => \`<tr>\${heading.map((_, cellIndex) => \`<td>\${renderConversationMarkdownInline(row[cellIndex] ?? "")}</td>\`).join("")}</tr>\`).join("")}</tbody></table></div>\`);
+      continue;
+    }
+    const heading = /^(#{1,3})\\s+(.+)$/u.exec(line.trim());
+    if (heading !== null) {
+      const level = heading[1].length;
+      blocks.push(\`<h\${level}>\${renderConversationMarkdownInline(heading[2])}</h\${level}>\`);
+      index += 1;
+      continue;
+    }
+    const list = /^\\s*([-*]|\\d+\\.)\\s+(.+)$/u.exec(line);
+    if (list !== null) {
+      const ordered = /^\\d+\\./u.test(list[1]);
+      const items = [];
+      while (index < lines.length) {
+        const item = /^\\s*([-*]|\\d+\\.)\\s+(.+)$/u.exec(lines[index] ?? "");
+        if (item === null || /^\\d+\\./u.test(item[1]) !== ordered) break;
+        items.push(\`<li>\${renderConversationMarkdownInline(item[2])}</li>\`);
+        index += 1;
+      }
+      blocks.push(\`<\${ordered ? "ol" : "ul"}>\${items.join("")}</\${ordered ? "ol" : "ul"}>\`);
+      continue;
+    }
+    const paragraph = [line];
+    index += 1;
+    while (index < lines.length && (lines[index] ?? "").trim() !== "") {
+      if (/^\\s*\`\`\`/u.test(lines[index] ?? "") || /^(#{1,3})\\s+/.test(lines[index] ?? "")) break;
+      paragraph.push(lines[index] ?? "");
+      index += 1;
+    }
+    blocks.push(\`<p>\${renderConversationMarkdownInline(paragraph.join("\\n")).replaceAll("\\n", "<br>")}</p>\`);
+  }
+  return blocks.join("");
 }
 
 export const CONVERSATION_TURN_TERMINAL_EVENTS = new Set([
@@ -12340,7 +12531,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }
   }
 
-  function restoreConversationIdentity() {
+  async function restoreConversationIdentity() {
     let stored = null;
     try {
       stored = window.localStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
@@ -12348,7 +12539,25 @@ export function taskLocatorEmptySummary(locator, context) {
       stored = null;
     }
     if (!isConversationUuid(stored)) {
-      stored = crypto.randomUUID();
+      // A new browser profile (or a mobile webview that does not retain
+      // localStorage) must first adopt the most recent durable conversation
+      // from this Workbench home. Generating a UUID immediately made the
+      // journal look empty even though the server could replay it.
+      try {
+        const response = await fetch("/api/conversations/latest", {
+          headers: { Accept: "application/json" },
+        });
+        if (response.ok) {
+          const body = await response.json();
+          if (isConversationUuid(body?.conversationId)) {
+            stored = body.conversationId;
+          }
+        }
+      } catch {
+        // A new local conversation remains a truthful fallback when the
+        // server cannot provide a durable identity yet.
+      }
+      stored = isConversationUuid(stored) ? stored : crypto.randomUUID();
       try {
         window.localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, stored);
       } catch {
@@ -13159,7 +13368,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </div>
         \${
           entry.status === "settled"
-            ? \`<p class="turn-response">\${escapeHtml(entry.response)}</p>\`
+            ? \`<div class="turn-response">\${renderConversationMarkdown(entry.response)}</div>\`
             : entry.status === "failed"
               ? \`<p class="turn-failure">\${escapeHtml(entry.reason || "原因未说明")}</p>\`
               : entry.status === "interrupted"
@@ -13224,7 +13433,7 @@ export function taskLocatorEmptySummary(locator, context) {
           <div>
             <p class="eyebrow">Rossovia · 受监督对话入口</p>
             <h3>向 Agent 系统提出事情</h3>
-            <p>发布任务、纠正方向、观察协调回复与执行进展。浏览器只保留对话 ID、光标与草稿；任务与执行证据以 canonical 所有者为准。</p>
+            <p>发布任务、纠正方向、观察协调回复与执行进展。消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标与草稿。</p>
           </div>
         </div>
         <div class="conversation-empty-standing">
@@ -13433,6 +13642,7 @@ export function taskLocatorEmptySummary(locator, context) {
   function renderConversationSurface() {
     const surface = $("#conversation-surface");
     const active = state.activeView === "conversation";
+    document.body.dataset.activeView = state.activeView;
     surface.hidden = !active;
     $("#project-surface").hidden = active;
     if (!active) return;
@@ -14278,11 +14488,13 @@ export function taskLocatorEmptySummary(locator, context) {
     bindConversationEvents();
   }
 
-  restoreConversationIdentity();
   bindEvents();
   render();
-  loadSnapshot();
-  connectConversation();
+  void restoreConversationIdentity().finally(() => {
+    render();
+    loadSnapshot();
+    connectConversation();
+  });
 })();
 `,
   "execution-proposal.js": `const authorityOrder = [

@@ -117,6 +117,22 @@ export function createWorkbenchRequestHandler(
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
 
+    if (request.method === "GET" && url.pathname === "/api/conversations/latest") {
+      if (dependencies.conversationSocket === undefined) {
+        return json({ conversationId: null }, 200);
+      }
+      try {
+        return json({
+          conversationId: await dependencies.conversationSocket.latestConversationId() ?? null,
+        }, 200);
+      } catch (error: unknown) {
+        return json({
+          error: "journal-error",
+          message: error instanceof Error ? error.message : String(error),
+        }, 500);
+      }
+    }
+
     if (request.method === "GET" && url.pathname.startsWith(ConversationSocketPathPrefix)) {
       if (dependencies.conversationSocket === undefined) {
         return json({

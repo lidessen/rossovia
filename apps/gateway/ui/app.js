@@ -291,6 +291,101 @@ export function conversationDraftStorageKey(conversationId) {
   return `rosso.conversation.draft.${conversationId}`;
 }
 
+function escapeConversationMarkdownHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function renderConversationMarkdownInline(value) {
+  let rendered = escapeConversationMarkdownHtml(value);
+  rendered = rendered.replace(/`([^`\n]+)`/gu, "<code>$1</code>");
+  rendered = rendered.replace(/\*\*([^*\n]+)\*\*/gu, "<strong>$1</strong>");
+  rendered = rendered.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/gu, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  return rendered;
+}
+
+function conversationMarkdownTableRow(line) {
+  const trimmed = line.trim().replace(/^\|/u, "").replace(/\|$/u, "");
+  return trimmed.split("|").map((cell) => cell.trim());
+}
+
+function isConversationMarkdownTableDivider(line) {
+  const cells = conversationMarkdownTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+}
+
+/** Safe, deliberately small Markdown projection for settled conversation replies. */
+export function renderConversationMarkdown(value) {
+  const lines = String(value ?? "").replace(/\r\n?/gu, "\n").split("\n");
+  const blocks = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index] ?? "";
+    if (line.trim() === "") {
+      index += 1;
+      continue;
+    }
+    if (/^\s*```/u.test(line)) {
+      const language = line.trim().slice(3).trim();
+      index += 1;
+      const code = [];
+      while (index < lines.length && !/^\s*```\s*$/u.test(lines[index] ?? "")) {
+        code.push(lines[index] ?? "");
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const className = language ? ` class="language-${escapeConversationMarkdownHtml(language)}"` : "";
+      blocks.push(`<pre><code${className}>${escapeConversationMarkdownHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    const next = lines[index + 1] ?? "";
+    if (line.includes("|") && isConversationMarkdownTableDivider(next)) {
+      const heading = conversationMarkdownTableRow(line);
+      index += 2;
+      const rows = [];
+      while (index < lines.length && (lines[index] ?? "").trim() !== "" && (lines[index] ?? "").includes("|")) {
+        rows.push(conversationMarkdownTableRow(lines[index] ?? ""));
+        index += 1;
+      }
+      blocks.push(`<div class="markdown-table-wrap"><table><thead><tr>${heading.map((cell) => `<th>${renderConversationMarkdownInline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${heading.map((_, cellIndex) => `<td>${renderConversationMarkdownInline(row[cellIndex] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      continue;
+    }
+    const heading = /^(#{1,3})\s+(.+)$/u.exec(line.trim());
+    if (heading !== null) {
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${renderConversationMarkdownInline(heading[2])}</h${level}>`);
+      index += 1;
+      continue;
+    }
+    const list = /^\s*([-*]|\d+\.)\s+(.+)$/u.exec(line);
+    if (list !== null) {
+      const ordered = /^\d+\./u.test(list[1]);
+      const items = [];
+      while (index < lines.length) {
+        const item = /^\s*([-*]|\d+\.)\s+(.+)$/u.exec(lines[index] ?? "");
+        if (item === null || /^\d+\./u.test(item[1]) !== ordered) break;
+        items.push(`<li>${renderConversationMarkdownInline(item[2])}</li>`);
+        index += 1;
+      }
+      blocks.push(`<${ordered ? "ol" : "ul"}>${items.join("")}</${ordered ? "ol" : "ul"}>`);
+      continue;
+    }
+    const paragraph = [line];
+    index += 1;
+    while (index < lines.length && (lines[index] ?? "").trim() !== "") {
+      if (/^\s*```/u.test(lines[index] ?? "") || /^(#{1,3})\s+/.test(lines[index] ?? "")) break;
+      paragraph.push(lines[index] ?? "");
+      index += 1;
+    }
+    blocks.push(`<p>${renderConversationMarkdownInline(paragraph.join("\n")).replaceAll("\n", "<br>")}</p>`);
+  }
+  return blocks.join("");
+}
+
 export const CONVERSATION_TURN_TERMINAL_EVENTS = new Set([
   "coordinator.turn-settled",
   "coordinator.turn-failed",
@@ -4666,7 +4761,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }
   }
 
-  function restoreConversationIdentity() {
+  async function restoreConversationIdentity() {
     let stored = null;
     try {
       stored = window.localStorage.getItem(CONVERSATION_ID_STORAGE_KEY);
@@ -4674,7 +4769,25 @@ export function taskLocatorEmptySummary(locator, context) {
       stored = null;
     }
     if (!isConversationUuid(stored)) {
-      stored = crypto.randomUUID();
+      // A new browser profile (or a mobile webview that does not retain
+      // localStorage) must first adopt the most recent durable conversation
+      // from this Workbench home. Generating a UUID immediately made the
+      // journal look empty even though the server could replay it.
+      try {
+        const response = await fetch("/api/conversations/latest", {
+          headers: { Accept: "application/json" },
+        });
+        if (response.ok) {
+          const body = await response.json();
+          if (isConversationUuid(body?.conversationId)) {
+            stored = body.conversationId;
+          }
+        }
+      } catch {
+        // A new local conversation remains a truthful fallback when the
+        // server cannot provide a durable identity yet.
+      }
+      stored = isConversationUuid(stored) ? stored : crypto.randomUUID();
       try {
         window.localStorage.setItem(CONVERSATION_ID_STORAGE_KEY, stored);
       } catch {
@@ -5485,7 +5598,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </div>
         ${
           entry.status === "settled"
-            ? `<p class="turn-response">${escapeHtml(entry.response)}</p>`
+            ? `<div class="turn-response">${renderConversationMarkdown(entry.response)}</div>`
             : entry.status === "failed"
               ? `<p class="turn-failure">${escapeHtml(entry.reason || "原因未说明")}</p>`
               : entry.status === "interrupted"
@@ -5550,7 +5663,7 @@ export function taskLocatorEmptySummary(locator, context) {
           <div>
             <p class="eyebrow">Rossovia · 受监督对话入口</p>
             <h3>向 Agent 系统提出事情</h3>
-            <p>发布任务、纠正方向、观察协调回复与执行进展。浏览器只保留对话 ID、光标与草稿；任务与执行证据以 canonical 所有者为准。</p>
+            <p>发布任务、纠正方向、观察协调回复与执行进展。消息记录由本机 Workbench journal 持久化；浏览器只保留对话 ID、光标与草稿。</p>
           </div>
         </div>
         <div class="conversation-empty-standing">
@@ -5759,6 +5872,7 @@ export function taskLocatorEmptySummary(locator, context) {
   function renderConversationSurface() {
     const surface = $("#conversation-surface");
     const active = state.activeView === "conversation";
+    document.body.dataset.activeView = state.activeView;
     surface.hidden = !active;
     $("#project-surface").hidden = active;
     if (!active) return;
@@ -6604,9 +6718,11 @@ export function taskLocatorEmptySummary(locator, context) {
     bindConversationEvents();
   }
 
-  restoreConversationIdentity();
   bindEvents();
   render();
-  loadSnapshot();
-  connectConversation();
+  void restoreConversationIdentity().finally(() => {
+    render();
+    loadSnapshot();
+    connectConversation();
+  });
 })();

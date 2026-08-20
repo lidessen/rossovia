@@ -5097,7 +5097,81 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin: 0.65rem 0 0;
   overflow-wrap: anywhere;
   padding-top: 0.65rem;
-  white-space: pre-wrap;
+  white-space: normal;
+}
+
+.turn-response p,
+.turn-response h1,
+.turn-response h2,
+.turn-response h3,
+.turn-response ul,
+.turn-response ol,
+.turn-response pre {
+  margin: 0 0 0.7rem;
+}
+
+.turn-response h1,
+.turn-response h2,
+.turn-response h3 {
+  font-family: var(--serif);
+  line-height: 1.3;
+}
+
+.turn-response h1 { font-size: 1.05rem; }
+.turn-response h2 { font-size: 0.98rem; }
+.turn-response h3 { font-size: 0.92rem; }
+
+.turn-response ul,
+.turn-response ol {
+  padding-left: 1.35rem;
+}
+
+.turn-response code {
+  background: var(--paper-deep);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 0.88em;
+  padding: 0.08rem 0.25rem;
+}
+
+.turn-response pre {
+  background: var(--ink);
+  color: var(--paper-light);
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.65rem 0.75rem;
+  white-space: pre;
+}
+
+.turn-response pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.markdown-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 0.7rem;
+}
+
+.turn-response table {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  min-width: 100%;
+  white-space: normal;
+}
+
+.turn-response th,
+.turn-response td {
+  border: 1px solid var(--line);
+  padding: 0.38rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.turn-response th {
+  background: var(--paper-deep);
+  font-weight: 650;
 }
 
 .turn-provisional {
@@ -5947,6 +6021,27 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     width: 100%;
     z-index: 10;
   }
+
+  /* The conversation is the mobile shell, not a panel below the target
+     address. The latter is useful on overview/task surfaces but duplicates
+     the conversation connection context and used to slip underneath this
+     fixed surface, leaving a clipped dark band above the title. */
+  body[data-active-view="conversation"] {
+    overflow: hidden;
+  }
+
+body[data-active-view="conversation"] .target-strip,
+body[data-active-view="conversation"] .principal-snapshot {
+  display: none;
+}
+
+/* The masthead already owns the page-level runtime standing. Keeping a
+   second "对话连接" badge in the conversation header made the mobile shell
+   read like two competing headers; the context panel still retains the
+   conversation id for anyone who needs to inspect the exact journal. */
+body[data-active-view="conversation"] .conversation-standing {
+  display: none;
+}
 
   .conversation-header {
     align-items: flex-start;
