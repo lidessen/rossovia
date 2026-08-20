@@ -107,12 +107,15 @@ runtime migration plan owns stage order and exit evidence, the scoped
 Workbench instructions own commands and their authority limits, and the
 Mission status is a current coordination projection only.
 
-When developing Rossovia against its own local runtime, the optional
-[dogfood development profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md)
-is a prompt-like orientation for snapshot, rebuild, restart, rollback, and
-read-only observation. It is not a mandatory workflow or a new authority;
-follow the existing Workbench, Chronicle, Task, and Operating Protocol sources
-for actual commands and state.
+When a user asks Rossovia to improve a named project through the conversation
+entry, activate the on-demand [dogfood Skill](skills/dogfood/SKILL.md). It
+guides project resolution, linked-worktree/Task setup, bounded execution,
+verification, and (when Rossovia itself is the target) snapshot, rebuild,
+restart, rollback, and optional observation. It is not resident guidance or a
+new authority. Load the detailed [dogfood development profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md)
+only when the local runtime loop is relevant, and follow the existing
+Workbench, Chronicle, Task, and Operating Protocol sources for actual commands
+and state.
 
 ## Integration entry
 

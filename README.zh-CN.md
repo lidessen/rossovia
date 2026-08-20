@@ -140,6 +140,7 @@ memory 不会成为生效偏好。
 | Skill | 命令 | 用途 |
 |-------|------|------|
 | [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | 判断并运行有边界的原生 sub-agent 贡献，同时由 Main Agent 保留整体、综合与确保验证发生的责任；不依赖 Workbench 或其他编排运行时。 |
+| [dogfood](skills/dogfood/SKILL.md) | `/dogfood` | 按需从 Rossovia 对话入口开发项目：解析项目、使用一个关联工作树和 Task，执行并验证最小变更；目标是 Rossovia 自身时再处理本地构建、重启和回退。 |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | 原则序列的自身验证守护者。先保留带引文的研究，再提出候选、召开选择性的 P-ID 审议，并试行由人指定的替代项；只有经人批准的采纳才能进入核心。 |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | 依据真实运行时，判断权威项目信息如何在能够改变行动的时刻抵达 Agent，而不预设固定层级或文件名约定。 |
 | [attention-management](skills/attention-management/SKILL.md) | `/attention-management` | 在漂移、纠正、分支结算或任务切换后恢复下一项 Agent 行动的支配关系；工作性格、角色进入、口头禅与习惯载体仍是[已保留的实验猜想](principles/research/agent-attention-disposition-and-habit.md)。 |
@@ -196,6 +197,7 @@ effect、自治完成、远程权威、集成、发布、产品验收或生产�
 
 | 如果你正在…… | 使用 |
 |---|---|
+| 通过 Rossovia 对话入口要求改进一个明确项目或 Rossovia 自身，并需要项目、工作树、Task 和本地运行时处理 | `/dogfood` |
 | 判断何时使用原生 sub-agent、如何划分独立贡献、隔离写入所有权或安排 fresh reviewer | `/agent-delegation` |
 | 研究重复出现的证据是否足以形成可复用的核心原则 | `/principle-cultivation research` |
 | 设计、审计或验证项目上下文如何抵达 Agent | `/context-engineering` |
@@ -254,6 +256,7 @@ npx skills add lidessen/rossovia --list
 
 ```bash
 npx skills add lidessen/rossovia --skill improve-agent-workflow
+npx skills add lidessen/rossovia --skill dogfood
 ```
 
 添加 `-g` 可进行跨项目可用的个人安装；当目标不是自动探测 Agent 时，可添加
@@ -286,6 +289,7 @@ $improve-agent-workflow audit why agents miss this project instruction
 $improve-agent-workflow improve this repository's release-note skill and verify it
 $model-evaluation compare these two execution profiles for repository review work
 $task-shaping decide whether this task is reliable, guarded, transformable, or should escalate
+$dogfood 通过 Rossovia 改进这个明确项目，使用一个关联工作树并返回可验证证据
 ```
 
 其他 Agent 可能通过斜杠命令、提及、菜单或仅由模型选择来提供显式激活。调用形式

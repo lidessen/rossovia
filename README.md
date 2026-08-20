@@ -163,6 +163,7 @@ retained evaluations rather than replacing them.
 | Skill | Command | Description |
 |-------|---------|-------------|
 | [agent-delegation](skills/agent-delegation/SKILL.md) | `/agent-delegation` | Decide and operate bounded native sub-agent contributions while the Main Agent retains the whole, synthesis, and responsibility for ensuring verification; it does not require Workbench or another orchestration runtime. |
+| [dogfood](skills/dogfood/SKILL.md) | `/dogfood` | On-demand Rossovia development entry: resolve the project, use one linked worktree and Task, run and verify the smallest change, and rebuild/restart/rollback Rossovia itself when needed. |
 | [principle-cultivation](skills/principle-cultivation/SKILL.md) | `/principle-cultivation` | Dogfood steward for the Principle Sequence. Preserves cited research before proposal, convenes selective P-ID reviews, and trials human-nominated alternates; only human-approved adoptions enter the core. |
 | [context-engineering](skills/context-engineering/SKILL.md) | `/context-engineering` | Decide how authoritative project information reaches an agent at the moment it changes action, using the actual runtime rather than a fixed layer or filename convention. |
 | [attention-management](skills/attention-management/SKILL.md) | `/attention-management` | Restore the governing relation for the next Agent action after drift, correction, branch settlement, or task switch; working-character, role-entry, catchphrase, and habit carriers remain [recorded experimental hypotheses](principles/research/agent-attention-disposition-and-habit.md). |
@@ -230,6 +231,7 @@ operating mode remains human-initiated.
 
 | If you're... | Use |
 |---|---|
+| Asking Rossovia through conversation to improve a named project or itself, with project/worktree/Task and local-runtime handling | `/dogfood` |
 | Researching whether recurring evidence merits a reusable core principle | `/principle-cultivation research` |
 | Designing, auditing, or verifying how project context reaches an agent | `/context-engineering` |
 | Restoring an Agent's mainline after drift, deciding whether a new branch should be retained, or evaluating a reminder or habit treatment | `/attention-management` |
@@ -283,6 +285,7 @@ Install one skill into the current project (the default scope):
 
 ```bash
 npx skills add lidessen/rossovia --skill improve-agent-workflow
+npx skills add lidessen/rossovia --skill dogfood
 ```
 
 Add `-g` for a personal installation available across projects, or `-a codex`
@@ -327,6 +330,7 @@ $project-cognition bootstrap this repository for future architecture and impact 
 $project-cognition refresh the retained model across this revision
 $model-evaluation compare these two execution profiles for repository review work
 $task-shaping decide whether this task is reliable, guarded, transformable, or should escalate
+$dogfood improve the named project through Rossovia, using one linked worktree and returning verified evidence
 ```
 
 Other agents may expose explicit activation through a slash command, mention,

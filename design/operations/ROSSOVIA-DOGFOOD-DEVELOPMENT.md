@@ -3,6 +3,11 @@
 **Status:** project-local development guidance. This is a prompt-like working
 profile, not a mandatory protocol, a scheduler, or a new task lifecycle.
 
+The conversational entry point is the on-demand [`dogfood` Skill](../../skills/dogfood/SKILL.md).
+Use that Skill to decide whether a request should enter this profile; keep this
+document as the detailed local-runtime reference rather than resident Agent
+instructions.
+
 This note describes one useful way to develop Rossovia by running Rossovia on
 itself. It is deliberately small: keep the existing Workbench, Task,
 Chronicle, worker, and operating-protocol surfaces; do not introduce a second
