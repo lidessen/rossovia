@@ -139,6 +139,10 @@ evidence for an attention treatment.
   reactivation is a treatment to test, not a ritual.
 - Do not let a catchphrase, character, plan, summary, or status field outrank
   the Principal message and authoritative sources it projects.
+- When a delegated task needs owner/status/dependency visibility, use the
+  existing coordination projection owned by the development method; this Skill
+  restores attention to the governing relation but does not become the project
+  plan or delegation tracker.
 - Do not force every task through an orientation ceremony. Additional
   reasoning, latency, and context are costs and possible confounders.
 - Do not use a return-to-mainline cue after a genuine task switch.

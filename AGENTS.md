@@ -57,6 +57,13 @@ does not take over producer work or treat a producer's checks or self-report as
 independent review. This proxy relation does not transfer the human Principal's
 approval, budget, acceptance, or merge authority.
 
+When delegated work is parallel or has multiple owners, Main must use the
+existing plan/todo/task tools as a small coordination projection: record each
+owner, state, dependency, acceptance/evidence, and rejoin or merge action, and
+refresh it at dispatch, blockage, reassignment, and settlement. This is a
+recoverable scheduling view, not a new authority, approval gate, queue, or
+lifecycle; the canonical method is in `rossovia-development`.
+
 When an execution owner cannot progress, the Main Agent may intervene in the
 conditions of that owner's performance: clarify the objective or acceptance,
 restore missing context, improve tool or strategy guidance, give feedback, or

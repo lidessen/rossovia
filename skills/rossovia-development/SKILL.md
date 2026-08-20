@@ -53,6 +53,16 @@ capability boundary. This is a task-shaping exception, not a new authority,
 approval gate, queue, or reason to fan out unconditionally. Main should not
 duplicate a delegated implementation merely to retain local control.
 
+When work is parallel or has multiple owners, Main must maintain a small
+coordination projection in the existing plan/todo/task tools before releasing
+the work and as owners return. For every contribution, make the owner, state,
+dependencies, acceptance/evidence, and rejoin or merge action explicit. Keep
+that projection current when work starts, blocks, changes owner, or settles.
+It is a recoverable scheduling view, not a new task database, approval gate,
+authority, or lifecycle; `attention-management` may restore the governing
+relation, and `practice-cycle` may choose the next practice, but neither
+replaces this coordination responsibility.
+
 ## Start
 
 Recover this small object before changing anything:
@@ -80,7 +90,9 @@ a worker.
    registering unspecified folders.
 2. Shape one bounded change: outcome, in-scope effect, non-goals, disconfirming
    checks, and a reconstructible return. Identify contributions that can settle
-   independently and the whole obligations Main retains.
+   independently and the whole obligations Main retains. If there are multiple
+   owners, record the owner/state/dependency/acceptance/rejoin map in the
+   existing plan/todo/task surface before dispatch.
 3. Determine the mode above and assign each contribution to one producer or
    reviewer. Never run the same write contribution through Rossovia and an
    external harness at once.
@@ -155,6 +167,7 @@ Producer and effect boundary:
 Change and observable result:
 Checks and independent evidence:
 Runtime snapshot/restart/observer status:
+Plan/todo/task owner-state-dependency-acceptance/rejoin status:
 Limitations, query gaps, or human intervention:
 Next ordinary action and Principal decision:
 ```
