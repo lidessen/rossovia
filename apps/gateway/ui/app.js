@@ -1186,6 +1186,37 @@ export function taskLocatorEmptySummary(locator, context) {
     return rendered.replace(/\uE000(\d+)\uE001/gu, (_, index) => tokens[Number(index)]);
   }
 
+  function conversationMarkdownTableCells(value) {
+    const line = text(value, "").trim();
+    if (!line.includes("|")) return null;
+    const content = line.startsWith("|") ? line.slice(1) : line;
+    const withoutTrailingPipe = content.endsWith("|")
+      ? content.slice(0, -1)
+      : content;
+    const cells = [];
+    let cell = "";
+    let escaped = false;
+    for (const character of withoutTrailingPipe) {
+      if (character === "|" && !escaped) {
+        cells.push(cell.trim().replaceAll("\\|", "|"));
+        cell = "";
+      } else {
+        cell += character;
+      }
+      escaped = character === "\\" && !escaped;
+      if (character !== "\\") escaped = false;
+    }
+    cells.push(cell.trim().replaceAll("\\|", "|"));
+    return cells;
+  }
+
+  function isConversationMarkdownTableSeparator(value, columnCount) {
+    const cells = conversationMarkdownTableCells(value);
+    return cells !== null
+      && cells.length === columnCount
+      && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+  }
+
   function renderConversationMarkdown(value) {
     const lines = text(value, "").replaceAll("\r\n", "\n").split("\n");
     const blocks = [];
@@ -1214,11 +1245,46 @@ export function taskLocatorEmptySummary(locator, context) {
       code = null;
     };
 
-    for (const line of lines) {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
       const fence = line.match(/^\s*```\s*([\w-]+)?\s*$/u);
       if (code) {
         if (fence) flushCode();
         else code.lines.push(line);
+        continue;
+      }
+      const tableHeader = conversationMarkdownTableCells(line);
+      if (tableHeader !== null
+        && tableHeader.length > 0
+        && lineIndex + 1 < lines.length
+        && isConversationMarkdownTableSeparator(lines[lineIndex + 1], tableHeader.length)) {
+        flushParagraph();
+        flushList();
+        const tableRows = [];
+        lineIndex += 1;
+        while (lineIndex + 1 < lines.length) {
+          const row = conversationMarkdownTableCells(lines[lineIndex + 1]);
+          if (row === null) break;
+          tableRows.push(row);
+          lineIndex += 1;
+        }
+        const normalizeRow = (row) => {
+          const normalized = row.slice(0, tableHeader.length);
+          if (row.length > tableHeader.length) {
+            normalized[tableHeader.length - 1] = row
+              .slice(tableHeader.length - 1)
+              .join(" | ");
+          }
+          while (normalized.length < tableHeader.length) normalized.push("");
+          return normalized;
+        };
+        const renderTableRow = (row, tag) => `<tr>${normalizeRow(row).map((cell) =>
+          `<${tag}>${renderConversationInlineMarkdown(cell)}</${tag}>`,
+        ).join("")}</tr>`;
+        blocks.push(`<div class="turn-table-wrap"><table>
+          <thead>${renderTableRow(tableHeader, "th")}</thead>
+          <tbody>${tableRows.map((row) => renderTableRow(row, "td")).join("")}</tbody>
+        </table></div>`);
         continue;
       }
       if (fence) {

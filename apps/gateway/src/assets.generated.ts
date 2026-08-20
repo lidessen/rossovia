@@ -5883,8 +5883,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 0.9rem 1.4rem;
 }
 
-.conversation-header > div:first-child,
-.conversation-standing > div {
+.conversation-header > div:first-child {
   min-width: 0;
 }
 
@@ -5906,35 +5905,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .conversation-standing {
-  align-items: center;
-  display: flex;
-  flex-shrink: 0;
-  gap: 0.6rem;
-}
-
-.conversation-standing > div {
-  display: grid;
-  gap: 0.1rem;
-  text-align: right;
-}
-
-.conversation-standing span {
-  color: var(--ink-faint);
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.conversation-standing strong {
-  font-size: 0.8rem;
-}
-
-.conversation-standing code {
-  color: var(--ink-faint);
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  max-width: 24ch;
-  overflow-wrap: anywhere;
+  display: none;
 }
 
 .conversation-reconnect {
@@ -6757,6 +6728,32 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
 .turn-response-markdown a {
   overflow-wrap: anywhere;
+}
+
+.turn-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.turn-response-markdown table {
+  border-collapse: collapse;
+  min-width: 100%;
+  width: max-content;
+}
+
+.turn-response-markdown th,
+.turn-response-markdown td {
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.turn-response-markdown th {
+  background: var(--paper-deep);
+  font-weight: 650;
 }
 
 .turn-provisional {
@@ -7624,29 +7621,6 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .conversation-header p {
     display: none;
-  }
-
-  .conversation-standing {
-    align-self: stretch;
-    display: grid;
-    flex-shrink: 1;
-    gap: 0.55rem;
-    grid-template-columns: auto minmax(0, 1fr);
-    min-width: 0;
-    width: 100%;
-  }
-
-  .conversation-standing > div {
-    text-align: left;
-  }
-
-  .conversation-standing strong,
-  .conversation-standing code {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .conversation-reconnect {
@@ -9054,6 +9028,37 @@ export function taskLocatorEmptySummary(locator, context) {
     return rendered.replace(/\\uE000(\\d+)\\uE001/gu, (_, index) => tokens[Number(index)]);
   }
 
+  function conversationMarkdownTableCells(value) {
+    const line = text(value, "").trim();
+    if (!line.includes("|")) return null;
+    const content = line.startsWith("|") ? line.slice(1) : line;
+    const withoutTrailingPipe = content.endsWith("|")
+      ? content.slice(0, -1)
+      : content;
+    const cells = [];
+    let cell = "";
+    let escaped = false;
+    for (const character of withoutTrailingPipe) {
+      if (character === "|" && !escaped) {
+        cells.push(cell.trim().replaceAll("\\\\|", "|"));
+        cell = "";
+      } else {
+        cell += character;
+      }
+      escaped = character === "\\\\" && !escaped;
+      if (character !== "\\\\") escaped = false;
+    }
+    cells.push(cell.trim().replaceAll("\\\\|", "|"));
+    return cells;
+  }
+
+  function isConversationMarkdownTableSeparator(value, columnCount) {
+    const cells = conversationMarkdownTableCells(value);
+    return cells !== null
+      && cells.length === columnCount
+      && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+  }
+
   function renderConversationMarkdown(value) {
     const lines = text(value, "").replaceAll("\\r\\n", "\\n").split("\\n");
     const blocks = [];
@@ -9082,11 +9087,46 @@ export function taskLocatorEmptySummary(locator, context) {
       code = null;
     };
 
-    for (const line of lines) {
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
       const fence = line.match(/^\\s*\`\`\`\\s*([\\w-]+)?\\s*$/u);
       if (code) {
         if (fence) flushCode();
         else code.lines.push(line);
+        continue;
+      }
+      const tableHeader = conversationMarkdownTableCells(line);
+      if (tableHeader !== null
+        && tableHeader.length > 0
+        && lineIndex + 1 < lines.length
+        && isConversationMarkdownTableSeparator(lines[lineIndex + 1], tableHeader.length)) {
+        flushParagraph();
+        flushList();
+        const tableRows = [];
+        lineIndex += 1;
+        while (lineIndex + 1 < lines.length) {
+          const row = conversationMarkdownTableCells(lines[lineIndex + 1]);
+          if (row === null) break;
+          tableRows.push(row);
+          lineIndex += 1;
+        }
+        const normalizeRow = (row) => {
+          const normalized = row.slice(0, tableHeader.length);
+          if (row.length > tableHeader.length) {
+            normalized[tableHeader.length - 1] = row
+              .slice(tableHeader.length - 1)
+              .join(" | ");
+          }
+          while (normalized.length < tableHeader.length) normalized.push("");
+          return normalized;
+        };
+        const renderTableRow = (row, tag) => \`<tr>\${normalizeRow(row).map((cell) =>
+          \`<\${tag}>\${renderConversationInlineMarkdown(cell)}</\${tag}>\`,
+        ).join("")}</tr>\`;
+        blocks.push(\`<div class="turn-table-wrap"><table>
+          <thead>\${renderTableRow(tableHeader, "th")}</thead>
+          <tbody>\${tableRows.map((row) => renderTableRow(row, "td")).join("")}</tbody>
+        </table></div>\`);
         continue;
       }
       if (fence) {
