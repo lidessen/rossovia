@@ -5883,6 +5883,11 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   padding: 0.9rem 1.4rem;
 }
 
+.conversation-header > div:first-child,
+.conversation-standing > div {
+  min-width: 0;
+}
+
 .conversation-header h2 {
   font-size: 1.35rem;
   margin: 0;
@@ -6381,6 +6386,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   cursor: pointer;
 }
 
+.turn-sources-explainer {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  margin: 0.45rem 0 0;
+}
+
 .turn-sources ul {
   display: grid;
   gap: 0.25rem;
@@ -6390,6 +6402,27 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 }
 
 .turn-sources li {
+  align-items: start;
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+.turn-sources li > span {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+}
+
+.turn-sources li > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.turn-sources li strong {
+  font-size: 0.68rem;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
 
@@ -6651,7 +6684,79 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   margin: 0.65rem 0 0;
   overflow-wrap: anywhere;
   padding-top: 0.65rem;
-  white-space: pre-wrap;
+}
+
+.turn-response-markdown > :first-child {
+  margin-top: 0;
+}
+
+.turn-response-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.turn-response-markdown p,
+.turn-response-markdown h1,
+.turn-response-markdown h2,
+.turn-response-markdown h3,
+.turn-response-markdown ul,
+.turn-response-markdown ol,
+.turn-response-markdown pre {
+  margin: 0.7rem 0;
+}
+
+.turn-response-markdown h1,
+.turn-response-markdown h2,
+.turn-response-markdown h3 {
+  line-height: 1.3;
+}
+
+.turn-response-markdown h1 {
+  font-size: 1.15rem;
+}
+
+.turn-response-markdown h2 {
+  font-size: 1.02rem;
+}
+
+.turn-response-markdown h3 {
+  font-size: 0.92rem;
+}
+
+.turn-response-markdown ul,
+.turn-response-markdown ol {
+  padding-left: 1.3rem;
+}
+
+.turn-response-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.turn-response-markdown code {
+  background: var(--paper-deep);
+  border: 1px solid var(--line-light);
+  font-family: var(--mono);
+  font-size: 0.82em;
+  padding: 0.08rem 0.24rem;
+}
+
+.turn-response-markdown pre {
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.65rem 0.75rem;
+  white-space: pre;
+}
+
+.turn-response-markdown pre code {
+  background: transparent;
+  border: 0;
+  display: block;
+  padding: 0;
+}
+
+.turn-response-markdown a {
+  overflow-wrap: anywhere;
 }
 
 .turn-provisional {
@@ -7509,8 +7614,10 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .conversation-header {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    align-items: stretch;
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     padding: 0.8rem 0.85rem;
   }
@@ -7520,7 +7627,26 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .conversation-standing {
-    align-self: flex-end;
+    align-self: stretch;
+    display: grid;
+    flex-shrink: 1;
+    gap: 0.55rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    min-width: 0;
+    width: 100%;
+  }
+
+  .conversation-standing > div {
+    text-align: left;
+  }
+
+  .conversation-standing strong,
+  .conversation-standing code {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .conversation-reconnect {
@@ -8901,6 +9027,104 @@ export function taskLocatorEmptySummary(locator, context) {
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  // Conversation responses are model-authored text, so render only the small
+  // Markdown vocabulary the feed needs after escaping every user-controlled
+  // character. Raw HTML never enters the returned markup.
+  function renderConversationInlineMarkdown(value) {
+    const tokens = [];
+    const token = (html) => {
+      const marker = \`\\uE000\${tokens.length}\\uE001\`;
+      tokens.push(html);
+      return marker;
+    };
+    let rendered = escapeHtml(value);
+    rendered = rendered.replace(/\`([^\`\\n]+)\`/gu, (_, code) =>
+      token(\`<code>\${code}</code>\`),
+    );
+    rendered = rendered.replace(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)/giu, (_, label, href) =>
+      token(\`<a href="\${href}" target="_blank" rel="noreferrer">\${label}</a>\`),
+    );
+    rendered = rendered
+      .replace(/\\*\\*([^*\\n]+)\\*\\*/gu, "<strong>$1</strong>")
+      .replace(/__([^_\\n]+)__/gu, "<strong>$1</strong>")
+      .replace(/(?<!\\*)\\*([^*\\n]+)\\*(?!\\*)/gu, "<em>$1</em>")
+      .replace(/(?<!_)_([^_\\n]+)_(?!_)/gu, "<em>$1</em>");
+    return rendered.replace(/\\uE000(\\d+)\\uE001/gu, (_, index) => tokens[Number(index)]);
+  }
+
+  function renderConversationMarkdown(value) {
+    const lines = text(value, "").replaceAll("\\r\\n", "\\n").split("\\n");
+    const blocks = [];
+    let paragraph = [];
+    let list = null;
+    let code = null;
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      blocks.push(\`<p>\${paragraph.map(renderConversationInlineMarkdown).join("<br>")}</p>\`);
+      paragraph = [];
+    };
+    const flushList = () => {
+      if (!list) return;
+      blocks.push(\`<\${list.kind}>\${list.items.map((item) =>
+        \`<li>\${renderConversationInlineMarkdown(item)}</li>\`,
+      ).join("")}</\${list.kind}>\`);
+      list = null;
+    };
+    const flushCode = () => {
+      if (!code) return;
+      const language = code.language
+        ? \` class="language-\${escapeHtml(code.language)}"\`
+        : "";
+      blocks.push(\`<pre><code\${language}>\${escapeHtml(code.lines.join("\\n"))}</code></pre>\`);
+      code = null;
+    };
+
+    for (const line of lines) {
+      const fence = line.match(/^\\s*\`\`\`\\s*([\\w-]+)?\\s*$/u);
+      if (code) {
+        if (fence) flushCode();
+        else code.lines.push(line);
+        continue;
+      }
+      if (fence) {
+        flushParagraph();
+        flushList();
+        code = { language: fence[1] || "", lines: [] };
+        continue;
+      }
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        continue;
+      }
+      const heading = line.match(/^\\s*(#{1,3})\\s+(.+?)\\s*#*\\s*$/u);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const level = heading[1].length;
+        blocks.push(\`<h\${level}>\${renderConversationInlineMarkdown(heading[2])}</h\${level}>\`);
+        continue;
+      }
+      const unordered = line.match(/^\\s*[-*+]\\s+(.+)$/u);
+      const ordered = line.match(/^\\s*\\d+[.)]\\s+(.+)$/u);
+      if (unordered || ordered) {
+        flushParagraph();
+        const kind = unordered ? "ul" : "ol";
+        if (list && list.kind !== kind) flushList();
+        if (!list) list = { kind, items: [] };
+        list.items.push((unordered || ordered)[1]);
+        continue;
+      }
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph();
+    flushList();
+    flushCode();
+    return blocks.join("");
   }
 
   function first(object, keys, fallback = undefined) {
@@ -13287,14 +13511,35 @@ export function taskLocatorEmptySummary(locator, context) {
       && !entry.terminal
       && activeConversationTurn()?.turnId === entry.turnId;
     const interruptSent = entry.interruptRequested === true;
-    const sources = entry.disclosedSources.length
+    const sourceCount = entry.disclosedSources.length;
+    const selectorCount = entry.sourceRevisionSelectors.length;
+    const disclosureSummary = sourceCount && selectorCount
+      ? \`回答参考了 \${sourceCount} 项材料，并记录了 \${selectorCount} 条版本选择\`
+      : sourceCount
+        ? \`回答参考了 \${sourceCount} 项材料\`
+        : \`回答记录了 \${selectorCount} 条版本选择\`;
+    const sources = sourceCount || selectorCount
       ? \`<details class="turn-sources">
-           <summary>披露来源 \${entry.disclosedSources.length} · 版本选择 \${entry.sourceRevisionSelectors.length}</summary>
+           <summary>\${disclosureSummary} · 展开查看依据</summary>
+           <p class="turn-sources-explainer">这里说明回答引用了哪些材料，以及使用了哪些版本选择记录；展开后可核对原始标识。</p>
            <ul>
              \${entry.disclosedSources.map((source) =>
-               \`<li><code>\${escapeHtml(text(first(source, ["ref"]), "—"))}</code></li>\`).join("")}
+               \`<li>
+                  <span>来源材料</span>
+                  <div>
+                    <strong>\${escapeHtml(text(first(source, ["title", "label", "name", "description"]), "来源记录"))}</strong>
+                    <code>ref: \${escapeHtml(text(first(source, ["ref"]), "—"))}</code>
+                  </div>
+                </li>\`).join("")}
              \${entry.sourceRevisionSelectors.map((selector) =>
-               \`<li><span>selector</span> <code>\${escapeHtml(text(first(selector, ["source"]), "—"))}@\${escapeHtml(text(first(selector, ["revision"]), "—"))}</code></li>\`).join("")}
+               \`<li>
+                  <span>版本选择</span>
+                  <div>
+                    <strong>回答使用的来源版本</strong>
+                    <code>source: \${escapeHtml(text(first(selector, ["source"]), "—"))}</code>
+                    <code>revision: \${escapeHtml(text(first(selector, ["revision"]), "—"))}</code>
+                  </div>
+                </li>\`).join("")}
            </ul>
          </details>\`
       : "";
@@ -13322,7 +13567,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </div>
         \${
           entry.status === "settled"
-            ? \`<p class="turn-response">\${escapeHtml(entry.response)}</p>\`
+            ? \`<div class="turn-response turn-response-markdown">\${renderConversationMarkdown(entry.response)}</div>\`
             : entry.status === "failed"
               ? \`<p class="turn-failure">\${escapeHtml(entry.reason || "原因未说明")}</p>\`
               : entry.status === "interrupted"

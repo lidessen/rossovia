@@ -1161,6 +1161,104 @@ export function taskLocatorEmptySummary(locator, context) {
       .replaceAll("'", "&#039;");
   }
 
+  // Conversation responses are model-authored text, so render only the small
+  // Markdown vocabulary the feed needs after escaping every user-controlled
+  // character. Raw HTML never enters the returned markup.
+  function renderConversationInlineMarkdown(value) {
+    const tokens = [];
+    const token = (html) => {
+      const marker = `\uE000${tokens.length}\uE001`;
+      tokens.push(html);
+      return marker;
+    };
+    let rendered = escapeHtml(value);
+    rendered = rendered.replace(/`([^`\n]+)`/gu, (_, code) =>
+      token(`<code>${code}</code>`),
+    );
+    rendered = rendered.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/giu, (_, label, href) =>
+      token(`<a href="${href}" target="_blank" rel="noreferrer">${label}</a>`),
+    );
+    rendered = rendered
+      .replace(/\*\*([^*\n]+)\*\*/gu, "<strong>$1</strong>")
+      .replace(/__([^_\n]+)__/gu, "<strong>$1</strong>")
+      .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/gu, "<em>$1</em>")
+      .replace(/(?<!_)_([^_\n]+)_(?!_)/gu, "<em>$1</em>");
+    return rendered.replace(/\uE000(\d+)\uE001/gu, (_, index) => tokens[Number(index)]);
+  }
+
+  function renderConversationMarkdown(value) {
+    const lines = text(value, "").replaceAll("\r\n", "\n").split("\n");
+    const blocks = [];
+    let paragraph = [];
+    let list = null;
+    let code = null;
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      blocks.push(`<p>${paragraph.map(renderConversationInlineMarkdown).join("<br>")}</p>`);
+      paragraph = [];
+    };
+    const flushList = () => {
+      if (!list) return;
+      blocks.push(`<${list.kind}>${list.items.map((item) =>
+        `<li>${renderConversationInlineMarkdown(item)}</li>`,
+      ).join("")}</${list.kind}>`);
+      list = null;
+    };
+    const flushCode = () => {
+      if (!code) return;
+      const language = code.language
+        ? ` class="language-${escapeHtml(code.language)}"`
+        : "";
+      blocks.push(`<pre><code${language}>${escapeHtml(code.lines.join("\n"))}</code></pre>`);
+      code = null;
+    };
+
+    for (const line of lines) {
+      const fence = line.match(/^\s*```\s*([\w-]+)?\s*$/u);
+      if (code) {
+        if (fence) flushCode();
+        else code.lines.push(line);
+        continue;
+      }
+      if (fence) {
+        flushParagraph();
+        flushList();
+        code = { language: fence[1] || "", lines: [] };
+        continue;
+      }
+      if (!line.trim()) {
+        flushParagraph();
+        flushList();
+        continue;
+      }
+      const heading = line.match(/^\s*(#{1,3})\s+(.+?)\s*#*\s*$/u);
+      if (heading) {
+        flushParagraph();
+        flushList();
+        const level = heading[1].length;
+        blocks.push(`<h${level}>${renderConversationInlineMarkdown(heading[2])}</h${level}>`);
+        continue;
+      }
+      const unordered = line.match(/^\s*[-*+]\s+(.+)$/u);
+      const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/u);
+      if (unordered || ordered) {
+        flushParagraph();
+        const kind = unordered ? "ul" : "ol";
+        if (list && list.kind !== kind) flushList();
+        if (!list) list = { kind, items: [] };
+        list.items.push((unordered || ordered)[1]);
+        continue;
+      }
+      flushList();
+      paragraph.push(line);
+    }
+    flushParagraph();
+    flushList();
+    flushCode();
+    return blocks.join("");
+  }
+
   function first(object, keys, fallback = undefined) {
     if (!object || typeof object !== "object") return fallback;
     for (const key of keys) {
@@ -5545,14 +5643,35 @@ export function taskLocatorEmptySummary(locator, context) {
       && !entry.terminal
       && activeConversationTurn()?.turnId === entry.turnId;
     const interruptSent = entry.interruptRequested === true;
-    const sources = entry.disclosedSources.length
+    const sourceCount = entry.disclosedSources.length;
+    const selectorCount = entry.sourceRevisionSelectors.length;
+    const disclosureSummary = sourceCount && selectorCount
+      ? `回答参考了 ${sourceCount} 项材料，并记录了 ${selectorCount} 条版本选择`
+      : sourceCount
+        ? `回答参考了 ${sourceCount} 项材料`
+        : `回答记录了 ${selectorCount} 条版本选择`;
+    const sources = sourceCount || selectorCount
       ? `<details class="turn-sources">
-           <summary>披露来源 ${entry.disclosedSources.length} · 版本选择 ${entry.sourceRevisionSelectors.length}</summary>
+           <summary>${disclosureSummary} · 展开查看依据</summary>
+           <p class="turn-sources-explainer">这里说明回答引用了哪些材料，以及使用了哪些版本选择记录；展开后可核对原始标识。</p>
            <ul>
              ${entry.disclosedSources.map((source) =>
-               `<li><code>${escapeHtml(text(first(source, ["ref"]), "—"))}</code></li>`).join("")}
+               `<li>
+                  <span>来源材料</span>
+                  <div>
+                    <strong>${escapeHtml(text(first(source, ["title", "label", "name", "description"]), "来源记录"))}</strong>
+                    <code>ref: ${escapeHtml(text(first(source, ["ref"]), "—"))}</code>
+                  </div>
+                </li>`).join("")}
              ${entry.sourceRevisionSelectors.map((selector) =>
-               `<li><span>selector</span> <code>${escapeHtml(text(first(selector, ["source"]), "—"))}@${escapeHtml(text(first(selector, ["revision"]), "—"))}</code></li>`).join("")}
+               `<li>
+                  <span>版本选择</span>
+                  <div>
+                    <strong>回答使用的来源版本</strong>
+                    <code>source: ${escapeHtml(text(first(selector, ["source"]), "—"))}</code>
+                    <code>revision: ${escapeHtml(text(first(selector, ["revision"]), "—"))}</code>
+                  </div>
+                </li>`).join("")}
            </ul>
          </details>`
       : "";
@@ -5580,7 +5699,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </div>
         ${
           entry.status === "settled"
-            ? `<p class="turn-response">${escapeHtml(entry.response)}</p>`
+            ? `<div class="turn-response turn-response-markdown">${renderConversationMarkdown(entry.response)}</div>`
             : entry.status === "failed"
               ? `<p class="turn-failure">${escapeHtml(entry.reason || "原因未说明")}</p>`
               : entry.status === "interrupted"

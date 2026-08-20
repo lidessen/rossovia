@@ -108,4 +108,30 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(stylesCss).toContain('body[data-projection-state="loading"] .workbench-shell > .conversation-surface');
     expect(stylesCss).toContain('grid-template-columns: minmax(0, 1fr);');
   });
+
+  test("settled conversation replies use escaped, limited Markdown rendering", () => {
+    expect(appJs).toContain("function renderConversationMarkdown(value)");
+    expect(appJs).toContain("function renderConversationInlineMarkdown(value)");
+    expect(appJs).toContain("escapeHtml(value)");
+    expect(appJs).toContain("https?:\\/\\/");
+    expect(appJs).toContain('rel="noreferrer"');
+    expect(appJs).toContain('class="turn-response turn-response-markdown"');
+    expect(appJs).toContain("renderConversationMarkdown(entry.response)");
+  });
+
+  test("source disclosure explains its purpose before preserving raw evidence", () => {
+    expect(appJs).toContain("回答参考了 ${sourceCount} 项材料");
+    expect(appJs).toContain("展开查看依据");
+    expect(appJs).toContain("这里说明回答引用了哪些材料，以及使用了哪些版本选择记录");
+    expect(appJs).toContain("ref: ${escapeHtml");
+    expect(appJs).toContain("source: ${escapeHtml");
+    expect(appJs).toContain("revision: ${escapeHtml");
+  });
+
+  test("mobile connection status gets its own flexible row and elides long IDs", () => {
+    expect(stylesCss).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(stylesCss).toContain(".conversation-standing strong,\n  .conversation-standing code");
+    expect(stylesCss).toContain("text-overflow: ellipsis;");
+    expect(stylesCss).toContain("white-space: nowrap;");
+  });
 });
