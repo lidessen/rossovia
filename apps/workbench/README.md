@@ -224,6 +224,7 @@ task attempts <id>
 task reconcile-attempt <id> --attempt <attempt-id>
 worker list
 task run <id> --worker <worker-id> [--continue]
+  [--enable-observer --observer <worker-id>]
 task assign <id> --next-actor <principal|agent|external>
   --expected-source-revision <n> --expected-revision <n>
 task correct <id> --statement <text> --source-ref <reference>
@@ -260,6 +261,12 @@ fresh run without `--continue` still requires that Worktree to be Git-clean.
 The caller selects one ID from `worker list`; the host-owned worker policy
 supplies its description, capability labels, provider, model, reasoning effort,
 and current availability. Driver and provider syntax are not caller inputs.
+The optional `--enable-observer --observer <worker-id>` pair starts one
+detached, read-only dogfood review after terminal settlement and appends its
+opinion to `ROSSO_HOME/state/dogfood-reviews.jsonl`; observer failure or a
+query gap does not change the task result or block the next run. The direct
+`observer --attempt <attempt-id> --worker <worker-id>` command reviews one
+already-settled attempt through the same standard evidence path.
 Immediately before creating the attempt, Workbench rereads the Task and lowers
 its current objective, acceptance conditions, and corrections into an immutable
 attempt-specific Work Cell input. Any Principal-supplied ordinary todos lower

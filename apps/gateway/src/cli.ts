@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { spawn } from "node:child_process";
 import { attachWorkspace } from "../../workbench/src/attach";
 import {
   CliStateError,
@@ -9,6 +10,9 @@ import {
   USAGE_EXIT_CODE,
 } from "../../workbench/src/cli-errors";
 import { createForegroundRunSignalAdapter } from "../../workbench/src/integrations/foreground-run-signals";
+import {
+  runDogfoodObserver,
+} from "../../workbench/src/dogfood-observer";
 import type { ContributionLeaseReconcileResult } from "../../workbench/src/conversation/contributions";
 import { authorizeExecution, inspectExecution } from "../../workbench/src/execution-authorization";
 import { helpForInvocation, packageVersionLabel } from "./help";
@@ -158,6 +162,9 @@ async function dispatchCommand(home: string | undefined, args: string[]): Promis
       return;
     case "ui":
       await dispatchUi(home, args);
+      return;
+    case "observer":
+      console.log(JSON.stringify(await dispatchObserver(home, args), null, 2));
       return;
     default:
       throw new UsageError(`unknown command: ${command}`, []);
@@ -344,6 +351,61 @@ async function dispatchUi(home: string | undefined, args: string[]): Promise<voi
   startWorkbenchUi(home === undefined ? options : { ...options, home });
 }
 
+async function dispatchObserver(
+  home: string | undefined,
+  args: string[],
+): Promise<Awaited<ReturnType<typeof runDogfoodObserver>>> {
+  const parsed = parseTaskOptions(
+    args.slice(1),
+    0,
+    new Set(["--attempt", "--worker"]),
+    new Set(),
+  );
+  assertTaskOptions(parsed, new Set(["--attempt", "--worker"]));
+  return runDogfoodObserver({
+    ...(home === undefined ? {} : { home }),
+    attemptId: taskOption(parsed, "--attempt"),
+    workerId: taskOption(parsed, "--worker"),
+  });
+}
+
+function spawnDogfoodObserver(input: {
+  readonly home: string;
+  readonly attemptId: string;
+  readonly workerId: string;
+}): {
+  readonly version: "rosso.dogfood-observer-launch.v1";
+  readonly status: "started";
+  readonly attemptId: string;
+  readonly workerId: string;
+} {
+  const entry = process.argv[1];
+  const command = entry !== undefined && /\.(?:ts|js)$/u.test(entry)
+    ? [process.execPath, entry]
+    : [process.execPath];
+  const child = spawn(command[0]!, [
+    ...command.slice(1),
+    "--home",
+    input.home,
+    "observer",
+    "--attempt",
+    input.attemptId,
+    "--worker",
+    input.workerId,
+  ], {
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  });
+  child.unref();
+  return {
+    version: "rosso.dogfood-observer-launch.v1",
+    status: "started",
+    attemptId: input.attemptId,
+    workerId: input.workerId,
+  };
+}
+
 function parseStatusLineOptions(raw: string[]): { cwd?: string } {
   const args = raw[0] === "claude" ? raw.slice(1) : raw;
   if (args.length === 0) return {};
@@ -455,16 +517,25 @@ async function dispatchTaskCommand(
     const parsed = parseTaskOptions(
       raw.slice(1),
       1,
-      new Set(["--worker", "--continue", "--max-steps"]),
+      new Set(["--worker", "--continue", "--max-steps", "--observer"]),
       new Set(),
-      new Set(),
+      new Set(["--enable-observer"]),
     );
-    assertTaskOptions(parsed, new Set(["--worker", "--continue", "--max-steps"]));
+    assertTaskOptions(parsed, new Set(["--worker", "--continue", "--max-steps", "--observer", "--enable-observer"]));
     const maxSteps = parsePositiveIntegerOption(parsed, "--max-steps");
+    const observerEnabled = parsed.values.has("--enable-observer");
+    const observerWorker = parsed.values.has("--observer")
+      ? taskOption(parsed, "--observer")
+      : undefined;
+    if (observerEnabled !== (observerWorker !== undefined)) {
+      throw new ParseUsageError(
+        "task run observer mode requires both --enable-observer and --observer <worker>",
+      );
+    }
     const runHome = resolveHome(home);
     const adapter = createForegroundRunSignalAdapter({ home: runHome });
     try {
-      return await runPrincipalTask(home, {
+      const result = await runPrincipalTask(home, {
         id: parsed.positionals[0]!,
         workerId: taskOption(parsed, "--worker"),
         ...(parsed.values.has("--continue")
@@ -474,6 +545,15 @@ async function dispatchTaskCommand(
       }, {
         controlBundle: adapter.controlBundle,
       });
+      if (observerWorker === undefined) return result;
+      return {
+        ...result,
+        observer: spawnDogfoodObserver({
+          home: runHome,
+          attemptId: result.attemptId,
+          workerId: observerWorker,
+        }),
+      };
     } finally {
       adapter.dispose();
     }

@@ -102,19 +102,29 @@ context-engineering, or agent-tooling methods.
 ## 4. Optional observer prompt
 
 When useful, explicitly enable one ordinary read-only background worker after
-a dogfood task has reached terminal settlement. A future runtime entry may
-make that opt-in look like a debug switch, for example:
+a dogfood task has reached terminal settlement. The current thin CLI path is:
 
 ```text
-rossovia ui --enable-observer --observer=<worker-or-profile>
+rossovia task run <task-id> --worker <worker-id> \
+  --enable-observer --observer <observer-worker-id>
 ```
 
-These flag names are a candidate interface for the optional path, not current
-CLI support and not a promise of a resident daemon. `--enable-observer` means
-“start the observer sidecar for this runtime”; `--observer` selects its
-receiver-facing worker/profile or prompt configuration. Multiple workers are
-only useful when they have genuinely different review questions. The observer
-must still use an ordinary worker/task and existing evidence/log surfaces.
+`--enable-observer` and `--observer` are an explicit opt-in for one detached,
+read-only observer after the task has a terminal attempt. The observer is a
+thin adapter around the existing Work Cell and standard attempt-evidence API,
+not a resident daemon or a second Task. A direct invocation is also available
+for a settled attempt:
+
+```text
+rossovia observer --attempt <attempt-id> --worker <observer-worker-id>
+```
+
+The opinion is appended to the local `ROSSO_HOME/state/dogfood-reviews.jsonl`
+projection. That file is only an append-only local observation record; the
+source Task, attempt, settlement, and any later disposition remain authoritative.
+If the observer cannot query enough evidence, or its own run fails, it records
+`query-gap`/`runner-failed` and exits. It must not block the completed task,
+the next snapshot, a rebuild/restart, or a human repair.
 
 Give the worker a complete, receiver-facing prompt similar to:
 
@@ -132,7 +142,9 @@ Give the worker a complete, receiver-facing prompt similar to:
 The worker should append a small review-like observation to an existing
 log/Chronicle surface when that surface is available. Keep the original task
 and transcript as the source; do not copy a full transcript into a second
-log. A useful record names the target task/attempt, snapshot identity, sources
+log. The current thin path uses the local JSONL projection above until a
+different existing observation surface is deliberately selected. A useful
+record names the target task/attempt, snapshot identity, sources
 consulted, findings, limitations, and a suggested next probe. An inability to
 query a transcript or trace is itself a valid observability finding.
 
@@ -169,6 +181,23 @@ status transition, digest, locator, or structured field. Prefer structured
 evidence over larger transcripts. Land such an improvement through the normal
 development path and then rebuild/restart the dogfood runtime.
 
+## 7. Human intervention when Rossovia is the limitation
+
+Rossovia dogfood is the default development path, not an exclusive authority.
+When the current Rossovia implementation cannot solve the problem because of
+an implementation, tooling, provider, or evidence-visibility limitation, the
+user may intervene directly in the source code. Record the context and the
+reason the normal path was insufficient, make the smallest direct change, and
+then return to the same rebuild → restart → smoke-check → dogfood loop. A
+failed observer, a `query-gap`, or an unavailable review worker never blocks
+that intervention or the next snapshot cycle.
+
+Direct editing does not silently mean that the change is accepted, merged, or
+safe. Keep the normal review, verification, rollback, and Principal decision
+boundaries once the runtime is usable again. If Rossovia can take the next
+step, prefer Rossovia; use human intervention to cross a real capability
+boundary, then make the gap visible as a candidate improvement.
+
 ## Safe points and boundaries
 
 Useful safe points are after task settlement, after observer recording, before
@@ -187,9 +216,8 @@ If this working profile proves useful, implement only the smallest missing
 pieces through normal Tasks:
 
 1. make runtime snapshot identity easy to inspect;
-2. provide a thin optional launch/prompt path (candidate flags:
-   `--enable-observer` and `--observer`) that starts a read-only worker after a
-   settled dogfood Task;
+2. keep the thin optional launch/prompt path (`--enable-observer` and
+   `--observer`) useful without turning it into a resident service;
 3. expose the standard evidence needed for review, or make its absence clear;
 4. append review opinions to the existing observation/log surface;
 5. keep “process recent reviews” as a reusable ordinary Task prompt;
