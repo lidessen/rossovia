@@ -107,15 +107,36 @@ runtime migration plan owns stage order and exit evidence, the scoped
 Workbench instructions own commands and their authority limits, and the
 Mission status is a current coordination projection only.
 
-When a user asks Rossovia to improve a named project through the conversation
-entry, activate the on-demand [dogfood Skill](skills/dogfood/SKILL.md). It
-guides project resolution, linked-worktree/Task setup, bounded execution,
-verification, and (when Rossovia itself is the target) snapshot, rebuild,
-restart, rollback, and optional observation. It is not resident guidance or a
-new authority. Load the detailed [dogfood development profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md)
-only when the local runtime loop is relevant, and follow the existing
-Workbench, Chronicle, Task, and Operating Protocol sources for actual commands
-and state.
+When an Agent or external harness is asked to develop Rossovia or a named
+project, activate the on-demand
+[Rossovia Development Skill](skills/rossovia-development/SKILL.md). It owns
+the mode decision between local Rossovia dogfood and external-harness
+delegation; it does not implement domain code or become a new authority.
+
+This distinction is load-bearing for external harnesses working on this
+repository:
+
+- If a local Rossovia runtime is available and dogfood is enabled, Rossovia is
+  the preferred and normally sole producer. The external harness is an
+  observer, task shaper, verifier, or explicitly bounded fallback only when
+  Rossovia cannot cross a named implementation, provider, tool, or evidence
+  boundary. It must not start a competing write for the same effect.
+- Enabling dogfood implies the ordinary read-only observer; do not require a
+  second observer-enable option. An explicit disable is a diagnostic escape,
+  not the default. Check the active launcher help because the flag is a runtime
+  contract still being implemented, not a reason to invent a command.
+- If dogfood is unavailable or disabled, the external harness owns the active
+  development session and follows
+  [`agent-delegation`](skills/agent-delegation/SKILL.md): Main retains the
+  whole, while independent design, implementation, and verification workers
+  are used only when the task warrants the split.
+
+The Rossovia Development Skill supplies the Main-side mode prompt and compact
+worker/reviewer prompt carriers. Do not send workers this file, `AGENTS.md`,
+`ROSSOVIA.md`, or an entire skill catalog. Load the detailed local-mode
+[dogfood profile](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md) only when
+the local runtime loop is relevant, and follow Workbench, Chronicle, Task, and
+Operating Protocol sources for actual commands and state.
 
 ## Integration entry
 

@@ -3,10 +3,12 @@
 **Status:** project-local development guidance. This is a prompt-like working
 profile, not a mandatory protocol, a scheduler, or a new task lifecycle.
 
-The conversational entry point is the on-demand [`dogfood` Skill](../../skills/dogfood/SKILL.md).
-Use that Skill to decide whether a request should enter this profile; keep this
-document as the detailed local-runtime reference rather than resident Agent
-instructions.
+The conversational entry point is the on-demand
+[`rossovia-development` Skill](../../skills/rossovia-development/SKILL.md).
+Its [`dogfood` reference](../../skills/dogfood/SKILL.md) selects this local
+mode. Keep this document as the detailed local-runtime reference rather than
+resident Agent instructions; external-only delegation belongs to the parent
+Skill, not this profile.
 
 This note describes one useful way to develop Rossovia by running Rossovia on
 itself. It is deliberately small: keep the existing Workbench, Task,
@@ -105,6 +107,12 @@ tool, or evidence-surface questions can use the existing code-review,
 context-engineering, or agent-tooling methods.
 
 ## 4. Local observer default
+
+The intended launcher contract is that `--dogfood` implies this observer
+default; callers should not need a second observer-enable flag. The current
+runtime may still expose compatibility flags while that contract is being
+implemented, so use the active `rossovia` help and report any mismatch rather
+than assuming the design is already shipped.
 
 When Rossovia starts locally through the Workbench UI, it enables one ordinary
 read-only background worker for each settled conversation Run. The default

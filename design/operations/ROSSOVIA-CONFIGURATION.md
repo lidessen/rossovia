@@ -100,6 +100,17 @@ The browser receives no key, token, provider session, raw environment dump, or
 private config path. A missing credential is a visible unavailable state, not
 an invitation to infer another provider or silently fall back.
 
+Development mode is a separate host/runtime concern. The intended local
+launcher contract is `--dogfood`: when the local Rossovia runtime is available
+and this mode is enabled, the ordinary read-only observer is enabled as part of
+the same mode. External harnesses should then observe or provide a bounded
+fallback, not compete as a second producer. When dogfood is unavailable or
+disabled, the active external harness follows the
+[Rossovia Development Skill](../../skills/rossovia-development/SKILL.md) and
+uses ordinary delegation with independent design, implementation, and
+verification contributions where warranted. This paragraph is a design
+projection; the active launcher help remains the command authority.
+
 Future editable Settings should be added in this order:
 
 1. edit a user preference by calling the existing preference owner, with

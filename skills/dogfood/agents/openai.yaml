@@ -1,4 +1,4 @@
 interface:
   display_name: "Rossovia Dogfood"
-  short_description: "Develop projects through Rossovia on demand."
-  default_prompt: "Use $dogfood to resolve the named project, create a bounded Rossovia Task, verify the result, and return a reconstructible development handoff."
+  short_description: "Use local Rossovia as the preferred development producer."
+  default_prompt: "Use $rossovia-development and enter its local dogfood mode when Rossovia is available and enabled."

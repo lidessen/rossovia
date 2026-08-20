@@ -1,18 +1,21 @@
 ---
 name: dogfood
 description: >-
-  Use when a user enters through Rossovia and asks to improve, fix, optimize,
-  or develop a named project, including Rossovia itself. This on-demand Skill
-  guides project discovery, linked-worktree and Task setup, bounded execution,
-  verification, local rebuild/restart, snapshot rollback, and optional review
-  observation through Rossovia's existing capabilities. It does not implement
-  domain code, stay resident, create a new lifecycle, or replace project
-  authority. Trigger phrases include "dogfood", "自我改进", "优化下项目",
-  "修一下", and "让 Rossovia 修改自己".
+  Use as the local-Rossovia dogfood mode of the broader rossovia-development
+  Skill when Rossovia itself should resolve, modify, verify, rebuild, restart,
+  observe, and roll back a named project. It is a compatibility entry for
+  "dogfood", "自我改进", "让 Rossovia 修改自己", and similar requests; use
+  rossovia-development when local dogfood is unavailable and an external
+  harness must delegate the work.
 argument-hint: "[project or repository] [requested improvement]"
 ---
 
 # Dogfood
+
+This Skill is the local-dogfood reference of
+[`rossovia-development`](../rossovia-development/SKILL.md). It retains the
+Rossovia-specific loop; it is not the general development decision for an
+external harness.
 
 ## Principle expression
 

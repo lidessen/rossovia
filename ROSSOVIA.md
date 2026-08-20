@@ -17,6 +17,9 @@ another source of project rules:
   [`design/operations/ROSSOVIA-SKILL-SOURCES.md`](design/operations/ROSSOVIA-SKILL-SOURCES.md);
 - dogfood development loop:
   [`design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md`](design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md).
+- unified development mode and external-harness handoff:
+  [`skills/rossovia-development/SKILL.md`](skills/rossovia-development/SKILL.md)
+  and [`design/operations/ROSSOVIA-DEVELOPMENT-SKILL.md`](design/operations/ROSSOVIA-DEVELOPMENT-SKILL.md).
 
 The host Agent may use these pointers to select the smallest relevant source
 and form a receiver-specific worker prompt. It must not copy this file,
