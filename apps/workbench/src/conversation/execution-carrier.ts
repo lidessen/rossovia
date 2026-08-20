@@ -34,7 +34,7 @@ import {
   type ParsedTaskRunSettlement,
   type StrictTaskAttemptEvidence,
 } from "../task-attempts";
-import { runDogfoodObserver } from "../dogfood-observer";
+import { runWorkflowObserver } from "../workflow-observer";
 import { PrincipalTaskError } from "../tasks";
 import type { PrincipalTask } from "../contracts";
 import { loadHome, resolveHome, workspaceFor } from "../home";
@@ -444,7 +444,7 @@ class WorkbenchConversationCarrierRegistry implements ConversationExecutionCarri
     const standing = runStanding(this.home, handle.identity.carrierId);
     handle.finishTerminal(settlementFromRunStanding(standing, handle.identity.carrierId));
     if (this.observerWorkerId !== undefined) {
-      void runDogfoodObserver({
+      void runWorkflowObserver({
         home: this.home,
         attemptId: handle.identity.carrierId,
         workerId: this.observerWorkerId,

@@ -47,6 +47,6 @@ known-good local tag → build the coupled local runtime → restart → smoke c
 
 The optional observer is a read-only worker over standard settled evidence. It
 records an opinion or an API visibility gap; it does not become a resident
-controller, a queue, or an automatic fixer. “Process recent dogfood reviews”
+controller, a queue, or an automatic fixer. “Process recent workflow reviews”
 is an ordinary Task prompt that reads those observations and records a
 disposition without rewriting the original record.
