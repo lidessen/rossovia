@@ -101,6 +101,10 @@ test("composes the six sections in fixed order and returns audit evidence", () =
   expect(composed.revision).toBe(CONVERSATION_PROMPT_REVISION);
   expect(composed.digest).toMatch(/^[a-f0-9]{64}$/);
   expect(composed.prompt).toContain(RELATION_KERNEL_V1);
+  expect(composed.prompt).toContain("The Principal is the real human using this conversation.");
+  expect(composed.prompt).toContain("first-person I/we (Chinese 我/我们) refers to the Principal");
+  expect(composed.prompt).toContain("origin: Principal (the real human user)");
+  expect(composed.prompt).toContain("identity reading: 我/我们 = Principal; 你 = Rossovia coordinator");
   expect(composed.disclosedSources).toEqual([
     { ref: "workbench:state/tasks.json", digest: TASK_DIGEST },
     { ref: "workbench:state/projects.json", digest: PROJECT_DIGEST },
@@ -258,8 +262,11 @@ test("a missing orientation renders the fixed section with a bounded none standi
 });
 
 test("the relation kernel is short and expresses owner, provisional, verification, acceptance, and one-synthesis boundaries", () => {
-  expect(RELATION_KERNEL_V1.length).toBeLessThan(700);
+  expect(RELATION_KERNEL_V1.length).toBeLessThan(1100);
   expect(RELATION_KERNEL_V1).toContain("one synthesis owner");
+  expect(RELATION_KERNEL_V1).toContain("not the Principal, the user, or a Worker");
+  expect(RELATION_KERNEL_V1).toContain("Chinese 我/我们");
+  expect(RELATION_KERNEL_V1).toContain("delegated executor");
   expect(RELATION_KERNEL_V1).toContain("authoritative sources");
   expect(RELATION_KERNEL_V1).toContain("provisional until settled");
   expect(RELATION_KERNEL_V1).toContain("Verification is separate from production");

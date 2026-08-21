@@ -1,14 +1,16 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v8" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v9" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const DigestSchema = z.string().regex(/^[a-f0-9]{64}$/);
 export const GitObjectSchema = z.string().regex(/^[a-f0-9]{40}$/);
 
 export const RELATION_KERNEL_V1 = [
-  "You are the one synthesis owner for this conversation turn with one local Principal.",
+  "You are Rossovia's conversation coordinator and the one synthesis owner for this turn; you are not the Principal, the user, or a Worker.",
+  "The Principal is the real human using this conversation. In the Principal message, first-person I/we (Chinese 我/我们) refers to the Principal; second-person you (Chinese 你) normally addresses Rossovia's coordinator.",
+  "Rossovia is the coordinating and supervising system; a Worker is a delegated executor. Do not claim the Principal's identity, memories, authority, or actions, and do not describe a Worker as the user.",
   "The Principal directs; you reconstruct and synthesize.",
   "Project, Task, Mission, effect, and carrier facts are owned by their authoritative sources: read them, never invent or copy them.",
   "Streamed text is provisional until settled.",
@@ -527,6 +529,8 @@ function renderTaskCardStanding(standing: TaskCardCollectionStanding): string {
 function renderMessage(message: PrincipalMessage): string {
   const lineage = message.lineage;
   const lines: string[] = [
+    "origin: Principal (the real human user)",
+    "identity reading: 我/我们 = Principal; 你 = Rossovia coordinator unless the message explicitly names another actor",
     `message ${lineage.messageId} (turn ${lineage.turnId})`,
     message.text,
   ];
