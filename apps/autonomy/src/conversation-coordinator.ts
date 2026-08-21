@@ -12,6 +12,7 @@ import {
   type FullChildResult,
   type PrincipalMessage,
   type ProjectOrientation,
+  type ReceivedInput,
 } from "./conversation-prompt";
 
 export const CONVERSATION_COORDINATOR_VERSION = "rosso.conversation-coordinator.v1" as const;
@@ -268,6 +269,7 @@ export interface ConversationTurnOptions {
   readonly orientation?: ProjectOrientation;
   readonly children?: readonly ChildSummary[];
   readonly fullChildResults?: readonly FullChildResult[];
+  readonly receivedInputs?: readonly ReceivedInput[];
   readonly port: ConversationTurnPort;
   readonly onEvent: (event: ConversationTurnSafetyEvent) => void;
 }
@@ -289,6 +291,7 @@ export interface ConversationTurnPrepareInput {
   readonly orientation?: ProjectOrientation;
   readonly children?: readonly ChildSummary[];
   readonly fullChildResults?: readonly FullChildResult[];
+  readonly receivedInputs?: readonly ReceivedInput[];
 }
 
 /**
@@ -486,6 +489,9 @@ function promptInput(input: ConversationTurnPrepareInput): ConversationPromptInp
     ...(input.fullChildResults === undefined || input.fullChildResults.length === 0
       ? {}
       : { fullChildResults: [...input.fullChildResults] }),
+    ...(input.receivedInputs === undefined || input.receivedInputs.length === 0
+      ? {}
+      : { receivedInputs: [...input.receivedInputs] }),
   };
 }
 
