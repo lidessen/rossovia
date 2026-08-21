@@ -2013,6 +2013,7 @@ export function taskLocatorEmptySummary(locator, context) {
       && (conversationState.connection === "connecting"
         || conversationState.connection === "disconnected"
         || conversationState.connection === "unavailable");
+    const projectionIncomplete = first(state.snapshot, ["complete", "isComplete"]) === false;
 
     if (state.source === "live") {
       if (conversationConnectionIssue) {
@@ -2021,6 +2022,9 @@ export function taskLocatorEmptySummary(locator, context) {
           disconnected: "投影已连接 · 对话已断开",
           unavailable: "投影已连接 · 对话不可用",
         }[conversationState.connection] || "投影已连接 · 对话状态待确认";
+        mark.classList.add("is-warning");
+      } else if (projectionIncomplete) {
+        $("#connection-label").textContent = "实时 · 部分来源不可用";
         mark.classList.add("is-warning");
       } else {
         $("#connection-label").textContent = "实时 · 已连接";
