@@ -22,6 +22,36 @@
 - **混合 Agent** 是方法表达或提示编排的候选名，不是新的角色枚举、队列、脑区注册表、常驻 daemon 或后训练引擎。
 - **GPT Live/Realtime 的可借鉴部分** 目前只能是外部交互边界：流式事件、回合结束判断和中断；不能把产品行为倒推成内部认知架构。
 
+### Working styles and principle lenses
+
+The first probe treated the advisory surface as three temporary thought blocks.
+That is too weak a test: it varies the requested angle, but not a stable way of
+working. The revised probe treats a style as a durable prompt-level method
+expression with a recognizable question, evidence preference, and return shape.
+MBTI-like labels are only mnemonics for contrast; they are not psychological
+claims, model identities, or runtime authority.
+
+All styles share `principles/SEQUENCE.md`, which remains the only semantic canon.
+A style may foreground one existing P-ID and at most two supporting P-IDs for a
+particular task. This is a lens selection, not a new principle, a vote, or a
+permission to override evidence. The Main style reconciles the lenses against
+the shared sequence and remains the sole task, evidence, and final-answer
+authority.
+
+The initial candidate set is intentionally small and deliberately contrasted:
+
+| style | mnemonic | task contribution | example principle lens |
+| --- | --- | --- | --- |
+| coordinating judge (Main) | `xNTJ` | defines the current contradiction, orders work, and makes the final bounded choice | P04, P15, P11 |
+| model explorer | `xNTP` | proposes alternatives, hidden assumptions, and disconfirming probes without closing the decision | P07, P08, P09 |
+| evidence auditor | `xSTJ` | checks claims against traceable sources and rejects unsupported completion | P02, P13, P14 |
+| user-reality observer | `xSFP`/`xSFJ` | tests concrete usability, human bandwidth, and whether the form enables action | P05, P10, P16 |
+
+`xNTJ` is used rather than `ENTJ` or `INTJ` because the experiment needs the
+observable combination of systems framing and decision closure, not a claim
+about introversion or extraversion. The styles are not ranked personalities;
+the advisory styles never vote and never write effects directly.
+
 ## Evidence
 
 - [OpenAI Realtime API reference](https://platform.openai.com/docs/api-reference/realtime) exposes turn detection, response interruption, and event-oriented session behavior. This supports treating partial thoughts as interruptible, bounded events; it does **not** support a claim about internal model regions or spontaneous thought insertion.
@@ -104,13 +134,14 @@ thought-surface mechanism is admitted, and the next probe should either use a
 deliberately permitted projection or end in `no-proposal` if the additional
 visibility cost is not justified.
 
-## Smallest POC
+## Revised smallest POC — stable styles and principle lenses
 
-Use an existing ordinary task carrier or an offline fixture; do not add a runtime lifecycle, durable queue, role enum, or UI path.
+Use an existing ordinary task carrier or an offline fixture; do not add a runtime
+lifecycle, durable queue, role enum, persona registry, or UI path.
 
 1. Select a small fixture set with three kinds of work: a routine repair where divergence should be unnecessary, an open design question with at least two plausible directions, and a diagnosis containing a misleading local hypothesis.
-2. Compare three matched expressions under a bounded budget: focused Main only; focused Main plus independent candidate surfaces; focused Main plus raw unstructured fragments. Keep task sources, acceptance, tools, and final authority identical.
-3. Give each candidate surface one differentiated angle (counterexample, alternative architecture, user/workflow view, or source-gap search). Do not give identical prompts and call the results independent.
+2. Compare matched expressions under a bounded budget: focused Main only; Main plus all three advisory styles; and three ablations that remove one advisory style at a time. Keep task sources, acceptance, tools, and final authority identical.
+3. Give each style its stable method prompt and one current lead P-ID plus at most two supporting P-IDs. Do not let a style create or select a new principle. Do not give identical prompts and call the results independent.
 4. Require each candidate to return only the structured envelope below:
 
    ```text
@@ -123,9 +154,9 @@ Use an existing ordinary task carrier or an offline fixture; do not add a runtim
    next-probe:
    ```
 
-5. Let the Main Agent decide `admit: yes | no | uncertain` for each candidate, with one source-linked reason. Only admitted candidates may alter the next task expression; none may directly alter code, Task state, acceptance, or the final answer.
+5. Let the Main Agent decide `admit: yes | no | uncertain` for each advisory return, with one source-linked reason and the selected principle lens. Only admitted returns may alter the next task expression; none may directly alter code, Task state, acceptance, or the final answer.
 
-6. Record per fixture: relevant alternative coverage, unsupported/noisy candidates, duplicated reasoning, time-to-useful-next-probe, total token/cost delta, final-answer reconstruction, and whether a candidate caused an obsolete-anchor or authority error.
+6. Record per fixture: relevant alternative coverage, counterexamples found, unsupported/noisy returns, duplicated reasoning, time-to-useful-next-probe, principle-lens decision impact, total token/cost delta, final-answer reconstruction, and whether a style caused an obsolete-anchor or authority error.
 
 ## Falsifiers and stopping conditions
 
