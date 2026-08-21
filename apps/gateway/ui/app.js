@@ -616,6 +616,43 @@ export function taskEvidenceLinkTarget(ref, workItems) {
 }
 
 /**
+ * Observer records keep the worker under the canonical nested observer object.
+ * Keep the UI projection scalar so an absent or malformed identity cannot turn
+ * into JavaScript's unhelpful "[object Object]" label.
+ */
+export function observerReviewWorkerId(review) {
+  const observer = review && typeof review === "object" ? review.observer : null;
+  const workerId = observer && typeof observer === "object" ? observer.workerId : null;
+  return typeof workerId === "string" && workerId.trim() !== ""
+    ? workerId.trim()
+    : "未知 worker";
+}
+
+/**
+ * The current Workbench has no canonical read-only conversation detail route.
+ * Return a safe, understandable evidence label and deliberately no href.
+ */
+export function observerConversationEvidenceLabels(review) {
+  const refs = review && typeof review === "object" && Array.isArray(review.relatedConversationRefs)
+    ? review.relatedConversationRefs
+    : [];
+  return refs
+    .filter((ref) => typeof ref === "string" && ref.trim() !== "")
+    .map((ref) => {
+      const normalized = ref.trim();
+      const id = normalized.startsWith("conversation:")
+        ? normalized.slice("conversation:".length)
+        : normalized;
+      return {
+        ref: normalized,
+        id,
+        label: `关联对话证据：${id}`,
+        href: null,
+      };
+    });
+}
+
+/**
  * Task-page locator: keyword, project, and status narrowing over the existing
  * read-only work-item projection. Every value comes from fields already
  * present on projected items (title/summary/context and, for Workbench-owned
@@ -2192,8 +2229,9 @@ export function taskLocatorEmptySummary(locator, context) {
     $("#completed-task-count").textContent = String(counts.completed);
     const observerProjection = first(state.snapshot, ["observerReviews"], {});
     const observerReviews = list(first(observerProjection, ["reviews"], []));
-    const observerCount = document.querySelector("#observer-review-count");
-    if (observerCount) observerCount.textContent = String(observerReviews.length);
+    document.querySelectorAll("[data-observer-review-count]").forEach((count) => {
+      count.textContent = String(observerReviews.length);
+    });
 
     $$("[data-view]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === state.activeView);
@@ -2543,11 +2581,11 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     listRoot.innerHTML = reviews.map((review) => {
       const refs = list(first(review, ["evidenceRefs"], []));
-      const conversationRefs = list(first(review, ["relatedConversationRefs"], []));
       const subject = first(review, ["subject"], {});
       const taskId = text(first(subject, ["taskId"]), "");
       const attemptId = text(first(subject, ["attemptId"]), "");
-      const workerId = text(first(review, ["observer", "workerId"]), "unknown");
+      const workerId = observerReviewWorkerId(review);
+      const conversationEvidence = observerConversationEvidenceLabels(review);
       const status = text(first(review, ["standing"]), "unknown");
       const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
       return `<article class="observer-review-card" data-review-id="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
@@ -2559,7 +2597,9 @@ export function taskLocatorEmptySummary(locator, context) {
         <dl class="observer-review-facts">
           <div><dt>观察对象</dt><dd>${escapeHtml(taskId ? `Task ${taskId}` : "未关联 Task")} · attempt ${escapeHtml(shortConversationId(attemptId))}</dd></div>
           <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
-          <div><dt>关联对话</dt><dd>${conversationRefs.length ? conversationRefs.map((ref) => `<code>${escapeHtml(ref)}</code>`).join(" ") : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
+          <div><dt>关联对话</dt><dd>${conversationEvidence.length
+            ? `<div class="observer-conversation-evidence-list">${conversationEvidence.map((evidence) => `<span class="observer-conversation-evidence" data-conversation-evidence="${escapeHtml(evidence.ref)}">${escapeHtml(evidence.label)}</span>`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>`
+            : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
         </dl>
         <details class="observer-review-evidence"><summary>证据引用 · ${refs.length} 项</summary><ul>${refs.length ? refs.map((ref) => `<li><code>${escapeHtml(ref)}</code></li>`).join("") : "<li>未提供证据引用</li>"}</ul></details>
         <footer><button type="button" class="text-action" data-observer-process="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button></footer>
@@ -7016,6 +7056,7 @@ export function taskLocatorEmptySummary(locator, context) {
         state.taskCreateOpen = false;
         render();
         writePrincipalLocus();
+        button.closest(".mobile-system-menu")?.removeAttribute("open");
         if (state.activeView === "conversation") {
           $("#conversation-composer-text").focus({ preventScroll: true });
         }

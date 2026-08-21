@@ -33,6 +33,19 @@
         <time id="generated-at">尚未接收</time>
         <button class="text-action" id="refresh-button" type="button">刷新</button>
       </div>
+
+      <details class="mobile-system-menu">
+        <summary aria-label="打开系统工具">系统</summary>
+        <div class="mobile-system-menu-panel" aria-label="系统工具">
+          <button type="button" data-view="observer">
+            <span>观察记录</span>
+            <small data-observer-review-count>—</small>
+          </button>
+          <button type="button" data-view="settings">
+            <span>设置</span>
+          </button>
+        </div>
+      </details>
     </header>
 
     <div class="source-warning" id="source-warning" role="status" hidden>
@@ -180,7 +193,7 @@
           <p class="eyebrow">系统</p>
           <button class="view-button" type="button" data-view="observer">
             <span>观察记录</span>
-            <strong id="observer-review-count">—</strong>
+            <strong id="observer-review-count" data-observer-review-count>—</strong>
             <small>Review、处理与证据</small>
           </button>
           <button class="view-button" type="button" data-view="settings">

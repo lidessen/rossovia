@@ -36,6 +36,19 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
         <time id="generated-at">尚未接收</time>
         <button class="text-action" id="refresh-button" type="button">刷新</button>
       </div>
+
+      <details class="mobile-system-menu">
+        <summary aria-label="打开系统工具">系统</summary>
+        <div class="mobile-system-menu-panel" aria-label="系统工具">
+          <button type="button" data-view="observer">
+            <span>观察记录</span>
+            <small data-observer-review-count>—</small>
+          </button>
+          <button type="button" data-view="settings">
+            <span>设置</span>
+          </button>
+        </div>
+      </details>
     </header>
 
     <div class="source-warning" id="source-warning" role="status" hidden>
@@ -183,7 +196,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
           <p class="eyebrow">系统</p>
           <button class="view-button" type="button" data-view="observer">
             <span>观察记录</span>
-            <strong id="observer-review-count">—</strong>
+            <strong id="observer-review-count" data-observer-review-count>—</strong>
             <small>Review、处理与证据</small>
           </button>
           <button class="view-button" type="button" data-view="settings">
@@ -1672,6 +1685,10 @@ button:disabled {
   justify-content: space-between;
   min-height: 78px;
   padding: 0.7rem 1.25rem;
+}
+
+.mobile-system-menu {
+  display: none;
 }
 
 .identity {
@@ -4664,6 +4681,26 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   overflow-wrap: anywhere;
 }
 
+.observer-conversation-evidence-list {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.observer-conversation-evidence {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.observer-conversation-evidence-note {
+  color: var(--ink-faint);
+  display: block;
+  font-size: 0.62rem;
+  line-height: 1.45;
+  margin-top: 0.2rem;
+}
+
 .observer-review-evidence {
   border-top: 1px solid var(--line-light);
   margin-top: 0.75rem;
@@ -7411,6 +7448,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .masthead {
     align-items: start;
     gap: 0.8rem;
+    position: relative;
   }
 
   .runtime-brief {
@@ -7436,6 +7474,78 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .runtime-brief .text-action {
     white-space: nowrap;
+  }
+
+  .mobile-system-menu {
+    display: block;
+    flex: 0 0 auto;
+    position: relative;
+  }
+
+  .mobile-system-menu summary {
+    align-items: center;
+    border-bottom: 1px solid currentColor;
+    cursor: pointer;
+    display: flex;
+    font-size: 0.66rem;
+    min-height: 32px;
+    padding: 0.1rem 0;
+    white-space: nowrap;
+  }
+
+  .mobile-system-menu summary::marker,
+  .mobile-system-menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-system-menu summary::after {
+    content: "⌄";
+    font-size: 0.8rem;
+    margin-left: 0.25rem;
+  }
+
+  .mobile-system-menu[open] summary::after {
+    content: "⌃";
+  }
+
+  .mobile-system-menu-panel {
+    background: var(--paper-light);
+    border: 1px solid var(--line);
+    box-shadow: 0 8px 20px rgba(32, 32, 30, 0.14);
+    display: grid;
+    gap: 0.2rem;
+    min-width: 9rem;
+    padding: 0.35rem;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.45rem);
+    z-index: 80;
+  }
+
+  .mobile-system-menu-panel button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    display: flex;
+    font: inherit;
+    gap: 0.5rem;
+    justify-content: space-between;
+    min-height: 40px;
+    padding: 0.45rem 0.55rem;
+    text-align: left;
+    width: 100%;
+  }
+
+  .mobile-system-menu-panel button:hover,
+  .mobile-system-menu-panel button:focus-visible {
+    background: var(--paper-deep);
+    outline: 0;
+  }
+
+  .mobile-system-menu-panel button small {
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 0.62rem;
   }
 
   .source-warning {
@@ -8955,6 +9065,43 @@ export function taskEvidenceLinkTarget(ref, workItems) {
   return workItems.some((item) => item && typeof item === "object" && item.id === candidate)
     ? candidate
     : null;
+}
+
+/**
+ * Observer records keep the worker under the canonical nested observer object.
+ * Keep the UI projection scalar so an absent or malformed identity cannot turn
+ * into JavaScript's unhelpful "[object Object]" label.
+ */
+export function observerReviewWorkerId(review) {
+  const observer = review && typeof review === "object" ? review.observer : null;
+  const workerId = observer && typeof observer === "object" ? observer.workerId : null;
+  return typeof workerId === "string" && workerId.trim() !== ""
+    ? workerId.trim()
+    : "未知 worker";
+}
+
+/**
+ * The current Workbench has no canonical read-only conversation detail route.
+ * Return a safe, understandable evidence label and deliberately no href.
+ */
+export function observerConversationEvidenceLabels(review) {
+  const refs = review && typeof review === "object" && Array.isArray(review.relatedConversationRefs)
+    ? review.relatedConversationRefs
+    : [];
+  return refs
+    .filter((ref) => typeof ref === "string" && ref.trim() !== "")
+    .map((ref) => {
+      const normalized = ref.trim();
+      const id = normalized.startsWith("conversation:")
+        ? normalized.slice("conversation:".length)
+        : normalized;
+      return {
+        ref: normalized,
+        id,
+        label: \`关联对话证据：\${id}\`,
+        href: null,
+      };
+    });
 }
 
 /**
@@ -10534,8 +10681,9 @@ export function taskLocatorEmptySummary(locator, context) {
     $("#completed-task-count").textContent = String(counts.completed);
     const observerProjection = first(state.snapshot, ["observerReviews"], {});
     const observerReviews = list(first(observerProjection, ["reviews"], []));
-    const observerCount = document.querySelector("#observer-review-count");
-    if (observerCount) observerCount.textContent = String(observerReviews.length);
+    document.querySelectorAll("[data-observer-review-count]").forEach((count) => {
+      count.textContent = String(observerReviews.length);
+    });
 
     $$("[data-view]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === state.activeView);
@@ -10885,11 +11033,11 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     listRoot.innerHTML = reviews.map((review) => {
       const refs = list(first(review, ["evidenceRefs"], []));
-      const conversationRefs = list(first(review, ["relatedConversationRefs"], []));
       const subject = first(review, ["subject"], {});
       const taskId = text(first(subject, ["taskId"]), "");
       const attemptId = text(first(subject, ["attemptId"]), "");
-      const workerId = text(first(review, ["observer", "workerId"]), "unknown");
+      const workerId = observerReviewWorkerId(review);
+      const conversationEvidence = observerConversationEvidenceLabels(review);
       const status = text(first(review, ["standing"]), "unknown");
       const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
       return \`<article class="observer-review-card" data-review-id="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
@@ -10901,7 +11049,9 @@ export function taskLocatorEmptySummary(locator, context) {
         <dl class="observer-review-facts">
           <div><dt>观察对象</dt><dd>\${escapeHtml(taskId ? \`Task \${taskId}\` : "未关联 Task")} · attempt \${escapeHtml(shortConversationId(attemptId))}</dd></div>
           <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
-          <div><dt>关联对话</dt><dd>\${conversationRefs.length ? conversationRefs.map((ref) => \`<code>\${escapeHtml(ref)}</code>\`).join(" ") : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
+          <div><dt>关联对话</dt><dd>\${conversationEvidence.length
+            ? \`<div class="observer-conversation-evidence-list">\${conversationEvidence.map((evidence) => \`<span class="observer-conversation-evidence" data-conversation-evidence="\${escapeHtml(evidence.ref)}">\${escapeHtml(evidence.label)}</span>\`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>\`
+            : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
         </dl>
         <details class="observer-review-evidence"><summary>证据引用 · \${refs.length} 项</summary><ul>\${refs.length ? refs.map((ref) => \`<li><code>\${escapeHtml(ref)}</code></li>\`).join("") : "<li>未提供证据引用</li>"}</ul></details>
         <footer><button type="button" class="text-action" data-observer-process="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button></footer>
@@ -15358,6 +15508,7 @@ export function taskLocatorEmptySummary(locator, context) {
         state.taskCreateOpen = false;
         render();
         writePrincipalLocus();
+        button.closest(".mobile-system-menu")?.removeAttribute("open");
         if (state.activeView === "conversation") {
           $("#conversation-composer-text").focus({ preventScroll: true });
         }
