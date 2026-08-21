@@ -89,20 +89,97 @@ function parseSelection(value: string): SetupSelectionEntry {
   throw new Error(`unsupported setup module: ${value}`);
 }
 
-function resolveSourceRoot(): string {
-  const entry = process.argv[1];
-  if (!entry) throw new Error("cannot resolve setup source: executable path is unavailable");
-  const executable = resolve(entry);
-  const sourceRoot = gitOutput(dirname(executable), ["rev-parse", "--show-toplevel"], "resolve setup source root");
-  const sourceRelative = relative(sourceRoot, executable);
-  if (sourceRelative.startsWith("..") || sourceRelative.length === 0) {
-    throw new Error("cannot resolve setup source: executable is outside its Git checkout");
+/**
+ * The tracked paths that identify a checkout as the Rossovia setup source.
+ * A candidate root is accepted only when its Git checkout tracks these
+ * definitions, so an unverifiable directory is never treated as the setup
+ * source.
+ */
+export const SETUP_SOURCE_DEFINITION_PATHS: readonly string[] = [
+  "CHANGELOG.md",
+  "apps/workbench/src/setup.ts",
+  "apps/workbench/src/setup-adapters.ts",
+  "apps/workbench/src/setup-modules.ts",
+];
+
+export interface SetupSourceResolutionOptions {
+  /** The running executable path; defaults to process.argv[1]. */
+  readonly executable?: string;
+  /** The explicit run root; defaults to process.cwd(). */
+  readonly runRoot?: string;
+}
+
+export interface SetupSourceResolution {
+  readonly sourceRoot: string;
+  readonly basis: "executable" | "run-root";
+}
+
+/**
+ * Resolve the Rossovia setup source root. The running executable keeps
+ * priority when it is a verifiable part of a setup-source checkout — the
+ * source `bun` launch path. When it is not (for example a compiled binary
+ * installed under ~/.local/bin), the explicit run root is used instead, but
+ * only after the same verification: its Git checkout must track the setup
+ * definition files. An unverifiable path is rejected, never adopted as a
+ * Git source.
+ */
+export function resolveSetupSourceRoot(
+  options: SetupSourceResolutionOptions = {},
+): SetupSourceResolution {
+  const executable = options.executable ?? process.argv[1];
+  if (executable !== undefined) {
+    const fromExecutable = sourceRootFromExecutable(resolve(executable));
+    if (fromExecutable !== null) {
+      return { sourceRoot: fromExecutable, basis: "executable" };
+    }
   }
-  const tracked = runCommand("git", ["ls-files", "--error-unmatch", sourceRelative], { cwd: sourceRoot });
-  if (tracked.exitCode !== 0) {
-    throw new Error("cannot resolve setup source: executable is not tracked by its Git checkout");
+  const runRoot = resolve(options.runRoot ?? process.cwd());
+  return { sourceRoot: sourceRootFromRunRoot(runRoot), basis: "run-root" };
+}
+
+function sourceRootFromExecutable(executable: string): string | null {
+  const rootResult = runCommand("git", ["rev-parse", "--show-toplevel"], {
+    cwd: dirname(executable),
+  });
+  if (rootResult.exitCode !== 0 || rootResult.stdout.trim().length === 0) return null;
+  const sourceRoot = resolve(rootResult.stdout.trim());
+  const sourceRelative = relative(sourceRoot, executable);
+  if (sourceRelative.startsWith("..") || sourceRelative.length === 0) return null;
+  const tracked = runCommand("git", ["ls-files", "--error-unmatch", sourceRelative], {
+    cwd: sourceRoot,
+    quiet: true,
+  });
+  if (tracked.exitCode !== 0) return null;
+  return tracksSetupSourceDefinition(sourceRoot) ? sourceRoot : null;
+}
+
+function sourceRootFromRunRoot(runRoot: string): string {
+  const sourceRoot = gitOutput(
+    runRoot,
+    ["rev-parse", "--show-toplevel"],
+    "resolve setup source root from the run root",
+  );
+  if (!tracksSetupSourceDefinition(sourceRoot)) {
+    throw new Error(
+      `cannot resolve setup source: the run-root Git checkout ${sourceRoot} does not track the `
+      + `Rossovia setup definition (${SETUP_SOURCE_DEFINITION_PATHS.join(", ")}); `
+      + "start the installed binary from the setup source checkout",
+    );
   }
   return sourceRoot;
+}
+
+function tracksSetupSourceDefinition(sourceRoot: string): boolean {
+  return SETUP_SOURCE_DEFINITION_PATHS.every((path) =>
+    runCommand("git", ["ls-files", "--error-unmatch", path], {
+      cwd: sourceRoot,
+      quiet: true,
+    }).exitCode === 0,
+  );
+}
+
+function resolveSourceRoot(): string {
+  return resolveSetupSourceRoot().sourceRoot;
 }
 
 function receiptPath(home: string, entry: SetupSelectionEntry): string {
@@ -308,8 +385,15 @@ function writeTarget(path: string, content: string): void {
 }
 
 function assertSetupSourceClean(sourceRoot: string): void {
-  const executable = resolve(process.argv[1]!);
-  const sourceRelative = relative(sourceRoot, executable);
+  // A compiled binary installed outside the source root (for example under
+  // ~/.local/bin) is not part of the checkout, so it is excluded from the
+  // cleanliness check; the tracked setup definition paths always remain.
+  const entry = process.argv[1];
+  const sourceRelative = entry === undefined ? null : relative(sourceRoot, resolve(entry));
+  const executablePath =
+    sourceRelative === null || sourceRelative.startsWith("..") || sourceRelative.length === 0
+      ? null
+      : sourceRelative;
   const result = runCommand("git", [
     "status",
     "--porcelain",
@@ -318,7 +402,7 @@ function assertSetupSourceClean(sourceRoot: string): void {
     "apps/workbench/src/setup.ts",
     "apps/workbench/src/setup-adapters.ts",
     "apps/workbench/src/setup-modules.ts",
-    sourceRelative,
+    ...(executablePath === null ? [] : [executablePath]),
   ], { cwd: sourceRoot });
   if (result.exitCode !== 0 || result.stdout.trim().length > 0) {
     throw new Error(

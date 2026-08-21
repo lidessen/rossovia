@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { copyFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { STATE_FAILURE_EXIT_CODE } from "../src/cli-errors";
+import { resolveSetupSourceRoot } from "../src/setup";
 import { setupAdapter } from "../src/setup-adapters";
 import { multiAgentDelegationModule } from "../src/setup-modules";
 
@@ -311,5 +312,144 @@ describe("user-level setup reconciliation", () => {
     }));
     const status = workbench(source, home, "setup", "status", "--target-root", codex);
     expect(status.exitCode).toBe(0);
+  });
+});
+
+describe("setup source-root resolution", () => {
+  /** A path that looks like a compiled binary installed outside any checkout. */
+  function installedBinary(root: string): string {
+    const bin = join(root, "local", "bin");
+    mkdirSync(bin, { recursive: true });
+    return join(bin, "rossovia");
+  }
+
+  /** A wrapper that launches the fixture CLI as if it were an installed binary. */
+  function installedBinaryWrapper(root: string, source: string): string {
+    const wrapper = join(root, "launch-wrapper.ts");
+    writeFileSync(wrapper, [
+      `process.argv[1] = ${JSON.stringify(installedBinary(root))};`,
+      `await import(${JSON.stringify(join(source, "apps", "gateway", "src", "cli.ts"))});`,
+    ].join("\n"));
+    return wrapper;
+  }
+
+  test("resolves the tracked executable checkout as the setup source", () => {
+    const { root, source } = fixture();
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere, { recursive: true });
+    // The implementation canonicalizes the Git toplevel (for example
+    // /private/var/... on macOS), so the executable input and the expected
+    // source root use the same canonical spelling as the resolution result.
+    const resolved = resolveSetupSourceRoot({
+      executable: realpathSync(join(source, "apps", "gateway", "src", "cli.ts")),
+      runRoot: elsewhere,
+    });
+    expect(resolved).toEqual({ sourceRoot: realpathSync(source), basis: "executable" });
+  });
+
+  test("falls back to the verified run root when the executable is not in a Git checkout", () => {
+    const { root, source } = fixture();
+    const resolved = resolveSetupSourceRoot({
+      executable: installedBinary(root),
+      runRoot: source,
+    });
+    expect(resolved).toEqual({ sourceRoot: realpathSync(source), basis: "run-root" });
+  });
+
+  test("falls back to the verified run root when the executable is not tracked in its checkout", () => {
+    const { root, source } = fixture();
+    const untracked = join(source, "apps", "gateway", "src", "untracked-cli.ts");
+    writeFileSync(untracked, "// untracked\n", "utf8");
+    const resolved = resolveSetupSourceRoot({
+      executable: untracked,
+      runRoot: source,
+    });
+    expect(resolved).toEqual({ sourceRoot: realpathSync(source), basis: "run-root" });
+  });
+
+  test("rejects a run root that is not inside a Git checkout", () => {
+    const { root } = fixture();
+    const plain = join(root, "plain");
+    mkdirSync(plain, { recursive: true });
+    expect(() => resolveSetupSourceRoot({
+      executable: installedBinary(root),
+      runRoot: plain,
+    })).toThrow(/cannot resolve setup source root from the run root/);
+  });
+
+  test("rejects a run root whose Git checkout does not track the setup definition", () => {
+    const { root } = fixture();
+    const foreign = join(root, "foreign");
+    mkdirSync(foreign, { recursive: true });
+    git(foreign, "init");
+    git(foreign, "config", "user.name", "Rossovia Test");
+    git(foreign, "config", "user.email", "rossovia@example.test");
+    writeFileSync(join(foreign, "README.md"), "# foreign\n", "utf8");
+    git(foreign, "add", "README.md");
+    git(foreign, "commit", "-m", "foreign");
+    expect(() => resolveSetupSourceRoot({
+      executable: installedBinary(root),
+      runRoot: foreign,
+    })).toThrow(/does not track the Rossovia setup definition/);
+  });
+
+  test("does not treat a tracked executable checkout without the setup definition as the source", () => {
+    const { root } = fixture();
+    const foreign = join(root, "foreign-binary-repo");
+    mkdirSync(join(foreign, "apps", "gateway", "src"), { recursive: true });
+    git(foreign, "init");
+    git(foreign, "config", "user.name", "Rossovia Test");
+    git(foreign, "config", "user.email", "rossovia@example.test");
+    const binary = join(foreign, "apps", "gateway", "src", "cli.ts");
+    writeFileSync(binary, "// binary\n", "utf8");
+    git(foreign, "add", "apps/gateway/src/cli.ts");
+    git(foreign, "commit", "-m", "binary in a foreign repo");
+    const plain = join(root, "plain");
+    mkdirSync(plain, { recursive: true });
+    // The foreign checkout is a Git source but never the setup source, and
+    // the unverifiable run root is rejected rather than adopted.
+    expect(() => resolveSetupSourceRoot({
+      executable: binary,
+      runRoot: plain,
+    })).toThrow(/cannot resolve setup source root from the run root/);
+  });
+
+  test("an installed-binary launch applies and reports setup from the explicit run root", () => {
+    const { root, source, home, codex, baseline } = fixture();
+    const wrapper = installedBinaryWrapper(root, source);
+    const initialized = command(
+      [process.execPath, wrapper, "--home", home, "init", "--setup", "multi-agent-delegation", "--target-root", codex],
+      source,
+    );
+    expect(initialized.exitCode).toBe(0);
+    expect(JSON.parse(initialized.stdout).setup.modules[0]).toEqual(expect.objectContaining({
+      module: "multi-agent-delegation",
+      harness: "codex",
+      status: "current",
+      appliedRevision: baseline,
+    }));
+    const status = command(
+      [process.execPath, wrapper, "--home", home, "setup", "status", "--target-root", codex],
+      source,
+    );
+    expect(status.exitCode).toBe(0);
+    expect(JSON.parse(status.stdout).modules[0]).toEqual(expect.objectContaining({
+      status: "current",
+      appliedRevision: baseline,
+    }));
+  });
+
+  test("an installed binary without a verifiable run root fails closed", () => {
+    const { root, source, home, codex } = fixture();
+    const wrapper = installedBinaryWrapper(root, source);
+    const plain = join(root, "plain");
+    mkdirSync(plain, { recursive: true });
+    const status = command(
+      [process.execPath, wrapper, "--home", home, "setup", "status", "--target-root", codex],
+      plain,
+    );
+    expect(status.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(status.stderr).toContain("rossovia: cannot resolve setup source root from the run root");
+    expect(status.stderr).not.toContain("for usage");
   });
 });
