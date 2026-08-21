@@ -178,6 +178,10 @@ button:disabled {
   background: var(--red);
 }
 
+.connection-mark.is-warning {
+  background: var(--ochre);
+}
+
 .text-action {
   background: transparent;
   border: 0;
@@ -3159,8 +3163,104 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   max-width: 1100px;
 }
 
+.settings-overview {
+  align-items: start;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.8fr);
+  margin-bottom: 1rem;
+  max-width: 1100px;
+  padding: 1rem;
+}
+
+.settings-overview h3 {
+  font-size: 1rem;
+  margin: 0.15rem 0 0;
+}
+
+.settings-overview p:not(.eyebrow) {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  margin: 0.45rem 0 0;
+  max-width: 52ch;
+}
+
+.settings-overview dl {
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.settings-overview dl > div {
+  align-items: baseline;
+  display: flex;
+  gap: 0.7rem;
+  justify-content: space-between;
+}
+
+.settings-overview dt {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+}
+
+.settings-overview dd {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  margin: 0;
+  text-align: right;
+}
+
 .settings-card {
   min-width: 0;
+}
+
+.settings-collapsible {
+  align-self: start;
+}
+
+.settings-collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-card-heading {
+  align-items: start;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+.settings-card-heading h3 {
+  font-size: 0.92rem;
+  font-weight: 650;
+  margin: 0.16rem 0 0;
+}
+
+.settings-card-heading strong,
+.settings-summary-hint {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-summary-hint::after {
+  content: " · 展开";
+}
+
+.settings-collapsible[open] .settings-summary-hint::after {
+  content: " · 收起";
 }
 
 .settings-provider-card,
@@ -3193,6 +3293,14 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   line-height: 1.5;
   margin: 0.45rem 0 0;
   overflow-wrap: anywhere;
+}
+
+.surface-section-heading > div > p {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0.35rem 0 0;
+  max-width: 46ch;
 }
 
 .settings-card-intro {
@@ -5897,12 +6005,14 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .mobile-system-menu summary {
     align-items: center;
-    border-bottom: 1px solid currentColor;
+    border: 1px solid var(--line-light);
+    border-radius: 999px;
     cursor: pointer;
     display: flex;
-    font-size: 0.66rem;
+    color: var(--ink-soft);
+    font-size: 0.62rem;
     min-height: 32px;
-    padding: 0.1rem 0;
+    padding: 0.1rem 0.45rem 0.1rem 0.55rem;
     white-space: nowrap;
   }
 
@@ -5912,13 +6022,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .mobile-system-menu summary::after {
-    content: "⌄";
-    font-size: 0.8rem;
+    content: "⋯";
+    font-size: 0.9rem;
     margin-left: 0.25rem;
   }
 
   .mobile-system-menu[open] summary::after {
-    content: "⌃";
+    content: "×";
   }
 
   .mobile-system-menu-panel {
@@ -5933,6 +6043,15 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     right: 0;
     top: calc(100% + 0.45rem);
     z-index: 80;
+  }
+
+  .mobile-system-menu-title {
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    margin: 0.25rem 0.55rem 0.1rem;
+    text-transform: uppercase;
   }
 
   .mobile-system-menu-panel button {
@@ -6078,6 +6197,18 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-overview {
+    gap: 0.8rem;
+    grid-template-columns: 1fr;
+    padding: 0.85rem;
+  }
+
+  .settings-overview dl {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 0.75rem 0 0;
   }
 
   .settings-skill-source-items {

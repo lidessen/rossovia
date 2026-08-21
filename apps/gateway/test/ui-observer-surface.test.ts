@@ -15,11 +15,32 @@ test("observer review projects the nested worker identity as a scalar", () => {
 test("mobile system tools stay secondary while remaining keyboard-discoverable", () => {
   const html = readFileSync(join(uiRoot, "index.html"), "utf8");
   expect(html).toContain('<details class="mobile-system-menu">');
-  expect(html).toContain('<summary aria-label="打开系统工具">系统</summary>');
+  expect(html).toContain('<summary aria-label="打开更多工作台工具">更多</summary>');
+  expect(html).toContain('<p class="mobile-system-menu-title">工作台工具</p>');
   expect(html).toContain('data-view="observer"');
   expect(html).toContain('data-view="settings"');
   expect((html.match(/data-mobile-view=/gu) ?? []).length).toBe(4);
   expect(html).toContain('aria-label="移动端主导航"');
+});
+
+test("settings keeps its decision summary and stays independent of an invalid project locus", () => {
+  const html = readFileSync(join(uiRoot, "index.html"), "utf8");
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(html).toContain('class="settings-overview"');
+  expect(html).toContain('id="settings-worker-count"');
+  expect(html).toContain('id="settings-provider-summary"');
+  expect(html).toContain('class="settings-card settings-collapsible settings-skill-card"');
+  expect(html).toContain('class="settings-card settings-collapsible settings-directory-card"');
+  expect(app).toContain('if (!isSystemSurface && (state.locusRestorePending || state.unavailableLocus !== null))');
+  expect(app).toContain('$("#settings-overview-copy").textContent');
+});
+
+test("conversation disconnect makes the masthead distinguish projection from socket state", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
+  expect(app).toContain('投影已连接 · 对话已断开');
+  expect(app).toContain('renderConnection();\n    renderConversationConnection();');
+  expect(css).toContain('.connection-mark.is-warning');
 });
 
 test("conversation evidence is labeled without inventing a read-only href", () => {

@@ -1974,10 +1974,20 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = $("#connection-mark");
     const warning = $("#source-warning");
     mark.className = "connection-mark";
+    const conversationConnectionIssue =
+      state.activeView === "conversation"
+      && (conversationState.connection === "disconnected" || conversationState.connection === "unavailable");
 
     if (state.source === "live") {
-      $("#connection-label").textContent = "实时 · 已连接";
-      mark.classList.add("is-live");
+      if (conversationConnectionIssue) {
+        $("#connection-label").textContent = conversationState.connection === "unavailable"
+          ? "投影已连接 · 对话不可用"
+          : "投影已连接 · 对话已断开";
+        mark.classList.add("is-warning");
+      } else {
+        $("#connection-label").textContent = "实时 · 已连接";
+        mark.classList.add("is-live");
+      }
       warning.hidden = true;
     } else if (state.source === "stale") {
       $("#connection-label").textContent = "上次实时 · 已过期";
@@ -2447,7 +2457,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const isSettings = state.activeView === "settings";
     const isSystemSurface = isObserver || isSettings;
 
-    if (state.locusRestorePending || state.unavailableLocus !== null) {
+    if (!isSystemSurface && (state.locusRestorePending || state.unavailableLocus !== null)) {
       renderLocusGate({
         overview,
         projectDetail,
@@ -2630,7 +2640,15 @@ export function taskLocatorEmptySummary(locator, context) {
     if (!sourceState || !providerRoot || !preferenceRoot || !skillRoot || state.activeView !== "settings") return;
     const standing = text(first(projection, ["standing"]), "unavailable");
     sourceState.textContent = standing === "available" ? "当前 host policy" : "来源不可用";
+    const workers = list(first(projection, ["workers"], []));
     const providers = list(first(projection, ["providers"], []));
+    $("#settings-worker-count").textContent = String(workers.length);
+    $("#settings-provider-summary").textContent = providers.length
+      ? `${providers.length} 个可用`
+      : "暂无可用";
+    $("#settings-overview-copy").textContent = standing === "available"
+      ? "当前页面只读展示 host policy 与用户偏好；修改请回到对应的配置来源。"
+      : text(first(projection, ["reason"]), "当前配置来源不可用，页面不会用默认值冒充事实。");
     $("#settings-provider-count").textContent = String(providers.length);
     providerRoot.innerHTML = providers.length ? providers.map((provider) => `
       <article class="settings-provider-card">
@@ -6326,6 +6344,10 @@ export function taskLocatorEmptySummary(locator, context) {
     surface.hidden = !active;
     $("#project-surface").hidden = active;
     if (!active) return;
+    // Keep the page-level projection label in step with the independent
+    // conversation socket state; otherwise a green masthead can coexist with
+    // a disconnected conversation banner.
+    renderConnection();
     renderConversationConnection();
     renderConversationFeed();
     bindConversationFeedActions();

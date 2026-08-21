@@ -38,8 +38,9 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
       </div>
 
       <details class="mobile-system-menu">
-        <summary aria-label="打开系统工具">系统</summary>
+        <summary aria-label="打开更多工作台工具">更多</summary>
         <div class="mobile-system-menu-panel" aria-label="系统工具">
+          <p class="mobile-system-menu-title">工作台工具</p>
           <button type="button" data-view="observer">
             <span>观察记录</span>
             <small data-observer-review-count>—</small>
@@ -547,42 +548,55 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <div>
               <p class="eyebrow">Workbench · secondary surface</p>
               <h2 id="settings-title">设置</h2>
-              <p>查看当前生效的运行配置。Provider 密钥只由宿主环境提供，界面不会读取或保存密钥内容。</p>
+              <p>先看当前运行是否可用，再按需展开来源。这里是只读投影，不直接修改 Provider、Worker 或凭据。</p>
             </div>
             <div class="observation-state">
               <span>配置来源</span>
               <strong id="settings-source-state">正在读取</strong>
             </div>
           </header>
+          <section class="settings-overview" aria-labelledby="settings-overview-heading">
+            <div>
+              <p class="eyebrow">当前状态</p>
+              <h3 id="settings-overview-heading">运行配置可见性</h3>
+              <p id="settings-overview-copy">正在读取当前 host policy 与用户偏好。</p>
+            </div>
+            <dl>
+              <div><dt>Worker</dt><dd id="settings-worker-count">—</dd></div>
+              <div><dt>Provider</dt><dd id="settings-provider-summary">—</dd></div>
+              <div><dt>可编辑</dt><dd>不可编辑</dd></div>
+            </dl>
+          </section>
           <div class="settings-grid">
             <section class="settings-card" aria-labelledby="settings-providers-heading">
               <div class="surface-section-heading">
-                <div><span>Execution policy</span><h3 id="settings-providers-heading">Provider 与 Worker</h3></div>
+                <div><span>运行策略</span><h3 id="settings-providers-heading">Provider / Worker</h3><p>显示当前可用的执行通道；凭据内容永不进入界面。</p></div>
                 <strong id="settings-provider-count">—</strong>
               </div>
               <div id="settings-provider-list"><p class="empty-note">正在读取 worker policy。</p></div>
             </section>
             <section class="settings-card" aria-labelledby="settings-preferences-heading">
               <div class="surface-section-heading">
-                <div><span>User defaults</span><h3 id="settings-preferences-heading">偏好</h3></div>
+                <div><span>用户选择</span><h3 id="settings-preferences-heading">偏好</h3><p>仅显示已经生效的偏好，不代表设置编辑器。</p></div>
                 <strong id="settings-preference-count">—</strong>
               </div>
               <div id="settings-preference-list"><p class="empty-note">正在读取偏好。</p></div>
             </section>
-            <section class="settings-card settings-skill-card" aria-labelledby="settings-skills-heading">
-              <header class="settings-card-heading">
+            <details class="settings-card settings-collapsible settings-skill-card">
+              <summary class="settings-card-heading" aria-labelledby="settings-skills-heading">
                 <div><span>Context delivery</span><h3 id="settings-skills-heading">Skill 来源与加载</h3></div>
                 <strong id="settings-skill-source-count">—</strong>
-              </header>
-              <p class="settings-card-intro">Pick 与 builtin 都是安装包内置技能，user-custom 是单独的用户来源；这里显示目录与加载时机，不显示正文。</p>
+              </summary>
+              <p class="settings-card-intro">展开查看主 Agent 与 Worker 的来源边界、可见性和加载时机；这里不显示正文。</p>
               <div id="settings-skill-source-list"><p class="empty-note">正在读取 skill 来源。</p></div>
-            </section>
-            <section class="settings-card settings-directory-card" aria-labelledby="settings-directories-heading">
-              <header class="settings-card-heading">
+            </details>
+            <details class="settings-card settings-collapsible settings-directory-card">
+              <summary class="settings-card-heading">
                 <div><span>Ownership</span><h3 id="settings-directories-heading">目录归属</h3></div>
-              </header>
+                <span class="settings-summary-hint">展开查看</span>
+              </summary>
               <div id="settings-directory-list"><p class="empty-note">正在读取目录边界。</p></div>
-            </section>
+            </details>
           </div>
           <p class="settings-boundary" id="settings-boundary">
             当前页只投影 host worker policy 与 Workbench preferences；Provider 路由、credential、模型顺序等运行策略必须先在其 owning policy/config source 中落地，再由这里读取。
@@ -1763,6 +1777,10 @@ button:disabled {
 .connection-mark.is-demo,
 .connection-mark.is-error {
   background: var(--red);
+}
+
+.connection-mark.is-warning {
+  background: var(--ochre);
 }
 
 .text-action {
@@ -4746,8 +4764,104 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   max-width: 1100px;
 }
 
+.settings-overview {
+  align-items: start;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.8fr);
+  margin-bottom: 1rem;
+  max-width: 1100px;
+  padding: 1rem;
+}
+
+.settings-overview h3 {
+  font-size: 1rem;
+  margin: 0.15rem 0 0;
+}
+
+.settings-overview p:not(.eyebrow) {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  margin: 0.45rem 0 0;
+  max-width: 52ch;
+}
+
+.settings-overview dl {
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.settings-overview dl > div {
+  align-items: baseline;
+  display: flex;
+  gap: 0.7rem;
+  justify-content: space-between;
+}
+
+.settings-overview dt {
+  color: var(--ink-faint);
+  font-size: 0.68rem;
+}
+
+.settings-overview dd {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  margin: 0;
+  text-align: right;
+}
+
 .settings-card {
   min-width: 0;
+}
+
+.settings-collapsible {
+  align-self: start;
+}
+
+.settings-collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-card-heading {
+  align-items: start;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+.settings-card-heading h3 {
+  font-size: 0.92rem;
+  font-weight: 650;
+  margin: 0.16rem 0 0;
+}
+
+.settings-card-heading strong,
+.settings-summary-hint {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-summary-hint::after {
+  content: " · 展开";
+}
+
+.settings-collapsible[open] .settings-summary-hint::after {
+  content: " · 收起";
 }
 
 .settings-provider-card,
@@ -4780,6 +4894,14 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   line-height: 1.5;
   margin: 0.45rem 0 0;
   overflow-wrap: anywhere;
+}
+
+.surface-section-heading > div > p {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0.35rem 0 0;
+  max-width: 46ch;
 }
 
 .settings-card-intro {
@@ -7484,12 +7606,14 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .mobile-system-menu summary {
     align-items: center;
-    border-bottom: 1px solid currentColor;
+    border: 1px solid var(--line-light);
+    border-radius: 999px;
     cursor: pointer;
     display: flex;
-    font-size: 0.66rem;
+    color: var(--ink-soft);
+    font-size: 0.62rem;
     min-height: 32px;
-    padding: 0.1rem 0;
+    padding: 0.1rem 0.45rem 0.1rem 0.55rem;
     white-space: nowrap;
   }
 
@@ -7499,13 +7623,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .mobile-system-menu summary::after {
-    content: "⌄";
-    font-size: 0.8rem;
+    content: "⋯";
+    font-size: 0.9rem;
     margin-left: 0.25rem;
   }
 
   .mobile-system-menu[open] summary::after {
-    content: "⌃";
+    content: "×";
   }
 
   .mobile-system-menu-panel {
@@ -7520,6 +7644,15 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     right: 0;
     top: calc(100% + 0.45rem);
     z-index: 80;
+  }
+
+  .mobile-system-menu-title {
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    margin: 0.25rem 0.55rem 0.1rem;
+    text-transform: uppercase;
   }
 
   .mobile-system-menu-panel button {
@@ -7665,6 +7798,18 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-overview {
+    gap: 0.8rem;
+    grid-template-columns: 1fr;
+    padding: 0.85rem;
+  }
+
+  .settings-overview dl {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 0.75rem 0 0;
   }
 
   .settings-skill-source-items {
@@ -10426,10 +10571,20 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = $("#connection-mark");
     const warning = $("#source-warning");
     mark.className = "connection-mark";
+    const conversationConnectionIssue =
+      state.activeView === "conversation"
+      && (conversationState.connection === "disconnected" || conversationState.connection === "unavailable");
 
     if (state.source === "live") {
-      $("#connection-label").textContent = "实时 · 已连接";
-      mark.classList.add("is-live");
+      if (conversationConnectionIssue) {
+        $("#connection-label").textContent = conversationState.connection === "unavailable"
+          ? "投影已连接 · 对话不可用"
+          : "投影已连接 · 对话已断开";
+        mark.classList.add("is-warning");
+      } else {
+        $("#connection-label").textContent = "实时 · 已连接";
+        mark.classList.add("is-live");
+      }
       warning.hidden = true;
     } else if (state.source === "stale") {
       $("#connection-label").textContent = "上次实时 · 已过期";
@@ -10899,7 +11054,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const isSettings = state.activeView === "settings";
     const isSystemSurface = isObserver || isSettings;
 
-    if (state.locusRestorePending || state.unavailableLocus !== null) {
+    if (!isSystemSurface && (state.locusRestorePending || state.unavailableLocus !== null)) {
       renderLocusGate({
         overview,
         projectDetail,
@@ -11082,7 +11237,15 @@ export function taskLocatorEmptySummary(locator, context) {
     if (!sourceState || !providerRoot || !preferenceRoot || !skillRoot || state.activeView !== "settings") return;
     const standing = text(first(projection, ["standing"]), "unavailable");
     sourceState.textContent = standing === "available" ? "当前 host policy" : "来源不可用";
+    const workers = list(first(projection, ["workers"], []));
     const providers = list(first(projection, ["providers"], []));
+    $("#settings-worker-count").textContent = String(workers.length);
+    $("#settings-provider-summary").textContent = providers.length
+      ? \`\${providers.length} 个可用\`
+      : "暂无可用";
+    $("#settings-overview-copy").textContent = standing === "available"
+      ? "当前页面只读展示 host policy 与用户偏好；修改请回到对应的配置来源。"
+      : text(first(projection, ["reason"]), "当前配置来源不可用，页面不会用默认值冒充事实。");
     $("#settings-provider-count").textContent = String(providers.length);
     providerRoot.innerHTML = providers.length ? providers.map((provider) => \`
       <article class="settings-provider-card">
@@ -14778,6 +14941,10 @@ export function taskLocatorEmptySummary(locator, context) {
     surface.hidden = !active;
     $("#project-surface").hidden = active;
     if (!active) return;
+    // Keep the page-level projection label in step with the independent
+    // conversation socket state; otherwise a green masthead can coexist with
+    // a disconnected conversation banner.
+    renderConnection();
     renderConversationConnection();
     renderConversationFeed();
     bindConversationFeedActions();
