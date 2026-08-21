@@ -14,6 +14,7 @@ test("observer review projects the nested worker identity as a scalar", () => {
 
 test("mobile system tools stay secondary while remaining keyboard-discoverable", () => {
   const html = readFileSync(join(uiRoot, "index.html"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
   expect(html).toContain('<details class="mobile-system-menu">');
   expect(html).toContain('<summary aria-label="打开更多工作台工具">更多</summary>');
   expect(html).toContain('<p class="mobile-system-menu-title">工作台工具</p>');
@@ -21,6 +22,9 @@ test("mobile system tools stay secondary while remaining keyboard-discoverable",
   expect(html).toContain('data-view="settings"');
   expect((html.match(/data-mobile-view=/gu) ?? []).length).toBe(4);
   expect(html).toContain('aria-label="移动端主导航"');
+  expect(css).toMatch(
+    /@media \(max-width: 700px\)[\s\S]*?\.masthead\s*\{[\s\S]*?position: sticky;[\s\S]*?top: 0;[\s\S]*?z-index: 50;/s,
+  );
 });
 
 test("settings keeps its decision summary and stays independent of an invalid project locus", () => {

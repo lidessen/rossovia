@@ -8059,8 +8059,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .masthead {
+    background: rgba(251, 251, 250, 0.98);
     min-height: 62px;
     padding: 0.55rem 0.8rem;
+    position: sticky;
+    top: 0;
+    z-index: 50;
   }
 
   .identity-mark {
