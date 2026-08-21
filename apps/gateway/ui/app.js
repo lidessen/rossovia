@@ -653,11 +653,17 @@ export function observerReviewSummary(value, limit = 220) {
 
 function observerSubjectOutcomeCopy(outcome) {
   if (!outcome || typeof outcome !== "object") return "未提供主体结算摘要";
-  const settlement = text(outcome.settlementStatus, "未知");
-  const cell = text(outcome.cellStatus, "未提供机械状态");
+  const scalar = (value, fallback) =>
+    value === null || value === undefined || value === ""
+      ? fallback
+      : typeof value === "boolean"
+        ? value ? "是" : "否"
+        : String(value);
+  const settlement = scalar(outcome.settlementStatus, "未知");
+  const cell = scalar(outcome.cellStatus, "未提供机械状态");
   const semantic = outcome.semanticAcceptance === "not-evaluated"
     ? "语义验收未评估"
-    : text(outcome.semanticAcceptance, "语义验收未知");
+    : scalar(outcome.semanticAcceptance, "语义验收未知");
   return `${settlement} · 机械执行 ${cell} · ${semantic}`;
 }
 
