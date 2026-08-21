@@ -180,6 +180,51 @@ test("conversation disconnect makes the masthead distinguish projection from soc
   expect(css).toContain('.connection-mark.is-warning');
 });
 
+test("the live masthead claims partial sources only when snapshot errors are present", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const connectionRenderer = app.slice(
+    app.indexOf("function renderConnection"),
+    app.indexOf("function renderSupervision"),
+  );
+  // Only a non-empty snapshot.errors list keeps the 部分来源不可用 risk copy
+  // on a live connection; the errors gate precedes the incompleteness branch.
+  expect(connectionRenderer).toContain("snapshotSourceErrors.length > 0");
+  expect(connectionRenderer.indexOf("实时 · 部分来源不可用")).toBeLessThan(
+    connectionRenderer.indexOf("实时 · 投影需核查"),
+  );
+  // errors=[] + complete=false expresses a needs-review standing instead of
+  // claiming unavailable sources, and 已连接 stays the no-warning label.
+  expect(connectionRenderer).toContain('$("#connection-label").textContent = "实时 · 投影需核查";');
+  expect(connectionRenderer).toContain('$("#connection-label").textContent = "实时 · 已连接";');
+});
+
+test("the overview observation badge applies the same errors gate and keeps completeness exact", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  // The overview badge mirrors the masthead: 部分来源不可用 requires errors,
+  // while an incomplete-but-error-free projection becomes 实时 · 投影需核查.
+  expect(app).toContain("const liveSourceErrors = list(first(state.snapshot, [\"errors\"], []));");
+  expect(app).toContain("liveSourceErrors.length > 0");
+  expect(app).toContain('"实时 · 投影需核查"');
+  // The projection completeness row stays precise: complete=false still reads
+  // 运行投影不完整 and complete=true reads 运行投影完整.
+  expect(app).toContain('? "运行投影完整"\n        : complete === false\n          ? "运行投影不完整"');
+  expect(app).toContain('"#projection-completeness"');
+});
+
+test("disconnected, demo, and task-source risk copy stay untouched by the errors gate", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
+  // Live-connection loss keeps its existing risk surfaces: the stale banner
+  // and the demo label, with the warning mark styling unchanged.
+  expect(app).toContain('$("#connection-label").textContent = "上次实时 · 已过期";');
+  expect(app).toContain('"实时刷新失败 · 操作已禁用"');
+  expect(app).toContain('$("#connection-label").textContent = "演示 · 非实时";');
+  expect(css).toContain(".connection-mark.is-warning");
+  // The task-source unavailable risk copy is a separate gate and remains.
+  expect(app).toContain("任务来源不可用或投影不完整：当前计数只覆盖可读来源，不代表完整集合。");
+  expect(app).toContain("任务来源不可用或投影不完整：无法确认是否真的没有匹配项。");
+});
+
 test("a faulted open conversation socket is replaced by the reconnect path", () => {
   expect(conversationSocketCanReuse(0, false)).toBe(true);
   expect(conversationSocketCanReuse(1, false)).toBe(true);
