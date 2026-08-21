@@ -53,6 +53,35 @@ No new Principle is currently justified. The open question is expression selecti
 
 These are hypotheses, not accepted design claims.
 
+## First POC observation — 2026-08-21
+
+The first Rossovia-run probe used the project task
+`c09d50aa-9db9-4663-ad8f-c3a19c3f3b89` with three pending Task todos. The worker
+finished without a workspace diff, but the Work Cell settled
+`verification_failed` because the task cycle still had three pending items.
+This is a task-shaping/protocol observation, not evidence about mixed thinking;
+the experiment was not treated as a semantic result.
+
+The corrected no-todo probe used task
+`f418af68-e62f-4ece-a8bb-3f4573a2ba72`, attempt
+`62f745b8-86fc-4e98-863d-1d5cc0b3a8fb`, and DeepSeek Flash with `reasoning=max`.
+The standard run result was `cellStatus=passed`, with an empty workspace diff,
+6,574 output tokens, and a 3,408-character final report. The read-only observer
+review `review-62f745b8-86fc-4e98-863d-1d5cc0b3a8fb-a57d97dc-7605-47b1-8360-c2fae0bd6bab`
+confirmed the lifecycle and effect boundaries, but reported that the standard
+observer context omitted the result payload, source content, and step-level
+evidence. It therefore could not verify whether A/B/C actually differed or
+whether any candidate improved coverage.
+
+**POC standing:** `uncertain`. The run proves that a read-only concept probe can
+complete through the existing Task/Run/Cell path, and that the observer can
+record a precise query gap. It does not prove H1, H2, or H3. A second probe
+needs a bounded, reviewable result projection (for example a deliberately
+structured candidate envelope or content digest plus criterion-linked summary)
+without exposing raw chain-of-thought or private payloads. Until that surface
+exists, do not claim semantic POC success or add a production mixed-agent
+mechanism.
+
 ## Smallest POC
 
 Use an existing ordinary task carrier or an offline fixture; do not add a runtime lifecycle, durable queue, role enum, or UI path.
