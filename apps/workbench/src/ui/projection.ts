@@ -332,7 +332,11 @@ export interface WorkbenchSnapshot {
     readonly registration: "loaded-at-build";
     readonly git: "observed-at-build";
     readonly missions: "read-at-build";
-    readonly runners: "cached-status-files";
+    /**
+     * The base snapshot reads runners only from cached status files; the live
+     * snapshot projects "live" once any runner probe confirmed a live carrier.
+     */
+    readonly runners: "cached-status-files" | "live";
     readonly runnerUpdatedAtRange: {
       readonly oldest: string;
       readonly newest: string;

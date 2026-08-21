@@ -239,3 +239,18 @@ test("conversation evidence is labeled without inventing a read-only href", () =
   ]);
   expect(observerConversationEvidenceLabels({ relatedConversationRefs: ["<script>alert(1)</script>"] })[0].href).toBeNull();
 });
+
+test("observer trigger copy names the conversation-carrier settled run, not every Task/Run terminal", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
+  // The observer is currently launched only by a conversation carrier's
+  // settled Run; the trigger kind and the visible label must say so.
+  expect(server).toContain('kind: "conversation-run-settled"');
+  expect(server).toContain('label: "对话 Run 结算后触发"');
+  expect(server).not.toContain('label: "Task/Run 终态结算后触发"');
+  // The empty-state copy on the observer card uses the same scoped claim.
+  expect(app).toContain("observer 已启用，但还没有完成可观察的对话 Run");
+  expect(app).toContain("它只在对话 carrier 的 Run 结算后读取完整证据并追加记录");
+  expect(app).toContain("完成一次可观察的对话 Run 后");
+  expect(app).not.toContain("Task/Run 终态");
+});

@@ -2757,7 +2757,7 @@ export function taskLocatorEmptySummary(locator, context) {
       },
       waiting: {
         label: "等待首次触发",
-        detail: "observer 已启用，但还没有完成可观察的 Task/Run。",
+        detail: "observer 已启用，但还没有完成可观察的对话 Run。",
       },
       empty: {
         label: "记录源为空",
@@ -2822,9 +2822,9 @@ export function taskLocatorEmptySummary(locator, context) {
     const displayReviews = reviews.slice().reverse();
     if (!displayReviews.length) {
       const emptyCopy = {
-        waiting: ["还没有可展示的观察意见", "observer 已启用。它只在 Task/Run 终态结算后读取完整证据并追加记录；当前没有符合条件的已结算执行。"],
-        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的 Task/Run 后，这里会出现真实记录。"],
-        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后也只会观察之后的 Task/Run，不会追溯补审历史执行。"],
+        waiting: ["还没有可展示的观察意见", "observer 已启用。它只在对话 carrier 的 Run 结算后读取完整证据并追加记录；当前没有符合条件的已结算 Run。"],
+        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的对话 Run 后，这里会出现真实记录。"],
+        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后也只会观察之后的对话 Run，不会追溯补审历史执行。"],
         unavailable: ["暂时读不到观察记录", text(first(projection, ["reason"]), "记录源返回了不可用状态，请先检查运行环境。")],
       }[recordState] || ["暂时没有观察意见", stateCopy.detail];
       listRoot.innerHTML = `<div class="system-empty observer-empty" data-state="${escapeHtml(recordState)}"><span class="observer-empty-kicker">OBSERVATION LOG</span><strong>${escapeHtml(emptyCopy[0])}</strong><span>${escapeHtml(emptyCopy[1])}</span><small>记录来源：<code>${escapeHtml(text(first(projection, ["sourceRef"]), "未知"))}</code></small></div>`;

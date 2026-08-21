@@ -79,7 +79,7 @@ export interface ServerOptions {
   readonly home?: string;
   readonly port: number;
   readonly roots: readonly string[];
-  /** Local startup defaults to one observer per settled observable Task/Run. */
+  /** Local startup defaults to one observer per conversation-carrier settled Run. */
   readonly observerWorkerId?: string;
   /** Set only by the production startup entry after its mechanical gate. */
   readonly startupGate?: SelfCheckStartupGate;
@@ -619,6 +619,12 @@ async function buildLiveSnapshot(
   const taskAttempts = await readTaskAttemptsProjections(options.home, taskSource);
   const observerReviews = readObserverReviews(options.home, options.observerWorkerId);
   const settings = readSettingsProjection(options, observerReviews);
+  // The aggregate runner freshness must describe the snapshot actually served:
+  // with at least one live runner the projection no longer reads runners only
+  // from cached status files, so the cached-only claim and the cached update
+  // range would be factually wrong. Non-live runners keep their own per-runner
+  // cached freshness unchanged.
+  const anyLiveRunner = runners.some((runner) => runner.live === true);
   const liveSnapshot = {
     ...snapshot,
     complete:
@@ -631,6 +637,15 @@ async function buildLiveSnapshot(
       ...taskAttention,
     ],
     errors: [...snapshot.errors, ...runnerSourceErrors, ...taskErrors],
+    ...(anyLiveRunner
+      ? {
+        freshness: {
+          ...snapshot.freshness,
+          runners: "live" as const,
+          runnerUpdatedAtRange: null,
+        },
+      }
+      : {}),
   };
   return {
     ...liveSnapshot,
@@ -669,7 +684,7 @@ function readObserverReviews(home: string | undefined, observerWorkerId?: string
       lastRecordedAt: reviews.at(-1)?.recordedAt ?? null,
       trigger: {
         kind: "conversation-run-settled" as const,
-        label: "Task/Run 终态结算后触发",
+        label: "对话 Run 结算后触发",
       },
     };
   } catch (error: unknown) {
@@ -684,7 +699,7 @@ function readObserverReviews(home: string | undefined, observerWorkerId?: string
       lastRecordedAt: null,
       trigger: {
         kind: "conversation-run-settled" as const,
-        label: "Task/Run 终态结算后触发",
+        label: "对话 Run 结算后触发",
       },
       reason: error instanceof Error ? error.message : String(error),
     };
