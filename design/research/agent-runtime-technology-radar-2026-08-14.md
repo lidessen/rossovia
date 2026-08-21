@@ -28,11 +28,11 @@ still unverified (`unknown`), and who may turn a row into a decision
 | GLM-5.3 through OpenCode Go | Model/provider policy | **Available for a bounded paid trial; not yet a production worker** | Official OpenCode Go documentation now lists the exact model identity, but no Rossovia tool-loop run has verified serving identity, evidence quality, cost, or behavior. |
 | Delta | Conversation/worktree collaboration substrate | **Observe; do not integrate yet** | It directly addresses conversation-to-code lineage and live multi-user review, but is a private-beta product with no current agent permission framework or sandbox and with material hosted-data semantics. |
 
-The three developments are adjacent but not interchangeable. DeepSeek Harness
-is a candidate execution carrier, GLM-5.3 is a candidate model route, and Delta
-is a candidate collaboration substrate. Rossovia's canonical Task/Mission
-state, effect authority, Principal decisions, and acceptance evidence remain
-separate from all three.
+The four developments are adjacent but not interchangeable. DeepSeek Harness
+is a candidate execution carrier, OpenAI Codex is an external carrier reference,
+GLM-5.3 is a candidate model route, and Delta is a candidate collaboration
+substrate. Rossovia's canonical Task/Mission state, effect authority, Principal
+decisions, and acceptance evidence remain separate from all four.
 
 ## Reference combination matrix
 
@@ -327,7 +327,7 @@ surface can be connected behind an existing boundary:
 
 | Candidate contribution | Classification | Rossovia boundary |
 |---|---|---|
-| Separate engine, CLI, and SDK surfaces | **Directly assemblable carrier mechanism** | A future adapter may map one Codex execution surface to the existing Work Cell loop while Task/Mission/Run/Cell identity and settlement remain local. |
+| Separate engine, CLI, and SDK surfaces | **Candidate carrier mechanism; assemble only after validation behind an existing adapter boundary** | A future adapter may map one Codex execution surface to the existing Work Cell loop while Task/Mission/Run/Cell identity and settlement remain local. |
 | Project configuration, skills, and context delivery surfaces | **Comparative carrier evidence** | Compare how context reaches a receiver and what is on-demand versus always present; Rossovia's Skills, system prompt, and source-selection policy remain the method-expression owner. |
 | Session, turn, tool, and execution evidence exposed by a selected Codex surface | **Directly assemblable only after a probe** | Accept only evidence that can be retained as the existing Run/Cell transcript and terminal record without a second session authority. |
 | Rust/Bazel implementation, Codex-specific UI, authentication/subscription behavior, model-facing defaults, and upstream repository instructions | **Comparative only** | Do not import them as Rossovia mechanism, provider policy, project configuration, or post-training. |
