@@ -135,8 +135,10 @@ implemented, so use the active `rossovia` help and report any mismatch rather
 than assuming the design is already shipped.
 
 When Rossovia starts locally through the Workbench UI, it enables one ordinary
-read-only background worker for each settled observable Task/Run. The default
-worker is the host-policy `deepseek-flash` card. Choose another worker or turn
+read-only background worker per settled conversation Run by default. Explicit
+observer entries (`task run --enable-observer`, `observer --attempt`) can
+observe other settled Tasks/Runs. The default worker is the host-policy
+`deepseek-flash` card. Choose another worker or turn
 the local default off at startup:
 
 ```text

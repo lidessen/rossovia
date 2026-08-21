@@ -1046,6 +1046,15 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   text-transform: uppercase;
 }
 
+.mission-state-secondary {
+  color: var(--ink-faint);
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  margin-top: 0.22rem;
+  text-transform: none;
+}
+
 .mission-state[data-mode="input-pending"],
 .mission-state[data-mode="anchor-pending"],
 .mission-state[data-mode="needs-attention"] {
@@ -3089,6 +3098,41 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
 .observer-review-status[data-standing="runner-failed"] {
   border-color: var(--ochre);
   color: var(--ochre);
+}
+
+/* The observed run's semantic acceptance is a separate badge from the review
+   record standing: a saved opinion and an unevaluated execution are two
+   facts, never one collapsed label. */
+.observer-review-subject-standing {
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.observer-review-subject-standing[data-standing="not-evaluated"],
+.observer-review-subject-standing[data-standing="unknown"] {
+  border-color: var(--ochre);
+  color: var(--ochre);
+}
+
+.observer-review-subject-standing[data-standing="failed"] {
+  border-color: var(--red);
+  color: var(--red-dark);
+}
+
+.observer-review-subject-standing[data-standing="passed"] {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.observer-task-link {
+  margin-right: 0.3rem;
+}
+
+.observer-review-facts dd .observer-task-link {
+  color: var(--focus);
 }
 
 .observer-review-finding {

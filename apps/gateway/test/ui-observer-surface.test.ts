@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, observerConversationEvidenceLabels, observerReviewStatusProjection, observerReviewSummary, observerReviewWorkerId } from "../ui/app.js";
+import { conversationSocketCanReuse, observerConversationEvidenceLabels, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -19,7 +19,10 @@ test("observer review keeps a readable summary before the full markdown body", (
   expect(observerReviewSummary("x".repeat(300), 20)).toBe(`${"x".repeat(40)}…`);
 });
 
-test("observer review distinguishes recorded evidence from unevaluated semantics", () => {
+test("observer review keeps the record standing and the subject semantic acceptance apart", () => {
+  // A recorded opinion whose subject semantics were not evaluated keeps the
+  // truthful record badge (已记录); the unevaluated acceptance never borrows
+  // the record's query-gap standing.
   expect(observerReviewStatusProjection({
     standing: "recorded",
     subjectOutcome: {
@@ -27,8 +30,27 @@ test("observer review distinguishes recorded evidence from unevaluated semantics
       cellStatus: "passed",
       semanticAcceptance: "not-evaluated",
     },
-  })).toEqual({ standing: "query-gap", label: "待语义复核" });
+  })).toEqual({ standing: "recorded", label: "已记录" });
   expect(observerReviewStatusProjection({
+    standing: "query-gap",
+    subjectOutcome: {
+      settlementStatus: "runner-failed",
+      semanticAcceptance: "not-evaluated",
+    },
+  })).toEqual({ standing: "query-gap", label: "查询缺口" });
+  expect(observerReviewStatusProjection({})).toEqual({ standing: "unknown", label: "状态未知" });
+});
+
+test("observer subject acceptance is a separate badge that never borrows the record standing", () => {
+  expect(observerReviewSubjectAcceptanceProjection({
+    standing: "recorded",
+    subjectOutcome: {
+      settlementStatus: "recorded",
+      cellStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    },
+  })).toEqual({ standing: "not-evaluated", label: "语义验收未评估" });
+  expect(observerReviewSubjectAcceptanceProjection({
     standing: "recorded",
     subjectOutcome: {
       settlementStatus: "recorded",
@@ -36,7 +58,65 @@ test("observer review distinguishes recorded evidence from unevaluated semantics
       finalStatus: "passed",
       semanticAcceptance: "passed",
     },
-  })).toEqual({ standing: "recorded", label: "已记录" });
+  })).toEqual({ standing: "passed", label: "语义验收通过" });
+  expect(observerReviewSubjectAcceptanceProjection({
+    standing: "recorded",
+    subjectOutcome: {
+      settlementStatus: "runner-failed",
+      semanticAcceptance: "not-evaluated",
+    },
+  })).toEqual({ standing: "failed", label: "被观察执行未通过" });
+  expect(observerReviewSubjectAcceptanceProjection({
+    standing: "recorded",
+  })).toEqual({ standing: "absent", label: "未提供主体结算摘要" });
+});
+
+test("observer review locates only an existing task in the current projection", () => {
+  const review = {
+    standing: "recorded",
+    subject: {
+      taskId: "11111111-1111-4111-8111-111111111111",
+      attemptId: "attempt-1",
+    },
+  };
+  const workItems = [
+    { id: "principal-task:11111111-1111-4111-8111-111111111111" },
+    { id: "principal-task:22222222-2222-4222-8222-222222222222" },
+  ];
+  expect(observerReviewTaskLocator(review, workItems)).toEqual({
+    standing: "locatable",
+    taskId: "11111111-1111-4111-8111-111111111111",
+    itemId: "principal-task:11111111-1111-4111-8111-111111111111",
+  });
+  // A declared task absent from the current snapshot is not a link target.
+  expect(observerReviewTaskLocator({
+    ...review,
+    subject: {
+      taskId: "99999999-9999-4999-8999-999999999999",
+      attemptId: "attempt-2",
+    },
+  }, workItems)).toMatchObject({
+    standing: "absent",
+    taskId: "99999999-9999-4999-8999-999999999999",
+    reason: expect.stringContaining("不在当前实时投影"),
+  });
+  // A review without a task id keeps the conversation-processing route only.
+  expect(observerReviewTaskLocator({
+    standing: "recorded",
+    subject: { attemptId: "attempt-3" },
+  }, workItems)).toEqual({
+    standing: "no-task",
+    taskId: null,
+    reason: "observer 记录未声明关联 Task",
+  });
+  // The card renders the locating entry only for locatable reviews, keeps
+  // the conversation entry, and never fabricates a task or conversation link.
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).toContain("data-observer-task-locate");
+  expect(app).toContain("observerReviewTaskLocator(review, currentWorkItems)");
+  expect(app).toContain("不在当前投影（不伪造链接）");
+  expect(app).toContain("observer-review-subject-standing");
+  expect(app).toContain("语义验收未评估");
 });
 
 test("mobile system tools stay secondary while remaining keyboard-discoverable", () => {
@@ -158,4 +238,44 @@ test("conversation evidence is labeled without inventing a read-only href", () =
     },
   ]);
   expect(observerConversationEvidenceLabels({ relatedConversationRefs: ["<script>alert(1)</script>"] })[0].href).toBeNull();
+});
+
+test("observer trigger copy names the conversation-run default and the explicit entries", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const html = readFileSync(join(uiRoot, "index.html"), "utf8");
+  const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
+  const help = readFileSync(join(import.meta.dir, "../src/help.ts"), "utf8");
+  const generated = readFileSync(join(import.meta.dir, "../src/assets.generated.ts"), "utf8");
+  const workbenchReadme = readFileSync(join(import.meta.dir, "../../workbench/README.md"), "utf8");
+  const dogfoodProfile = readFileSync(join(import.meta.dir, "../../../design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md"), "utf8");
+  // The local UI default is the conversation carrier's settled Run; the
+  // trigger kind and the visible label must say so without claiming every
+  // Task/Run terminal.
+  expect(server).toContain('kind: "conversation-run-settled"');
+  expect(server).toContain('label: "对话 Run 结算后触发"');
+  expect(server).not.toContain('label: "Task/Run 终态结算后触发"');
+  // The empty-state copy on the observer card keeps the same default scope
+  // and names the explicit observer entries instead of making the
+  // conversation Run the only trigger path.
+  expect(app).toContain("本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run");
+  expect(app).toContain("完成一次可观察的对话 Run");
+  expect(app).not.toContain("Task/Run 终态");
+  // The permanent usage copy in the served page and in the CLI ui help says
+  // the same: the conversation Run is the local default trigger, never every
+  // Task/Run terminal.
+  expect(html).toContain("本地 UI 默认由对话 Run 触发");
+  expect(html).toContain("显式 observer 入口可观察其他已结算 Task/Run");
+  expect(html).not.toContain("Task/Run 终态");
+  expect(help).toContain("per settled conversation Run");
+  expect(help).not.toContain("per settled observable Task/Run");
+  // The workbench README and dogfood profile no longer claim one observer
+  // per every settled observable Task/Run.
+  expect(workbenchReadme).toContain("per settled conversation Run");
+  expect(workbenchReadme).not.toContain("each settled observable Task/Run");
+  expect(dogfoodProfile).toContain("per settled conversation Run by default");
+  expect(dogfoodProfile).not.toContain("for each settled observable Task/Run");
+  // The embedded bundle mirrors the ui/ source: the served single-file
+  // surface cannot keep serving the old unqualified claim.
+  expect(generated).toContain("本地 UI 默认由对话 Run 触发");
+  expect(generated).not.toContain("Task/Run 终态");
 });

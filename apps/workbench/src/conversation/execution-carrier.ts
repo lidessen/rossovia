@@ -251,7 +251,7 @@ export interface ConversationExecutionCarrierOptions {
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
-  /** Local UI default: review each settled observable Task/Run asynchronously. */
+  /** Local UI default: review each conversation-carrier settled Run asynchronously. */
   readonly observerWorkerId?: string;
 }
 
