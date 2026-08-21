@@ -73,6 +73,14 @@ test("live runner probes share missions and read activity/status concurrently", 
   expect(server).toContain("missionProbes.set(missionId, probe);");
 });
 
+test("snapshot requests share one in-flight serialized projection", () => {
+  const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
+  expect(server).toContain("let liveSnapshotBodyInFlight: Promise<string> | undefined;");
+  expect(server).toContain("if (liveSnapshotBodyInFlight !== undefined) return liveSnapshotBodyInFlight;");
+  expect(server).toContain("return jsonText(await readLiveSnapshotBody(), 200);");
+  expect(server).toContain("if (index > 0 && index % snapshotTaskYieldEvery === 0) await Bun.sleep(0);");
+});
+
 test("conversation evidence is labeled without inventing a read-only href", () => {
   const evidence = observerConversationEvidenceLabels({
     relatedConversationRefs: ["conversation:abc123", "  conversation:def456  "],

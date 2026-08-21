@@ -93,6 +93,7 @@ export interface WorkbenchRequestHandlerDependencies {
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const autonomyCliSource = resolve(import.meta.dir, "../../autonomy/src/cli.ts");
 const maximumRequestBytes = 64 * 1024;
+const snapshotTaskYieldEvery = 4;
 
 /**
  * Resolve how the Workbench talks to the Autonomy runner. A compiled
@@ -127,6 +128,29 @@ export function createWorkbenchRequestHandler(
   const localTaskControlPlaneFactory = dependencies.localTaskControlPlaneFactory
     ?? createLocalTaskControlPlane;
   const localTaskControlPlane = localTaskControlPlaneFactory(home);
+  // Several browser tabs can request the initial projection at once. Keep one
+  // serialized snapshot build for the handler and let every waiter reuse its
+  // body; otherwise each tab repeats the synchronous Workbench/task evidence
+  // scan and starves even the lightweight startup/conversation routes.
+  let liveSnapshotBodyInFlight: Promise<string> | undefined;
+  const readLiveSnapshotBody = (): Promise<string> => {
+    if (liveSnapshotBodyInFlight !== undefined) return liveSnapshotBodyInFlight;
+    const body = (async () => {
+      // Give already-accepted lightweight requests one event-loop turn before
+      // the synchronous projection scan begins.
+      await Bun.sleep(0);
+      const snapshot = await buildLiveSnapshot(options, client);
+      return JSON.stringify({
+        ...snapshot,
+        ...(options.startupGate === undefined ? {} : { startup: options.startupGate }),
+      });
+    })();
+    const tracked = body.finally(() => {
+      if (liveSnapshotBodyInFlight === tracked) liveSnapshotBodyInFlight = undefined;
+    });
+    liveSnapshotBodyInFlight = tracked;
+    return tracked;
+  };
 
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
@@ -189,11 +213,7 @@ export function createWorkbenchRequestHandler(
 
     if (request.method === "GET" && url.pathname === "/api/snapshot") {
       try {
-        const snapshot = await buildLiveSnapshot(options, client);
-        return json({
-          ...snapshot,
-          ...(options.startupGate === undefined ? {} : { startup: options.startupGate }),
-        }, 200);
+        return jsonText(await readLiveSnapshotBody(), 200);
       } catch (error: unknown) {
         return json({
           error: "snapshot-failed",
@@ -597,7 +617,7 @@ async function buildLiveSnapshot(
       summary: taskSource.reason,
       source: taskSource.sourceRef,
     }];
-  const taskAttempts = readTaskAttemptsProjections(options.home, taskSource);
+  const taskAttempts = await readTaskAttemptsProjections(options.home, taskSource);
   const observerReviews = readObserverReviews(options.home);
   const settings = readSettingsProjection(options, observerReviews);
   const liveSnapshot = {
@@ -723,13 +743,14 @@ function readSettingsProjection(
  * stable source reference and an attributable reason on that task. Reading
  * never copies or rewrites the attempt, final record, or settlement sources.
  */
-function readTaskAttemptsProjections(
+async function readTaskAttemptsProjections(
   home: string | undefined,
   taskSource: PrincipalTaskSourceObservation,
-): Readonly<Record<string, TaskAttemptSourceObservation>> {
+): Promise<Readonly<Record<string, TaskAttemptSourceObservation>>> {
   if (taskSource.standing !== "available") return {};
   const projections: Record<string, TaskAttemptSourceObservation> = {};
-  for (const task of taskSource.source.tasks) {
+  for (const [index, task] of taskSource.source.tasks.entries()) {
+    if (index > 0 && index % snapshotTaskYieldEvery === 0) await Bun.sleep(0);
     try {
       projections[task.id] = {
         standing: "available",
@@ -1233,6 +1254,17 @@ function json(value: unknown, status: number): Response {
     status,
     headers: {
       "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+function jsonText(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8",
       "X-Content-Type-Options": "nosniff",
     },
   });
