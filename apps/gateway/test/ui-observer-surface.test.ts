@@ -64,6 +64,7 @@ test("conversation disconnect makes the masthead distinguish projection from soc
   expect(app).toContain('投影已连接 · 对话已断开');
   expect(app).toContain('connecting: "投影已连接 · 对话连接中"');
   expect(app).toContain('renderConnection();\n    renderConversationConnection();');
+  expect(app).toContain('conversationState.connection = "unavailable";\n      renderConversationSurface();\n      // Some browsers delay the following close event.');
   expect(css).toContain('.connection-mark.is-warning');
 });
 

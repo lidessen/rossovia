@@ -5350,6 +5350,9 @@ export function taskLocatorEmptySummary(locator, context) {
       conversationState.socketFaulted = true;
       conversationState.connection = "unavailable";
       renderConversationSurface();
+      // Some browsers delay the following close event. Queue the bounded
+      // reconnect here as well, so an error cannot leave the entry stranded.
+      scheduleConversationReconnect();
     });
     socket.addEventListener("close", () => {
       if (conversationState.socket !== socket) return;
