@@ -304,6 +304,11 @@ test("workflow observer bounds structured shape work and canonicalizes metadata 
   const bounded = build(manyFields, { type: "object" });
   expect(bounded.final.structuredOutput.shape.fieldCountCapped).toBe(true);
   expect(bounded.truncatedFields).toContain("final.structuredOutput.shape");
+
+  const ascending = Object.fromEntries(Array.from({ length: 40 }, (_, index) => [`field-${String(index).padStart(2, "0")}`, index]));
+  const descending = Object.fromEntries(Object.entries(ascending).reverse());
+  expect(build(ascending, { type: "object" }).final.structuredOutput.valueDigest)
+    .toBe(build(descending, { type: "object" }).final.structuredOutput.valueDigest);
 });
 
 test("workflow observer does not invent a structured result surface without outputSchema", () => {

@@ -746,14 +746,17 @@ function boundedCanonicalJson(value: unknown, budget: DigestBudget): string {
   }
   if (typeof value === "object") {
     const keys: string[] = [];
+    let keyCount = 0;
     for (const key in value as Record<string, unknown>) {
       if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      keyCount += 1;
       keys.push(key);
-      if (keys.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT) break;
+      keys.sort();
+      if (keys.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT) keys.pop();
     }
-    const visibleKeys = keys.slice(0, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT).sort();
+    const visibleKeys = keys;
     const entries = visibleKeys.map((key) => `${JSON.stringify(key)}:${boundedCanonicalJson((value as Record<string, unknown>)[key], budget)}`);
-    return `{"fields":{${entries.join(",")}},"count":${Math.min(keys.length, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT)},"capped":${keys.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT}}`;
+    return `{"fields":{${entries.join(",")}},"count":${visibleKeys.length},"capped":${keyCount > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT}}`;
   }
   return JSON.stringify({ type: typeof value });
 }
