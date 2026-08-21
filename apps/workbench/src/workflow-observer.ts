@@ -273,7 +273,7 @@ export async function runWorkflowObserver(
     const catalog = policy.createCurrentWorkerCatalog();
     const worker = catalog.card(arguments_.workerId);
     const worktree = availableEvidence.input!.workspace.root;
-    const context = observerContext(availableEvidence);
+    const context = workflowObserverContext(availableEvidence);
     const input: CellInput = {
       id: `workflow-observer-${reviewId}`,
       workerId: worker.id,
@@ -366,7 +366,15 @@ export async function runWorkflowObserver(
   }
 }
 
-function observerContext(evidence: StrictTaskAttemptEvidence): string {
+/**
+ * Build the bounded, standard-API context supplied to a read-only observer.
+ *
+ * The observer needs enough retained evidence to compare terminal relations,
+ * but it must not receive provider steps, the original input/result payloads,
+ * or trace event data. Keep this projection deliberately structural: the
+ * source refs remain the route for a later ordinary Task to inspect evidence.
+ */
+export function workflowObserverContext(evidence: StrictTaskAttemptEvidence): string {
   const finalRecord = evidence.finalRecord!;
   return JSON.stringify({
     taskId: evidence.attempt?.taskId,
@@ -377,27 +385,139 @@ function observerContext(evidence: StrictTaskAttemptEvidence): string {
       driver: evidence.attempt?.driver,
       model: evidence.attempt?.model,
       startedAt: evidence.attempt?.startedAt,
-      settlement: evidence.settlement,
+      settlement: settlementSummary(evidence.settlement),
     },
     input: {
-      intent: evidence.input?.intent,
-      instructions: evidence.input?.instructions,
-      acceptance: evidence.input?.acceptance,
-      workspaceRoot: evidence.input?.workspace.root,
+      intentPresent: evidence.input?.intent !== undefined,
+      instructionCount: evidence.input?.instructions.length ?? 0,
+      acceptanceCount: evidence.input?.acceptance.length ?? 0,
+      capabilities: boundedStrings(evidence.input?.capabilities ?? []),
+      capabilitiesRequired: boundedStrings(evidence.input?.capabilitiesRequired ?? []),
+      workspace: evidence.input === undefined ? undefined : {
+        rootPresent: evidence.input.workspace.root.length > 0,
+        readPathCount: evidence.input.workspace.readPaths.length,
+        writePathCount: evidence.input.workspace.writePaths.length,
+        allowedCommandCount: evidence.input.workspace.allowedCommands.length,
+        allowedCommands: boundedStrings(evidence.input.workspace.allowedCommands),
+      },
     },
     final: {
       runId: finalRecord.runId,
       status: finalRecord.status,
-      finalText: finalRecord.finalText,
-      workspaceDiff: finalRecord.workspaceDiff,
+      result: {
+        present: finalRecord.finalText.length > 0,
+        characterCount: finalRecord.finalText.length,
+        lineCount: finalRecord.finalText.length === 0 ? 0 : finalRecord.finalText.split("\n").length,
+      },
+      workspaceDiff: workspaceDiffSummary(finalRecord.workspaceDiff),
       usage: finalRecord.usage,
-      traceTypes: finalRecord.trace.map((event) => event.type),
+      verification: verificationSummary(finalRecord.verification),
+      executionObservation: finalRecord.executionObservation,
+      trace: traceSummary(finalRecord.trace),
       rawStepCount: finalRecord.rawSteps.length,
-      error: finalRecord.error,
+      errorPresent: finalRecord.error !== undefined,
     },
     refs: evidence.refs,
-    limitation: "Raw provider steps and full trace payload are not copied into the observer context; report this as a visibility gap when review needs them.",
-  }, null, 2).slice(0, 30_000);
+    limitation: "Raw provider steps, original input/result payloads, and trace event data are not copied into the observer context; report this as a visibility gap when review needs them.",
+  }, null, 2);
+}
+
+const OBSERVER_CONTEXT_LIST_LIMIT = 64;
+const OBSERVER_CONTEXT_STRING_LIMIT = 256;
+
+function boundedStrings(values: readonly string[]): { values: string[]; truncated: boolean } {
+  const valuesWithinLimit = values.slice(0, OBSERVER_CONTEXT_LIST_LIMIT).map((value) =>
+    value.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  return {
+    values: valuesWithinLimit,
+    truncated: values.length > valuesWithinLimit.length,
+  };
+}
+
+function workspaceDiffSummary(diff: {
+  added: readonly string[];
+  changed: readonly string[];
+  removed: readonly string[];
+}): Record<string, unknown> {
+  return {
+    added: boundedStrings(diff.added),
+    changed: boundedStrings(diff.changed),
+    removed: boundedStrings(diff.removed),
+  };
+}
+
+function verificationSummary(verification: {
+  passed: boolean;
+  terminal: { passed: boolean; required: readonly string[]; called: readonly string[] };
+  output?: { passed: boolean; errors: readonly string[] };
+  artifacts?: { passed: boolean; errors: readonly string[] };
+  tasks?: {
+    passed: boolean;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    blocked: number;
+    errors: readonly string[];
+  };
+}): Record<string, unknown> {
+  return {
+    passed: verification.passed,
+    terminal: {
+      passed: verification.terminal.passed,
+      required: boundedStrings(verification.terminal.required),
+      called: boundedStrings(verification.terminal.called),
+    },
+    ...(verification.output === undefined ? {} : {
+      output: {
+        passed: verification.output.passed,
+        errorCount: verification.output.errors.length,
+      },
+    }),
+    ...(verification.artifacts === undefined ? {} : {
+      artifacts: {
+        passed: verification.artifacts.passed,
+        errorCount: verification.artifacts.errors.length,
+      },
+    }),
+    ...(verification.tasks === undefined ? {} : {
+      tasks: {
+        passed: verification.tasks.passed,
+        pending: verification.tasks.pending,
+        inProgress: verification.tasks.inProgress,
+        completed: verification.tasks.completed,
+        blocked: verification.tasks.blocked,
+        errorCount: verification.tasks.errors.length,
+      },
+    }),
+  };
+}
+
+function settlementSummary(settlement: StrictTaskAttemptEvidence["settlement"]): Record<string, unknown> | undefined {
+  if (settlement === undefined) return undefined;
+  return {
+    status: settlement.status,
+    semanticAcceptance: settlement.semanticAcceptance,
+    ...(settlement.cellStatus === undefined ? {} : { cellStatus: settlement.cellStatus }),
+    workCellRunIdPresent: settlement.workCellRunId !== undefined,
+    errorPresent: settlement.error !== undefined,
+  };
+}
+
+function traceSummary(trace: readonly { at: string; type: string }[]): Record<string, unknown> {
+  const typeCounts = new Map<string, number>();
+  for (const event of trace) typeCounts.set(event.type, (typeCounts.get(event.type) ?? 0) + 1);
+  const typeEntries = [...typeCounts.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const boundedTypeEntries = typeEntries.slice(0, OBSERVER_CONTEXT_LIST_LIMIT).map(([type, count]) => [
+    type.slice(0, OBSERVER_CONTEXT_STRING_LIMIT),
+    count,
+  ] as const);
+  return {
+    eventCount: trace.length,
+    typeCounts: Object.fromEntries(boundedTypeEntries),
+    typeCountsTruncated: typeEntries.length > boundedTypeEntries.length,
+    firstAt: trace[0]?.at,
+    lastAt: trace.at(-1)?.at,
+  };
 }
 
 function safeExcludes(worktree: string): string[] {
