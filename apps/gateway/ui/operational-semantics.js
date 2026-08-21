@@ -618,10 +618,21 @@ export function runnerPresentation(runner) {
       intentLineage: lineage.standing,
     };
   }
+  // A cached state alone never proves a running carrier: only a live probe
+  // may project the cached state as the current mode. An unverified probe
+  // stays explicitly unverified, with the cached state retained as secondary
+  // information for inspection instead of masquerading as the current mode.
+  if (live === true) {
+    return {
+      mode: String(cachedMode),
+      cachedMode: String(cachedMode),
+      live: true,
+    };
+  }
   return {
-    mode: String(cachedMode),
+    mode: "carrier-unverified",
     cachedMode: String(cachedMode),
-    live: live === true ? true : null,
+    live: null,
   };
 }
 

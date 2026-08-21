@@ -274,6 +274,26 @@ describe("Principal Workbench operational semantics", () => {
     });
   });
 
+  test("never projects a cached state as the running mode while live is unverified", () => {
+    // live=null must read as unverified, never as 执行中 from the cache.
+    expect(runnerPresentation(pendingRunner(null))).toEqual({
+      mode: "carrier-unverified",
+      cachedMode: "input-pending",
+      live: null,
+    });
+    // Only a live probe may promote the cached state to the current mode.
+    expect(runnerPresentation(pendingRunner(true))).toMatchObject({
+      mode: "input-pending",
+      cachedMode: "input-pending",
+      live: true,
+    });
+    // The Mission list badge keeps the cached state as secondary evidence
+    // instead of hiding it or promoting it to the primary mode.
+    expect(app).toContain("runnerView.live !== true && runnerView.cachedMode");
+    expect(app).toContain("mission-state-secondary");
+    expect(app).toContain('"carrier-unverified"');
+  });
+
   test("keeps observer uncertainty distinct from a dead carrier and withholds reply authority", () => {
     const runner = {
       ...pendingRunner(null),

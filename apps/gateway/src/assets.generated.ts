@@ -2664,6 +2664,15 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   text-transform: uppercase;
 }
 
+.mission-state-secondary {
+  color: var(--ink-faint);
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.5rem;
+  margin-top: 0.22rem;
+  text-transform: none;
+}
+
 .mission-state[data-mode="input-pending"],
 .mission-state[data-mode="anchor-pending"],
 .mission-state[data-mode="needs-attention"] {
@@ -4707,6 +4716,41 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
 .observer-review-status[data-standing="runner-failed"] {
   border-color: var(--ochre);
   color: var(--ochre);
+}
+
+/* The observed run's semantic acceptance is a separate badge from the review
+   record standing: a saved opinion and an unevaluated execution are two
+   facts, never one collapsed label. */
+.observer-review-subject-standing {
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.observer-review-subject-standing[data-standing="not-evaluated"],
+.observer-review-subject-standing[data-standing="unknown"] {
+  border-color: var(--ochre);
+  color: var(--ochre);
+}
+
+.observer-review-subject-standing[data-standing="failed"] {
+  border-color: var(--red);
+  color: var(--red-dark);
+}
+
+.observer-review-subject-standing[data-standing="passed"] {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.observer-task-link {
+  margin-right: 0.3rem;
+}
+
+.observer-review-facts dd .observer-task-link {
+  color: var(--focus);
 }
 
 .observer-review-finding {
@@ -9470,24 +9514,11 @@ function observerSubjectOutcomeCopy(outcome) {
 }
 
 /**
- * A recorded observer review is not the same thing as semantic acceptance of
- * the observed run. Keep that distinction visible in the badge without
- * rewriting either durable standing.
+ * The review record standing only: the opinion was saved, the query hit a
+ * gap, or the observer run itself failed. It never borrows the observed
+ * run's semantic acceptance — that fact lives on its own badge.
  */
 export function observerReviewStatusProjection(review) {
-  const outcome = review && typeof review === "object" ? review.subjectOutcome : null;
-  if (outcome && typeof outcome === "object") {
-    if (outcome.semanticAcceptance === "not-evaluated") {
-      return { standing: "query-gap", label: "待语义复核" };
-    }
-    if (
-      outcome.settlementStatus === "runner-failed"
-      || outcome.cellStatus === "failed"
-      || outcome.finalStatus === "failed"
-    ) {
-      return { standing: "runner-failed", label: "执行未通过" };
-    }
-  }
   const standing = review && typeof review === "object" && typeof review.standing === "string"
     ? review.standing
     : "unknown";
@@ -9499,6 +9530,82 @@ export function observerReviewStatusProjection(review) {
       "runner-failed": "observer 失败",
     }[standing] || "状态未知",
   };
+}
+
+/**
+ * The observed run's semantic acceptance, kept strictly apart from the
+ * review record standing. The current observer never evaluates semantics
+ * itself, so "not-evaluated" is a truthful first-class standing rather than a
+ * disguised query-gap of the record; a mechanical execution failure is
+ * reported on this subject badge, never on the record badge. A run that both
+ * failed mechanically and left semantics unevaluated shows the mechanical
+ * failure on the badge, while the unevaluated semantics stay in the fact row.
+ */
+export function observerReviewSubjectAcceptanceProjection(review) {
+  const outcome = review && typeof review === "object" ? review.subjectOutcome : null;
+  if (!outcome || typeof outcome !== "object") {
+    return { standing: "absent", label: "未提供主体结算摘要" };
+  }
+  const semantic = outcome.semanticAcceptance;
+  if (semantic === "passed") {
+    return { standing: "passed", label: "语义验收通过" };
+  }
+  if (semantic === "failed") {
+    return { standing: "failed", label: "语义验收未通过" };
+  }
+  if (
+    outcome.settlementStatus === "runner-failed"
+    || outcome.cellStatus === "failed"
+    || outcome.finalStatus === "failed"
+  ) {
+    return { standing: "failed", label: "被观察执行未通过" };
+  }
+  if (semantic === "not-evaluated") {
+    return { standing: "not-evaluated", label: "语义验收未评估" };
+  }
+  return { standing: "unknown", label: "语义验收未知" };
+}
+
+/**
+ * Safe existing-task locating entry for an observer review. Only a review
+ * whose subject declares a task id that is present in the current read-only
+ * work-item projection becomes locatable; the browser never links to a task
+ * it cannot re-read from the snapshot. Reviews without a task id keep the
+ * conversation-processing route, and a declared task that is absent from the
+ * projection stays plain text instead of a fabricated link.
+ */
+export function observerReviewTaskLocator(review, workItems) {
+  const subject = review && typeof review === "object" ? review.subject : null;
+  const taskId =
+    subject && typeof subject === "object" && typeof subject.taskId === "string"
+      ? subject.taskId.trim()
+      : "";
+  if (taskId === "") {
+    return {
+      standing: "no-task",
+      taskId: null,
+      reason: "observer 记录未声明关联 Task",
+    };
+  }
+  const itemId = \`principal-task:\${taskId}\`;
+  if (!Array.isArray(workItems)) {
+    return {
+      standing: "absent",
+      taskId,
+      itemId,
+      reason: "任务投影当前不可用，无法定位",
+    };
+  }
+  return workItems.some(
+    (item) => item && typeof item === "object" && item.id === itemId,
+  )
+    ? { standing: "locatable", taskId, itemId }
+    : {
+      standing: "absent",
+      taskId,
+      itemId,
+      reason: "关联 Task 不在当前实时投影中",
+    };
 }
 
 /**
@@ -10085,6 +10192,13 @@ export function taskLocatorEmptySummary(locator, context) {
       label: "载体不可达",
       heading: "Runner 不在线；仅保留缓存状态",
       reason: "缓存记录和持久化证据仍可检查，但没有 live runner 正在吸收输入或产生工作。",
+      owner: "无当前执行者",
+    },
+    "carrier-unverified": {
+      label: "可达性未验证",
+      heading: "载体可达性未验证",
+      reason:
+        "当前观察者无法证明载体正在运行或已经停止；缓存状态只供检查，不能当作执行中或已停止。",
       owner: "无当前执行者",
     },
     interrupted: {
@@ -11522,6 +11636,7 @@ export function taskLocatorEmptySummary(locator, context) {
     if (!sourceState || !listRoot || state.activeView !== "observer") return;
     const standing = text(first(projection, ["standing"]), "unavailable");
     const reviews = list(first(projection, ["reviews"], []));
+    const currentWorkItems = workItems();
     const recordState = text(first(projection, ["recordState"]), standing === "available" ? "empty" : "unavailable");
     const stateCopy = observerRecordStateCopy(recordState);
     sourceState.textContent = standing !== "available"
@@ -11564,21 +11679,26 @@ export function taskLocatorEmptySummary(locator, context) {
     listRoot.innerHTML = displayReviews.map((review) => {
       const refs = list(first(review, ["evidenceRefs"], []));
       const subject = first(review, ["subject"], {});
-      const taskId = text(first(subject, ["taskId"]), "");
       const attemptId = text(first(subject, ["attemptId"]), "");
       const workerId = observerReviewWorkerId(review);
       const conversationEvidence = observerConversationEvidenceLabels(review);
       const statusProjection = observerReviewStatusProjection(review);
+      const subjectStanding = observerReviewSubjectAcceptanceProjection(review);
+      const taskLocator = observerReviewTaskLocator(review, currentWorkItems);
       const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
       const subjectOutcome = first(review, ["subjectOutcome"], null);
       return \`<article class="observer-review-card" data-review-id="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
         <header>
-          <div><span class="observer-review-status" data-standing="\${escapeHtml(statusProjection.standing)}">\${escapeHtml(statusProjection.label)}</span><strong>\${escapeHtml(workerId)}</strong></div>
+          <div><span class="observer-review-status" data-standing="\${escapeHtml(statusProjection.standing)}">\${escapeHtml(statusProjection.label)}</span><span class="observer-review-subject-standing" data-standing="\${escapeHtml(subjectStanding.standing)}">\${escapeHtml(subjectStanding.label)}</span><strong>\${escapeHtml(workerId)}</strong></div>
           <time>\${escapeHtml(formatTime(text(first(review, ["recordedAt"]), "")))}</time>
         </header>
         <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论</p><p class="observer-review-summary">\${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">\${renderConversationMarkdown(reviewText)}</div></details></div>
         <dl class="observer-review-facts">
-          <div><dt>观察对象</dt><dd>\${escapeHtml(taskId ? \`Task \${taskId}\` : "未关联 Task")} · attempt \${escapeHtml(shortConversationId(attemptId))}</dd></div>
+          <div><dt>观察对象</dt><dd>\${taskLocator.standing === "locatable"
+            ? \`<button class="text-action observer-task-link" type="button" data-observer-task-locate="\${escapeHtml(taskLocator.itemId)}">Task \${escapeHtml(taskLocator.taskId)} · 定位</button>\`
+            : taskLocator.standing === "absent"
+              ? \`Task \${escapeHtml(taskLocator.taskId)} · 不在当前投影（不伪造链接）\`
+              : "未关联 Task"} · attempt \${escapeHtml(shortConversationId(attemptId))}</dd></div>
           <div><dt>被观察执行</dt><dd>\${escapeHtml(observerSubjectOutcomeCopy(subjectOutcome))}</dd></div>
           <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
           <div><dt>关联对话</dt><dd>\${conversationEvidence.length
@@ -11586,9 +11706,29 @@ export function taskLocatorEmptySummary(locator, context) {
             : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
         </dl>
         <details class="observer-review-evidence"><summary>证据引用 · \${refs.length} 项</summary><ul>\${refs.length ? refs.map((ref) => \`<li><code>\${escapeHtml(ref)}</code></li>\`).join("") : "<li>未提供证据引用</li>"}</ul></details>
-        <footer><button type="button" class="text-action" data-observer-process="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button></footer>
+        <footer>
+          \${taskLocator.standing === "locatable"
+            ? \`<button type="button" class="text-action" data-observer-task-locate="\${escapeHtml(taskLocator.itemId)}">定位现有任务</button>\`
+            : ""}
+          <button type="button" class="text-action" data-observer-process="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button>
+        </footer>
       </article>\`;
     }).join("");
+    listRoot.querySelectorAll("[data-observer-task-locate]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const workItem = workItems().find(
+          (item) => item.id === button.dataset.observerTaskLocate,
+        );
+        if (!workItem) return;
+        clearActionReceipt();
+        state.taskCreateOpen = false;
+        state.taskActionReceipt = null;
+        state.unavailableLocus = null;
+        selectWorkItemContext(workItem);
+        render();
+        writePrincipalLocus();
+      });
+    });
     listRoot.querySelectorAll("[data-observer-process]").forEach((button) => {
       button.addEventListener("click", () => {
         const review = displayReviews.find((candidate) => text(first(candidate, ["reviewId"]), "") === button.dataset.observerProcess);
@@ -12803,17 +12943,23 @@ export function taskLocatorEmptySummary(locator, context) {
       .map((mission, missionIndex) => {
         const id = identifier(mission, \`mission-\${missionIndex}\`);
         const missionRunner = runnerForMission(project, mission);
-        const runnerMode = missionRunner
-          ? runnerPresentation(missionRunner).mode
-          : undefined;
+        const runnerView = missionRunner
+          ? runnerPresentation(missionRunner)
+          : null;
         const missionStanding =
           first(mission, ["status", "state", "mode"]) ||
           first(first(mission, ["mainline"], {}), ["status"]);
-        const mode = runnerMode
-          ? normalizeMode(runnerMode)
+        const mode = runnerView
+          ? normalizeMode(runnerView.mode)
           : missionStanding === "active"
             ? "mission-active"
             : normalizeMode(missionStanding || "unknown");
+        // A cached runner state is only secondary evidence: the badge never
+        // claims execution (执行中) unless the live probe proved it.
+        const cachedRunnerState =
+          runnerView && runnerView.live !== true && runnerView.cachedMode
+            ? \`缓存 \${runnerView.cachedMode}\`
+            : "";
         const worktrees = missionWorktrees(project, mission);
         const title = first(mission, ["title", "name", "objective"], id);
         const mainline = first(mission, ["mainline"], {});
@@ -12833,6 +12979,9 @@ export function taskLocatorEmptySummary(locator, context) {
                 </span>
                 <span class="mission-state" data-mode="\${escapeHtml(mode)}">
                   \${escapeHtml(modeCopy[mode]?.label || mode)}
+                  \${cachedRunnerState
+                    ? \`<small class="mission-state-secondary">\${escapeHtml(cachedRunnerState)}</small>\`
+                    : ""}
                 </span>
               </button>
               \${
@@ -17353,10 +17502,21 @@ export function runnerPresentation(runner) {
       intentLineage: lineage.standing,
     };
   }
+  // A cached state alone never proves a running carrier: only a live probe
+  // may project the cached state as the current mode. An unverified probe
+  // stays explicitly unverified, with the cached state retained as secondary
+  // information for inspection instead of masquerading as the current mode.
+  if (live === true) {
+    return {
+      mode: String(cachedMode),
+      cachedMode: String(cachedMode),
+      live: true,
+    };
+  }
   return {
-    mode: String(cachedMode),
+    mode: "carrier-unverified",
     cachedMode: String(cachedMode),
-    live: live === true ? true : null,
+    live: null,
   };
 }
 
