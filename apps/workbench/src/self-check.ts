@@ -128,10 +128,16 @@ export interface SelfCheckDependencies {
 }
 
 export type SelfCheckStartupMode = "normal" | "safe-diagnostic";
+export type SelfCheckStartupReadiness = "boot-ready" | "boot-attention";
 
 export interface SelfCheckStartupGate {
   readonly version: typeof SELF_CHECK_VERSION;
+  /** This gate covers process boot only, not the later Workbench snapshot. */
+  readonly scope: "boot";
   readonly mode: SelfCheckStartupMode;
+  readonly readiness: SelfCheckStartupReadiness;
+  /** The asynchronous/full projection has not been checked by this gate. */
+  readonly projection: "not-checked";
   readonly startupStatus: SelfCheckStatus;
   readonly mechanical: SelfCheckMechanical;
   readonly checkedAt: string;
@@ -140,9 +146,11 @@ export interface SelfCheckStartupGate {
 const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
 
 /**
- * Run the startup mechanical gate once. A healthy projection opens the
- * normal UI/write surface; every other standing keeps the server in a
- * read-only diagnostic mode. This never invokes the optional worker opinion.
+ * Run the startup mechanical gate once. A boot-ready result permits the
+ * normal UI/write routes to be served; it does not claim that the later full
+ * Workbench snapshot is complete. Every other standing keeps the server in a
+ * read-only diagnostic mode. This gate never invokes the optional worker
+ * opinion, so worker availability cannot change mechanical boot readiness.
  */
 export function runSelfCheckStartupGate(options: SelfCheckOptions = {}): SelfCheckStartupGate {
   const mechanical = runMechanicalSelfCheck(options);
@@ -151,7 +159,10 @@ export function runSelfCheckStartupGate(options: SelfCheckOptions = {}): SelfChe
   );
   return {
     version: SELF_CHECK_VERSION,
+    scope: "boot",
     mode: startupStatus === "healthy" ? "normal" : "safe-diagnostic",
+    readiness: startupStatus === "healthy" ? "boot-ready" : "boot-attention",
+    projection: "not-checked",
     startupStatus,
     mechanical,
     checkedAt: new Date().toISOString(),

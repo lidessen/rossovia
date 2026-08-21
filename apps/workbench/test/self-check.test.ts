@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { initializeHome } from "../src/home";
 import {
   runSelfCheck,
+  runSelfCheckStartupGate,
   parseSelfCheckOpinionPayload,
   type SelfCheckOpinion,
   type SelfCheckOpinionInput,
@@ -113,6 +114,35 @@ test("forward: clean home and source return healthy mechanical evidence", async 
   expect(progress.at(-1)).toBe("complete:self-check:healthy");
   expect(result.mechanical.checks.flatMap((check) => check.evidenceRefs))
     .toContain(`git:${result.mechanical.source?.root}@${head}`);
+});
+
+test("startup gate reports boot readiness separately and ignores worker opinion", () => {
+  let opinionStarted = false;
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-boot-gate-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+
+  const gate = runSelfCheckStartupGate({
+    home,
+    cwd: repo,
+    opinion: true,
+    dependencies: dependencies([worker("test-worker", "unavailable")], async () => {
+      opinionStarted = true;
+      throw new Error("startup gate must not start worker opinion");
+    }),
+  });
+
+  expect(gate.scope).toBe("boot");
+  expect(gate.readiness).toBe("boot-ready");
+  expect(gate.projection).toBe("not-checked");
+  expect(gate.mode).toBe("normal");
+  expect(gate.startupStatus).toBe("healthy");
+  expect(gate.mechanical.status).toBe("attention");
+  expect(gate.mechanical.checks.find((check) => check.id === "worker-policy")?.status)
+    .toBe("attention");
+  expect(opinionStarted).toBe(false);
 });
 
 test("the existing Task snapshot uses the canonical parseable receipt evidence ref", () => {

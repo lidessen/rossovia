@@ -124,11 +124,45 @@ test("production UI boots with the current worker policy catalog, serves /api/sn
       readonly complete: unknown;
       readonly errors: unknown;
       readonly workItems: unknown;
+      readonly startup: {
+        readonly scope: string;
+        readonly readiness: string;
+        readonly projection: string;
+        readonly mode: string;
+        readonly startupStatus: string;
+      };
     };
     expect(snapshot.version).toBe("rosso.principal-workbench-snapshot.v1");
     expect(snapshot.complete).toBe(true);
     expect(snapshot.errors).toEqual([]);
     expect(snapshot.workItems).toBeDefined();
+    expect(snapshot.startup).toMatchObject({
+      scope: "boot",
+      readiness: "boot-ready",
+      projection: "not-checked",
+      mode: "normal",
+      startupStatus: "healthy",
+    });
+
+    // The boot gate is a one-time mechanical result. A later full snapshot
+    // can become incomplete without rewriting that boot/readiness claim.
+    writeFileSync(principalTasksPath(root), "{ malformed task source\n", "utf8");
+    const laterResponse = await fetch(`http://127.0.0.1:${port}/api/snapshot`);
+    expect(laterResponse.status).toBe(200);
+    const later = await laterResponse.json() as {
+      readonly complete: unknown;
+      readonly startup: {
+        readonly scope: string;
+        readonly readiness: string;
+        readonly projection: string;
+      };
+    };
+    expect(later.complete).toBe(false);
+    expect(later.startup).toMatchObject({
+      scope: "boot",
+      readiness: "boot-ready",
+      projection: "not-checked",
+    });
   } finally {
     child.kill();
     // The signal-driven stop is the production clean-stop surface: the
