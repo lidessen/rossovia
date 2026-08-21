@@ -89,6 +89,11 @@ domain owner. Delivery cannot repair absent doctrine or decide what is true.
    action. If any necessary term could change the receiver's action or return,
    define it at first use by the object it denotes, its boundary, and why it
    matters now.
+   For a blind-spot pass, deliver the evidence that the ordinary source view
+   omits: the actual user action, observed friction, screenshots or rendered
+   state, stale/reconnect condition, and the source or transcript that grounds
+   it. Do not replace this evidence with a generic instruction to be creative;
+   the delivery path must make the missing judgment possible.
 5. **Preserve ownership boundaries.** Route source content and acceptance to the
    domain owner, source/lifetime conflicts to `artifact-organization`, skill
    expression failures to `skill-engineering`, and vendor-specific mechanics to
@@ -103,6 +108,11 @@ domain owner. Delivery cannot repair absent doctrine or decide what is true.
    return from the delivered context alone; a request to define an undeclared
    term defeats that delivery claim. Keep successful restatement separate from
    semantic task correctness and acceptance.
+   When a user correction reveals a missed point, verify the revised delivery by
+   asking whether a fresh Agent can name the object, the missed signal, its
+   boundary, and the smallest next probe from the delivered context alone. This
+   tests post-training context delivery; it does not claim that the Agent has
+   acquired the human's tacit experience.
 7. **Externalize proportionally.** Return a conversation result for a bounded
    audit. Retain a delivery map or evaluation record only when a later actor must
    reproduce, approve, or revise the placement decision.

@@ -14,6 +14,87 @@
 
 本研究要改变的具体决策是：对于开放设计、研究和复杂排错，Rossovia 是否应提供一种可选的多路径方法表达；还是继续只用单一主 Agent 的多轮实践与普通并行探索。
 
+## Why the human notices the gap first
+
+The recurring observation behind this research is not simply that the human is
+“more intelligent” than the Agent. The human and the Agent receive different
+evidence and optimize different next actions:
+
+- **Longitudinal contact:** the human has felt the product across launches,
+  reconnects, delays, and failed attempts. A single task prompt usually shows
+  the Agent only the current explicit request and a bounded source projection.
+- **Embodied friction:** the human notices hesitation, crowding, misplaced
+  emphasis, repeated navigation, and the difference between “technically
+  available” and “easy to use.” These are often absent from the acceptance
+  condition and from a source-only review.
+- **Negative space:** the human can ask “what should be here but is not?” or
+  “why does this feel like a duplicate?” The ordinary Agent loop is rewarded for
+  answering the stated question, so an omitted operation is easy to leave
+  unexamined.
+- **Local optimization:** code, tests, and the current task encourage a model
+  to preserve contracts and close the named contradiction. That is useful, but
+  it makes unrequested usability, expectation, and cross-screen coherence look
+  like out-of-scope work unless the method explicitly presents them as evidence.
+- **Taste and responsibility:** the human owns the product's lived meaning and
+  can recognize a mismatch before it has a crisp bug report. The Agent may
+  generate a plausible explanation without having authority to declare that the
+  experience is acceptable.
+
+This is therefore primarily a **context, attention, and practice-expression
+gap**, not a request to pretend that the model contains human experience. A
+stronger model can still miss a signal that was never delivered, never asked
+for, or never represented in a form it can act on.
+
+### Post-training consequence
+
+The harness base should remain responsible for tools, effects, Task/Run/Cell
+lifecycle, evidence, and authority. The post-training layer—Skills, system
+prompts, receiver-specific context, and practice choices—should teach the
+Agent to look at the missing evidence before it closes a task:
+
+1. complete the ordinary mainline pass against the explicit request;
+2. run a short, read-only **blind-spot pass** when the task involves UI,
+   workflow, interaction, a user correction, a regression, or an observer query
+   gap;
+3. return only source-linked observations and the smallest next probe;
+4. let Main decide whether the observation changes the next practice.
+
+The blind-spot pass asks four concrete questions, not a generic “be more
+creative” request:
+
+- **User reality:** what would a first-time or returning user notice while
+  trying the actual task?
+- **Negative space:** what needed action, explanation, recovery path, or state
+  is absent, duplicated, or visually misplaced?
+- **Boundary mismatch:** what is mechanically true but operationally hard to
+  understand, reach, or trust?
+- **Recovery and continuity:** what happens after a slow load, stale snapshot,
+  reconnect, failure, restart, or handoff?
+
+The pass is an optional method expression, not a resident reviewer. It is
+activated by the named conditions above, can be skipped for routine mechanical
+work, and never edits, accepts, scores, or recursively dispatches another pass.
+It may produce one bounded `perspective.aside` with minimal provenance
+(`id`, `kind`, `origin`, source turn/step, `content`); authority, visibility,
+and ordering are derived by the existing context assembly. An aside cannot call
+tools, mutate a Task, or create another aside.
+
+### Turning a correction into reusable post-training
+
+When the human supplies a missed point, do not merely append it to a prompt.
+Record the smallest causal lesson for future practice:
+
+```text
+observed miss -> evidence the Agent did not use -> why the mainline skipped it
+-> one receiver-facing question or source pointer -> next disconfirming probe
+```
+
+The useful unit is a changed question or delivery path, not a personality label
+or a numeric quality score. A later skill/research revision may generalize the
+lesson only when the same relation appears in more than one concrete practice;
+otherwise retain it as local evidence. This is how post-training grows without
+turning the base runtime into an accumulation of special cases.
+
 ## Distinctions
 
 - **专注主 Agent** 是当前任务的唯一综合者、证据重建者和最终返回者；它不是一个投票者，也不把子 Agent 的文字直接拼入最终答案。
@@ -77,7 +158,11 @@ No new Principle is currently justified. The open question is expression selecti
 
 **H1 — Selective divergent reactivation.** For tasks with an explicitly open design or research uncertainty, a small number of differentiated, read-only thought surfaces may increase coverage of relevant alternatives and counterexamples compared with a single focused pass at comparable total budget. The gain will occur only when the Main Agent filters candidates against the current object and evidence; unfiltered insertion will increase noise and attention cost.
 
-**H2 — Structured insertion beats raw interleaving.** A candidate envelope containing `angle`, `thought`, `why-relevant`, `evidence-or-unknown`, `contradiction`, and `suggested-next-probe` will be more reconstructible and less disruptive than raw partial text injected into the Main stream.
+**H2 — Bounded provenance beats raw interleaving.** A short, source-linked note
+with a clear question and next probe should be more reconstructible and less
+disruptive than raw partial text injected into the Main stream. Any headings
+used to help a prompt writer are presentation only; the runtime carrier should
+retain only the minimal provenance fields already named above.
 
 **H3 — Event-triggered use beats always-on use.** Activating the surface only at a named uncertainty or phase boundary will preserve latency and attention better than generating divergent fragments for every turn.
 
@@ -107,7 +192,7 @@ whether any candidate improved coverage.
 complete through the existing Task/Run/Cell path, and that the observer can
 record a precise query gap. It does not prove H1, H2, or H3. A second probe
 needs a bounded, reviewable result projection (for example a deliberately
-structured candidate envelope or content digest plus criterion-linked summary)
+structured note or content digest plus criterion-linked summary)
 without exposing raw chain-of-thought or private payloads. Until that surface
 exists, do not claim semantic POC success or add a production mixed-agent
 mechanism.
@@ -142,7 +227,11 @@ lifecycle, durable queue, role enum, persona registry, or UI path.
 1. Select a small fixture set with three kinds of work: a routine repair where divergence should be unnecessary, an open design question with at least two plausible directions, and a diagnosis containing a misleading local hypothesis.
 2. Compare matched expressions under a bounded budget: focused Main only; Main plus all three advisory styles; and three ablations that remove one advisory style at a time. Keep task sources, acceptance, tools, and final authority identical.
 3. Give each style its stable method prompt and one current lead P-ID plus at most two supporting P-IDs. Do not let a style create or select a new principle. Do not give identical prompts and call the results independent.
-4. Require each candidate to return only the structured envelope below:
+4. Require each aside to carry only the minimal provenance fields already
+   supported by the context surface (`id`, `kind`, `origin`, source turn/step,
+   `content`). The `content` is a short bounded note that may use these
+   receiver-facing questions as prose headings, but they are not new runtime
+   fields:
 
    ```text
    angle:
@@ -154,19 +243,27 @@ lifecycle, durable queue, role enum, persona registry, or UI path.
    next-probe:
    ```
 
-5. Let the Main Agent decide `admit: yes | no | uncertain` for each advisory return, with one source-linked reason and the selected principle lens. Only admitted returns may alter the next task expression; none may directly alter code, Task state, acceptance, or the final answer.
+5. Let Main use, defer, or ignore each note while reconstructing the next
+   practice. Do not record an accept/reject/impact status for the thought and do
+   not turn it into a proposal lifecycle. A note may influence the next task
+   expression only through Main's ordinary plan/practice decision; it may never
+   directly alter code, Task state, acceptance, or the final answer.
 
-6. Record per fixture: relevant alternative coverage, counterexamples found, unsupported/noisy returns, duplicated reasoning, time-to-useful-next-probe, principle-lens decision impact, total token/cost delta, final-answer reconstruction, and whether a style caused an obsolete-anchor or authority error.
+6. Record per fixture: relevant alternative coverage, counterexamples found,
+   unsupported/noisy returns, duplicated reasoning, whether a source-linked
+   disconfirming probe was produced (`yes`, `no`, or `uncertain`), total
+   token/cost delta, final-answer reconstruction, and whether a style caused an
+   obsolete-anchor or authority error.
 
 ## Falsifiers and stopping conditions
 
-The POC is **no** for production expression if the mixed surface does not improve relevant alternative or counterexample coverage, if gains come only from extra tokens, if raw fragments outperform only by making evaluation impossible, if the Main cannot reconstruct why a candidate was admitted, or if candidates cause authority/evidence contamination. It is also **no** when routine tasks pay a persistent latency/cost penalty without a decision-changing benefit.
+The POC is **no** for production expression if the mixed surface does not improve relevant alternative or counterexample coverage, if gains come only from extra tokens, if raw fragments outperform only by making evaluation impossible, if Main cannot reconstruct the note's source and relevance, or if candidates cause authority/evidence contamination. It is also **no** when routine tasks pay a persistent latency/cost penalty without a decision-changing benefit.
 
 The result remains **uncertain** when the fixture set is too small, the candidate angles are not genuinely differentiated, or the evaluator cannot separate semantic usefulness from additional thinking time. A positive result is only a reason to run a second, blinded matched probe; it is not permission to add a production mechanism.
 
 ## Possible decision delta
 
-If H1–H3 survive a matched POC, add a small optional method-expression reference or Skill command describing candidate surfaces and Main admission. Keep the existing Plan semantic and keep the carrier replaceable. If they fail, retain this note as `no-proposal` evidence and continue using ordinary practice-cycle or independent parallel exploration.
+If H1–H3 survive a matched POC, add a small optional method-expression reference or Skill command describing provenance-bearing notes and Main use. Keep the existing Plan semantic and keep the carrier replaceable. If they fail, retain this note as `no-proposal` evidence and continue using ordinary practice-cycle or independent parallel exploration.
 
 The following would require a separate mechanism inquiry rather than a direct implementation: live cross-stream token insertion, durable candidate history, automatic candidate scheduling, cross-run cancellation, or any path in which a thought fragment can acquire effect or acceptance authority.
 
@@ -179,6 +276,6 @@ The current `practice-cycle` and `agent-delegation` methods already support chan
 **Disposition:** `open`
 
 Next evidence is the bounded offline POC above, followed by an independent
-review of the fixture, candidate envelope, and admission rule. Do not modify
+review of the fixture, note form, and Main-use rule. Do not modify
 `principles/SEQUENCE.md`, add a Principle ID, or change production Task/Run/Cell
 behavior before the POC and review produce a source-linked decision.

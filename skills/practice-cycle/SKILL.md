@@ -72,6 +72,18 @@ the binding is optional evidence and never changes this skill's judgment or
 human authority. Do not create a receipt for an ordinary execute, continue, or
 formatting request that leaves the active decision unchanged.
 
+### Blind-spot learning
+
+When a Principal correction exposes a user-visible or workflow blind spot,
+preserve the causal lesson rather than merely appending the corrected answer to
+future prompts: identify the observed miss, the evidence that was absent from
+the Agent's decision context, why the mainline skipped it, and one
+receiver-facing question or source pointer that could expose the same relation
+next time. Use this only to change a later practice or delivery path; it is not
+a score, a personality label, or a new durable workflow. Generalize the lesson
+only after it recurs in more than one concrete practice; otherwise keep it as
+local evidence.
+
 ## Core method
 
 1. **Orient in the actual object.** Read the current state, prior result, and

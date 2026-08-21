@@ -76,6 +76,27 @@ Select a method from the task relation, not from a preferred workflow:
   whole against the same sources and acceptance relation. Do not concatenate,
   vote, or select by a numeric score.
 
+### Blind-spot pass
+
+The post-training layer should compensate for the difference between an Agent
+that closes the explicit task and a human who notices longitudinal friction,
+implicit expectations, or missing actions. After a mainline draft, use one
+short, read-only pass when the work is UI/workflow/interaction work, follows a
+human correction or regression, or exposes an observer query gap. Ask about
+user reality, negative space, mechanical-versus-operational mismatch, and
+recovery/continuity. Ground each observation in the actual runtime, source,
+transcript, screenshot, or other standard evidence; do not ask for generic
+creativity.
+
+Return a small observation plus its source and the smallest next probe. Do not
+score it, call it accepted, or make it an effectful proposal. Main retains the
+choice to carry it into the next practice. This is a prompt/Skill expression,
+not a resident observer queue, second lifecycle, personality registry, or
+recursive delegation: only the current Mainline may create one aside, and the
+aside cannot create another aside, call tools, or mutate Task/Run state. Skip
+the pass for routine mechanical changes when no user-facing or practice-level
+uncertainty is present.
+
 The Plan remains semantic: outcome, constraints, sources, contribution
 boundaries, dependencies, coverage, evidence, acceptance, and round/rejoin
 relations. It must not encode provider, worker count, concurrency, topology
@@ -173,12 +194,15 @@ a worker.
    verification and Principal acceptance.
 5. Observe the settled result through standard evidence. Missing visibility is
    a query-gap improvement, not permission to read private state.
-6. Classify the observation against the three dogfood lines, name the primary
+6. If the blind-spot conditions apply, run the bounded post-training pass before
+   closing the mainline. Classify its result as an observation or query gap;
+   never promote it to fact without the normal verification path.
+7. Classify the observation against the three dogfood lines, name the primary
    contradiction and smallest probe, and only then choose the owning change.
-7. When Rossovia itself changes, preserve a local known-good tag, build the
+8. When Rossovia itself changes, preserve a local known-good tag, build the
    coupled runtime, restart, smoke-check, and either roll forward or rebuild
    from the tag after a serious regression.
-8. Return source identity, task/worktree, changed behavior, checks, runtime
+9. Return source identity, task/worktree, changed behavior, checks, runtime
    identity, observer/reviewer evidence, limitations, and the next decision.
 
 ## Local dogfood mode
