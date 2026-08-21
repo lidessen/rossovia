@@ -182,6 +182,7 @@ retained evaluations rather than replacing them.
 | [skill-engineering](skills/skill-engineering/SKILL.md) | `/skill-engineering` | Design, rewrite, review, and test skills that improve repeated agent action. Forms a selected Sequence expression team for each target skill, carries a standalone Sequence snapshot, and requires behavior evidence rather than prompt polish. |
 | [disciplined-development](skills/disciplined-development/SKILL.md) | `/disciplined-development` | Apply lightweight evidence, scope, and test-value discipline underneath a development task without creating another methodology workflow. |
 | [practice-cycle](skills/practice-cycle/SKILL.md) | `/practice-cycle` | Turn an observed non-trivial practice into a settled conclusion, a next smallest test, or a route to the owner of the unresolved judgment. |
+| [iterative-product-improvement](skills/iterative-product-improvement/SKILL.md) | `/iterative-product-improvement` | Turn live product observations into bounded rounds of necessity analysis, one smallest UI/product change, browser verification, and the next practice or settled result. |
 | [form-guidance](skills/form-guidance/SKILL.md) | `/form-guidance` | Choose whether a recurring need should exist as a skill, decision artifact, runtime, projection, bounded campaign, or no new form before implementation starts. |
 | [mechanism-design-review](skills/mechanism-design-review/SKILL.md) | `/mechanism-design-review` | Derive the smallest valid treatment for an agent-system pressure by asking what the object is and owns, where it came from, and what relation it must become before adding mechanism complexity. |
 | [naming-and-articulation](skills/naming-and-articulation/SKILL.md) | `/naming-and-articulation` | Name a shared project concept, define its operative boundary, explain it at the right source, and decline needless terminology. |
@@ -250,6 +251,7 @@ operating mode remains human-initiated.
 | Creating, rewriting, or behavior-testing an agent skill | `/skill-engineering` |
 | Applying a lightweight evidence, scope, completion, or meaningful-test discipline to ordinary development | `/disciplined-development` |
 | Turning a finished or failed non-trivial attempt into the next bounded practice | `/practice-cycle` |
+| Iterating on a real product/UI while deciding whether a complex page or surface is necessary | `/iterative-product-improvement` |
 | Deciding whether a capability needs a skill, record, runtime, projection, or no new form | `/form-guidance` |
 | Reviewing a proposed agent-harness state, gate, hook, queue, lock, retry, record, or workflow through its identity, causal origin, destination, and smallest sufficient form | `/mechanism-design-review` |
 | Naming a shared concept, defining terminology, or deciding where its explanation belongs | `/naming-and-articulation` |

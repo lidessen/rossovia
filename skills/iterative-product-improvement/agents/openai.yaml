@@ -1,0 +1,4 @@
+interface:
+  display_name: "Iterative Product Improvement"
+  short_description: "Turn live product observations into the next smallest UI improvement."
+  default_prompt: "Use $iterative-product-improvement to review one real user task, decide whether the complex surface is necessary, make at most one smallest improvement, verify it in the browser, and return the next practice or a settled packet."
