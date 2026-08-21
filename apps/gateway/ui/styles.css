@@ -3106,6 +3106,29 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   text-transform: uppercase;
 }
 
+.observer-review-summary {
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.observer-review-full {
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+}
+
+.observer-review-full summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.68rem;
+}
+
+.observer-review-full-body {
+  margin-top: 0.75rem;
+}
+
 .observer-review-finding > :first-child {
   margin-top: 0;
 }

@@ -4724,6 +4724,29 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   text-transform: uppercase;
 }
 
+.observer-review-summary {
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.observer-review-full {
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+}
+
+.observer-review-full summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.68rem;
+}
+
+.observer-review-full-body {
+  margin-top: 0.75rem;
+}
+
 .observer-review-finding > :first-child {
   margin-top: 0;
 }
@@ -9407,6 +9430,27 @@ export function observerReviewWorkerId(review) {
     : "未知 worker";
 }
 
+export function observerReviewSummary(value, limit = 220) {
+  if (typeof value !== "string") return "未返回 review 文本";
+  const normalized = value
+    .replace(/^\\s*#{1,6}\\s+/gmu, "")
+    .replace(/[\`*_~]/gu, "")
+    .replace(/\\s+/gu, " ")
+    .trim();
+  if (normalized.length <= limit) return normalized || "未返回 review 文本";
+  return \`\${normalized.slice(0, Math.max(40, limit - 1)).trimEnd()}…\`;
+}
+
+function observerSubjectOutcomeCopy(outcome) {
+  if (!outcome || typeof outcome !== "object") return "未提供主体结算摘要";
+  const settlement = text(outcome.settlementStatus, "未知");
+  const cell = text(outcome.cellStatus, "未提供机械状态");
+  const semantic = outcome.semanticAcceptance === "not-evaluated"
+    ? "语义验收未评估"
+    : text(outcome.semanticAcceptance, "语义验收未知");
+  return \`\${settlement} · 机械执行 \${cell} · \${semantic}\`;
+}
+
 /**
  * The current Workbench has no canonical read-only conversation detail route.
  * Return a safe, understandable evidence label and deliberately no href.
@@ -11454,14 +11498,16 @@ export function taskLocatorEmptySummary(locator, context) {
       const conversationEvidence = observerConversationEvidenceLabels(review);
       const status = text(first(review, ["standing"]), "unknown");
       const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
+      const subjectOutcome = first(review, ["subjectOutcome"], null);
       return \`<article class="observer-review-card" data-review-id="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
         <header>
           <div><span class="observer-review-status" data-standing="\${escapeHtml(status)}">\${escapeHtml(reviewStandingCopy(status))}</span><strong>\${escapeHtml(workerId)}</strong></div>
-          <time>\${escapeHtml(text(first(review, ["recordedAt"]), "时间未知"))}</time>
+          <time>\${escapeHtml(formatTime(text(first(review, ["recordedAt"]), "")))}</time>
         </header>
-        <div class="observer-review-finding"><p class="observer-review-finding-label">观察结论</p>\${renderConversationMarkdown(reviewText)}</div>
+        <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论</p><p class="observer-review-summary">\${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">\${renderConversationMarkdown(reviewText)}</div></details></div>
         <dl class="observer-review-facts">
           <div><dt>观察对象</dt><dd>\${escapeHtml(taskId ? \`Task \${taskId}\` : "未关联 Task")} · attempt \${escapeHtml(shortConversationId(attemptId))}</dd></div>
+          <div><dt>被观察执行</dt><dd>\${escapeHtml(observerSubjectOutcomeCopy(subjectOutcome))}</dd></div>
           <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
           <div><dt>关联对话</dt><dd>\${conversationEvidence.length
             ? \`<div class="observer-conversation-evidence-list">\${conversationEvidence.map((evidence) => \`<span class="observer-conversation-evidence" data-conversation-evidence="\${escapeHtml(evidence.ref)}">\${escapeHtml(evidence.label)}</span>\`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>\`

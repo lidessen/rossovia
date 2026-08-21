@@ -54,6 +54,12 @@ const WorkflowReviewLogRecordSchema = z.object({
     kind: z.literal("agent"),
     workerId: z.string().min(1),
   }).strict(),
+  subjectOutcome: z.object({
+    settlementStatus: z.enum(["recorded", "runner-failed", "control-stopped"]),
+    cellStatus: z.string().min(1).optional(),
+    finalStatus: z.string().min(1).optional(),
+    semanticAcceptance: z.literal("not-evaluated"),
+  }).strict().optional(),
   standing: z.enum(["recorded", "query-gap", "runner-failed"]),
   evidenceRefs: z.array(z.string().min(1)),
   finding: z.string().min(1),
@@ -206,6 +212,14 @@ export async function runWorkflowObserver(
     evidenceError = error instanceof Error ? error.message : String(error);
   }
   const taskId = evidence?.attempt?.taskId;
+  const subjectOutcome = evidence?.settlement === undefined
+    ? undefined
+    : {
+      settlementStatus: evidence.settlement.status,
+      ...(evidence.settlement.cellStatus === undefined ? {} : { cellStatus: evidence.settlement.cellStatus }),
+      ...(evidence.finalRecord === undefined ? {} : { finalStatus: evidence.finalRecord.status }),
+      semanticAcceptance: evidence.settlement.semanticAcceptance,
+    };
   const base = {
     version: WORKFLOW_REVIEW_LOG_VERSION,
     reviewId,
@@ -216,6 +230,7 @@ export async function runWorkflowObserver(
       attemptId: arguments_.attemptId,
     },
     observer: { kind: "agent" as const, workerId: arguments_.workerId },
+    ...(subjectOutcome === undefined ? {} : { subjectOutcome }),
     evidenceRefs: evidence === undefined ? [] : [
       evidence.refs.attemptRef,
       evidence.refs.inputRef,

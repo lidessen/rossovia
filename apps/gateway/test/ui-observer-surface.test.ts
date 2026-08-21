@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { observerConversationEvidenceLabels, observerReviewWorkerId } from "../ui/app.js";
+import { observerConversationEvidenceLabels, observerReviewSummary, observerReviewWorkerId } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -10,6 +10,13 @@ test("observer review projects the nested worker identity as a scalar", () => {
   expect(observerReviewWorkerId({ observer: { workerId: " deepseek-flash " } })).toBe("deepseek-flash");
   expect(observerReviewWorkerId({ observer: {} })).toBe("未知 worker");
   expect(observerReviewWorkerId({ observer: { workerId: { id: "deepseek-flash" } } })).toBe("未知 worker");
+});
+
+test("observer review keeps a readable summary before the full markdown body", () => {
+  expect(observerReviewSummary("# Review\n\n**First finding**: the page is blocked.")).toBe(
+    "Review First finding: the page is blocked.",
+  );
+  expect(observerReviewSummary("x".repeat(300), 20)).toBe(`${"x".repeat(40)}…`);
 });
 
 test("mobile system tools stay secondary while remaining keyboard-discoverable", () => {
@@ -41,6 +48,8 @@ test("observer surface explains its record state instead of presenting one gener
   expect(html).toContain('id="observer-last-recorded"');
   expect(app).toContain("function observerRecordStateCopy");
   expect(app).toContain("等待首次触发");
+  expect(app).toContain("展开完整 review");
+  expect(app).toContain("被观察执行");
   expect(app).toContain("记录源已连接，但目前为空");
   expect(css).toContain(".observer-overview");
   expect(css).toContain('.observer-empty[data-state="waiting"]');
