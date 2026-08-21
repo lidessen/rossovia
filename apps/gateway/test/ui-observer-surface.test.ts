@@ -43,6 +43,7 @@ test("conversation disconnect makes the masthead distinguish projection from soc
   const app = readFileSync(join(uiRoot, "app.js"), "utf8");
   const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
   expect(app).toContain('投影已连接 · 对话已断开');
+  expect(app).toContain('connecting: "投影已连接 · 对话连接中"');
   expect(app).toContain('renderConnection();\n    renderConversationConnection();');
   expect(css).toContain('.connection-mark.is-warning');
 });

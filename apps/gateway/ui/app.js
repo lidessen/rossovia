@@ -1976,13 +1976,17 @@ export function taskLocatorEmptySummary(locator, context) {
     mark.className = "connection-mark";
     const conversationConnectionIssue =
       state.activeView === "conversation"
-      && (conversationState.connection === "disconnected" || conversationState.connection === "unavailable");
+      && (conversationState.connection === "connecting"
+        || conversationState.connection === "disconnected"
+        || conversationState.connection === "unavailable");
 
     if (state.source === "live") {
       if (conversationConnectionIssue) {
-        $("#connection-label").textContent = conversationState.connection === "unavailable"
-          ? "投影已连接 · 对话不可用"
-          : "投影已连接 · 对话已断开";
+        $("#connection-label").textContent = {
+          connecting: "投影已连接 · 对话连接中",
+          disconnected: "投影已连接 · 对话已断开",
+          unavailable: "投影已连接 · 对话不可用",
+        }[conversationState.connection] || "投影已连接 · 对话状态待确认";
         mark.classList.add("is-warning");
       } else {
         $("#connection-label").textContent = "实时 · 已连接";
