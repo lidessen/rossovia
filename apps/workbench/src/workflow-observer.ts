@@ -421,6 +421,12 @@ export function workflowObserverContext(evidence: StrictTaskAttemptEvidence): st
         characterCount: finalRecord.finalText.length,
         lineCount: finalRecord.finalText.length === 0 ? 0 : finalRecord.finalText.split("\n").length,
       },
+      ...(evidence.input?.outputSchema === undefined ? {} : {
+        // A caller-declared structured output is still an opaque payload.
+        // Expose only metadata until a separate caller-owned visibility
+        // projection explicitly grants selected fields to an observer.
+        structuredOutput: structuredOutputMetadata(evidence, projectionState),
+      }),
       workspaceDiff: workspaceDiffSummary(finalRecord.workspaceDiff, projectionState),
       usage: finalRecord.usage,
       verification: verificationSummary(finalRecord.verification, projectionState),
@@ -436,7 +442,7 @@ export function workflowObserverContext(evidence: StrictTaskAttemptEvidence): st
       settlementRef: boundedString(evidence.refs.settlementRef, "refs.settlementRef", projectionState),
     },
     truncatedFields: projectionState.truncatedFields,
-    limitation: "Raw provider steps, original input/result payloads, and trace event data are not copied into the observer context; report this as a visibility gap when review needs them.",
+    limitation: "Raw provider steps, original input/result payloads, trace event data, and structured output values are not copied into the observer context. Declared structured output exposes metadata only; report a query gap when semantic review needs an explicitly permitted field projection.",
   };
   return serializeObserverContext(context);
 }
@@ -619,6 +625,89 @@ function settlementSummary(
     workCellRunIdPresent: settlement.workCellRunId !== undefined,
     errorPresent: settlement.error !== undefined,
   };
+}
+
+const OBSERVER_STRUCTURED_OUTPUT_DEPTH_LIMIT = 4;
+const OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT = 32;
+
+function structuredOutputMetadata(
+  evidence: StrictTaskAttemptEvidence,
+  state: ProjectionState,
+): Record<string, unknown> {
+  const output = evidence.finalRecord?.output;
+  const schema = evidence.input?.outputSchema;
+  return {
+    declared: true,
+    present: output !== undefined,
+    valid: evidence.finalRecord?.verification.output?.passed === true,
+    visibility: "metadata-only",
+    schemaDigest: digestJson(schema),
+    ...(output === undefined ? {} : { valueDigest: digestJson(output) }),
+    shape: structuredShapeSummary(output, "final.structuredOutput.shape", state, 0),
+  };
+}
+
+/**
+ * Describe only the shape of a caller-declared JSON result. The observer
+ * never receives values here: OutputSchema is a validation contract, not a
+ * visibility grant. A future explicit caller-owned projection may add
+ * selected fields without changing this metadata boundary.
+ */
+function structuredShapeSummary(
+  value: unknown,
+  field: string,
+  state: ProjectionState,
+  depth: number,
+): unknown {
+  if (value === undefined) return { present: false };
+  if (value === null) return { type: "null" };
+  if (typeof value === "boolean") return { type: "boolean" };
+  if (typeof value === "string") return { type: "string", characterCount: value.length };
+  if (typeof value === "number") return { type: Number.isFinite(value) ? "number" : "non-finite-number" };
+  if (depth >= OBSERVER_STRUCTURED_OUTPUT_DEPTH_LIMIT) {
+    recordTruncation(state, field);
+    return { type: "truncated", reason: "depth" };
+  }
+  if (Array.isArray(value)) {
+    const visible = value.slice(0, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT)
+      .map((entry, index) => structuredShapeSummary(entry, `${field}[${index}]`, state, depth + 1));
+    if (value.length > visible.length) recordTruncation(state, field);
+    return {
+      itemShapes: visible,
+      itemCount: value.length,
+      truncated: value.length > visible.length,
+    };
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
+    const visible = entries.slice(0, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT).map(([key, entry]) => ({
+      key: boundedString(key, `${field}.key`, state),
+      shape: structuredShapeSummary(entry, `${field}.${key}`, state, depth + 1),
+    }));
+    if (entries.length > visible.length) recordTruncation(state, field);
+    return {
+      fields: visible,
+      fieldCount: entries.length,
+      truncated: entries.length > visible.length,
+    };
+  }
+  return { type: typeof value };
+}
+
+function digestJson(value: unknown): string {
+  if (value === undefined) return "sha256:absent";
+  try {
+    return `sha256:${createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")}`;
+  } catch {
+    return "sha256:unavailable";
+  }
+}
+
+function recordTruncation(state: ProjectionState, field: string): void {
+  if (state.truncatedFields.length < OBSERVER_CONTEXT_TRUNCATION_FIELD_LIMIT
+    && !state.truncatedFields.includes(field)) {
+    state.truncatedFields.push(field);
+  }
 }
 
 function traceSummary(trace: readonly { at: string; type: string }[], state: ProjectionState): Record<string, unknown> {

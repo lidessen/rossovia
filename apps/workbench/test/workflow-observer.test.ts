@@ -204,6 +204,100 @@ test("workflow observer context exposes bounded terminal evidence without raw pa
   expect(context.limitation).toContain("original input/result payloads");
 });
 
+test("workflow observer exposes only metadata for an explicitly declared structured result", () => {
+  const context = JSON.parse(workflowObserverContext({
+    standing: "available",
+    input: {
+      intent: "private intent",
+      instructions: ["private instruction"],
+      acceptance: ["private acceptance"],
+      capabilities: [],
+      capabilitiesRequired: [],
+      outputSchema: {
+        type: "object",
+        properties: {
+          relation: { type: "string" },
+          proposal: { type: "string" },
+        },
+      },
+      workspace: {
+        root: "/private/worktree",
+        readPaths: [],
+        writePaths: [],
+        excludePaths: [],
+        allowedCommands: [],
+      },
+    },
+    finalRecord: {
+      runId: "run-structured",
+      finalText: "private raw final text",
+      rawSteps: [{ secret: "private provider step" }],
+      output: {
+        relation: "counterexample",
+        proposal: "Inspect the reconnect race before changing retry policy.",
+        secret: "structured-but-explicit-sentinel",
+      },
+      status: "passed",
+      workspaceDiff: { added: [], changed: [], removed: [] },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+      verification: { passed: true, terminal: { passed: true, required: [], called: [] } },
+      executionObservation: {},
+      trace: [],
+    },
+    refs: {
+      inputRef: "state/input.json",
+      attemptRef: "state/attempt.json",
+      finalRecordRef: "state/final.json",
+      settlementRef: "state/settlement.json",
+    },
+  } as unknown as StrictTaskAttemptEvidence));
+
+  expect(context.final.structuredOutput).toMatchObject({
+    declared: true,
+    present: true,
+    valid: false,
+    visibility: "metadata-only",
+    shape: { fieldCount: 3, truncated: false },
+  });
+  expect(context.final).not.toHaveProperty("finalText");
+  expect(context.final).not.toHaveProperty("rawSteps");
+  expect(JSON.stringify(context)).not.toContain("private raw final text");
+  expect(JSON.stringify(context)).not.toContain("private provider step");
+  expect(JSON.stringify(context)).not.toContain("Inspect the reconnect race");
+  expect(JSON.stringify(context)).not.toContain("structured-but-explicit-sentinel");
+  expect(context.limitation).toContain("Declared structured output exposes metadata only");
+});
+
+test("workflow observer does not invent a structured result surface without outputSchema", () => {
+  const context = JSON.parse(workflowObserverContext({
+    standing: "available",
+    input: {
+      intent: "intent",
+      instructions: ["instruction"],
+      acceptance: ["acceptance"],
+      capabilities: [],
+      capabilitiesRequired: [],
+      workspace: { root: "/worktree", readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+    },
+    finalRecord: {
+      runId: "run-plain",
+      finalText: "plain result",
+      rawSteps: [],
+      output: { should: "remain hidden" },
+      status: "passed",
+      workspaceDiff: { added: [], changed: [], removed: [] },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+      verification: { passed: true, terminal: { passed: true, required: [], called: [] } },
+      executionObservation: {},
+      trace: [],
+    },
+    refs: { inputRef: "i", attemptRef: "a", finalRecordRef: "f", settlementRef: "s" },
+  } as unknown as StrictTaskAttemptEvidence));
+
+  expect(context.final).not.toHaveProperty("structuredOutput");
+  expect(JSON.stringify(context)).not.toContain("should");
+});
+
 test("workflow observer context makes execution observations explicit and visibly bounds identities", () => {
   const longValue = `provider-${"x".repeat(400)}`;
   const context = JSON.parse(workflowObserverContext({

@@ -82,6 +82,27 @@ without exposing raw chain-of-thought or private payloads. Until that surface
 exists, do not claim semantic POC success or add a production mixed-agent
 mechanism.
 
+## Evidence-surface follow-up — 2026-08-21
+
+The smallest safe observer improvement was tested and added at the generic
+Workbench evidence boundary. When a Cell input explicitly declares
+`outputSchema`, the observer now receives only `structuredOutput` metadata:
+declaration/presence, mechanical validity, schema and value digests, and a
+bounded shape summary. It does not receive structured values, `finalText`, raw
+provider steps, original input, or trace data. A no-schema result does not
+invent this surface. The focused observer suite is green (8/8), and the
+Workbench typecheck is green.
+
+This closes the first half of the query gap—reviewers can distinguish “no
+structured candidate was declared” from “a structured result existed but its
+content is not visible”—but it does not yet make semantic candidate review
+possible. `outputSchema` is a validation contract, not a visibility grant; a
+future content projection would need an explicit caller-owned allowlist and
+field bounds. Therefore the mixed-agent POC remains `uncertain`, no runtime
+thought-surface mechanism is admitted, and the next probe should either use a
+deliberately permitted projection or end in `no-proposal` if the additional
+visibility cost is not justified.
+
 ## Smallest POC
 
 Use an existing ordinary task carrier or an offline fixture; do not add a runtime lifecycle, durable queue, role enum, or UI path.
