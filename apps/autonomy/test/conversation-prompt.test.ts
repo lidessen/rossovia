@@ -241,7 +241,7 @@ test("withheld effects are rendered in the policy section", () => {
 
   const policySection = composed.prompt.split("## 5. Project orientation and skills")[0]!;
   expect(policySection).toContain("withheld effects: commit, merge, publish, task-acceptance");
-  expect(policySection).toContain("requested coordinator: deepseek / deepseek-v4-pro, thinking enabled, reasoning effort max");
+  expect(policySection).toContain("requested coordinator: deepseek / deepseek-v4-flash, thinking enabled, reasoning effort max");
 });
 
 test("a missing orientation renders the fixed section with a bounded none standing", () => {

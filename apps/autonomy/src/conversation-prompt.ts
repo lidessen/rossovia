@@ -18,7 +18,7 @@ export const RELATION_KERNEL_V1 = [
 
 export const CURRENT_COORDINATOR_POLICY = {
   provider: "deepseek",
-  model: "deepseek-v4-pro",
+  model: "deepseek-v4-flash",
   thinking: "enabled",
   reasoningEffort: "max",
 } as const;

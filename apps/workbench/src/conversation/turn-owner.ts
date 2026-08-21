@@ -71,7 +71,7 @@ export interface TurnPreparation {
 
 /**
  * The production policy for every Workbench conversation turn: the accepted
- * DeepSeek Pro reasoning=max carrier plus the exact consequential operation
+ * DeepSeek Flash reasoning=max carrier plus the exact consequential operation
  * vocabulary. It is a requested fact recorded on `coordinator.turn-started`;
  * observed identity stays in the settlement. Available tools carry their
  * meaning; unavailable tools stay named so the coordinator reports them
@@ -138,7 +138,7 @@ export interface CoordinatorTurnOwnerOptions {
 
 /**
  * The production conversation turn owner: the frozen coordinator kernel on
- * the real DeepSeek Pro/max turn adapter using the existing DeepSeek
+ * the real DeepSeek Flash/max turn adapter using the existing DeepSeek
  * environment credentials. There is no echo or other fallback carrier; a
  * missing credential fails the turn visibly in the journal.
  */

@@ -24,6 +24,24 @@ Use this Skill for the whole development relation, regardless of which harness
 is currently available. It is not a project implementation recipe and it does
 not create a second task system.
 
+## Three dogfood lines
+
+Rossovia self-development observes three separated lines through one ordinary
+dogfood loop:
+
+| Line | Owns | Typical evidence |
+|---|---|---|
+| Harness base | Task/Run/Cell, tools, effects, evidence, restart and recovery invariants | traces, settlements, permission and reconnect probes |
+| Runtime method expression | Skills, system prompts, receiver context, plans and practice choices | worker returns, review findings, query gaps, changed next practice |
+| Rossovia harness workflow | project routing, conversation entry, observer/review use, build/restart/rollback and UI | browser/CLI dogfood, latency, navigation, observer records |
+
+Classify each finding before changing it and choose one primary line for the
+next practice. Cross-line changes require evidence that the primary owner
+cannot preserve the relation alone; do not turn a method issue into a new
+mechanism or a workflow convenience into a second lifecycle. All three lines
+may be observed from the same settled evidence, but they keep separate owners
+and acceptance.
+
 The first decision is the execution mode:
 
 | Mode | Preferred producer | External harness role |
@@ -155,10 +173,12 @@ a worker.
    verification and Principal acceptance.
 5. Observe the settled result through standard evidence. Missing visibility is
    a query-gap improvement, not permission to read private state.
-6. When Rossovia itself changes, preserve a local known-good tag, build the
+6. Classify the observation against the three dogfood lines, name the primary
+   contradiction and smallest probe, and only then choose the owning change.
+7. When Rossovia itself changes, preserve a local known-good tag, build the
    coupled runtime, restart, smoke-check, and either roll forward or rebuild
    from the tag after a serious regression.
-7. Return source identity, task/worktree, changed behavior, checks, runtime
+8. Return source identity, task/worktree, changed behavior, checks, runtime
    identity, observer/reviewer evidence, limitations, and the next decision.
 
 ## Local dogfood mode

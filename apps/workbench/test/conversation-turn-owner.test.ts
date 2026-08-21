@@ -40,7 +40,7 @@ test("prepare returns the exact current coordinator policy with the composed pro
 
   expect(preparation.requestedPolicy).toEqual({
     provider: "deepseek",
-    model: "deepseek-v4-pro",
+    model: "deepseek-v4-flash",
     thinking: "enabled",
     reasoningEffort: "max",
   });
@@ -77,7 +77,7 @@ test("start streams delta callbacks in order and settles the coordinator result"
   expect(deltas).toEqual(["one ", "two"]);
   expect(result.kind).toBe("finished");
   expect(result.text).toBe("one two");
-  expect(result.requested.model).toBe("deepseek-v4-pro");
+  expect(result.requested.model).toBe("deepseek-v4-flash");
   expect(result.observed.outcome).toBe("finished");
 });
 

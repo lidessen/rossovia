@@ -46,6 +46,26 @@ review, and Principal decision path. See the
 [AI review decision](../decisions/023-ai-review-evidence-and-principal-confirmation.md)
 for those authorities.
 
+## Three lines to observe
+
+Each dogfood round looks at the same settled evidence through three lenses:
+
+- **Harness base:** does the runtime preserve Task/Run/Cell identity, tool and
+  effect boundaries, evidence, restart, cancellation, and recovery?
+- **Runtime method expression:** do Skills, prompts, receiver context, plans,
+  and practice choices help the Agent take the next correct action without
+  requiring a new mechanism?
+- **Rossovia harness workflow:** can a person route a project, use the
+  conversation entry, see and process observer records, rebuild/restart or
+  roll back, and understand the UI during ordinary development?
+
+For every observation, record primaryLine, the concrete evidence, the owning
+surface, the hard property or usability relation at risk, and the next
+discriminating probe. The three lines are not three lifecycles and do not
+require three implementations. Choose one primary line for the next practice;
+cross the boundary only when the evidence shows the primary owner cannot close
+the gap while preserving the other two.
+
 ## 1. Preserve a reversible local snapshot
 
 Before replacing the running copy:

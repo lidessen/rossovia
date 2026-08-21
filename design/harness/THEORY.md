@@ -98,6 +98,28 @@ method expression. If changing it requires new lifecycle state, causal
 identity, concurrency control, recovery, permission enforcement, or durable
 evidence, the proposed change has crossed into the base or an adapter.
 
+## Three dogfood lines
+
+When Rossovia develops itself, one dogfood loop observes three distinct lines
+at once:
+
+1. **Harness base** — the runtime mechanisms and adapters that make Task, Run,
+   Cell, tools, effects, evidence, restart, and recovery truthful.
+2. **Runtime method expression** — Skills, system prompts, worker/reviewer
+   prompts, receiver-specific context, plans, and practice choices that shape
+   Agent behavior without changing those base contracts.
+3. **Rossovia harness workflow** — the project-specific way a person uses this
+   harness: project routing, conversation entry, dogfood launch, observer
+   records, review processing, build/restart/rollback, and the everyday UI.
+
+These are three observation lenses, not three lifecycles or three mandatory
+passes. Every finding should name its primary line, evidence, owner, and next
+probe. A change may cross lines only when the evidence shows that the owning
+line cannot preserve the required relation alone. A prompt failure is not base
+evidence; a missing lifecycle or recovery invariant is not a Skill problem.
+The same settled Task/Run evidence can inform all three lines, but one line
+remains primary for the next practice and no line becomes a second authority.
+
 ### Why behavior patterns should not become mechanism
 
 There are four recurring reasons to resist encoding a behavior pattern in the
