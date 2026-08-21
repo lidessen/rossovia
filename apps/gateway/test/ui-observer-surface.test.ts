@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, observerConversationEvidenceLabels, observerReviewSummary, observerReviewWorkerId } from "../ui/app.js";
+import { conversationSocketCanReuse, observerConversationEvidenceLabels, observerReviewStatusProjection, observerReviewSummary, observerReviewWorkerId } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -17,6 +17,26 @@ test("observer review keeps a readable summary before the full markdown body", (
     "Review First finding: the page is blocked.",
   );
   expect(observerReviewSummary("x".repeat(300), 20)).toBe(`${"x".repeat(40)}…`);
+});
+
+test("observer review distinguishes recorded evidence from unevaluated semantics", () => {
+  expect(observerReviewStatusProjection({
+    standing: "recorded",
+    subjectOutcome: {
+      settlementStatus: "recorded",
+      cellStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    },
+  })).toEqual({ standing: "query-gap", label: "待语义复核" });
+  expect(observerReviewStatusProjection({
+    standing: "recorded",
+    subjectOutcome: {
+      settlementStatus: "recorded",
+      cellStatus: "passed",
+      finalStatus: "passed",
+      semanticAcceptance: "passed",
+    },
+  })).toEqual({ standing: "recorded", label: "已记录" });
 });
 
 test("mobile system tools stay secondary while remaining keyboard-discoverable", () => {

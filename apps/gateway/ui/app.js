@@ -668,6 +668,38 @@ function observerSubjectOutcomeCopy(outcome) {
 }
 
 /**
+ * A recorded observer review is not the same thing as semantic acceptance of
+ * the observed run. Keep that distinction visible in the badge without
+ * rewriting either durable standing.
+ */
+export function observerReviewStatusProjection(review) {
+  const outcome = review && typeof review === "object" ? review.subjectOutcome : null;
+  if (outcome && typeof outcome === "object") {
+    if (outcome.semanticAcceptance === "not-evaluated") {
+      return { standing: "query-gap", label: "待语义复核" };
+    }
+    if (
+      outcome.settlementStatus === "runner-failed"
+      || outcome.cellStatus === "failed"
+      || outcome.finalStatus === "failed"
+    ) {
+      return { standing: "runner-failed", label: "执行未通过" };
+    }
+  }
+  const standing = review && typeof review === "object" && typeof review.standing === "string"
+    ? review.standing
+    : "unknown";
+  return {
+    standing,
+    label: {
+      recorded: "已记录",
+      "query-gap": "查询缺口",
+      "runner-failed": "observer 失败",
+    }[standing] || "状态未知",
+  };
+}
+
+/**
  * The current Workbench has no canonical read-only conversation detail route.
  * Return a safe, understandable evidence label and deliberately no href.
  */
@@ -2734,12 +2766,12 @@ export function taskLocatorEmptySummary(locator, context) {
       const attemptId = text(first(subject, ["attemptId"]), "");
       const workerId = observerReviewWorkerId(review);
       const conversationEvidence = observerConversationEvidenceLabels(review);
-      const status = text(first(review, ["standing"]), "unknown");
+      const statusProjection = observerReviewStatusProjection(review);
       const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
       const subjectOutcome = first(review, ["subjectOutcome"], null);
       return `<article class="observer-review-card" data-review-id="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
         <header>
-          <div><span class="observer-review-status" data-standing="${escapeHtml(status)}">${escapeHtml(reviewStandingCopy(status))}</span><strong>${escapeHtml(workerId)}</strong></div>
+          <div><span class="observer-review-status" data-standing="${escapeHtml(statusProjection.standing)}">${escapeHtml(statusProjection.label)}</span><strong>${escapeHtml(workerId)}</strong></div>
           <time>${escapeHtml(formatTime(text(first(review, ["recordedAt"]), "")))}</time>
         </header>
         <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论</p><p class="observer-review-summary">${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">${renderConversationMarkdown(reviewText)}</div></details></div>
