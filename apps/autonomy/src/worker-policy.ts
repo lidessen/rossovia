@@ -17,6 +17,7 @@ import {
 } from "../../../packages/work-cell/src/worker-catalog";
 
 const DEEPSEEK_FLASH_MODEL = "deepseek-v4-flash";
+const DEEPSEEK_FLASH_VISION_EXP_MODEL = "deepseek-v4-flash-vision-exp";
 const DEEPSEEK_PRO_MODEL = "deepseek-v4-pro";
 const OPENCODE_PROVIDER_ID = "opencode-go";
 const OPENCODE_CREDENTIAL = "OPENCODE_API_KEY";
@@ -57,6 +58,23 @@ export function currentWorkerCards(
         version: "execution-profile.v1",
         provider: "deepseek",
         model: DEEPSEEK_PRO_MODEL,
+        reasoningEffort: "max",
+      },
+      availability: environment.DEEPSEEK_API_KEY
+        ? { status: "available" }
+        : { status: "unavailable", reason: "DEEPSEEK_API_KEY is not configured" },
+    }),
+    WorkerCardSchema.parse({
+      version: WORKER_CARD_VERSION,
+      id: "deepseek-flash-vision-exp",
+      labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
+      description:
+        "DeepSeek Flash Vision Exp is the temporary DeepSeek vision-capable worker for UI screenshots, diagrams, and other image-plus-code tasks. It uses the experimental official API model and carries no pricing estimate until the model has a stable published tariff.",
+      executionProfile: {
+        id: "deepseek-flash-vision-exp",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: DEEPSEEK_FLASH_VISION_EXP_MODEL,
         reasoningEffort: "max",
       },
       availability: environment.DEEPSEEK_API_KEY
@@ -126,7 +144,7 @@ export function deepSeekDriverOptions(
 export function createCurrentWorkerCatalog(
   environment: NodeJS.ProcessEnv = process.env,
 ): WorkerCatalog {
-  const [deepseekFlash, deepseekPro, kimi, kimiCodingPlan] = currentWorkerCards(environment);
+  const [deepseekFlash, deepseekPro, deepseekFlashVisionExp, kimi, kimiCodingPlan] = currentWorkerCards(environment);
   return new WorkerCatalog([
     {
       // The ordinary production driver: the pinned Pi harness adapter inside
@@ -141,6 +159,10 @@ export function createCurrentWorkerCatalog(
     {
       card: deepseekPro!,
       createDriver: () => new PiHarnessCellDriver(deepSeekDriverOptions(deepseekPro!, environment)),
+    },
+    {
+      card: deepseekFlashVisionExp!,
+      createDriver: () => new PiHarnessCellDriver(deepSeekDriverOptions(deepseekFlashVisionExp!, environment)),
     },
     {
       // OpenCode Go stays an AI SDK provider, not a harness: the Kimi worker

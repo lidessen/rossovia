@@ -16,10 +16,21 @@ test("current worker cards expose capability and execution defaults from one pol
 
   const deepseek = cards.find((card) => card.id === "deepseek-flash");
   const deepseekPro = cards.find((card) => card.id === "deepseek-pro");
+  const deepseekVisionExp = cards.find((card) => card.id === "deepseek-flash-vision-exp");
   const kimi = cards.find((card) => card.id === "kimi-coding");
   const kimiCodingPlan = cards.find((card) => card.id === "kimi-coding-plan");
   expect(deepseek?.labels).not.toContain("vision");
   expect(deepseek?.executionProfile.reasoningEffort).toBe("max");
+  expect(deepseekVisionExp).toMatchObject({
+    labels: expect.arrayContaining(["vision"]),
+    executionProfile: {
+      provider: "deepseek",
+      model: "deepseek-v4-flash-vision-exp",
+      reasoningEffort: "max",
+    },
+    availability: { status: "available" },
+  });
+  expect(deepseekVisionExp?.description).toContain("experimental official API model");
   expect(deepseekPro).toMatchObject({
     labels: expect.arrayContaining(["architecture"]),
     executionProfile: {
@@ -91,6 +102,7 @@ test("deepseek card reasoning effort matches the inference policy used to constr
   const cards = currentWorkerCards(environment);
   const deepseekFlash = cards.find((card) => card.id === "deepseek-flash");
   const deepseekPro = cards.find((card) => card.id === "deepseek-pro");
+  const deepseekVisionExp = cards.find((card) => card.id === "deepseek-flash-vision-exp");
   const kimi = cards.find((card) => card.id === "kimi-coding");
   const kimiCodingPlan = cards.find((card) => card.id === "kimi-coding-plan");
 
@@ -100,6 +112,10 @@ test("deepseek card reasoning effort matches the inference policy used to constr
     reasoningEffort: "max",
   });
   expect(deepSeekInferencePolicy(deepseekPro!)).toEqual({
+    thinking: "enabled",
+    reasoningEffort: "max",
+  });
+  expect(deepSeekInferencePolicy(deepseekVisionExp!)).toEqual({
     thinking: "enabled",
     reasoningEffort: "max",
   });
@@ -125,6 +141,12 @@ test("deepseek card reasoning effort matches the inference policy used to constr
     provider: "deepseek",
     credential: { source: "env", name: "DEEPSEEK_API_KEY" },
     model: "deepseek-v4-pro",
+  }]);
+  const visionOptions = deepSeekDriverOptions(deepseekVisionExp!, environment);
+  expect(visionOptions.route).toEqual([{
+    provider: "deepseek",
+    credential: { source: "env", name: "DEEPSEEK_API_KEY" },
+    model: "deepseek-v4-flash-vision-exp",
   }]);
 
   const catalog = createCurrentWorkerCatalog(environment);
