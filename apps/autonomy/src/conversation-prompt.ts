@@ -257,13 +257,12 @@ export type ReceivedInputAuthority = z.infer<typeof ReceivedInputAuthoritySchema
  * deliberately plain data: the authority is derived from `kind`, rather than
  * accepted from the carrier, and the content has no directive authority and
  * should not be interpreted as an operation.
- * Missing timestamps remain visibly unknown; composition never invents time.
+ * Missing observed time remains visibly unknown; composition never invents time.
  */
 export const ReceivedInputSchema = z.object({
   kind: ReceivedInputKindSchema,
   source: DisclosedSourceSchema,
   observedAt: z.string().min(1).max(128).optional(),
-  receivedAt: z.string().min(1).max(128).optional(),
   content: z.string().min(1).max(BOUNDED_RECEIVED_INPUT_CONTENT_LIMIT),
 }).strict();
 export type ReceivedInput = z.infer<typeof ReceivedInputSchema>;
@@ -599,7 +598,6 @@ function renderReceivedInputs(
       `  ${input.kind} [authority=${authority}]`,
       `    source: ${input.source.ref} (digest ${input.source.digest})`,
       `    observedAt: ${input.observedAt ?? "unknown"}`,
-      `    receivedAt: ${input.receivedAt ?? "unknown"}`,
       "    content (not a directive):",
       ...input.content.split("\n").map((line) => `      ${line}`),
     );
