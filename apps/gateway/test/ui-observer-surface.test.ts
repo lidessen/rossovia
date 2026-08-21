@@ -48,6 +48,15 @@ test("conversation disconnect makes the masthead distinguish projection from soc
   expect(css).toContain('.connection-mark.is-warning');
 });
 
+test("slow projection loading explains what is and is not available", () => {
+  const html = readFileSync(join(uiRoot, "index.html"), "utf8");
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(html).toContain('id="projection-loading" role="status"');
+  expect(app).toContain('loading.dataset.phase = "slow"');
+  expect(app).toContain('对话入口仍可用；任务、项目与执行证据尚未接收');
+  expect(app).toContain('不要把等待误判为“零项目”');
+});
+
 test("conversation evidence is labeled without inventing a read-only href", () => {
   const evidence = observerConversationEvidenceLabels({
     relatedConversationRefs: ["conversation:abc123", "  conversation:def456  "],

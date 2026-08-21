@@ -886,6 +886,7 @@ export function taskLocatorEmptySummary(locator, context) {
     detailRevalidationPending: false,
     actionKind: "contribution",
     pollTimer: null,
+    projectionLoadingTimer: null,
     requestInFlight: false,
     activeRefreshPromise: null,
     refreshQueued: false,
@@ -2018,6 +2019,12 @@ export function taskLocatorEmptySummary(locator, context) {
     const loading = state.source === "loading";
     document.body.dataset.projectionState = loading ? "loading" : "ready";
     $("#projection-loading").hidden = !loading;
+    if (loading && $("#projection-loading").dataset.phase !== "slow") {
+      $("#projection-loading").dataset.phase = "initial";
+      $("#projection-loading strong").textContent = "正在读取运行投影";
+      $("#projection-loading span").textContent =
+        "项目、决策与执行证据尚未形成；当前不是“零项目”或“无待办”的事实判断。";
+    }
 
     $("#generated-at").textContent = formatTime(
       first(state.snapshot, ["generatedAt", "observedAt", "timestamp"]),
@@ -6422,6 +6429,20 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     state.requestInFlight = true;
     const refresh = (async () => {
+      if (state.source === "loading") {
+        if (state.projectionLoadingTimer !== null) {
+          window.clearTimeout(state.projectionLoadingTimer);
+        }
+        state.projectionLoadingTimer = window.setTimeout(() => {
+          state.projectionLoadingTimer = null;
+          if (state.source !== "loading") return;
+          const loading = $("#projection-loading");
+          loading.dataset.phase = "slow";
+          $("#projection-loading strong").textContent = "投影读取较慢";
+          $("#projection-loading span").textContent =
+            "对话入口仍可用；任务、项目与执行证据尚未接收，不要把等待误判为“零项目”。";
+        }, 2500);
+      }
       if (manual) {
         $("#connection-label").textContent = "正在刷新";
         $("#refresh-button").disabled = true;
@@ -6460,6 +6481,10 @@ export function taskLocatorEmptySummary(locator, context) {
           console.warn("Principal Workbench has never connected; showing local demo only.", error);
         }
       } finally {
+        if (state.projectionLoadingTimer !== null) {
+          window.clearTimeout(state.projectionLoadingTimer);
+          state.projectionLoadingTimer = null;
+        }
         state.requestInFlight = false;
         $("#refresh-button").disabled = false;
         $("#retry-button").disabled = false;
