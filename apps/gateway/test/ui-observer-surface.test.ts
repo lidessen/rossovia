@@ -78,7 +78,8 @@ test("snapshot requests share one in-flight serialized projection", () => {
   expect(server).toContain("let liveSnapshotBodyInFlight: Promise<string> | undefined;");
   expect(server).toContain("if (liveSnapshotBodyInFlight !== undefined) return liveSnapshotBodyInFlight;");
   expect(server).toContain("return jsonText(await readLiveSnapshotBody(), 200);");
-  expect(server).toContain("if (index > 0 && index % snapshotTaskYieldEvery === 0) await Bun.sleep(0);");
+  expect(server).toContain("showPrincipalTaskAttemptsForTasks(home, taskIds);");
+  expect(server).toContain("let attemptsByTask: ReturnType<typeof showPrincipalTaskAttemptsForTasks>;");
 });
 
 test("conversation evidence is labeled without inventing a read-only href", () => {

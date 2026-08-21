@@ -242,6 +242,34 @@ export function showPrincipalTaskAttempts(
   return projections;
 }
 
+/**
+ * Read the attempt projection for several Tasks in one evidence scan. The UI
+ * snapshot normally displays every Task, so calling the single-Task reader in
+ * a loop would rescan the whole task-attempts directory once per Task.
+ */
+export function showPrincipalTaskAttemptsForTasks(
+  homeArgument: string | undefined,
+  ids: readonly string[],
+): Readonly<Record<string, TaskAttemptProjection[]>> {
+  const home = resolveHome(homeArgument);
+  const requestedTaskIds = new Map(ids.map((id) => [id.toLowerCase(), id] as const));
+  const projections = new Map<string, TaskAttemptProjection[]>();
+  for (const id of ids) projections.set(id, []);
+  const attemptsRoot = join(home, "state", "task-attempts");
+  if (!existsSync(attemptsRoot)) return Object.fromEntries(projections);
+
+  for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const matched = readAttemptEvidenceForTasks(home, entry.name, requestedTaskIds);
+    if (matched === undefined) continue;
+    projections.get(matched.requestedTaskId)?.push(
+      projectAttempt(home, entry.name, matched.requestedTaskId, matched.evidence),
+    );
+  }
+  for (const [id, values] of projections) values.sort(compareAttemptProjections);
+  return Object.fromEntries(projections);
+}
+
 interface JsonEvidence {
   standing: "available" | "unavailable" | "invalid";
   value?: unknown;
@@ -269,6 +297,28 @@ function readAttemptEvidence(
     attemptJson,
     settlementJson,
     finalRecordJson: readJson(join(directory, "cell-input.run.json")),
+  };
+}
+
+function readAttemptEvidenceForTasks(
+  home: string,
+  attemptId: string,
+  requestedTaskIds: ReadonlyMap<string, string>,
+): { requestedTaskId: string; evidence: AttemptEvidence } | undefined {
+  const directory = join(home, "state", "task-attempts", attemptId);
+  const attemptJson = readJson(join(directory, "attempt.json"));
+  const settlementJson = readJson(join(directory, "settlement.json"));
+  const ownerTaskId = taskIdClaim(attemptJson.value) ?? taskIdClaim(settlementJson.value);
+  if (ownerTaskId === undefined) return undefined;
+  const requestedTaskId = requestedTaskIds.get(ownerTaskId.toLowerCase());
+  if (requestedTaskId === undefined) return undefined;
+  return {
+    requestedTaskId,
+    evidence: {
+      attemptJson,
+      settlementJson,
+      finalRecordJson: readJson(join(directory, "cell-input.run.json")),
+    },
   };
 }
 
@@ -388,6 +438,18 @@ function projectAttempt(
       settlement: settlement.standing,
     },
   };
+}
+
+function compareAttemptProjections(
+  left: TaskAttemptProjection,
+  right: TaskAttemptProjection,
+): number {
+  if (left.startedAt === undefined) return right.startedAt === undefined
+    ? left.attemptId.localeCompare(right.attemptId)
+    : 1;
+  if (right.startedAt === undefined) return -1;
+  return left.startedAt.localeCompare(right.startedAt)
+    || left.attemptId.localeCompare(right.attemptId);
 }
 
 interface ParsedEvidence<T> {

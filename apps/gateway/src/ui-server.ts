@@ -54,7 +54,7 @@ import {
   workflowReviewLogPath,
   workflowReviewReadPaths,
 } from "../../workbench/src/workflow-observer";
-import { showPrincipalTaskAttempts } from "../../workbench/src/task-attempts";
+import { showPrincipalTaskAttemptsForTasks } from "../../workbench/src/task-attempts";
 import {
   createLocalTaskControlPlane,
   type LocalTaskControlPlane,
@@ -93,7 +93,6 @@ export interface WorkbenchRequestHandlerDependencies {
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const autonomyCliSource = resolve(import.meta.dir, "../../autonomy/src/cli.ts");
 const maximumRequestBytes = 64 * 1024;
-const snapshotTaskYieldEvery = 4;
 
 /**
  * Resolve how the Workbench talks to the Autonomy runner. A compiled
@@ -749,13 +748,28 @@ async function readTaskAttemptsProjections(
 ): Promise<Readonly<Record<string, TaskAttemptSourceObservation>>> {
   if (taskSource.standing !== "available") return {};
   const projections: Record<string, TaskAttemptSourceObservation> = {};
-  for (const [index, task] of taskSource.source.tasks.entries()) {
-    if (index > 0 && index % snapshotTaskYieldEvery === 0) await Bun.sleep(0);
+  const taskIds = taskSource.source.tasks.map((task) => task.id);
+  let attemptsByTask: ReturnType<typeof showPrincipalTaskAttemptsForTasks>;
+  try {
+    attemptsByTask = showPrincipalTaskAttemptsForTasks(home, taskIds);
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    for (const task of taskSource.source.tasks) {
+      projections[task.id] = {
+        standing: "unavailable",
+        sourceRef: taskAttemptsSourceRef,
+        reason,
+      };
+    }
+    return projections;
+  }
+  await Bun.sleep(0);
+  for (const task of taskSource.source.tasks) {
     try {
       projections[task.id] = {
         standing: "available",
         sourceRef: taskAttemptsSourceRef,
-        attempts: showPrincipalTaskAttempts(home, task.id),
+        attempts: attemptsByTask[task.id] ?? [],
       };
     } catch (error: unknown) {
       projections[task.id] = {
