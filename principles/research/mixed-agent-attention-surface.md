@@ -88,10 +88,11 @@ The smallest safe observer improvement was tested and added at the generic
 Workbench evidence boundary. When a Cell input explicitly declares
 `outputSchema`, the observer now receives only `structuredOutput` metadata:
 declaration/presence, mechanical validity, schema and value digests, and a
-bounded shape summary. It does not receive structured values, `finalText`, raw
-provider steps, original input, or trace data. A no-schema result does not
-invent this surface. The focused observer suite is green (8/8), and the
-Workbench typecheck is green.
+bounded shape summary. The summary has node/collection budgets, does not copy
+output field names, and the digests use bounded canonical JSON. It does not
+receive structured values, `finalText`, raw provider steps, original input, or
+trace data. A no-schema result does not invent this surface. The focused
+observer suite is green (9/9), and the Workbench typecheck is green.
 
 This closes the first half of the query gap—reviewers can distinguish “no
 structured candidate was declared” from “a structured result existed but its

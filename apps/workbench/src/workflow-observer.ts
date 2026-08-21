@@ -377,7 +377,10 @@ export async function runWorkflowObserver(
  * source refs remain the route for a later ordinary Task to inspect evidence.
  */
 export function workflowObserverContext(evidence: StrictTaskAttemptEvidence): string {
-  const projectionState: ProjectionState = { truncatedFields: [] };
+  const projectionState: ProjectionState = {
+    truncatedFields: [],
+    structuredNodesRemaining: OBSERVER_STRUCTURED_OUTPUT_NODE_LIMIT,
+  };
   const finalRecord = evidence.finalRecord!;
   const context = {
     contextVersion: "rossovia.workflow-observer-context.v2",
@@ -453,6 +456,7 @@ const OBSERVER_CONTEXT_TRUNCATION_FIELD_LIMIT = 128;
 
 interface ProjectionState {
   readonly truncatedFields: string[];
+  structuredNodesRemaining: number;
 }
 
 function boundedString(value: string, field: string, state: ProjectionState): string {
@@ -629,6 +633,8 @@ function settlementSummary(
 
 const OBSERVER_STRUCTURED_OUTPUT_DEPTH_LIMIT = 4;
 const OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT = 32;
+const OBSERVER_STRUCTURED_OUTPUT_NODE_LIMIT = 512;
+const OBSERVER_STRUCTURED_DIGEST_NODE_LIMIT = 512;
 
 function structuredOutputMetadata(
   evidence: StrictTaskAttemptEvidence,
@@ -659,6 +665,11 @@ function structuredShapeSummary(
   state: ProjectionState,
   depth: number,
 ): unknown {
+  if (state.structuredNodesRemaining <= 0) {
+    recordTruncation(state, field);
+    return { type: "truncated", reason: "node-budget" };
+  }
+  state.structuredNodesRemaining -= 1;
   if (value === undefined) return { present: false };
   if (value === null) return { type: "null" };
   if (typeof value === "boolean") return { type: "boolean" };
@@ -674,21 +685,30 @@ function structuredShapeSummary(
     if (value.length > visible.length) recordTruncation(state, field);
     return {
       itemShapes: visible,
-      itemCount: value.length,
+      itemCount: Math.min(value.length, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT),
+      itemCountCapped: value.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT,
       truncated: value.length > visible.length,
     };
   }
   if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right));
-    const visible = entries.slice(0, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT).map(([key, entry]) => ({
-      key: boundedString(key, `${field}.key`, state),
-      shape: structuredShapeSummary(entry, `${field}.${key}`, state, depth + 1),
-    }));
-    if (entries.length > visible.length) recordTruncation(state, field);
+    const visible: unknown[] = [];
+    let fieldCount = 0;
+    for (const key in value as Record<string, unknown>) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      fieldCount += 1;
+      if (visible.length < OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT) {
+        visible.push(structuredShapeSummary((value as Record<string, unknown>)[key], `${field}.field`, state, depth + 1));
+      }
+      if (fieldCount > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT) break;
+    }
+    const fieldCountCapped = fieldCount > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT;
+    if (fieldCountCapped) recordTruncation(state, field);
     return {
-      fields: visible,
-      fieldCount: entries.length,
-      truncated: entries.length > visible.length,
+      type: "object",
+      fieldShapes: visible,
+      fieldCount: Math.min(fieldCount, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT),
+      fieldCountCapped,
+      truncated: fieldCountCapped || visible.length < fieldCount,
     };
   }
   return { type: typeof value };
@@ -697,10 +717,45 @@ function structuredShapeSummary(
 function digestJson(value: unknown): string {
   if (value === undefined) return "sha256:absent";
   try {
-    return `sha256:${createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")}`;
+    const canonical = boundedCanonicalJson(value, { remaining: OBSERVER_STRUCTURED_DIGEST_NODE_LIMIT });
+    return `sha256:${createHash("sha256").update(canonical, "utf8").digest("hex")}`;
   } catch {
     return "sha256:unavailable";
   }
+}
+
+interface DigestBudget {
+  remaining: number;
+}
+
+function boundedCanonicalJson(value: unknown, budget: DigestBudget): string {
+  if (budget.remaining <= 0) return '"<truncated>"';
+  budget.remaining -= 1;
+  if (value === undefined) return '"<absent>"';
+  if (value === null || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") return Number.isFinite(value) ? JSON.stringify(value) : '"<non-finite-number>"';
+  if (typeof value === "string") {
+    return JSON.stringify(value.length > OBSERVER_CONTEXT_STRING_LIMIT
+      ? `${value.slice(0, OBSERVER_CONTEXT_STRING_LIMIT)}<truncated:${value.length}>`
+      : value);
+  }
+  if (Array.isArray(value)) {
+    const items = value.slice(0, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT)
+      .map((entry) => boundedCanonicalJson(entry, budget));
+    return `{"items":[${items.join(",")}],"count":${Math.min(value.length, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT)},"capped":${value.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT}}`;
+  }
+  if (typeof value === "object") {
+    const keys: string[] = [];
+    for (const key in value as Record<string, unknown>) {
+      if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+      keys.push(key);
+      if (keys.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT) break;
+    }
+    const visibleKeys = keys.slice(0, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT).sort();
+    const entries = visibleKeys.map((key) => `${JSON.stringify(key)}:${boundedCanonicalJson((value as Record<string, unknown>)[key], budget)}`);
+    return `{"fields":{${entries.join(",")}},"count":${Math.min(keys.length, OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT)},"capped":${keys.length > OBSERVER_STRUCTURED_OUTPUT_COLLECTION_LIMIT}}`;
+  }
+  return JSON.stringify({ type: typeof value });
 }
 
 function recordTruncation(state: ProjectionState, field: string): void {

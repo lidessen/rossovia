@@ -235,7 +235,7 @@ test("workflow observer exposes only metadata for an explicitly declared structu
       output: {
         relation: "counterexample",
         proposal: "Inspect the reconnect race before changing retry policy.",
-        secret: "structured-but-explicit-sentinel",
+        "secret-field-name": "structured-but-explicit-sentinel",
       },
       status: "passed",
       workspaceDiff: { added: [], changed: [], removed: [] },
@@ -257,7 +257,7 @@ test("workflow observer exposes only metadata for an explicitly declared structu
     present: true,
     valid: false,
     visibility: "metadata-only",
-    shape: { fieldCount: 3, truncated: false },
+    shape: { fieldCount: 3, fieldCountCapped: false, truncated: false },
   });
   expect(context.final).not.toHaveProperty("finalText");
   expect(context.final).not.toHaveProperty("rawSteps");
@@ -265,7 +265,45 @@ test("workflow observer exposes only metadata for an explicitly declared structu
   expect(JSON.stringify(context)).not.toContain("private provider step");
   expect(JSON.stringify(context)).not.toContain("Inspect the reconnect race");
   expect(JSON.stringify(context)).not.toContain("structured-but-explicit-sentinel");
+  expect(JSON.stringify(context)).not.toContain("secret-field-name");
   expect(context.limitation).toContain("Declared structured output exposes metadata only");
+});
+
+test("workflow observer bounds structured shape work and canonicalizes metadata digests", () => {
+  const build = (output: Record<string, unknown>, schema: Record<string, unknown>) => JSON.parse(workflowObserverContext({
+    standing: "available",
+    input: {
+      intent: "intent",
+      instructions: ["instruction"],
+      acceptance: ["acceptance"],
+      capabilities: [],
+      capabilitiesRequired: [],
+      outputSchema: schema,
+      workspace: { root: "/worktree", readPaths: [], writePaths: [], excludePaths: [], allowedCommands: [] },
+    },
+    finalRecord: {
+      runId: "run-structured",
+      finalText: "",
+      rawSteps: [],
+      output,
+      status: "passed",
+      workspaceDiff: { added: [], changed: [], removed: [] },
+      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, cachedInputTokens: 0 },
+      verification: { passed: true, terminal: { passed: true, required: [], called: [] }, output: { passed: true, errors: [] } },
+      executionObservation: {},
+      trace: [],
+    },
+    refs: { inputRef: "i", attemptRef: "a", finalRecordRef: "f", settlementRef: "s" },
+  } as unknown as StrictTaskAttemptEvidence));
+  const left = build({ alpha: "a", beta: { nested: true } }, { type: "object", properties: { alpha: { type: "string" }, beta: { type: "object" } } });
+  const right = build({ beta: { nested: true }, alpha: "a" }, { properties: { beta: { type: "object" }, alpha: { type: "string" } }, type: "object" });
+  expect(left.final.structuredOutput.schemaDigest).toBe(right.final.structuredOutput.schemaDigest);
+  expect(left.final.structuredOutput.valueDigest).toBe(right.final.structuredOutput.valueDigest);
+
+  const manyFields = Object.fromEntries(Array.from({ length: 2_000 }, (_, index) => [`field-${index}`, index]));
+  const bounded = build(manyFields, { type: "object" });
+  expect(bounded.final.structuredOutput.shape.fieldCountCapped).toBe(true);
+  expect(bounded.truncatedFields).toContain("final.structuredOutput.shape");
 });
 
 test("workflow observer does not invent a structured result surface without outputSchema", () => {
