@@ -10968,6 +10968,10 @@ export function taskLocatorEmptySummary(locator, context) {
         || conversationState.connection === "disconnected"
         || conversationState.connection === "unavailable");
     const projectionIncomplete = first(state.snapshot, ["complete", "isComplete"]) === false;
+    // “部分来源不可用”只由真实来源错误（snapshot.errors 非空）驱动；errors
+    // 为空时的投影不完整（如 runner-unbound 等非来源错误警告）不再误报为来源
+    // 不可用，只提示投影需核查；精确完整性仍由下方 completeness 行给出。
+    const snapshotSourceErrors = list(first(state.snapshot, ["errors"], []));
 
     if (state.source === "live") {
       if (conversationConnectionIssue) {
@@ -10977,8 +10981,11 @@ export function taskLocatorEmptySummary(locator, context) {
           unavailable: "投影已连接 · 对话不可用",
         }[conversationState.connection] || "投影已连接 · 对话状态待确认";
         mark.classList.add("is-warning");
-      } else if (projectionIncomplete) {
+      } else if (snapshotSourceErrors.length > 0) {
         $("#connection-label").textContent = "实时 · 部分来源不可用";
+        mark.classList.add("is-warning");
+      } else if (projectionIncomplete) {
+        $("#connection-label").textContent = "实时 · 投影需核查";
         mark.classList.add("is-warning");
       } else {
         $("#connection-label").textContent = "实时 · 已连接";
@@ -11528,11 +11535,17 @@ export function taskLocatorEmptySummary(locator, context) {
         ? ""
         : text(first(taskCapability, ["reason"]), "任务源当前不可用");
     observation.dataset.complete = first(state.snapshot, ["complete"]) === true ? "true" : "false";
+    // The overview badge applies the same errors gate as the masthead: only a
+    // non-empty snapshot.errors list keeps 部分来源不可用; an incomplete
+    // projection without source errors reads as 实时 · 投影需核查 instead.
+    const liveSourceErrors = list(first(state.snapshot, ["errors"], []));
     observation.querySelector("strong").textContent =
       state.source === "live"
         ? first(state.snapshot, ["complete"]) === true
           ? "实时 · 完整"
-          : "实时 · 部分来源不可用"
+          : liveSourceErrors.length > 0
+            ? "实时 · 部分来源不可用"
+            : "实时 · 投影需核查"
         : state.source === "stale"
           ? "上次实时 · 已过期"
           : state.source === "demo"
