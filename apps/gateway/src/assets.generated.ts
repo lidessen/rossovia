@@ -543,7 +543,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <div class="observer-overview-card">
               <span>观察器</span>
               <strong id="observer-worker-state">正在读取</strong>
-              <small id="observer-trigger-state">对话 Run 结算后触发</small>
+              <small id="observer-trigger-state">本地 UI 默认由对话 Run 触发</small>
             </div>
             <div class="observer-overview-card">
               <span>最近记录</span>
@@ -553,7 +553,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
           </div>
           <div class="system-surface-note">
             <strong>怎么使用</strong>
-            <span>这里展示真实的只读意见。当前 observer 在对话 Run 结算后触发；不会追溯补审旧 Task，也不会把空记录伪装成 review。处理意见仍然是一次普通对话 Task。</span>
+            <span>这里展示真实的只读意见。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。不会自动追溯补审历史执行，也不会把空记录伪装成 review。处理意见仍然是一次普通对话 Task。</span>
           </div>
           <div class="observer-review-list" id="observer-review-list">
             <p class="empty-note">正在读取 observer 记录。</p>
@@ -11603,7 +11603,7 @@ export function taskLocatorEmptySummary(locator, context) {
       },
       waiting: {
         label: "等待首次触发",
-        detail: "observer 已启用，但还没有完成可观察的对话 Run。",
+        detail: "observer 已启用；本地 UI 默认由对话 Run 触发。还没有完成可观察的对话 Run。",
       },
       empty: {
         label: "记录源为空",
@@ -11668,9 +11668,9 @@ export function taskLocatorEmptySummary(locator, context) {
     const displayReviews = reviews.slice().reverse();
     if (!displayReviews.length) {
       const emptyCopy = {
-        waiting: ["还没有可展示的观察意见", "observer 已启用。它只在对话 carrier 的 Run 结算后读取完整证据并追加记录；当前没有符合条件的已结算 Run。"],
-        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的对话 Run 后，这里会出现真实记录。"],
-        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后也只会观察之后的对话 Run，不会追溯补审历史执行。"],
+        waiting: ["还没有可展示的观察意见", "observer 已启用。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。当前还没有符合条件的已结算 Run。"],
+        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的对话 Run（或显式 observer 入口）后，这里会出现真实记录。"],
+        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后默认观察之后的对话 Run；显式 observer 入口可观察其他已结算 Task/Run。不会自动追溯补审历史执行。"],
         unavailable: ["暂时读不到观察记录", text(first(projection, ["reason"]), "记录源返回了不可用状态，请先检查运行环境。")],
       }[recordState] || ["暂时没有观察意见", stateCopy.detail];
       listRoot.innerHTML = \`<div class="system-empty observer-empty" data-state="\${escapeHtml(recordState)}"><span class="observer-empty-kicker">OBSERVATION LOG</span><strong>\${escapeHtml(emptyCopy[0])}</strong><span>\${escapeHtml(emptyCopy[1])}</span><small>记录来源：<code>\${escapeHtml(text(first(projection, ["sourceRef"]), "未知"))}</code></small></div>\`;

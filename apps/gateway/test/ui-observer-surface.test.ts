@@ -240,31 +240,42 @@ test("conversation evidence is labeled without inventing a read-only href", () =
   expect(observerConversationEvidenceLabels({ relatedConversationRefs: ["<script>alert(1)</script>"] })[0].href).toBeNull();
 });
 
-test("observer trigger copy names the conversation-carrier settled run, not every Task/Run terminal", () => {
+test("observer trigger copy names the conversation-run default and the explicit entries", () => {
   const app = readFileSync(join(uiRoot, "app.js"), "utf8");
   const html = readFileSync(join(uiRoot, "index.html"), "utf8");
   const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
   const help = readFileSync(join(import.meta.dir, "../src/help.ts"), "utf8");
   const generated = readFileSync(join(import.meta.dir, "../src/assets.generated.ts"), "utf8");
-  // The observer is currently launched only by a conversation carrier's
-  // settled Run; the trigger kind and the visible label must say so.
+  const workbenchReadme = readFileSync(join(import.meta.dir, "../../workbench/README.md"), "utf8");
+  const dogfoodProfile = readFileSync(join(import.meta.dir, "../../../design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md"), "utf8");
+  // The local UI default is the conversation carrier's settled Run; the
+  // trigger kind and the visible label must say so without claiming every
+  // Task/Run terminal.
   expect(server).toContain('kind: "conversation-run-settled"');
   expect(server).toContain('label: "对话 Run 结算后触发"');
   expect(server).not.toContain('label: "Task/Run 终态结算后触发"');
-  // The empty-state copy on the observer card uses the same scoped claim.
-  expect(app).toContain("observer 已启用，但还没有完成可观察的对话 Run");
-  expect(app).toContain("它只在对话 carrier 的 Run 结算后读取完整证据并追加记录");
-  expect(app).toContain("完成一次可观察的对话 Run 后");
+  // The empty-state copy on the observer card keeps the same default scope
+  // and names the explicit observer entries instead of making the
+  // conversation Run the only trigger path.
+  expect(app).toContain("本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run");
+  expect(app).toContain("完成一次可观察的对话 Run");
   expect(app).not.toContain("Task/Run 终态");
   // The permanent usage copy in the served page and in the CLI ui help says
-  // the same: the trigger is the conversation carrier's settled Run, never
-  // every Task/Run terminal.
-  expect(html).toContain("对话 Run 结算后触发");
-  expect(html).not.toContain("Task/Run");
+  // the same: the conversation Run is the local default trigger, never every
+  // Task/Run terminal.
+  expect(html).toContain("本地 UI 默认由对话 Run 触发");
+  expect(html).toContain("显式 observer 入口可观察其他已结算 Task/Run");
+  expect(html).not.toContain("Task/Run 终态");
   expect(help).toContain("per settled conversation Run");
   expect(help).not.toContain("per settled observable Task/Run");
+  // The workbench README and dogfood profile no longer claim one observer
+  // per every settled observable Task/Run.
+  expect(workbenchReadme).toContain("per settled conversation Run");
+  expect(workbenchReadme).not.toContain("each settled observable Task/Run");
+  expect(dogfoodProfile).toContain("per settled conversation Run by default");
+  expect(dogfoodProfile).not.toContain("for each settled observable Task/Run");
   // The embedded bundle mirrors the ui/ source: the served single-file
   // surface cannot keep serving the old unqualified claim.
-  expect(generated).toContain("对话 Run 结算后触发");
+  expect(generated).toContain("本地 UI 默认由对话 Run 触发");
   expect(generated).not.toContain("Task/Run 终态");
 });
