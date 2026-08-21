@@ -8078,6 +8078,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 @media (max-width: 700px) {
   body {
     --mobile-masthead-height: 94px;
+    --mobile-loading-height: 68px;
   }
 
   body {
@@ -8372,6 +8373,40 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     top: var(--mobile-masthead-height);
     width: 100%;
     z-index: 10;
+  }
+
+  /* Keep the initial projection state visible above the fixed conversation
+     shell. The conversation remains usable while the complete snapshot is
+     assembled, and the shell moves back when the loading strip is removed. */
+  body[data-projection-state="loading"] .projection-loading {
+    align-items: center;
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    height: var(--mobile-loading-height);
+    left: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0.55rem 0.85rem;
+    position: fixed;
+    right: 0;
+    top: var(--mobile-masthead-height);
+    z-index: 20;
+  }
+
+  body[data-projection-state="loading"] .projection-loading strong {
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  body[data-projection-state="loading"] .projection-loading span {
+    font-size: 0.65rem;
+    line-height: 1.35;
+  }
+
+  body[data-projection-state="loading"] .conversation-surface {
+    height: calc(100dvh - var(--mobile-masthead-height) - var(--mobile-loading-height));
+    top: calc(var(--mobile-masthead-height) + var(--mobile-loading-height));
   }
 
   /* The conversation is the mobile shell, not a panel below the target

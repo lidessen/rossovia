@@ -481,39 +481,67 @@ async function buildLiveSnapshot(
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+  // A snapshot can contain several projections of the same Mission. Share
+  // each Mission probe and read its independent activity/status sources in
+  // parallel. This preserves complete evidence while avoiding repeated child
+  // CLI processes and the old per-runner activity-then-status waterfall.
+  const missionProbes = new Map<string, Promise<{
+    activity: unknown;
+    observed: Awaited<ReturnType<AutonomyClient["status"]>> | null;
+    statusError: unknown | null;
+  }>>();
+  const probeMission = (missionId: string) => {
+    const existing = missionProbes.get(missionId);
+    if (existing !== undefined) return existing;
+    const activityPromise = readRunnerActivity(client, missionId);
+    const probe = Promise.allSettled([
+      activityPromise,
+      client.status(missionId),
+    ]).then(([activityResult, statusResult]) => ({
+      activity: activityResult.status === "fulfilled"
+        ? activityResult.value
+        : unavailableActivity(
+          activityResult.reason instanceof Error
+            ? activityResult.reason.message
+            : String(activityResult.reason),
+        ),
+      observed: statusResult.status === "fulfilled" ? statusResult.value : null,
+      statusError: statusResult.status === "rejected" ? statusResult.reason : null,
+    }));
+    missionProbes.set(missionId, probe);
+    return probe;
+  };
   const observedRunners = await Promise.all(snapshot.runners.map(async (runner) => {
-    const activity = await readRunnerActivity(client, runner.status.missionId);
-    try {
-      const observed = await client.status(runner.status.missionId);
-      if (observed.live !== true) {
-        return {
-          ...runner,
-          live: observed.live,
-          activity,
-          ...("reachability" in observed
-            ? { reachability: observed.reachability }
-            : {}),
-        };
-      }
-      const { live: _live, ...liveStatus } = observed;
-      return {
-        ...runner,
-        live: true,
-        status: liveStatus,
-        activity,
-        freshness: {
-          kind: "live" as const,
-          observedAt: new Date().toISOString(),
-        },
-      };
-    } catch (error: unknown) {
+    const { activity, observed, statusError } = await probeMission(runner.status.missionId);
+    if (statusError !== null || observed === null) {
       return {
         ...runner,
         live: null,
         activity,
-        liveError: error instanceof Error ? error.message : String(error),
+        liveError: statusError instanceof Error ? statusError.message : String(statusError),
       };
     }
+    if (observed.live !== true) {
+      return {
+        ...runner,
+        live: observed.live,
+        activity,
+        ...("reachability" in observed
+          ? { reachability: observed.reachability }
+          : {}),
+      };
+    }
+    const { live: _live, ...liveStatus } = observed;
+    return {
+      ...runner,
+      live: true,
+      status: liveStatus,
+      activity,
+      freshness: {
+        kind: "live" as const,
+        observedAt: new Date().toISOString(),
+      },
+    };
   }));
   const runners = observedRunners.map((runner) => ({
     ...runner,

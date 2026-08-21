@@ -56,10 +56,21 @@ test("conversation disconnect makes the masthead distinguish projection from soc
 test("slow projection loading explains what is and is not available", () => {
   const html = readFileSync(join(uiRoot, "index.html"), "utf8");
   const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
   expect(html).toContain('id="projection-loading" role="status"');
   expect(app).toContain('loading.dataset.phase = "slow"');
   expect(app).toContain('对话入口仍可用；任务、项目与执行证据尚未接收');
   expect(app).toContain('不要把等待误判为“零项目”');
+  expect(css).toContain('--mobile-loading-height: 68px;');
+  expect(css).toContain('body[data-projection-state="loading"] .projection-loading');
+  expect(css).toContain('top: calc(var(--mobile-masthead-height) + var(--mobile-loading-height));');
+});
+
+test("live runner probes share missions and read activity/status concurrently", () => {
+  const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
+  expect(server).toContain("const missionProbes = new Map<string, Promise<{");
+  expect(server).toContain("Promise.allSettled([\n      activityPromise,\n      client.status(missionId),\n    ])");
+  expect(server).toContain("missionProbes.set(missionId, probe);");
 });
 
 test("conversation evidence is labeled without inventing a read-only href", () => {

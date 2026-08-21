@@ -216,7 +216,7 @@ describe("Workbench responsive layout", () => {
     expect(html).toContain('id="conversation-tool-interrupt"');
     expect(html).toContain("工具中断 · 运行时不支持");
     expect(mobile).toMatch(
-      /\.conversation-surface\s*\{[^}]*height:\s*calc\(100dvh - 62px\);[^}]*padding-bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom\)\);[^}]*position:\s*fixed;[^}]*top:\s*62px;/s,
+      /\.conversation-surface\s*\{[^}]*height:\s*calc\(100dvh - var\(--mobile-masthead-height\)\);[^}]*padding-bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom\)\);[^}]*position:\s*fixed;[^}]*top:\s*var\(--mobile-masthead-height\);/s,
     );
     expect(mobile).toMatch(
       /\.conversation-composer\s*\{[^}]*padding:\s*0\.55rem 0\.85rem/s,
@@ -379,7 +379,7 @@ describe("Workbench responsive layout", () => {
       /\.conversation-composer \.primary-action\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,
     );
     expect(mobile).toMatch(
-      /\.conversation-surface\s*\{[^}]*height:\s*calc\(100dvh - 62px\);[^}]*padding-bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom\)\);[^}]*position:\s*fixed;[^}]*top:\s*62px;/s,
+      /\.conversation-surface\s*\{[^}]*height:\s*calc\(100dvh - var\(--mobile-masthead-height\)\);[^}]*padding-bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom\)\);[^}]*position:\s*fixed;[^}]*top:\s*var\(--mobile-masthead-height\);/s,
     );
   });
 });
