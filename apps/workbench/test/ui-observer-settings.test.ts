@@ -96,6 +96,17 @@ test("system surfaces remain secondary to conversation", async () => {
   expect(app).toContain("function renderObserverSurface");
 });
 
+test("async surface renders preserve one visible principal destination", async () => {
+  const handler = createWorkbenchRequestHandler({ port: 4317, roots: [] }, unusedClient);
+  const app = await (await handler(new Request("http://127.0.0.1:4317/app.js"))).text();
+  expect(app).toContain("function renderPrincipalSurfaceVisibility()");
+  expect(app).toContain("document.body.dataset.uiView = view");
+  expect(app).toContain("document.body.dataset.activeView = view");
+  expect(app).toContain('conversation: $("#conversation-surface")');
+  expect(app).toContain("surface.hidden = view !== name");
+  expect(app).toContain("renderPrincipalSurfaceVisibility();\n    surface.hidden = !active;");
+});
+
 test("startup mechanical degradation serves diagnostics but blocks Task writes", async () => {
   const root = mkdtempSync(join(tmpdir(), "rossovia-ui-startup-diagnostic-"));
   roots.push(root);

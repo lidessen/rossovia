@@ -2486,9 +2486,27 @@ export function taskLocatorEmptySummary(locator, context) {
     }
   }
 
+  // All surface renderers can be reached from independent async callbacks
+  // (snapshot refresh, conversation replay, and route restoration). Keep the
+  // mutually-exclusive page surfaces coherent even when one callback renders
+  // without traversing the full render() pass.
+  function renderPrincipalSurfaceVisibility() {
+    const view = state.activeView;
+    document.body.dataset.uiView = view;
+    document.body.dataset.activeView = view;
+    const surfaces = {
+      conversation: $("#conversation-surface"),
+      observer: $("#observer-surface"),
+      settings: $("#settings-surface"),
+    };
+    for (const [name, surface] of Object.entries(surfaces)) {
+      if (surface !== null) surface.hidden = view !== name;
+    }
+  }
+
   function renderUnifiedSurface() {
     const items = workItems();
-    document.body.dataset.uiView = state.activeView;
+    renderPrincipalSurfaceVisibility();
     const overview = $("#unified-surface");
     const projectDetail = $("#project-detail");
     const taskView = $("#task-view");
@@ -6477,7 +6495,7 @@ export function taskLocatorEmptySummary(locator, context) {
   function renderConversationSurface() {
     const surface = $("#conversation-surface");
     const active = state.activeView === "conversation";
-    document.body.dataset.activeView = state.activeView;
+    renderPrincipalSurfaceVisibility();
     surface.hidden = !active;
     $("#project-surface").hidden = active;
     if (!active) return;
