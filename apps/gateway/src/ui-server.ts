@@ -79,7 +79,7 @@ export interface ServerOptions {
   readonly home?: string;
   readonly port: number;
   readonly roots: readonly string[];
-  /** Local startup defaults to one observer per settled conversation Run. */
+  /** Local startup defaults to one observer per settled observable Task/Run. */
   readonly observerWorkerId?: string;
   /** Set only by the production startup entry after its mechanical gate. */
   readonly startupGate?: SelfCheckStartupGate;
@@ -669,7 +669,7 @@ function readObserverReviews(home: string | undefined, observerWorkerId?: string
       lastRecordedAt: reviews.at(-1)?.recordedAt ?? null,
       trigger: {
         kind: "conversation-run-settled" as const,
-        label: "对话 Run 结算后触发",
+        label: "Task/Run 终态结算后触发",
       },
     };
   } catch (error: unknown) {
@@ -684,7 +684,7 @@ function readObserverReviews(home: string | undefined, observerWorkerId?: string
       lastRecordedAt: null,
       trigger: {
         kind: "conversation-run-settled" as const,
-        label: "对话 Run 结算后触发",
+        label: "Task/Run 终态结算后触发",
       },
       reason: error instanceof Error ? error.message : String(error),
     };

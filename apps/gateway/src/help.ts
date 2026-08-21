@@ -316,7 +316,7 @@ export const HELP: HelpEntry[] = [  { kind: "verb", path: ["init"], topLevel: tr
     effect: "starts-work",
     notes: [
       "long-running: prints the server URL and stays in the foreground until interrupted; the global --home applies unless an explicit --port/--root changes only the server surface.",
-      "defaults: port 4317, one --root defaulting to the current repository root; repeat --root to add more observed roots. Local startup enables one deepseek-flash observer per settled conversation Run; use --observer <worker-id> to choose another worker or --disable-observer to turn it off. The UI shares the CLI's typed local-task control-plane port and never binds a non-loopback address.",
+      "defaults: port 4317, one --root defaulting to the current repository root; repeat --root to add more observed roots. Local startup enables one deepseek-flash observer per settled observable Task/Run; use --observer <worker-id> to choose another worker or --disable-observer to turn it off. The UI shares the CLI's typed local-task control-plane port and never binds a non-loopback address.",
       "starts-work: serving the UI enables controlling Tasks and Missions through the browser; it does not by itself run, authorize, or accept any work.",
     ].join("\n") },
   { kind: "verb", path: ["observer"], topLevel: true,

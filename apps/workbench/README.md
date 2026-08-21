@@ -106,7 +106,7 @@ Run the current UI with:
 ```
 
 Open `http://127.0.0.1:4317`. Local UI startup enables the `deepseek-flash`
-observer for each settled conversation Run; choose another worker with
+observer for each settled observable Task/Run; choose another worker with
 `--observer <worker-id>` or disable it with `--disable-observer`. Add another
 explicitly selected local repository with
 `./apps/gateway/rossovia ui --root <git-root>` or select another port with
