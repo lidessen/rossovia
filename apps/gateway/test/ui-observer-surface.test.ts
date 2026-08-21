@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { observerConversationEvidenceLabels, observerReviewSummary, observerReviewWorkerId } from "../ui/app.js";
+import { conversationSocketCanReuse, observerConversationEvidenceLabels, observerReviewSummary, observerReviewWorkerId } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -65,6 +65,8 @@ test("settings keeps its decision summary and stays independent of an invalid pr
   expect(html).toContain('class="settings-card settings-collapsible settings-directory-card"');
   expect(app).toContain('if (!isSystemSurface && (state.locusRestorePending || state.unavailableLocus !== null))');
   expect(app).toContain('$("#settings-overview-copy").textContent');
+  expect(app).toContain('state.locusRestorePending = false;\n        state.activeView = button.dataset.view;');
+  expect(app).toContain('state.locusRestorePending = false;\n        if (button.dataset.mobileView === "conversation")');
 });
 
 test("conversation disconnect makes the masthead distinguish projection from socket state", () => {
@@ -75,6 +77,16 @@ test("conversation disconnect makes the masthead distinguish projection from soc
   expect(app).toContain('renderConnection();\n    renderConversationConnection();');
   expect(app).toContain('conversationState.connection = "unavailable";\n      renderConversationSurface();\n      // Some browsers delay the following close event.');
   expect(css).toContain('.connection-mark.is-warning');
+});
+
+test("a faulted open conversation socket is replaced by the reconnect path", () => {
+  expect(conversationSocketCanReuse(0, false)).toBe(true);
+  expect(conversationSocketCanReuse(1, false)).toBe(true);
+  expect(conversationSocketCanReuse(1, true)).toBe(false);
+  expect(conversationSocketCanReuse(3, false)).toBe(false);
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).toContain("conversationSocketCanReuse(current.readyState, conversationState.socketFaulted)");
+  expect(app).toContain("conversationState.socket = null;\n      conversationState.socketFaulted = false;");
 });
 
 test("slow projection loading explains what is and is not available", () => {

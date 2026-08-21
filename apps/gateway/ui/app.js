@@ -515,6 +515,16 @@ export function conversationComposerStanding(connection, draft) {
   return { sendable: true, gate: "ready", standing: "live", status: "" };
 }
 
+/**
+ * An error event can arrive before browsers transition the socket to CLOSED.
+ * A faulted OPEN socket is not reusable: keeping it here would make the
+ * scheduled reconnect return early forever. CONNECTING is reusable only while
+ * it has not faulted, so duplicate timers do not create sockets.
+ */
+export function conversationSocketCanReuse(readyState, faulted) {
+  return faulted !== true && (readyState === 0 || readyState === 1);
+}
+
 /** Server frames are validated enough to render without trusting the wire. */
 export function parseConversationServerFrame(raw) {
   if (typeof raw !== "string") return null;
@@ -5339,7 +5349,25 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
     const current = conversationState.socket;
-    if (current !== null && current.readyState === WebSocket.OPEN) return;
+    if (
+      current !== null
+      && conversationSocketCanReuse(current.readyState, conversationState.socketFaulted)
+    ) {
+      return;
+    }
+    if (current !== null) {
+      // Replace a faulted socket even if the browser has not emitted close
+      // yet. The old close/error handlers are identity-guarded and cannot
+      // clear the replacement socket or its state.
+      conversationState.socket = null;
+      conversationState.socketFaulted = false;
+      try {
+        current.close();
+      } catch {
+        // A browser may reject close() for an already-closing socket; the
+        // replacement still owns the reconnect attempt.
+      }
+    }
     conversationState.connection = "connecting";
     conversationState.socketFaulted = false;
     renderConversationSurface();
@@ -7194,6 +7222,7 @@ export function taskLocatorEmptySummary(locator, context) {
     $$("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
         state.unavailableLocus = null;
+        state.locusRestorePending = false;
         state.activeView = button.dataset.view;
         state.peekOpen = false;
         state.taskCreateOpen = false;
@@ -7209,6 +7238,7 @@ export function taskLocatorEmptySummary(locator, context) {
     $$("[data-mobile-view]").forEach((button) => {
       button.addEventListener("click", () => {
         state.unavailableLocus = null;
+        state.locusRestorePending = false;
         if (button.dataset.mobileView === "conversation") state.activeView = "conversation";
         if (button.dataset.mobileView === "overview") state.activeView = "overview";
         if (button.dataset.mobileView === "tasks") state.activeView = "tasks";
@@ -7223,6 +7253,7 @@ export function taskLocatorEmptySummary(locator, context) {
     $$("[data-task-filter]").forEach((button) => {
       button.addEventListener("click", () => {
         state.unavailableLocus = null;
+        state.locusRestorePending = false;
         state.activeView = "tasks";
         state.taskFilter = button.dataset.taskFilter;
         render();
