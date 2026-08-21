@@ -5968,11 +5968,31 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 @media (max-width: 700px) {
   .masthead {
     align-items: start;
+    display: grid;
     gap: 0.8rem;
+    grid-template-areas:
+      "identity tools"
+      "runtime runtime";
+    grid-template-columns: minmax(0, 1fr) auto;
     position: relative;
   }
 
+  .masthead .identity {
+    grid-area: identity;
+    min-width: 0;
+  }
+
+  .masthead .identity > div:last-child {
+    min-width: 0;
+  }
+
+  .identity h1 {
+    white-space: nowrap;
+  }
+
   .runtime-brief {
+    grid-area: runtime;
+    justify-self: end;
     gap: 0.4rem;
     grid-template-columns: auto 8px auto;
   }
@@ -5987,6 +6007,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .runtime-brief strong {
     font-size: 0.66rem;
+    white-space: nowrap;
   }
 
   .runtime-brief time {
@@ -6000,6 +6021,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .mobile-system-menu {
     display: block;
     flex: 0 0 auto;
+    grid-area: tools;
     position: relative;
   }
 
@@ -6454,12 +6476,16 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
 @media (max-width: 700px) {
   body {
+    --mobile-masthead-height: 94px;
+  }
+
+  body {
     padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
 
   .masthead {
     background: rgba(251, 251, 250, 0.98);
-    min-height: 62px;
+    min-height: var(--mobile-masthead-height);
     padding: 0.55rem 0.8rem;
     position: sticky;
     top: 0;
@@ -6481,7 +6507,7 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .workbench-shell {
     display: block;
-    min-height: calc(100vh - 62px);
+    min-height: calc(100vh - var(--mobile-masthead-height));
   }
 
   .principal-rail {
@@ -6736,13 +6762,13 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 
   .conversation-surface {
     background: var(--paper-light);
-    height: calc(100dvh - 62px);
+    height: calc(100dvh - var(--mobile-masthead-height));
     left: 0;
     min-height: 0;
     padding-bottom: calc(56px + env(safe-area-inset-bottom));
     position: fixed;
     right: 0;
-    top: 62px;
+    top: var(--mobile-masthead-height);
     width: 100%;
     z-index: 10;
   }

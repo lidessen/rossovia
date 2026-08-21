@@ -25,6 +25,11 @@ test("mobile system tools stay secondary while remaining keyboard-discoverable",
   expect(css).toMatch(
     /@media \(max-width: 700px\)[\s\S]*?\.masthead\s*\{[\s\S]*?position: sticky;[\s\S]*?top: 0;[\s\S]*?z-index: 50;/s,
   );
+  expect(css).toContain('grid-template-areas:\n      "identity tools"\n      "runtime runtime";');
+  expect(css).toContain('--mobile-masthead-height: 94px;');
+  expect(css).toContain('top: var(--mobile-masthead-height);');
+  expect(css).toContain('.identity h1 {\n    white-space: nowrap;');
+  expect(css).toContain('.runtime-brief strong {\n    font-size: 0.66rem;\n    white-space: nowrap;');
 });
 
 test("settings keeps its decision summary and stays independent of an invalid project locus", () => {
