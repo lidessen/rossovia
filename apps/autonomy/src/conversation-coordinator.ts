@@ -12,7 +12,7 @@ import {
   type FullChildResult,
   type PrincipalMessage,
   type ProjectOrientation,
-  type ReceivedInput,
+  type ReceivedContext,
 } from "./conversation-prompt";
 
 export const CONVERSATION_COORDINATOR_VERSION = "rosso.conversation-coordinator.v1" as const;
@@ -269,7 +269,7 @@ export interface ConversationTurnOptions {
   readonly orientation?: ProjectOrientation;
   readonly children?: readonly ChildSummary[];
   readonly fullChildResults?: readonly FullChildResult[];
-  readonly receivedInputs?: readonly ReceivedInput[];
+  readonly received?: ReceivedContext;
   readonly port: ConversationTurnPort;
   readonly onEvent: (event: ConversationTurnSafetyEvent) => void;
 }
@@ -291,7 +291,7 @@ export interface ConversationTurnPrepareInput {
   readonly orientation?: ProjectOrientation;
   readonly children?: readonly ChildSummary[];
   readonly fullChildResults?: readonly FullChildResult[];
-  readonly receivedInputs?: readonly ReceivedInput[];
+  readonly received?: ReceivedContext;
 }
 
 /**
@@ -489,9 +489,9 @@ function promptInput(input: ConversationTurnPrepareInput): ConversationPromptInp
     ...(input.fullChildResults === undefined || input.fullChildResults.length === 0
       ? {}
       : { fullChildResults: [...input.fullChildResults] }),
-    ...(input.receivedInputs === undefined || input.receivedInputs.length === 0
+    ...(input.received === undefined
       ? {}
-      : { receivedInputs: [...input.receivedInputs] }),
+      : { received: input.received }),
   };
 }
 
