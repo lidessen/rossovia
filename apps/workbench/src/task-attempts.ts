@@ -10,7 +10,7 @@ import { showPrincipalTask } from "./tasks";
 /** Canonical identifier for every retained ordinary Task attempt directory. */
 export const TaskAttemptIdSchema = z.string().uuid();
 
-const TaskRunAttemptSchema = z.object({
+export const TaskRunAttemptSchema = z.object({
   version: z.literal("rosso.task-run-attempt.v1"),
   taskId: z.string().min(1),
   taskRevision: z.number().int().positive(),
@@ -78,7 +78,7 @@ const TaskRunAttemptSchema = z.object({
   }).strict().optional(),
 }).passthrough();
 
-const TaskRunSettlementSchema = z.object({
+export const TaskRunSettlementSchema = z.object({
   version: z.literal("rosso.task-run-settlement.v1"),
   taskId: z.string().min(1),
   taskRevision: z.number().int().positive(),
@@ -145,7 +145,7 @@ export type CarrierControlReceipt = z.infer<typeof CarrierControlReceiptSchema>;
 /** The union of every existing durable control receipt evidence shape. */
 export type ControlReceiptEvidence = RunControlReceipt | CarrierControlReceipt;
 
-const ControlReceiptEvidenceSchema = z.union([
+export const ControlReceiptEvidenceSchema = z.union([
   RunControlReceiptSchema,
   CarrierControlReceiptSchema,
 ]);

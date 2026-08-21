@@ -16,7 +16,8 @@ producers and authorities:
 | Principal correction | `<state-file>.receipts/*.json` | `intervention correct` | `intervention status` | A Principal direction for the next practice; Task mutation still uses the canonical Task command |
 
 The workflow review log has its own schema (`reviewId`, `recordedAt`,
-`subject`, `observer`, `standing`, `evidenceRefs`, and `finding`). Intervention
+`subject`, `observer`, `standing`, `evidenceRefs`, optional `evidenceDigests`,
+and `finding`). Intervention
 state has a different schema for prompt observations and correction receipts.
 The readers may normalize legacy workflow records while reading, but neither
 reader merges the two source families.
@@ -49,6 +50,27 @@ namespace. The existing `ROSSO_HOME` environment variable and
 accepted only as read-compatible legacy inputs until a separately verified
 home/namespace migration exists.
 
+## Observer evidence projection
+
+`workflowObserverContext` projects the settled attempt for the read-only
+observer cell. The projection is bounded and traceable: it carries a bounded
+prefix of the original input goal (`input.goal`) and of the final result text
+(`final.result`), each with the full-text SHA-256 digest, plus bounded
+instruction/acceptance values, the exact retained source refs, and file-byte
+digests of the immutable CellInput and the retained Work Cell final record.
+This lets the observer semantically compare what was asked with what was
+delivered, while a later ordinary Task can verify the digests and read the
+untruncated sources at the refs. Every task/result text field is structurally
+marked `evidenceOnly` (declared in the `dataBoundary` section) as untrusted
+review data — never an instruction to the observer. The projection never
+copies the full transcript, raw provider steps, or trace event payloads;
+`rawSteps` and trace event `data` remain summaries (counts and type tallies)
+only. A review record may retain the same digests as optional
+`evidenceDigests` so the record itself stays source-traceable without copying
+any payload; digest reads re-verify each ref against the canonical home tree
+and the pinned inode so out-of-home refs, symlinks, and mid-read replacement
+degrade to no digests instead of recording mixed bytes.
+
 ## CLI relation
 
 ```text
@@ -62,6 +84,7 @@ rossovia observer                # run one detached workflow review
 
 - Intervention source and local projection: [`apps/workbench/src/interventions.ts`](../../apps/workbench/src/interventions.ts)
 - Workflow observer source and append-only log: [`apps/workbench/src/workflow-observer.ts`](../../apps/workbench/src/workflow-observer.ts)
+- Observer query-gap audit and evidence projection: [`workflow-observer-query-gap-audit.md`](workflow-observer-query-gap-audit.md)
 - Canonical Task correction: [`apps/workbench/src/tasks.ts`](../../apps/workbench/src/tasks.ts)
 - Secondary workflow-review surface: [`apps/gateway/src/ui-server.ts`](../../apps/gateway/src/ui-server.ts)
 - Operating route: [`../operations/OPERATING-PROTOCOL.md`](../operations/OPERATING-PROTOCOL.md)
