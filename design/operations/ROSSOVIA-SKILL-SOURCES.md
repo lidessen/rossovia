@@ -141,6 +141,12 @@ These references are supporting evidence, not imported policy:
 - [OpenAI's Codex skills catalog](https://github.com/openai/skills) shows a
   distinct system/bundled collection rather than treating every repository
   skill as automatically installed.
+- The [OpenAI Codex harness repository](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833)
+  keeps its CLI, engine, SDK, project `.codex`, and repository instruction
+  surfaces visible as an external carrier. This is comparative evidence for
+  source separation, not a reason to mount Codex's instructions or skills as
+  Rossovia sources; the active Rossovia adapter still owns discovery,
+  precedence, and loading timing.
 - [Hermes' skills guide](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md)
   separates bundled/optional skills from explicit activation and gives its
   catalog/install surface its own configuration boundary; its

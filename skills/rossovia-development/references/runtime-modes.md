@@ -45,6 +45,19 @@ Both modes use the same project sources, worktree discipline, verification
 boundary, return contract, and human acceptance. Mode selection changes the
 producer and context carrier; it does not change source authority or acceptance.
 
+The [OpenAI Codex repository](https://github.com/openai/codex) is one possible
+external carrier reference, not a Rossovia authority. If a future
+external-only probe uses Codex CLI, Codex may own only its model/tool loop,
+CLI/SDK entry, and session mechanics behind an adapter. Rossovia still owns
+Task/Mission/Run/Cell identity, effect and settlement evidence, provider
+policy, Skills/system-prompt method expression, and Principal acceptance. Do
+not treat Codex's model identity, `.codex` files, project instructions, or
+session store as Rossovia configuration or continuity state.
+
+The wider comparison set and its bounded probes are recorded in the
+[agent-runtime technology radar](../../../design/research/agent-runtime-technology-radar-2026-08-14.md);
+that research map is evidence, not another runtime instruction source.
+
 If the runtime mode changes during a task, record a mode transition and retain
 the original source/effect identity. Do not silently duplicate or restart the
 same contribution under another carrier.

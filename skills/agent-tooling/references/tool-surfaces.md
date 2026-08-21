@@ -27,11 +27,21 @@ Do not assume similarly named flags provide equivalent isolation or authority.
 
 ## Official entry points
 
-Checked on 2026-07-23:
+Checked on 2026-07-23 for the existing CLI locators; the OpenAI Codex source
+reference below was checked on 2026-08-21:
 
-- **Codex:** [non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
-  and [developer commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli).
-  The current command family begins with `codex exec`.
+- **Codex:** the [official open-source Codex repository](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833)
+  (pinned observation revision) is the harness/CLI/SDK source reference; its
+  [README](https://github.com/openai/codex/blob/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833/README.md)
+  identifies Codex CLI as a local coding agent and the repository exposes
+  `codex-rs`, `codex-cli`, `sdk`, `.codex`, and `docs` surfaces. Use the
+  installed CLI help and [official Codex documentation](https://developers.openai.com/codex)
+  to establish the current non-interactive command (the current locator is
+  `codex exec`); the [non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
+  and [developer commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli)
+  pages are additional discovery locators. Do not infer flags, auth, session semantics, or an SDK
+  contract from the directory layout, and do not confuse this harness/CLI
+  reference with an OpenAI model or provider route.
 - **Claude Code:** [headless mode](https://code.claude.com/docs/en/headless)
   and [CLI reference](https://code.claude.com/docs/en/cli-usage). The current
   command family uses `claude -p`; its documented bare mode is useful as a

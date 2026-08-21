@@ -24,6 +24,7 @@ still unverified (`unknown`), and who may turn a row into a decision
 | Development | Layer it belongs to | Current disposition | Why |
 |---|---|---|---|
 | DeepSeek Harness | Agent execution mechanism | **Watch and run a bounded carrier substitution probe** | It is a serious, plugin-composed execution harness with useful session and tool evidence, but it is a developer preview and does not own Rossovia's Task, Mission, authority, or acceptance semantics. |
+| OpenAI Codex CLI / open-source harness | External execution carrier reference | **Reference and design one bounded substitution probe; do not adopt a route** | The official repository exposes separable CLI, Rust engine, SDK, project configuration, and documentation surfaces. They are useful carrier evidence, but they do not own Rossovia's Task, Mission, Run, authority, or method-expression layer. |
 | GLM-5.3 through OpenCode Go | Model/provider policy | **Available for a bounded paid trial; not yet a production worker** | Official OpenCode Go documentation now lists the exact model identity, but no Rossovia tool-loop run has verified serving identity, evidence quality, cost, or behavior. |
 | Delta | Conversation/worktree collaboration substrate | **Observe; do not integrate yet** | It directly addresses conversation-to-code lineage and live multi-user review, but is a private-beta product with no current agent permission framework or sandbox and with material hosted-data semantics. |
 
@@ -32,6 +33,28 @@ is a candidate execution carrier, GLM-5.3 is a candidate model route, and Delta
 is a candidate collaboration substrate. Rossovia's canonical Task/Mission
 state, effect authority, Principal decisions, and acceptance evidence remain
 separate from all three.
+
+## Reference combination matrix
+
+These references form a comparison set, not a stack to install. Each one is
+assigned a useful question and a Rossovia owner; none is allowed to become a
+second runtime, queue, fact source, or method-expression authority.
+
+| Reference | Harness-base mechanism that may be assembled | Carrier experience to compare | Method-expression boundary | Smallest useful probe | Rossovia owner |
+|---|---|---|---|---|---|
+| [Vercel AI SDK](https://github.com/vercel/ai) + [eve](https://github.com/vercel/eve) | Embeddable harness, host-tool boundary, checkpointed workflow steps | Streaming, pause/resume, approvals, and durable step evidence | SDK normalizes execution; Skills/system prompts remain Rossovia's receiver-facing method | Existing carrier substitution and one restartable bounded Run | Work Cell adapter + Mission/Run continuity |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/tree/47f943859bef60e4160492346772ded9b24f765a) | Plugin composition, session events, pre-effect tool records | Replay/fork/compaction and provider/subagent substitution | Plugins do not become Rossovia Task/Mission policy | §1 event/effect-evidence substitution probe | Work Cell driver and evidence boundary |
+| [Pi](https://github.com/badlogic/pi-mono) | In-process coding session, host tools, steering and compaction | Session continuation, follow-up, abort, and resource loading | Resource/skill loading is a carrier surface, not Rossovia post-training authority | Current carrier with Pi session mechanics and host-scoped tools | Work Cell adapter |
+| [Reasonix](https://github.com/futureflowtech/reasonix) | Deterministic compaction, cache diagnostics, permission/sandbox separation, atomic edits | Long-context cost/recovery and safe mutation behavior | Tool schemas and permissions remain local policy/mechanism boundaries | Compare one tool loop's cache, compaction, and atomic-edit evidence | Work Cell/tool adapter |
+| [Hermes](https://github.com/NousResearch/hermes-agent) | Restart/drain markers and background execution as carrier observations | Resume-pending, notifications, and explicit stuck-run handling | Background mode does not create a Rossovia queue or automatic retry lifecycle | Restart a bounded Run and verify truthful unresolved standing | Run recovery + observer |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code/cli-usage) | Headless/resumed CLI execution and bounded turn control | Continue/resume and max-turn execution ergonomics | CLI flags do not redefine Rossovia Task acceptance or method expression | Map one resumed session to a new lineage-bound Run | Agent-tooling adapter |
+| [OpenAI Codex CLI / open-source harness](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833) | Separated CLI, engine, SDK, project-config, and docs surfaces | Local execution carrier and machine-facing session/tool evidence | Codex model/provider and `.codex`/instructions remain external; Rossovia owns method expression | §4 read-only carrier substitution probe | Agent-tooling / Work Cell adapter |
+
+The matrix keeps three questions separate: what can be assembled behind a
+stable mechanism boundary, what is merely useful carrier experience, and what
+must remain Rossovia's own post-training/method expression. A reference can
+inform more than one question, but a single probe must still name one primary
+owner and one acceptance relation.
 
 ## 1. DeepSeek Harness
 
@@ -279,6 +302,72 @@ Then test whether one Rossovia conversation journal, Task attempt, and Git
 diff can project into a Delta thread while Rossovia retains lifecycle and
 acceptance ownership.
 
+## 4. OpenAI Codex CLI and the open-source harness
+
+### Officially established
+
+The official [openai/codex repository](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833)
+is public and Apache-2.0 licensed at the pinned observation revision
+`ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833`. Its [README](https://github.com/openai/codex/blob/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833/README.md)
+describes Codex CLI as a coding agent from OpenAI that runs locally. The
+repository exposes distinct `codex-rs`, `codex-cli`, `sdk`, `.codex`, and
+`docs` surfaces ([tree](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833)).
+
+Rossovia treats this repository as an **external harness/CLI/SDK reference**;
+“Codex” here does not mean an OpenAI model, provider route, subscription, or
+Rossovia runtime. The upstream directory layout is evidence for a comparison,
+not a stable Rossovia contract. Installed flags, auth, session behavior, and
+SDK APIs must be checked from the active version and official documentation
+before any probe.
+
+### What can be assembled, what is comparative only
+
+The useful distinction is not “copy Codex” versus “ignore Codex,” but which
+surface can be connected behind an existing boundary:
+
+| Candidate contribution | Classification | Rossovia boundary |
+|---|---|---|
+| Separate engine, CLI, and SDK surfaces | **Directly assemblable carrier mechanism** | A future adapter may map one Codex execution surface to the existing Work Cell loop while Task/Mission/Run/Cell identity and settlement remain local. |
+| Project configuration, skills, and context delivery surfaces | **Comparative carrier evidence** | Compare how context reaches a receiver and what is on-demand versus always present; Rossovia's Skills, system prompt, and source-selection policy remain the method-expression owner. |
+| Session, turn, tool, and execution evidence exposed by a selected Codex surface | **Directly assemblable only after a probe** | Accept only evidence that can be retained as the existing Run/Cell transcript and terminal record without a second session authority. |
+| Rust/Bazel implementation, Codex-specific UI, authentication/subscription behavior, model-facing defaults, and upstream repository instructions | **Comparative only** | Do not import them as Rossovia mechanism, provider policy, project configuration, or post-training. |
+
+Codex can therefore inform the **harness base/carrier** and its context/tool
+delivery adapters. It cannot replace Rossovia's psychology-based
+method-expression layer (Skills, system prompts, practice choices, and
+receiver-specific context), and it cannot own Task/Mission/Run, acceptance,
+Principal authority, or observer records. No new lifecycle, queue, open-ended
+`kind` field, or parallel source of truth follows from this comparison.
+
+### Minimal falsifiable substitution probe
+
+The smallest useful experiment is one read-only, bounded Task in a disposable
+worktree:
+
+1. run the same Task through the current carrier and an installed Codex CLI
+   non-interactive surface, with matched input, workspace, permissions, and
+   budget;
+2. let the Codex adapter own only the model/tool loop and session mechanics;
+3. retain the normal Rossovia Task, Run/Cell, source revision, terminal status,
+   and empty-diff evidence; and
+4. compare whether the model-visible context, tool results, cancellation, and
+   incomplete-run evidence are reconstructible without a new queue or
+   lifecycle.
+
+The substitution is disproved if the adapter must make Codex the Task/Mission
+authority, if a completed-looking session cannot produce the existing terminal
+evidence, or if it requires copying Codex model/provider policy into Rossovia.
+No production provider or worker policy changes on the basis of this probe.
+
+### What not to adopt now
+
+Do not make Codex's model identity, login/account path, `.codex` directory,
+Rust/Bazel build, CLI configuration, upstream Skills, or SDK lifecycle a
+Rossovia default. Do not use Codex's session or project files as a second
+Mission/Task/Run store. The method-expression/post-training layer remains a
+Rossovia responsibility; an external carrier may deliver it, but does not
+define it.
+
 ## Adoption backlog
 
 Sorted by priority; nothing here is an adoption decision. `fact` is
@@ -289,8 +378,9 @@ is unresolved, and `authority` names who may move the row.
 |---|---|---|---|---|---|
 | 1 | GLM-5.3 / OpenCode Go | Model/provider policy | Run the one low-risk tool-loop probe in §2 (provider default, no reasoning-effort flag) after explicit quota authorization | `fact`: OpenCode Go lists `glm-5.3` ([docs](https://opencode.ai/docs/go/)); `unknown`: real serving identity, cost, behavior, low/high/max variant availability | Principal (quota spend); agent may prepare, not run, the probe |
 | 2 | DeepSeek Harness | Execution mechanism | Design and run the §1 substitution probe with telemetry off | `fact`: plugin architecture, event-sourced session, pre-effect tool record ([architecture](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/architecture.md), [session](https://github.com/deepseek-ai/deepseek-harness/blob/47f943859bef60e4160492346772ded9b24f765a/docs/subsystems/session.md)); `inference`: three of five mechanisms are already Rossovia practice; `unknown`: whether DSH adds fidelity at lower cost | Principal (bounded experiment approval); Work Cell owner (carrier change) |
-| 3 | Delta / DeltaDB | Collaboration projection | Observe only; re-evaluate on the §3 signals | `fact`: private beta, no agent permission framework or sandbox ([agentic safety](https://delta.dev/docs/privacy-and-security/agentic-safety)), hosted storage ([data-storage](https://delta.dev/docs/privacy-and-security/data-storage)); `unknown`: stable API, deletion semantics | Principal (any hosted-data use or integration) |
-| 4 | Production policy change | All layers | Keep unchanged | `fact`: no retained project-relative probe evidence exists yet | Independent review + Principal acceptance |
+| 3 | OpenAI Codex CLI / open-source harness | External execution carrier | Design and run the §4 substitution probe; keep it outside provider policy | `fact`: public CLI repository and separable CLI/engine/SDK/config/documentation surfaces ([repository](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833)); `unknown`: adapter evidence fidelity, continuation, permissions, cost, and integration burden | Principal (bounded experiment approval); Work Cell owner (carrier change) |
+| 4 | Delta / DeltaDB | Collaboration projection | Observe only; re-evaluate on the §3 signals | `fact`: private beta, no agent permission framework or sandbox ([agentic safety](https://delta.dev/docs/privacy-and-security/agentic-safety)), hosted storage ([data-storage](https://delta.dev/docs/privacy-and-security/data-storage)); `unknown`: stable API, deletion semantics | Principal (any hosted-data use or integration) |
+| 5 | Production policy change | All layers | Keep unchanged | `fact`: no retained project-relative probe evidence exists yet | Independent review + Principal acceptance |
 
 Until a row's probe has retained project-relative evidence and independent
 review, production model, carrier, and collaboration policy stay as they are.
@@ -303,6 +393,7 @@ separation:
 | Rossovia concern | Candidate evidence | Boundary to preserve |
 |---|---|---|
 | Work Cell or conversation execution mechanism | DeepSeek Harness | DSH may carry execution and session events; it does not own Task/Mission state or acceptance. |
+| External coding harness carrier | OpenAI Codex CLI | Codex may carry a model/tool loop and expose CLI/SDK/session surfaces; it does not own Task/Mission/Run/Cell, method expression, provider policy, or acceptance. |
 | Provider/model policy | GLM-5.3 through OpenCode Go | A worker card may select it only after exact-identity evidence; the adapter stays provider-neutral. |
 | Human/Agent collaboration projection | Delta | A thread may project conversation and code lineage; it must not become a second canonical control plane. |
 
@@ -311,8 +402,10 @@ Near-term order:
 1. run one small GLM-5.3/OpenCode Go tool-loop probe after explicit quota
    authorization;
 2. design one DSH-versus-current-carrier substitution probe with telemetry off;
-3. monitor Delta's API, safety, data-deletion, and general-availability changes;
-4. keep production policy unchanged until the corresponding probe has retained
+3. design one Codex-versus-current-carrier substitution probe with no provider
+   policy change;
+4. monitor Delta's API, safety, data-deletion, and general-availability changes;
+5. keep production policy unchanged until the corresponding probe has retained
    project-relative evidence and independent review.
 
 ## Invalidation signals
@@ -321,6 +414,9 @@ Refresh this record when any of the following changes:
 
 - DeepSeek Harness leaves developer preview, publishes a stable plugin/session
   compatibility contract, or materially changes sandbox/telemetry behavior;
+- OpenAI Codex changes the pinned CLI/engine/SDK surface, publishes a stable
+  machine-facing session or app-server contract, or a substitution probe shows
+  that its evidence/permission boundary cannot map to one Rossovia Run/Cell;
 - OpenCode Go removes or renames `glm-5.3`, Z.ai opens the ordinary API, a
   Rossovia live probe produces exact serving evidence, or OpenCode changes its
   effective output cap;
