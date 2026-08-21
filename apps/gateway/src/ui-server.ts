@@ -1,6 +1,7 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { resolveHome } from "../../workbench/src/home";
+import { gitRoot } from "../../workbench/src/workspace";
 import { WorkbenchActionError, executeWorkbenchAction } from "../../workbench/src/ui/actions";
 import { AutonomyCliClient, type AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import {
@@ -93,6 +94,26 @@ export interface WorkbenchRequestHandlerDependencies {
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const autonomyCliSource = resolve(import.meta.dir, "../../autonomy/src/cli.ts");
 const maximumRequestBytes = 64 * 1024;
+
+/**
+ * The compile-time default observation root is meaningful only while the UI
+ * runs from its source checkout: there import.meta.dir names the real
+ * apps/gateway/src directory and the resolved root is the repository checkout
+ * itself. A compiled single-file binary embeds this module and resolves
+ * import.meta.dir next to the executable, so the same arithmetic would name
+ * an unrelated parent directory (often `/` or a plain user home tree) that
+ * must never join the observed roots. Explicit --root entries always join.
+ */
+const SOURCE_CHECKOUT_MARKER = join("apps", "gateway", "src", "ui-server.ts");
+
+export function defaultObservedRoots(candidateRoot = repositoryRoot): readonly string[] {
+  if (!existsSync(join(candidateRoot, SOURCE_CHECKOUT_MARKER))) return [];
+  try {
+    return gitRoot(candidateRoot) === realpathSync(candidateRoot) ? [candidateRoot] : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Resolve how the Workbench talks to the Autonomy runner. A compiled
@@ -1168,7 +1189,7 @@ export function parseServerArguments(arguments_: readonly string[]): ServerOptio
   let home: string | undefined;
   let port = 4317;
   let observerWorkerId: string | undefined = DEFAULT_WORKFLOW_OBSERVER_WORKER;
-  const roots = [repositoryRoot];
+  const roots = [...defaultObservedRoots()];
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]!;
     const value = arguments_[index + 1];
