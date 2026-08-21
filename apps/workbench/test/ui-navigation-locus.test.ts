@@ -49,6 +49,30 @@ const projection = {
 };
 
 describe("Principal locus navigation", () => {
+  test("preserves secondary observer and settings surfaces across a direct URL reload", () => {
+    for (const view of ["observer", "settings"]) {
+      const href = principalLocusHref("http://127.0.0.1:4317/", {
+        view,
+        filter: "all",
+        projectId: null,
+        workItemId: null,
+      });
+      expect(href).toBe(`/?view=${view}`);
+      expect(parsePrincipalLocus(`http://127.0.0.1:4317${href}`)).toMatchObject({
+        requested: true,
+        invalidFields: [],
+        view,
+      });
+      expect(resolvePrincipalLocus(
+        parsePrincipalLocus(`http://127.0.0.1:4317${href}`),
+        projection,
+      )).toMatchObject({
+        standing: "available",
+        activeView: view,
+      });
+    }
+  });
+
   test("resolves an initial URL only against stable identifiers from the current snapshot", () => {
     const request = parsePrincipalLocus(
       "http://127.0.0.1:4317/?view=tasks&filter=agent-pending"

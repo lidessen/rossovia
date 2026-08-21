@@ -8829,6 +8829,8 @@ const principalLocusViews = new Set([
   "project",
   "independent",
   "completed",
+  "observer",
+  "settings",
 ]);
 const principalLocusFilters = new Set([
   "all",
