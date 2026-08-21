@@ -617,7 +617,7 @@ async function buildLiveSnapshot(
       source: taskSource.sourceRef,
     }];
   const taskAttempts = await readTaskAttemptsProjections(options.home, taskSource);
-  const observerReviews = readObserverReviews(options.home);
+  const observerReviews = readObserverReviews(options.home, options.observerWorkerId);
   const settings = readSettingsProjection(options, observerReviews);
   const liveSnapshot = {
     ...snapshot,
@@ -640,21 +640,37 @@ async function buildLiveSnapshot(
   };
 }
 
-function readObserverReviews(home: string | undefined) {
+function readObserverReviews(home: string | undefined, observerWorkerId?: string) {
   const sourcePaths = workflowReviewReadPaths(home);
   const sourceRef = sourcePaths.length === 0
     ? workflowReviewLogPath(home)
     : sourcePaths.join(",");
+  const enabled = observerWorkerId !== undefined;
   try {
     const reviews = readWorkflowReviews(home).map((review) => ({
       ...review,
       relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
     }));
+    const recordState = reviews.length > 0
+      ? "recorded"
+      : sourcePaths.length > 0
+        ? "empty"
+        : enabled
+          ? "waiting"
+          : "disabled";
     return {
       version: "rossovia.workflow-review-projection.v1" as const,
       standing: "available" as const,
       sourceRef,
       reviews,
+      enabled,
+      workerId: observerWorkerId ?? null,
+      recordState,
+      lastRecordedAt: reviews.at(-1)?.recordedAt ?? null,
+      trigger: {
+        kind: "conversation-run-settled" as const,
+        label: "对话 Run 结算后触发",
+      },
     };
   } catch (error: unknown) {
     return {
@@ -662,6 +678,14 @@ function readObserverReviews(home: string | undefined) {
       standing: "unavailable" as const,
       sourceRef,
       reviews: [],
+      enabled,
+      workerId: observerWorkerId ?? null,
+      recordState: "unavailable" as const,
+      lastRecordedAt: null,
+      trigger: {
+        kind: "conversation-run-settled" as const,
+        label: "对话 Run 结算后触发",
+      },
       reason: error instanceof Error ? error.message : String(error),
     };
   }

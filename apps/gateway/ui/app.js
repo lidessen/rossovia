@@ -2586,21 +2586,87 @@ export function taskLocatorEmptySummary(locator, context) {
     }[value] || "状态未知";
   }
 
+  function observerRecordStateCopy(value) {
+    return {
+      recorded: {
+        label: "已有记录",
+        detail: "记录源可读，意见已按结算顺序保留。",
+      },
+      waiting: {
+        label: "等待首次触发",
+        detail: "observer 已启用，但还没有完成可观察的对话 Run。",
+      },
+      empty: {
+        label: "记录源为空",
+        detail: "记录文件已可读，目前没有已记录意见。",
+      },
+      disabled: {
+        label: "观察器未启用",
+        detail: "当前实例没有启动 observer，不会生成新的观察记录。",
+      },
+      unavailable: {
+        label: "读取失败",
+        detail: "记录源不可读；请先处理运行环境或文件权限问题。",
+      },
+    }[value] || {
+      label: "状态未知",
+      detail: "暂时无法判断观察记录状态。",
+    };
+  }
+
   function renderObserverSurface() {
     const projection = first(state.snapshot, ["observerReviews"], {});
     const sourceState = $("#observer-source-state");
     const listRoot = $("#observer-review-list");
+    const recordStateRoot = $("#observer-record-state");
+    const recordStateDetail = $("#observer-record-state-detail");
+    const workerState = $("#observer-worker-state");
+    const triggerState = $("#observer-trigger-state");
+    const lastRecorded = $("#observer-last-recorded");
+    const countSummary = $("#observer-review-count-summary");
     if (!sourceState || !listRoot || state.activeView !== "observer") return;
     const standing = text(first(projection, ["standing"]), "unavailable");
-    sourceState.textContent = standing === "available"
-      ? `${list(first(projection, ["reviews"], [])).length} 条 · 只读`
-      : "来源不可用";
-    const reviews = list(first(projection, ["reviews"], [])).slice().reverse();
-    if (!reviews.length) {
-      listRoot.innerHTML = `<div class="system-empty"><strong>还没有 observer 记录</strong><span>下一次 settled Task 或 conversation Run 完成后，observer 会把意见追加到本地记录。</span></div>`;
+    const reviews = list(first(projection, ["reviews"], []));
+    const recordState = text(first(projection, ["recordState"]), standing === "available" ? "empty" : "unavailable");
+    const stateCopy = observerRecordStateCopy(recordState);
+    sourceState.textContent = standing !== "available"
+      ? "来源不可用"
+      : recordState === "waiting"
+        ? "等待首次记录"
+        : recordState === "disabled"
+          ? "未启用"
+          : "记录源可读";
+    if (recordStateRoot) {
+      recordStateRoot.textContent = stateCopy.label;
+      recordStateRoot.parentElement?.setAttribute("data-state", recordState);
+    }
+    if (recordStateDetail) recordStateDetail.textContent = stateCopy.detail;
+    if (workerState) {
+      workerState.textContent = first(projection, ["enabled"]) === true
+        ? text(first(projection, ["workerId"]), "已启用")
+        : "未启用";
+    }
+    const trigger = first(projection, ["trigger"], {});
+    if (triggerState) triggerState.textContent = text(first(trigger, ["label"]), "仅在可观察事件后触发");
+    if (lastRecorded) {
+      const lastRecordedAt = first(projection, ["lastRecordedAt"]);
+      lastRecorded.textContent = typeof lastRecordedAt === "string" && lastRecordedAt.length > 0
+        ? formatTime(lastRecordedAt, lastRecordedAt)
+        : "尚无记录";
+    }
+    if (countSummary) countSummary.textContent = `${reviews.length} 条意见`;
+    const displayReviews = reviews.slice().reverse();
+    if (!displayReviews.length) {
+      const emptyCopy = {
+        waiting: ["还没有可展示的观察意见", "observer 已启用。它只在对话 Run 结算后读取完整证据并追加记录；当前没有符合条件的已结算执行。"],
+        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的对话 Run 后，这里会出现真实记录。"],
+        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后也只会观察之后的对话 Run，不会追溯补审历史执行。"],
+        unavailable: ["暂时读不到观察记录", text(first(projection, ["reason"]), "记录源返回了不可用状态，请先检查运行环境。")],
+      }[recordState] || ["暂时没有观察意见", stateCopy.detail];
+      listRoot.innerHTML = `<div class="system-empty observer-empty" data-state="${escapeHtml(recordState)}"><span class="observer-empty-kicker">OBSERVATION LOG</span><strong>${escapeHtml(emptyCopy[0])}</strong><span>${escapeHtml(emptyCopy[1])}</span><small>记录来源：<code>${escapeHtml(text(first(projection, ["sourceRef"]), "未知"))}</code></small></div>`;
       return;
     }
-    listRoot.innerHTML = reviews.map((review) => {
+    listRoot.innerHTML = displayReviews.map((review) => {
       const refs = list(first(review, ["evidenceRefs"], []));
       const subject = first(review, ["subject"], {});
       const taskId = text(first(subject, ["taskId"]), "");
@@ -2614,7 +2680,7 @@ export function taskLocatorEmptySummary(locator, context) {
           <div><span class="observer-review-status" data-standing="${escapeHtml(status)}">${escapeHtml(reviewStandingCopy(status))}</span><strong>${escapeHtml(workerId)}</strong></div>
           <time>${escapeHtml(text(first(review, ["recordedAt"]), "时间未知"))}</time>
         </header>
-        <div class="observer-review-finding">${renderConversationMarkdown(reviewText)}</div>
+        <div class="observer-review-finding"><p class="observer-review-finding-label">观察结论</p>${renderConversationMarkdown(reviewText)}</div>
         <dl class="observer-review-facts">
           <div><dt>观察对象</dt><dd>${escapeHtml(taskId ? `Task ${taskId}` : "未关联 Task")} · attempt ${escapeHtml(shortConversationId(attemptId))}</dd></div>
           <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
@@ -2628,7 +2694,7 @@ export function taskLocatorEmptySummary(locator, context) {
     }).join("");
     listRoot.querySelectorAll("[data-observer-process]").forEach((button) => {
       button.addEventListener("click", () => {
-        const review = reviews.find((candidate) => text(first(candidate, ["reviewId"]), "") === button.dataset.observerProcess);
+        const review = displayReviews.find((candidate) => text(first(candidate, ["reviewId"]), "") === button.dataset.observerProcess);
         if (!review) return;
         const attemptId = text(first(first(review, ["subject"], {}), ["attemptId"]), "");
         const finding = text(first(review, ["finding"]), "");

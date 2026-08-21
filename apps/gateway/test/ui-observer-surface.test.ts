@@ -32,6 +32,20 @@ test("mobile system tools stay secondary while remaining keyboard-discoverable",
   expect(css).toContain('.runtime-brief strong {\n    font-size: 0.66rem;\n    white-space: nowrap;');
 });
 
+test("observer surface explains its record state instead of presenting one generic empty state", () => {
+  const html = readFileSync(join(uiRoot, "index.html"), "utf8");
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
+  expect(html).toContain('id="observer-record-state"');
+  expect(html).toContain('id="observer-worker-state"');
+  expect(html).toContain('id="observer-last-recorded"');
+  expect(app).toContain("function observerRecordStateCopy");
+  expect(app).toContain("等待首次触发");
+  expect(app).toContain("记录源已连接，但目前为空");
+  expect(css).toContain(".observer-overview");
+  expect(css).toContain('.observer-empty[data-state="waiting"]');
+});
+
 test("settings keeps its decision summary and stays independent of an invalid project locus", () => {
   const html = readFileSync(join(uiRoot, "index.html"), "utf8");
   const app = readFileSync(join(uiRoot, "app.js"), "utf8");

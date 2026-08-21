@@ -31,6 +31,11 @@ test("snapshot exposes observer reviews and safe settings projections", async ()
   expect(snapshot.observerReviews.version).toBe("rossovia.workflow-review-projection.v1");
   expect(snapshot.observerReviews.standing).toBe("available");
   expect(snapshot.observerReviews.reviews).toEqual([]);
+  expect(snapshot.observerReviews.recordState).toBe("waiting");
+  expect(snapshot.observerReviews.enabled).toBe(true);
+  expect(snapshot.observerReviews.workerId).toBe("deepseek-flash");
+  expect(snapshot.observerReviews.trigger.kind).toBe("conversation-run-settled");
+  expect(snapshot.observerReviews.lastRecordedAt).toBeNull();
   expect(snapshot.settings.version).toBe("rossovia.settings-projection.v1");
   expect(snapshot.settings.standing).toBe("available");
   expect(snapshot.settings.workerPolicySource).toBe("apps/autonomy/src/worker-policy.ts");
@@ -53,6 +58,24 @@ test("snapshot exposes observer reviews and safe settings projections", async ()
   expect(snapshot.settings.directories.skillCustom).toBe("~/.rossovia/skills/custom");
   expect(snapshot.settings.directories.skillPackages).toContain("{picked,builtin}");
   expect(JSON.stringify(snapshot.settings)).not.toContain("API_KEY=");
+});
+
+test("observer projection distinguishes disabled from enabled-but-not-triggered", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-ui-observer-disabled-"));
+  roots.push(root);
+  initializeHome(root);
+  const handler = createWorkbenchRequestHandler({
+    home: root,
+    port: 4317,
+    roots: [],
+  }, unusedClient);
+  const response = await handler(new Request("http://127.0.0.1:4317/api/snapshot"));
+  expect(response.status).toBe(200);
+  const snapshot = await response.json() as Record<string, any>;
+  expect(snapshot.observerReviews.standing).toBe("available");
+  expect(snapshot.observerReviews.recordState).toBe("disabled");
+  expect(snapshot.observerReviews.enabled).toBe(false);
+  expect(snapshot.settings.observer.enabled).toBe(false);
 });
 
 test("system surfaces remain secondary to conversation", async () => {

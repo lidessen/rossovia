@@ -2971,6 +2971,7 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
 
 .system-surface-header {
   margin: -1.25rem -1.25rem 1rem;
+  padding-right: 1.25rem;
 }
 
 .system-surface-note,
@@ -2988,6 +2989,50 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
 .system-surface-note strong {
   color: var(--ink);
   white-space: nowrap;
+}
+
+.observer-overview {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0 0 1rem;
+  max-width: 920px;
+}
+
+.observer-overview-card {
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.observer-overview-card > span,
+.observer-overview-card > small {
+  color: var(--ink-faint);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.observer-overview-card > strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.observer-overview-card[data-state="recorded"] {
+  border-left: 3px solid var(--green);
+}
+
+.observer-overview-card[data-state="waiting"],
+.observer-overview-card[data-state="empty"] {
+  border-left: 3px solid var(--ochre);
+}
+
+.observer-overview-card[data-state="disabled"],
+.observer-overview-card[data-state="unavailable"] {
+  border-left: 3px solid var(--red);
 }
 
 .observer-review-list {
@@ -3051,6 +3096,14 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   line-height: 1.65;
   margin: 0.9rem 0;
   white-space: pre-wrap;
+}
+
+.observer-review-finding-label {
+  color: var(--ink-faint);
+  font-size: 0.63rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
 }
 
 .observer-review-finding > :first-child {
@@ -3154,6 +3207,44 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
 .system-empty span {
   font-size: 0.72rem;
   line-height: 1.5;
+}
+
+.observer-empty {
+  gap: 0.45rem;
+  max-width: 920px;
+}
+
+.observer-empty[data-state="recorded"] {
+  border-left: 3px solid var(--green);
+}
+
+.observer-empty[data-state="waiting"],
+.observer-empty[data-state="empty"] {
+  border-left: 3px solid var(--ochre);
+}
+
+.observer-empty[data-state="disabled"],
+.observer-empty[data-state="unavailable"] {
+  border-left: 3px solid var(--red);
+}
+
+.observer-empty-kicker {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+}
+
+.observer-empty strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.observer-empty small {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .settings-grid {
@@ -6187,11 +6278,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   }
 
   .system-surface {
-    padding: 0.85rem;
+    padding: 0.85rem 0.85rem calc(5.5rem + env(safe-area-inset-bottom));
   }
 
   .system-surface-header {
     margin: -0.85rem -0.85rem 0.85rem;
+    padding-right: 0.85rem;
   }
 
   .system-surface-note,
@@ -6205,6 +6297,14 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
   .observer-review-card,
   .settings-card {
     padding: 0.85rem;
+  }
+
+  .observer-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .observer-overview-card {
+    padding: 0.7rem 0.75rem;
   }
 
   .observer-review-card > header {
