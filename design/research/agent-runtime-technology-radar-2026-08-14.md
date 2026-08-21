@@ -4,6 +4,8 @@
 
 **Observed:** 2026-08-14
 
+**Updated:** 2026-08-21
+
 **Question:** Which recent external developments should change Rossovia's
 near-term model, execution-harness, or collaboration experiments?
 
@@ -42,12 +44,12 @@ second runtime, queue, fact source, or method-expression authority.
 
 | Reference | Harness-base mechanism that may be assembled | Carrier experience to compare | Method-expression boundary | Smallest useful probe | Rossovia owner |
 |---|---|---|---|---|---|
-| [Vercel AI SDK](https://github.com/vercel/ai) + [eve](https://github.com/vercel/eve) | Embeddable harness, host-tool boundary, checkpointed workflow steps | Streaming, pause/resume, approvals, and durable step evidence | SDK normalizes execution; Skills/system prompts remain Rossovia's receiver-facing method | Existing carrier substitution and one restartable bounded Run | Work Cell adapter + Mission/Run continuity |
+| [Vercel AI SDK](https://github.com/vercel/ai) + [eve](https://github.com/vercel/eve) | [Embeddable harness and host-tool boundary](coding-harness-runtime-substitution-2026-08-15.md#what-vercel-ai-sdk-already-owns); [checkpointed workflow steps](agent-delegation-and-dynamic-workflows.md#eve) | [Streaming, pause/resume, approvals, and durable step evidence](coding-harness-runtime-substitution-2026-08-15.md#what-vercel-ai-sdk-already-owns) | SDK normalizes execution; Skills/system prompts remain Rossovia's receiver-facing method | Existing carrier substitution and one restartable bounded Run | Work Cell adapter + Mission/Run continuity |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness/tree/47f943859bef60e4160492346772ded9b24f765a) | Plugin composition, session events, pre-effect tool records | Replay/fork/compaction and provider/subagent substitution | Plugins do not become Rossovia Task/Mission policy | §1 event/effect-evidence substitution probe | Work Cell driver and evidence boundary |
-| [Pi](https://github.com/badlogic/pi-mono) | In-process coding session, host tools, steering and compaction | Session continuation, follow-up, abort, and resource loading | Resource/skill loading is a carrier surface, not Rossovia post-training authority | Current carrier with Pi session mechanics and host-scoped tools | Work Cell adapter |
-| [Reasonix](https://github.com/futureflowtech/reasonix) | Deterministic compaction, cache diagnostics, permission/sandbox separation, atomic edits | Long-context cost/recovery and safe mutation behavior | Tool schemas and permissions remain local policy/mechanism boundaries | Compare one tool loop's cache, compaction, and atomic-edit evidence | Work Cell/tool adapter |
-| [Hermes](https://github.com/NousResearch/hermes-agent) | Restart/drain markers and background execution as carrier observations | Resume-pending, notifications, and explicit stuck-run handling | Background mode does not create a Rossovia queue or automatic retry lifecycle | Restart a bounded Run and verify truthful unresolved standing | Run recovery + observer |
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code/cli-usage) | Headless/resumed CLI execution and bounded turn control | Continue/resume and max-turn execution ergonomics | CLI flags do not redefine Rossovia Task acceptance or method expression | Map one resumed session to a new lineage-bound Run | Agent-tooling adapter |
+| [Pi](https://github.com/badlogic/pi-mono) | [In-process coding session, host tools, steering and compaction](coding-harness-runtime-substitution-2026-08-15.md#what-pi-contributes) | [Session continuation, follow-up, abort, and resource loading](coding-harness-runtime-substitution-2026-08-15.md#what-pi-contributes) | Resource/skill loading is a carrier surface, not Rossovia post-training authority | Current carrier with Pi session mechanics and host-scoped tools | Work Cell adapter |
+| [Reasonix](https://github.com/futureflowtech/reasonix) | [Deterministic compaction, cache diagnostics, permission/sandbox separation](https://github.com/futureflowtech/reasonix/blob/e9f4e800f625e566ddc770ae8dd9e49cffb64ead/docs/SPEC.md), [atomic edits](https://github.com/futureflowtech/reasonix/blob/e9f4e800f625e566ddc770ae8dd9e49cffb64ead/docs/TOOL_CONTRACT.md) | [Long-context cost/recovery](https://github.com/futureflowtech/reasonix/blob/e9f4e800f625e566ddc770ae8dd9e49cffb64ead/docs/SPEC.md) and [safe mutation behavior](https://github.com/futureflowtech/reasonix/blob/e9f4e800f625e566ddc770ae8dd9e49cffb64ead/docs/TOOL_CONTRACT.md) | Tool schemas and permissions remain local policy/mechanism boundaries | Compare one tool loop's cache, compaction, and atomic-edit evidence | Work Cell/tool adapter |
+| [Hermes](https://github.com/NousResearch/hermes-agent) | [Restart/drain markers and background execution](https://hermes-agent.nousresearch.com/docs/user-guide/cli/) as carrier observations | [Resume-pending and notification behavior](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/), with explicit stuck-run handling | Background mode does not create a Rossovia queue or automatic retry lifecycle | Restart a bounded Run and verify truthful unresolved standing | Run recovery + observer |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code/cli-usage) | Headless/resumed CLI execution and bounded turn control | [Continue/resume and max-turn execution ergonomics](https://docs.anthropic.com/en/docs/claude-code/cli-usage) | CLI flags do not redefine Rossovia Task acceptance or method expression | Map one resumed session to a new lineage-bound Run | Agent-tooling adapter |
 | [OpenAI Codex CLI / open-source harness](https://github.com/openai/codex/tree/ad9e8097fd3d0d2f1c1166575d2c6cd8cb9e1833) | Separated CLI, engine, SDK, project-config, and docs surfaces | Local execution carrier and machine-facing session/tool evidence | Codex model/provider and `.codex`/instructions remain external; Rossovia owns method expression | §4 read-only carrier substitution probe | Agent-tooling / Work Cell adapter |
 
 The matrix keeps three questions separate: what can be assembled behind a
@@ -237,7 +239,7 @@ Important reasoning happens between commits; comments tied to line numbers
 drift as the code changes; and an Agent transcript is often presented as a
 stream rather than a shared, reviewable work artifact. Zed's
 [DeltaDB announcement](https://zed.dev/blog/introducing-deltadb) summarizes the
-premise as “software is made between commits.” The newer
+premise as “software is made between commits.” The
 [Delta product announcement](https://zed.dev/blog/introducing-delta) presents
 Delta as a multiplayer environment where people and Agents work in shared
 threads while conversation and code changes stay in context.
