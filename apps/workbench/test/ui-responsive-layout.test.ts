@@ -229,7 +229,10 @@ describe("Workbench responsive layout", () => {
     );
     expect(app).toContain("renderConversationSurface()");
     expect(app).toContain('state.activeView === "conversation"');
-    expect(app).toContain('document.body.dataset.activeView = state.activeView');
+    expect(app).toContain("function renderPrincipalSurfaceVisibility()");
+    expect(app).toContain("document.body.dataset.uiView = view");
+    expect(app).toContain("document.body.dataset.activeView = view");
+    expect(app).toContain("renderPrincipalSurfaceVisibility();\n    surface.hidden = !active;");
     expect(mobile).toMatch(
       /body\[data-active-view="conversation"\]\s+\.target-strip[\s\S]*?display:\s*none;/s,
     );
