@@ -204,6 +204,22 @@ test("a single DeepSeek Pro route carries Pro peak pricing", () => {
   }));
 });
 
+test("the DeepSeek Flash Vision Exp route carries the published Flash rates", () => {
+  const selection = createValidationModel({
+    route: [{ ...routeTarget("deepseek"), model: "deepseek-v4-flash-vision-exp" }],
+    deepSeekApiKey: "deepseek-key",
+  });
+
+  expect(selection.models).toEqual(["deepseek-v4-flash-vision-exp"]);
+  expect(selection.pricing).toEqual(expect.objectContaining({
+    inputPerMillionUsd: 0.44,
+    cachedInputPerMillionUsd: 0.014,
+    outputPerMillionUsd: 1.32,
+    source: "https://api-docs.deepseek.com/quick_start/pricing",
+    revision: "2026-08-17",
+  }));
+});
+
 test("an unpriced model cannot inherit the default model's dollar estimate", () => {
   const selection = createValidationModel({
     route: [{ ...routeTarget("deepseek"), model: "unpriced-model" }],

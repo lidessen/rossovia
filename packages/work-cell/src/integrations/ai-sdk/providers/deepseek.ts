@@ -129,6 +129,11 @@ export const deepSeekFlashPricing = {
   revision: "2026-08-17",
 };
 
+/** The experimental vision endpoint currently publishes the same Flash rates. */
+export const deepSeekFlashVisionExpPricing = {
+  ...deepSeekFlashPricing,
+};
+
 export const deepSeekProPricing = {
   inputPerMillionUsd: 1.32,
   cachedInputPerMillionUsd: 0.044,

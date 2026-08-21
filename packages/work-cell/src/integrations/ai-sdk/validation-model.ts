@@ -11,6 +11,7 @@ import {
   DEEPSEEK_PROVIDER_ID,
   type DeepSeekInferencePolicy,
   deepSeekFlashPricing,
+  deepSeekFlashVisionExpPricing,
   deepSeekProPricing,
 } from "./providers/deepseek";
 import {
@@ -210,6 +211,9 @@ function validationPricing(
   // spent by this Cell. A mixed route also lacks per-target usage attribution.
   if (route.length !== 1 || route[0] !== DEEPSEEK_PROVIDER_ID) return {};
   if (models[0] === DEFAULT_MODEL) return { pricing: deepSeekFlashPricing };
+  if (models[0] === "deepseek-v4-flash-vision-exp") {
+    return { pricing: deepSeekFlashVisionExpPricing };
+  }
   if (models[0] === "deepseek-v4-pro") return { pricing: deepSeekProPricing };
   return {};
 }
