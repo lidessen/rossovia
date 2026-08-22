@@ -68,6 +68,70 @@ test("observer review projects the canonical attempt correlation with exact ids 
   expect(app).toContain("data-observer-process");
 });
 
+test("observer correlation projection fails closed when an available standing carries a malformed nested correlation", () => {
+  // A server projection that claims available must still carry the complete
+  // canonical correlation: a missing or malformed nested payload never
+  // renders partial or fabricated ids and never throws.
+  const invalidProjection = {
+    standing: "invalid",
+    label: "attempt evidence 无效",
+    detail: expect.stringContaining("不猜测来源"),
+  };
+  // The nested correlation object is missing entirely.
+  expect(observerReviewCorrelationProjection({
+    correlation: { standing: "available", attemptId: "attempt-1" },
+  })).toEqual(invalidProjection);
+  // The nested correlation is present but its fields are not non-empty
+  // strings (non-string and empty-string variants).
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: { conversationId: 123, turnId: "turn", actionId: "action", sourceRef: "ref" },
+    },
+  })).toEqual(invalidProjection);
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: {
+        conversationId: "11111111-1111-4111-8111-111111111111",
+        turnId: "   ",
+        actionId: "action",
+        sourceRef: "ref",
+      },
+    },
+  })).toEqual(invalidProjection);
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: { conversationId: "conv", turnId: "turn", actionId: "action", sourceRef: null },
+    },
+  })).toEqual(invalidProjection);
+  // A well-formed nested correlation still projects the exact ids.
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: {
+        conversationId: "11111111-1111-4111-8111-111111111111",
+        turnId: "22222222-2222-4222-8222-222222222222",
+        actionId: "33333333-3333-4333-8333-333333333333",
+        sourceRef: "conversation:11111111-1111-4111-8111-111111111111:action:33333333-3333-4333-8333-333333333333",
+      },
+    },
+  })).toEqual({
+    standing: "available",
+    attemptId: "attempt-1",
+    conversationId: "11111111-1111-4111-8111-111111111111",
+    turnId: "22222222-2222-4222-8222-222222222222",
+    actionId: "33333333-3333-4333-8333-333333333333",
+    sourceRef: "conversation:11111111-1111-4111-8111-111111111111:action:33333333-3333-4333-8333-333333333333",
+    label: "canonical correlation 已记录",
+  });
+});
+
 test("observer review projects the nested worker identity as a scalar", () => {
   expect(observerReviewWorkerId({ observer: { workerId: " deepseek-flash " } })).toBe("deepseek-flash");
   expect(observerReviewWorkerId({ observer: {} })).toBe("未知 worker");

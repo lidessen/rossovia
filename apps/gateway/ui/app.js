@@ -982,16 +982,40 @@ export function observerReviewCorrelationProjection(review) {
     return { standing: "absent", label: "未提供 correlation 投影" };
   }
   switch (correlation.standing) {
-    case "available":
+    case "available": {
+      // An available standing must still carry a complete, well-formed nested
+      // correlation: a malformed payload never renders partial or fabricated
+      // ids. Fail closed to the explicit invalid/invisible projection instead
+      // of throwing or echoing half-read values.
+      const nested = correlation.correlation;
+      const malformed =
+        nested === null
+        || typeof nested !== "object"
+        || typeof nested.conversationId !== "string"
+        || nested.conversationId.trim() === ""
+        || typeof nested.turnId !== "string"
+        || nested.turnId.trim() === ""
+        || typeof nested.actionId !== "string"
+        || nested.actionId.trim() === ""
+        || typeof nested.sourceRef !== "string"
+        || nested.sourceRef.trim() === "";
+      if (malformed) {
+        return {
+          standing: "invalid",
+          label: "attempt evidence 无效",
+          detail: "被观察 attempt 的 canonical evidence 无效，无法显示 correlation；不猜测来源。",
+        };
+      }
       return {
         standing: "available",
         attemptId: correlation.attemptId,
-        conversationId: correlation.correlation.conversationId,
-        turnId: correlation.correlation.turnId,
-        actionId: correlation.correlation.actionId,
-        sourceRef: correlation.correlation.sourceRef,
+        conversationId: nested.conversationId,
+        turnId: nested.turnId,
+        actionId: nested.actionId,
+        sourceRef: nested.sourceRef,
         label: "canonical correlation 已记录",
       };
+    }
     case "missing":
       return {
         standing: "missing",
