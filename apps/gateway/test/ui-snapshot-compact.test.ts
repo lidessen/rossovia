@@ -80,6 +80,22 @@ async function fullSnapshot(
   return await response.json() as Record<string, any>;
 }
 
+async function mutateTask(
+  handler: ReturnType<typeof createWorkbenchRequestHandler>,
+  origin: string,
+  taskId: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, any>> {
+  const response = await post(
+    handler,
+    origin,
+    `/api/tasks/${encodeURIComponent(taskId)}/actions`,
+    body,
+  );
+  expect(response.status).toBe(200);
+  return await response.json() as Record<string, any>;
+}
+
 describe("compact initial snapshot and on-demand task detail", () => {
   test("the compact initial snapshot drops every taskDetail while the full route keeps the baseline body", async () => {
     const { handler, origin } = fixture();
@@ -322,5 +338,151 @@ describe("compact initial snapshot and on-demand task detail", () => {
       .filter((item: { kind: string }) => item.kind === "principal-task")
       .map(shellOf);
     expect(compactShells).toEqual(fullShells);
+  });
+
+  test("the compact search text bounds to the current correction and result claim while the detail route re-reads the full history", async () => {
+    const { handler, origin } = fixture();
+    const created = await createTask(handler, origin, 0);
+    const taskId = created.taskId;
+    const historicalCorrection =
+      "HISTORICAL-CORRECTION: superseded guidance that must never enter the first screen";
+    const historicalClaim =
+      "HISTORICAL-CLAIM: superseded result summary that must never enter the first screen";
+    const currentCorrection =
+      "CURRENT-CORRECTION: the only guidance the first screen needs";
+    const currentClaim =
+      "CURRENT-CLAIM: the only result the first screen needs";
+
+    let sourceRevision = 1;
+    let taskRevision = 1;
+    const correct = async (statement: string) => {
+      const body = await mutateTask(handler, origin, taskId, {
+        kind: "correct",
+        statement,
+        nextActor: "agent",
+        expectedSourceRevision: sourceRevision,
+        expectedRevision: taskRevision,
+      });
+      sourceRevision = body.result.sourceRevision as number;
+      taskRevision = body.result.task.revision as number;
+    };
+    const submit = async (summary: string) => {
+      const body = await mutateTask(handler, origin, taskId, {
+        kind: "submit",
+        summary,
+        evidenceRefs: ["test:compact-history"],
+        expectedSourceRevision: sourceRevision,
+        expectedRevision: taskRevision,
+      });
+      sourceRevision = body.result.sourceRevision as number;
+      taskRevision = body.result.task.revision as number;
+    };
+    const accept = async () => {
+      const body = await mutateTask(handler, origin, taskId, {
+        kind: "accept",
+        expectedSourceRevision: sourceRevision,
+        expectedRevision: taskRevision,
+      });
+      sourceRevision = body.result.sourceRevision as number;
+      taskRevision = body.result.task.revision as number;
+    };
+    const reopen = async (statement: string) => {
+      const body = await mutateTask(handler, origin, taskId, {
+        kind: "reopen",
+        statement,
+        nextActor: "agent",
+        expectedSourceRevision: sourceRevision,
+        expectedRevision: taskRevision,
+      });
+      sourceRevision = body.result.sourceRevision as number;
+      taskRevision = body.result.task.revision as number;
+    };
+
+    // One full history cycle: a superseded correction and claim, then the
+    // current correction and claim that the first screen must still see.
+    await correct(historicalCorrection);
+    await submit(historicalClaim);
+    await accept();
+    await reopen(currentCorrection);
+    await submit(currentClaim);
+
+    const compact = await compactSnapshot(handler, origin);
+    const full = await fullSnapshot(handler, origin);
+    const compactItem = compact.workItems.items.find(
+      (candidate: { id: string }) => candidate.id === `principal-task:${taskId}`,
+    );
+    const fullItem = full.workItems.items.find(
+      (candidate: { id: string }) => candidate.id === `principal-task:${taskId}`,
+    );
+    expect(compactItem.taskDetail).toBeUndefined();
+    // The compact mirror keeps only the decision-relevant current text; the
+    // historical correction/claim text never enters the first screen.
+    expect(compactItem.searchText).toContain(currentCorrection);
+    expect(compactItem.searchText).toContain(currentClaim);
+    expect(compactItem.searchText).not.toContain(historicalCorrection);
+    expect(compactItem.searchText).not.toContain(historicalClaim);
+    // The bounded field stays identical on both routes, so the locator
+    // surface is exactly the same whether the item came from the compact
+    // snapshot or from the on-demand detail body.
+    expect(compactItem.searchText).toBe(fullItem.searchText);
+
+    // The selected-item detail route still re-reads the complete canonical
+    // history: every retained correction and result claim is returned in
+    // full, and its own shell mirrors the identical bounded search text.
+    const detailBody = await (
+      await handler(new Request(`${origin}/api/tasks/${encodeURIComponent(taskId)}/detail`))
+    ).json();
+    const detail = detailBody.workItem.taskDetail;
+    expect(detail.task.corrections.map(
+      (correction: { statement: string }) => correction.statement,
+    )).toEqual([historicalCorrection, currentCorrection]);
+    expect(detail.task.resultClaims.map(
+      (claim: { summary: string }) => claim.summary,
+    )).toEqual([historicalClaim, currentClaim]);
+    expect(detailBody.workItem.searchText).toBe(compactItem.searchText);
+    // The compact mirror is strictly smaller than the complete-history text
+    // the detail source retains, so the first screen stops carrying what the
+    // selection flow can re-read on demand.
+    const historicalMirror = [
+      detail.task.objective,
+      ...detail.task.acceptance,
+      ...detail.task.todos,
+      ...detail.task.corrections.map((correction: { statement: string }) => correction.statement),
+      ...detail.task.resultClaims.map((claim: { summary: string }) => claim.summary),
+    ].filter((value: string) => value !== "").join(" ");
+    expect(historicalMirror.length).toBeGreaterThan(compactItem.searchText.length);
+  });
+
+  test("an unavailable task source fails closed: the compact snapshot stays readable and the detail route answers 404", async () => {
+    const { home, origin, handler } = fixture();
+    const created = await createTask(handler, origin, 0);
+    rmSync(join(home, "state", "tasks.json"));
+
+    const compact = await compactSnapshot(handler, origin);
+    expect(compact.complete).toBeFalse();
+    expect(compact.workItems.capabilities.independentTasks).toMatchObject({
+      standing: "unavailable",
+      count: null,
+      sourceRevision: null,
+    });
+    expect(compact.workItems.capabilities.independentTasks.reason)
+      .toContain("tasks.json");
+    expect(compact.workItems.items.some(
+      (item: { kind: string }) => item.kind === "principal-task",
+    )).toBeFalse();
+    expect(compact.attention.some(
+      (item: { code: string }) => item.code === "source-error",
+    )).toBeTrue();
+    expect(compact.errors.some(
+      (error: { scope: string }) => error.scope === "home",
+    )).toBeTrue();
+
+    // The canonical task still exists as an id only; without a readable
+    // source the detail route must fail closed instead of faking a record.
+    const missing = await handler(new Request(
+      `${origin}/api/tasks/${encodeURIComponent(created.taskId)}/detail`,
+    ));
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toMatchObject({ error: "task-not-found" });
   });
 });
