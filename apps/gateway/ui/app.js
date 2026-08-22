@@ -110,13 +110,100 @@ export function hasPrincipalLocusRequest(request) {
     ].some((value) => value !== null && value !== undefined);
 }
 
+/**
+ * Principal Needs-You / system-exception classification, derived only from
+ * the structured facts the projection already carries (lifecycle, nextActor,
+ * attention, evidence.freshness.kind, runnerId, attentionCode). It never
+ * synthesizes a current actionable item:
+ *
+ * - F1: a runner-scene item (runnerId or a runner attentionCode) enters
+ *   Principal Needs You only with live proof (evidence.freshness.kind ===
+ *   "live"); cached-only / unreachable / unverified / unbound records are
+ *   retained history pending disposition, never a current Principal action.
+ * - F2: paused responsibility stays strictly on the projected nextActor: a
+ *   paused item belongs to Needs You only when nextActor is "principal";
+ *   system / Agent responsibility never mixes in.
+ * - F3: input-pending items (attentionCode runner-input-pending) are the
+ *   Agent system's ongoing 待协调 work — never a Principal decision and
+ *   never a system fault.
+ */
+const runnerAttentionCodes = new Set([
+  "runner-interrupted",
+  "runner-input-pending",
+  "runner-anchor-pending",
+  "runner-anchor-migration-decision",
+  "runner-reconciliation-decision",
+  "runner-unreachable",
+  "runner-reachability-unverified",
+  "runner-unbound",
+  "runner-idle",
+  "runner-paused",
+  "runner-lineage-unavailable",
+  "runner-legacy-unanchored",
+  "runner-reconciliation-authorized",
+  "runner-reconciliation-attempt-consumed",
+  "correction-awaiting-system-settlement",
+]);
+
+function workItemFreshnessKind(item) {
+  const freshness = item !== null
+    && typeof item === "object"
+    && item.evidence !== null
+    && typeof item.evidence === "object"
+      ? item.evidence.freshness
+      : null;
+  return freshness !== null
+    && typeof freshness === "object"
+    && typeof freshness.kind === "string"
+    ? freshness.kind
+    : null;
+}
+
+function isRunnerSceneWorkItem(item) {
+  if (item === null || typeof item !== "object") return false;
+  if (typeof item.runnerId === "string" && item.runnerId !== "") return true;
+  return typeof item.attentionCode === "string"
+    && runnerAttentionCodes.has(item.attentionCode);
+}
+
+function workItemHasLiveProof(item) {
+  return workItemFreshnessKind(item) === "live";
+}
+
+function isInputPendingWorkItem(item) {
+  return item !== null
+    && typeof item === "object"
+    && item.attentionCode === "runner-input-pending";
+}
+
+/**
+ * F2: paused responsibility stays strictly on the projected nextActor. A
+ * paused item is Principal Needs You only when nextActor is "principal";
+ * system / Agent responsibility never mixes in.
+ */
+function isPausedByAnotherActor(item) {
+  return item !== null
+    && typeof item === "object"
+    && item.lifecycle === "paused"
+    && item.nextActor !== "principal";
+}
+
 export function classifyWorkbenchAttention(items) {
   const workItems = Array.isArray(items) ? items : [];
   return {
-    principal: workItems.filter((item) => item?.nextActor === "principal"),
-    system: workItems.filter(
-      (item) => item?.nextActor === "system" && item?.attention === "exception",
-    ),
+    principal: workItems.filter((item) =>
+      item !== null
+      && typeof item === "object"
+      && item.nextActor === "principal"
+      && !isPausedByAnotherActor(item)
+      && !isInputPendingWorkItem(item)
+      && (!isRunnerSceneWorkItem(item) || workItemHasLiveProof(item))),
+    system: workItems.filter((item) =>
+      item !== null
+      && typeof item === "object"
+      && item.nextActor === "system"
+      && item.attention === "exception"
+      && !isInputPendingWorkItem(item)),
   };
 }
 
@@ -3593,15 +3680,38 @@ export function taskLocatorEmptySummary(locator, context) {
 
     if (isOverview) {
       const attention = classifyWorkbenchAttention(items);
-      $("#overview-attention-count").textContent = String(attention.principal.length);
-      $("#overview-attention-list").innerHTML = attention.principal.length
-        ? attention.principal.slice(0, 5).map(workItemRow).join("")
-        : '<p class="empty-note">当前没有下一责任方是你的事项。</p>';
-      bindWorkItemRows($("#overview-attention-list"));
-      $("#overview-system-count").textContent = String(attention.system.length);
-      $("#overview-system-list").innerHTML = attention.system.length
-        ? attention.system.slice(0, 5).map(workItemRow).join("")
-        : '<p class="empty-note">当前没有需要恢复或检查的系统异常。</p>';
+      const attentionUnavailable = attentionSourceUnavailableCopy();
+      $("#attention-overview-heading").textContent = attentionUnavailable === null
+        ? "下一责任方是你的事项"
+        : "下一责任方是你的事项 · 来源不可用";
+      if (attentionUnavailable !== null) {
+        $("#overview-attention-count").textContent = attentionUnavailable.count;
+        $("#overview-attention-list").innerHTML =
+          '<p class="empty-note">' + escapeHtml(attentionUnavailable.detail) + "</p>";
+      } else {
+        $("#overview-attention-count").textContent = String(attention.principal.length);
+        $("#overview-attention-list").innerHTML = attention.principal.length
+          ? attention.principal.slice(0, 5).map(workItemRow).join("")
+          : '<p class="empty-note">当前没有下一责任方是你的事项。</p>';
+        bindWorkItemRows($("#overview-attention-list"));
+      }
+      // The system section reads runner/mission sources, not the task
+      // source, so only a missing snapshot fails it closed; a live snapshot
+      // still shows the runner anomalies and source errors it actually read.
+      const systemUnavailable = state.source === "live"
+        ? null
+        : {
+          count: "—",
+          detail: "运行投影尚未形成或已过期：不显示系统异常清单，不冒充当前零异常。",
+        };
+      $("#overview-system-count").textContent = systemUnavailable === null
+        ? String(attention.system.length)
+        : systemUnavailable.count;
+      $("#overview-system-list").innerHTML = systemUnavailable === null
+        ? attention.system.length
+          ? attention.system.slice(0, 5).map(workItemRow).join("")
+          : '<p class="empty-note">当前没有需要恢复或检查的系统异常。</p>'
+        : '<p class="empty-note">' + escapeHtml(systemUnavailable.detail) + "</p>";
       bindWorkItemRows($("#overview-system-list"));
     }
 
@@ -5157,7 +5267,56 @@ export function taskLocatorEmptySummary(locator, context) {
     target.textContent = receipt.message;
   }
 
+  /**
+   * Fail-closed standing for the Needs-You (待我处理) surfaces. A non-live
+   * snapshot (loading / demo / error / stale) has no trustworthy item list,
+   * and a live snapshot whose task source is unavailable covers only readable
+   * sources: either way the count must never read as a factual zero and the
+   * list must never present items as current decisionable facts. Returns null
+   * only when a live snapshot with an available task source backs the list.
+   */
+  function attentionSourceUnavailableCopy() {
+    if (state.source !== "live") {
+      const label = state.source === "stale"
+        ? "上次实时 · 已过期"
+        : state.source === "demo"
+          ? "本地演示 · 非实时数据"
+          : "运行投影尚未形成";
+      const detail = state.source === "stale"
+        ? "实时刷新失败：保留的清单不作为当前事实，不显示当前计数。"
+        : state.source === "demo"
+          ? "尚未成功读取真实运行投影；演示数据不代表任何待我处理事项。"
+          : "当前不显示待我处理清单；不要把等待误判为“零待办”。";
+      return { count: "—", label, detail };
+    }
+    const capability = taskSourceCapability();
+    if (first(capability, ["standing"]) !== "available") {
+      return {
+        count: "—",
+        label: "任务来源不可用",
+        detail: text(
+          first(capability, ["reason"]),
+          "任务来源不可用：待我处理计数与清单只覆盖可读来源，不冒充完整集合或当前零项。",
+        ),
+      };
+    }
+    return null;
+  }
+
   function renderAttention() {
+    const container = $("#attention-list");
+    const sourceUnavailable = attentionSourceUnavailableCopy();
+    $("#principal-attention-heading").textContent = sourceUnavailable === null
+      ? "待我处理"
+      : "待我处理 · 来源不可用";
+    if (sourceUnavailable !== null) {
+      $("#attention-count").textContent = sourceUnavailable.count;
+      $("#summary-attention").textContent = sourceUnavailable.label;
+      $("#summary-attention-detail").textContent = sourceUnavailable.detail;
+      container.innerHTML =
+        '<li class="empty-note">' + escapeHtml(sourceUnavailable.detail) + "</li>";
+      return;
+    }
     const items = classifyWorkbenchAttention(workItems()).principal;
     const primaryAttention = items[0];
     const primaryAttentionCode = text(first(primaryAttention, ["attentionCode"]), "");
@@ -5170,7 +5329,6 @@ export function taskLocatorEmptySummary(locator, context) {
         ? "Intent Anchor 迁移等待 AUTHORIZE MIGRATION / HOLD"
         : text(first(primaryAttention, ["title", "summary"]), "打开待我处理查看。")
       : "当前没有下一责任方是你的事项";
-    const container = $("#attention-list");
 
     if (!items.length) {
       container.innerHTML = '<li class="empty-note">当前没有下一责任方是你的事项。</li>';
