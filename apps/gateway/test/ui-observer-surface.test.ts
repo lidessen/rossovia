@@ -512,7 +512,7 @@ test("conversation evidence is labeled without inventing a read-only href", () =
   expect(observerConversationEvidenceLabels({ relatedConversationRefs: ["<script>alert(1)</script>"] })[0].href).toBeNull();
 });
 
-test("observer trigger copy names the conversation-run default and the explicit entries", () => {
+test("observer trigger copy names the Task-attempt boundary and plain-conversation gap", () => {
   const app = readFileSync(join(uiRoot, "app.js"), "utf8");
   const html = readFileSync(join(uiRoot, "index.html"), "utf8");
   const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
@@ -520,36 +520,25 @@ test("observer trigger copy names the conversation-run default and the explicit 
   const generated = readFileSync(join(import.meta.dir, "../src/assets.generated.ts"), "utf8");
   const workbenchReadme = readFileSync(join(import.meta.dir, "../../workbench/README.md"), "utf8");
   const dogfoodProfile = readFileSync(join(import.meta.dir, "../../../design/operations/ROSSOVIA-DOGFOOD-DEVELOPMENT.md"), "utf8");
-  // The local UI default is the conversation carrier's settled Run; the
-  // trigger kind and the visible label must say so without claiming every
-  // Task/Run terminal.
-  expect(server).toContain('kind: "conversation-run-settled"');
-  expect(server).toContain('label: "对话 Run 结算后触发"');
-  expect(server).not.toContain('label: "Task/Run 终态结算后触发"');
-  // The empty-state copy on the observer card keeps the same default scope
-  // and names the explicit observer entries instead of making the
-  // conversation Run the only trigger path.
-  expect(app).toContain("本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run");
-  expect(app).toContain("完成一次可观察的对话 Run");
-  expect(app).not.toContain("Task/Run 终态");
-  // The permanent usage copy in the served page and in the CLI ui help says
-  // the same: the conversation Run is the local default trigger, never every
-  // Task/Run terminal.
-  expect(html).toContain("本地 UI 默认由对话 Run 触发");
-  expect(html).toContain("显式 observer 入口可观察其他已结算 Task/Run");
-  expect(html).not.toContain("Task/Run 终态");
-  expect(help).toContain("per settled conversation Run");
-  expect(help).not.toContain("per settled observable Task/Run");
-  // The workbench README and dogfood profile no longer claim one observer
-  // per every settled observable Task/Run.
-  expect(workbenchReadme).toContain("per settled conversation Run");
-  expect(workbenchReadme).not.toContain("each settled observable Task/Run");
-  expect(dogfoodProfile).toContain("per settled conversation Run by default");
-  expect(dogfoodProfile).not.toContain("for each settled observable Task/Run");
-  // The embedded bundle mirrors the ui/ source: the served single-file
-  // surface cannot keep serving the old unqualified claim.
-  expect(generated).toContain("本地 UI 默认由对话 Run 触发");
-  expect(generated).not.toContain("Task/Run 终态");
+  // The observer trigger is the existing canonical Task-attempt path. A
+  // plain conversation Run settles only its journal/turn evidence and must
+  // not be presented as an observer subject.
+  expect(server).toContain('kind: "task-attempt-settled"');
+  expect(server).toContain('label: "Task attempt 结算后触发"');
+  expect(server).not.toContain('kind: "conversation-run-settled"');
+  expect(server).not.toContain('label: "对话 Run 结算后触发"');
+  expect(app).toContain("普通对话 Run 不触发 observer");
+  expect(app).toContain("只观察已结算的 canonical Task attempt");
+  expect(html).toContain("普通对话 Run 只结算 journal/turn，不产生 Task attempt 证据，因此不会触发 observer（当前 query gap）");
+  expect(html).toContain("本地 UI 默认观察已结算 Task attempt");
+  expect(help).toContain("per settled Task attempt");
+  expect(help).toContain("A plain conversation Run settles no Task attempt and is not observed (query gap)");
+  expect(workbenchReadme).toContain("per settled Task attempt");
+  expect(workbenchReadme).toContain("it never triggers the observer (current query gap)");
+  expect(dogfoodProfile).toContain("per settled Task attempt by default");
+  expect(dogfoodProfile).toContain("it does not trigger the observer (current query gap)");
+  expect(generated).toContain("普通对话 Run 不触发 observer");
+  expect(generated).not.toContain("本地 UI 默认由对话 Run 触发");
 });
 
 test("observer review correlation is memoized per snapshot invocation for duplicate subject attempts", () => {

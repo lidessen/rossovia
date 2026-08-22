@@ -3261,7 +3261,7 @@ export function taskLocatorEmptySummary(locator, context) {
       },
       waiting: {
         label: "等待首次触发",
-        detail: "observer 已启用；本地 UI 默认由对话 Run 触发。还没有完成可观察的对话 Run。",
+        detail: "observer 已启用；只观察已结算的 canonical Task attempt（对话 task_continue 亦为 Task attempt）。还没有完成可观察的 Task attempt。",
       },
       empty: {
         label: "记录源为空",
@@ -3448,9 +3448,9 @@ export function taskLocatorEmptySummary(locator, context) {
     }
     if (!reviews.length) {
       const emptyCopy = {
-        waiting: ["还没有可展示的观察意见", "observer 已启用。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。当前还没有符合条件的已结算 Run。"],
-        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的对话 Run（或显式 observer 入口）后，这里会出现真实记录。"],
-        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后默认观察之后的对话 Run；显式 observer 入口可观察其他已结算 Task/Run。不会自动追溯补审历史执行。"],
+        waiting: ["还没有可展示的观察意见", "observer 已启用；只观察已结算的 canonical Task attempt。当前还没有符合条件的已结算 Task attempt。普通对话 Run 不触发 observer。"],
+        empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的 Task attempt（对话 task_continue 或显式 observer 入口）后，这里会出现真实记录；普通对话 Run 不触发 observer。"],
+        disabled: ["观察器未启用", "当前实例没有启动 observer。启用后只观察之后已结算的 Task attempt（对话 task_continue 亦为 Task attempt）；显式 observer 入口可观察任意已结算 Task attempt。普通对话 Run 不触发 observer。不会自动追溯补审历史执行。"],
         unavailable: ["暂时读不到观察记录", text(first(projection, ["reason"]), "记录源返回了不可用状态，请先检查运行环境。")],
       }[recordState] || ["暂时没有观察意见", stateCopy.detail];
       listRoot.innerHTML = `<div class="system-empty observer-empty" data-state="${escapeHtml(recordState)}"><span class="observer-empty-kicker">OBSERVATION LOG</span><strong>${escapeHtml(emptyCopy[0])}</strong><span>${escapeHtml(emptyCopy[1])}</span><small>记录来源：<code>${escapeHtml(text(first(projection, ["sourceRef"]), "未知"))}</code></small></div>`;

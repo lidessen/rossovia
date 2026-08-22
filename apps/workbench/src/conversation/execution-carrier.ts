@@ -251,7 +251,12 @@ export interface ConversationExecutionCarrierOptions {
   /** Test seam; defaults to the current worker policy catalog. */
   readonly catalog?: WorkerCatalog;
   readonly environment?: NodeJS.ProcessEnv;
-  /** Local UI default: review each conversation-carrier settled Run asynchronously. */
+  /**
+   * Local UI default: review each settled conversation-carrier Task attempt
+   * asynchronously. The carrier Run is itself a canonical Task attempt
+   * (attemptId == committed action UUID); a plain conversation Run settles
+   * no Task attempt and is never reviewed.
+   */
   readonly observerWorkerId?: string;
 }
 

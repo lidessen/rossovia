@@ -675,7 +675,7 @@ export function observerCellInput(arguments_: {
     workerId: arguments_.worker.id,
     executionProfile: arguments_.worker.executionProfile,
     intent:
-      "Review one settled project task or conversation Run. Return only evidence-backed findings and visibility gaps; do not edit or accept work.",
+      "Review one settled project task attempt. Return only evidence-backed findings and visibility gaps; do not edit or accept work.",
     workspace: {
       root: arguments_.worktree,
       readPaths: [],
