@@ -139,10 +139,10 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
   const snapshot = formatWorkerSnapshot(availableWorkers);
   const availableIds = availableWorkers.map((card) => card.id);
   // The receiver-facing routing guidance names the policy's explicit default
-  // worker only while that worker is truly available; when it is not, the
-  // snapshot alone shows the real available candidates and no stale default
-  // is asserted.
-  const flashDefaultGuidance = availableIds.includes("deepseek-flash")
+  // worker only while that worker is truly available AND its full execution
+  // profile is the exact deepseek/deepseek-v4-flash/reasoning=max default.
+  // An id-only match on a custom catalog never fabricates the default.
+  const flashDefaultGuidance = availableWorkers.some(isExplicitFlashMaxDefault)
     ? "Select the deepseek-flash worker (reasoning=max) by default for ordinary engineering work; "
       + "select another worker only when the child task explicitly requires visual input "
       + "or an architecture/high-difficulty review exception. "
@@ -342,6 +342,19 @@ function resolveWorkerCard(catalog: WorkerCatalog, workerId: string): WorkerCard
     throw new Error(`sub_worker worker ${workerId} is unavailable: ${card.availability.reason}`);
   }
   return card;
+}
+
+/**
+ * The policy's explicit default identity is the full execution profile, not
+ * the worker id alone: provider deepseek, model deepseek-v4-flash, and
+ * reasoningEffort=max must all match before the default guidance is shown.
+ */
+function isExplicitFlashMaxDefault(card: WorkerCard): boolean {
+  const profile = card.executionProfile;
+  return card.id === "deepseek-flash"
+    && profile.provider === "deepseek"
+    && profile.model === "deepseek-v4-flash"
+    && profile.reasoningEffort === "max";
 }
 
 function digestText(value: string): string {

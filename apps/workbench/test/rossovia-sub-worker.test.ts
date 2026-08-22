@@ -1059,4 +1059,60 @@ describe("sub_worker routing policy", () => {
     expect(unavailableTool.description).toContain("- kimi-coding:");
     expect(unavailableTool.description).not.toContain("- deepseek-pro:");
   });
+
+  test("a custom catalog reusing the deepseek-flash id without the exact default profile never shows fake guidance", () => {
+    const current = fixture();
+    // Id-only reuse with a foreign provider/model: the full default identity
+    // (provider=deepseek, model=deepseek-v4-flash, reasoningEffort=max) is
+    // missing, so the receiver prompt must not fabricate the Rossovia default.
+    const foreignFlashCard = WorkerCardSchema.parse({
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash",
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
+      description: "Custom catalog worker that reuses the deepseek-flash id with a different profile.",
+      executionProfile: {
+        id: "deepseek-flash",
+        version: "execution-profile.v1",
+        provider: "custom-provider",
+        model: "custom-model",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    }) as WorkerCard;
+    const foreignTool = createRossoviaSubWorkerTool({
+      ...subWorkerToolContext(current),
+      catalog: new WorkerCatalog([
+        { card: foreignFlashCard, createDriver: () => new ChildTestDriver() },
+      ]),
+    });
+    expect(foreignTool.description).not.toContain("by default for ordinary engineering work");
+    expect(foreignTool.description).not.toContain("reasoning=max");
+    expect(foreignTool.description).toContain("- deepseek-flash:");
+
+    // Partial match: correct provider/model but no reasoningEffort=max also
+    // withholds the default guidance; the snapshot still lists the real card.
+    const partialFlashCard = WorkerCardSchema.parse({
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash",
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
+      description: "Custom catalog worker with the flash provider/model but no reasoning effort.",
+      executionProfile: {
+        id: "deepseek-flash",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    }) as WorkerCard;
+    const partialTool = createRossoviaSubWorkerTool({
+      ...subWorkerToolContext(current),
+      catalog: new WorkerCatalog([
+        { card: partialFlashCard, createDriver: () => new ChildTestDriver() },
+      ]),
+    });
+    expect(partialTool.description).not.toContain("by default for ordinary engineering work");
+    expect(partialTool.description).not.toContain("reasoning=max");
+    expect(partialTool.description).toContain("- deepseek-flash:");
+  });
 });

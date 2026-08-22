@@ -3,6 +3,7 @@ import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integ
 import {
   createCurrentWorkerCatalog,
   currentWorkerCards,
+  DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE,
   deepSeekDriverOptions,
   deepSeekInferencePolicy,
 } from "../src/worker-policy";
@@ -222,6 +223,14 @@ test("the worker list names deepseek-flash/max as the explicit default for ordin
   expect(deepseekFlash.description).toContain("explicit default worker for ordinary engineering work");
   expect(deepseekFlash.description).toContain("reasoning=max");
   expect(deepseekFlash.labels).not.toContain("vision");
+
+  // The exported host-policy guidance (injected into catalog-enabled delegate
+  // loops) names the same Flash/max default from the same single source.
+  expect(DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE).toContain("deepseek-flash");
+  expect(DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE).toContain("reasoning=max");
+  expect(DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE).toContain("ordinary engineering work");
+  expect(DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE).toContain("architecture/high-difficulty");
+  expect(DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE).toContain("visual input");
 });
 
 test("the worker list keeps the explicit high-difficulty and vision exception boundaries", () => {

@@ -128,6 +128,15 @@ export interface DelegateLoopOptions {
   readonly prepareContribution: (call: DelegatePreparationCall) => Promise<PreparedDelegateExecution>;
   /** Enables the catalog vocabulary (`worker_list`, `worker_spawn`) and binds selected workers to drivers. */
   readonly workerCatalog?: WorkerCatalog;
+  /**
+   * Optional caller-owned selection guidance injected verbatim into the
+   * `worker_spawn` tool description and the worker boundary. Advisory prose
+   * only: the host still validates and binds the exact `workerId` the model
+   * supplies and never replaces it. When omitted, the catalog vocabulary
+   * stays provider-neutral and the model selects from card descriptions and
+   * labels alone.
+   */
+  readonly workerSelectionGuidance?: string;
   /** Enables `delegate_file`; the model can name files only inside this host-owned root. */
   readonly delegateInputRoot?: string;
   /**
@@ -277,12 +286,16 @@ const delegateFileTool = tool({
   outputSchema: DelegateToolResultSchema,
 });
 
-const workerSpawnTool = tool({
-  description:
-    "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId; the host validates and binds your exact selection and never replaces it. When the deepseek-flash worker is available, prefer it for ordinary engineering work (its profile executes with reasoning=max) and select another worker only when the work explicitly requires an architecture/high-difficulty review or visual input exception. Optional imagePaths are workspace-relative local images for a vision worker. Listing via worker_list is optional; call it first when you are uncertain whether a worker is available or matches the capability need.",
-  inputSchema: WorkerSpawnCallSchema,
-  outputSchema: DelegateToolResultSchema,
-});
+function createWorkerSpawnTool(workerSelectionGuidance?: string) {
+  return tool({
+    description:
+      "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId; the host validates and binds your exact selection and never replaces it. "
+      + (workerSelectionGuidance === undefined ? "" : `${workerSelectionGuidance} `)
+      + "Optional imagePaths are workspace-relative local images for a vision worker. Listing via worker_list is optional; call it first when you are uncertain whether a worker is available or matches the capability need.",
+    inputSchema: WorkerSpawnCallSchema,
+    outputSchema: DelegateToolResultSchema,
+  });
+}
 
 function createWriteFileTool(writer: DelegateFileWriter) {
   return tool({
@@ -408,7 +421,7 @@ export class DelegateLoopSession {
         ? { delegate_file: delegateFileTool }
         : {}),
       ...(catalogEnabled && (delegationOpen || retainedWorkerSpawnCall)
-        ? { worker_spawn: workerSpawnTool }
+        ? { worker_spawn: createWorkerSpawnTool(this.options.workerSelectionGuidance) }
         : {}),
       ...(catalogEnabled
         ? {
@@ -470,7 +483,7 @@ export class DelegateLoopSession {
         settledContributionKeys: [...this.settledContributionKeys],
         uncoveredObligations: uncovered(this.input.whole.obligations, this.coveredObligations),
         tasks: this.tasks.snapshot(),
-      }),
+      }, this.options.workerSelectionGuidance),
       tools,
       toolChoice: this.options.initialDelegateTool === undefined || !delegationOpen
         ? "auto"
@@ -484,7 +497,7 @@ export class DelegateLoopSession {
           settledContributionKeys: [...this.settledContributionKeys],
           uncoveredObligations: uncovered(this.input.whole.obligations, this.coveredObligations),
           tasks: this.tasks.snapshot(),
-        }),
+        }, this.options.workerSelectionGuidance),
         messages: compactWriteFileMessages(messages),
       }),
       maxRetries: 0,
@@ -736,12 +749,13 @@ function renderDelegateInstructions(
     readonly uncoveredObligations: readonly string[];
     readonly tasks: readonly Task[];
   },
+  workerSelectionGuidance: string | undefined,
 ): string {
   return `${input.instructions}
 
 ## Delegate boundary
 
-${inputWorkerBoundary(input, state)}
+${inputWorkerBoundary(workerSelectionGuidance)}
 
 Use task_create/task_update/task_list/task_get as the shared coordination memory. Create a task before delegating it, then pass that task's host-assigned ID as taskId. The host binds an admitted delegate to that task, and child settlement advances its process status. Task completion is coordination evidence, never semantic correctness. Do not delegate a blocked or completed task.
 
@@ -883,11 +897,17 @@ function driverFactory(
   throw new Error("delegate execution has no driver path");
 }
 
-function inputWorkerBoundary(
-  _input: DelegateLoopInput,
-  _state: { readonly delegationOpen: boolean },
-): string {
-  return "Use the worker tools exposed in this turn. In catalog mode, when the deepseek-flash worker is available, prefer it for ordinary engineering work: it is the explicit default and its profile executes with reasoning=max; select another worker only when the work explicitly requires an architecture/high-difficulty review or visual input exception. The host validates and binds the explicit `workerId` you choose and never replaces it. Call `worker_list` first whenever you are uncertain whether a worker is available or matches the capability need; listing is not required before spawning. Card descriptions are evidence for your semantic choice, not host routing policy. In legacy mode, use `delegate` or `delegate_file` as described by their tools. A role label, confident wording, schema validity, or protocol completion is not capability evidence. If the work is still `transform` or `unsupported-escalate`, do not spawn it as an ordinary Cell.";
+function inputWorkerBoundary(workerSelectionGuidance: string | undefined): string {
+  const selectionPolicy = workerSelectionGuidance === undefined
+    ? "Select the worker whose card description and labels best match the capability need."
+    : workerSelectionGuidance;
+  return "Use the worker tools exposed in this turn. In catalog mode, "
+    + `${selectionPolicy} The host validates and binds the explicit \`workerId\` you choose and never replaces it. `
+    + "Call `worker_list` first whenever you are uncertain whether a worker is available or matches the capability need; listing is not required before spawning. "
+    + "Card descriptions are evidence for your semantic choice, not host routing policy. "
+    + "In legacy mode, use `delegate` or `delegate_file` as described by their tools. "
+    + "A role label, confident wording, schema validity, or protocol completion is not capability evidence. "
+    + "If the work is still `transform` or `unsupported-escalate`, do not spawn it as an ordinary Cell.";
 }
 
 function finish(

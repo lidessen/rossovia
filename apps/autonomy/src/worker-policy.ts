@@ -25,6 +25,19 @@ const KIMI_CODE_CREDENTIAL = "KIMI_CODE_API_KEY";
 const KIMI_VISUAL_MODEL = "kimi-k2.7-code";
 const KIMI_CODING_PLAN_MODEL = KIMI_CODING_DEFAULT_MODEL;
 
+/**
+ * The single Rossovia host-policy source for the Flash/max default selection
+ * guidance. Catalog-enabled delegate loops inject this verbatim when the
+ * caller owns the Rossovia policy; it is advisory prose only — the host still
+ * validates and binds the exact workerId the model selects and never replaces
+ * it, and it never becomes forced routing.
+ */
+export const DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE =
+  "When the deepseek-flash worker is available, prefer it for ordinary engineering work: "
+  + "it is the explicit default and its profile executes with reasoning=max; "
+  + "select another worker only when the work explicitly requires an architecture/high-difficulty "
+  + "review or visual input exception.";
+
 /** Current host policy. Mechanism callers may instead supply any WorkerCatalog. */
 export function currentWorkerCards(
   environment: NodeJS.ProcessEnv = process.env,

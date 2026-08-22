@@ -28,6 +28,7 @@ import {
   type PreparedDelegateExecution,
   type WorkerSpawnCall,
 } from "../src/delegate-loop";
+import { DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE } from "../src/worker-policy";
 import { createLocalHost } from "../../../packages/work-cell/src/workspace";
 
 // Every test caller explicitly injects the real local filesystem/Bun adapter
@@ -113,6 +114,9 @@ test("catalog mode lists capability cards and retains the Agent's explicit worke
 
   expect(selected).toBe("worker-b");
   expect(JSON.stringify(listFollowup)).toContain("source-grounded engineering review");
+  // Without injected host guidance the catalog vocabulary stays
+  // provider-neutral: no default worker is named in the tool surface.
+  expect(JSON.stringify(model.doGenerateCalls[0]?.tools)).not.toContain("deepseek-flash");
   expect(result.batches[0]?.invocations[0]).toMatchObject({
     toolName: "worker_spawn",
     call: { workerId: "worker-b" },
@@ -147,6 +151,10 @@ test("skipping worker_list still shows the deepseek-flash default selection poli
   const result = await runDelegateLoop(loopInput(root), {
     model,
     workerCatalog: catalog,
+    // The Rossovia host call point injects its Flash/max default guidance so
+    // the static worker_spawn description and worker boundary convey the
+    // policy even when the model skips worker_list.
+    workerSelectionGuidance: DEEPSEEK_FLASH_WORKER_SELECTION_GUIDANCE,
     prepareContribution: async (delegateCall) => {
       if (!("workerId" in delegateCall)) throw new Error("expected catalog worker selection");
       return workerExecution(root, delegateCall);
@@ -160,10 +168,10 @@ test("skipping worker_list still shows the deepseek-flash default selection poli
 
   // The first model step spawned directly without calling worker_list, so the
   // static worker_spawn description and worker boundary must already convey
-  // the default selection policy: prefer deepseek-flash (reasoning=max) for
-  // ordinary engineering work, explicit architecture/high-difficulty or
-  // visual exceptions, worker_list first when uncertain, and no host
-  // replacement of the explicitly selected workerId.
+  // the injected default selection policy: prefer deepseek-flash
+  // (reasoning=max) for ordinary engineering work, explicit
+  // architecture/high-difficulty or visual exceptions, worker_list first when
+  // uncertain, and no host replacement of the explicitly selected workerId.
   expect(calls).toBe(2);
   const toolDefinitions = JSON.stringify(model.doGenerateCalls[0]?.tools);
   expect(toolDefinitions).toContain("deepseek-flash");
