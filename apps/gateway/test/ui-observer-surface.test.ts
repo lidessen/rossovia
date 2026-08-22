@@ -653,7 +653,11 @@ test("attempt cards read the observer review association none/available/invalid-
     reason: "review log unreadable",
     detail: expect.stringContaining("不声明任何 review"),
   });
-  // Available carries the existing review facts plus the review-log ref.
+  // Available rebuilds every review onto the strict field whitelist: only
+  // reviewId/standing/recordedAt/subjectOutcome survive, and subjectOutcome
+  // keeps exactly settlementStatus/cellStatus/finalStatus/
+  // semanticAcceptance. Raw record fields (opinion text, observer identity,
+  // evidence refs) never leak into the attempt card.
   const projection = taskAttemptObserverReviewProjection({
     standing: "available",
     logRef: "state/workflow/reviews.json",
@@ -665,20 +669,57 @@ test("attempt cards read the observer review association none/available/invalid-
         subjectOutcome: {
           settlementStatus: "recorded",
           cellStatus: "passed",
+          finalStatus: "passed",
           semanticAcceptance: "not-evaluated",
+          rawExtra: "must not survive",
         },
+        finding: "raw opinion text must not leak",
+        observer: { kind: "agent", workerId: "deepseek-flash" },
+        evidenceRefs: ["state/task-attempts/raw.json"],
+      },
+      {
+        reviewId: "review-2",
+        standing: "query-gap",
+        recordedAt: "2026-08-21T00:04:00.000Z",
       },
     ],
   });
   expect(projection.standing).toBe("available");
   expect(projection.label).toBe("有 observer 记录");
   expect(projection.logRef).toBe("state/workflow/reviews.json");
-  expect(projection.reviews).toHaveLength(1);
-  expect(projection.reviews[0]).toMatchObject({
-    reviewId: "review-1",
-    standing: "recorded",
-    recordedAt: "2026-08-21T00:03:00.000Z",
-  });
+  expect(projection.reviews).toEqual([
+    {
+      reviewId: "review-1",
+      standing: "recorded",
+      recordedAt: "2026-08-21T00:03:00.000Z",
+      subjectOutcome: {
+        settlementStatus: "recorded",
+        cellStatus: "passed",
+        finalStatus: "passed",
+        semanticAcceptance: "not-evaluated",
+      },
+    },
+    {
+      reviewId: "review-2",
+      standing: "query-gap",
+      recordedAt: "2026-08-21T00:04:00.000Z",
+    },
+  ]);
+  // An available standing that carries no review records is a contradiction:
+  // it fails closed as unknown and never claims 有 observer 记录.
+  expect(taskAttemptObserverReviewProjection({
+    standing: "available",
+    logRef: "state/workflow/reviews.json",
+    reviews: [],
+  })).toEqual({ standing: "unknown", label: "review 状态未知" });
+  expect(taskAttemptObserverReviewProjection({
+    standing: "available",
+    logRef: "state/workflow/reviews.json",
+  })).toEqual({ standing: "unknown", label: "review 状态未知" });
+  expect(taskAttemptObserverReviewProjection({
+    standing: "available",
+    reviews: [null, "not-an-object"],
+  })).toEqual({ standing: "unknown", label: "review 状态未知" });
   // A malformed or missing standing never claims a review.
   expect(taskAttemptObserverReviewProjection({})).toEqual({
     standing: "unknown",
@@ -693,4 +734,9 @@ test("attempt cards read the observer review association none/available/invalid-
   expect(app).toContain("task-attempt-review-log");
   expect(app).toContain("renderTaskAttemptObserverReview(observerReviewProjection)");
   expect(app).toContain("observerSubjectOutcomeCopy(review.subjectOutcome)");
+  // The projection rebuilds the strict whitelist and fails closed when an
+  // available standing carries no review records.
+  expect(app).toContain("rawReviews.length === 0");
+  expect(app).toContain("subjectOutcome.semanticAcceptance === undefined");
+  expect(app).toContain('reviewId: typeof review.reviewId === "string" ? review.reviewId : ""');
 });

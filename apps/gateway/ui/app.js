@@ -959,7 +959,14 @@ export function taskAttemptRelationProjection(attempt) {
  * "available" standing carries the existing review facts (reviewId,
  * standing, recordedAt, subjectOutcome) plus the review-log ref they were
  * read from, and "invalid-log" means the review log could not be trusted so
- * no review is claimed. The raw review opinion text is never copied here.
+ * no review is claimed. Every available review is rebuilt onto a strict
+ * whitelist — only reviewId/standing/recordedAt/subjectOutcome survive, and
+ * subjectOutcome keeps exactly settlementStatus/cellStatus/finalStatus/
+ * semanticAcceptance — so raw record fields (opinion text, observer
+ * identity, evidence refs) never leak into the attempt card. An available
+ * standing that carries no review records is a contradiction and fails
+ * closed as unknown: the card never claims 有 observer 记录 without a review
+ * to show. The raw review opinion text is never copied here.
  */
 export function taskAttemptObserverReviewProjection(observerReview) {
   const value = observerReview && typeof observerReview === "object"
@@ -984,9 +991,39 @@ export function taskAttemptObserverReviewProjection(observerReview) {
     };
   }
   if (standing === "available") {
-    const reviews = Array.isArray(value.reviews)
+    const rawReviews = Array.isArray(value.reviews)
       ? value.reviews.filter((review) => review && typeof review === "object")
       : [];
+    // An available standing with no review records is a contradiction: fail
+    // closed as unknown instead of claiming 有 observer 记录 with nothing to
+    // show. The server never emits this shape; the browser still refuses it.
+    if (rawReviews.length === 0) {
+      return { standing: "unknown", label: "review 状态未知" };
+    }
+    const reviews = rawReviews.map((review) => ({
+      reviewId: typeof review.reviewId === "string" ? review.reviewId : "",
+      standing: typeof review.standing === "string" ? review.standing : "",
+      recordedAt: typeof review.recordedAt === "string" ? review.recordedAt : "",
+      ...(review.subjectOutcome !== null
+        && typeof review.subjectOutcome === "object"
+        ? {
+            subjectOutcome: {
+              ...(review.subjectOutcome.settlementStatus === undefined
+                ? {}
+                : { settlementStatus: review.subjectOutcome.settlementStatus }),
+              ...(review.subjectOutcome.cellStatus === undefined
+                ? {}
+                : { cellStatus: review.subjectOutcome.cellStatus }),
+              ...(review.subjectOutcome.finalStatus === undefined
+                ? {}
+                : { finalStatus: review.subjectOutcome.finalStatus }),
+              ...(review.subjectOutcome.semanticAcceptance === undefined
+                ? {}
+                : { semanticAcceptance: review.subjectOutcome.semanticAcceptance }),
+            },
+          }
+        : {}),
+    }));
     return {
       standing: "available",
       label: "有 observer 记录",
