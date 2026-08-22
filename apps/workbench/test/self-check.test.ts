@@ -15,7 +15,7 @@ import {
   type SelfCheckWorker,
 } from "../src/self-check";
 import { defaultSelfCheckTaskReadPort } from "../src/self-check-task";
-import { runCommand } from "../src/process";
+import { runCommand, type CommandResult } from "../src/process";
 import { parseTaskReceiptEvidenceRef, taskReceiptEvidenceRef } from "../src/conversation/contracts";
 import { createPrincipalTask } from "../src/tasks";
 
@@ -548,9 +548,40 @@ test("clean and dirty linked worktrees of the current registered project are loc
   expect(gate.mode).toBe("normal");
   expect(gate.startupStatus).toBe("healthy");
   expect(gateOpinionStarted).toBe(false);
+
+  // Observation-failure boundary: an unreadable `git worktree list` is a
+  // failed project observation, not mere WIP attention, so it degrades the
+  // mechanical projection and keeps the boot gate in safe-diagnostic.
+  const failingGit = (arguments_: readonly string[], directory: string): CommandResult => {
+    if (arguments_[0] === "worktree") {
+      return { exitCode: 1, stdout: "", stderr: "fatal: worktree list is unavailable for this repository" };
+    }
+    return runCommand("git", ["-C", directory, ...arguments_]);
+  };
+  const failed = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    dependencies: { ...dependencies([worker("test-worker", "available")]), git: failingGit },
+  });
+  const failedProjectCheck = failed.mechanical.checks.find((check) => check.id === "project");
+  expect(failedProjectCheck?.status).toBe("degraded");
+  expect(failedProjectCheck?.detail).toContain("worktree list is unavailable");
+  expect(failed.mechanical.status).toBe("degraded");
+  const failedGate = runSelfCheckStartupGate({
+    home,
+    cwd: repo,
+    opinion: true,
+    dependencies: { ...dependencies([worker("test-worker", "unavailable")]), git: failingGit },
+  });
+  expect(failedGate.mechanical.checks.find((check) => check.id === "project")?.status).toBe("degraded");
+  expect(failedGate.mechanical.status).toBe("degraded");
+  expect(failedGate.readiness).toBe("boot-attention");
+  expect(failedGate.mode).toBe("safe-diagnostic");
+  expect(failedGate.startupStatus).toBe("degraded");
 });
 
-test("stale cached runner evidence is labeled cached-only and unbound, never a live carrier", async () => {
+test("stale cached runner evidence is labeled cached-only and unbound, and a malformed cached file is isolated as error evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-stale-runner-"));
   temporaryRoots.push(root);
   const home = join(root, "home");
@@ -558,10 +589,16 @@ test("stale cached runner evidence is labeled cached-only and unbound, never a l
   initializeHome(home);
   const statusPath = join(home, "missions", "principal-workbench-dogfood", "runner-status.json");
   writeJson(statusPath, cachedRunnerStatus("principal-workbench-dogfood", "running"));
+  // A sibling cached file that fails the canonical Mission runner status
+  // schema must not truncate the scan or masquerade as a cached runner.
+  const malformedPath = join(home, "missions", "broken-runner", "runner-status.json");
+  writeJson(malformedPath, { runnerId: "runner-broken" });
   // Production builds evidence refs from the realpath-canonicalized home, so
   // the fixture expectation must use the same canonical path to stay locatable.
   const canonicalStatusPath = realpathSync(statusPath);
+  const canonicalMalformedPath = realpathSync(malformedPath);
   const before = readFileSync(canonicalStatusPath, "utf8");
+  const malformedBefore = readFileSync(canonicalMalformedPath, "utf8");
 
   const result = await runSelfCheck({
     home,
@@ -570,14 +607,18 @@ test("stale cached runner evidence is labeled cached-only and unbound, never a l
     dependencies: dependencies([worker("test-worker", "available")]),
   });
 
-  expect(result.mechanical.status).toBe("attention");
+  // The malformed sibling degrades the runner observation, while the valid
+  // cached record is still projected and the exact bad file stays locatable.
+  expect(result.mechanical.status).toBe("degraded");
   const runnerCheck = result.mechanical.checks.find((check) => check.id === "runner");
-  expect(runnerCheck?.status).toBe("attention");
+  expect(runnerCheck?.status).toBe("degraded");
   expect(runnerCheck?.detail).toContain("cached");
   expect(runnerCheck?.detail).toContain("live reachability is unverified");
   expect(runnerCheck?.detail).toContain("unbound");
   expect(runnerCheck?.detail).toContain("no-explicit-mission-id-match");
+  expect(runnerCheck?.detail).toContain(canonicalMalformedPath);
   expect(runnerCheck?.evidenceRefs).toContain(canonicalStatusPath);
+  expect(runnerCheck?.evidenceRefs).toContain(canonicalMalformedPath);
   expect(result.mechanical.runners).toHaveLength(1);
   expect(result.mechanical.runners?.[0]).toEqual(expect.objectContaining({
     runnerId: "runner-principal-workbench-dogfood",
@@ -588,8 +629,12 @@ test("stale cached runner evidence is labeled cached-only and unbound, never a l
     binding: { kind: "unbound", reason: "no-explicit-mission-id-match" },
   }));
   expect(typeof result.mechanical.runners?.[0]?.ageMs).toBe("number");
-  // Read-only proof: the cached runner file is never rewritten or removed.
+  expect(result.mechanical.runnerErrors).toEqual([
+    { sourcePath: canonicalMalformedPath, error: expect.stringContaining("invalid") },
+  ]);
+  // Read-only proof: neither cached runner file is rewritten or removed.
   expect(readFileSync(canonicalStatusPath, "utf8")).toBe(before);
+  expect(readFileSync(canonicalMalformedPath, "utf8")).toBe(malformedBefore);
 });
 
 test("stale cached runners never escalate into a startup gate blocker", () => {

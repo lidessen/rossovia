@@ -4,6 +4,7 @@ import { loadHome, resolveHome } from "./home";
 import { expandPath } from "./paths";
 import { setupStatus as readSetupStatus } from "./setup";
 import { runCommand, type CommandResult } from "./process";
+import { MissionRunnerStatusSchema } from "../../autonomy/src/mission-runner";
 import {
   defaultSelfCheckTaskReadPort,
   sameSelfCheckTaskRevision,
@@ -81,6 +82,17 @@ export interface SelfCheckCachedRunnerEvidence {
   readonly binding: SelfCheckCachedRunnerBinding;
 }
 
+/**
+ * One cached runner status file that failed canonical projection against the
+ * existing Mission runner status schema. The file itself is never rewritten
+ * or removed; the exact read/parse error is retained so the file never
+ * masquerades as a valid cached runner.
+ */
+export interface SelfCheckCachedRunnerFileError {
+  readonly sourcePath: string;
+  readonly error: string;
+}
+
 export interface SelfCheckMechanical {
   readonly status: SelfCheckStatus;
   readonly checks: readonly SelfCheckCheck[];
@@ -103,6 +115,8 @@ export interface SelfCheckMechanical {
   readonly project?: SelfCheckProjectEvidence;
   /** Cached runner status files observed under the home, when any exist. */
   readonly runners?: readonly SelfCheckCachedRunnerEvidence[];
+  /** Cached runner status files that failed canonical projection, when any exist. */
+  readonly runnerErrors?: readonly SelfCheckCachedRunnerFileError[];
 }
 
 export interface SelfCheckOpinionItem {
@@ -209,13 +223,20 @@ const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
  * Linked-worktree WIP evidence is excluded the same way: uncommitted WIP in
  * a linked worktree of the registered project is mechanical attention for
  * the later Workbench snapshot, never a boot blocker for this workspace.
+ * A failed project observation (an unreadable worktree listing or status) is
+ * a real observation gap and keeps the boot gate in safe-diagnostic.
  */
 export function runSelfCheckStartupGate(options: SelfCheckOptions = {}): SelfCheckStartupGate {
   const mechanical = runMechanicalSelfCheck(options);
+  // Dirty linked-worktree WIP is honest mechanical attention but never a
+  // boot blocker; a degraded project observation (unreadable worktree
+  // listing or status) is a real observation gap and does block boot.
   const startupStatus = aggregateStatus(
     mechanical.checks.filter(
       (check) =>
-        check.id !== "worker-policy" && check.id !== "runner" && check.id !== "project",
+        check.id !== "worker-policy"
+        && check.id !== "runner"
+        && !(check.id === "project" && check.status === "attention"),
     ),
   );
   return {
@@ -472,9 +493,11 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
       });
     }
   } catch (error: unknown) {
+    // A failed worktree listing or status read is an observation failure,
+    // not WIP attention: the registered project could not be projected.
     checks.push({
       id: "project",
-      status: "attention",
+      status: "degraded",
       detail: message(error),
       evidenceRefs: source === undefined ? [`git:${cwd}`] : [`git:${source.root}:worktrees`],
     });
@@ -569,8 +592,12 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
   // `<home>/missions/*/runner-status.json` runner cache. It never probes
   // liveness and never writes, deletes, or repairs the cache; a cached
   // record is labeled cached-only, with live reachability unverified and
-  // project binding (or its absence) stated explicitly.
+  // project binding (or its absence) stated explicitly. Every file is
+  // validated against the canonical Mission runner status schema, and a
+  // single unreadable or invalid file is isolated as precise error evidence
+  // while scanning continues with the remaining files.
   let runners: SelfCheckCachedRunnerEvidence[] = [];
+  let runnerErrors: SelfCheckCachedRunnerFileError[] = [];
   try {
     const runnerRoot = join(home, "missions");
     if (existsSync(runnerRoot)) {
@@ -604,26 +631,27 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
       for (const directory of directories) {
         const path = join(runnerRoot, directory, "runner-status.json");
         if (!existsSync(path)) continue;
-        let raw: { runnerId?: unknown; missionId?: unknown; state?: unknown; updatedAt?: unknown };
+        let parsed: unknown;
         try {
-          raw = JSON.parse(readFileSync(path, "utf8")) as typeof raw;
+          parsed = JSON.parse(readFileSync(path, "utf8"));
         } catch (error: unknown) {
-          throw new Error(`cached runner status is unreadable at ${path}: ${message(error)}`);
+          runnerErrors.push({
+            sourcePath: path,
+            error: `cached runner status is unreadable at ${path}: ${message(error)}`,
+          });
+          continue;
         }
-        const runnerId = raw.runnerId;
-        const missionId = raw.missionId;
-        const state = raw.state;
-        const sourceUpdatedAt = raw.updatedAt;
-        if (
-          typeof runnerId !== "string" || runnerId.length === 0
-          || typeof missionId !== "string" || missionId.length === 0
-          || typeof state !== "string" || state.length === 0
-          || typeof sourceUpdatedAt !== "string" || sourceUpdatedAt.length === 0
-        ) {
-          throw new Error(`cached runner status is invalid at ${path}`);
+        const result = MissionRunnerStatusSchema.safeParse(parsed);
+        if (!result.success) {
+          runnerErrors.push({
+            sourcePath: path,
+            error: `cached runner status is invalid at ${path}: ${result.error.issues[0]?.message ?? "schema mismatch"}`,
+          });
+          continue;
         }
+        const status = result.data;
         const matching = [...missionIdsByProject.entries()]
-          .filter(([, ids]) => ids.has(missionId))
+          .filter(([, ids]) => ids.has(status.missionId))
           .map(([projectKey]) => projectKey);
         const binding: SelfCheckCachedRunnerBinding = matching.length === 1
           ? { kind: "project-mission", projectKey: matching[0]! }
@@ -631,38 +659,49 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
             kind: "unbound",
             reason: matching.length === 0 ? "no-explicit-mission-id-match" : "ambiguous-mission-id",
           };
-        const updatedAtMs = Date.parse(sourceUpdatedAt);
+        const updatedAtMs = Date.parse(status.updatedAt);
         runners.push({
-          runnerId,
-          missionId,
-          state,
+          runnerId: status.runnerId,
+          missionId: status.missionId,
+          state: status.state,
           sourcePath: path,
-          sourceUpdatedAt,
+          sourceUpdatedAt: status.updatedAt,
           ageMs: Number.isFinite(updatedAtMs) ? Date.now() - updatedAtMs : null,
           binding,
         });
       }
     }
     const unbound = runners.filter(isUnboundRunner);
+    const evidenceRefs = [
+      ...runners.map((runner) => runner.sourcePath),
+      ...runnerErrors.map((entry) => entry.sourcePath),
+    ];
     checks.push({
       id: "runner",
-      status: runners.length === 0 ? "ok" : "attention",
-      detail: runners.length === 0
+      status: runnerErrors.length > 0 ? "degraded" : runners.length === 0 ? "ok" : "attention",
+      detail: runners.length === 0 && runnerErrors.length === 0
         ? "No cached runner status file is present; the runner cache is an empty observation source."
         : [
-          `Cached runner status files are present (${runners.length}); each is a cached observation only, live reachability is unverified, and no cached record proves a live carrier.`,
+          ...(runners.length > 0
+            ? [`Cached runner status files are present (${runners.length}); each is a cached observation only, live reachability is unverified, and no cached record proves a live carrier.`]
+            : []),
           ...unbound.map((runner) =>
             `Runner ${runner.runnerId} (mission ${runner.missionId}) is unbound: ${runner.binding.reason}.`
           ),
+          ...(runnerErrors.length > 0
+            ? [`${runnerErrors.length} cached runner status file(s) could not be projected as canonical cached records; each remains error evidence and never masquerades as a cached runner.`]
+            : []),
+          ...runnerErrors.map((entry) => `${entry.sourcePath}: ${entry.error}.`),
         ].join(" "),
-      evidenceRefs: runners.length === 0
-        ? [`${home}/missions`]
-        : runners.map((runner) => runner.sourcePath),
+      evidenceRefs: evidenceRefs.length === 0 ? [`${home}/missions`] : evidenceRefs,
     });
   } catch (error: unknown) {
+    // Only a root-level cache observation failure reaches this catch; every
+    // individual file failure was already isolated above and cannot truncate
+    // the projected list.
     checks.push({
       id: "runner",
-      status: "attention",
+      status: "degraded",
       detail: message(error),
       evidenceRefs: [`${home}/missions`],
     });
@@ -681,6 +720,7 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
     ...(source === undefined ? {} : { source }),
     ...(project === undefined ? {} : { project }),
     ...(runners.length === 0 ? {} : { runners }),
+    ...(runnerErrors.length === 0 ? {} : { runnerErrors }),
   };
 }
 
