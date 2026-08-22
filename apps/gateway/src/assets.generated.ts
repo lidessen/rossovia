@@ -9967,6 +9967,103 @@ export function observerReviewSubjectAcceptanceProjection(review) {
 }
 
 /**
+ * The attempt card's Principal acceptance boundary, expressed strictly from
+ * the settlement field the projection retains. Every ordinary settlement
+ * records semanticAcceptance as "not-evaluated": the run settles
+ * mechanically, and semantic acceptance stays with the Principal. A missing
+ * or unrecognized value keeps the explicit unevaluated boundary absent
+ * instead of inventing a pass/fail claim.
+ */
+export function taskAttemptSemanticAcceptanceProjection(attempt) {
+  const value = attempt && typeof attempt === "object"
+    ? attempt.semanticAcceptance
+    : undefined;
+  if (value === "not-evaluated") {
+    return {
+      standing: "not-evaluated",
+      label: "语义验收：待 Principal",
+      detail: "结算只记录机械执行结果，不评估语义验收；语义验收由 Principal 显式完成，不会自动发生。",
+    };
+  }
+  return { standing: "absent", label: "语义验收未结算" };
+}
+
+/**
+ * One flat level of the retained parent/child attempt relation. A child
+ * attempt whose retained parent-tool binding names this attempt as its
+ * parent Run is a child; this attempt's own parent-tool binding names its
+ * parent. The card renders exactly this one level as plain references — a
+ * child card never nests inside its parent card, so the expansion depth is
+ * always one and can never recurse.
+ */
+export function taskAttemptRelationProjection(attempt) {
+  const value = attempt && typeof attempt === "object" ? attempt : {};
+  const parentAttemptId =
+    typeof value.parentAttemptId === "string" && value.parentAttemptId !== ""
+      ? value.parentAttemptId
+      : null;
+  const parentAttemptRef =
+    typeof value.parentAttemptRef === "string" && value.parentAttemptRef !== ""
+      ? value.parentAttemptRef
+      : null;
+  const childAttemptIds = Array.isArray(value.childAttemptIds)
+    ? value.childAttemptIds.filter(
+      (id) => typeof id === "string" && id !== "",
+    )
+    : [];
+  return {
+    parentAttemptId,
+    parentAttemptRef,
+    childAttemptIds,
+    childCount: childAttemptIds.length,
+  };
+}
+
+/**
+ * The observer review association of one attempt card, read strictly from
+ * the standing the projection joined: "none" is the explicit absence, an
+ * "available" standing carries the existing review facts (reviewId,
+ * standing, recordedAt, subjectOutcome) plus the review-log ref they were
+ * read from, and "invalid-log" means the review log could not be trusted so
+ * no review is claimed. The raw review opinion text is never copied here.
+ */
+export function taskAttemptObserverReviewProjection(observerReview) {
+  const value = observerReview && typeof observerReview === "object"
+    ? observerReview
+    : {};
+  const standing = typeof value.standing === "string"
+    ? value.standing
+    : "unknown";
+  if (standing === "none") {
+    return {
+      standing: "none",
+      label: "无 observer 记录",
+      detail: "已读取 review 记录源；没有记录评审此 attempt。",
+    };
+  }
+  if (standing === "invalid-log") {
+    return {
+      standing: "invalid-log",
+      label: "review 记录不可信",
+      reason: typeof value.reason === "string" ? value.reason : "",
+      detail: "review 记录源不可信，本卡片不声明任何 review。",
+    };
+  }
+  if (standing === "available") {
+    const reviews = Array.isArray(value.reviews)
+      ? value.reviews.filter((review) => review && typeof review === "object")
+      : [];
+    return {
+      standing: "available",
+      label: "有 observer 记录",
+      logRef: typeof value.logRef === "string" ? value.logRef : "",
+      reviews,
+    };
+  }
+  return { standing: "unknown", label: "review 状态未知" };
+}
+
+/**
  * Safe existing-task locating entry for an observer review. Only a review
  * whose subject declares a task id that is present in the current read-only
  * work-item projection becomes locatable; the browser never links to a task
@@ -13461,6 +13558,77 @@ export function taskLocatorEmptySummary(locator, context) {
     panel.innerHTML = attemptList.map(renderTaskAttempt).join("");
   }
 
+  const TASK_ATTEMPT_CHILDREN_PREVIEW_LIMIT = 8;
+
+  function taskAttemptSemanticAcceptanceRow(projection) {
+    if (projection.standing !== "not-evaluated") return "";
+    return '<div class="task-attempt-boundary" data-standing="' + escapeHtml(projection.standing) + '">' +
+      "<dt>语义验收</dt><dd><strong>" + escapeHtml(projection.label) + "</strong>" +
+      "<small>" + escapeHtml(projection.detail) + "</small></dd></div>";
+  }
+
+  function taskAttemptParentRow(relation) {
+    if (relation.parentAttemptId === null) return "";
+    return '<div class="task-attempt-parent" data-parent="' + escapeHtml(relation.parentAttemptId) + '">' +
+      "<dt>父尝试</dt><dd><code>" + escapeHtml(relation.parentAttemptId) + "</code>" +
+      (relation.parentAttemptRef
+        ? "<small>" + escapeHtml(relation.parentAttemptRef) + "</small>"
+        : "") +
+      "</dd></div>";
+  }
+
+  function renderTaskAttemptChildren(relation) {
+    const shown = relation.childAttemptIds.slice(0, TASK_ATTEMPT_CHILDREN_PREVIEW_LIMIT);
+    const remainder = relation.childCount - shown.length;
+    const items = shown.map((childId) =>
+      "<li><code>" + escapeHtml(childId) + "</code></li>",
+    ).join("");
+    const remainderNote = remainder > 0
+      ? '<li class="task-attempt-children-more">另有 ' + escapeHtml(String(remainder)) + " 项</li>"
+      : "";
+    return '<details class="task-attempt-children" data-count="' + escapeHtml(String(relation.childCount)) + '">' +
+      "<summary>子尝试 · " + escapeHtml(String(relation.childCount)) +
+      " 项 · 仅一层平铺引用，不递归展开</summary>" +
+      "<ul>" + items + remainderNote + "</ul>" +
+      "</details>";
+  }
+
+  function renderTaskAttemptObserverReview(projection) {
+    if (
+      projection.standing !== "none"
+      && projection.standing !== "available"
+      && projection.standing !== "invalid-log"
+    ) {
+      return "";
+    }
+    if (projection.standing === "available") {
+      const reviews = projection.reviews.map((review) => {
+        const outcome = observerSubjectOutcomeCopy(review.subjectOutcome);
+        const standingLabel = reviewStandingCopy(review.standing);
+        return '<article class="task-attempt-review" data-standing="' +
+          escapeHtml(text(review.standing, "unknown")) + '">' +
+          "<span>review " + escapeHtml(text(review.reviewId, "未识别 review")) +
+          " · " + escapeHtml(standingLabel) + "</span>" +
+          "<small>recorded " + escapeHtml(formatTime(text(review.recordedAt, ""))) +
+          " · " + escapeHtml(outcome) + "</small>" +
+          "</article>";
+      }).join("");
+      return '<details class="task-attempt-observer-review" data-standing="available">' +
+        "<summary>observer review · " + escapeHtml(String(projection.reviews.length)) +
+        " 条 · " + escapeHtml(projection.label) + "</summary>" +
+        '<div class="task-attempt-review-list">' + reviews + "</div>" +
+        '<p class="task-attempt-review-log">记录源 <code>' +
+        escapeHtml(projection.logRef) + "</code></p>" +
+        "</details>";
+    }
+    return '<details class="task-attempt-observer-review" data-standing="' +
+      escapeHtml(projection.standing) + '">' +
+      "<summary>" + escapeHtml(projection.label) + "</summary>" +
+      "<p>" + escapeHtml(projection.detail) +
+      (projection.reason ? " " + escapeHtml(projection.reason) : "") +
+      "</p></details>";
+  }
+
   function renderTaskAttempt(attempt) {
     const statusCopy = {
       recorded: "recorded · 已记录",
@@ -13474,6 +13642,11 @@ export function taskLocatorEmptySummary(locator, context) {
     const settledAt = text(first(attempt, ["settledAt"]), "");
     const requestedSession = text(first(attempt, ["requestedSession"]), "");
     const evidence = first(attempt, ["evidence"], {});
+    const semanticProjection = taskAttemptSemanticAcceptanceProjection(attempt);
+    const relation = taskAttemptRelationProjection(attempt);
+    const observerReviewProjection = taskAttemptObserverReviewProjection(
+      attempt && typeof attempt === "object" ? attempt.observerReview : undefined,
+    );
     const evidenceSources = [
       ["attempt", "A", "Attempt"],
       ["finalRecord", "F", "Work Cell final"],
@@ -13523,12 +13696,16 @@ export function taskLocatorEmptySummary(locator, context) {
           \${modelFact(attempt, "taskRevision", "Task 修订")}
           \${modelFact(attempt, "sourceRevision", "Source 修订")}
           <div><dt>请求 session</dt><dd>\${escapeHtml(requestedSession || "未请求 · 新 session")}</dd></div>
+          \${taskAttemptSemanticAcceptanceRow(semanticProjection)}
+          \${taskAttemptParentRow(relation)}
         </dl>
         \${observedFacts}
         <div class="task-attempt-evidence">
           <span>Evidence standing</span>
           <ul class="execution-evidence-layers">\${evidenceRows}</ul>
         </div>
+        \${renderTaskAttemptChildren(relation)}
+        \${renderTaskAttemptObserverReview(observerReviewProjection)}
         <details class="task-attempt-sources">
           <summary>Stable source refs</summary>
           <dl class="local-task-facts task-attempt-refs">
