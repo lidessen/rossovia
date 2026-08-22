@@ -1179,6 +1179,79 @@ export function observerReviewCorrelationProjection(review) {
   }
 }
 
+const OBSERVER_DRAFT_SUMMARY_LIMIT = 160;
+const OBSERVER_DRAFT_EVIDENCE_REF_LIMIT = 3;
+
+function observerReviewDraftNextStep(record) {
+  const standing = record !== null && typeof record === "object" && typeof record.standing === "string"
+    ? record.standing
+    : "unknown";
+  return {
+    recorded: "已记录意见；处理状态未记录 canonical handling evidence，填写草稿不构成处理事实。",
+    "query-gap": "查询缺口：无意见文本；处理状态未记录 canonical handling evidence，不可推断。",
+    "runner-failed": "observer 失败：无意见文本；处理状态未记录 canonical handling evidence，不可推断。",
+  }[standing] || "处理状态未记录 canonical handling evidence，不可推断。";
+}
+
+function observerReviewDraftCorrelationLine(correlation) {
+  if (correlation.standing === "available") {
+    return "correlation: conversation " + correlation.conversationId
+      + " · turn " + correlation.turnId
+      + " · action " + correlation.actionId
+      + " · sourceRef " + correlation.sourceRef;
+  }
+  return "correlation: 未知 · " + correlation.label + "（不猜测来源）";
+}
+
+/**
+ * The short structured conversation draft behind the existing
+ * "在对话中处理" entry. Only the bounded facts a Principal needs to decide
+ * what to do are copied: reviewId, Task/attempt, record standing, subject
+ * outcome, a bounded summary, the mechanical next step, and the canonical
+ * evidence refs (including the exact correlation sourceRef when recorded).
+ * The full review markdown is never copied — it stays expandable in the
+ * observer card ("展开完整 review") and the draft only references it.
+ * Missing or unreadable sources fail closed with explicit unknown copy:
+ * no guessed conversation, no fabricated evidence. The draft is text only;
+ * filling it never sends a message and never marks the review handled.
+ */
+export function observerReviewDraft(review) {
+  const record = review !== null && typeof review === "object" ? review : {};
+  const subject = record.subject !== null && typeof record.subject === "object" ? record.subject : {};
+  const reviewId = typeof record.reviewId === "string" && record.reviewId.trim() !== ""
+    ? record.reviewId
+    : "未识别 review";
+  const taskId = typeof subject.taskId === "string" ? subject.taskId.trim() : "";
+  const attemptId = typeof subject.attemptId === "string" ? subject.attemptId.trim() : "";
+  const statusProjection = observerReviewStatusProjection(record);
+  const correlation = observerReviewCorrelationProjection(record);
+  const evidenceRefs = Array.isArray(record.evidenceRefs)
+    ? record.evidenceRefs.filter((ref) => typeof ref === "string" && ref.trim() !== "")
+    : [];
+  const shownRefs = evidenceRefs.slice(0, OBSERVER_DRAFT_EVIDENCE_REF_LIMIT);
+  const remainingRefs = evidenceRefs.length - shownRefs.length;
+  const reviewText = typeof record.reviewText === "string" && record.reviewText !== ""
+    ? record.reviewText
+    : typeof record.finding === "string" && record.finding !== ""
+      ? record.finding
+      : "";
+  const blocks = [
+    "处理 observer review " + reviewId,
+    "Task/attempt: " + (taskId !== "" ? "task " + taskId : "未声明 Task")
+      + (attemptId !== "" ? " · attempt " + attemptId : ""),
+    "standing: " + statusProjection.label,
+    "subject outcome: " + observerSubjectOutcomeCopy(record.subjectOutcome),
+    "摘要: " + observerReviewSummary(reviewText, OBSERVER_DRAFT_SUMMARY_LIMIT),
+    "下一步: " + observerReviewDraftNextStep(record),
+    "证据: " + (shownRefs.length > 0 ? shownRefs.join(" · ") : "未提供证据引用")
+      + (remainingRefs > 0 ? " · 另有 " + remainingRefs + " 项（卡片中查看）" : ""),
+    observerReviewDraftCorrelationLine(correlation),
+    "完整 review 未复制；observer 卡片「展开完整 review」可按需查看。点击只准备草稿，不自动发送、不标记处理、不构成 canonical handling evidence。",
+    "请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。",
+  ];
+  return blocks.join("\n");
+}
+
 /**
  * One review's presentation grouping key: subject.taskId when declared,
  * otherwise subject.attemptId, otherwise the stable unkeyed bucket. The
@@ -3756,9 +3829,9 @@ export function taskLocatorEmptySummary(locator, context) {
         if (!group) return;
         const review = group.latestRecorded ?? (group.reviews.length > 0 ? group.reviews[group.reviews.length - 1] : null);
         if (!review) return;
-        const attemptId = text(first(first(review, ["subject"], {}), ["attemptId"]), "");
-        const opinion = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
-        conversationState.draft = `处理 observer review ${text(first(review, ["reviewId"]), "")}:\n观察 attempt: ${attemptId}\n意见：${opinion}\n请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。`;
+        // 只准备短结构化草稿：完整 review 不复制，保留在卡片「展开完整
+        // review」按需查看；不自动发送、不标记处理、不制造 handling 证据。
+        conversationState.draft = observerReviewDraft(review);
         persistConversationDraft();
         state.activeView = "conversation";
         render();

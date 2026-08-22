@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerLatestRecorded, observerReviewCorrelationProjection, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewPartitions, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
+import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerLatestRecorded, observerReviewCorrelationProjection, observerReviewDraft, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewPartitions, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -159,8 +159,8 @@ test("observer first-screen partitions keep actionable groups apart from observe
     { reviewId: "f1", standing: "runner-failed", recordedAt: "2026-08-01T00:00:00.000Z", subject: { taskId: "task-b", attemptId: "attempt-2" } },
   ]);
   const partitions = observerReviewPartitions(grouped.groups);
-  expect(partitions.actionable.map((group) => group.key)).toEqual(["task:task-a"]);
-  expect(partitions.observeOnly.map((group) => group.key)).toEqual(["task:task-b"]);
+  expect(partitions.actionable.map((group: { key: string }) => group.key)).toEqual(["task:task-a"]);
+  expect(partitions.observeOnly.map((group: { key: string }) => group.key)).toEqual(["task:task-b"]);
   // A group without a latest recorded opinion can never become actionable:
   // missing/null latestRecorded and non-array input all land in observe-only
   // (fail-closed), so a partition never invents a processing entry.
@@ -804,4 +804,134 @@ test("attempt cards read the observer review association none/available/invalid-
   expect(app).toContain("rawReviews.length === 0");
   expect(app).toContain("subjectOutcome.semanticAcceptance === undefined");
   expect(app).toContain('reviewId: typeof review.reviewId === "string" ? review.reviewId : ""');
+});
+
+test("observer draft handoff is short, structured, bounded, and fail-closed", () => {
+  // A realistic long opinion: markdown, evidence narrative, a limitations
+  // section, and a code fence. Only the bounded facts may reach the draft;
+  // the tail marker and the limitations block must never be copied.
+  const longFinding = [
+    "# Review",
+    "**首要结论**: the page is blocked.",
+    "",
+    "## Evidence",
+    "尝试了 A、B、C 三条路径，全部被 403 拦截；随后又尝试了 D、E、F 与 G 共四条后备路径，仍然没有一条能够越过权限边界，耗时约四十分钟，期间收集了三份独立运行日志与两份网络抓包作为旁证。",
+    "补充：第一条路径在授权边界内返回 200 但内容为空，第二条在重试三次后仍返回 403，第三条在等待 120 秒后超时，随后四条后备路径全部被同一权限策略拒绝。",
+    "## 限制",
+    "TRAIL_ONLY_MARKER_本段位于摘要上限之后，绝不能被复制进草稿。",
+    "```",
+    "evidence 原文不应整段进入草稿",
+    "```",
+  ].join("\n");
+  const draft = observerReviewDraft({
+    reviewId: "review-4317",
+    standing: "recorded",
+    recordedAt: "2026-08-21T00:03:00.000Z",
+    subject: { taskId: "11111111-1111-4111-8111-111111111111", attemptId: "attempt-4317" },
+    reviewText: longFinding,
+    evidenceRefs: [
+      "state/task-attempts/11111111-1111-4111-8111-111111111111/attempt.json",
+      "state/workflow/reviews.json",
+      "state/task-attempts/evidence-2.json",
+      "state/task-attempts/evidence-3.json",
+    ],
+    subjectOutcome: {
+      settlementStatus: "recorded",
+      cellStatus: "passed",
+      finalStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    },
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-4317",
+      correlation: {
+        conversationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        turnId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        actionId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        sourceRef: "conversation:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:action:cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      },
+    },
+  });
+  const blocks = draft.split("\n");
+  // 阅读顺序固定：reviewId → Task/attempt → standing → subject outcome →
+  // 摘要 → 下一步 → 证据 → correlation → 完整 review 引用 → 判断提示。
+  expect(blocks[0]).toBe("处理 observer review review-4317");
+  expect(blocks[1]).toBe("Task/attempt: task 11111111-1111-4111-8111-111111111111 · attempt attempt-4317");
+  expect(blocks[2]).toBe("standing: 已记录");
+  expect(blocks[3]).toBe("subject outcome: recorded · 机械执行 passed · 语义验收未评估");
+  expect(blocks[4]).toContain("摘要: Review 首要结论: the page is blocked. Evidence 尝试了 A、B、C");
+  // 摘要行被 160 字符上限截断：不超过前缀 + 上限 + 省略号。
+  expect(blocks[4].length).toBeLessThanOrEqual(166);
+  expect(blocks[4]).not.toContain("限制");
+  expect(blocks[5]).toContain("下一步: 已记录意见");
+  expect(blocks[5]).toContain("不构成处理事实");
+  // canonical evidence refs 有界：前 3 条精确引用，其余只计数。
+  expect(blocks[6]).toContain("证据: state/task-attempts/11111111-1111-4111-8111-111111111111/attempt.json");
+  expect(blocks[6]).toContain("另有 1 项");
+  expect(blocks[6]).not.toContain("evidence-3.json");
+  // available correlation 逐字带出 conversation/turn/action/sourceRef。
+  expect(blocks[7]).toContain("correlation: conversation aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+  expect(blocks[7]).toContain("sourceRef conversation:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:action:cccccccc-cccc-4ccc-8ccc-cccccccccccc");
+  // 完整 review markdown / 限制长文 / 代码块绝不进入草稿；只保留按需引用。
+  expect(draft).not.toContain("TRAIL_ONLY_MARKER");
+  expect(draft).not.toContain("## 限制");
+  expect(draft).not.toContain("evidence 原文不应整段进入草稿");
+  expect(draft).toContain("完整 review 未复制");
+  expect(draft).toContain("展开完整 review");
+  expect(draft).toContain("请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。");
+  // 缺失来源 fail-closed：无 correlation、无意见文本、无 Task 均明确未知。
+  const gapDraft = observerReviewDraft({
+    reviewId: "review-gap",
+    standing: "query-gap",
+    subject: { attemptId: "attempt-gap" },
+  });
+  expect(gapDraft).toContain("standing: 查询缺口");
+  expect(gapDraft).toContain("未返回 review 文本");
+  expect(gapDraft).toContain("correlation: 未知 · 未提供 correlation 投影（不猜测来源）");
+  expect(gapDraft).toContain("未声明 Task");
+  expect(gapDraft).toContain("attempt attempt-gap");
+  expect(gapDraft).toContain("证据: 未提供证据引用");
+  expect(observerReviewDraft(null)).toContain("未识别 review");
+});
+
+test("observer draft handoff keeps one desktop/mobile path and stays draft-only", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  // 唯一的草稿构建路径：处理按钮调用同一个导出 builder，桌面与移动没有
+  // 分支；完整 review 只按需引用（卡片「展开完整 review」）。
+  expect((app.match(/= observerReviewDraft\(review\)/gu) ?? [])).toHaveLength(1);
+  const handler = app.slice(
+    app.indexOf('listRoot.querySelectorAll("[data-observer-process]")'),
+    app.indexOf('persistConversationDraft();\n        state.activeView = "conversation";'),
+  );
+  expect(handler).toContain("observerReviewDraft(review)");
+  expect(handler).not.toContain("matchMedia");
+  expect(handler).not.toContain("submitConversationMessage");
+  expect(handler).not.toContain("意见：${opinion}");
+  // 处理入口仍是 draft-only：只准备草稿并聚焦输入框，不自动发送、不标记
+  // 处理、不制造 canonical handling evidence。
+  expect(app).toContain("只准备对话草稿，不标记为已处理");
+  expect(app).toContain("不自动发送、不标记处理");
+  expect(app).toContain("完整 review 未复制");
+  expect(app).toContain("data-observer-process");
+});
+
+test("the short draft is one ordered text rendered readably on desktop and mobile", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
+  // 单一导出 builder（桌面/移动共用同一有序文本），有界常量驱动摘要与
+  // canonical evidence refs 的上限。
+  expect(app).toContain("export function observerReviewDraft(review)");
+  expect(app).toContain("const OBSERVER_DRAFT_SUMMARY_LIMIT = 160;");
+  expect(app).toContain("const OBSERVER_DRAFT_EVIDENCE_REF_LIMIT = 3;");
+  expect(app).toContain("observerReviewDraftCorrelationLine(correlation)");
+  expect(app).toContain('blocks.join("\\n")');
+  // 旧的全量复制模板（意见原文整段进草稿）已移除。
+  expect(app).not.toContain("意见：${opinion}");
+  expect(app).not.toContain("观察 attempt: ${attemptId}");
+  // 移动端 composer 仍按多行草稿渲染，不折叠、不截断；桌面/移动阅读顺序
+  // 由同一份有序文本保证。
+  expect(css).toContain(".conversation-composer textarea");
+  expect(css).toMatch(
+    /@media \(max-width: 700px\)[\s\S]*?\.conversation-composer textarea \{\s*min-height: 56px;/s,
+  );
 });
