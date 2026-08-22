@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initializeHome } from "../src/home";
@@ -15,7 +15,7 @@ import {
   type SelfCheckWorker,
 } from "../src/self-check";
 import { defaultSelfCheckTaskReadPort } from "../src/self-check-task";
-import { runCommand } from "../src/process";
+import { runCommand, type CommandResult } from "../src/process";
 import { parseTaskReceiptEvidenceRef, taskReceiptEvidenceRef } from "../src/conversation/contracts";
 import { createPrincipalTask } from "../src/tasks";
 
@@ -72,6 +72,38 @@ function repository(root: string): string {
   return path;
 }
 
+function writeJson(path: string, value: unknown): void {
+  mkdirSync(join(path, ".."), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function registerHomeProject(home: string, projectId: string, repository: string, workspace: string): void {
+  writeJson(join(home, "config", "projects.json"), {
+    version: "rosso.projects.v1",
+    projects: [{ id: projectId, repository, aliases: ["self-check"] }],
+  });
+  writeJson(join(home, "state", "workspaces.json"), {
+    version: "rosso.workspaces.v1",
+    workspaces: [{ projectId, path: workspace }],
+  });
+}
+
+function cachedRunnerStatus(missionId: string, state: string): unknown {
+  return {
+    version: "rosso.mission-runner.v1",
+    runnerId: `runner-${missionId}`,
+    missionId,
+    pid: 4242,
+    state,
+    startedAt: "2026-07-26T10:00:00Z",
+    updatedAt: "2026-07-26T10:30:00Z",
+    inputWatermark: 2,
+    reconciledWatermark: 1,
+    socketPath: `/tmp/${missionId}.sock`,
+    stopReason: null,
+  };
+}
+
 function dependencies(
   workers: readonly SelfCheckWorker[],
   opinionRunner?: (input: SelfCheckOpinionInput) => Promise<SelfCheckOpinion>,
@@ -106,7 +138,7 @@ test("forward: clean home and source return healthy mechanical evidence", async 
 
   expect(result.status).toBe("healthy");
   expect(result.mechanical.status).toBe("healthy");
-  expect(result.mechanical.checks.map((check) => check.status)).toEqual(["ok", "ok", "ok", "ok", "ok"]);
+  expect(result.mechanical.checks.map((check) => check.status)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
   expect(result.mechanical.source?.freshness).toBe("current");
   expect(result.opinion.standing).toBe("not-requested");
   expect(progress[0]).toBe("checking:mechanical-preflight:checking");
@@ -455,4 +487,183 @@ test("degraded mechanical preflight does not start the worker", async () => {
     status: "not-started",
   }));
   expect(started).toBe(false);
+});
+
+test("clean and dirty linked worktrees of the current registered project are locatable attention evidence without rewriting", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-worktrees-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+  const cleanLinked = join(root, "worktree-clean");
+  const dirtyLinked = join(root, "worktree-dirty");
+  git(repo, "worktree", "add", "-b", "feature/self-check-clean", cleanLinked);
+  git(repo, "worktree", "add", "-b", "feature/self-check-dirty", dirtyLinked);
+  writeFileSync(join(dirtyLinked, "wip.txt"), "uncommitted WIP\n", "utf8");
+  const canonicalDirty = realpathSync(dirtyLinked);
+  const canonicalClean = realpathSync(cleanLinked);
+  const dirtyHead = git(dirtyLinked, "rev-parse", "HEAD");
+  registerHomeProject(home, "project:self-check", "https://example.test/lidessen/self-check.git", repo);
+
+  const result = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    dependencies: dependencies([worker("test-worker", "available")]),
+  });
+
+  // The cwd itself is clean; the attention comes from the linked worktree WIP.
+  expect(result.mechanical.source?.dirty).toBe(false);
+  expect(result.mechanical.status).toBe("attention");
+  const projectCheck = result.mechanical.checks.find((check) => check.id === "project");
+  expect(projectCheck?.status).toBe("attention");
+  expect(projectCheck?.detail).toContain("uncommitted WIP");
+  expect(projectCheck?.detail).toContain(canonicalDirty);
+  expect(projectCheck?.evidenceRefs).toContain(`git:${canonicalDirty}@${dirtyHead}:status`);
+  const worktrees = result.mechanical.project?.worktrees ?? [];
+  expect(worktrees.find((worktree) => worktree.path === canonicalDirty)?.dirty).toBe(true);
+  expect(worktrees.find((worktree) => worktree.path === canonicalClean)?.dirty).toBe(false);
+  expect(worktrees.find((worktree) => worktree.path === canonicalDirty)?.statusLines).toEqual(["?? wip.txt"]);
+  // Read-only proof: the dirty worktree keeps its exact bytes and file set.
+  expect(readFileSync(join(dirtyLinked, "wip.txt"), "utf8")).toBe("uncommitted WIP\n");
+  expect(readdirSync(dirtyLinked).sort()).toEqual([".git", "README.md", "wip.txt"]);
+
+  // The linked-worktree WIP stays honest attention in the mechanical
+  // projection, but it is excluded from the boot aggregate like the cached
+  // runner evidence: the main workspace must not enter safe-diagnostic
+  // because of a linked Worktree's uncommitted WIP.
+  let gateOpinionStarted = false;
+  const gate = runSelfCheckStartupGate({
+    home,
+    cwd: repo,
+    opinion: true,
+    dependencies: dependencies([worker("test-worker", "unavailable")], async () => {
+      gateOpinionStarted = true;
+      throw new Error("startup gate must not start worker opinion");
+    }),
+  });
+  expect(gate.mechanical.checks.find((check) => check.id === "project")?.status).toBe("attention");
+  expect(gate.mechanical.status).toBe("attention");
+  expect(gate.readiness).toBe("boot-ready");
+  expect(gate.mode).toBe("normal");
+  expect(gate.startupStatus).toBe("healthy");
+  expect(gateOpinionStarted).toBe(false);
+
+  // Observation-failure boundary: an unreadable `git worktree list` is a
+  // failed project observation, not mere WIP attention, so it degrades the
+  // mechanical projection and keeps the boot gate in safe-diagnostic.
+  const failingGit = (arguments_: readonly string[], directory: string): CommandResult => {
+    if (arguments_[0] === "worktree") {
+      return { exitCode: 1, stdout: "", stderr: "fatal: worktree list is unavailable for this repository" };
+    }
+    return runCommand("git", ["-C", directory, ...arguments_]);
+  };
+  const failed = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    dependencies: { ...dependencies([worker("test-worker", "available")]), git: failingGit },
+  });
+  const failedProjectCheck = failed.mechanical.checks.find((check) => check.id === "project");
+  expect(failedProjectCheck?.status).toBe("degraded");
+  expect(failedProjectCheck?.detail).toContain("worktree list is unavailable");
+  expect(failed.mechanical.status).toBe("degraded");
+  const failedGate = runSelfCheckStartupGate({
+    home,
+    cwd: repo,
+    opinion: true,
+    dependencies: { ...dependencies([worker("test-worker", "unavailable")]), git: failingGit },
+  });
+  expect(failedGate.mechanical.checks.find((check) => check.id === "project")?.status).toBe("degraded");
+  expect(failedGate.mechanical.status).toBe("degraded");
+  expect(failedGate.readiness).toBe("boot-attention");
+  expect(failedGate.mode).toBe("safe-diagnostic");
+  expect(failedGate.startupStatus).toBe("degraded");
+});
+
+test("stale cached runner evidence is labeled cached-only and unbound, and a malformed cached file is isolated as error evidence", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-stale-runner-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+  const statusPath = join(home, "missions", "principal-workbench-dogfood", "runner-status.json");
+  writeJson(statusPath, cachedRunnerStatus("principal-workbench-dogfood", "running"));
+  // A sibling cached file that fails the canonical Mission runner status
+  // schema must not truncate the scan or masquerade as a cached runner.
+  const malformedPath = join(home, "missions", "broken-runner", "runner-status.json");
+  writeJson(malformedPath, { runnerId: "runner-broken" });
+  // Production builds evidence refs from the realpath-canonicalized home, so
+  // the fixture expectation must use the same canonical path to stay locatable.
+  const canonicalStatusPath = realpathSync(statusPath);
+  const canonicalMalformedPath = realpathSync(malformedPath);
+  const before = readFileSync(canonicalStatusPath, "utf8");
+  const malformedBefore = readFileSync(canonicalMalformedPath, "utf8");
+
+  const result = await runSelfCheck({
+    home,
+    cwd: repo,
+    baselineHead: git(repo, "rev-parse", "HEAD"),
+    dependencies: dependencies([worker("test-worker", "available")]),
+  });
+
+  // The malformed sibling degrades the runner observation, while the valid
+  // cached record is still projected and the exact bad file stays locatable.
+  expect(result.mechanical.status).toBe("degraded");
+  const runnerCheck = result.mechanical.checks.find((check) => check.id === "runner");
+  expect(runnerCheck?.status).toBe("degraded");
+  expect(runnerCheck?.detail).toContain("cached");
+  expect(runnerCheck?.detail).toContain("live reachability is unverified");
+  expect(runnerCheck?.detail).toContain("unbound");
+  expect(runnerCheck?.detail).toContain("no-explicit-mission-id-match");
+  expect(runnerCheck?.detail).toContain(canonicalMalformedPath);
+  expect(runnerCheck?.evidenceRefs).toContain(canonicalStatusPath);
+  expect(runnerCheck?.evidenceRefs).toContain(canonicalMalformedPath);
+  expect(result.mechanical.runners).toHaveLength(1);
+  expect(result.mechanical.runners?.[0]).toEqual(expect.objectContaining({
+    runnerId: "runner-principal-workbench-dogfood",
+    missionId: "principal-workbench-dogfood",
+    state: "running",
+    sourcePath: canonicalStatusPath,
+    sourceUpdatedAt: "2026-07-26T10:30:00Z",
+    binding: { kind: "unbound", reason: "no-explicit-mission-id-match" },
+  }));
+  expect(typeof result.mechanical.runners?.[0]?.ageMs).toBe("number");
+  expect(result.mechanical.runnerErrors).toEqual([
+    { sourcePath: canonicalMalformedPath, error: expect.stringContaining("invalid") },
+  ]);
+  // Read-only proof: neither cached runner file is rewritten or removed.
+  expect(readFileSync(canonicalStatusPath, "utf8")).toBe(before);
+  expect(readFileSync(canonicalMalformedPath, "utf8")).toBe(malformedBefore);
+});
+
+test("stale cached runners never escalate into a startup gate blocker", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-self-check-gate-runner-"));
+  temporaryRoots.push(root);
+  const home = join(root, "home");
+  const repo = repository(root);
+  initializeHome(home);
+  const statusPath = join(home, "missions", "principal-workbench-dogfood", "runner-status.json");
+  writeJson(statusPath, cachedRunnerStatus("principal-workbench-dogfood", "running"));
+  let opinionStarted = false;
+
+  const gate = runSelfCheckStartupGate({
+    home,
+    cwd: repo,
+    opinion: true,
+    dependencies: dependencies([worker("test-worker", "unavailable")], async () => {
+      opinionStarted = true;
+      throw new Error("startup gate must not start worker opinion");
+    }),
+  });
+
+  // The cached runner is honestly attention in the mechanical projection...
+  expect(gate.mechanical.checks.find((check) => check.id === "runner")?.status).toBe("attention");
+  expect(gate.mechanical.status).toBe("attention");
+  // ...but boot health and normal write routes stay available.
+  expect(gate.readiness).toBe("boot-ready");
+  expect(gate.mode).toBe("normal");
+  expect(gate.startupStatus).toBe("healthy");
+  expect(opinionStarted).toBe(false);
+  expect(readFileSync(statusPath, "utf8")).toContain("principal-workbench-dogfood");
 });
