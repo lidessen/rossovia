@@ -6,6 +6,8 @@ import type { RunnerStatusProof } from "../../workbench/src/ui/actions";
 import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import { initializeHome } from "../../workbench/src/home";
 import { createWorkbenchRequestHandler } from "../src/ui-server";
+// @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
+import { incompleteProjectionCopy } from "../ui/app.js";
 
 const temporaryRoots: string[] = [];
 
@@ -27,9 +29,20 @@ function liveProbeClient(live: boolean | null): AutonomyClient {
       runnerId: "runner-a",
       state: "running",
     }),
-    activity: async () => {
-      throw new Error("activity is not needed for runner freshness assertions");
-    },
+    activity: async () => ({
+      source: "mission-timeline",
+      observedAt: new Date().toISOString(),
+      eventCount: 0,
+      intentLineage: { standing: "uninitialized", activeAnchor: null },
+      anchorMigrationProposal: null,
+      reconciliationAction: null,
+      currentEffect: null,
+      currentCorrection: null,
+      recentCorrections: [],
+      currentTurn: null,
+      lastEvent: null,
+      recentEvents: [],
+    }),
     contribute: async () => undefined,
     control: async () => undefined,
     recover: async () => undefined,
@@ -94,4 +107,33 @@ test("a live runner replaces the cached-only aggregate freshness claim", async (
   // update range no longer describes the full runner set.
   expect(snapshot.freshness.runners).toBe("live");
   expect(snapshot.freshness.runnerUpdatedAtRange).toBeNull();
+});
+
+// The served runner projection is the only source the UI copy may read. These
+// assertions pin the freshness/live/binding facts to the copy they render, so
+// a served cached-only snapshot can never read as a current Runner fault and
+// a live-proven unbound Runner keeps its current warning.
+test("the served cached-only snapshot reads as no controllable carrier with historical records", async () => {
+  const snapshot = await liveSnapshot(false);
+  const copy = incompleteProjectionCopy(snapshot);
+  expect(copy.label).toBe("实时 · 当前无控制载体");
+  expect(copy.detail).toContain("当前没有可控制的运行载体");
+  expect(copy.detail).toContain("历史缓存待处置");
+  expect(copy.detail).not.toContain("Runner 未绑定");
+});
+
+test("an unverified probe keeps the served snapshot historical, never inferring an active standing", async () => {
+  const snapshot = await liveSnapshot(null);
+  const copy = incompleteProjectionCopy(snapshot);
+  expect(copy.label).toBe("实时 · 当前无控制载体");
+  expect(copy.detail).not.toContain("Runner 未绑定");
+  expect(copy.detail).not.toContain("投影可读");
+});
+
+test("a live-proven unbound runner keeps the active-unbound warning on the served snapshot", async () => {
+  const snapshot = await liveSnapshot(true);
+  const copy = incompleteProjectionCopy(snapshot);
+  expect(copy.label).toBe("运行投影可读 · Runner 未绑定");
+  expect(copy.detail).toContain("未命中任何已观察 Mission 记录");
+  expect(copy.detail).not.toContain("历史缓存待处置");
 });
