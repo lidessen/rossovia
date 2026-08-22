@@ -5,6 +5,10 @@ import { z } from "zod";
 import type { CellInput, CellRunRecord } from "../../../packages/work-cell/src/contracts";
 import { resolveHome } from "./home";
 import { showPrincipalTask } from "./tasks";
+// Type-only: the review-log runtime helpers are loaded lazily at call time
+// (see `observerReviewModule`) so the workflow-observer import cycle stays
+// out of module evaluation.
+import type { WorkflowReviewLogRecord } from "./workflow-observer";
 
 
 /** Canonical identifier for every retained ordinary Task attempt directory. */
@@ -183,6 +187,23 @@ export interface TaskAttemptProjection {
     toolCallId: string;
     promptDigest: string;
   };
+  /**
+   * The canonical parent Task attempt identity of a sub_worker child Run,
+   * taken from the exact parent Run identity retained by the attempt
+   * record's parent-tool binding (`parentTool.parentRunId`). Never inferred
+   * from text: for a Task attempt the parent Run identity is the parent
+   * attempt id. Reconstructing the same-Task parent/child relation is a
+   * direct id match over the projected attempts.
+   */
+  parentAttemptId?: string;
+  /** The stable evidence ref of the parent attempt record, when `parentAttemptId` is retained. */
+  parentAttemptRef?: string;
+  /**
+   * Retained same-Task child attempt ids whose parent-tool binding names
+   * this attempt as their parent Run, sorted canonically. Absent when this
+   * attempt retains no same-Task child attempt in the projected list.
+   */
+  childAttemptIds?: string[];
   /** Session requested by the caller for this attempt, when one was supplied. */
   requestedSession?: string;
   /** Session observed in this attempt's retained Work Cell final record, when available. */
@@ -194,13 +215,35 @@ export interface TaskAttemptProjection {
   usage?: CellRunRecord["usage"];
   workspaceDiff?: CellRunRecord["workspaceDiff"];
   verification?: CellRunRecord["verification"];
+  /**
+   * Settlement status when the attempt is settled (`recorded` |
+   * `runner-failed` | `control-stopped`); `started` while the attempt
+   * retains no settlement; `invalid` when retained evidence is malformed.
+   */
   status: TaskAttemptStatus;
+  /**
+   * The exact `semanticAcceptance` retained by the settlement. Every
+   * ordinary settlement retains `not-evaluated`: the run settles
+   * mechanically and never evaluates semantic acceptance, which stays with
+   * the Principal. Absent while the attempt retains no settlement.
+   */
+  semanticAcceptance?: "not-evaluated";
   startedAt?: string;
   settledAt?: string;
   inputRef: string;
   attemptRef: string;
   finalRecordRef: string;
   settlementRef: string;
+  /**
+   * Observer review association projected from the existing append-only
+   * review log, keyed by this attempt's exact canonical attempt id. `none`
+   * is the explicit absence: the review log was read and retains no record
+   * subjecting this attempt. `available` carries the existing
+   * reviewId/standing/subjectOutcome facts of every record subjecting this
+   * attempt; `invalid-log` means the review log could not be trusted and no
+   * review is claimed. Nothing here fabricates a review.
+   */
+  observerReview: TaskAttemptObserverReviewStanding;
   evidence: {
     attempt: TaskAttemptEvidenceStanding;
     finalRecord: TaskAttemptEvidenceStanding;
@@ -209,11 +252,50 @@ export interface TaskAttemptProjection {
 }
 
 /**
+ * The observer review association standing joined onto one attempt
+ * projection from the existing append-only review log.
+ */
+export type TaskAttemptObserverReviewStanding =
+  | { readonly standing: "none" }
+  | {
+    readonly standing: "available";
+    /** The canonical review-log source(s) the joined records were read from. */
+    readonly logRef: string;
+    readonly reviews: readonly TaskAttemptObserverReviewProjection[];
+  }
+  | { readonly standing: "invalid-log"; readonly reason: string };
+
+/**
+ * The existing review-log facts joined onto one attempt projection: the
+ * review id, its record standing, its recorded time, and the subject
+ * outcome summary the review record itself retained (never derived from the
+ * attempt evidence). The raw review opinion text is not copied here; the
+ * observer surface and the review log stay the source for it.
+ */
+export interface TaskAttemptObserverReviewProjection {
+  readonly reviewId: string;
+  readonly standing: "recorded" | "query-gap" | "runner-failed";
+  readonly recordedAt: string;
+  /** The review record's retained subject outcome summary, when the record carries one. */
+  readonly subjectOutcome?: {
+    readonly settlementStatus: "recorded" | "runner-failed" | "control-stopped";
+    readonly cellStatus?: string;
+    readonly finalStatus?: string;
+    readonly semanticAcceptance: "not-evaluated";
+  };
+}
+
+/**
  * Read-only projection of one task's recorded attempts. Facts are never copied:
  * requested run arguments come from the immutable attempt record, observed
  * session/status/usage/workspace diff/verification come from the retained Work
  * Cell final record, and settlement status comes from the append-only
- * settlement. The raw Work Cell trace is not exposed.
+ * settlement. The raw Work Cell trace is not exposed. The projection also
+ * joins, from the existing refs only: the parent/child attempt relation
+ * retained by the attempt records' parent-tool bindings (`parentAttemptId` /
+ * `childAttemptIds` with the stable refs), the settlement's exact
+ * `semanticAcceptance`, and the existing observer review log association
+ * (`observerReview`; `none` is the explicit absence, nothing is fabricated).
  */
 export function showPrincipalTaskAttempts(
   homeArgument: string | undefined,
@@ -224,28 +306,25 @@ export function showPrincipalTaskAttempts(
   const attemptsRoot = join(home, "state", "task-attempts");
   if (!existsSync(attemptsRoot)) return [];
   const requestedId = observed.task.id.toLowerCase();
+  const reviewStore = readObserverReviewStore(home);
   const projections: TaskAttemptProjection[] = [];
   for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const evidence = readAttemptEvidence(home, entry.name, requestedId);
     if (evidence === undefined) continue;
-    projections.push(projectAttempt(home, entry.name, requestedId, evidence));
+    projections.push(projectAttempt(home, entry.name, requestedId, evidence, reviewStore));
   }
-  projections.sort((left, right) => {
-    if (left.startedAt === undefined) return right.startedAt === undefined
-      ? left.attemptId.localeCompare(right.attemptId)
-      : 1;
-    if (right.startedAt === undefined) return -1;
-    return left.startedAt.localeCompare(right.startedAt)
-      || left.attemptId.localeCompare(right.attemptId);
-  });
+  projections.sort(compareAttemptProjections);
+  attachRetainedChildren(projections);
   return projections;
 }
 
 /**
  * Read the attempt projection for several Tasks in one evidence scan. The UI
  * snapshot normally displays every Task, so calling the single-Task reader in
- * a loop would rescan the whole task-attempts directory once per Task.
+ * a loop would rescan the whole task-attempts directory once per Task. The
+ * review-log join is read once per scan and the same-Task parent/child
+ * relation is attached per Task list.
  */
 export function showPrincipalTaskAttemptsForTasks(
   homeArgument: string | undefined,
@@ -257,16 +336,20 @@ export function showPrincipalTaskAttemptsForTasks(
   for (const id of ids) projections.set(id, []);
   const attemptsRoot = join(home, "state", "task-attempts");
   if (!existsSync(attemptsRoot)) return Object.fromEntries(projections);
+  const reviewStore = readObserverReviewStore(home);
 
   for (const entry of readdirSync(attemptsRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const matched = readAttemptEvidenceForTasks(home, entry.name, requestedTaskIds);
     if (matched === undefined) continue;
     projections.get(matched.requestedTaskId)?.push(
-      projectAttempt(home, entry.name, matched.requestedTaskId, matched.evidence),
+      projectAttempt(home, entry.name, matched.requestedTaskId, matched.evidence, reviewStore),
     );
   }
-  for (const [id, values] of projections) values.sort(compareAttemptProjections);
+  for (const values of projections.values()) {
+    values.sort(compareAttemptProjections);
+    attachRetainedChildren(values);
+  }
   return Object.fromEntries(projections);
 }
 
@@ -345,6 +428,7 @@ function projectAttempt(
   attemptId: string,
   requestedTaskId: string,
   evidence: AttemptEvidence,
+  reviewStore: ObserverReviewStore,
 ): TaskAttemptProjection {
   const refs = attemptRefs(home, attemptId);
   const attempt = parseEvidence(
@@ -412,6 +496,22 @@ function projectAttempt(
       ...(attempt.value.parentTool !== undefined
         ? { parentTool: attempt.value.parentTool }
         : {}),
+      ...(attempt.value.parentTool !== undefined
+        && TaskAttemptIdSchema.safeParse(attempt.value.parentTool.parentRunId).success
+        ? {
+          parentAttemptId: attempt.value.parentTool.parentRunId,
+          parentAttemptRef: evidenceRef(
+            home,
+            join(
+              home,
+              "state",
+              "task-attempts",
+              attempt.value.parentTool.parentRunId,
+              "attempt.json",
+            ),
+          ),
+        }
+        : {}),
       ...(attempt.value.session !== undefined ? { requestedSession: attempt.value.session } : {}),
       ...(attempt.value.continuation !== undefined
         ? { continuedFromAttemptId: attempt.value.continuation.continuedFromAttemptId }
@@ -430,7 +530,11 @@ function projectAttempt(
     status: settlement.value?.status
       ?? (settlement.standing.standing === "invalid"
         || attempt.standing.standing === "invalid" ? "invalid" : "started"),
-    ...(settlement.value !== undefined ? { settledAt: settlement.value.settledAt } : {}),
+    ...(settlement.value !== undefined ? {
+      settledAt: settlement.value.settledAt,
+      semanticAcceptance: settlement.value.semanticAcceptance,
+    } : {}),
+    observerReview: observerReviewStandingFor(attemptId, reviewStore),
     ...refs,
     evidence: {
       attempt: attempt.standing,
@@ -450,6 +554,122 @@ function compareAttemptProjections(
   if (right.startedAt === undefined) return -1;
   return left.startedAt.localeCompare(right.startedAt)
     || left.attemptId.localeCompare(right.attemptId);
+}
+
+/**
+ * One read of the existing append-only observer review log shared by every
+ * attempt of one query invocation: the review records indexed by their exact
+ * subject attempt id, or `invalid-log` when the log cannot be trusted (a
+ * malformed or unreadable record), so no attempt ever claims a review that
+ * was not strictly read. The review log is reused as-is; nothing is written,
+ * rewritten, or derived.
+ */
+type ObserverReviewStore =
+  | {
+    readonly standing: "available";
+    readonly logRef: string;
+    readonly byAttemptId: ReadonlyMap<string, readonly WorkflowReviewLogRecord[]>;
+  }
+  | { readonly standing: "invalid-log"; readonly reason: string };
+
+function readObserverReviewStore(home: string): ObserverReviewStore {
+  const observer = observerReviewModule();
+  try {
+    const reviews = observer.readWorkflowReviews(home);
+    const byAttemptId = new Map<string, WorkflowReviewLogRecord[]>();
+    for (const review of reviews) {
+      const attemptId = review.subject.attemptId;
+      const existing = byAttemptId.get(attemptId);
+      if (existing === undefined) byAttemptId.set(attemptId, [review]);
+      else existing.push(review);
+    }
+    const paths = observer.workflowReviewReadPaths(home);
+    return {
+      standing: "available",
+      logRef: paths.length === 0
+        ? observer.workflowReviewLogPath(home)
+        : paths.join(","),
+      byAttemptId,
+    };
+  } catch (error: unknown) {
+    return {
+      standing: "invalid-log",
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/** The review-log association of one attempt: `none` is the explicit absence. */
+function observerReviewStandingFor(
+  attemptId: string,
+  store: ObserverReviewStore,
+): TaskAttemptObserverReviewStanding {
+  if (store.standing === "invalid-log") {
+    return { standing: "invalid-log", reason: store.reason };
+  }
+  const records = store.byAttemptId.get(attemptId);
+  if (records === undefined || records.length === 0) return { standing: "none" };
+  return {
+    standing: "available",
+    logRef: store.logRef,
+    reviews: records.map((record) => {
+      const subjectOutcome = record.subjectOutcome;
+      return {
+        reviewId: record.reviewId,
+        standing: record.standing,
+        recordedAt: record.recordedAt,
+        // The projected subjectOutcome reconstructs the record's exact
+        // retained facts with strict optional fields: cellStatus/finalStatus
+        // are emitted only when the record itself retained them, never as
+        // undefined-valued keys (exactOptionalPropertyTypes).
+        ...(subjectOutcome === undefined
+          ? {}
+          : {
+              subjectOutcome: {
+                settlementStatus: subjectOutcome.settlementStatus,
+                semanticAcceptance: subjectOutcome.semanticAcceptance,
+                ...(subjectOutcome.cellStatus === undefined
+                  ? {}
+                  : { cellStatus: subjectOutcome.cellStatus }),
+                ...(subjectOutcome.finalStatus === undefined
+                  ? {}
+                  : { finalStatus: subjectOutcome.finalStatus }),
+              },
+            }),
+      };
+    }),
+  };
+}
+
+/**
+ * Attach the retained same-Task child attempt ids to every parent attempt in
+ * one projected list: a child whose retained parent-tool binding names this
+ * attempt as its parent Run. Children are exact canonical attempt ids from
+ * the same list, never inferred from text, and sort canonically.
+ */
+function attachRetainedChildren(projections: TaskAttemptProjection[]): void {
+  const childrenByParent = new Map<string, string[]>();
+  for (const projection of projections) {
+    if (projection.parentAttemptId === undefined) continue;
+    const children = childrenByParent.get(projection.parentAttemptId) ?? [];
+    children.push(projection.attemptId);
+    childrenByParent.set(projection.parentAttemptId, children);
+  }
+  for (const projection of projections) {
+    const children = childrenByParent.get(projection.attemptId);
+    if (children === undefined) continue;
+    projection.childAttemptIds = children.sort();
+  }
+}
+
+/**
+ * Lazy runtime access to the existing review-log reader. The module is
+ * loaded only when an attempt query needs the review join, so the
+ * workflow-observer -> task-attempts import cycle never runs during module
+ * evaluation (see the type-only import at the top).
+ */
+function observerReviewModule(): typeof import("./workflow-observer") {
+  return require("./workflow-observer");
 }
 
 interface ParsedEvidence<T> {

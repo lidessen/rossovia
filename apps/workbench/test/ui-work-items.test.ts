@@ -330,6 +330,9 @@ describe("Workbench work-item shell projection", () => {
         attemptRef: "state/task-attempts/attempt-a/attempt.json",
         finalRecordRef: "state/task-attempts/attempt-a/cell-input.run.json",
         settlementRef: "state/task-attempts/attempt-a/settlement.json",
+        // The owner projection always states the observer review association:
+        // explicit absence here, never a fabricated review.
+        observerReview: { standing: "none" as const },
         evidence: {
           attempt: { standing: "available" as const },
           finalRecord: { standing: "unavailable" as const },
