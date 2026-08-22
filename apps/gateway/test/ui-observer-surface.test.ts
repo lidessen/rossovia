@@ -551,3 +551,24 @@ test("observer trigger copy names the conversation-run default and the explicit 
   expect(generated).toContain("本地 UI 默认由对话 Run 触发");
   expect(generated).not.toContain("Task/Run 终态");
 });
+
+test("observer review correlation is memoized per snapshot invocation for duplicate subject attempts", () => {
+  const server = readFileSync(join(import.meta.dir, "../src/ui-server.ts"), "utf8");
+  // Duplicate subject attemptIds (retry records, launch failures before a
+  // later retry, merged workflow and legacy logs) must trigger exactly one
+  // strict canonical correlation read per readObserverReviews invocation.
+  // The memo map is declared inside the function (invocation-local only —
+  // never hoisted to handler or module scope) and the strict reader is
+  // called only on a memo miss.
+  expect(server).toContain("const correlationByAttemptId = new Map<string, ObserverAttemptCorrelationProjection>();");
+  expect(server).toContain("const memoized = correlationByAttemptId.get(attemptId);");
+  expect(server).toContain("if (memoized !== undefined) return memoized;");
+  expect(server).toContain("correlation: correlationForAttempt(review.subject.attemptId),");
+  expect((server.match(/observerAttemptCorrelationProjection\(home, attemptId\)/gu) ?? [])).toHaveLength(1);
+  // The map is scoped to the invocation: its single declaration site sits
+  // inside readObserverReviews and no module-level correlation cache exists.
+  expect((server.match(/const correlationByAttemptId/gu) ?? [])).toHaveLength(1);
+  expect(server.indexOf("const correlationByAttemptId")).toBeGreaterThan(
+    server.indexOf("export function readObserverReviews"),
+  );
+});
