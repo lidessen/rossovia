@@ -1,6 +1,7 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { loadHome, resolveHome } from "./home";
+import { expandPath } from "./paths";
 import { setupStatus as readSetupStatus } from "./setup";
 import { runCommand, type CommandResult } from "./process";
 import {
@@ -27,10 +28,57 @@ export interface SelfCheckWorker {
 }
 
 export interface SelfCheckCheck {
-  readonly id: "home" | "source" | "worker-policy" | "setup" | "observer" | "task";
+  readonly id: "home" | "source" | "project" | "worker-policy" | "setup" | "observer" | "task" | "runner";
   readonly status: MechanicalCheckStatus;
   readonly detail: string;
   readonly evidenceRefs: readonly string[];
+}
+
+/**
+ * One read-only Git worktree observation of the current registered project.
+ * Only `git worktree list` and `git status` are used; nothing in this
+ * projection checks out, stages, stashes, or rewrites any worktree.
+ */
+export interface SelfCheckWorktreeEvidence {
+  readonly path: string;
+  readonly head: string | null;
+  readonly gitBranch: string | null;
+  readonly dirty: boolean;
+  readonly statusLines: readonly string[];
+}
+
+/**
+ * Read-only projection of the registered project whose workspace matches the
+ * current Git root. Uncommitted WIP in any of its worktrees is locatable
+ * evidence, never a mutation target.
+ */
+export interface SelfCheckProjectEvidence {
+  readonly projectId: string;
+  readonly root: string;
+  readonly worktrees: readonly SelfCheckWorktreeEvidence[];
+}
+
+export type SelfCheckCachedRunnerBinding =
+  | { readonly kind: "project-mission"; readonly projectKey: string }
+  | {
+    readonly kind: "unbound";
+    readonly reason: "no-explicit-mission-id-match" | "ambiguous-mission-id";
+  };
+
+/**
+ * One cached runner status file under `<home>/missions/<mission-id>/runner-status.json`
+ * (the existing Workbench runner cache source). A cached record proves only
+ * that the file exists: live reachability is never probed by the mechanical
+ * self-check, so no cached state is ever projected as a live carrier.
+ */
+export interface SelfCheckCachedRunnerEvidence {
+  readonly runnerId: string;
+  readonly missionId: string;
+  readonly state: string;
+  readonly sourcePath: string;
+  readonly sourceUpdatedAt: string;
+  readonly ageMs: number | null;
+  readonly binding: SelfCheckCachedRunnerBinding;
 }
 
 export interface SelfCheckMechanical {
@@ -51,6 +99,10 @@ export interface SelfCheckMechanical {
     readonly freshness: "current" | "changed-after-start" | "stale" | "not-provided";
     readonly statusLines: readonly string[];
   };
+  /** The registered project matching the current Git root, when one exists. */
+  readonly project?: SelfCheckProjectEvidence;
+  /** Cached runner status files observed under the home, when any exist. */
+  readonly runners?: readonly SelfCheckCachedRunnerEvidence[];
 }
 
 export interface SelfCheckOpinionItem {
@@ -151,11 +203,20 @@ const DEFAULT_OPINION_TIMEOUT_MS = 1_500;
  * Workbench snapshot is complete. Every other standing keeps the server in a
  * read-only diagnostic mode. This gate never invokes the optional worker
  * opinion, so worker availability cannot change mechanical boot readiness.
+ * Cached runner evidence is excluded from the boot aggregate the same way:
+ * a stale cached runner status file is a cached observation only and never
+ * blocks boot — live reachability stays with the runtime snapshot path.
+ * Linked-worktree WIP evidence is excluded the same way: uncommitted WIP in
+ * a linked worktree of the registered project is mechanical attention for
+ * the later Workbench snapshot, never a boot blocker for this workspace.
  */
 export function runSelfCheckStartupGate(options: SelfCheckOptions = {}): SelfCheckStartupGate {
   const mechanical = runMechanicalSelfCheck(options);
   const startupStatus = aggregateStatus(
-    mechanical.checks.filter((check) => check.id !== "worker-policy"),
+    mechanical.checks.filter(
+      (check) =>
+        check.id !== "worker-policy" && check.id !== "runner" && check.id !== "project",
+    ),
   );
   return {
     version: SELF_CHECK_VERSION,
@@ -353,6 +414,72 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
     });
   }
 
+  let project: SelfCheckProjectEvidence | undefined;
+  try {
+    const homeSources = loadHome(home);
+    const root = source?.root;
+    if (root === undefined) {
+      throw new Error("git root is unavailable; registered project worktree observation is not applicable");
+    }
+    const canonicalRoot = existsSync(root) ? realpathSync(root) : resolve(root);
+    const workspace = homeSources.workspaces.workspaces.find((candidate) => {
+      const configured = expandPath(candidate.path);
+      return existsSync(configured) && realpathSync(configured) === canonicalRoot;
+    });
+    if (workspace === undefined) {
+      checks.push({
+        id: "project",
+        status: "ok",
+        detail: "No registered project workspace matches the current Git root; linked worktree observation is not applicable.",
+        evidenceRefs: [`git:${root}:worktrees`],
+      });
+    } else {
+      const projectId = homeSources.projects.projects.find((candidate) => candidate.id === workspace.projectId)?.id
+        ?? workspace.projectId;
+      const git = dependencies.git ?? ((arguments_: readonly string[], directory: string) =>
+        runCommand("git", ["-C", directory, ...arguments_]));
+      const worktreeResult = git(["worktree", "list", "--porcelain"], root);
+      if (worktreeResult.exitCode !== 0) {
+        throw new Error(worktreeResult.stderr.trim() || `git worktree list is unavailable for ${root}`);
+      }
+      const worktrees: SelfCheckWorktreeEvidence[] = [];
+      for (const record of parseWorktreeBlocks(worktreeResult.stdout)) {
+        const statusResult = git(["status", "--porcelain"], record.path);
+        if (statusResult.exitCode !== 0) {
+          throw new Error(statusResult.stderr.trim() || `git status is unavailable for ${record.path}`);
+        }
+        const statusLines = statusResult.stdout.split(/\r?\n/).filter((line) => line.length > 0);
+        worktrees.push({
+          path: record.path,
+          head: record.head,
+          gitBranch: record.gitBranch,
+          dirty: statusLines.length > 0,
+          statusLines,
+        });
+      }
+      const dirtyWorktrees = worktrees.filter((worktree) => worktree.dirty);
+      project = { projectId, root, worktrees };
+      checks.push({
+        id: "project",
+        status: dirtyWorktrees.length === 0 ? "ok" : "attention",
+        detail: dirtyWorktrees.length === 0
+          ? `Registered project ${projectId} worktrees are clean at this observation (${worktrees.length} worktree(s)).`
+          : `Registered project ${projectId} has uncommitted WIP in ${dirtyWorktrees.length} of ${worktrees.length} worktree(s): ${dirtyWorktrees.map((worktree) => worktree.path).join(", ")}.`,
+        evidenceRefs: [
+          `git:${root}:worktrees`,
+          ...dirtyWorktrees.map((worktree) => `git:${worktree.path}@${worktree.head ?? "unknown"}:status`),
+        ],
+      });
+    }
+  } catch (error: unknown) {
+    checks.push({
+      id: "project",
+      status: "attention",
+      detail: message(error),
+      evidenceRefs: source === undefined ? [`git:${cwd}`] : [`git:${source.root}:worktrees`],
+    });
+  }
+
   let taskSnapshot: SelfCheckTaskSnapshot | undefined;
   if (options.taskId !== undefined) {
     try {
@@ -438,6 +565,109 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
     evidenceRefs: observerPaths.length === 0 ? [`${home}/state`] : observerPaths,
   });
 
+  // Cached runner evidence is a read-only projection of the existing
+  // `<home>/missions/*/runner-status.json` runner cache. It never probes
+  // liveness and never writes, deletes, or repairs the cache; a cached
+  // record is labeled cached-only, with live reachability unverified and
+  // project binding (or its absence) stated explicitly.
+  let runners: SelfCheckCachedRunnerEvidence[] = [];
+  try {
+    const runnerRoot = join(home, "missions");
+    if (existsSync(runnerRoot)) {
+      const directories = readdirSync(runnerRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name)
+        .sort();
+      const homeSources = loadHome(home);
+      const missionIdsByProject = new Map<string, Set<string>>();
+      for (const projectRecord of homeSources.projects.projects) {
+        const workspace = homeSources.workspaces.workspaces.find(
+          (candidate) => candidate.projectId === projectRecord.id,
+        );
+        if (workspace === undefined) continue;
+        const workspaceRoot = expandPath(workspace.path);
+        if (!existsSync(workspaceRoot)) continue;
+        const missionRoot = join(workspaceRoot, "apps", "missions");
+        if (!existsSync(missionRoot)) continue;
+        const ids = new Set<string>();
+        for (const entry of readdirSync(missionRoot).filter((name) => name.endsWith(".json")).sort()) {
+          try {
+            const parsed = JSON.parse(readFileSync(join(missionRoot, entry), "utf8")) as { id?: unknown };
+            if (typeof parsed.id === "string" && parsed.id.length > 0) ids.add(parsed.id);
+          } catch {
+            // A malformed Mission record cannot bind a runner; the cached
+            // runner stays honestly unbound instead of being guessed.
+          }
+        }
+        if (ids.size > 0) missionIdsByProject.set(`registered:${projectRecord.id}`, ids);
+      }
+      for (const directory of directories) {
+        const path = join(runnerRoot, directory, "runner-status.json");
+        if (!existsSync(path)) continue;
+        let raw: { runnerId?: unknown; missionId?: unknown; state?: unknown; updatedAt?: unknown };
+        try {
+          raw = JSON.parse(readFileSync(path, "utf8")) as typeof raw;
+        } catch (error: unknown) {
+          throw new Error(`cached runner status is unreadable at ${path}: ${message(error)}`);
+        }
+        const runnerId = raw.runnerId;
+        const missionId = raw.missionId;
+        const state = raw.state;
+        const sourceUpdatedAt = raw.updatedAt;
+        if (
+          typeof runnerId !== "string" || runnerId.length === 0
+          || typeof missionId !== "string" || missionId.length === 0
+          || typeof state !== "string" || state.length === 0
+          || typeof sourceUpdatedAt !== "string" || sourceUpdatedAt.length === 0
+        ) {
+          throw new Error(`cached runner status is invalid at ${path}`);
+        }
+        const matching = [...missionIdsByProject.entries()]
+          .filter(([, ids]) => ids.has(missionId))
+          .map(([projectKey]) => projectKey);
+        const binding: SelfCheckCachedRunnerBinding = matching.length === 1
+          ? { kind: "project-mission", projectKey: matching[0]! }
+          : {
+            kind: "unbound",
+            reason: matching.length === 0 ? "no-explicit-mission-id-match" : "ambiguous-mission-id",
+          };
+        const updatedAtMs = Date.parse(sourceUpdatedAt);
+        runners.push({
+          runnerId,
+          missionId,
+          state,
+          sourcePath: path,
+          sourceUpdatedAt,
+          ageMs: Number.isFinite(updatedAtMs) ? Date.now() - updatedAtMs : null,
+          binding,
+        });
+      }
+    }
+    const unbound = runners.filter(isUnboundRunner);
+    checks.push({
+      id: "runner",
+      status: runners.length === 0 ? "ok" : "attention",
+      detail: runners.length === 0
+        ? "No cached runner status file is present; the runner cache is an empty observation source."
+        : [
+          `Cached runner status files are present (${runners.length}); each is a cached observation only, live reachability is unverified, and no cached record proves a live carrier.`,
+          ...unbound.map((runner) =>
+            `Runner ${runner.runnerId} (mission ${runner.missionId}) is unbound: ${runner.binding.reason}.`
+          ),
+        ].join(" "),
+      evidenceRefs: runners.length === 0
+        ? [`${home}/missions`]
+        : runners.map((runner) => runner.sourcePath),
+    });
+  } catch (error: unknown) {
+    checks.push({
+      id: "runner",
+      status: "attention",
+      detail: message(error),
+      evidenceRefs: [`${home}/missions`],
+    });
+  }
+
   return {
     status: aggregateStatus(checks),
     checks,
@@ -449,6 +679,8 @@ export function runMechanicalSelfCheck(options: SelfCheckOptions = {}): SelfChec
       },
     }),
     ...(source === undefined ? {} : { source }),
+    ...(project === undefined ? {} : { project }),
+    ...(runners.length === 0 ? {} : { runners }),
   };
 }
 
@@ -751,6 +983,54 @@ function taskOpinionGap(
     evidenceRefs,
     summary: `${detail}; worker opinion was not started`,
   };
+}
+
+interface ParsedSelfCheckWorktree {
+  path: string;
+  head: string | null;
+  gitBranch: string | null;
+}
+
+function isUnboundBinding(
+  binding: SelfCheckCachedRunnerBinding,
+): binding is Extract<SelfCheckCachedRunnerBinding, { kind: "unbound" }> {
+  return binding.kind === "unbound";
+}
+
+function isUnboundRunner(
+  runner: SelfCheckCachedRunnerEvidence,
+): runner is SelfCheckCachedRunnerEvidence & {
+  readonly binding: Extract<SelfCheckCachedRunnerBinding, { kind: "unbound" }>;
+} {
+  return isUnboundBinding(runner.binding);
+}
+
+/**
+ * Parse `git worktree list --porcelain` blocks into read-only observations.
+ * Paths are canonicalized the same way the Workbench projection does; the
+ * caller runs only read-only Git queries against them.
+ */
+function parseWorktreeBlocks(output: string): ParsedSelfCheckWorktree[] {
+  const records: ParsedSelfCheckWorktree[] = [];
+  for (const block of output.trim().split(/\r?\n\r?\n/)) {
+    if (!block.trim()) continue;
+    let path: string | undefined;
+    let head: string | null = null;
+    let gitBranch: string | null = null;
+    for (const line of block.split(/\r?\n/)) {
+      const separator = line.indexOf(" ");
+      const key = separator === -1 ? line : line.slice(0, separator);
+      const value = separator === -1 ? "" : line.slice(separator + 1);
+      if (key === "worktree") {
+        const expanded = expandPath(value);
+        path = existsSync(expanded) ? realpathSync(expanded) : resolve(expanded);
+      }
+      if (key === "HEAD") head = value || null;
+      if (key === "branch") gitBranch = value.replace(/^refs\/heads\//, "") || null;
+    }
+    if (path !== undefined) records.push({ path, head, gitBranch });
+  }
+  return records;
 }
 
 function aggregateStatus(checks: readonly SelfCheckCheck[]): SelfCheckStatus {
