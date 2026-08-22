@@ -466,3 +466,157 @@ test("joins the existing observer review log per attempt and states explicit abs
     }
   }
 });
+
+test("single-Task query joins only reviews subjecting the requested Task and excludes a foreign-Task review of the same attempt id", () => {
+  const { home, taskId } = taskFixture();
+  const reviewed = "11111111-1111-4111-8111-111111111111";
+  const foreignTaskId = "99999999-9999-4999-8999-999999999999";
+  writeFamily(home, { taskId, attemptId: reviewed });
+
+  // A review subjecting this exact attempt id under a different Task must
+  // not join this Task's projection, even though the attempt ids match; a
+  // legacy record retaining no subject task id still joins.
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-same-task",
+    recordedAt: "2026-08-21T00:03:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId, attemptId: reviewed },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "recorded",
+    evidenceRefs: [],
+    finding: "same-task review",
+  });
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-foreign-task",
+    recordedAt: "2026-08-21T00:04:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId: foreignTaskId, attemptId: reviewed },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "recorded",
+    evidenceRefs: [],
+    finding: "foreign-task review",
+  });
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-legacy-taskless",
+    recordedAt: "2026-08-21T00:05:00.000Z",
+    subject: { type: "workflow-task-attempt", attemptId: reviewed },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "query-gap",
+    evidenceRefs: [],
+    finding: "legacy review without subject task id",
+  });
+
+  const projections = showPrincipalTaskAttempts(home, taskId);
+  const byId = new Map(projections.map((projection) => [projection.attemptId, projection]));
+  expect(byId.get(reviewed)?.observerReview).toEqual({
+    standing: "available",
+    logRef: workflowReviewLogPath(home),
+    reviews: [
+      {
+        reviewId: "review-same-task",
+        standing: "recorded",
+        recordedAt: "2026-08-21T00:03:00.000Z",
+      },
+      {
+        reviewId: "review-legacy-taskless",
+        standing: "query-gap",
+        recordedAt: "2026-08-21T00:05:00.000Z",
+      },
+    ],
+  });
+});
+
+test("batched query keeps each Task's review join bound to its own Task across a shared attempt id", () => {
+  const { home, taskId: taskA } = taskFixture();
+  const taskB = createPrincipalTask(home, {
+    title: "Second attempt query fixture",
+    objective: "Exercise the per-Task review join of the batched query",
+    acceptance: ["Each Task projects only its own review association"],
+    nextActor: "principal",
+    sourceRef: "test:attempts-query-batched",
+    expectedSourceRevision: 1,
+  }).task.id;
+  const attemptA = "11111111-1111-4111-8111-111111111111";
+  const attemptB = "22222222-2222-4222-8222-222222222222";
+  writeFamily(home, { taskId: taskA, attemptId: attemptA });
+  writeFamily(home, { taskId: taskB, attemptId: attemptB });
+
+  // The same attempt ids are reviewed under both Tasks: each Task's
+  // projection must keep only the records whose subject task id matches it
+  // (case-insensitively); the cross-Task records must never join.
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-a-under-a",
+    recordedAt: "2026-08-21T00:03:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId: taskA, attemptId: attemptA },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "recorded",
+    evidenceRefs: [],
+    finding: "attempt A reviewed under Task A",
+  });
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-a-under-b",
+    recordedAt: "2026-08-21T00:04:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId: taskB, attemptId: attemptA },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "recorded",
+    evidenceRefs: [],
+    finding: "attempt A reviewed under Task B",
+  });
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-b-under-b",
+    recordedAt: "2026-08-21T00:05:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId: taskB, attemptId: attemptB },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "recorded",
+    evidenceRefs: [],
+    finding: "attempt B reviewed under Task B",
+  });
+  appendWorkflowReview(home, {
+    version: "rossovia.workflow-review.v1",
+    reviewId: "review-b-under-a",
+    recordedAt: "2026-08-21T00:06:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId: taskA, attemptId: attemptB },
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    standing: "query-gap",
+    evidenceRefs: [],
+    finding: "attempt B reviewed under Task A",
+  });
+
+  const byTask = showPrincipalTaskAttemptsForTasks(home, [taskA, taskB]);
+  const byIdA = new Map(byTask[taskA]!.map((projection) => [projection.attemptId, projection]));
+  const byIdB = new Map(byTask[taskB]!.map((projection) => [projection.attemptId, projection]));
+  // Task A keeps only its own review of attempt A; the record subjecting
+  // attempt A under Task B never joins Task A's projection.
+  expect(byIdA.get(attemptA)?.observerReview).toEqual({
+    standing: "available",
+    logRef: workflowReviewLogPath(home),
+    reviews: [
+      {
+        reviewId: "review-a-under-a",
+        standing: "recorded",
+        recordedAt: "2026-08-21T00:03:00.000Z",
+      },
+    ],
+  });
+  // Task B keeps only its own review of attempt B; the record subjecting
+  // attempt B under Task A never joins Task B's projection.
+  expect(byIdB.get(attemptB)?.observerReview).toEqual({
+    standing: "available",
+    logRef: workflowReviewLogPath(home),
+    reviews: [
+      {
+        reviewId: "review-b-under-b",
+        standing: "recorded",
+        recordedAt: "2026-08-21T00:05:00.000Z",
+      },
+    ],
+  });
+  // The batched scan still groups every attempt by its evidence owner task
+  // id: neither Task's list contains the other Task's attempt.
+  expect(byIdA.has(attemptB)).toBeFalse();
+  expect(byIdB.has(attemptA)).toBeFalse();
+});

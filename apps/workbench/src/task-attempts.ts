@@ -236,12 +236,15 @@ export interface TaskAttemptProjection {
   settlementRef: string;
   /**
    * Observer review association projected from the existing append-only
-   * review log, keyed by this attempt's exact canonical attempt id. `none`
-   * is the explicit absence: the review log was read and retains no record
-   * subjecting this attempt. `available` carries the existing
-   * reviewId/standing/subjectOutcome facts of every record subjecting this
-   * attempt; `invalid-log` means the review log could not be trusted and no
-   * review is claimed. Nothing here fabricates a review.
+   * review log, keyed by this attempt's exact canonical attempt id and
+   * bound to the requested Task: a record subjecting the same attempt id
+   * under a different Task never joins, while legacy records retaining no
+   * subject task id still do. `none` is the explicit absence: the review
+   * log was read and retains no record subjecting this attempt for the
+   * requested Task. `available` carries the existing
+   * reviewId/standing/subjectOutcome facts of every such record;
+   * `invalid-log` means the review log could not be trusted and no review
+   * is claimed. Nothing here fabricates a review.
    */
   observerReview: TaskAttemptObserverReviewStanding;
   evidence: {
@@ -534,7 +537,7 @@ function projectAttempt(
       settledAt: settlement.value.settledAt,
       semanticAcceptance: settlement.value.semanticAcceptance,
     } : {}),
-    observerReview: observerReviewStandingFor(attemptId, reviewStore),
+    observerReview: observerReviewStandingFor(attemptId, requestedTaskId, reviewStore),
     ...refs,
     evidence: {
       attempt: attempt.standing,
@@ -561,7 +564,11 @@ function compareAttemptProjections(
  * attempt of one query invocation: the review records indexed by their exact
  * subject attempt id, or `invalid-log` when the log cannot be trusted (a
  * malformed or unreadable record), so no attempt ever claims a review that
- * was not strictly read. The review log is reused as-is; nothing is written,
+ * was not strictly read. The same-Task identity boundary of the join is
+ * applied per requested Task at join time (see `observerReviewStandingFor`):
+ * the shared index keeps every record, and each Task's projection keeps only
+ * the records whose subject task id is absent (legacy) or equals the
+ * requested Task id. The review log is reused as-is; nothing is written,
  * rewritten, or derived.
  */
 type ObserverReviewStore =
@@ -599,9 +606,18 @@ function readObserverReviewStore(home: string): ObserverReviewStore {
   }
 }
 
-/** The review-log association of one attempt: `none` is the explicit absence. */
+/**
+ * The review-log association of one attempt for one requested Task: `none`
+ * is the explicit absence. The association is bound by the exact subject
+ * attempt id AND the subject task id: a record subjecting this attempt id
+ * joins only when it retains no subject task id (the normalized legacy
+ * dogfood records) or its subject task id equals the requested Task id
+ * case-insensitively, so a review recorded under a different Task can never
+ * project onto this Task's attempts.
+ */
 function observerReviewStandingFor(
   attemptId: string,
+  requestedTaskId: string,
   store: ObserverReviewStore,
 ): TaskAttemptObserverReviewStanding {
   if (store.standing === "invalid-log") {
@@ -609,10 +625,16 @@ function observerReviewStandingFor(
   }
   const records = store.byAttemptId.get(attemptId);
   if (records === undefined || records.length === 0) return { standing: "none" };
+  const sameTaskRecords = records.filter((record) => {
+    const subjectTaskId = record.subject.taskId;
+    return subjectTaskId === undefined
+      || subjectTaskId.toLowerCase() === requestedTaskId.toLowerCase();
+  });
+  if (sameTaskRecords.length === 0) return { standing: "none" };
   return {
     standing: "available",
     logRef: store.logRef,
-    reviews: records.map((record) => {
+    reviews: sameTaskRecords.map((record) => {
       const subjectOutcome = record.subjectOutcome;
       return {
         reviewId: record.reviewId,
