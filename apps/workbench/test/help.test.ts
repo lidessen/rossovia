@@ -177,6 +177,17 @@ describe("Rossovia CLI help contract", () => {
     expect(run.stdout).toContain("30-minute emergency timeout");
   });
 
+  test("task create help documents the repeated --capability-required option and its label contract", () => {
+    const create = cliRun(["help", "task", "create"], { stdin: "" });
+    expect(create.exitCode).toBe(0);
+    expect(create.stderr).toBe("");
+    expect(create.stdout).toContain("usage: rossovia task create --title <text> --objective <text> --accept <criterion>... [--todo <text>]... [--capability-required <label>]...");
+    expect(create.stdout).toContain("[--capability-required <label>]...");
+    expect(create.stdout).toContain("must use lowercase letters, digits, and hyphens and must be unique");
+    expect(create.stdout).toContain("never inferred from the objective, acceptance, or final text");
+    expect(create.stdout).toContain("Omitting the option creates the task with an empty requirement list");
+  });
+
   test("help resolution does not change a valid non-help invocation", () => {
     const root = temporary();
     const home = join(root, "home");
