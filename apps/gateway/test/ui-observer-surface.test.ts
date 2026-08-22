@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, observerConversationEvidenceLabels, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId } from "../ui/app.js";
+import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -41,24 +41,20 @@ test("observer review keeps the record standing and the subject semantic accepta
   expect(observerReviewStatusProjection({})).toEqual({ standing: "unknown", label: "状态未知" });
 });
 
-test("observer subject acceptance is a separate badge that never borrows the record standing", () => {
-  expect(observerReviewSubjectAcceptanceProjection({
-    standing: "recorded",
-    subjectOutcome: {
-      settlementStatus: "recorded",
-      cellStatus: "passed",
-      semanticAcceptance: "not-evaluated",
-    },
-  })).toEqual({ standing: "not-evaluated", label: "语义验收未评估" });
+test("observer subject acceptance stays mechanical and never claims a semantic pass", () => {
+  // The review schema records semanticAcceptance only as "not-evaluated", so
+  // a mechanically passed cell keeps the unevaluated badge and is never
+  // derived into a semantic acceptance claim.
   expect(observerReviewSubjectAcceptanceProjection({
     standing: "recorded",
     subjectOutcome: {
       settlementStatus: "recorded",
       cellStatus: "passed",
       finalStatus: "passed",
-      semanticAcceptance: "passed",
+      semanticAcceptance: "not-evaluated",
     },
-  })).toEqual({ standing: "passed", label: "语义验收通过" });
+  })).toEqual({ standing: "not-evaluated", label: "语义验收未评估" });
+  // A mechanical execution failure is still reported on the subject badge.
   expect(observerReviewSubjectAcceptanceProjection({
     standing: "recorded",
     subjectOutcome: {
@@ -68,7 +64,107 @@ test("observer subject acceptance is a separate badge that never borrows the rec
   })).toEqual({ standing: "failed", label: "被观察执行未通过" });
   expect(observerReviewSubjectAcceptanceProjection({
     standing: "recorded",
+    subjectOutcome: {
+      settlementStatus: "recorded",
+      cellStatus: "failed",
+      semanticAcceptance: "not-evaluated",
+    },
+  })).toEqual({ standing: "failed", label: "被观察执行未通过" });
+  expect(observerReviewSubjectAcceptanceProjection({
+    standing: "recorded",
   })).toEqual({ standing: "absent", label: "未提供主体结算摘要" });
+  // The unprovable semantic pass/fail implications are gone from the UI.
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).not.toContain("语义验收通过");
+  expect(app).not.toContain("语义验收未通过");
+});
+
+test("observer reviews group by subject.taskId first and fall back to attemptId", () => {
+  expect(observerReviewGroupKey({
+    subject: { taskId: " 11111111-1111-4111-8111-111111111111 ", attemptId: "attempt-1" },
+  })).toEqual({
+    kind: "task",
+    key: "task:11111111-1111-4111-8111-111111111111",
+    taskId: "11111111-1111-4111-8111-111111111111",
+  });
+  expect(observerReviewGroupKey({
+    subject: { attemptId: "attempt-2" },
+  })).toEqual({ kind: "attempt", key: "attempt:attempt-2", attemptId: "attempt-2" });
+  expect(observerReviewGroupKey({})).toEqual({ kind: "unkeyed", key: "unkeyed" });
+});
+
+test("observer review groups keep counts, order, and the latest recorded opinion", () => {
+  const grouped = groupObserverReviews([
+    { reviewId: "r1", standing: "recorded", recordedAt: "2026-08-01T00:00:00.000Z", subject: { taskId: "task-a", attemptId: "attempt-1" } },
+    { reviewId: "r2", standing: "query-gap", recordedAt: "2026-08-02T00:00:00.000Z", subject: { taskId: "task-a", attemptId: "attempt-1" } },
+    { reviewId: "r3", standing: "recorded", recordedAt: "2026-08-03T00:00:00.000Z", subject: { attemptId: "attempt-2" } },
+    { reviewId: "r4", standing: "recorded", recordedAt: "2026-08-05T00:00:00.000Z", subject: { taskId: "task-a", attemptId: "attempt-1" } },
+  ]);
+  expect(grouped.topicCount).toBe(2);
+  expect(grouped.recordCount).toBe(4);
+  // Groups order by their newest record, newest subject first.
+  expect(grouped.groups.map((group: { key: string }) => group.key)).toEqual(["task:task-a", "attempt:attempt-2"]);
+  const taskGroup = grouped.groups[0];
+  expect(taskGroup.reviews.map((review: { reviewId: string }) => review.reviewId)).toEqual(["r1", "r2", "r4"]);
+  // The newest recorded opinion of the group is highlighted, not the newest
+  // raw record (which may be a query gap).
+  expect(taskGroup.latestRecorded.reviewId).toBe("r4");
+  expect(grouped.groups[1].latestRecorded.reviewId).toBe("r3");
+});
+
+test("a group without any recorded opinion has no latest recorded review", () => {
+  const grouped = groupObserverReviews([
+    { reviewId: "g1", standing: "query-gap", recordedAt: "2026-08-01T00:00:00.000Z", subject: { taskId: "task-b", attemptId: "attempt-9" } },
+    { reviewId: "g2", standing: "runner-failed", recordedAt: "2026-08-02T00:00:00.000Z", subject: { taskId: "task-b", attemptId: "attempt-9" } },
+  ]);
+  expect(grouped.topicCount).toBe(1);
+  expect(grouped.recordCount).toBe(2);
+  expect(grouped.groups[0].latestRecorded).toBeNull();
+});
+
+test("observer group next step stays mechanical and never claims processing", () => {
+  const recorded = observerReviewGroupNextStep({
+    key: "task:task-a",
+    reviews: [{ reviewId: "r1", standing: "recorded", recordedAt: "2026-08-01T00:00:00.000Z" }],
+    latestRecorded: { reviewId: "r1", standing: "recorded", recordedAt: "2026-08-01T00:00:00.000Z" },
+  });
+  expect(recorded.standing).toBe("recorded");
+  expect(recorded.label).toBe("意见已记录");
+  expect(recorded.nextStep).toContain("处理状态不可推断");
+  const gap = observerReviewGroupNextStep({
+    key: "task:task-b",
+    reviews: [{ reviewId: "g1", standing: "query-gap", recordedAt: "2026-08-01T00:00:00.000Z" }],
+    latestRecorded: null,
+  });
+  expect(gap.standing).toBe("query-gap");
+  expect(gap.nextStep).toContain("不可推断");
+  const failed = observerReviewGroupNextStep({
+    key: "task:task-c",
+    reviews: [{ reviewId: "f1", standing: "runner-failed", recordedAt: "2026-08-01T00:00:00.000Z" }],
+    latestRecorded: null,
+  });
+  expect(failed.standing).toBe("runner-failed");
+  expect(failed.nextStep).toContain("不可推断");
+});
+
+test("observer surface renders grouped themes with raw counts and no static processed claim", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
+  expect(app).toContain("groupObserverReviews(reviews)");
+  expect(app).toContain("observerGroupCardHtml(group, currentWorkItems)");
+  expect(app).toContain("个主题 · ");
+  expect(app).toContain("条原始记录");
+  expect(app).toContain("最新已记录意见");
+  expect(app).toContain("全部原始记录 · ");
+  expect(app).toContain("处理状态不可推断");
+  expect(app).toContain("机械下一步");
+  // The static "尚未处理" claim is gone; every raw record stays expandable.
+  expect(app).not.toContain("尚未处理；通过普通对话 Task");
+  expect(app).toContain("展开完整 review");
+  expect(css).toContain(".observer-group-card");
+  expect(css).toContain(".observer-group-latest");
+  expect(css).toContain(".observer-group-records");
+  expect(css).toContain(".observer-group-facts");
 });
 
 test("observer review locates only an existing task in the current projection", () => {

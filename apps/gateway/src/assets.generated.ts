@@ -4882,6 +4882,164 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   padding-top: 0.65rem;
 }
 
+/* Subject grouping: one theme card per task/attempt with the latest recorded
+   opinion on top and every raw record expandable below. */
+.observer-group-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 1rem;
+}
+
+.observer-group-card > header {
+  align-items: start;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+.observer-group-header-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.observer-group-kicker {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.observer-group-header-copy h3 {
+  font-size: 0.95rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.observer-group-header-copy small {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.observer-group-standing {
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 0.63rem;
+  padding: 0.2rem 0.4rem;
+  white-space: nowrap;
+}
+
+.observer-group-standing[data-standing="recorded"] {
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.observer-group-standing[data-standing="query-gap"],
+.observer-group-standing[data-standing="runner-failed"] {
+  border-color: var(--ochre);
+  color: var(--ochre);
+}
+
+.observer-group-latest {
+  border-left: 3px solid var(--green);
+  margin: 0.85rem 0 0;
+  padding: 0 0 0 0.8rem;
+}
+
+.observer-group-latest-label {
+  color: var(--green-dark);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.observer-group-latest .observer-review-card {
+  border: 0;
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.55rem;
+  padding: 0.7rem 0 0;
+}
+
+.observer-group-note {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  margin: 0.55rem 0 0;
+}
+
+.observer-group-records {
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.85rem;
+  padding-top: 0.6rem;
+}
+
+.observer-group-records summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 0.68rem;
+}
+
+.observer-group-records-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.7rem;
+}
+
+.observer-group-records-list .observer-review-card {
+  background: var(--paper-light);
+  border: 1px solid var(--line-light);
+  padding: 0.8rem;
+}
+
+.observer-group-facts {
+  border-top: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.85rem 0 0;
+  padding-top: 0.7rem;
+}
+
+.observer-group-facts > div {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+
+.observer-group-facts dt,
+.observer-group-facts dd {
+  font-size: 0.68rem;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.observer-group-facts dt {
+  color: var(--ink-faint);
+}
+
+.observer-group-facts dd {
+  color: var(--ink-soft);
+}
+
+.observer-group-facts code,
+.observer-group-facts .observer-conversation-evidence {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.observer-group-card > footer {
+  border-top: 1px solid var(--line-light);
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+}
+
 .system-empty {
   border: 1px dashed var(--line);
   color: var(--ink-soft);
@@ -8005,6 +8163,28 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
     gap: 0.45rem;
   }
 
+  .observer-group-card {
+    padding: 0.85rem;
+  }
+
+  .observer-group-card > header {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .observer-group-standing {
+    justify-self: start;
+  }
+
+  .observer-group-latest {
+    padding-left: 0.6rem;
+  }
+
+  .observer-group-facts > div {
+    gap: 0.15rem;
+    grid-template-columns: 1fr;
+  }
+
   .observer-review-facts > div {
     grid-template-columns: 1fr;
     gap: 0.15rem;
@@ -9659,25 +9839,18 @@ export function observerReviewStatusProjection(review) {
 }
 
 /**
- * The observed run's semantic acceptance, kept strictly apart from the
- * review record standing. The current observer never evaluates semantics
- * itself, so "not-evaluated" is a truthful first-class standing rather than a
- * disguised query-gap of the record; a mechanical execution failure is
- * reported on this subject badge, never on the record badge. A run that both
- * failed mechanically and left semantics unevaluated shows the mechanical
- * failure on the badge, while the unevaluated semantics stay in the fact row.
+ * The observed run's mechanical outcome and semantic acceptance, expressed
+ * strictly from fields the review record can prove. The review schema only
+ * ever records semanticAcceptance as "not-evaluated", so the UI never claims
+ * a semantic pass or fail; a mechanical execution failure (settlement
+ * runner-failed, cellStatus failed, finalStatus failed) is reported on this
+ * subject badge, and a mechanically passed cell is never derived into a
+ * semantic acceptance claim.
  */
 export function observerReviewSubjectAcceptanceProjection(review) {
   const outcome = review && typeof review === "object" ? review.subjectOutcome : null;
   if (!outcome || typeof outcome !== "object") {
     return { standing: "absent", label: "未提供主体结算摘要" };
-  }
-  const semantic = outcome.semanticAcceptance;
-  if (semantic === "passed") {
-    return { standing: "passed", label: "语义验收通过" };
-  }
-  if (semantic === "failed") {
-    return { standing: "failed", label: "语义验收未通过" };
   }
   if (
     outcome.settlementStatus === "runner-failed"
@@ -9686,7 +9859,7 @@ export function observerReviewSubjectAcceptanceProjection(review) {
   ) {
     return { standing: "failed", label: "被观察执行未通过" };
   }
-  if (semantic === "not-evaluated") {
+  if (outcome.semanticAcceptance === "not-evaluated") {
     return { standing: "not-evaluated", label: "语义验收未评估" };
   }
   return { standing: "unknown", label: "语义验收未知" };
@@ -9756,6 +9929,136 @@ export function observerConversationEvidenceLabels(review) {
         href: null,
       };
     });
+}
+
+/**
+ * One review's presentation grouping key: subject.taskId when declared,
+ * otherwise subject.attemptId, otherwise the stable unkeyed bucket. The
+ * grouping is a pure projection of the append-only review store — records
+ * are never rewritten and the snapshot schema is unchanged — so a review
+ * without a declared subject stays visible instead of disappearing.
+ */
+export function observerReviewGroupKey(review) {
+  const subject = review && typeof review === "object" ? review.subject : null;
+  const taskId =
+    subject && typeof subject === "object" && typeof subject.taskId === "string"
+      ? subject.taskId.trim()
+      : "";
+  if (taskId !== "") {
+    return { kind: "task", key: \`task:\${taskId}\`, taskId };
+  }
+  const attemptId =
+    subject && typeof subject === "object" && typeof subject.attemptId === "string"
+      ? subject.attemptId.trim()
+      : "";
+  if (attemptId !== "") {
+    return { kind: "attempt", key: \`attempt:\${attemptId}\`, attemptId };
+  }
+  return { kind: "unkeyed", key: "unkeyed" };
+}
+
+/**
+ * Pure projection of the flat review store into subject groups. Records stay
+ * in stored order inside each group (the same recordedAt-ascending order the
+ * server projection returns); groups are ordered by their newest record so
+ * the most recently observed subject surfaces first. \`latestRecorded\` is the
+ * newest review whose record standing is "recorded" — the only standing that
+ * carries an opinion text — and \`topicCount\`/\`recordCount\` give the page its
+ * theme and raw-record counts without adding a state system.
+ */
+export function groupObserverReviews(reviews) {
+  const ordered = Array.isArray(reviews) ? reviews : [];
+  const groups = [];
+  const byKey = new Map();
+  for (const review of ordered) {
+    const key = observerReviewGroupKey(review);
+    let group = byKey.get(key.key);
+    if (group === undefined) {
+      group = {
+        key: key.key,
+        kind: key.kind,
+        ...(key.taskId === undefined ? {} : { taskId: key.taskId }),
+        ...(key.attemptId === undefined ? {} : { attemptId: key.attemptId }),
+        reviews: [],
+        latestRecorded: null,
+      };
+      byKey.set(key.key, group);
+      groups.push(group);
+    }
+    group.reviews.push(review);
+    if (
+      review !== null
+      && typeof review === "object"
+      && review.standing === "recorded"
+    ) {
+      group.latestRecorded = review;
+    }
+  }
+  groups.sort((left, right) => {
+    const leftLast = left.reviews.length > 0 ? left.reviews[left.reviews.length - 1] : null;
+    const rightLast = right.reviews.length > 0 ? right.reviews[right.reviews.length - 1] : null;
+    const leftAt = leftLast && typeof leftLast === "object" && typeof leftLast.recordedAt === "string"
+      ? leftLast.recordedAt
+      : "";
+    const rightAt = rightLast && typeof rightLast === "object" && typeof rightLast.recordedAt === "string"
+      ? rightLast.recordedAt
+      : "";
+    return rightAt.localeCompare(leftAt) || left.key.localeCompare(right.key);
+  });
+  return {
+    groups,
+    topicCount: groups.length,
+    recordCount: ordered.length,
+  };
+}
+
+/**
+ * The mechanical next step for one subject group, expressed only from fields
+ * the review store actually records. A group with a recorded opinion can use
+ * the existing conversation processing entry; a group with only query-gap or
+ * runner-failed records has no opinion text at all. Processing status is
+ * never claimed: no field records whether a review was processed, so the
+ * copy says so explicitly instead of inventing a processed/unprocessed state.
+ */
+export function observerReviewGroupNextStep(group) {
+  const records = group && Array.isArray(group.reviews) ? group.reviews : [];
+  const hasRecorded = group !== null
+    && typeof group === "object"
+    && group.latestRecorded !== null
+    && group.latestRecorded !== undefined;
+  if (hasRecorded) {
+    return {
+      standing: "recorded",
+      label: "意见已记录",
+      nextStep:
+        "最新已记录意见可通过现有对话处理入口阅览、评论、转派或暂缓；是否已处理不由任何字段记录，处理状态不可推断。",
+    };
+  }
+  const standings = [...new Set(records.map((review) =>
+    review !== null && typeof review === "object" && typeof review.standing === "string"
+      ? review.standing
+      : "unknown"))];
+  if (standings.length > 0 && standings.every((standing) => standing === "query-gap")) {
+    return {
+      standing: "query-gap",
+      label: "查询缺口",
+      nextStep:
+        "观察时证据不完整，本组没有意见文本；处理状态不可推断。核对证据引用后，通过新的可观察 Run 重新观察。",
+    };
+  }
+  if (standings.length > 0 && standings.every((standing) => standing === "runner-failed")) {
+    return {
+      standing: "runner-failed",
+      label: "observer 失败",
+      nextStep:
+        "observer 运行失败，本组没有意见文本；处理状态不可推断。重新触发观察后再处理。",
+    };
+  }
+  return {
+    standing: "no-recorded-opinion",
+    label: "无已记录意见",
+    nextStep: "本组没有已记录意见，处理状态不可推断。",
+  };
 }
 
 /**
@@ -11885,6 +12188,101 @@ export function taskLocatorEmptySummary(locator, context) {
     };
   }
 
+  function observerReviewCardHtml(review) {
+    const refs = list(first(review, ["evidenceRefs"], []));
+    const workerId = observerReviewWorkerId(review);
+    const statusProjection = observerReviewStatusProjection(review);
+    const subjectStanding = observerReviewSubjectAcceptanceProjection(review);
+    const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
+    return \`<article class="observer-review-card" data-review-id="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
+        <header>
+          <div><span class="observer-review-status" data-standing="\${escapeHtml(statusProjection.standing)}">\${escapeHtml(statusProjection.label)}</span><span class="observer-review-subject-standing" data-standing="\${escapeHtml(subjectStanding.standing)}">\${escapeHtml(subjectStanding.label)}</span><strong>\${escapeHtml(workerId)}</strong></div>
+          <time>\${escapeHtml(formatTime(text(first(review, ["recordedAt"]), "")))}</time>
+        </header>
+        <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论</p><p class="observer-review-summary">\${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">\${renderConversationMarkdown(reviewText)}</div></details></div>
+        <details class="observer-review-evidence"><summary>证据引用 · \${refs.length} 项</summary><ul>\${refs.length ? refs.map((ref) => \`<li><code>\${escapeHtml(ref)}</code></li>\`).join("") : "<li>未提供证据引用</li>"}</ul></details>
+      </article>\`;
+  }
+
+  function observerGroupConversationEvidence(group) {
+    const refs = [];
+    for (const review of group.reviews) {
+      for (const label of observerConversationEvidenceLabels(review)) {
+        if (!refs.some((existing) => existing.ref === label.ref)) refs.push(label);
+      }
+    }
+    return refs;
+  }
+
+  function observerGroupCardHtml(group, currentWorkItems) {
+    const recordCount = group.reviews.length;
+    const latest = group.latestRecorded ?? null;
+    // The highlight section already renders the latest recorded opinion in
+    // full, so the expandable raw-record list keeps every record except that
+    // one: the latest opinion appears exactly once and every raw record stays
+    // available.
+    const rawRecords = latest === null
+      ? group.reviews
+      : group.reviews.filter((record) => record !== latest);
+    // Locator and attempt facts come from any review of the group (they
+    // share the subject key); the highlighted opinion is always the latest
+    // recorded one, and a query-gap/runner-failed record is never presented
+    // as an opinion.
+    const review = latest ?? (group.reviews.length > 0 ? group.reviews[group.reviews.length - 1] : null);
+    const latestRecordedAt = latest ? text(first(latest, ["recordedAt"]), "") : "";
+    const taskLocator = observerReviewTaskLocator(review, currentWorkItems);
+    const nextStep = observerReviewGroupNextStep(group);
+    const subjectOutcome = latest ? first(latest, ["subjectOutcome"], null) : null;
+    const conversationEvidence = observerGroupConversationEvidence(group);
+    const subjectCopy = group.kind === "task"
+      ? \`Task \${escapeHtml(group.taskId)}\`
+      : group.kind === "attempt"
+        ? \`Attempt \${escapeHtml(group.attemptId)}\`
+        : "未声明 subject";
+    const attemptCopy = review
+      ? \` · attempt \${escapeHtml(shortConversationId(text(first(first(review, ["subject"], {}), ["attemptId"]), "")))}\`
+      : "";
+    return \`<article class="observer-group-card" data-observer-group-key="\${escapeHtml(group.key)}">
+        <header>
+          <div class="observer-group-header-copy">
+            <span class="observer-group-kicker">\${group.kind === "task" ? "主题 · 按 Task 分组" : group.kind === "attempt" ? "主题 · 按 Attempt 分组" : "主题 · 未声明 subject"}</span>
+            <h3>\${subjectCopy}</h3>
+            <small>\${recordCount} 条原始记录\${attemptCopy}\${latest ? \` · 最新记录 \${escapeHtml(formatTime(latestRecordedAt, latestRecordedAt))}\` : ""}</small>
+          </div>
+          <span class="observer-group-standing" data-standing="\${escapeHtml(nextStep.standing)}">\${escapeHtml(nextStep.label)}</span>
+        </header>
+        <div class="observer-group-latest">
+          <span class="observer-group-latest-label">最新已记录意见</span>
+          \${latest
+            ? observerReviewCardHtml(latest)
+            : \`<p class="observer-group-note">本组没有已记录意见（全部记录 standing：\${escapeHtml([...new Set(group.reviews.map((record) => text(first(record, ["standing"]), "unknown")))].join(" / "))}），无意见文本可展示。</p>\`}
+        </div>
+        <details class="observer-group-records">
+          <summary>全部原始记录 · \${recordCount} 条（可逐条展开）\${latest ? " · 最新已记录意见已在上方展开" : ""}</summary>
+          <div class="observer-group-records-list">\${rawRecords.map((record) => observerReviewCardHtml(record)).join("")}</div>
+        </details>
+        <dl class="observer-group-facts">
+          <div><dt>观察对象</dt><dd>\${taskLocator.standing === "locatable"
+            ? \`<button class="text-action observer-task-link" type="button" data-observer-task-locate="\${escapeHtml(taskLocator.itemId)}">Task \${escapeHtml(taskLocator.taskId)} · 定位</button>\`
+            : taskLocator.standing === "absent"
+              ? \`Task \${escapeHtml(taskLocator.taskId)} · 不在当前投影（不伪造链接）\`
+              : "未关联 Task"}\${attemptCopy}</dd></div>
+          <div><dt>被观察执行</dt><dd>\${latest ? escapeHtml(observerSubjectOutcomeCopy(subjectOutcome)) : "无已记录意见"}</dd></div>
+          <div><dt>处理状态</dt><dd>现有字段不记录是否已处理，处理状态不可推断。</dd></div>
+          <div><dt>机械下一步</dt><dd>\${escapeHtml(nextStep.nextStep)}</dd></div>
+          <div><dt>关联对话</dt><dd>\${conversationEvidence.length
+            ? \`<div class="observer-conversation-evidence-list">\${conversationEvidence.map((evidence) => \`<span class="observer-conversation-evidence" data-conversation-evidence="\${escapeHtml(evidence.ref)}">\${escapeHtml(evidence.label)}</span>\`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>\`
+            : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
+        </dl>
+        <footer>
+          \${taskLocator.standing === "locatable"
+            ? \`<button type="button" class="text-action" data-observer-task-locate="\${escapeHtml(taskLocator.itemId)}">定位现有任务</button>\`
+            : ""}
+          <button type="button" class="text-action" data-observer-process="\${escapeHtml(group.key)}">在对话中处理这条意见</button>
+        </footer>
+      </article>\`;
+  }
+
   function renderObserverSurface() {
     const projection = first(state.snapshot, ["observerReviews"], {});
     const sourceState = $("#observer-source-state");
@@ -11926,9 +12324,11 @@ export function taskLocatorEmptySummary(locator, context) {
         ? formatTime(lastRecordedAt, lastRecordedAt)
         : "尚无记录";
     }
-    if (countSummary) countSummary.textContent = \`\${reviews.length} 条意见\`;
-    const displayReviews = reviews.slice().reverse();
-    if (!displayReviews.length) {
+    const grouped = groupObserverReviews(reviews);
+    if (countSummary) {
+      countSummary.textContent = \`\${grouped.topicCount} 个主题 · \${grouped.recordCount} 条原始记录\`;
+    }
+    if (!reviews.length) {
       const emptyCopy = {
         waiting: ["还没有可展示的观察意见", "observer 已启用。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。当前还没有符合条件的已结算 Run。"],
         empty: ["记录源已连接，但目前为空", "记录文件可以读取，但还没有 observer 写入意见。完成一次可观察的对话 Run（或显式 observer 入口）后，这里会出现真实记录。"],
@@ -11938,44 +12338,9 @@ export function taskLocatorEmptySummary(locator, context) {
       listRoot.innerHTML = \`<div class="system-empty observer-empty" data-state="\${escapeHtml(recordState)}"><span class="observer-empty-kicker">OBSERVATION LOG</span><strong>\${escapeHtml(emptyCopy[0])}</strong><span>\${escapeHtml(emptyCopy[1])}</span><small>记录来源：<code>\${escapeHtml(text(first(projection, ["sourceRef"]), "未知"))}</code></small></div>\`;
       return;
     }
-    listRoot.innerHTML = displayReviews.map((review) => {
-      const refs = list(first(review, ["evidenceRefs"], []));
-      const subject = first(review, ["subject"], {});
-      const attemptId = text(first(subject, ["attemptId"]), "");
-      const workerId = observerReviewWorkerId(review);
-      const conversationEvidence = observerConversationEvidenceLabels(review);
-      const statusProjection = observerReviewStatusProjection(review);
-      const subjectStanding = observerReviewSubjectAcceptanceProjection(review);
-      const taskLocator = observerReviewTaskLocator(review, currentWorkItems);
-      const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
-      const subjectOutcome = first(review, ["subjectOutcome"], null);
-      return \`<article class="observer-review-card" data-review-id="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
-        <header>
-          <div><span class="observer-review-status" data-standing="\${escapeHtml(statusProjection.standing)}">\${escapeHtml(statusProjection.label)}</span><span class="observer-review-subject-standing" data-standing="\${escapeHtml(subjectStanding.standing)}">\${escapeHtml(subjectStanding.label)}</span><strong>\${escapeHtml(workerId)}</strong></div>
-          <time>\${escapeHtml(formatTime(text(first(review, ["recordedAt"]), "")))}</time>
-        </header>
-        <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论</p><p class="observer-review-summary">\${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">\${renderConversationMarkdown(reviewText)}</div></details></div>
-        <dl class="observer-review-facts">
-          <div><dt>观察对象</dt><dd>\${taskLocator.standing === "locatable"
-            ? \`<button class="text-action observer-task-link" type="button" data-observer-task-locate="\${escapeHtml(taskLocator.itemId)}">Task \${escapeHtml(taskLocator.taskId)} · 定位</button>\`
-            : taskLocator.standing === "absent"
-              ? \`Task \${escapeHtml(taskLocator.taskId)} · 不在当前投影（不伪造链接）\`
-              : "未关联 Task"} · attempt \${escapeHtml(shortConversationId(attemptId))}</dd></div>
-          <div><dt>被观察执行</dt><dd>\${escapeHtml(observerSubjectOutcomeCopy(subjectOutcome))}</dd></div>
-          <div><dt>处理方式</dt><dd>尚未处理；通过普通对话 Task 进行阅览、评论、转派或暂缓。</dd></div>
-          <div><dt>关联对话</dt><dd>\${conversationEvidence.length
-            ? \`<div class="observer-conversation-evidence-list">\${conversationEvidence.map((evidence) => \`<span class="observer-conversation-evidence" data-conversation-evidence="\${escapeHtml(evidence.ref)}">\${escapeHtml(evidence.label)}</span>\`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>\`
-            : "未记录直接对话关联；不要把最近对话误认为因果来源。"}</dd></div>
-        </dl>
-        <details class="observer-review-evidence"><summary>证据引用 · \${refs.length} 项</summary><ul>\${refs.length ? refs.map((ref) => \`<li><code>\${escapeHtml(ref)}</code></li>\`).join("") : "<li>未提供证据引用</li>"}</ul></details>
-        <footer>
-          \${taskLocator.standing === "locatable"
-            ? \`<button type="button" class="text-action" data-observer-task-locate="\${escapeHtml(taskLocator.itemId)}">定位现有任务</button>\`
-            : ""}
-          <button type="button" class="text-action" data-observer-process="\${escapeHtml(text(first(review, ["reviewId"]), "review"))}">在对话中处理这条意见</button>
-        </footer>
-      </article>\`;
-    }).join("");
+    listRoot.innerHTML = grouped.groups.map((group) =>
+      observerGroupCardHtml(group, currentWorkItems),
+    ).join("");
     listRoot.querySelectorAll("[data-observer-task-locate]").forEach((button) => {
       button.addEventListener("click", () => {
         const workItem = workItems().find(
@@ -11993,11 +12358,15 @@ export function taskLocatorEmptySummary(locator, context) {
     });
     listRoot.querySelectorAll("[data-observer-process]").forEach((button) => {
       button.addEventListener("click", () => {
-        const review = displayReviews.find((candidate) => text(first(candidate, ["reviewId"]), "") === button.dataset.observerProcess);
+        const group = grouped.groups.find(
+          (candidate) => candidate.key === button.dataset.observerProcess,
+        );
+        if (!group) return;
+        const review = group.latestRecorded ?? (group.reviews.length > 0 ? group.reviews[group.reviews.length - 1] : null);
         if (!review) return;
         const attemptId = text(first(first(review, ["subject"], {}), ["attemptId"]), "");
-        const finding = text(first(review, ["finding"]), "");
-        conversationState.draft = \`处理 observer review \${text(first(review, ["reviewId"]), "")}:\\n观察 attempt: \${attemptId}\\n意见：\${finding}\\n请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。\`;
+        const opinion = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
+        conversationState.draft = \`处理 observer review \${text(first(review, ["reviewId"]), "")}:\\n观察 attempt: \${attemptId}\\n意见：\${opinion}\\n请判断：已阅、评论、转成普通改进任务，或暂缓，并说明理由。\`;
         persistConversationDraft();
         state.activeView = "conversation";
         render();
