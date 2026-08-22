@@ -9165,7 +9165,7 @@ export function classifyWorkbenchAttention(items) {
  * known structured reasons get their exact guidance; an unrecognized reason
  * renders an explicit unknown-reason fallback instead of borrowing either
  * known guidance, and free-text attention summaries never become a reason.
- * The runner-unbound standing labels the masthead "投影可读 · Runner 未绑定":
+ * The runner-unbound standing labels the masthead "运行投影可读 · Runner 未绑定":
  * the HTTP projection itself is still readable, so no 实时 claim implies the
  * Runner is running live, while the recovery guidance stays in the detail.
  */
@@ -9229,7 +9229,7 @@ export function incompleteProjectionCopy(snapshot) {
   if (hasUnboundRunner || unboundRunner !== undefined) {
     if (unboundReason === null) {
       return {
-        label: "投影可读 · Runner 未绑定",
+        label: "运行投影可读 · Runner 未绑定",
         detail: cachedRunners || hasUnreachableRunner
           ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
           : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
@@ -9250,7 +9250,7 @@ export function incompleteProjectionCopy(snapshot) {
           direction: "刷新投影，核对 runner 归属与 Mission 绑定来源后再控制。",
         };
     return {
-      label: "投影可读 · Runner 未绑定",
+      label: "运行投影可读 · Runner 未绑定",
       detail: cachedRunners || hasUnreachableRunner
         ? \`运行投影不完整 · \${reasonCopy.reason}，运行状态仅来自缓存；\${reasonCopy.direction}\`
         : \`运行投影不完整 · \${reasonCopy.reason}；\${reasonCopy.direction}\`,
@@ -9270,6 +9270,75 @@ export function incompleteProjectionCopy(snapshot) {
     label: "实时 · 投影需核查",
     detail: "运行投影不完整 · 当前仍有待核查事项；刷新投影并打开对应事项查看原因与下一步。",
   };
+}
+
+/**
+ * The conversation-layer standing copy, keyed strictly by the independent
+ * conversation socket state. This layer is never derived from the snapshot
+ * projection: the same label set renders whether the running projection is
+ * healthy, incomplete, or Runner-unbound.
+ */
+export function conversationConnectionLabel(connection) {
+  return {
+    live: "已连接 · 实时",
+    connecting: "正在连接",
+    disconnected: "已断开 · 正在重连",
+    unavailable: "不可用",
+  }[connection] || "未连接";
+}
+
+/**
+ * The masthead standing for the running-projection layer only. Snapshot
+ * attention/errors/freshness and the conversation socket standing are the
+ * only inputs; every live-state label names the 运行投影 layer explicitly,
+ * and the conversation socket is only ever reported as its own 对话 layer
+ * after the projection claim, so neither layer can read as the other.
+ */
+export function projectionMastheadLabel(input) {
+  const source = input && typeof input === "object" ? input.source : undefined;
+  const snapshot = input && typeof input === "object" ? input.snapshot : null;
+  const conversationConnection =
+    input && typeof input === "object" ? input.conversationConnection : undefined;
+  const conversationView =
+    input && typeof input === "object" && input.conversationView === true;
+  if (source === "live") {
+    const conversationIssue =
+      conversationView
+      && (conversationConnection === "connecting"
+        || conversationConnection === "disconnected"
+        || conversationConnection === "unavailable");
+    const snapshotSourceErrors =
+      snapshot !== null
+      && typeof snapshot === "object"
+      && Array.isArray(snapshot.errors)
+        ? snapshot.errors
+        : [];
+    if (conversationIssue) {
+      return {
+        label: {
+          connecting: "运行投影已连接 · 对话连接中",
+          disconnected: "运行投影已连接 · 对话已断开",
+          unavailable: "运行投影已连接 · 对话不可用",
+        }[conversationConnection] || "运行投影已连接 · 对话状态待确认",
+        mark: "warning",
+      };
+    }
+    if (snapshotSourceErrors.length > 0) {
+      return { label: "实时 · 部分来源不可用", mark: "warning" };
+    }
+    if (
+      snapshot !== null
+      && typeof snapshot === "object"
+      && (snapshot.complete === false || snapshot.isComplete === false)
+    ) {
+      return { label: incompleteProjectionCopy(snapshot).label, mark: "warning" };
+    }
+    return { label: "运行投影实时 · 已连接", mark: "live" };
+  }
+  if (source === "stale") return { label: "上次实时 · 已过期", mark: "error" };
+  if (source === "demo") return { label: "演示 · 非实时", mark: "demo" };
+  if (source === "error") return { label: "连接失败", mark: "error" };
+  return { label: "正在连接", mark: "plain" };
 }
 
 export function isExactLiveAgentWork(item) {
@@ -11504,61 +11573,40 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = $("#connection-mark");
     const warning = $("#source-warning");
     mark.className = "connection-mark";
-    const conversationConnectionIssue =
-      state.activeView === "conversation"
-      && (conversationState.connection === "connecting"
-        || conversationState.connection === "disconnected"
-        || conversationState.connection === "unavailable");
-    const projectionIncomplete = first(state.snapshot, ["complete", "isComplete"]) === false;
-    // “部分来源不可用”只由真实来源错误（snapshot.errors 非空）驱动；errors
-    // 为空时的投影不完整（如 runner-unbound 等非来源错误警告）不再误报为来源
-    // 不可用，只提示投影需核查；精确完整性仍由下方 completeness 行给出。
-    const snapshotSourceErrors = list(first(state.snapshot, ["errors"], []));
+    // The masthead standing is one pure boundary: the snapshot facts
+    // (attention/errors/freshness) and the independent conversation socket
+    // standing stay the only inputs, and every live-state label names the
+    // 运行投影 layer explicitly so it can never read as a conversation
+    // connection claim.
+    const standing = projectionMastheadLabel({
+      source: state.source,
+      snapshot: state.snapshot,
+      conversationConnection: conversationState.connection,
+      conversationView: state.activeView === "conversation",
+    });
+    $("#connection-label").textContent = standing.label;
+    if (standing.mark === "live") mark.classList.add("is-live");
+    else if (standing.mark === "warning") mark.classList.add("is-warning");
+    else if (standing.mark === "error") mark.classList.add("is-error");
+    else if (standing.mark === "demo") mark.classList.add("is-demo");
     const projectionCopy = incompleteProjectionCopy(state.snapshot);
 
     if (state.source === "live") {
-      if (conversationConnectionIssue) {
-        $("#connection-label").textContent = {
-          connecting: "投影已连接 · 对话连接中",
-          disconnected: "投影已连接 · 对话已断开",
-          unavailable: "投影已连接 · 对话不可用",
-        }[conversationState.connection] || "投影已连接 · 对话状态待确认";
-        mark.classList.add("is-warning");
-      } else if (snapshotSourceErrors.length > 0) {
-        $("#connection-label").textContent = "实时 · 部分来源不可用";
-        mark.classList.add("is-warning");
-      } else if (projectionIncomplete) {
-        if (projectionCopy.label === "实时 · 投影需核查") {
-          $("#connection-label").textContent = "实时 · 投影需核查";
-        } else {
-          $("#connection-label").textContent = projectionCopy.label;
-        }
-        mark.classList.add("is-warning");
-      } else {
-        $("#connection-label").textContent = "实时 · 已连接";
-        mark.classList.add("is-live");
-      }
       warning.hidden = true;
     } else if (state.source === "stale") {
-      $("#connection-label").textContent = "上次实时 · 已过期";
-      mark.classList.add("is-error");
       warning.hidden = false;
       warning.querySelector("strong").textContent = "实时刷新失败 · 操作已禁用";
       warning.querySelector("span").textContent =
-        \`保留最后一次成功的真实投影供检查；没有用演示数据替换现场。\${state.snapshotError ? \` \${state.snapshotError}\` : ""}\`;
+        "保留最后一次成功的真实投影供检查；没有用演示数据替换现场。"
+        + (state.snapshotError ? " " + state.snapshotError : "");
     } else if (state.source === "demo") {
-      $("#connection-label").textContent = "演示 · 非实时";
-      mark.classList.add("is-demo");
       warning.hidden = false;
       warning.querySelector("strong").textContent = "本地演示 · 非实时数据";
       warning.querySelector("span").textContent =
         "尚未成功读取过真实运行投影。当前界面只展示交互形式，不代表任何项目或 Agent 的真实状态。";
     } else if (state.source === "error") {
-      $("#connection-label").textContent = "连接失败";
-      mark.classList.add("is-error");
       warning.hidden = false;
     } else {
-      $("#connection-label").textContent = "正在连接";
       warning.hidden = true;
     }
     const loading = state.source === "loading";
@@ -15612,12 +15660,6 @@ export function taskLocatorEmptySummary(locator, context) {
     renderConversationSurface();
   }
 
-  const conversationConnectionCopy = {
-    live: "已连接 · 实时",
-    connecting: "正在连接",
-    disconnected: "已断开 · 正在重连",
-    unavailable: "不可用",
-  };
   const conversationActionKindCopy = {
     task_create: "创建任务",
     task_correct: "纠正任务",
@@ -15942,10 +15984,10 @@ export function taskLocatorEmptySummary(locator, context) {
   function renderConversationEmptyState() {
     const connection = conversationState.connection;
     const connectionCopy = {
-      live: ["已连接 · 实时", "可以发送；示例只填入草稿，不会自动发送。"],
-      connecting: ["正在连接", "草稿与示例仍可用；连接恢复后才能发送。"],
-      disconnected: ["已断开 · 正在重连", "草稿保留，不会自动重发；只恢复已结算事件。"],
-      unavailable: ["不可用", "草稿保留；恢复连接前不能发送，不会自动重发。"],
+      live: [conversationConnectionLabel("live"), "可以发送；示例只填入草稿，不会自动发送。"],
+      connecting: [conversationConnectionLabel("connecting"), "草稿与示例仍可用；连接恢复后才能发送。"],
+      disconnected: [conversationConnectionLabel("disconnected"), "草稿保留，不会自动重发；只恢复已结算事件。"],
+      unavailable: [conversationConnectionLabel("unavailable"), "草稿保留；恢复连接前不能发送，不会自动重发。"],
     }[connection] || ["连接状态未知", "不发送；草稿保留，不会自动重发。"];
     const examples = [
       ["查看待办", "当前有哪些事项需要我处理？"],
@@ -16053,7 +16095,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = $("#conversation-connection-mark");
     const id = $("#conversation-id");
     id.textContent = shortConversationId(conversationState.conversationId);
-    label.textContent = conversationConnectionCopy[conversationState.connection] || "未连接";
+    label.textContent = conversationConnectionLabel(conversationState.connection);
     mark.dataset.connection = conversationState.connection;
     const reconnect = $("#conversation-reconnect");
     reconnect.hidden = conversationState.connection !== "disconnected";
@@ -16079,9 +16121,9 @@ export function taskLocatorEmptySummary(locator, context) {
     const connection = $("#conversation-composer-connection");
     if (connection !== null) {
       connection.dataset.connection = conversationState.connection;
-      connection.textContent = \`对话连接：\${
-        conversationConnectionCopy[conversationState.connection] || "状态未知"
-      }\`;
+      const conversationLabel = conversationConnectionLabel(conversationState.connection);
+      connection.textContent =
+        "对话连接：" + (conversationLabel === "未连接" ? "状态未知" : conversationLabel);
     }
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
@@ -16136,7 +16178,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = context.querySelector("[data-conversation-context-mark]");
     if (mark) mark.dataset.connection = connection;
     const label = context.querySelector("[data-conversation-context-label]");
-    if (label) label.textContent = conversationConnectionCopy[connection] || "未连接";
+    if (label) label.textContent = conversationConnectionLabel(connection);
     const id = context.querySelector("[data-conversation-context-id]");
     if (id) id.textContent = shortConversationId(conversationState.conversationId);
     const supervisor = $("#conversation-context-supervisor");

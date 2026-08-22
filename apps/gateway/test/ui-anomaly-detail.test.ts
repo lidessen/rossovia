@@ -143,6 +143,6 @@ describe("observation peek visibility for anomaly detail", () => {
     expect(stylesCss).toContain(".conversation-standing {\n  display: none;\n}");
     expect(stylesCss).not.toContain(".conversation-standing strong");
     expect(stylesCss).not.toContain(".conversation-standing code");
-    expect(appJs).toContain('$("#connection-label").textContent = "实时 · 已连接";');
+    expect(appJs).toContain('label: "运行投影实时 · 已连接"');
   });
 });
