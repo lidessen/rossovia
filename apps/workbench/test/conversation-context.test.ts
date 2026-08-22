@@ -15,7 +15,11 @@ import { createConversationContextProvider } from "../src/conversation/context";
 import { createConversationTaskOperationHost } from "../src/conversation/operations";
 import { taskActionSourceRef, taskReceiptEvidenceRef } from "../src/conversation/contracts";
 import { FileConversationJournal } from "../src/conversation/journal";
-import { composeConversationPrompt, CURRENT_COORDINATOR_POLICY } from "../../autonomy/src/conversation-prompt";
+import {
+  composeConversationPrompt,
+  CURRENT_COORDINATOR_POLICY,
+  type RuntimeStatusProjection,
+} from "../../autonomy/src/conversation-prompt";
 
 const temporaryRoots: string[] = [];
 
@@ -380,6 +384,33 @@ describe("ConversationContextProvider", () => {
     expect(projection).not.toHaveProperty("task");
     expect(projection).not.toHaveProperty("projects");
     expect(projection.workers?.length).toBeGreaterThan(0);
+  });
+
+  test("projects the injected bounded runtime status and stays fully compatible without it", async () => {
+    const { home, provider } = fixture();
+    // The exact bounded runtime status observation the gateway startup entry
+    // injects. The annotation keeps the startup standing its literal union
+    // (mode/readiness/status) instead of widening to string, which is what
+    // the provider option expects; the runtime values stay exactly the ones
+    // runtimeStatusProjection produces.
+    const runtime: RuntimeStatusProjection = {
+      version: "@rosso/workbench 0.1.0",
+      startup: { mode: "normal", readiness: "boot-ready", status: "healthy" },
+      endpoint: "http://127.0.0.1:4317",
+      sourceHead: "1".repeat(40),
+      sourceDirty: false,
+      checkedAt: "2026-08-21T12:00:00Z",
+    };
+    const withRuntime = createConversationContextProvider(home, { runtime });
+
+    const projection = await withRuntime.buildProjection(randomUUID());
+    expect(projection.runtime).toEqual(runtime);
+
+    // The provider never invents runtime facts: without the injection the
+    // existing projection stays compatible and carries no runtime status.
+    const plain = await provider.buildProjection(randomUUID());
+    expect(plain).not.toHaveProperty("runtime");
+    expect(plain.taskCardStanding?.state).toBe("omitted");
   });
 
   test("the causal task action source ref retains the conversation and action identity", () => {

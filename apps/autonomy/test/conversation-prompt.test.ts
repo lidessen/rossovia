@@ -671,3 +671,93 @@ test("received context is bounded and has no caller-supplied authority or kind",
     },
   })).toThrow();
 });
+
+test("runtime status renders bounded startup, version, endpoint, and source facts with the read-only note", () => {
+  const input = fullInput();
+  input.projection!.runtime = {
+    version: "@rosso/workbench 0.1.0",
+    startup: { mode: "normal", readiness: "boot-ready", status: "healthy" },
+    endpoint: "http://127.0.0.1:4317",
+    sourceHead: "1".repeat(40),
+    sourceDirty: false,
+    checkedAt: "2026-08-21T12:00:00Z",
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain(
+    "runtime status (read-only observation from this turn's preparation, not an operation authorization):",
+  );
+  expect(composed.prompt).toContain("  package version: @rosso/workbench 0.1.0");
+  expect(composed.prompt).toContain(
+    `  startup: mode=normal readiness=boot-ready status=healthy (checked at 2026-08-21T12:00:00Z)`,
+  );
+  expect(composed.prompt).toContain("  loopback endpoint: http://127.0.0.1:4317");
+  expect(composed.prompt).toContain(`  source: head ${"1".repeat(40)}, clean`);
+  // The note makes the observation boundary explicit: the coordinator can
+  // answer truthfully from these fields and must not claim there is no
+  // runtime query channel, while the fields authorize nothing.
+  expect(composed.prompt).toContain(
+    "answer startup, version, loopback-endpoint, and source head/dirty questions truthfully from them",
+  );
+  expect(composed.prompt).toContain("They authorize no operation and disclose no other runtime surface");
+  expect(composed.prompt).not.toContain("## 7");
+});
+
+test("runtime status renders a dirty source and partial source facts without inventing a head", () => {
+  const input = fullInput();
+  input.projection!.runtime = {
+    version: "@rosso/workbench 0.1.0",
+    startup: { mode: "safe-diagnostic", readiness: "boot-attention", status: "attention" },
+    endpoint: "http://127.0.0.1:4399",
+    sourceDirty: true,
+  };
+  const composed = composeConversationPrompt(input);
+
+  expect(composed.prompt).toContain("  startup: mode=safe-diagnostic readiness=boot-attention status=attention");
+  expect(composed.prompt).toContain("  loopback endpoint: http://127.0.0.1:4399");
+  expect(composed.prompt).toContain("  source: head unknown, dirty");
+  expect(composed.prompt).not.toContain("## 7");
+});
+
+test("an absent runtime keeps the existing projection fully compatible and renders no runtime status", () => {
+  const composed = composeConversationPrompt(fullInput());
+
+  expect(composed.prompt).not.toContain("runtime status");
+  expect(composed.prompt).not.toContain("package version:");
+  expect(composed.prompt).not.toContain("loopback endpoint:");
+  expect(composed.prompt).not.toContain("read-only observation");
+  expect(composed.prompt).toContain("## 2. Current compact projection");
+});
+
+test("runtime status is strict and never carries local paths or raw payloads", () => {
+  // The bounded schema rejects unbounded runtime facts outright, so a
+  // gate-style mechanical source with cwd/root/statusLines can never enter.
+  const leaking = fullInput();
+  leaking.projection!.runtime = {
+    version: "@rosso/workbench 0.1.0",
+    startup: { mode: "normal", readiness: "boot-ready", status: "healthy" },
+    endpoint: "http://127.0.0.1:4317",
+    sourceHead: "1".repeat(40),
+    sourceDirty: false,
+    cwd: "/home/principal/rossovia",
+    root: "/home/principal/rossovia",
+    statusLines: [" M apps/workbench/src/home.ts"],
+  } as unknown as NonNullable<typeof leaking.projection>["runtime"];
+  expect(() => composeConversationPrompt(leaking)).toThrow();
+
+  // The rendered runtime block carries exactly the bounded fields; a local
+  // path can never appear anywhere in the composed prompt.
+  const input = fullInput();
+  input.projection!.runtime = {
+    version: "@rosso/workbench 0.1.0",
+    startup: { mode: "normal", readiness: "boot-ready", status: "healthy" },
+    endpoint: "http://127.0.0.1:4317",
+    sourceHead: "1".repeat(40),
+    sourceDirty: false,
+  };
+  const composed = composeConversationPrompt(input);
+  expect(composed.prompt).not.toContain("/home/principal");
+  expect(composed.prompt).not.toContain("apps/workbench/src/home.ts");
+  expect(composed.prompt).not.toContain("cwd:");
+  expect(composed.prompt).not.toContain("root:");
+});
