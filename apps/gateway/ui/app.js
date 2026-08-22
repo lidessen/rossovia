@@ -188,16 +188,27 @@ function isPausedByAnotherActor(item) {
     && item.nextActor !== "principal";
 }
 
+/**
+ * F1/F2/F3: the one shared Principal Needs-You predicate. The rail
+ * classification (classifyWorkbenchAttention), the navigation count
+ * (#principal-task-count), and the principal view/filter
+ * (workItemMatchesView) all use this exact predicate, so a cached-only /
+ * input-pending / paused-by-another-actor runner item can never surface in
+ * one Principal surface and not another.
+ */
+export function isPrincipalNeedsYouWorkItem(item) {
+  return item !== null
+    && typeof item === "object"
+    && item.nextActor === "principal"
+    && !isPausedByAnotherActor(item)
+    && !isInputPendingWorkItem(item)
+    && (!isRunnerSceneWorkItem(item) || workItemHasLiveProof(item));
+}
+
 export function classifyWorkbenchAttention(items) {
   const workItems = Array.isArray(items) ? items : [];
   return {
-    principal: workItems.filter((item) =>
-      item !== null
-      && typeof item === "object"
-      && item.nextActor === "principal"
-      && !isPausedByAnotherActor(item)
-      && !isInputPendingWorkItem(item)
-      && (!isRunnerSceneWorkItem(item) || workItemHasLiveProof(item))),
+    principal: workItems.filter(isPrincipalNeedsYouWorkItem),
     system: workItems.filter((item) =>
       item !== null
       && typeof item === "object"
@@ -3195,13 +3206,13 @@ export function taskLocatorEmptySummary(locator, context) {
   };
 
   function workItemMatchesView(item, view = state.activeView) {
-    if (view === "principal") return item.nextActor === "principal";
+    if (view === "principal") return isPrincipalNeedsYouWorkItem(item);
     if (view === "agent") return isExactLiveAgentWork(item);
     if (view === "agent-pending") return isPendingAgentWork(item);
     if (view === "independent") return isIndependentWorkbenchTask(item);
     if (view === "completed") return item.lifecycle === "settled";
     if (view === "tasks") {
-      if (state.taskFilter === "principal") return item.nextActor === "principal";
+      if (state.taskFilter === "principal") return isPrincipalNeedsYouWorkItem(item);
       if (state.taskFilter === "agent") return isExactLiveAgentWork(item);
       if (state.taskFilter === "agent-pending") {
         return isPendingAgentWork(item);
@@ -3349,7 +3360,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const agentResponsibility = classifyAgentResponsibility(items);
     const counts = {
       all: items.length,
-      principal: items.filter((item) => item.nextActor === "principal").length,
+      principal: items.filter(isPrincipalNeedsYouWorkItem).length,
       agent: agentResponsibility.live.length,
       agentPending: agentResponsibility.pending.length,
       independent: items.filter(isIndependentWorkbenchTask).length,
