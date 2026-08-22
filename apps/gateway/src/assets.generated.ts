@@ -12282,6 +12282,9 @@ export function taskEntryDefaultFilter(input) {
       }));
       // URL/locus 的显式 filter 记为用户已明确选择：入口事件不覆盖它。
       if (request.filter !== null) state.taskFilterExplicit = true;
+      // 直接 URL 打开/刷新 ?view=tasks 且没有显式 filter：与桌面/移动入口
+      // 共用同一 principal 默认投影（待我）；显式 filter 一律不覆盖。
+      applyTaskEntryDefaultFilter();
       state.unavailableLocus = {
         kind: "projection",
         requestedId: request.workItemId ?? request.projectId,
@@ -12298,6 +12301,9 @@ export function taskEntryDefaultFilter(input) {
     Object.assign(state, restoredPrincipalLocusState(resolved));
     // URL/locus 的显式 filter 记为用户已明确选择：入口事件不覆盖它。
     if (request.filter !== null) state.taskFilterExplicit = true;
+    // 直接 URL 打开/刷新 ?view=tasks 且没有显式 filter：与桌面/移动入口
+    // 共用同一 principal 默认投影（待我）；显式 filter（包括全部）一律不覆盖。
+    applyTaskEntryDefaultFilter();
     if (resolved.standing === "unavailable") {
       state.unavailableLocus = {
         kind: resolved.kind,
@@ -12589,9 +12595,9 @@ export function taskEntryDefaultFilter(input) {
   }
 
   /**
-   * 任务入口的默认 filter 应用（桌面与移动共用同一路径）：仅在入口事件
-   * 进入 tasks 时生效，且只在用户尚未明确选择其它 filter 时把首屏设为
-   * 已有 principal filter（待我行动视图）。URL/locus 的显式 filter 或
+   * 任务入口的默认 filter 应用（桌面、移动与直接 URL 初始化共用同一路径）：
+   * 仅进入 tasks 视图时生效，且只在用户尚未明确选择其它 filter 时把首屏设
+   * 为已有 principal filter（待我行动视图）。URL/locus 的显式 filter 或
    * 任务筛选按钮的明确选择一律不覆盖；全部视图仍为显式库存入口。
    */
   function applyTaskEntryDefaultFilter() {

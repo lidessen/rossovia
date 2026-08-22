@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { incompleteProjectionCopy, orderWorkItemsForTaskEntry, taskEntryDefaultFilter, taskEntryLifecyclePriority, workItemUpdatedLabel } from "../ui/app.js";
+import { incompleteProjectionCopy, orderWorkItemsForTaskEntry, parsePrincipalLocus, resolvePrincipalLocus, restoredPrincipalLocusState, taskEntryDefaultFilter, taskEntryLifecyclePriority, workItemUpdatedLabel } from "../ui/app.js";
 
 describe("incomplete projection status copy", () => {
   test("explains an unbound cached runner and gives the recovery direction", () => {
@@ -557,5 +557,55 @@ describe("task entry first-screen projection", () => {
     expect(taskEntryDefaultFilter(null)).toBe("principal");
     // URL/locus 的显式 filter 或用户已明确选择的其他 filter：入口不覆盖。
     expect(taskEntryDefaultFilter({ filterExplicit: true })).toBeNull();
+  });
+
+  test("direct ?view=tasks initialization applies the same principal default as the task entry", () => {
+    // 直接打开/刷新 ?view=tasks：URL 没有显式 filter。locus 投影先恢复出
+    // 缺省 all，初始化随即应用与桌面/移动入口相同的 principal 默认（待我），
+    // 而不是停留在全部视图。
+    const request = parsePrincipalLocus("http://rossovia.local/?view=tasks");
+    expect(request.view).toBe("tasks");
+    expect(request.filter).toBeNull();
+    expect(request.invalidFields).toEqual([]);
+    const restored = restoredPrincipalLocusState(
+      resolvePrincipalLocus(request, { projects: [], workItems: [] }),
+    );
+    expect(restored.activeView).toBe("tasks");
+    expect(restored.taskFilter).toBe("all");
+    // 初始化应用入口默认投影：只有显式 filter 才放行恢复值。
+    const entryDefault = taskEntryDefaultFilter({
+      filterExplicit: request.filter !== null,
+    });
+    expect(entryDefault).toBe("principal");
+    const appliedFilter = entryDefault !== null ? entryDefault : restored.taskFilter;
+    expect(appliedFilter).toBe("principal");
+    // 与点击任务入口（桌面/移动共用同一路径）的投影完全一致。
+    expect(entryDefault).toBe(taskEntryDefaultFilter({ filterExplicit: false }));
+  });
+
+  test("explicit filters, including 全部 (all), survive direct-URL initialization untouched", () => {
+    // 缺失 filter 与显式 filter 的边界：只要 URL 显式携带 filter（包括
+    // filter=all），直接打开/刷新 ?view=tasks 就必须保留它，绝不落回
+    // principal 默认。
+    for (const filter of [
+      "all",
+      "principal",
+      "agent",
+      "agent-pending",
+      "independent",
+      "verification",
+      "completed",
+    ]) {
+      const request = parsePrincipalLocus(
+        `http://rossovia.local/?view=tasks&filter=${filter}`,
+      );
+      expect(request.filter).toBe(filter);
+      const restored = restoredPrincipalLocusState(
+        resolvePrincipalLocus(request, { projects: [], workItems: [] }),
+      );
+      expect(restored.taskFilter).toBe(filter);
+      // 显式 filter 已明确：初始化/入口的默认投影必须放行。
+      expect(taskEntryDefaultFilter({ filterExplicit: true })).toBeNull();
+    }
   });
 });
