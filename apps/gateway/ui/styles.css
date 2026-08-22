@@ -3244,6 +3244,38 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   padding-top: 0.65rem;
 }
 
+.observer-review-correlation {
+  border-top: 1px solid var(--line-light);
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+}
+
+.observer-review-correlation > span {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.56rem;
+  text-transform: uppercase;
+}
+
+.observer-review-correlation code,
+.observer-review-correlation small {
+  display: block;
+  font-size: 0.62rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.observer-review-correlation code {
+  color: var(--green-dark);
+  font-family: var(--mono);
+}
+
+.observer-review-correlation small {
+  color: var(--ink-soft);
+}
+
 .observer-review-evidence summary {
   color: var(--ink-soft);
   cursor: pointer;

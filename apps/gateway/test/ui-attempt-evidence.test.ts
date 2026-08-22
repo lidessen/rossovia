@@ -14,8 +14,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import { initializeHome } from "../../workbench/src/home";
-import { readWorkflowReviews, workflowReviewLogPath } from "../../workbench/src/workflow-observer";
-import { createWorkbenchRequestHandler } from "../src/ui-server";
+import {
+  appendWorkflowReview,
+  readWorkflowReviews,
+  workflowReviewLogPath,
+} from "../../workbench/src/workflow-observer";
+import { createWorkbenchRequestHandler, readObserverReviews } from "../src/ui-server";
 
 const temporaryRoots: string[] = [];
 
@@ -119,7 +123,16 @@ function familyFinalRecord(): Record<string, unknown> {
  */
 function writeEvidenceFamily(
   home: string,
-  options: { settlementAsSymlink?: boolean; omitSettlement?: boolean } = {},
+  options: {
+    settlementAsSymlink?: boolean;
+    omitSettlement?: boolean;
+    correlation?: {
+      conversationId: string;
+      turnId: string;
+      actionId: string;
+      sourceRef: string;
+    };
+  } = {},
 ): void {
   const directory = join(home, "state", "task-attempts", EVIDENCE_ATTEMPT_ID);
   mkdirSync(directory, { recursive: true });
@@ -137,6 +150,7 @@ function writeEvidenceFamily(
     workerId: "deepseek-flash",
     driver: "ai-sdk-v7",
     model: "deepseek-v4-flash",
+    ...(options.correlation === undefined ? {} : { correlation: options.correlation }),
     status: "started",
     startedAt: "2026-08-21T00:00:00.000Z",
   }));
@@ -686,4 +700,89 @@ test("a continuation lineage above the bound fails closed as over-limit with the
   const serialized = JSON.stringify(body);
   expect(serialized).not.toContain('"rawSteps"');
   expect(serialized).not.toContain('"finalText"');
+});
+
+test("observer review surface attaches the canonical attempt correlation and fails closed without it", async () => {
+  const { home } = fixture();
+  const conversationId = "11111111-1111-4111-8111-111111111111";
+  const turnId = "22222222-2222-4222-8222-222222222222";
+  const actionId = "33333333-3333-4333-8333-333333333333";
+  const sourceRef = `conversation:${conversationId}:action:${actionId}`;
+  writeEvidenceFamily(home, { correlation: { conversationId, turnId, actionId, sourceRef } });
+  // A second strict-valid family WITHOUT a retained correlation: the review
+  // stays visible but its observed source is explicitly invisible — never a
+  // guessed conversation.
+  const noCorrelationAttemptId = "44444444-4444-4444-8444-444444444444";
+  writeChainEvidenceFamily(home, noCorrelationAttemptId);
+  // A third family whose settlement is malformed: invalid evidence must
+  // never project a correlation.
+  const invalidAttemptId = "55555555-5555-4555-8555-555555555555";
+  writeChainEvidenceFamily(home, invalidAttemptId);
+  writeFileSync(join(home, `state/task-attempts/${invalidAttemptId}/settlement.json`), "not json");
+
+  const reviewBase = {
+    version: "rossovia.workflow-review.v1" as const,
+    recordedAt: "2026-08-21T00:03:00.000Z",
+    observer: { kind: "agent" as const, workerId: "deepseek-flash" },
+    standing: "recorded" as const,
+    evidenceRefs: ["state/task-attempts/attempt.json"],
+    finding: "finding",
+  };
+  appendWorkflowReview(home, {
+    ...reviewBase,
+    reviewId: "review-correlated",
+    subject: { type: "workflow-task-attempt", taskId: "task-1", attemptId: EVIDENCE_ATTEMPT_ID },
+  });
+  appendWorkflowReview(home, {
+    ...reviewBase,
+    reviewId: "review-no-correlation",
+    recordedAt: "2026-08-21T00:04:00.000Z",
+    subject: { type: "workflow-task-attempt", taskId: "task-1", attemptId: noCorrelationAttemptId },
+  });
+  appendWorkflowReview(home, {
+    ...reviewBase,
+    reviewId: "review-missing-evidence",
+    recordedAt: "2026-08-21T00:05:00.000Z",
+    subject: { type: "workflow-task-attempt", attemptId: "00000000-0000-4000-8000-000000000000" },
+  });
+  appendWorkflowReview(home, {
+    ...reviewBase,
+    reviewId: "review-invalid-evidence",
+    recordedAt: "2026-08-21T00:06:00.000Z",
+    subject: { type: "workflow-task-attempt", attemptId: invalidAttemptId },
+  });
+  appendWorkflowReview(home, {
+    ...reviewBase,
+    reviewId: "review-non-canonical",
+    recordedAt: "2026-08-21T00:07:00.000Z",
+    subject: { type: "workflow-task-attempt", attemptId: "legacy-attempt" },
+  });
+
+  const projection = readObserverReviews(home, "deepseek-flash");
+  expect(projection.standing).toBe("available");
+  const byId = new Map(projection.reviews.map((review) => [review.reviewId, review]));
+  // A review whose subject attempt retains the canonical correlation gets the
+  // exact conversation/turn/action/sourceRef, still bound to the same
+  // attempt evidence (attemptId + the strict-read correlation).
+  expect(byId.get("review-correlated")).toMatchObject({
+    reviewId: "review-correlated",
+    correlation: {
+      standing: "available",
+      attemptId: EVIDENCE_ATTEMPT_ID,
+      correlation: { conversationId, turnId, actionId, sourceRef },
+    },
+  });
+  expect(byId.get("review-no-correlation")?.correlation).toEqual({ standing: "missing" });
+  expect(byId.get("review-missing-evidence")?.correlation).toEqual({ standing: "unavailable" });
+  expect(byId.get("review-invalid-evidence")?.correlation).toEqual({ standing: "invalid" });
+  expect(byId.get("review-non-canonical")?.correlation).toEqual({ standing: "invalid-attempt-id" });
+  // The projection is read-only: no review state or evidence file is created
+  // or rewritten, and the review log keeps exactly the five appended records.
+  expect(readWorkflowReviews(home)).toHaveLength(5);
+  expect(readdirSync(join(home, "state", "task-attempts", EVIDENCE_ATTEMPT_ID)).sort()).toEqual([
+    "attempt.json",
+    "cell-input.json",
+    "cell-input.run.json",
+    "settlement.json",
+  ]);
 });

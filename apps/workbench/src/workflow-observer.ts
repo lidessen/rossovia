@@ -1406,6 +1406,74 @@ export function observerEvidenceProjection(
   };
 }
 
+/**
+ * One read-only projection of the canonical conversation correlation retained
+ * by a review's subject attempt. The correlation is never guessed: it comes
+ * only from the immutable attempt record's optional `correlation` field,
+ * strict-read through the canonical attempt evidence reader, so the returned
+ * conversation/turn/action/sourceRef stays bound to exactly the same attempt
+ * evidence the review observed. `available` carries the exact four correlation
+ * fields plus the attempt id they were read from; `missing` means the attempt
+ * evidence is strict-valid but retained no correlation; `unavailable` means
+ * no attempt evidence is retained for the attempt id (or the home could not
+ * be resolved); `invalid` means the retained attempt evidence is malformed or
+ * inconsistent and must not project anything; `invalid-attempt-id` means the
+ * review's subject attempt id is not a canonical UUID and no file is ever
+ * opened for it. Reading is confined to the one canonical attempt directory
+ * named by the subject attempt id inside the Rossovia home — no arbitrary
+ * file scan — and nothing is copied, rewritten, or settled.
+ */
+export type ObserverAttemptCorrelationProjection =
+  | {
+      readonly standing: "available";
+      readonly attemptId: string;
+      readonly correlation: {
+        readonly conversationId: string;
+        readonly turnId: string;
+        readonly actionId: string;
+        readonly sourceRef: string;
+      };
+    }
+  | { readonly standing: "invalid-attempt-id" | "unavailable" | "invalid" | "missing" };
+
+/**
+ * The strict canonical attempt correlation projection behind the observer
+ * review surface: the exact conversation/turn/action/sourceRef retained on
+ * the reviewed attempt's immutable record, or an explicit invisible standing
+ * when the correlation is absent or the attempt evidence is unreadable or
+ * invalid. The canonical attempt directory is named by the subject attempt
+ * id; only a canonical UUID is admitted here, so an out-of-home or
+ * path-traversal-shaped id is rejected before the reader is called. A
+ * non-available standing never carries a correlation, an id, or a path.
+ */
+export function observerAttemptCorrelationProjection(
+  homeArgument: string | undefined,
+  attemptId: string,
+): ObserverAttemptCorrelationProjection {
+  if (!TaskAttemptIdSchema.safeParse(attemptId).success) {
+    return { standing: "invalid-attempt-id" };
+  }
+  let home: string;
+  try {
+    home = resolveHome(homeArgument);
+  } catch {
+    return { standing: "unavailable" };
+  }
+  let evidence: StrictTaskAttemptEvidence;
+  try {
+    evidence = readStrictTaskAttemptEvidence(home, attemptId);
+  } catch {
+    // Fail closed without echoing exception text, which can carry retained
+    // path content.
+    return { standing: "unavailable" };
+  }
+  if (evidence.standing === "unavailable") return { standing: "unavailable" };
+  if (evidence.standing === "invalid") return { standing: "invalid" };
+  const correlation = evidence.attempt?.correlation;
+  if (correlation === undefined) return { standing: "missing" };
+  return { standing: "available", attemptId, correlation };
+}
+
 const OBSERVER_CONTEXT_LIST_LIMIT = 64;
 const OBSERVER_CONTEXT_STRING_LIMIT = 256;
 const OBSERVER_CONTEXT_TEXT_LIMIT = 2048;

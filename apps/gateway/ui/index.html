@@ -525,7 +525,7 @@
             <div>
               <p class="eyebrow">Observation · secondary surface</p>
               <h2 id="observer-title">观察记录</h2>
-              <p>这里是 observer 的只读意见面，不是对话入口，也不自动处理任何 review。</p>
+              <p>这里是 observer 的只读意见面，不是对话入口，也不自动处理任何 review；每条 review 的观察来源按 canonical attempt correlation 显示，缺失时明确不可见。</p>
             </div>
             <div class="observation-state">
               <span>来源</span>
@@ -551,7 +551,7 @@
           </div>
           <div class="system-surface-note">
             <strong>怎么使用</strong>
-            <span>这里展示真实的只读意见。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。不会自动追溯补审历史执行，也不会把空记录伪装成 review。处理意见仍然是一次普通对话 Task。</span>
+            <span>这里展示真实的只读意见。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。不会自动追溯补审历史执行，也不会把空记录伪装成 review。处理意见仍然是一次普通对话 Task；点击「在对话中处理这条意见」只准备一条对话草稿，不构成处理事实。</span>
           </div>
           <div class="observer-review-list" id="observer-review-list">
             <p class="empty-note">正在读取 observer 记录。</p>
