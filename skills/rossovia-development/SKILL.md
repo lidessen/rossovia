@@ -236,6 +236,14 @@ When local Rossovia is unavailable or explicitly disabled, use
 - A worker return is evidence, never acceptance, merge, publication, or a new
   authority. Main reconnects every claim to source and check evidence.
 
+For a child worker selected from the host catalog, follow the host-declared
+default: use `deepseek-flash` with `reasoning=max` for ordinary engineering
+work. Select another worker only when the child task explicitly requires an
+architecture/high-difficulty boundary or visual input. This is receiver-facing
+method guidance, not an independent routing policy: the host worker-policy and
+sub-worker integration remain authoritative for availability, execution
+profile validation, and exact worker binding; do not invent a fallback here.
+
 For a trivial, tightly coupled, or authority-bound change, stay direct.
 Delegation is a default work-shaping posture for bounded work, not a mandatory
 preflight or an unconditional fan-out.
