@@ -327,6 +327,37 @@ describe("Principal-created local task source", () => {
     expect(listPrincipalTasks(taskHome).tasks[0]!.todos).toEqual([]);
   });
 
+  test("persists optional WorkerCatalog capability labels and defaults older tasks to an empty requirement list", () => {
+    const taskHome = home();
+    const created = createPrincipalTask(taskHome, {
+      title: "Vision-gated Blog task",
+      objective: "Require an exact WorkerCatalog label",
+      acceptance: ["The label is persisted verbatim"],
+      capabilitiesRequired: ["vision"],
+      nextActor: "agent",
+      sourceRef: "conversation:capability-create",
+      expectedSourceRevision: 0,
+    });
+    expect(created.task.capabilitiesRequired).toEqual(["vision"]);
+    expect(showPrincipalTask(taskHome, created.task.id).task.capabilitiesRequired).toEqual(["vision"]);
+
+    const plain = createPrincipalTask(taskHome, {
+      title: "No capability requirements",
+      objective: "A task without supplied requirements",
+      acceptance: ["The requirements default to an empty list"],
+      nextActor: "agent",
+      sourceRef: "conversation:capability-less",
+      expectedSourceRevision: 1,
+    });
+    expect(plain.task.capabilitiesRequired).toEqual([]);
+
+    const path = join(taskHome, "state", "tasks.json");
+    const source = JSON.parse(readFileSync(path, "utf8"));
+    delete source.tasks[0].capabilitiesRequired;
+    writeFileSync(path, `${JSON.stringify(source, null, 2)}\n`);
+    expect(listPrincipalTasks(taskHome).tasks[0]!.capabilitiesRequired).toEqual([]);
+  });
+
   test("parses legacy result claims with no review array unchanged", () => {
     const taskHome = home();
     const created = createPrincipalTask(taskHome, {

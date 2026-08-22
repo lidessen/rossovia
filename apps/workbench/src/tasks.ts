@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
+  PrincipalTaskCapabilitiesRequiredSchema,
   PrincipalTaskCorrectionDeliverySchema,
   PrincipalTaskResultEvidenceSchema,
   PrincipalTaskResultReviewSchema,
@@ -43,6 +44,13 @@ export interface TaskCreateArguments {
   acceptance: string[];
   /** Optional ordinary work todos; persisted verbatim and lowered into CellInput.tasks on task run. */
   todos?: string[];
+  /**
+   * Optional exact WorkerCatalog factual labels required of any selected
+   * worker; persisted verbatim and lowered unchanged into
+   * CellInput.capabilitiesRequired on task run. Never inferred from the
+   * objective, acceptance, or final text.
+   */
+  capabilitiesRequired?: string[];
   nextActor: Exclude<PrincipalTask["nextActor"], "none">;
   sourceRef: string;
   expectedSourceRevision: number;
@@ -216,6 +224,9 @@ export function createPrincipalTask(
     objective: nonempty(arguments_.objective, "task objective"),
     acceptance: nonemptyList(arguments_.acceptance, "task acceptance"),
     todos: (arguments_.todos ?? []).map((todo) => nonempty(todo, "task todo")),
+    capabilitiesRequired: arguments_.capabilitiesRequired === undefined
+      ? []
+      : PrincipalTaskCapabilitiesRequiredSchema.parse(arguments_.capabilitiesRequired),
     origin: {
       kind: "principal-explicit",
       sourceRef: nonempty(arguments_.sourceRef, "task source ref"),

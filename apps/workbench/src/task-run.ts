@@ -1219,8 +1219,13 @@ export function createAttempt(
  * The shared ordinary lowering of one accepted Task snapshot into the
  * immutable CellInput: exact worker identity and execution profile, task
  * objective and corrections as instructions, acceptance, todos when present,
- * the exact Worktree policy, and the emergency duration envelope. The O2
- * ordinary path and the conversation-owned carrier lower the same shape.
+ * the selected WorkerCard labels as capabilities, the Task's exact
+ * capabilitiesRequired labels unchanged, the exact Worktree policy, and the
+ * emergency duration envelope. The O2 ordinary path and the conversation-owned
+ * carrier lower the same shape. WorkerCard labels and Task requirements are
+ * passed through verbatim so the existing WorkerCatalog/runCell admission
+ * stays authoritative: a selected worker lacking a required label fails
+ * closed before any driver dispatch.
  */
 export function buildTaskCellInput(
   task: ReturnType<typeof showPrincipalTask>["task"],
@@ -1239,7 +1244,10 @@ export function buildTaskCellInput(
  * child reuses the parent Task identity and revisions/worktree, but runs with
  * the model-selected worker card's execution profile, the complete receiver
  * prompt as its intent, and a workspace with whole-Worktree reads and no
- * writes or commands.
+ * writes or commands. The selected child WorkerCard labels become the child's
+ * capabilities and the Task's capabilitiesRequired labels are passed
+ * unchanged, so a model-selected child worker lacking a Task-required label
+ * fails closed through the same existing admission.
  */
 export function buildReadOnlyChildCellInput(
   task: ReturnType<typeof showPrincipalTask>["task"],
@@ -1265,9 +1273,9 @@ export function buildReadOnlyChildCellInput(
       "Complete the bounded child task described in the prompt. Do not claim semantic acceptance.",
       "You are already the exactly selected worker for this child Run; do not derive, delegate to, or invoke any other worker or sub-worker — this child Run receives no delegation tools and cannot self-select a different worker.",
     ],
-    capabilities: [],
+    capabilities: [...worker.labels],
     context: [],
-    capabilitiesRequired: [],
+    capabilitiesRequired: [...task.capabilitiesRequired],
     acceptance: ["Do not claim semantic acceptance."],
     budget: {
       maxDurationMs: ORDINARY_TASK_MAX_DURATION_MS,
@@ -1301,9 +1309,9 @@ function taskCellInputObject(
       "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
       ...task.corrections.map((correction) => correction.statement),
     ],
-    capabilities: [],
+    capabilities: [...worker.labels],
     context: [],
-    capabilitiesRequired: [],
+    capabilitiesRequired: [...task.capabilitiesRequired],
     acceptance: task.acceptance,
     ...(task.todos.length > 0
       ? { tasks: task.todos.map((todo) => ({ subject: todo, description: todo })) }

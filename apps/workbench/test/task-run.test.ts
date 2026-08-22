@@ -2317,6 +2317,143 @@ describe("task run public boundary", () => {
   });
 });
 
+describe("task-run capability admission", () => {
+  test("lowers the selected WorkerCard labels as CellInput capabilities and Task requirements unchanged as capabilitiesRequired", async () => {
+    const current = fixture();
+    const created = createPrincipalTask(current.home, {
+      title: "Capability-gated task",
+      objective: "Require an exact worker label",
+      acceptance: ["The label gates admission"],
+      capabilitiesRequired: ["coding"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-capabilities",
+      expectedSourceRevision: 0,
+      project: "task-run",
+      worktree: current.worktree,
+    });
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.capabilities).toEqual(["coding", "text", "write", "commands"]);
+    expect(input.capabilitiesRequired).toEqual(["coding"]);
+    expect(executor.requests).toHaveLength(1);
+    expect(executor.requests[0]!.cellInput.capabilities).toEqual(["coding", "text", "write", "commands"]);
+    expect(executor.requests[0]!.cellInput.capabilitiesRequired).toEqual(["coding"]);
+  });
+
+  test("an ordinary run without Task requirements preserves the empty requirement behavior", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    const executor = new FakeCellExecutor();
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor.execute);
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.capabilities).toEqual(["coding", "text", "write", "commands"]);
+    expect(input.capabilitiesRequired).toEqual([]);
+  });
+
+  test("existing WorkerCatalog admission rejects a missing label and admits a matching label", async () => {
+    const current = fixture();
+    const created = createPrincipalTask(current.home, {
+      title: "Vision-gated run",
+      objective: "Require a label the selected worker lacks",
+      acceptance: ["The run fails closed"],
+      capabilitiesRequired: ["vision"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-missing-capability",
+      expectedSourceRevision: 0,
+      project: "task-run",
+      worktree: current.worktree,
+    });
+    const card = testCard({
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    const catalog = new WorkerCatalog([{
+      card,
+      createDriver: () => { throw new Error("SENTINEL driver dispatched"); },
+    }]);
+    await expect(runPrincipalTaskImpl(current.home, {
+      id: created.task.id,
+      workerId: "test-worker",
+    }, {
+      resolveWorkerCard: () => card,
+      catalog,
+    })).rejects.toThrow("worker test-worker is missing required labels: vision");
+    const projections = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(projections).toHaveLength(1);
+    expect(projections[0]).toMatchObject({ status: "runner-failed" });
+    expect(projections[0]).not.toHaveProperty("cellStatus");
+    const settlement = JSON.parse(
+      readFileSync(join(current.home, projections[0]!.settlementRef), "utf8"),
+    );
+    expect(settlement).toMatchObject({
+      status: "runner-failed",
+      error: "worker test-worker is missing required labels: vision",
+    });
+    expect(settlement).not.toHaveProperty("workCellRunId");
+    expect(attemptLeaseStanding(current.home, created.task.id, projections[0]!.attemptId)).toBe("released");
+
+    const matching = fixture();
+    const matchingTask = createPrincipalTask(matching.home, {
+      title: "Coding-gated run",
+      objective: "Require a label the selected worker carries",
+      acceptance: ["Admission passes and dispatch is attempted"],
+      capabilitiesRequired: ["coding"],
+      nextActor: "agent",
+      sourceRef: "test:task-run-matching-capability",
+      expectedSourceRevision: 0,
+      project: "task-run",
+      worktree: matching.worktree,
+    });
+    const matchingCard = testCard({
+      id: matchingTask.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    });
+    const matchingCatalog = new WorkerCatalog([{
+      card: matchingCard,
+      createDriver: () => { throw new Error("SENTINEL driver dispatched"); },
+    }]);
+    await expect(runPrincipalTaskImpl(matching.home, {
+      id: matchingTask.task.id,
+      workerId: "test-worker",
+    }, {
+      resolveWorkerCard: () => matchingCard,
+      catalog: matchingCatalog,
+    })).rejects.toThrow("SENTINEL driver dispatched");
+    const matchingProjections = showPrincipalTaskAttempts(matching.home, matchingTask.task.id);
+    expect(matchingProjections).toHaveLength(1);
+    const input = JSON.parse(readFileSync(join(matching.home, matchingProjections[0]!.inputRef), "utf8"));
+    expect(input.capabilities).toEqual(["coding", "text", "write", "commands"]);
+    expect(input.capabilitiesRequired).toEqual(["coding"]);
+    const matchingSettlement = JSON.parse(
+      readFileSync(join(matching.home, matchingProjections[0]!.settlementRef), "utf8"),
+    );
+    expect(matchingSettlement).toMatchObject({
+      status: "runner-failed",
+      error: "SENTINEL driver dispatched",
+    });
+    expect(attemptLeaseStanding(matching.home, matchingTask.task.id, matchingProjections[0]!.attemptId)).toBe("released");
+  });
+});
+
 describe("task run --max-steps option", () => {
   test("lowers an explicit positive maxSteps into the immutable CellInput budget and retains it on the attempt record", async () => {
     const current = fixture();
