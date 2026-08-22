@@ -125,6 +125,7 @@ function workItems(
           objective: "Deliver the correction",
           acceptance: ["The Mission input receipt is retained"],
           todos: [],
+          capabilitiesRequired: [],
           origin: {
             kind: "principal-explicit",
             sourceRef: "conversation:test",

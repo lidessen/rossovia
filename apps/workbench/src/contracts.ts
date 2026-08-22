@@ -263,6 +263,36 @@ export const PrincipalTaskWorktreeRebindingSchema = z.object({
   sourceRef: nonempty,
 }).strict();
 
+/**
+ * One factual WorkerCatalog worker label: the same lowercase
+ * `[a-z][a-z0-9-]*` shape WorkerCard labels use. A Task capability
+ * requirement is a catalog fact only — Workbench never infers it from the
+ * objective, acceptance, corrections, or final text, and it never expresses
+ * host authority.
+ */
+const workerCapabilityLabel = z.string().regex(
+  /^[a-z][a-z0-9-]*$/u,
+  "worker capability labels use lowercase letters, digits, and hyphens",
+);
+
+/**
+ * The exact WorkerCatalog factual labels one Task requires of any selected
+ * worker. The list mirrors the catalog's own label contract, including
+ * uniqueness; the existing WorkerCatalog/runCell admission remains the
+ * authoritative gate.
+ */
+export const PrincipalTaskCapabilitiesRequiredSchema = z.array(
+  workerCapabilityLabel,
+).superRefine((labels, context) => {
+  if (new Set(labels).size !== labels.length) {
+    context.addIssue({
+      code: "custom",
+      path: [],
+      message: "worker capability labels must be unique",
+    });
+  }
+});
+
 export const PrincipalTaskSchema = z.object({
   id: nonempty,
   title: nonempty,
@@ -270,6 +300,14 @@ export const PrincipalTaskSchema = z.object({
   acceptance: z.array(nonempty).min(1),
   /** Ordinary work todos supplied by the Principal at creation; older tasks default to an empty list. */
   todos: z.array(nonempty).default([]),
+  /**
+   * Exact WorkerCatalog factual labels the Task requires of any selected
+   * worker; older tasks default to an empty requirement list. The labels are
+   * lowered unchanged into CellInput.capabilitiesRequired so the existing
+   * WorkerCatalog/runCell admission stays authoritative. Workbench never
+   * infers requirements from the objective, acceptance, or final text.
+   */
+  capabilitiesRequired: PrincipalTaskCapabilitiesRequiredSchema.default([]),
   origin: z.object({
     kind: z.literal("principal-explicit"),
     sourceRef: nonempty,

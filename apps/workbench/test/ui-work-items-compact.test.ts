@@ -33,6 +33,7 @@ function compactTask(id: string) {
     objective: "Keep the navigation summary complete without the full detail",
     acceptance: ["The shell stays searchable and attributable"],
     todos: [],
+    capabilitiesRequired: [],
     origin: {
       kind: "principal-explicit" as const,
       sourceRef: `conversation:${id}`,
