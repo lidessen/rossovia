@@ -125,15 +125,38 @@ export function classifyWorkbenchAttention(items) {
  * The browser already receives the attention, errors, freshness, and runner
  * projections that explain why completeness is false; this copy only makes
  * that evidence legible in the masthead and rail without inventing another
- * status source. Binding and cached-freshness facts come from the served
- * runner projection (runners[].binding.reason, runners[].freshness) plus the
- * attention codes the projection already deduplicates by runner. Only the two
- * known structured reasons get their exact guidance; an unrecognized reason
- * renders an explicit unknown-reason fallback instead of borrowing either
- * known guidance, and free-text attention summaries never become a reason.
- * The runner-unbound standing labels the masthead "运行投影可读 · Runner 未绑定":
- * the HTTP projection itself is still readable, so no 实时 claim implies the
- * Runner is running live, while the recovery guidance stays in the detail.
+ * status source. Binding, cached-freshness, and live-probe facts come from
+ * the served runner projection (runners[].binding.kind/reason,
+ * runners[].freshness.kind, runners[].live) plus the attention codes the
+ * projection already deduplicates by runner, and the aggregate runner
+ * freshness (freshness.runners). The copy separates three structured
+ * situations instead of reading every runner record as a current fault:
+ *
+ * 1. No current carrier: retained runner records carry no live-probe
+ *    evidence (live === true, mirrored by freshness.kind === "live"), so
+ *    the cached, unreachable, and unbound records are historical and
+ *    pending disposition. The masthead states 当前没有可控制的运行载体 and
+ *    marks the records as historical instead of synthesizing
+ *    "Runner 未绑定" as a current fault.
+ * 2. An active but unbound runner: the unbound standing belongs to a
+ *    live-proven runner record. The masthead keeps
+ *    运行投影可读 · Runner 未绑定 with the exact reason guidance; the
+ *    warning and the control gate stay.
+ * 3. Active sources are wrong or unavailable: snapshot errors keep
+ *    实时 · 部分来源不可用 ahead of every runner conclusion.
+ *
+ * Only the two known structured binding reasons get their exact guidance;
+ * an unrecognized reason renders an explicit unknown-reason fallback
+ * instead of borrowing either known guidance, and free-text attention
+ * summaries never become a reason. When the facts are missing or
+ * contradict (a live aggregate with no live-proven runner, or a live
+ * carrier beside a non-live unbound record), the copy fails closed to the
+ * generic 投影需核查 check and never infers an active standing. Code-only
+ * attention shapes (the server always pairs the code with its record) keep
+ * the existing unbound copy without implying a live Runner. The
+ * "运行投影可读" prefix never claims a live Runner by itself: the HTTP
+ * projection is still readable while the recovery guidance stays in the
+ * detail.
  */
 export function incompleteProjectionCopy(snapshot) {
   const attention = Array.isArray(snapshot?.attention) ? snapshot.attention : [];
@@ -144,9 +167,24 @@ export function incompleteProjectionCopy(snapshot) {
   );
   const errors = Array.isArray(snapshot?.errors) ? snapshot.errors : [];
   const runners = Array.isArray(snapshot?.runners) ? snapshot.runners : [];
+  const hasRunnerRecords = runners.length > 0;
   const cachedRunners = snapshot?.freshness?.runners === "cached-status-files";
+  const aggregateClaimsLive = snapshot?.freshness?.runners === "live";
   const hasUnboundRunner = codes.has("runner-unbound");
   const hasUnreachableRunner = codes.has("runner-unreachable");
+  // Only a live-probe-confirmed runner (live === true, mirrored by a live
+  // per-runner freshness) is a current controllable carrier. Cached status
+  // files, unreachable probes, and unverified reachability are retained
+  // records — history, not a current executor.
+  const runnerIsCurrent = (runner) => {
+    if (runner === null || typeof runner !== "object") return false;
+    if (runner.live === true) return true;
+    const freshness = runner.freshness;
+    return freshness !== null
+      && typeof freshness === "object"
+      && freshness.kind === "live";
+  };
+  const hasCurrentLiveRunner = runners.some(runnerIsCurrent);
   const unboundRunner = runners.find((runner) => {
     if (runner === null || typeof runner !== "object") return false;
     const binding = runner.binding;
@@ -170,6 +208,32 @@ export function incompleteProjectionCopy(snapshot) {
     }
     return null;
   })();
+  const unboundReasonCopy = unboundReason === null
+    ? null
+    : unboundReason === "ambiguous-mission-id"
+      ? {
+        reason: "Runner 的 Mission ID 同时命中多个项目的 Mission 记录，绑定不唯一",
+        direction: "刷新投影，先在项目注册或 Mission 记录中消除 Mission ID 歧义，使其唯一命中后再控制。",
+      }
+      : unboundReason === "no-explicit-mission-id-match"
+        ? {
+          reason: "Runner 的 Mission ID 未命中任何已观察 Mission 记录",
+          direction: "刷新投影，核对 Mission 记录与 runner 归属，恢复精确匹配后再控制。",
+        }
+        : {
+          reason: "Runner 的 Mission 绑定原因未被当前投影识别，无法给出精确指引",
+          direction: "刷新投影，核对 runner 归属与 Mission 绑定来源后再控制。",
+        };
+
+  // No current carrier and only historical runner records: the cached /
+  // unreachable / unbound records are pending disposition, never a current
+  // fault. "未绑定" names a record kind here; it is not a conclusion that a
+  // current Runner is unbound.
+  const noCurrentCarrierCopy = {
+    label: "实时 · 当前无控制载体",
+    detail:
+      "运行投影不完整 · 当前没有可控制的运行载体；cached / 不可达 / 未绑定 记录均为历史缓存待处置，不代表当前执行；刷新投影，修正 Mission 绑定、恢复或处置 Runner 后再控制。",
+  };
 
   if (errors.length > 0) {
     const firstError = errors.find((error) => {
@@ -193,43 +257,63 @@ export function incompleteProjectionCopy(snapshot) {
   }
 
   if (hasUnboundRunner || unboundRunner !== undefined) {
-    if (unboundReason === null) {
+    if (unboundRunner !== undefined && runnerIsCurrent(unboundRunner)) {
+      // An active Runner exists but is unbound: the exact binding-reason
+      // guidance stays a current warning and the control gate stays closed.
+      // The live-proven record never reads as 仅来自缓存.
+      if (unboundReasonCopy === null) {
+        return {
+          label: "运行投影可读 · Runner 未绑定",
+          detail:
+            "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
+        };
+      }
+      return {
+        label: "运行投影可读 · Runner 未绑定",
+        detail: `运行投影不完整 · ${unboundReasonCopy.reason}；${unboundReasonCopy.direction}`,
+      };
+    }
+    if (hasRunnerRecords) {
+      if (!hasCurrentLiveRunner && !aggregateClaimsLive) {
+        return noCurrentCarrierCopy;
+      }
+      // A current carrier exists while the unbound standing belongs to a
+      // non-live record, or the live facts contradict: fail closed to the
+      // generic check instead of blaming a current Runner.
+    } else if (unboundReasonCopy === null) {
+      // Code-only attention shape (the server always pairs the code with its
+      // record): keep the existing unbound copy; it never infers a live
+      // Runner.
       return {
         label: "运行投影可读 · Runner 未绑定",
         detail: cachedRunners || hasUnreachableRunner
           ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
           : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
       };
+    } else {
+      return {
+        label: "运行投影可读 · Runner 未绑定",
+        detail: cachedRunners || hasUnreachableRunner
+          ? `运行投影不完整 · ${unboundReasonCopy.reason}，运行状态仅来自缓存；${unboundReasonCopy.direction}`
+          : `运行投影不完整 · ${unboundReasonCopy.reason}；${unboundReasonCopy.direction}`,
+      };
     }
-    const reasonCopy = unboundReason === "ambiguous-mission-id"
-      ? {
-        reason: "Runner 的 Mission ID 同时命中多个项目的 Mission 记录，绑定不唯一",
-        direction: "刷新投影，先在项目注册或 Mission 记录中消除 Mission ID 歧义，使其唯一命中后再控制。",
-      }
-      : unboundReason === "no-explicit-mission-id-match"
-        ? {
-          reason: "Runner 的 Mission ID 未命中任何已观察 Mission 记录",
-          direction: "刷新投影，核对 Mission 记录与 runner 归属，恢复精确匹配后再控制。",
-        }
-        : {
-          reason: "Runner 的 Mission 绑定原因未被当前投影识别，无法给出精确指引",
-          direction: "刷新投影，核对 runner 归属与 Mission 绑定来源后再控制。",
-        };
-    return {
-      label: "运行投影可读 · Runner 未绑定",
-      detail: cachedRunners || hasUnreachableRunner
-        ? `运行投影不完整 · ${reasonCopy.reason}，运行状态仅来自缓存；${reasonCopy.direction}`
-        : `运行投影不完整 · ${reasonCopy.reason}；${reasonCopy.direction}`,
-    };
   }
 
   if (hasUnreachableRunner || (cachedRunners && hasCachedRunnerEvidence)) {
-    return {
-      label: "实时 · Runner 仅缓存",
-      detail: hasUnreachableRunner
-        ? "运行投影不完整 · Runner 当前不可达，运行状态仅来自缓存；刷新投影，先恢复或处置 Runner 后再控制。"
-        : "运行投影不完整 · Runner 运行状态仅来自缓存，来源新鲜度不足以证明当前执行；刷新投影，先恢复或处置 Runner（或等待 live 探测确认）后再控制。",
-    };
+    if (hasRunnerRecords && !hasCurrentLiveRunner && !aggregateClaimsLive) {
+      return noCurrentCarrierCopy;
+    }
+    if (!hasRunnerRecords) {
+      return {
+        label: "实时 · Runner 仅缓存",
+        detail: hasUnreachableRunner
+          ? "运行投影不完整 · Runner 当前不可达，运行状态仅来自缓存；刷新投影，先恢复或处置 Runner 后再控制。"
+          : "运行投影不完整 · Runner 运行状态仅来自缓存，来源新鲜度不足以证明当前执行；刷新投影，先恢复或处置 Runner（或等待 live 探测确认）后再控制。",
+      };
+    }
+    // A current carrier exists beside cached-only records: fall through to
+    // the generic check instead of labeling the whole projection 仅缓存.
   }
 
   return {
