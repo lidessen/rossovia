@@ -1506,6 +1506,15 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
     scanMissions(project, root);
   };
 
+  // One canonical-path claim set for the whole snapshot. Registered primary
+  // workspaces are inspected first in registration order, so a local
+  // repository root that canonicalizes to the same real path (identical
+  // spelling, `~` expansion, or a symlink) is skipped instead of re-reading
+  // that root's worktree/HEAD/branch/dirty state a second time. Distinct
+  // canonical roots are still each inspected exactly once, in the existing
+  // scan order, and the registered claim keeps its project-scoped error
+  // semantics.
+  const inspectedCanonicalRoots = new Set<string>();
   if (homeSources !== undefined) {
     for (const project of homeSources.projects.projects) {
       const mutable = registeredById.get(project.id)!;
@@ -1523,14 +1532,14 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
       }
       mutable.primaryWorkspace = canonicalExistingPath(mappings[0]!.path);
       inspectRoot(mappings[0]!.path, mutable, true);
+      inspectedCanonicalRoots.add(mutable.primaryWorkspace);
     }
   }
 
-  const inspectedAdditionalRoots = new Set<string>();
   for (const root of options.localRepositoryRoots ?? []) {
     const key = canonicalExistingPath(root);
-    if (inspectedAdditionalRoots.has(key)) continue;
-    inspectedAdditionalRoots.add(key);
+    if (inspectedCanonicalRoots.has(key)) continue;
+    inspectedCanonicalRoots.add(key);
     inspectRoot(root, undefined, false);
   }
 

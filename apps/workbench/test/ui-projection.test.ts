@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1147,5 +1148,165 @@ describe("Principal Workbench operational projection", () => {
       missionId: "idle",
       summary: expect.stringContaining("no runtime or current executor"),
     }));
+  });
+
+  test("deduplicates one canonical root shared by a registered primary workspace and localRepositoryRoots", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-ui-dedup-canonical-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "registered");
+    const remote = "https://example.test/lidessen/dedup.git";
+    createRepository(repository, remote);
+    writeJson(join(repository, "apps", "missions", "dup.json"), mission("dup", "mainline"));
+    git(repository, "add", "apps/missions/dup.json");
+    git(repository, "commit", "-m", "add mission");
+    writeFileSync(join(repository, "UNCOMMITTED.md"), "visible dirt\n");
+    // A symlink spelling of the same Git root exercises canonical-path
+    // resolution: both entries must claim one shared worktree observation.
+    const canonical = realpathSync(repository);
+    const link = join(root, "linked");
+    let symlinked = false;
+    try {
+      symlinkSync(repository, link);
+      symlinked = true;
+    } catch {
+      // Filesystems without symlinks: the repeated direct spelling still proves dedup.
+    }
+    const home = makeHome(root, remote, repository);
+
+    const snapshot = buildWorkbenchSnapshot({
+      home,
+      localRepositoryRoots: [repository, ...(symlinked ? [link] : [repository])],
+      now: () => "2026-07-26T11:00:00Z",
+    });
+
+    expect(snapshot.complete).toBe(true);
+    expect(snapshot.errors).toEqual([]);
+    expect(snapshot.projects).toHaveLength(1);
+    expect(snapshot.projects[0]!.registration).toBe("registered");
+    // The same canonical root is read once: one worktree observation despite
+    // every spelling of the root appearing in both scan sources.
+    expect(snapshot.sourceBoundaries.filter(
+      (boundary) => boundary.kind === "git-worktree-observation" && boundary.source === canonical,
+    )).toHaveLength(1);
+    const project = snapshot.projects[0]!;
+    expect(project.worktrees).toHaveLength(1);
+    expect(project.worktrees[0]).toMatchObject({
+      path: canonical,
+      gitBranch: "main",
+      dirty: true,
+      registeredPrimary: true,
+    });
+    expect(project.worktrees[0]!.head).toEqual(expect.stringMatching(/^[0-9a-f]{40}$/));
+    expect(project.missions.map((record) => record.id)).toEqual(["dup"]);
+    expect(project.missions[0]!.observedGitContext).toMatchObject({
+      worktreePath: canonical,
+      gitBranch: "main",
+      head: project.worktrees[0]!.head,
+      binding: "observation-only",
+    });
+  });
+
+  test("keeps inspecting every distinct canonical root with complete live fields", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-ui-dedup-distinct-"));
+    temporaryRoots.push(root);
+    const registered = join(root, "registered");
+    const remote = "https://example.test/lidessen/distinct.git";
+    createRepository(registered, remote);
+    writeJson(join(registered, "apps", "missions", "primary.json"), mission("primary", "mainline"));
+    git(registered, "add", "apps/missions/primary.json");
+    git(registered, "commit", "-m", "add primary mission");
+
+    const additional = join(root, "additional");
+    createRepository(additional, "https://example.test/lidessen/additional.git");
+    writeJson(join(additional, "apps", "missions", "extra.json"), mission("extra", "mainline"));
+    git(additional, "add", "apps/missions/extra.json");
+    git(additional, "commit", "-m", "add extra mission");
+    writeFileSync(join(additional, "EXTRA.md"), "additional dirt\n");
+
+    const home = makeHome(root, remote, registered);
+    const snapshot = buildWorkbenchSnapshot({
+      home,
+      localRepositoryRoots: [additional],
+      now: () => "2026-07-26T11:00:00Z",
+    });
+
+    expect(snapshot.complete).toBe(true);
+    expect(snapshot.errors).toEqual([]);
+    expect(snapshot.sourceBoundaries.filter(
+      (boundary) => boundary.kind === "git-worktree-observation",
+    )).toHaveLength(2);
+    const registeredProject = snapshot.projects.find(
+      (project) => project.registration === "registered",
+    )!;
+    expect(registeredProject.worktrees[0]).toMatchObject({
+      path: realpathSync(registered),
+      gitBranch: "main",
+      dirty: false,
+      registeredPrimary: true,
+    });
+    expect(registeredProject.worktrees[0]!.head).toEqual(expect.stringMatching(/^[0-9a-f]{40}$/));
+    expect(registeredProject.missions.map((record) => record.id)).toEqual(["primary"]);
+    const additionalProject = snapshot.projects.find(
+      (project) => project.registration === "observed-unregistered",
+    )!;
+    expect(additionalProject.worktrees[0]).toMatchObject({
+      path: realpathSync(additional),
+      gitBranch: "main",
+      dirty: true,
+      registeredPrimary: false,
+    });
+    expect(additionalProject.worktrees[0]!.head).toEqual(expect.stringMatching(/^[0-9a-f]{40}$/));
+    expect(additionalProject.missions.map((record) => record.id)).toEqual(["extra"]);
+  });
+
+  test("keeps one complete registered projection when the shared root has no origin remote", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-ui-dedup-no-origin-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "registered");
+    const remote = "https://example.test/lidessen/no-origin.git";
+    createRepository(repository, remote);
+    git(repository, "remote", "remove", "origin");
+    writeJson(join(repository, "apps", "missions", "local.json"), mission("local", "implementation-line"));
+    git(repository, "add", "apps/missions/local.json");
+    git(repository, "commit", "-m", "add local mission");
+
+    const home = makeHome(root, remote, repository);
+    const snapshot = buildWorkbenchSnapshot({
+      home,
+      localRepositoryRoots: [repository],
+      now: () => "2026-07-26T11:00:00Z",
+    });
+
+    expect(snapshot.complete).toBe(true);
+    expect(snapshot.errors).toEqual([]);
+    // The same canonical root projects exactly one registered project with its
+    // full worktree/HEAD/branch/dirty and Mission fields — never a second
+    // unregistered copy with duplicated Missions.
+    expect(snapshot.projects).toHaveLength(1);
+    const project = snapshot.projects[0]!;
+    expect(project.registration).toBe("registered");
+    expect(project.identity.id).toBe("repository:fixture");
+    expect(project.primaryWorkspace).toBe(realpathSync(repository));
+    expect(project.worktrees).toHaveLength(1);
+    expect(project.worktrees[0]).toMatchObject({
+      path: realpathSync(repository),
+      gitBranch: "main",
+      dirty: false,
+      registeredPrimary: true,
+    });
+    expect(project.worktrees[0]!.head).toEqual(expect.stringMatching(/^[0-9a-f]{40}$/));
+    expect(project.missions.map((record) => record.id)).toEqual(["local"]);
+    expect(project.missions[0]!.observedGitContext).toMatchObject({
+      worktreePath: realpathSync(repository),
+      gitBranch: "main",
+      head: project.worktrees[0]!.head,
+      binding: "observation-only",
+    });
+    expect(snapshot.sourceBoundaries.filter(
+      (boundary) => boundary.kind === "git-worktree-observation",
+    )).toHaveLength(1);
+    expect(snapshot.sourceBoundaries.filter(
+      (boundary) => boundary.kind === "mission-semantic-source",
+    )).toHaveLength(1);
   });
 });
