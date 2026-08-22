@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerReviewCorrelationProjection, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId } from "../ui/app.js";
+import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerReviewCorrelationProjection, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -567,4 +567,176 @@ test("observer review correlation is memoized per snapshot invocation for duplic
   expect(server.indexOf("const correlationByAttemptId")).toBeGreaterThan(
     server.indexOf("export function readObserverReviews"),
   );
+});
+
+test("attempt cards project the Principal acceptance boundary from the retained settlement", () => {
+  // Every ordinary settlement retains semanticAcceptance=not-evaluated: the
+  // card must name the Principal as the acceptance owner and never claim a
+  // semantic pass or fail.
+  expect(taskAttemptSemanticAcceptanceProjection({
+    semanticAcceptance: "not-evaluated",
+  })).toEqual({
+    standing: "not-evaluated",
+    label: "语义验收：待 Principal",
+    detail: expect.stringContaining("语义验收由 Principal 显式完成"),
+  });
+  // Without a settlement the boundary stays explicitly absent.
+  expect(taskAttemptSemanticAcceptanceProjection({})).toEqual({
+    standing: "absent",
+    label: "语义验收未结算",
+  });
+  // The rendered attempt card keeps the boundary row inside the card facts
+  // and never derives a semantic pass/fail.
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).toContain("taskAttemptSemanticAcceptanceProjection(attempt)");
+  expect(app).toContain("语义验收：待 Principal");
+  expect(app).toContain("taskAttemptSemanticAcceptanceRow(semanticProjection)");
+  expect(app).not.toContain("语义验收通过");
+  expect(app).not.toContain("语义验收未通过");
+});
+
+test("attempt cards render one flat parent/child level that can never recurse", () => {
+  const parent = "11111111-1111-4111-8111-111111111111";
+  const childA = "22222222-2222-4222-8222-222222222222";
+  const childB = "33333333-3333-4333-8333-333333333333";
+  const parentRef = `state/task-attempts/${parent}/attempt.json`;
+  expect(taskAttemptRelationProjection({
+    parentAttemptId: parent,
+    parentAttemptRef: parentRef,
+    childAttemptIds: [childA, childB],
+  })).toEqual({
+    parentAttemptId: parent,
+    parentAttemptRef: parentRef,
+    childAttemptIds: [childA, childB],
+    childCount: 2,
+  });
+  // Empty ids never project as relations.
+  expect(taskAttemptRelationProjection({
+    parentAttemptId: "",
+    childAttemptIds: ["", childA],
+  })).toEqual({
+    parentAttemptId: null,
+    parentAttemptRef: null,
+    childAttemptIds: [childA],
+    childCount: 1,
+  });
+  expect(taskAttemptRelationProjection({})).toEqual({
+    parentAttemptId: null,
+    parentAttemptRef: null,
+    childAttemptIds: [],
+    childCount: 0,
+  });
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  // The child list is a bounded flat reference inside the parent card; a
+  // child card never nests inside it, so the expansion depth is always one.
+  expect(app).toContain("TASK_ATTEMPT_CHILDREN_PREVIEW_LIMIT");
+  expect(app).toContain("不递归展开");
+  expect(app).toContain("renderTaskAttemptChildren(relation)");
+  expect(app).toContain("taskAttemptParentRow(relation)");
+});
+
+test("attempt cards read the observer review association none/available/invalid-log", () => {
+  // The explicit absence is readable: the review log was read and retains
+  // no record for this attempt.
+  expect(taskAttemptObserverReviewProjection({ standing: "none" })).toEqual({
+    standing: "none",
+    label: "无 observer 记录",
+    detail: expect.stringContaining("没有记录评审此 attempt"),
+  });
+  // An untrusted review log never claims a review.
+  expect(taskAttemptObserverReviewProjection({
+    standing: "invalid-log",
+    reason: "review log unreadable",
+  })).toEqual({
+    standing: "invalid-log",
+    label: "review 记录不可信",
+    reason: "review log unreadable",
+    detail: expect.stringContaining("不声明任何 review"),
+  });
+  // Available rebuilds every review onto the strict field whitelist: only
+  // reviewId/standing/recordedAt/subjectOutcome survive, and subjectOutcome
+  // keeps exactly settlementStatus/cellStatus/finalStatus/
+  // semanticAcceptance. Raw record fields (opinion text, observer identity,
+  // evidence refs) never leak into the attempt card.
+  const projection = taskAttemptObserverReviewProjection({
+    standing: "available",
+    logRef: "state/workflow/reviews.json",
+    reviews: [
+      {
+        reviewId: "review-1",
+        standing: "recorded",
+        recordedAt: "2026-08-21T00:03:00.000Z",
+        subjectOutcome: {
+          settlementStatus: "recorded",
+          cellStatus: "passed",
+          finalStatus: "passed",
+          semanticAcceptance: "not-evaluated",
+          rawExtra: "must not survive",
+        },
+        finding: "raw opinion text must not leak",
+        observer: { kind: "agent", workerId: "deepseek-flash" },
+        evidenceRefs: ["state/task-attempts/raw.json"],
+      },
+      {
+        reviewId: "review-2",
+        standing: "query-gap",
+        recordedAt: "2026-08-21T00:04:00.000Z",
+      },
+    ],
+  });
+  expect(projection.standing).toBe("available");
+  expect(projection.label).toBe("有 observer 记录");
+  expect(projection.logRef).toBe("state/workflow/reviews.json");
+  expect(projection.reviews).toEqual([
+    {
+      reviewId: "review-1",
+      standing: "recorded",
+      recordedAt: "2026-08-21T00:03:00.000Z",
+      subjectOutcome: {
+        settlementStatus: "recorded",
+        cellStatus: "passed",
+        finalStatus: "passed",
+        semanticAcceptance: "not-evaluated",
+      },
+    },
+    {
+      reviewId: "review-2",
+      standing: "query-gap",
+      recordedAt: "2026-08-21T00:04:00.000Z",
+    },
+  ]);
+  // An available standing that carries no review records is a contradiction:
+  // it fails closed as unknown and never claims 有 observer 记录.
+  expect(taskAttemptObserverReviewProjection({
+    standing: "available",
+    logRef: "state/workflow/reviews.json",
+    reviews: [],
+  })).toEqual({ standing: "unknown", label: "review 状态未知" });
+  expect(taskAttemptObserverReviewProjection({
+    standing: "available",
+    logRef: "state/workflow/reviews.json",
+  })).toEqual({ standing: "unknown", label: "review 状态未知" });
+  expect(taskAttemptObserverReviewProjection({
+    standing: "available",
+    reviews: [null, "not-an-object"],
+  })).toEqual({ standing: "unknown", label: "review 状态未知" });
+  // A malformed or missing standing never claims a review.
+  expect(taskAttemptObserverReviewProjection({})).toEqual({
+    standing: "unknown",
+    label: "review 状态未知",
+  });
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  // The card renders every standing and, when available, carries
+  // reviewId/standing/subject outcome plus the review-log ref.
+  expect(app).toContain("无 observer 记录");
+  expect(app).toContain("review 记录不可信");
+  expect(app).toContain("有 observer 记录");
+  expect(app).toContain("task-attempt-review-log");
+  expect(app).toContain("renderTaskAttemptObserverReview(observerReviewProjection)");
+  expect(app).toContain("observerSubjectOutcomeCopy(review.subjectOutcome)");
+  // The projection rebuilds the strict whitelist and fails closed when an
+  // available standing carries no review records.
+  expect(app).toContain("rawReviews.length === 0");
+  expect(app).toContain("subjectOutcome.semanticAcceptance === undefined");
+  expect(app).toContain('reviewId: typeof review.reviewId === "string" ? review.reviewId : ""');
 });
