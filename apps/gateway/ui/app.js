@@ -1525,6 +1525,51 @@ export function observerReviewGroupNextStep(group) {
 }
 
 /**
+ * The canonical handling-evidence boundary of one observer subject. No
+ * canonical field records whether an opinion was handled, so the projection
+ * can only state the absence — it never claims 已处理 or 未处理, and a draft
+ * or a button click never becomes handling evidence. Every subject projects
+ * the same unrecorded boundary; the copy says so instead of inventing a
+ * processed/unprocessed state.
+ */
+export function observerReviewHandlingProjection(subject) {
+  return {
+    standing: "unrecorded",
+    label: "未记录 canonical handling evidence",
+    detail: "记录源没有保留处理字段；已记录 ≠ 已处理，填写草稿或点击处理按钮不构成处理事实。",
+  };
+}
+
+/**
+ * The history boundary of one subject group (pure presentation of the
+ * existing group shape): the latest recorded opinion is the only expanded
+ * record; every other raw record is historical and stays collapsed behind
+ * the raw-record list. A group without a recorded opinion has no expanded
+ * opinion and therefore no history partition — all its records stay raw
+ * records, never presented as opinions.
+ */
+export function observerGroupHistoryProjection(group) {
+  const records = group !== null && typeof group === "object" && Array.isArray(group.reviews)
+    ? group.reviews
+    : [];
+  const latest =
+    group !== null
+    && typeof group === "object"
+    && group.latestRecorded !== null
+    && group.latestRecorded !== undefined
+      ? group.latestRecorded
+      : null;
+  return {
+    recordCount: records.length,
+    latestRecorded: latest,
+    historical: latest !== null,
+    historicalRecords: latest === null
+      ? []
+      : records.filter((record) => record !== latest),
+  };
+}
+
+/**
  * Task-page locator: keyword, project, and status narrowing over the existing
  * read-only work-item projection. Every value comes from fields already
  * present on projected items: title/summary/context, the bounded projection
@@ -3649,7 +3694,8 @@ export function taskLocatorEmptySummary(locator, context) {
     return '<small class="observer-correlation-unknown" data-standing="' + escapeHtml(correlation.standing) + '">未知 · ' + escapeHtml(correlation.label) + "</small>";
   }
 
-  function observerReviewCardHtml(review) {
+  function observerReviewCardHtml(review, options = {}) {
+    const historical = options.historical === true;
     const refs = list(first(review, ["evidenceRefs"], []));
     const workerId = observerReviewWorkerId(review);
     const statusProjection = observerReviewStatusProjection(review);
@@ -3671,9 +3717,9 @@ export function taskLocatorEmptySummary(locator, context) {
       subjectOutcome,
       `更新 ${formatTime(recordedAt, "时间未知")}`,
     ].filter(Boolean).join(" · ");
-    return `<article class="observer-review-card" data-review-id="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
+    return `<article class="observer-review-card" data-review-id="${escapeHtml(text(first(review, ["reviewId"]), "review"))}"${historical ? ` data-era="historical"` : ""}>
         <header>
-          <div><span class="observer-review-status" data-standing="${escapeHtml(statusProjection.standing)}">${escapeHtml(statusProjection.label)}</span><span class="observer-review-subject-standing" data-standing="${escapeHtml(subjectStanding.standing)}">${escapeHtml(subjectStanding.label)}</span><strong>${escapeHtml(workerId)}</strong></div>
+          <div>${historical ? `<span class="observer-review-status" data-standing="historical">历史</span>` : ""}<span class="observer-review-status" data-standing="${escapeHtml(statusProjection.standing)}">${escapeHtml(statusProjection.label)}</span><span class="observer-review-subject-standing" data-standing="${escapeHtml(subjectStanding.standing)}">${escapeHtml(subjectStanding.label)}</span><strong>${escapeHtml(workerId)}</strong></div>
           <time>${escapeHtml(formatTime(recordedAt, "时间未知"))}</time>
         </header>
         <p class="observer-review-meta">${escapeHtml(meta)}</p>
@@ -3710,6 +3756,10 @@ export function taskLocatorEmptySummary(locator, context) {
     const taskId = text(first(subject, ["taskId"]), "").trim();
     const attemptId = text(first(subject, ["attemptId"]), "").trim();
     const taskLocator = observerReviewTaskLocator(review, currentWorkItems);
+    const subjectAcceptance = observerReviewSubjectAcceptanceProjection(review);
+    const subjectOutcome = observerSubjectOutcomeCopy(first(review, ["subjectOutcome"], null));
+    const correlation = observerReviewCorrelationProjection(review);
+    const handling = observerReviewHandlingProjection(review);
     const subjectLabel = taskId !== ""
       ? `Task ${taskId}`
       : attemptId !== ""
@@ -3725,6 +3775,14 @@ export function taskLocatorEmptySummary(locator, context) {
           <div><dt>对象</dt><dd>${escapeHtml(subjectLabel)}${taskId !== "" && attemptId !== "" ? ` · attempt ${escapeHtml(attemptId)}` : ""}</dd></div>
           <div><dt>Worker</dt><dd>${escapeHtml(workerId)}</dd></div>
           <div><dt>状态</dt><dd>${escapeHtml(statusProjection.label)}</dd></div>
+          <div><dt>主体结果</dt><dd>${escapeHtml(subjectOutcome)}</dd></div>
+          ${subjectAcceptance.standing === "not-evaluated"
+            ? `<div><dt>语义验收</dt><dd>${escapeHtml(subjectAcceptance.label)} · 结算只记录机械执行结果，不评估语义验收；不会自动发生。</dd></div>`
+            : ""}
+          <div><dt>处理证据</dt><dd>${escapeHtml(handling.label)}；已记录 ≠ 已处理，点击处理按钮只准备草稿，不构成处理事实。</dd></div>
+          <div><dt>被观察来源</dt><dd>${correlation.standing === "available"
+            ? observerReviewCorrelationHtml(correlation)
+            : `<small class="observer-correlation-unknown" data-standing="${escapeHtml(correlation.standing)}">未知 · ${escapeHtml(correlation.label)}；不猜测当前对话来源</small>`}</dd></div>
           <div><dt>Task</dt><dd>${taskLocator.standing === "locatable"
             ? `<button class="text-action observer-task-link" type="button" data-observer-task-locate="${escapeHtml(taskLocator.itemId)}">定位</button>`
             : taskLocator.standing === "absent"
@@ -3735,15 +3793,14 @@ export function taskLocatorEmptySummary(locator, context) {
   }
 
   function observerGroupCardHtml(group, currentWorkItems) {
-    const recordCount = group.reviews.length;
-    const latest = group.latestRecorded ?? null;
+    const history = observerGroupHistoryProjection(group);
+    const recordCount = history.recordCount;
+    const latest = history.latestRecorded;
     // The highlight section already renders the latest recorded opinion in
     // full, so the expandable raw-record list keeps every record except that
-    // one: the latest opinion appears exactly once and every raw record stays
-    // available.
-    const rawRecords = latest === null
-      ? group.reviews
-      : group.reviews.filter((record) => record !== latest);
+    // one (the history boundary): the latest opinion appears exactly once,
+    // every older raw record is marked 历史 and stays collapsed by default.
+    const rawRecords = history.historicalRecords;
     // Locator and attempt facts come from any review of the group (they
     // share the subject key); the highlighted opinion is always the latest
     // recorded one, and a query-gap/runner-failed record is never presented
@@ -3753,6 +3810,8 @@ export function taskLocatorEmptySummary(locator, context) {
     const taskLocator = observerReviewTaskLocator(review, currentWorkItems);
     const nextStep = observerReviewGroupNextStep(group);
     const subjectOutcome = latest ? first(latest, ["subjectOutcome"], null) : null;
+    const subjectAcceptance = latest ? observerReviewSubjectAcceptanceProjection(latest) : null;
+    const handling = observerReviewHandlingProjection(group);
     const conversationEvidence = observerGroupConversationEvidence(group);
     const sourceCorrelation = observerReviewCorrelationProjection(review);
     const subjectCopy = group.kind === "task"
@@ -3768,7 +3827,7 @@ export function taskLocatorEmptySummary(locator, context) {
           <div class="observer-group-header-copy">
             <span class="observer-group-kicker">${group.kind === "task" ? "主题 · 按 Task 分组" : group.kind === "attempt" ? "主题 · 按 Attempt 分组" : "主题 · 未声明 subject"}</span>
             <h3>${subjectCopy}</h3>
-            <small>${recordCount} 条原始记录${attemptCopy}${latest ? ` · 最新记录 ${escapeHtml(formatTime(latestRecordedAt, latestRecordedAt))}` : ""}</small>
+            <small>${recordCount} 条原始记录${attemptCopy}${latest ? ` · 最新记录 ${escapeHtml(formatTime(latestRecordedAt, latestRecordedAt))}` : ""}${history.historical ? ` · 历史 ${history.historicalRecords.length} 条默认收束` : ""}</small>
           </div>
           <span class="observer-group-standing" data-standing="${escapeHtml(nextStep.standing)}">${escapeHtml(nextStep.label)}</span>
         </header>
@@ -3778,9 +3837,14 @@ export function taskLocatorEmptySummary(locator, context) {
             ? observerReviewCardHtml(latest)
             : `<p class="observer-group-note">本组没有已记录意见（全部记录 standing：${escapeHtml([...new Set(group.reviews.map((record) => text(first(record, ["standing"]), "unknown")))].join(" / "))}），无意见文本可展示。</p>`}
         </div>
-        <details class="observer-group-records">
-          <summary>全部原始记录 · ${recordCount} 条（可逐条展开）${latest ? " · 最新已记录意见已在上方展开" : ""}</summary>
-          <div class="observer-group-records-list">${rawRecords.map((record) => observerReviewCardHtml(record)).join("")}</div>
+        <details class="observer-group-records" data-historical="${history.historical ? "true" : "false"}">
+          <summary>${history.historical
+            ? `历史原始记录 · ${rawRecords.length} 条（早于最新已记录意见，默认收束，可逐条展开）`
+            : `全部原始记录 · ${recordCount} 条（可逐条展开）`}</summary>
+          <div class="observer-group-records-list">
+            ${history.historical ? '<p class="observer-group-records-note">以下每条仍是真实观察记录，但都是该组的历史意见：早于最新已记录意见，默认收束；完整 review 逐条展开。</p>' : ""}
+            ${rawRecords.map((record) => observerReviewCardHtml(record, { historical: history.historical })).join("")}
+          </div>
         </details>
         <dl class="observer-group-facts">
           <div><dt>观察对象</dt><dd>${taskLocator.standing === "locatable"
@@ -3788,9 +3852,12 @@ export function taskLocatorEmptySummary(locator, context) {
             : taskLocator.standing === "absent"
               ? `Task ${escapeHtml(taskLocator.taskId)} · 不在当前投影（不伪造链接）`
               : "未关联 Task"}${attemptCopy}</dd></div>
-          <div><dt>被观察执行</dt><dd>${latest ? escapeHtml(observerSubjectOutcomeCopy(subjectOutcome)) : "无已记录意见"}</dd></div>
+          <div><dt>主体结果</dt><dd>${latest ? escapeHtml(observerSubjectOutcomeCopy(subjectOutcome)) : "无已记录意见"}</dd></div>
+          ${subjectAcceptance !== null && subjectAcceptance.standing === "not-evaluated"
+            ? `<div><dt>语义验收</dt><dd>${escapeHtml(subjectAcceptance.label)} · 结算只记录机械执行结果，不评估语义验收；语义验收由 Principal 显式完成，不会自动发生。</dd></div>`
+            : ""}
           <div><dt>来源</dt><dd>${observerReviewCorrelationHtml(sourceCorrelation)}</dd></div>
-          <div><dt>处理状态</dt><dd>未记录 canonical handling evidence；点击处理按钮或填写草稿不构成处理事实。</dd></div>
+          <div><dt>处理证据</dt><dd>${escapeHtml(handling.label)}；${escapeHtml(handling.detail)}</dd></div>
           <div><dt>机械下一步</dt><dd>${escapeHtml(nextStep.nextStep)}</dd></div>
           <div><dt>关联对话</dt><dd>${conversationEvidence.length
             ? `<div class="observer-conversation-evidence-list">${conversationEvidence.map((evidence) => `<span class="observer-conversation-evidence" data-conversation-evidence="${escapeHtml(evidence.ref)}">${escapeHtml(evidence.label)}</span>`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>`
@@ -3854,7 +3921,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const partitions = observerReviewPartitions(grouped.groups);
     const latest = observerLatestRecorded(grouped.groups);
     if (countSummary) {
-      countSummary.textContent = `${grouped.topicCount} 个主题 · ${grouped.recordCount} 条原始记录 · 可处理 ${partitions.actionable.length} 组 · 仅观察 ${partitions.observeOnly.length} 组`;
+      countSummary.textContent = `${grouped.topicCount} 个主题 · ${grouped.recordCount} 条原始记录 · 可处理 ${partitions.actionable.length} 组 · 仅观察 ${partitions.observeOnly.length} 组 · 处理证据未记录（已记录 ≠ 已处理）`;
     }
     if (!reviews.length) {
       const emptyCopy = {
@@ -3879,7 +3946,7 @@ export function taskLocatorEmptySummary(locator, context) {
         </section>`;
     listRoot.innerHTML =
       `${latest ? observerLatestBannerHtml(latest, currentWorkItems) : ""}
-      <p class="observer-attention-note">首屏顺序：总数 → 最近记录 → 可处理 → 仅观察 → 对应 Task；每条卡片默认只显示有界摘要与 task/attempt/worker/standing/主体结果/更新时间，完整 review 按需展开；缺失 correlation 只显示“未知”，不猜测最近对话。</p>
+      <p class="observer-attention-note">首屏顺序：总数 → 最近记录（先读：对象/worker/standing/主体结果/时间/短摘要，完整 review 按需展开）→ 可处理 → 仅观察 → 对应 Task；历史原始记录默认收束并标为“历史”，不是当前任务也不是已处理；语义验收未评估不代表通过或失败；处理证据未记录（已记录 ≠ 已处理）；缺失 correlation 只显示“未知”，不猜测当前对话来源。</p>
       ${renderPartition({
         name: "可处理",
         note: "组内有已记录意见；处理仍是一次普通对话 Task，点击按钮只准备对话草稿，不自动处理。",
