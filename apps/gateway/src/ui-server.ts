@@ -58,6 +58,7 @@ import {
   readWorkflowReviews,
   workflowReviewLogPath,
   workflowReviewReadPaths,
+  type ObserverAttemptCorrelationProjection,
   type ObserverEvidenceProjectionStanding,
 } from "../../workbench/src/workflow-observer";
 import { showPrincipalTaskAttemptsForTasks } from "../../workbench/src/task-attempts";
@@ -832,6 +833,24 @@ export function readObserverReviews(home: string | undefined, observerWorkerId?:
     : sourcePaths.join(",");
   const enabled = observerWorkerId !== undefined;
   try {
+    // Several reviews can legitimately share one subject attempt (retry
+    // records, launch failures before a later retry, and merged workflow and
+    // legacy logs). The correlation is a pure strict projection of that
+    // attempt's immutable retained evidence, so this snapshot invocation
+    // computes it once per distinct attemptId and reuses the exact same
+    // projection object for every review of that attempt. The memo is local
+    // to this single invocation: it is never hoisted to handler or module
+    // scope, never persists across requests, and every standing — available
+    // or fail-closed — keeps its exact deterministic projection with no id
+    // or path on non-available results.
+    const correlationByAttemptId = new Map<string, ObserverAttemptCorrelationProjection>();
+    const correlationForAttempt = (attemptId: string): ObserverAttemptCorrelationProjection => {
+      const memoized = correlationByAttemptId.get(attemptId);
+      if (memoized !== undefined) return memoized;
+      const projection = observerAttemptCorrelationProjection(home, attemptId);
+      correlationByAttemptId.set(attemptId, projection);
+      return projection;
+    };
     const reviews = readWorkflowReviews(home).map((review) => ({
       ...review,
       relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
@@ -842,7 +861,7 @@ export function readObserverReviews(home: string | undefined, observerWorkerId?:
       // correlation is absent or the attempt evidence is unreadable, invalid,
       // or not a canonical attempt id. The review log schema is unchanged;
       // this is a read-only projection field, never a review state.
-      correlation: observerAttemptCorrelationProjection(home, review.subject.attemptId),
+      correlation: correlationForAttempt(review.subject.attemptId),
     }));
     const recordState = reviews.length > 0
       ? "recorded"
