@@ -8974,6 +8974,121 @@ export function classifyWorkbenchAttention(items) {
   };
 }
 
+/**
+ * Keep an incomplete live projection truthful and useful at the first glance.
+ * The browser already receives the attention, errors, freshness, and runner
+ * projections that explain why completeness is false; this copy only makes
+ * that evidence legible in the masthead and rail without inventing another
+ * status source. Binding and cached-freshness facts come from the served
+ * runner projection (runners[].binding.reason, runners[].freshness) plus the
+ * attention codes the projection already deduplicates by runner. Only the two
+ * known structured reasons get their exact guidance; an unrecognized reason
+ * renders an explicit unknown-reason fallback instead of borrowing either
+ * known guidance, and free-text attention summaries never become a reason.
+ */
+export function incompleteProjectionCopy(snapshot) {
+  const attention = Array.isArray(snapshot?.attention) ? snapshot.attention : [];
+  const codes = new Set(
+    attention
+      .map((item) => (typeof item?.code === "string" ? item.code : ""))
+      .filter(Boolean),
+  );
+  const errors = Array.isArray(snapshot?.errors) ? snapshot.errors : [];
+  const runners = Array.isArray(snapshot?.runners) ? snapshot.runners : [];
+  const cachedRunners = snapshot?.freshness?.runners === "cached-status-files";
+  const hasUnboundRunner = codes.has("runner-unbound");
+  const hasUnreachableRunner = codes.has("runner-unreachable");
+  const unboundRunner = runners.find((runner) => {
+    if (runner === null || typeof runner !== "object") return false;
+    const binding = runner.binding;
+    return binding !== null && typeof binding === "object" && binding.kind === "unbound";
+  });
+  const hasCachedRunnerEvidence = runners.some((runner) => {
+    if (runner === null || typeof runner !== "object") return false;
+    const freshness = runner.freshness;
+    return freshness !== null && typeof freshness === "object" && freshness.kind === "cached";
+  });
+  const unboundReason = (() => {
+    if (unboundRunner !== undefined) {
+      const binding = unboundRunner.binding;
+      if (
+        binding !== null
+        && typeof binding === "object"
+        && typeof binding.reason === "string"
+      ) {
+        return binding.reason;
+      }
+    }
+    return null;
+  })();
+
+  if (errors.length > 0) {
+    const firstError = errors.find((error) => {
+      if (typeof error === "string") return error.trim() !== "";
+      if (error === null || typeof error !== "object") return false;
+      return ["summary", "detail", "message"].some(
+        (key) => typeof error[key] === "string" && error[key].trim() !== "",
+      );
+    });
+    const errorText = typeof firstError === "string"
+      ? firstError.trim()
+      : firstError && typeof firstError === "object"
+        ? ["summary", "detail", "message"]
+          .map((key) => firstError[key])
+          .find((value) => typeof value === "string" && value.trim() !== "")
+        : null;
+    return {
+      label: "实时 · 部分来源不可用",
+      detail: \`运行投影不完整 · \${errorText || \`\${errors.length} 条来源错误\`}；刷新投影并查看错误证据。\`,
+    };
+  }
+
+  if (hasUnboundRunner || unboundRunner !== undefined) {
+    if (unboundReason === null) {
+      return {
+        label: "实时 · Runner 未绑定",
+        detail: cachedRunners || hasUnreachableRunner
+          ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
+          : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
+      };
+    }
+    const reasonCopy = unboundReason === "ambiguous-mission-id"
+      ? {
+        reason: "Runner 的 Mission ID 同时命中多个项目的 Mission 记录，绑定不唯一",
+        direction: "刷新投影，先在项目注册或 Mission 记录中消除 Mission ID 歧义，使其唯一命中后再控制。",
+      }
+      : unboundReason === "no-explicit-mission-id-match"
+        ? {
+          reason: "Runner 的 Mission ID 未命中任何已观察 Mission 记录",
+          direction: "刷新投影，核对 Mission 记录与 runner 归属，恢复精确匹配后再控制。",
+        }
+        : {
+          reason: "Runner 的 Mission 绑定原因未被当前投影识别，无法给出精确指引",
+          direction: "刷新投影，核对 runner 归属与 Mission 绑定来源后再控制。",
+        };
+    return {
+      label: "实时 · Runner 未绑定",
+      detail: cachedRunners || hasUnreachableRunner
+        ? \`运行投影不完整 · \${reasonCopy.reason}，运行状态仅来自缓存；\${reasonCopy.direction}\`
+        : \`运行投影不完整 · \${reasonCopy.reason}；\${reasonCopy.direction}\`,
+    };
+  }
+
+  if (hasUnreachableRunner || (cachedRunners && hasCachedRunnerEvidence)) {
+    return {
+      label: "实时 · Runner 仅缓存",
+      detail: hasUnreachableRunner
+        ? "运行投影不完整 · Runner 当前不可达，运行状态仅来自缓存；刷新投影，先恢复或处置 Runner 后再控制。"
+        : "运行投影不完整 · Runner 运行状态仅来自缓存，来源新鲜度不足以证明当前执行；刷新投影，先恢复或处置 Runner（或等待 live 探测确认）后再控制。",
+    };
+  }
+
+  return {
+    label: "实时 · 投影需核查",
+    detail: "运行投影不完整 · 当前仍有待核查事项；刷新投影并打开对应事项查看原因与下一步。",
+  };
+}
+
 export function isExactLiveAgentWork(item) {
   return item?.kind === "agent-work"
     && item?.lifecycle === "in-progress"
@@ -10980,6 +11095,7 @@ export function taskLocatorEmptySummary(locator, context) {
     // 为空时的投影不完整（如 runner-unbound 等非来源错误警告）不再误报为来源
     // 不可用，只提示投影需核查；精确完整性仍由下方 completeness 行给出。
     const snapshotSourceErrors = list(first(state.snapshot, ["errors"], []));
+    const projectionCopy = incompleteProjectionCopy(state.snapshot);
 
     if (state.source === "live") {
       if (conversationConnectionIssue) {
@@ -10993,7 +11109,11 @@ export function taskLocatorEmptySummary(locator, context) {
         $("#connection-label").textContent = "实时 · 部分来源不可用";
         mark.classList.add("is-warning");
       } else if (projectionIncomplete) {
-        $("#connection-label").textContent = "实时 · 投影需核查";
+        if (projectionCopy.label === "实时 · 投影需核查") {
+          $("#connection-label").textContent = "实时 · 投影需核查";
+        } else {
+          $("#connection-label").textContent = projectionCopy.label;
+        }
         mark.classList.add("is-warning");
       } else {
         $("#connection-label").textContent = "实时 · 已连接";
@@ -11038,12 +11158,15 @@ export function taskLocatorEmptySummary(locator, context) {
     );
     $("#snapshot-version").textContent = \`版本 \${text(first(state.snapshot, ["version", "schemaVersion"]), "—")}\`;
     const complete = first(state.snapshot, ["complete", "isComplete"]);
-    $("#projection-completeness").textContent =
+    const completeness =
       complete === true
         ? "运行投影完整"
         : complete === false
           ? "运行投影不完整"
           : "投影完整性未知";
+    $("#projection-completeness").textContent = complete === false
+      ? \`\${completeness} · \${projectionCopy.detail.replace("运行投影不完整 · ", "")}\`
+      : completeness;
   }
 
   function renderSupervision() {
