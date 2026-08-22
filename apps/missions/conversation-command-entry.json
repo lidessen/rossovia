@@ -6,7 +6,7 @@
     "conversation:active-goal/2026-08-13"
   ],
   "createdAt": "2026-08-13T09:07:57Z",
-  "updatedAt": "2026-08-18T07:11:45Z",
+  "updatedAt": "2026-08-22T02:32:43Z",
   "mainline": {
     "contradiction": "Workbench has durable tasks, bounded execution, and supervised Mission input, but no text-first duplex coordinator entry that can turn ongoing Principal messages into visible multi-project work without creating a second authority system.",
     "acceptance": [
@@ -322,7 +322,22 @@
         "mission:s2-readonly-sub-worker-run"
       ],
       "status": "open"
+    },
+    {
+      "id": "snapshot-projection-latency",
+      "parent": "mainline",
+      "kind": "implementation",
+      "purpose": "Reduce initial Workbench snapshot latency by serving compact task-list projections and loading the selected Task detail on demand, while preserving canonical Task state and all existing actions.",
+      "returnCondition": "Return one clean implementation commit from 0db23e4 with the initial snapshot materially smaller and faster, selected Task detail still complete and mutable, canonical task storage untouched, focused gateway/workbench tests and typechecks green, generated assets synchronized, diff-check clean, and no schema authority, Task lifecycle, provider, Mission, or persistence changes.",
+      "sources": [
+        "apps/workbench/src/ui/work-items.ts",
+        "apps/gateway/src/ui-server.ts",
+        "apps/gateway/ui/app.js",
+        "apps/workbench/AGENTS.md",
+        "design/operations/CONVERSATION-COMMAND-ENTRY-ROADMAP.md"
+      ],
+      "status": "open"
     }
   ],
-  "currentFocus": "s2-child-admission-budget"
+  "currentFocus": "snapshot-projection-latency"
 }
