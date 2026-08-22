@@ -967,6 +967,61 @@ export function observerConversationEvidenceLabels(review) {
 }
 
 /**
+ * The observed execution's conversation correlation, projected strictly from
+ * the canonical attempt evidence the server attached to this review
+ * (review.correlation, see observerAttemptCorrelationProjection).
+ * `available` carries the exact conversation/turn/action/sourceRef the
+ * immutable attempt record retained, still bound to the same attempt
+ * evidence. Missing correlation or unreadable/invalid attempt evidence is
+ * explicitly invisible: the UI never guesses the nearest conversation and
+ * never leaks a path.
+ */
+export function observerReviewCorrelationProjection(review) {
+  const correlation = review && typeof review === "object" ? review.correlation : null;
+  if (!correlation || typeof correlation !== "object") {
+    return { standing: "absent", label: "未提供 correlation 投影" };
+  }
+  switch (correlation.standing) {
+    case "available":
+      return {
+        standing: "available",
+        attemptId: correlation.attemptId,
+        conversationId: correlation.correlation.conversationId,
+        turnId: correlation.correlation.turnId,
+        actionId: correlation.correlation.actionId,
+        sourceRef: correlation.correlation.sourceRef,
+        label: "canonical correlation 已记录",
+      };
+    case "missing":
+      return {
+        standing: "missing",
+        label: "未记录 canonical correlation",
+        detail: "被观察执行没有保留 conversation/turn/action correlation；不猜测最近对话。",
+      };
+    case "unavailable":
+      return {
+        standing: "unavailable",
+        label: "attempt evidence 不可读",
+        detail: "被观察 attempt 没有可读的 canonical evidence，无法显示 correlation；不猜测来源。",
+      };
+    case "invalid":
+      return {
+        standing: "invalid",
+        label: "attempt evidence 无效",
+        detail: "被观察 attempt 的 canonical evidence 无效，无法显示 correlation；不猜测来源。",
+      };
+    case "invalid-attempt-id":
+      return {
+        standing: "invalid-attempt-id",
+        label: "attempt 标识非 canonical",
+        detail: "review 声明的 attempt id 不是 canonical UUID，无法读取 evidence；不猜测来源。",
+      };
+    default:
+      return { standing: "unknown", label: "correlation 状态未知" };
+  }
+}
+
+/**
  * One review's presentation grouping key: subject.taskId when declared,
  * otherwise subject.attemptId, otherwise the stable unkeyed bucket. The
  * grouping is a pure projection of the append-only review store — records
@@ -1066,7 +1121,7 @@ export function observerReviewGroupNextStep(group) {
       standing: "recorded",
       label: "意见已记录",
       nextStep:
-        "最新已记录意见可通过现有对话处理入口阅览、评论、转派或暂缓；是否已处理不由任何字段记录，处理状态不可推断。",
+        "最新已记录意见可通过现有对话处理入口阅览、评论、转派或暂缓；处理状态未记录 canonical handling evidence，点击处理按钮或填写草稿不构成处理事实。",
     };
   }
   const standings = [...new Set(records.map((review) =>
@@ -1078,7 +1133,7 @@ export function observerReviewGroupNextStep(group) {
       standing: "query-gap",
       label: "查询缺口",
       nextStep:
-        "观察时证据不完整，本组没有意见文本；处理状态不可推断。核对证据引用后，通过新的可观察 Run 重新观察。",
+        "观察时证据不完整，本组没有意见文本；处理状态未记录 canonical handling evidence，不可推断。核对证据引用后，通过新的可观察 Run 重新观察。",
     };
   }
   if (standings.length > 0 && standings.every((standing) => standing === "runner-failed")) {
@@ -1086,13 +1141,13 @@ export function observerReviewGroupNextStep(group) {
       standing: "runner-failed",
       label: "observer 失败",
       nextStep:
-        "observer 运行失败，本组没有意见文本；处理状态不可推断。重新触发观察后再处理。",
+        "observer 运行失败，本组没有意见文本；处理状态未记录 canonical handling evidence，不可推断。重新触发观察后再处理。",
     };
   }
   return {
     standing: "no-recorded-opinion",
     label: "无已记录意见",
-    nextStep: "本组没有已记录意见，处理状态不可推断。",
+    nextStep: "本组没有已记录意见；处理状态未记录 canonical handling evidence，不可推断。",
   };
 }
 
@@ -3202,11 +3257,30 @@ export function taskLocatorEmptySummary(locator, context) {
     };
   }
 
+  /**
+   * Rendered correlation facts of one review's observed source. `available`
+   * carries the exact canonical conversation/turn/action/sourceRef; every
+   * other standing is an explicit invisible note that never guesses a
+   * conversation or leaks a path. Concatenation only (no template literal)
+   * so the embedded asset keeps the same bytes after escaping.
+   */
+  function observerReviewCorrelationHtml(correlation) {
+    if (correlation.standing === "available") {
+      return "<code>conversation " + escapeHtml(correlation.conversationId)
+        + " · turn " + escapeHtml(correlation.turnId)
+        + " · action " + escapeHtml(correlation.actionId)
+        + "</code><code>sourceRef " + escapeHtml(correlation.sourceRef) + "</code>";
+    }
+    return "<small>" + escapeHtml(correlation.label)
+      + (correlation.detail ? " · " + escapeHtml(correlation.detail) : "") + "</small>";
+  }
+
   function observerReviewCardHtml(review) {
     const refs = list(first(review, ["evidenceRefs"], []));
     const workerId = observerReviewWorkerId(review);
     const statusProjection = observerReviewStatusProjection(review);
     const subjectStanding = observerReviewSubjectAcceptanceProjection(review);
+    const correlation = observerReviewCorrelationProjection(review);
     const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
     return `<article class="observer-review-card" data-review-id="${escapeHtml(text(first(review, ["reviewId"]), "review"))}">
         <header>
@@ -3214,6 +3288,10 @@ export function taskLocatorEmptySummary(locator, context) {
           <time>${escapeHtml(formatTime(text(first(review, ["recordedAt"]), "")))}</time>
         </header>
         <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论</p><p class="observer-review-summary">${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">${renderConversationMarkdown(reviewText)}</div></details></div>
+        <div class="observer-review-correlation" data-standing="${escapeHtml(correlation.standing)}">
+          <span>被观察来源</span>
+          ${observerReviewCorrelationHtml(correlation)}
+        </div>
         <details class="observer-review-evidence"><summary>证据引用 · ${refs.length} 项</summary><ul>${refs.length ? refs.map((ref) => `<li><code>${escapeHtml(ref)}</code></li>`).join("") : "<li>未提供证据引用</li>"}</ul></details>
       </article>`;
   }
@@ -3248,6 +3326,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const nextStep = observerReviewGroupNextStep(group);
     const subjectOutcome = latest ? first(latest, ["subjectOutcome"], null) : null;
     const conversationEvidence = observerGroupConversationEvidence(group);
+    const sourceCorrelation = observerReviewCorrelationProjection(review);
     const subjectCopy = group.kind === "task"
       ? `Task ${escapeHtml(group.taskId)}`
       : group.kind === "attempt"
@@ -3282,7 +3361,8 @@ export function taskLocatorEmptySummary(locator, context) {
               ? `Task ${escapeHtml(taskLocator.taskId)} · 不在当前投影（不伪造链接）`
               : "未关联 Task"}${attemptCopy}</dd></div>
           <div><dt>被观察执行</dt><dd>${latest ? escapeHtml(observerSubjectOutcomeCopy(subjectOutcome)) : "无已记录意见"}</dd></div>
-          <div><dt>处理状态</dt><dd>现有字段不记录是否已处理，处理状态不可推断。</dd></div>
+          <div><dt>来源</dt><dd>${observerReviewCorrelationHtml(sourceCorrelation)}</dd></div>
+          <div><dt>处理状态</dt><dd>未记录 canonical handling evidence；点击处理按钮或填写草稿不构成处理事实。</dd></div>
           <div><dt>机械下一步</dt><dd>${escapeHtml(nextStep.nextStep)}</dd></div>
           <div><dt>关联对话</dt><dd>${conversationEvidence.length
             ? `<div class="observer-conversation-evidence-list">${conversationEvidence.map((evidence) => `<span class="observer-conversation-evidence" data-conversation-evidence="${escapeHtml(evidence.ref)}">${escapeHtml(evidence.label)}</span>`).join("")}</div><small class="observer-conversation-evidence-note">当前没有可验证的只读回溯入口；此标识仅用于查找 canonical conversation，不会伪造链接。</small>`
@@ -3292,7 +3372,7 @@ export function taskLocatorEmptySummary(locator, context) {
           ${taskLocator.standing === "locatable"
             ? `<button type="button" class="text-action" data-observer-task-locate="${escapeHtml(taskLocator.itemId)}">定位现有任务</button>`
             : ""}
-          <button type="button" class="text-action" data-observer-process="${escapeHtml(group.key)}">在对话中处理这条意见</button>
+          <button type="button" class="text-action" data-observer-process="${escapeHtml(group.key)}" title="只准备对话草稿，不标记为已处理">在对话中处理这条意见</button>
         </footer>
       </article>`;
   }
