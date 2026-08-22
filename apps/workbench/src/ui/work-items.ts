@@ -1426,10 +1426,10 @@ function missionWorkItems(
 }
 
 /**
- * The first-screen search mirror budget, in UTF-8 bytes. Every mirrored field
- * is prefix-truncated to at most this many UTF-8 bytes (never splitting a
- * multi-byte character), so the bound is expressed in exactly the units the
- * served JSON payload is measured in.
+ * The first-screen preview budget, in UTF-8 bytes. Every mirrored searchText
+ * field and the compact shell summary are prefix-truncated to at most this
+ * many UTF-8 bytes (never splitting a multi-byte character), so the bound is
+ * expressed in exactly the units the served JSON payload is measured in.
  */
 export const PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP = 512;
 /** The number of acceptance criteria (in canonical order) the first-screen search mirror carries. */
@@ -1474,6 +1474,22 @@ function truncateSearchTextField(value: string, byteCap: number): string {
     end -= 1;
   }
   return new TextDecoder().decode(bytes.subarray(0, end));
+}
+
+/**
+ * The principal-task shell summary. The compact first screen never carries an
+ * unbounded canonical text: the current submitted result-claim summary
+ * (verifying lifecycle) and the task objective both pass through the same
+ * whole-character UTF-8 preview budget as the search mirror fields, so a long
+ * claim or objective cannot bypass the first-screen bound through the summary
+ * field. Full-detail items keep the verbatim canonical text in the summary
+ * field, and the detail route re-reads the canonical claim/objective verbatim
+ * through taskDetail.task regardless of compact/full standing.
+ */
+function principalTaskShellSummary(value: string, fullDetail: boolean): string {
+  return fullDetail
+    ? value
+    : truncateSearchTextField(value, PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP);
 }
 
 /**
@@ -2213,9 +2229,12 @@ function principalTaskWorkItems(
         ? "decision-required"
         : "normal",
       title: task.title,
-      summary: task.lifecycle === "verifying" && latestClaim?.standing === "submitted"
-        ? latestClaim.summary
-        : task.objective,
+      summary: principalTaskShellSummary(
+        task.lifecycle === "verifying" && latestClaim?.standing === "submitted"
+          ? latestClaim.summary
+          : task.objective,
+        fullDetail,
+      ),
       context: task.binding.kind === "independent"
         ? "Workbench · 独立任务"
         : project === undefined
@@ -2759,9 +2778,14 @@ export interface WorkItemProjectionOptions {
    * prefix-truncated to PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP UTF-8
    * bytes with the acceptance/todo lists limited to the first
    * ACCEPTANCE_LIMIT/TODOS_LIMIT entries, so one item's searchText never
-   * exceeds the provable PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES. The
-   * canonical Task file, lifecycle, project, Mission, evidence, and
-   * persistence semantics are unchanged either way.
+   * exceeds the provable PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES. The compact
+   * shell summary is the same whole-character UTF-8 preview of the current
+   * submitted claim summary or the task objective, so no unbounded canonical
+   * text reaches the first screen through the summary field; the full
+   * projection and the detail route keep the canonical claim/objective
+   * verbatim in the summary field and in taskDetail.task. The canonical Task
+   * file, lifecycle, project, Mission, evidence, and persistence semantics
+   * are unchanged either way.
    */
   readonly taskDetailIds?: "all" | ReadonlySet<string>;
 }

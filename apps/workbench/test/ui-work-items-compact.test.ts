@@ -246,6 +246,8 @@ describe("compact principal-task work-item projection", () => {
       "CURRENT-CORRECTION-HEAD " + "长指导文本 ".repeat(4000) + " CURRENT-CORRECTION-TAIL";
     const currentClaim =
       "CURRENT-CLAIM-HEAD " + "claim ".repeat(8000) + " CURRENT-CLAIM-TAIL";
+    const verifyingClaim =
+      "VERIFYING-CLAIM-HEAD " + "pending claim ".repeat(4000) + " VERIFYING-CLAIM-TAIL";
     const task = {
       ...compactTask("task-bound"),
       objective: "OBJECTIVE-HEAD " + "objective ".repeat(120) + " OBJECTIVE-TAIL",
@@ -296,6 +298,26 @@ describe("compact principal-task work-item projection", () => {
       ],
     };
     const source = taskSource([task]);
+    const verifyingTask = {
+      ...compactTask("task-verifying-bound"),
+      objective:
+        "VERIFYING-OBJECTIVE-HEAD "
+        + "objective ".repeat(120)
+        + " VERIFYING-OBJECTIVE-TAIL",
+      lifecycle: "verifying" as const,
+      nextActor: "principal" as const,
+      resultClaims: [{
+        id: "claim-verifying",
+        submittedAt: "2026-08-21T09:30:00Z",
+        summary: verifyingClaim,
+        evidenceRefs: ["test:bound"],
+        evidence: { kind: "agent-references-unverified" as const },
+        sourceRef: "workbench-task:task-verifying-bound/claim:claim-verifying",
+        standing: "submitted",
+        reviews: [],
+        resolution: null,
+      }],
+    };
     const compact = buildWorkItemProjection(
       snapshot as never,
       source as never,
@@ -349,6 +371,46 @@ describe("compact principal-task work-item projection", () => {
     expect(searchText).not.toContain("CURRENT-CLAIM-TAIL");
     expect(searchText).not.toContain("HISTORICAL-CORRECTION");
     expect(searchText).not.toContain("HISTORICAL-CLAIM");
+    // The compact shell summary uses the same finite UTF-8 preview: the
+    // objective head stays findable and its tail never enters the first
+    // screen through the summary field either.
+    const summary = compactItem?.summary ?? "";
+    expect(summary).toContain("OBJECTIVE-HEAD");
+    expect(summary).not.toContain("OBJECTIVE-TAIL");
+    expect(new TextEncoder().encode(summary).byteLength)
+      .toBeLessThanOrEqual(PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP);
+    // A verifying task's compact summary previews the current submitted
+    // claim with the same budget: head findable, tail absent, bounded bytes.
+    const verifyingSource = taskSource([verifyingTask]);
+    const verifyingCompact = buildWorkItemProjection(
+      snapshot as never,
+      verifyingSource as never,
+      undefined,
+      undefined,
+      { taskDetailIds: new Set<string>() },
+    );
+    const verifyingFull = buildWorkItemProjection(
+      snapshot as never,
+      verifyingSource as never,
+    );
+    const verifyingItem = verifyingCompact.items.find(
+      (candidate) => candidate.id === "principal-task:task-verifying-bound",
+    );
+    const verifyingFullItem = verifyingFull.items.find(
+      (candidate) => candidate.id === "principal-task:task-verifying-bound",
+    );
+    const verifyingSummary = verifyingItem?.summary ?? "";
+    expect(verifyingSummary).toContain("VERIFYING-CLAIM-HEAD");
+    expect(verifyingSummary).not.toContain("VERIFYING-CLAIM-TAIL");
+    expect(new TextEncoder().encode(verifyingSummary).byteLength)
+      .toBeLessThanOrEqual(PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP);
+    // Only the compact first screen is preview-bounded: the full projection
+    // and the detail route keep the canonical claim/objective verbatim.
+    expect(verifyingFullItem?.summary).toBe(verifyingClaim);
+    expect(verifyingFullItem?.taskDetail?.task.objective)
+      .toBe(verifyingTask.objective);
+    expect(verifyingFullItem?.taskDetail?.task.resultClaims.at(-1)?.summary)
+      .toBe(verifyingClaim);
     // The mirror is identical on the compact and full projections, and the
     // detail still re-reads every canonical text verbatim.
     expect(fullItem?.searchText).toBe(searchText);

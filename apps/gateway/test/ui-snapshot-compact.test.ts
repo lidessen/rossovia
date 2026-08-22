@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import { initializeHome } from "../../workbench/src/home";
-import { PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES } from "../../workbench/src/ui/work-items";
+import {
+  PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP,
+  PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES,
+} from "../../workbench/src/ui/work-items";
 import { createWorkbenchRequestHandler } from "../src/ui-server";
 
 const temporaryRoots: string[] = [];
@@ -529,6 +532,16 @@ describe("compact initial snapshot and on-demand task detail", () => {
     expect(searchText).not.toContain("CLAIM-TAIL");
     // The bounded field stays identical on the compact and full routes.
     expect(fullItem.searchText).toBe(searchText);
+    // The compact shell summary previews the current submitted claim (the
+    // task is verifying) with the same finite UTF-8 budget, so the claim tail
+    // never reaches the first screen through the summary field either; the
+    // full route keeps the canonical claim verbatim in the shell summary.
+    const compactSummary = compactItem.summary as string;
+    expect(compactSummary).toContain("CLAIM-HEAD");
+    expect(compactSummary).not.toContain("CLAIM-TAIL");
+    expect(new TextEncoder().encode(compactSummary).byteLength)
+      .toBeLessThanOrEqual(PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP);
+    expect(fullItem.summary).toBe(currentClaim);
 
     // The selected-item detail route re-reads the complete current correction
     // and claim verbatim, with the full canonical acceptance list.
@@ -539,6 +552,7 @@ describe("compact initial snapshot and on-demand task detail", () => {
     expect(detail.task.corrections.at(-1).statement).toBe(currentCorrection);
     expect(detail.task.resultClaims.at(-1).summary).toBe(currentClaim);
     expect(detail.task.acceptance).toHaveLength(acceptance.length);
+    expect(detail.task.objective).toBe("OBJ-HEAD " + "objective ".repeat(120) + " OBJ-TAIL");
     // The compact body stays strictly smaller than the full body that also
     // carries the canonical Task payload, and the retained canonical texts
     // alone exceed the entire first-screen mirror bound.
