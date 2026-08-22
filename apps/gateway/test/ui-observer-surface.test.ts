@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerReviewCorrelationProjection, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
+import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerLatestRecorded, observerReviewCorrelationProjection, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewPartitions, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -150,6 +150,71 @@ test("observer review keeps a readable summary before the full markdown body", (
     "Review First finding: the page is blocked.",
   );
   expect(observerReviewSummary("x".repeat(300), 20)).toBe(`${"x".repeat(40)}…`);
+});
+
+test("observer first-screen partitions keep actionable groups apart from observe-only groups and fail closed", () => {
+  const grouped = groupObserverReviews([
+    { reviewId: "r1", standing: "recorded", recordedAt: "2026-08-03T00:00:00.000Z", subject: { taskId: "task-a", attemptId: "attempt-1" } },
+    { reviewId: "g1", standing: "query-gap", recordedAt: "2026-08-02T00:00:00.000Z", subject: { taskId: "task-b", attemptId: "attempt-2" } },
+    { reviewId: "f1", standing: "runner-failed", recordedAt: "2026-08-01T00:00:00.000Z", subject: { taskId: "task-b", attemptId: "attempt-2" } },
+  ]);
+  const partitions = observerReviewPartitions(grouped.groups);
+  expect(partitions.actionable.map((group) => group.key)).toEqual(["task:task-a"]);
+  expect(partitions.observeOnly.map((group) => group.key)).toEqual(["task:task-b"]);
+  // A group without a latest recorded opinion can never become actionable:
+  // missing/null latestRecorded and non-array input all land in observe-only
+  // (fail-closed), so a partition never invents a processing entry.
+  expect(observerReviewPartitions([{ key: "x", latestRecorded: null }]).actionable).toEqual([]);
+  expect(observerReviewPartitions([{ key: "x", latestRecorded: undefined }]).observeOnly).toHaveLength(1);
+  expect(observerReviewPartitions(null).actionable).toEqual([]);
+  expect(observerReviewPartitions(null).observeOnly).toEqual([]);
+});
+
+test("observer latest record is the newest recorded opinion and never a query gap", () => {
+  const grouped = groupObserverReviews([
+    { reviewId: "g1", standing: "query-gap", recordedAt: "2026-08-05T00:00:00.000Z", subject: { taskId: "task-a", attemptId: "attempt-1" } },
+    { reviewId: "r1", standing: "recorded", recordedAt: "2026-08-03T00:00:00.000Z", subject: { taskId: "task-a", attemptId: "attempt-1" } },
+    { reviewId: "r2", standing: "recorded", recordedAt: "2026-08-04T00:00:00.000Z", subject: { attemptId: "attempt-2" } },
+  ]);
+  // The newest raw record is a query gap on 08-05; the banner must pick the
+  // newest recorded opinion (r2, 08-04) instead of presenting the gap as one.
+  expect(observerLatestRecorded(grouped.groups)?.reviewId).toBe("r2");
+  const onlyGaps = groupObserverReviews([
+    { reviewId: "g1", standing: "query-gap", recordedAt: "2026-08-05T00:00:00.000Z", subject: { taskId: "task-b" } },
+  ]);
+  expect(observerLatestRecorded(onlyGaps.groups)).toBeNull();
+  expect(observerLatestRecorded(null)).toBeNull();
+});
+
+test("observer cards stay bounded with a meta line and compact unknown correlation", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  const css = readFileSync(join(uiRoot, "styles.css"), "utf8");
+  // 默认卡片是有界摘要 + 一条事实行（task/attempt/worker/standing/主体结果/
+  // 更新时间），完整原文只在 details 中按需展开。
+  expect(app).toContain("observer-review-meta");
+  expect(app).toContain("更新 ");
+  // 首屏 attention 路径渲染：总数 → 最近记录横幅 → 可处理/仅观察分区。
+  expect(app).toContain("observerReviewPartitions(grouped.groups)");
+  expect(app).toContain("observerLatestRecorded(grouped.groups)");
+  expect(app).toContain("observer-latest-banner");
+  expect(app).toContain("observer-partition");
+  expect(app).toContain("可处理");
+  expect(app).toContain("仅观察");
+  // 缺失 correlation 是紧凑「未知」chip：长说明不再逐卡重复堆叠。
+  const correlationHtml = app.slice(
+    app.indexOf("function observerReviewCorrelationHtml"),
+    app.indexOf("function observerReviewCardHtml"),
+  );
+  expect(correlationHtml).toContain("observer-correlation-unknown");
+  expect(correlationHtml).toContain("未知 · ");
+  expect(correlationHtml).not.toContain("correlation.detail");
+  // 仅观察分区没有处理按钮；可处理分区保留“只准备草稿”的入口。
+  expect(app).toContain("不提供处理入口");
+  expect(app).toContain("只准备对话草稿，不标记为已处理");
+  expect(css).toContain(".observer-latest-banner");
+  expect(css).toContain(".observer-partition-heading");
+  expect(css).toContain(".observer-review-meta");
+  expect(css).toContain(".observer-correlation-unknown");
 });
 
 test("observer review keeps the record standing and the subject semantic acceptance apart", () => {
