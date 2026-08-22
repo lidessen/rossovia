@@ -120,6 +120,67 @@ export function classifyWorkbenchAttention(items) {
   };
 }
 
+/**
+ * Keep an incomplete live projection truthful and useful at the first glance.
+ * The browser already receives the attention and freshness evidence that
+ * explains why completeness is false; this copy only makes that evidence
+ * legible in the masthead and rail without inventing another status source.
+ */
+export function incompleteProjectionCopy(snapshot) {
+  const attention = Array.isArray(snapshot?.attention) ? snapshot.attention : [];
+  const codes = new Set(
+    attention
+      .map((item) => (typeof item?.code === "string" ? item.code : ""))
+      .filter(Boolean),
+  );
+  const errors = Array.isArray(snapshot?.errors) ? snapshot.errors : [];
+  const cachedRunners = snapshot?.freshness?.runners === "cached-status-files";
+  const hasUnboundRunner = codes.has("runner-unbound");
+  const hasUnreachableRunner = codes.has("runner-unreachable");
+
+  if (errors.length > 0) {
+    const firstError = errors.find((error) => {
+      if (typeof error === "string") return error.trim() !== "";
+      if (error === null || typeof error !== "object") return false;
+      return ["summary", "detail", "message"].some(
+        (key) => typeof error[key] === "string" && error[key].trim() !== "",
+      );
+    });
+    const errorText = typeof firstError === "string"
+      ? firstError.trim()
+      : firstError && typeof firstError === "object"
+        ? ["summary", "detail", "message"]
+          .map((key) => firstError[key])
+          .find((value) => typeof value === "string" && value.trim() !== "")
+        : null;
+    return {
+      label: "实时 · 部分来源不可用",
+      detail: `运行投影不完整 · ${errorText || `${errors.length} 条来源错误`}；刷新投影并查看错误证据。`,
+    };
+  }
+
+  if (hasUnboundRunner) {
+    return {
+      label: "实时 · Runner 未绑定",
+      detail: cachedRunners || hasUnreachableRunner
+        ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
+        : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
+    };
+  }
+
+  if (hasUnreachableRunner || cachedRunners) {
+    return {
+      label: "实时 · Runner 仅缓存",
+      detail: "运行投影不完整 · Runner 当前不可达，运行状态仅来自缓存；刷新投影，先恢复或处置 Runner 后再控制。",
+    };
+  }
+
+  return {
+    label: "实时 · 投影需核查",
+    detail: "运行投影不完整 · 当前仍有待核查事项；刷新投影并打开对应事项查看原因与下一步。",
+  };
+}
+
 export function isExactLiveAgentWork(item) {
   return item?.kind === "agent-work"
     && item?.lifecycle === "in-progress"
@@ -2126,6 +2187,7 @@ export function taskLocatorEmptySummary(locator, context) {
     // 为空时的投影不完整（如 runner-unbound 等非来源错误警告）不再误报为来源
     // 不可用，只提示投影需核查；精确完整性仍由下方 completeness 行给出。
     const snapshotSourceErrors = list(first(state.snapshot, ["errors"], []));
+    const projectionCopy = incompleteProjectionCopy(state.snapshot);
 
     if (state.source === "live") {
       if (conversationConnectionIssue) {
@@ -2139,7 +2201,11 @@ export function taskLocatorEmptySummary(locator, context) {
         $("#connection-label").textContent = "实时 · 部分来源不可用";
         mark.classList.add("is-warning");
       } else if (projectionIncomplete) {
-        $("#connection-label").textContent = "实时 · 投影需核查";
+        if (projectionCopy.label === "实时 · 投影需核查") {
+          $("#connection-label").textContent = "实时 · 投影需核查";
+        } else {
+          $("#connection-label").textContent = projectionCopy.label;
+        }
         mark.classList.add("is-warning");
       } else {
         $("#connection-label").textContent = "实时 · 已连接";
@@ -2184,12 +2250,15 @@ export function taskLocatorEmptySummary(locator, context) {
     );
     $("#snapshot-version").textContent = `版本 ${text(first(state.snapshot, ["version", "schemaVersion"]), "—")}`;
     const complete = first(state.snapshot, ["complete", "isComplete"]);
-    $("#projection-completeness").textContent =
+    const completeness =
       complete === true
         ? "运行投影完整"
         : complete === false
           ? "运行投影不完整"
           : "投影完整性未知";
+    $("#projection-completeness").textContent = complete === false
+      ? `${completeness} · ${projectionCopy.detail.replace("运行投影不完整 · ", "")}`
+      : completeness;
   }
 
   function renderSupervision() {
