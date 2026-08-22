@@ -35,7 +35,7 @@ export function currentWorkerCards(
       id: "deepseek-flash",
       labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
       description:
-        "DeepSeek Flash handles high-value text and code engineering such as repository analysis, implementation, debugging, tests, and source-grounded technical review. Recommended for focused text/code work that does not require visual input.",
+        "DeepSeek Flash is the explicit default worker for ordinary engineering work: repository analysis, implementation, debugging, tests, and source-grounded technical review, always executed with reasoning=max. Prefer this worker for any focused text/code work that does not require visual input or an explicit architecture/high-difficulty exception.",
       executionProfile: {
         id: "deepseek-flash",
         version: "execution-profile.v1",
@@ -52,7 +52,7 @@ export function currentWorkerCards(
       id: "deepseek-pro",
       labels: ["coding", "text", "thinking", "tools", "read", "write", "commands", "architecture"],
       description:
-        "DeepSeek Pro handles architecture, system design, complex analysis, and consequential code engineering that benefit from deeper reasoning. Recommended for design-heavy or difficult text/code work that does not require visual input.",
+        "DeepSeek Pro handles architecture, system design, complex analysis, and consequential code engineering that benefit from deeper reasoning. Recommended for design-heavy or difficult text/code work that does not require visual input; it is the high-difficulty exception, selected only when the work explicitly requires architecture or high-difficulty review beyond the deepseek-flash default.",
       executionProfile: {
         id: "deepseek-pro",
         version: "execution-profile.v1",
@@ -69,7 +69,7 @@ export function currentWorkerCards(
       id: "deepseek-flash-vision-exp",
       labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
       description:
-        "DeepSeek Flash Vision Exp is the temporary DeepSeek vision-capable worker for UI screenshots, diagrams, and other image-plus-code tasks. It uses the experimental official API model and carries no pricing estimate until the model has a stable published tariff.",
+        "DeepSeek Flash Vision Exp is the temporary DeepSeek vision-capable worker for UI screenshots, diagrams, and other image-plus-code tasks; it is the vision exception, selected only when the work explicitly requires visual input. It uses the experimental official API model and carries no pricing estimate until the model has a stable published tariff.",
       executionProfile: {
         id: "deepseek-flash-vision-exp",
         version: "execution-profile.v1",
@@ -86,7 +86,7 @@ export function currentWorkerCards(
       id: "kimi-coding",
       labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
       description:
-        "Kimi K2.7 Code handles complex code engineering with thinking, tool use, and image input across repository analysis, implementation, debugging, UI screenshots, and architecture diagrams. Recommended for code-heavy or visual-plus-code tasks that benefit from sustained reasoning.",
+        "Kimi K2.7 Code handles complex code engineering with thinking, tool use, and image input across repository analysis, implementation, debugging, UI screenshots, and architecture diagrams. Recommended for code-heavy or visual-plus-code tasks that benefit from sustained reasoning; it is the sustained-reasoning exception, selected only when the work explicitly requires visual input or a sustained-reasoning exception beyond the deepseek-flash default.",
       executionProfile: {
         id: "kimi-coding",
         version: "execution-profile.v1",
@@ -102,7 +102,7 @@ export function currentWorkerCards(
       id: "kimi-coding-plan",
       labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
       description:
-        "Kimi Coding Plan handles complex text and code engineering with thinking, tool use, and sustained reasoning. Recommended for code-heavy tasks that benefit from sustained reasoning through the Kimi Coding Plan endpoint.",
+        "Kimi Coding Plan handles complex text and code engineering with thinking, tool use, and sustained reasoning. Recommended for code-heavy tasks that benefit from sustained reasoning through the Kimi Coding Plan endpoint; it is the high-difficulty exception, selected only when the work explicitly requires it beyond the deepseek-flash default.",
       executionProfile: {
         id: "kimi-coding-plan",
         version: "execution-profile.v1",
@@ -147,12 +147,13 @@ export function createCurrentWorkerCatalog(
   const [deepseekFlash, deepseekPro, deepseekFlashVisionExp, kimi, kimiCodingPlan] = currentWorkerCards(environment);
   return new WorkerCatalog([
     {
-      // The ordinary production driver: the pinned Pi harness adapter inside
-      // Vercel AI SDK's HarnessAgent, with every Pi built-in tool disabled
-      // and only the host-executed Work Cell tool surface visible. The exact
-      // worker execution profile is mapped into the Pi adapter explicitly;
-      // an unresolvable provider/model fails closed, never falls back to a
-      // Pi default.
+      // The ordinary production driver and the policy's explicit default
+      // worker: the pinned Pi harness adapter inside Vercel AI SDK's
+      // HarnessAgent, with every Pi built-in tool disabled and only the
+      // host-executed Work Cell tool surface visible. The exact worker
+      // execution profile is mapped into the Pi adapter explicitly; an
+      // unresolvable provider/model fails closed, never falls back to a Pi
+      // default.
       card: deepseekFlash!,
       createDriver: () => new PiHarnessCellDriver(deepSeekDriverOptions(deepseekFlash!, environment)),
     },

@@ -138,6 +138,15 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
   const availableWorkers = context.catalog.list();
   const snapshot = formatWorkerSnapshot(availableWorkers);
   const availableIds = availableWorkers.map((card) => card.id);
+  // The receiver-facing routing guidance names the policy's explicit default
+  // worker only while that worker is truly available; when it is not, the
+  // snapshot alone shows the real available candidates and no stale default
+  // is asserted.
+  const flashDefaultGuidance = availableIds.includes("deepseek-flash")
+    ? "Select the deepseek-flash worker (reasoning=max) by default for ordinary engineering work; "
+      + "select another worker only when the child task explicitly requires visual input "
+      + "or an architecture/high-difficulty review exception. "
+    : "";
   // Caller-owned hard cap: one read-only child Run per parent Run. The
   // admission envelope seeds a closure-local counter that is consumed
   // synchronously at the tool boundary before any asynchronous child
@@ -147,7 +156,10 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
     description:
       "Delegate one bounded read-only sub-task to a single available Work Cell worker. "
       + "Provide the exact workerId and the complete receiver-facing prompt. "
-      + "The child Run is read-only: it cannot write files or run commands. "
+      + flashDefaultGuidance
+      + "The child Run is read-only: it cannot write files or run commands, and it receives no tools, "
+      + "so it cannot derive or invoke any further sub-worker; never instruct the child to delegate or "
+      + "self-select a different worker. "
       + "Available workers:\n"
       + snapshot,
     inputSchema: {

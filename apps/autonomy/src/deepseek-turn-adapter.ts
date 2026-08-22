@@ -90,7 +90,7 @@ export const conversationOperationTools: Record<
   task_continue: tool({
     description: [
       "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier.",
-      "Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description.",
+      "Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description, preferring the deepseek-flash default (reasoning=max) for ordinary engineering work and choosing another worker only when the work explicitly requires an architecture/high-difficulty review or visual input exception.",
       "Never invent, guess, or route a worker by phrase; the host refuses stale, unregistered, or mismatched selectors with no effect.",
     ].join(" "),
     inputSchema: TaskContinueOperationSchema.omit({ kind: true }),
@@ -108,7 +108,7 @@ export const conversationOperationTools: Record<
   contribution_spawn: tool({
     description: [
       "Form one bounded temporary contribution only when it earns its coordination cost: a bounded evidence, execution, or review child you then synthesize yourself; you remain the one synthesis owner and never vote or concatenate.",
-      "Supply only the semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description.",
+      "Supply only the semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description, preferring the deepseek-flash default (reasoning=max) for ordinary work and choosing another worker only when the contribution explicitly requires an architecture/high-difficulty review or visual input exception.",
       "Never supply a Task ID or revision, project ID/head, Worktree path/head, source or obligation ref, acceptance, or execution profile: the host derives the conversation's current Task from the canonical sources and revalidates the exact execution selection immediately before the effect, refuses stale or unbound contexts and overlapping writers, and never spawns automatically or retries.",
       "Never review your own streamed response: contribution evidence comes from the Task and its Worktree only.",
     ].join(" "),

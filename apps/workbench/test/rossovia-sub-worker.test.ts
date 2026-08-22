@@ -961,3 +961,102 @@ describe("sub_worker compatibility/capability story", () => {
     expect(terminalOutcome(badResult).finalRecord!.finalText).toContain("write capability rejected");
   });
 });
+
+describe("sub_worker routing policy", () => {
+  test("the receiver prompt prefers deepseek-flash/max first and the frozen snapshot lists only real available candidates", () => {
+    const current = fixture();
+    const task = showPrincipalTask(current.home, current.parentTask.task.id).task;
+    const flashCard = WorkerCardSchema.parse({
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash",
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands"],
+      description: "DeepSeek Flash is the explicit default worker for ordinary engineering work, always executed with reasoning=max.",
+      executionProfile: {
+        id: "deepseek-flash",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        reasoningEffort: "max",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    }) as WorkerCard;
+    const unavailableProCard = WorkerCardSchema.parse({
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-pro",
+      labels: ["coding", "text", "thinking", "tools", "read", "write", "commands", "architecture"],
+      description: "DeepSeek Pro is the high-difficulty exception worker.",
+      executionProfile: {
+        id: "deepseek-pro",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        reasoningEffort: "max",
+        parallelism: "serial",
+      },
+      availability: { status: "unavailable", reason: "DEEPSEEK_API_KEY is not configured" },
+    }) as WorkerCard;
+    const kimiCard = WorkerCardSchema.parse({
+      version: "work-cell.worker-card.v1",
+      id: "kimi-coding",
+      labels: ["coding", "text", "vision", "thinking", "tools", "read", "write", "commands"],
+      description: "Kimi vision exception worker.",
+      executionProfile: {
+        id: "kimi-coding",
+        version: "execution-profile.v1",
+        provider: "opencode-go",
+        model: "kimi-k2.7-code",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    }) as WorkerCard;
+
+    // Flash available: the receiver-facing guidance explicitly prefers
+    // deepseek-flash (reasoning=max) by default, keeps the vision/high-
+    // difficulty exception boundary, and the frozen snapshot shows exactly
+    // the real available candidates.
+    const availableTool = createRossoviaSubWorkerTool({
+      ...subWorkerToolContext(current),
+      catalog: new WorkerCatalog([
+        { card: flashCard, createDriver: () => new ChildTestDriver() },
+        { card: unavailableProCard, createDriver: () => new ChildTestDriver() },
+        { card: kimiCard, createDriver: () => new ChildTestDriver() },
+      ]),
+    });
+    expect(availableTool.description).toContain("deepseek-flash worker (reasoning=max) by default");
+    expect(availableTool.description).toContain("architecture/high-difficulty review exception");
+    expect(availableTool.description).toContain("cannot derive or invoke any further sub-worker");
+    expect(availableTool.description).toContain("never instruct the child to delegate");
+    expect(availableTool.description).toContain("- deepseek-flash:");
+    expect(availableTool.description).toContain("- kimi-coding:");
+    expect(availableTool.description).not.toContain("- deepseek-pro:");
+
+    // The receiver-facing child instructions forbid self-derivation: the
+    // child is the exactly selected worker and cannot invoke another.
+    const childInput = buildReadOnlyChildCellInput(
+      task,
+      realpathSync(current.worktree),
+      flashCard,
+      deriveChildRunId(current.parentRunId, "routing-call-1"),
+      "Bounded child task.",
+      undefined,
+    );
+    expect(childInput.instructions.join(" ")).toContain(
+      "do not derive, delegate to, or invoke any other worker or sub-worker",
+    );
+
+    // Flash unavailable: the stale default guidance is dropped and the
+    // snapshot lists only the real available candidates.
+    const unavailableTool = createRossoviaSubWorkerTool({
+      ...subWorkerToolContext(current),
+      catalog: new WorkerCatalog([
+        { card: unavailableProCard, createDriver: () => new ChildTestDriver() },
+        { card: kimiCard, createDriver: () => new ChildTestDriver() },
+      ]),
+    });
+    expect(unavailableTool.description).not.toContain("by default for ordinary engineering work");
+    expect(unavailableTool.description).not.toContain("deepseek-v4-flash");
+    expect(unavailableTool.description).toContain("- kimi-coding:");
+    expect(unavailableTool.description).not.toContain("- deepseek-pro:");
+  });
+});

@@ -98,7 +98,7 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
       name: "task_continue",
       availability: "available",
       meaning:
-        "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier. Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description; never invent, guess, or route a worker by phrase. The host re-reads the exact Task/source revisions, registered project identity, current primary observation, bound Worktree path and head, and the exact Worktree lease immediately before starting, and refuses stale or mismatched selectors with no effect.",
+        "Request more work on the still-active Task shown in the current projection through one ordinary catalog carrier. Copy the exact current taskId, sourceRevision, revision, registered projectId, current primary head, bound Worktree path, and Worktree head from the projection, and select exactly one workerId copied from the projection's worker cards by judging its description, preferring the deepseek-flash default (reasoning=max) for ordinary engineering work and choosing another worker only when the work explicitly requires an architecture/high-difficulty review or visual input exception; never invent, guess, or route a worker by phrase. The host re-reads the exact Task/source revisions, registered project identity, current primary observation, bound Worktree path and head, and the exact Worktree lease immediately before starting, and refuses stale or mismatched selectors with no effect.",
     },
     {
       name: "work_control",
@@ -110,7 +110,7 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
       name: "contribution_spawn",
       availability: "available",
       meaning:
-        "Form one bounded temporary catalog-backed evidence, execution, or review contribution only when it earns its coordination cost, then reconstruct one response yourself as the one synthesis owner; never vote or concatenate. Supply only the bounded semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description. Never supply a Task ID or revision, project ID/head, Worktree path/head, source or obligation ref, acceptance, or execution profile: the host derives the conversation's current Task from the canonical sources, revalidates the exact execution selection, and permits at most one effectful writer per Task/Worktree. Never review your own streamed response; contribution evidence comes from the Task and its Worktree only. Never call it when the projection has no current Task.",
+        "Form one bounded temporary catalog-backed evidence, execution, or review contribution only when it earns its coordination cost, then reconstruct one response yourself as the one synthesis owner; never vote or concatenate. Supply only the bounded semantic intent, one capabilityNeed taken from the exact worker's labels, the exact effectKind (read-only for bounded-parallel evidence/review work, effectful when the child must write into the bound Worktree), optional settled-key dependencies, and optional workspace-relative image paths; select exactly one workerId copied from the projection's worker cards by judging its description, preferring the deepseek-flash default (reasoning=max) for ordinary work and choosing another worker only when the contribution explicitly requires an architecture/high-difficulty review or visual input exception. Never supply a Task ID or revision, project ID/head, Worktree path/head, source or obligation ref, acceptance, or execution profile: the host derives the conversation's current Task from the canonical sources, revalidates the exact execution selection, and permits at most one effectful writer per Task/Worktree. Never review your own streamed response; contribution evidence comes from the Task and its Worktree only. Never call it when the projection has no current Task.",
     },
     {
       name: "contribution_control",
@@ -126,7 +126,7 @@ export const COORDINATOR_CONVERSATION_POLICY: ConversationPolicy = {
     },
   ],
   abstention:
-    "At most one operation or request is allowed per Principal message; a second is a visible failure. On ambiguity, abstain: answer with what you know and ask for the missing judgment. Never route a message by keyword or fixed phrase, and never form a contribution unless it earns its cost.",
+    "At most one operation or request is allowed per Principal message; a second is a visible failure. On ambiguity, abstain: answer with what you know and ask for the missing judgment. Never route a message by keyword or fixed phrase, and never form a contribution unless it earns its cost. Prefer the deepseek-flash/max default worker for ordinary engineering work; select another worker only when the work explicitly requires it.",
 };
 
 export interface CoordinatorTurnOwnerOptions {
