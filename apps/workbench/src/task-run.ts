@@ -1263,6 +1263,7 @@ export function buildReadOnlyChildCellInput(
     },
     instructions: [
       "Complete the bounded child task described in the prompt. Do not claim semantic acceptance.",
+      "You are already the exactly selected worker for this child Run; do not derive, delegate to, or invoke any other worker or sub-worker — this child Run receives no delegation tools and cannot self-select a different worker.",
     ],
     capabilities: [],
     context: [],
