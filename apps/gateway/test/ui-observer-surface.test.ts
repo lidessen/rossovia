@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerLatestRecorded, observerReviewCorrelationProjection, observerReviewDraft, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewPartitions, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
+import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerGroupHistoryProjection, observerLatestRecorded, observerReviewCorrelationProjection, observerReviewDraft, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewHandlingProjection, observerReviewPartitions, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId, taskAttemptObserverReviewProjection, taskAttemptRelationProjection, taskAttemptSemanticAcceptanceProjection } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
 
@@ -447,7 +447,7 @@ test("observer surface explains its record state instead of presenting one gener
   expect(app).toContain("function observerRecordStateCopy");
   expect(app).toContain("等待首次触发");
   expect(app).toContain("展开完整 review");
-  expect(app).toContain("被观察执行");
+  expect(app).toContain("主体结果");
   expect(app).toContain("记录源已连接，但目前为空");
   expect(css).toContain(".observer-overview");
   expect(css).toContain('.observer-empty[data-state="waiting"]');
@@ -934,4 +934,152 @@ test("the short draft is one ordered text rendered readably on desktop and mobil
   expect(css).toMatch(
     /@media \(max-width: 700px\)[\s\S]*?\.conversation-composer textarea \{\s*min-height: 56px;/s,
   );
+});
+
+test("real 4317-style snapshot separates the latest independent review from history, outcome, and handling boundaries", () => {
+  // The real observer page snapshot boundary: 15 subject themes, 25 raw
+  // records, 15 actionable groups and 0 observe-only; the newest record is
+  // the independent review Task 82f3836f / attempt 0b42eb4e with
+  // semanticAcceptance=not-evaluated and unknown canonical correlation.
+  const taskOf = (index: number) =>
+    `82f3836f-1111-4111-8${String(index % 10)}11-${String(index).padStart(12, "0")}`;
+  const attemptOf = (index: number) =>
+    `0b42eb4e-2222-4222-8${String(index % 10)}22-${String(index + 1).padStart(12, "0")}`;
+  // 15 themes: theme 0 carries 5 base records (the newest independent review
+  // becomes its 6th), themes 1-5 carry 2 each, themes 6-14 carry 1 each.
+  const perTheme = [5, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+  const reviews: any[] = [];
+  let order = 0;
+  perTheme.forEach((count, themeIndex) => {
+    for (let index = 0; index < count; index += 1) {
+      reviews.push({
+        reviewId: `review-${String(order + 1).padStart(4, "0")}`,
+        standing: "recorded",
+        recordedAt: `2026-08-21T${String(order).padStart(2, "0")}:00:00.000Z`,
+        observer: { kind: "agent", workerId: "deepseek-flash" },
+        subject: {
+          type: "workflow-task-attempt",
+          taskId: taskOf(themeIndex),
+          attemptId: attemptOf(order),
+        },
+        subjectOutcome: {
+          settlementStatus: "recorded",
+          cellStatus: "passed",
+          finalStatus: "passed",
+          semanticAcceptance: "not-evaluated",
+        },
+        reviewText: `recorded opinion ${order + 1}`,
+        evidenceRefs: [`state/task-attempts/${attemptOf(order)}/settlement.json`],
+      });
+      order += 1;
+    }
+  });
+  const newestTask = taskOf(0);
+  const newestAttempt = "0b42eb4e-2222-4222-8222-000000000000";
+  reviews.push({
+    reviewId: "review-4317",
+    standing: "recorded",
+    recordedAt: "2026-08-22T08:00:00.000Z",
+    observer: { kind: "agent", workerId: "deepseek-flash" },
+    subject: {
+      type: "workflow-task-attempt",
+      taskId: newestTask,
+      attemptId: newestAttempt,
+    },
+    subjectOutcome: {
+      settlementStatus: "recorded",
+      cellStatus: "passed",
+      finalStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    },
+    correlation: { standing: "missing" },
+    reviewText: "independent review of the 4317 observer boundary",
+    evidenceRefs: [`state/task-attempts/${newestAttempt}/settlement.json`],
+  });
+  expect(reviews).toHaveLength(25);
+
+  const grouped = groupObserverReviews(reviews);
+  expect(grouped.topicCount).toBe(15);
+  expect(grouped.recordCount).toBe(25);
+  const partitions = observerReviewPartitions(grouped.groups);
+  expect(partitions.actionable).toHaveLength(15);
+  expect(partitions.observeOnly).toHaveLength(0);
+  // The newest group surfaces first, and the newest record is the
+  // independent review Task 82f3836f / attempt 0b42eb4e.
+  expect(grouped.groups[0].key).toBe(`task:${newestTask}`);
+  const latest = observerLatestRecorded(grouped.groups);
+  expect(latest?.reviewId).toBe("review-4317");
+  // Subject outcome boundary: the newest independent review is only
+  // mechanically recorded; semantic acceptance stays not-evaluated and is
+  // never promoted into a pass/fail claim.
+  expect(observerReviewSubjectAcceptanceProjection(latest)).toEqual({
+    standing: "not-evaluated",
+    label: "语义验收未评估",
+  });
+  // Unknown correlation is explicitly invisible: the UI never guesses the
+  // current conversation from the newest review.
+  expect(observerReviewCorrelationProjection(latest)).toEqual({
+    standing: "missing",
+    label: "未记录 canonical correlation",
+    detail: expect.stringContaining("不猜测最近对话"),
+  });
+  // History boundary: the latest recorded opinion is the only expanded
+  // record; the other 5 raw records of the theme are historical and stay
+  // collapsed behind the raw-record list.
+  const history = observerGroupHistoryProjection(grouped.groups[0]);
+  expect(history.recordCount).toBe(6);
+  expect(history.latestRecorded?.reviewId).toBe("review-4317");
+  expect(history.historical).toBe(true);
+  expect(history.historicalRecords).toHaveLength(5);
+  expect(history.historicalRecords.some(
+    (record: { reviewId: string }) => record.reviewId === "review-4317",
+  )).toBe(false);
+  // A group without a recorded opinion has no expanded opinion and therefore
+  // no history partition (the observe-only shape).
+  const observeOnly = groupObserverReviews([
+    {
+      reviewId: "g1",
+      standing: "query-gap",
+      recordedAt: "2026-08-22T00:00:00.000Z",
+      subject: { taskId: "task-x" },
+    },
+  ]);
+  expect(observerGroupHistoryProjection(observeOnly.groups[0])).toMatchObject({
+    recordCount: 1,
+    latestRecorded: null,
+    historical: false,
+    historicalRecords: [],
+  });
+  // Handling evidence boundary: no canonical field records whether a review
+  // was handled, so the projection states the absence and never claims
+  // 已处理 or 未处理.
+  expect(observerReviewHandlingProjection(grouped.groups[0])).toEqual({
+    standing: "unrecorded",
+    label: "未记录 canonical handling evidence",
+    detail: expect.stringContaining("已记录 ≠ 已处理"),
+  });
+  // The draft from the newest review carries the exact subject ids, the
+  // unevaluated outcome, the unknown correlation without guessing a
+  // conversation, and stays draft-only.
+  const draft = observerReviewDraft(latest);
+  expect(draft).toContain(`task ${newestTask}`);
+  expect(draft).toContain(`attempt ${newestAttempt}`);
+  expect(draft).toContain("语义验收未评估");
+  expect(draft).toContain("correlation: 未知 · 未记录 canonical correlation（不猜测来源）");
+  expect(draft).toContain("不自动发送、不标记处理");
+  // The rendered surface separates the four facts on the first screen and in
+  // the grouping: recorded opinion, subject outcome (not-evaluated),
+  // unrecorded handling evidence, and historical raw records.
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).toContain("observerGroupHistoryProjection(group)");
+  expect(app).toContain("observerReviewHandlingProjection(review)");
+  expect(app).toContain("历史原始记录 · ");
+  expect(app).toContain('data-era="historical"');
+  expect(app).toContain("处理证据");
+  expect(app).toContain("已记录 ≠ 已处理");
+  expect(app).toContain("不猜测当前对话来源");
+  expect(app).toContain("主体结果");
+  // No static handled/current-task claim replaces these facts.
+  expect(app).not.toContain("意见已处理");
+  expect(app).not.toContain("尚未处理；通过普通对话 Task");
 });
