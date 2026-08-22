@@ -6821,7 +6821,10 @@ export function taskLocatorEmptySummary(locator, context) {
   }
 
   const conversationCarrierTerminalCopy = {
-    recorded: "recorded · 已记录（passed）",
+    // `recorded` only means that the canonical Run/Cell evidence was
+    // durably recorded. It never means semantic acceptance passed; that
+    // separate fact is shown from the retained acceptance projection.
+    recorded: "recorded · 已记录（机械结算）",
     "runner-failed": "runner-failed · Runner 失败",
     "control-stopped": "control-stopped · 已停止",
     unresolved: "unresolved · 结算未确认",
