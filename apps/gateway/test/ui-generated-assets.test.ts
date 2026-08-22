@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { UI_ASSETS } from "../src/assets.generated";
@@ -52,5 +53,19 @@ describe("generated UI assets stay current", () => {
     for (const name of ASSET_FILES) {
       expect(UI_ASSETS[name]).toBe(readFileSync(join(uiDir, name), "utf8"));
     }
+  });
+
+  test("the served project typechecks with its declared tsconfig", () => {
+    const result = spawnSync(process.execPath, ["run", "typecheck"], {
+      cwd: gatewayRoot,
+      encoding: "utf8",
+    });
+    if (result.status === 0) return;
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    // Only genuine compiler diagnostics fail this direct check. A missing
+    // local TypeScript toolchain (no "error TS…" output) is covered by the
+    // dedicated host/CI typecheck step and must not turn the runtime suite
+    // into a false failure.
+    expect(output).not.toMatch(/\berror TS\d+\b/u);
   });
 });

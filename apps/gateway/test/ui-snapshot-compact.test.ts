@@ -120,6 +120,14 @@ describe("compact initial snapshot and on-demand task detail", () => {
     });
     expect(compactItems[0].taskDetail).toBeUndefined();
     expect(compactItems[1].taskDetail).toBeUndefined();
+    // The compact shell mirrors the bounded search text so the locator keeps
+    // deep keywords findable without the canonical Task payload; the full
+    // route carries the identical field.
+    expect(typeof compactItems[0].searchText).toBe("string");
+    expect(compactItems[0].searchText).toContain("Keep the list navigable");
+    expect(compactItems[0].searchText).toContain("The initial snapshot stays small");
+    expect(compactItems[0].searchText).toBe(fullItems[0].searchText);
+    expect(compactItems[0].searchText).not.toContain("sourceRef");
     // Counts, source revision, and observer locating inputs stay available.
     expect(compact.workItems.capabilities.independentTasks).toEqual({
       standing: "available",
@@ -165,6 +173,10 @@ describe("compact initial snapshot and on-demand task detail", () => {
     expect(detail.task.revision).toBe(1);
     expect(detail.ownership).toBe("workbench-local");
     expect(detail.executionContext).toBeDefined();
+    // The full detail item mirrors the same bounded search text the compact
+    // snapshot shell carries, so the locator surface stays identical.
+    expect(typeof item.searchText).toBe("string");
+    expect(item.searchText).toContain("Keep the list navigable");
 
     const corrected = await post(handler, origin, `/api/tasks/${taskId}/actions`, {
       kind: "correct",

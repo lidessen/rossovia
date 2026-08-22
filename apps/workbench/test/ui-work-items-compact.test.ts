@@ -93,6 +93,18 @@ describe("compact principal-task work-item projection", () => {
     // execution links, or claim history.
     expect(item).not.toHaveProperty("task");
     expect(item).not.toHaveProperty("corrections");
+    // The compact item mirrors only the bounded search text: the deep
+    // keyword text the shell locator already searches (objective, acceptance,
+    // correction statements, result summaries), never any canonical payload.
+    expect(item?.searchText).toBe(
+      "Keep the navigation summary complete without the full detail "
+      + "The shell stays searchable and attributable "
+      + "Keep the exact revision guard.",
+    );
+    expect(item?.searchText).not.toContain("sourceRef");
+    expect(item?.searchText).not.toContain("conversation:");
+    expect(item?.searchText).not.toMatch(/workbench-task:/u);
+    expect(item?.searchText).not.toMatch(/\{/u);
     // Evidence source refs stay attributable to the canonical Task source.
     expect(item?.evidence).toMatchObject({
       sourceRefs: expect.arrayContaining([
@@ -184,5 +196,38 @@ describe("compact principal-task work-item projection", () => {
     expect(normalizeTaskIdentity(firstShell)).toEqual(
       normalizeTaskIdentity(secondShell),
     );
+  });
+
+  test("compact and full items mirror the same bounded search text without canonical payloads", () => {
+    const task = compactTask("task-search");
+    const source = taskSource([task]);
+    const compact = buildWorkItemProjection(
+      snapshot as never,
+      source as never,
+      undefined,
+      undefined,
+      { taskDetailIds: new Set<string>() },
+    );
+    const full = buildWorkItemProjection(
+      snapshot as never,
+      source as never,
+    );
+    const compactItem = compact.items.find(
+      (candidate) => candidate.id === "principal-task:task-search",
+    );
+    const fullItem = full.items.find(
+      (candidate) => candidate.id === "principal-task:task-search",
+    );
+
+    expect(compactItem?.taskDetail).toBeUndefined();
+    expect(fullItem?.taskDetail).toBeDefined();
+    // The bounded field is identical on both projections: only the deep
+    // keyword text the shell locator already searches is mirrored, never the
+    // canonical Task record or its evidence payloads.
+    expect(compactItem?.searchText).toBe(fullItem?.searchText);
+    expect(compactItem?.searchText).toContain("Keep the exact revision guard.");
+    expect(compactItem?.searchText).not.toContain("sourceRef");
+    expect(compactItem?.searchText).not.toMatch(/workbench-task:/u);
+    expect(compactItem?.searchText).not.toMatch(/\{/u);
   });
 });

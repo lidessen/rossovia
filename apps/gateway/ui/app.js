@@ -907,10 +907,12 @@ export function observerConversationEvidenceLabels(review) {
 /**
  * Task-page locator: keyword, project, and status narrowing over the existing
  * read-only work-item projection. Every value comes from fields already
- * present on projected items (title/summary/context and, for Workbench-owned
- * tasks, the retained task objective, acceptance, todos, correction
- * statements, and result summaries). No Task schema, lifecycle, project, or
- * authority change is introduced; the locator is pure presentation.
+ * present on projected items: title/summary/context, the bounded projection
+ * searchText that mirrors only the retained objective/acceptance/todos/
+ * correction/result text onto compact and full items alike, and — for legacy
+ * snapshots without searchText — the retained taskDetail derivation. No Task
+ * schema, lifecycle, project, or authority change is introduced; the locator
+ * is pure presentation.
  */
 const TASK_LOCATOR_LIFECYCLE_ORDER = [
   "open",
@@ -944,7 +946,11 @@ function taskLocatorObjectTexts(value) {
 /**
  * The normalized searchable text of one projected item, lowercased. It only
  * mirrors existing projection fields; an unavailable task source simply
- * yields the fields that were still projected.
+ * yields the fields that were still projected. Compact initial items carry
+ * the bounded projection searchText — only the deep keyword text the locator
+ * already searches, without the canonical Task payload — while full items
+ * mirror the same field, and legacy snapshots without it fall back to the
+ * retained taskDetail derivation.
  */
 export function taskLocatorSearchText(item) {
   const texts = [];
@@ -953,24 +959,29 @@ export function taskLocatorSearchText(item) {
       const value = item[key];
       if (typeof value === "string" && value !== "") texts.push(value);
     }
-    const taskDetail = item.taskDetail;
-    const task = taskDetail && typeof taskDetail === "object"
-      ? taskDetail.task
-      : undefined;
-    if (task && typeof task === "object") {
-      for (const key of ["title", "objective"]) {
-        const value = task[key];
-        if (typeof value === "string" && value !== "") texts.push(value);
-      }
-      for (const key of ["acceptance", "todos"]) {
-        const value = taskLocatorListText(task, key);
-        if (value !== "") texts.push(value);
-      }
-      for (const key of ["corrections", "resultClaims"]) {
-        const entries = task[key];
-        if (Array.isArray(entries)) {
-          for (const entry of entries) {
-            texts.push(...taskLocatorObjectTexts(entry));
+    const searchText = item.searchText;
+    if (typeof searchText === "string" && searchText !== "") {
+      texts.push(searchText);
+    } else {
+      const taskDetail = item.taskDetail;
+      const task = taskDetail && typeof taskDetail === "object"
+        ? taskDetail.task
+        : undefined;
+      if (task && typeof task === "object") {
+        for (const key of ["title", "objective"]) {
+          const value = task[key];
+          if (typeof value === "string" && value !== "") texts.push(value);
+        }
+        for (const key of ["acceptance", "todos"]) {
+          const value = taskLocatorListText(task, key);
+          if (value !== "") texts.push(value);
+        }
+        for (const key of ["corrections", "resultClaims"]) {
+          const entries = task[key];
+          if (Array.isArray(entries)) {
+            for (const entry of entries) {
+              texts.push(...taskLocatorObjectTexts(entry));
+            }
           }
         }
       }

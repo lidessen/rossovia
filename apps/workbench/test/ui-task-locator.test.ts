@@ -46,6 +46,7 @@ type FixtureWorkItem = {
   context: string;
   projectKey: string | null;
   missionId: string | null;
+  searchText?: string;
   taskDetail?: {
     task: {
       id: string;
@@ -381,5 +382,72 @@ describe("Task-page locator", () => {
     expect(assetBundle).toContain('id="task-locator-keyword"');
     expect(assetBundle).toContain("renderTaskLocatorControls(base)");
     expect(assetBundle).toContain("data-clear-task-locator");
+  });
+
+  test("a deep keyword locates and can select a compact task through its bounded search text alone", () => {
+    const deepKeyword = "只出现在验收标准中的深层关键词";
+    const compact = {
+      id: "principal-task:compact-deep",
+      kind: "principal-task",
+      lifecycle: "open",
+      nextActor: "agent",
+      title: "Compact deep task",
+      summary: "The shell summary never mentions the deep keyword",
+      context: "Workbench · 独立任务",
+      projectKey: null,
+      missionId: null,
+      // The bounded compact projection mirror: only the deep keyword text
+      // the locator already searches, with no taskDetail and no canonical
+      // Task/attempt/review/correction payload.
+      searchText: "普通目标 验收标准 " + deepKeyword + " 纠正说明：深层修正 结果摘要：深层结果",
+    } as FixtureWorkItem;
+
+    // The deep keyword appears in no shell field; only the bounded
+    // projection search text makes the compact task findable, so the user
+    // can select it and trigger the on-demand full detail.
+    expect(taskLocatorSearchText(compact)).toContain(deepKeyword);
+    expect(workItemMatchesTaskLocator(compact, {
+      keyword: deepKeyword,
+      project: null,
+      status: null,
+    })).toBeTrue();
+    expect(taskLocatorSearchText(compact)).not.toContain("sourceRef");
+
+    // Counterexample: a compact item without the bounded field and without
+    // taskDetail cannot fabricate the deep keyword, proving the field is the
+    // one controlled compact search path rather than an inferred match.
+    const bare = { ...compact, searchText: undefined };
+    expect(workItemMatchesTaskLocator(bare, {
+      keyword: deepKeyword,
+      project: null,
+      status: null,
+    })).toBeFalse();
+
+    // Legacy full-detail items keep the taskDetail derivation as fallback.
+    const full = {
+      ...bare,
+      taskDetail: {
+        task: {
+          id: "task-deep",
+          title: "Compact deep task",
+          objective: "普通目标",
+          acceptance: ["验收标准 " + deepKeyword],
+          todos: [],
+          corrections: [],
+          resultClaims: [],
+        },
+      },
+    };
+    expect(taskLocatorSearchText(full)).toContain(deepKeyword);
+    expect(workItemMatchesTaskLocator(full, {
+      keyword: deepKeyword,
+      project: null,
+      status: null,
+    })).toBeTrue();
+
+    // The served embedded bundle carries the same controlled compact search
+    // path as the ui source.
+    expect(appSource).toContain("const searchText = item.searchText");
+    expect(assetBundle).toContain("const searchText = item.searchText");
   });
 });

@@ -228,6 +228,15 @@ export interface WorkItemProjection {
   readonly consequence: "high" | "normal";
   readonly attentionCode: AttentionItem["code"] | null;
   /**
+   * The bounded projection search text for the shell locator: only the deep
+   * keyword text the locator already searches (task objective, acceptance,
+   * todos, correction statements, and result-claim summaries) is mirrored
+   * here so compact initial items stay findable and selectable without
+   * carrying the canonical Task record, attempts, reviews, or corrections.
+   * It never invents text and never replaces the canonical detail sources.
+   */
+  readonly searchText?: string;
+  /**
    * Read-only detail for an anomaly/observation scene: the real source path,
    * raw errors with normalized interpretation, the dedup basis that keeps one
    * runner scene as one item, the last observed evidence standing, and only
@@ -1411,6 +1420,26 @@ function missionWorkItems(
   );
 }
 
+/**
+ * The bounded deep search text mirrored onto every principal-task shell item,
+ * compact or full. It contains only the fields the shell locator already
+ * searches beyond title/summary/context — the task objective, acceptance,
+ * todos, correction statements, and result-claim summaries — never the
+ * canonical task, attempt, review, or correction payloads themselves.
+ */
+function principalTaskSearchText(task: PrincipalTask): string {
+  const texts: string[] = [];
+  const push = (value: string): void => {
+    if (value !== "") texts.push(value);
+  };
+  push(task.objective);
+  for (const criterion of task.acceptance) push(criterion);
+  for (const todo of task.todos) push(todo);
+  for (const correction of task.corrections) push(correction.statement);
+  for (const claim of task.resultClaims) push(claim.summary);
+  return texts.join(" ");
+}
+
 function principalTaskWorkItems(
   snapshot: WorkItemSnapshot,
   observation: PrincipalTaskSourceObservation,
@@ -2164,6 +2193,7 @@ function principalTaskWorkItems(
         : "查看任务",
       consequence: "normal",
       attentionCode: null,
+      searchText: principalTaskSearchText(task),
       ...(fullDetail
         ? {
           taskDetail: {
@@ -2648,8 +2678,11 @@ export interface WorkItemProjectionOptions {
    * every principal task as its compact navigation summary; a set of task
    * ids projects full details only for exactly those tasks. Compact items
    * keep every shell field the list, counts, search, and observer locating
-   * already consume, and the canonical Task file, lifecycle, project,
-   * Mission, evidence, and persistence semantics are unchanged either way.
+   * already consume, and also mirror the bounded search text (objective,
+   * acceptance, todos, correction statements, and result-claim summaries)
+   * so deep locator keywords stay findable without the canonical payloads;
+   * the canonical Task file, lifecycle, project, Mission, evidence, and
+   * persistence semantics are unchanged either way.
    */
   readonly taskDetailIds?: "all" | ReadonlySet<string>;
 }
