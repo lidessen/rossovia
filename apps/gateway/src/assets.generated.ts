@@ -9761,10 +9761,12 @@ export function observerConversationEvidenceLabels(review) {
 /**
  * Task-page locator: keyword, project, and status narrowing over the existing
  * read-only work-item projection. Every value comes from fields already
- * present on projected items (title/summary/context and, for Workbench-owned
- * tasks, the retained task objective, acceptance, todos, correction
- * statements, and result summaries). No Task schema, lifecycle, project, or
- * authority change is introduced; the locator is pure presentation.
+ * present on projected items: title/summary/context, the bounded projection
+ * searchText that mirrors only the retained objective/acceptance/todos/
+ * correction/result text onto compact and full items alike, and — for legacy
+ * snapshots without searchText — the retained taskDetail derivation. No Task
+ * schema, lifecycle, project, or authority change is introduced; the locator
+ * is pure presentation.
  */
 const TASK_LOCATOR_LIFECYCLE_ORDER = [
   "open",
@@ -9798,7 +9800,11 @@ function taskLocatorObjectTexts(value) {
 /**
  * The normalized searchable text of one projected item, lowercased. It only
  * mirrors existing projection fields; an unavailable task source simply
- * yields the fields that were still projected.
+ * yields the fields that were still projected. Compact initial items carry
+ * the bounded projection searchText — only the deep keyword text the locator
+ * already searches, without the canonical Task payload — while full items
+ * mirror the same field, and legacy snapshots without it fall back to the
+ * retained taskDetail derivation.
  */
 export function taskLocatorSearchText(item) {
   const texts = [];
@@ -9807,24 +9813,29 @@ export function taskLocatorSearchText(item) {
       const value = item[key];
       if (typeof value === "string" && value !== "") texts.push(value);
     }
-    const taskDetail = item.taskDetail;
-    const task = taskDetail && typeof taskDetail === "object"
-      ? taskDetail.task
-      : undefined;
-    if (task && typeof task === "object") {
-      for (const key of ["title", "objective"]) {
-        const value = task[key];
-        if (typeof value === "string" && value !== "") texts.push(value);
-      }
-      for (const key of ["acceptance", "todos"]) {
-        const value = taskLocatorListText(task, key);
-        if (value !== "") texts.push(value);
-      }
-      for (const key of ["corrections", "resultClaims"]) {
-        const entries = task[key];
-        if (Array.isArray(entries)) {
-          for (const entry of entries) {
-            texts.push(...taskLocatorObjectTexts(entry));
+    const searchText = item.searchText;
+    if (typeof searchText === "string" && searchText !== "") {
+      texts.push(searchText);
+    } else {
+      const taskDetail = item.taskDetail;
+      const task = taskDetail && typeof taskDetail === "object"
+        ? taskDetail.task
+        : undefined;
+      if (task && typeof task === "object") {
+        for (const key of ["title", "objective"]) {
+          const value = task[key];
+          if (typeof value === "string" && value !== "") texts.push(value);
+        }
+        for (const key of ["acceptance", "todos"]) {
+          const value = taskLocatorListText(task, key);
+          if (value !== "") texts.push(value);
+        }
+        for (const key of ["corrections", "resultClaims"]) {
+          const entries = task[key];
+          if (Array.isArray(entries)) {
+            for (const entry of entries) {
+              texts.push(...taskLocatorObjectTexts(entry));
+            }
           }
         }
       }
@@ -10002,6 +10013,10 @@ export function taskLocatorEmptySummary(locator, context) {
     actionReceipt: null,
     taskActionPending: false,
     taskActionReceipt: null,
+    taskDetails: {},
+    taskDetailRequests: {},
+    taskDetailErrors: {},
+    taskDetailErrorUpdatedAt: {},
     authorizationPending: false,
     authorizationDraft: null,
     authorizationSubmission: null,
@@ -10677,12 +10692,106 @@ export function taskLocatorEmptySummary(locator, context) {
   }
 
   function isWorkbenchTask(item) {
-    return first(first(item, ["binding"], {}), ["kind"]) === "workbench-task"
-      && first(first(item, ["taskDetail"], {}), ["ownership"]) === "workbench-local";
+    if (first(first(item, ["binding"], {}), ["kind"]) !== "workbench-task") {
+      return false;
+    }
+    const detail = taskDetail(item);
+    return detail === null
+      || first(detail, ["ownership"]) === "workbench-local";
   }
 
   function taskDetail(item = selectedWorkItem()) {
-    return isWorkbenchTask(item) ? first(item, ["taskDetail"]) : null;
+    if (first(first(item, ["binding"], {}), ["kind"]) !== "workbench-task") {
+      return null;
+    }
+    const projected = first(item, ["taskDetail"]);
+    if (projected !== undefined && projected !== null) return projected;
+    return first(state.taskDetails, [item?.id]) || null;
+  }
+
+  /**
+   * One full task detail is fetched only for the selected principal task.
+   * The initial snapshot carries the compact navigation summary; this route
+   * re-reads the same canonical sources and returns the exact current
+   * sourceRevision and task revision so the mutation forms stay exact.
+   */
+  function loadTaskDetail(id) {
+    const taskId = id.startsWith("principal-task:")
+      ? id.slice("principal-task:".length)
+      : null;
+    if (taskId === null || taskId === "") {
+      return Promise.reject(new Error("任务详情目标无效"));
+    }
+    return fetch(
+      "/api/tasks/" + encodeURIComponent(taskId) + "/detail",
+      {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+    ).then(async (response) => {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(
+          text(first(body, ["message", "error"]), "HTTP " + response.status),
+        );
+        error.status = response.status;
+        error.code = first(body, ["error"]);
+        throw error;
+      }
+      const workItem = first(body, ["workItem"]);
+      const detail = workItem !== null && typeof workItem === "object"
+        ? first(workItem, ["taskDetail"])
+        : undefined;
+      if (detail === null || detail === undefined || typeof detail !== "object") {
+        throw new Error("任务详情响应缺少完整投影");
+      }
+      return detail;
+    });
+  }
+
+  /**
+   * Keep the selected task's full detail current with the tasks source
+   * revision: fetch when it is missing, and re-fetch only after the source
+   * revision moved. A failed fetch is retried on the next snapshot that
+   * changes the item, or when the user explicitly re-opens the item.
+   */
+  function refreshSelectedTaskDetail() {
+    if (state.source !== "live") return;
+    const item = selectedWorkItem();
+    if (item === null || item === undefined) return;
+    if (first(first(item, ["binding"], {}), ["kind"]) !== "workbench-task") return;
+    if (state.taskDetailRequests[item.id] !== undefined) return;
+    const cached = taskDetail(item);
+    const currentSourceRevision = first(taskSourceCapability(), ["sourceRevision"]);
+    if (
+      cached !== null
+      && Number.isInteger(first(cached, ["sourceRevision"]))
+      && Number.isInteger(currentSourceRevision)
+      && first(cached, ["sourceRevision"]) === currentSourceRevision
+    ) {
+      return;
+    }
+    if (
+      state.taskDetailErrors[item.id] !== undefined
+      && state.taskDetailErrorUpdatedAt[item.id] === item.updatedAt
+    ) {
+      return;
+    }
+    const request = loadTaskDetail(item.id)
+      .then((detail) => {
+        state.taskDetails[item.id] = detail;
+        delete state.taskDetailErrors[item.id];
+        delete state.taskDetailErrorUpdatedAt[item.id];
+      })
+      .catch((error) => {
+        state.taskDetailErrors[item.id] = error instanceof Error ? error.message : text(error);
+        state.taskDetailErrorUpdatedAt[item.id] = item.updatedAt;
+      })
+      .finally(() => {
+        delete state.taskDetailRequests[item.id];
+        render();
+      });
+    state.taskDetailRequests[item.id] = request;
   }
 
   function lines(value) {
@@ -11002,7 +11111,11 @@ export function taskLocatorEmptySummary(locator, context) {
     }
 
     const item = selectedWorkItem();
-    if (item) selectWorkItemContext(item);
+    if (item) {
+      delete state.taskDetailErrors[item.id];
+      delete state.taskDetailErrorUpdatedAt[item.id];
+      selectWorkItemContext(item);
+    }
     writePrincipalLocus({ replace: true });
   }
 
@@ -11338,6 +11451,8 @@ export function taskLocatorEmptySummary(locator, context) {
     state.taskCreateOpen = false;
     state.taskActionReceipt = null;
     state.unavailableLocus = null;
+    delete state.taskDetailErrors[id];
+    delete state.taskDetailErrorUpdatedAt[id];
     selectWorkItemContext(item);
     if (!isWorkbenchTask(item)) ensureSelections();
     render();
@@ -12131,12 +12246,43 @@ export function taskLocatorEmptySummary(locator, context) {
     });
   }
 
+  function renderTaskDetailUnavailable(detailPanel) {
+    const item = selectedWorkItem();
+    const pending = state.taskDetailRequests[item?.id] !== undefined;
+    const error = state.taskDetailErrors[item?.id];
+    $("#local-task-source").textContent = pending
+      ? "正在读取任务详情…"
+      : error
+        ? "任务详情读取失败：" + error
+        : "任务详情来源未返回完整投影";
+    $("#local-task-revision").textContent = pending ? "…" : "不可用";
+    $("#local-task-identity-assurance").textContent = "—";
+    $("#local-task-project-boundary").textContent = "等待任务详情";
+    $("#local-task-mission-boundary").textContent = "等待任务详情";
+    $("#local-task-worktree-boundary").textContent = "等待任务详情";
+    for (const selector of [
+      ".local-task-mission-context",
+      ".local-task-execution-context",
+      ".local-task-requirements",
+      ".local-task-result-evaluation",
+      ".local-task-history",
+      ".local-task-actions",
+    ]) {
+      for (const section of detailPanel.querySelectorAll(selector)) {
+        section.hidden = true;
+      }
+    }
+    $("#local-task-action-result").className = "action-result";
+    $("#local-task-action-result").textContent = "";
+  }
+
   function renderTaskPanels() {
     const createPanel = $("#task-create-panel");
     const detailPanel = $("#local-task-detail");
     const detail = taskDetail();
+    const workbenchTaskSelected = isWorkbenchTask(selectedWorkItem());
     createPanel.hidden = !state.taskCreateOpen;
-    detailPanel.hidden = state.taskCreateOpen || detail === null;
+    detailPanel.hidden = state.taskCreateOpen || !workbenchTaskSelected;
 
     if (state.taskCreateOpen) {
       const projectSelect = $("#task-create-project");
@@ -12166,7 +12312,23 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    if (detail === null) return;
+    if (!workbenchTaskSelected) return;
+    if (detail === null) {
+      renderTaskDetailUnavailable(detailPanel);
+      return;
+    }
+    for (const selector of [
+      ".local-task-mission-context",
+      ".local-task-execution-context",
+      ".local-task-requirements",
+      ".local-task-result-evaluation",
+      ".local-task-history",
+      ".local-task-actions",
+    ]) {
+      for (const section of detailPanel.querySelectorAll(selector)) {
+        section.hidden = false;
+      }
+    }
     const task = detail.task;
     $("#local-task-source").textContent = detail.sourceRef;
     $("#local-task-revision").textContent =
@@ -15693,6 +15855,7 @@ export function taskLocatorEmptySummary(locator, context) {
     renderCorrectionMovement();
     renderEvidence();
     renderActionForm();
+    refreshSelectedTaskDetail();
     renderPeek();
     renderTaskPanels();
   }
@@ -15731,7 +15894,7 @@ export function taskLocatorEmptySummary(locator, context) {
       }
 
       try {
-        const response = await fetch("/api/snapshot", {
+        const response = await fetch("/api/snapshot?compact=1", {
           headers: { Accept: "application/json" },
           cache: "no-store",
         });
