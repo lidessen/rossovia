@@ -87,7 +87,12 @@ export interface ServerOptions {
   readonly home?: string;
   readonly port: number;
   readonly roots: readonly string[];
-  /** Local startup defaults to one observer per conversation-carrier settled Run. */
+  /**
+   * Local startup defaults to one observer per settled Task attempt — the
+   * conversation carrier's task_continue settles exactly one such attempt;
+   * a plain conversation Run settles only journal/turn evidence and is not
+   * observed.
+   */
   readonly observerWorkerId?: string;
   /** Set only by the production startup entry after its mechanical gate. */
   readonly startupGate?: SelfCheckStartupGate;
@@ -880,8 +885,8 @@ export function readObserverReviews(home: string | undefined, observerWorkerId?:
       recordState,
       lastRecordedAt: reviews.at(-1)?.recordedAt ?? null,
       trigger: {
-        kind: "conversation-run-settled" as const,
-        label: "对话 Run 结算后触发",
+        kind: "task-attempt-settled" as const,
+        label: "Task attempt 结算后触发",
       },
     };
   } catch (error: unknown) {
@@ -895,8 +900,8 @@ export function readObserverReviews(home: string | undefined, observerWorkerId?:
       recordState: "unavailable" as const,
       lastRecordedAt: null,
       trigger: {
-        kind: "conversation-run-settled" as const,
-        label: "对话 Run 结算后触发",
+        kind: "task-attempt-settled" as const,
+        label: "Task attempt 结算后触发",
       },
       reason: error instanceof Error ? error.message : String(error),
     };

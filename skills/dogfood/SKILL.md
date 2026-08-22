@@ -105,11 +105,14 @@ source map and command vocabulary are in
 ## Optional observation and review
 
 If the local Rossovia runtime has its observer option enabled, let it record a
-small read-only opinion after a settled Task or conversation Run. The observer
-uses standard Task/attempt/transcript/diff/check APIs and records only findings
-that could change the next practice: defect, regression, friction, ambiguity,
-or a query/observability gap. It must not edit, retry, accept, merge, roll
-back, or block the task.
+small read-only opinion after a settled Task attempt. A conversation-carrier
+`task_continue` settles exactly one such attempt; a plain conversation Run
+settles only the journal/turn, produces no Task attempt evidence, and is not
+observed (query gap). The observer uses standard
+Task/attempt/transcript/diff/check APIs and records only findings that could
+change the next practice: defect, regression, friction, ambiguity, or a
+query/observability gap. It must not edit, retry, accept, merge, roll back, or
+block the task.
 
 If evidence is not visible through the standard API, record that as the finding
 and name the smallest structured field or locator that would make the next

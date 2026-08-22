@@ -541,7 +541,7 @@
             <div class="observer-overview-card">
               <span>观察器</span>
               <strong id="observer-worker-state">正在读取</strong>
-              <small id="observer-trigger-state">本地 UI 默认由对话 Run 触发</small>
+              <small id="observer-trigger-state">本地 UI 默认观察已结算 Task attempt</small>
             </div>
             <div class="observer-overview-card">
               <span>最近记录</span>
@@ -551,7 +551,7 @@
           </div>
           <div class="system-surface-note">
             <strong>怎么使用</strong>
-            <span>这里展示真实的只读意见。本地 UI 默认由对话 Run 触发；显式 observer 入口可观察其他已结算 Task/Run。不会自动追溯补审历史执行，也不会把空记录伪装成 review。处理意见仍然是一次普通对话 Task；点击「在对话中处理这条意见」只准备一条对话草稿，不构成处理事实。</span>
+            <span>这里展示真实的只读意见。observer 只观察已结算的 canonical Task attempt；本地 UI 默认启用该观察，对话载体（task_continue）的结算本身就是一次 Task attempt，显式 observer 入口可观察任意已结算 Task attempt。普通对话 Run 只结算 journal/turn，不产生 Task attempt 证据，因此不会触发 observer（当前 query gap）。不会自动追溯补审历史执行，也不会把空记录伪装成 review。处理意见仍然是一次普通对话 Task；点击「在对话中处理这条意见」只准备一条对话草稿，不构成处理事实。</span>
           </div>
           <div class="observer-review-list" id="observer-review-list">
             <p class="empty-note">正在读取 observer 记录。</p>
