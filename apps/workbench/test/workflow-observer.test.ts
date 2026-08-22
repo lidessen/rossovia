@@ -17,10 +17,12 @@ import { initializeHome } from "../src/home";
 import { readStrictTaskAttemptEvidence, type StrictTaskAttemptEvidence } from "../src/task-attempts";
 import {
   appendWorkflowReview,
+  attemptContinuationChainProjection,
   attemptSourceDigests,
   confirmPinnedEvidenceFile,
   EVIDENCE_FILE_DIGEST_LIMIT_BYTES,
   legacyDogfoodReviewLogPath,
+  OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS,
   openPinnedEvidenceFile,
   observerCellInput,
   observerEvidenceProjection,
@@ -1587,4 +1589,292 @@ test("observer evidence projection continues under the bounded policy when a sou
     characterCount: EVIDENCE_FILE_DIGEST_LIMIT_BYTES + 1,
     digest: sha256Hex(oversizedIntent),
   });
+});
+
+/** Deterministic canonical UUID of one chain fixture attempt index. */
+function chainAttemptId(index: number): string {
+  return `22222222-2222-4222-8222-${index.toString(16).padStart(12, "0")}`;
+}
+
+/**
+ * Write one strict-read-compatible attempt evidence family for a chain
+ * fixture: per-attempt identity, revisions, an optional retained continuation
+ * lineage, and a per-round workspace diff. `omitFinalRecord`/`omitSettlement`
+ * leave the started-only member shape the strict reader accepts without a
+ * terminal final.
+ */
+function writeChainEvidenceFamily(
+  root: string,
+  attemptId: string,
+  options: {
+    taskId?: string;
+    taskRevision?: number;
+    sourceRevision?: number;
+    continuation?: {
+      continuedFromAttemptId: string;
+      workspaceDiff: { added: string[]; changed: string[]; removed: string[] };
+    };
+    workspaceDiff?: { added: string[]; changed: string[]; removed: string[] };
+    runId?: string;
+    omitFinalRecord?: boolean;
+    omitSettlement?: boolean;
+  } = {},
+): void {
+  const taskId = options.taskId ?? "task-1";
+  const directory = join(root, "state", "task-attempts", attemptId);
+  mkdirSync(directory, { recursive: true });
+  const inputRef = `state/task-attempts/${attemptId}/cell-input.json`;
+  const attemptRef = `state/task-attempts/${attemptId}/attempt.json`;
+  const finalRecordRef = `state/task-attempts/${attemptId}/cell-input.run.json`;
+  const settlementRef = `state/task-attempts/${attemptId}/settlement.json`;
+  const input = { ...strictFamilyInput(), id: `workbench-task-${taskId}-attempt-${attemptId}` };
+  writeFileSync(join(root, inputRef), JSON.stringify(input));
+  const runId = options.runId ?? `run-${attemptId}`;
+  if (options.omitFinalRecord !== true) {
+    writeFileSync(join(root, finalRecordRef), JSON.stringify({
+      ...strictFamilyFinalRecord(),
+      runId,
+      cellId: `workbench-task-${taskId}-attempt-${attemptId}`,
+      input,
+      workspaceDiff: options.workspaceDiff ?? { added: [], changed: [], removed: [] },
+    }));
+  }
+  writeFileSync(join(root, attemptRef), JSON.stringify({
+    ...familyAttempt(),
+    taskId,
+    taskRevision: options.taskRevision ?? 1,
+    sourceRevision: options.sourceRevision ?? 0,
+    attemptId,
+    inputRef,
+    finalRecordRef,
+    ...(options.continuation === undefined ? {} : { continuation: options.continuation }),
+  }));
+  if (options.omitSettlement !== true) {
+    writeFileSync(join(root, settlementRef), JSON.stringify({
+      ...familySettlement(),
+      taskId,
+      taskRevision: options.taskRevision ?? 1,
+      attemptId,
+      inputRef,
+      finalRecordRef,
+      workCellRunId: runId,
+    }));
+  }
+}
+
+test("continuation chain projection replays one verified same-Task lineage with per-member diffs and the bounded cumulative union", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-chain-available-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  const p0 = chainAttemptId(0);
+  const p1 = chainAttemptId(1);
+  const head = chainAttemptId(2);
+  writeChainEvidenceFamily(root, p0, {
+    taskRevision: 1,
+    sourceRevision: 0,
+    workspaceDiff: { added: ["a.ts"], changed: [], removed: [] },
+  });
+  writeChainEvidenceFamily(root, p1, {
+    taskRevision: 2,
+    sourceRevision: 1,
+    continuation: {
+      continuedFromAttemptId: p0,
+      workspaceDiff: { added: ["a.ts"], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["b.ts"], changed: ["a.ts"], removed: [] },
+  });
+  writeChainEvidenceFamily(root, head, {
+    taskRevision: 3,
+    sourceRevision: 2,
+    continuation: {
+      continuedFromAttemptId: p1,
+      workspaceDiff: { added: ["a.ts", "b.ts"], changed: ["a.ts"], removed: [] },
+    },
+    workspaceDiff: { added: [], changed: ["b.ts"], removed: ["old.ts"] },
+  });
+
+  const evidence = readStrictTaskAttemptEvidence(root, head);
+  expect(evidence.standing).toBe("available");
+  if (evidence.standing !== "available") return;
+  const chain = attemptContinuationChainProjection(root, evidence);
+  expect(chain).toMatchObject({
+    standing: "available",
+    taskId: "task-1",
+    headAttemptId: head,
+    bound: OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS,
+    memberCount: 3,
+  });
+  expect(chain.members.map((member) => member.attemptId)).toEqual([head, p1, p0]);
+  expect(chain.members[0]?.continuedFromAttemptId).toBe(p1);
+  expect(chain.members[1]?.continuedFromAttemptId).toBe(p0);
+  expect(chain.members[2]?.continuedFromAttemptId).toBeUndefined();
+  // `workspaceDiff` is projected as a plain summary record, so each bucket
+  // is asserted whole (values plus the bounded truncated flag), the same
+  // shape the cumulative union below is asserted with.
+  expect(chain.members[0]?.workspaceDiff?.changed).toEqual({ values: ["b.ts"], truncated: false });
+  expect(chain.members[2]?.workspaceDiff?.added).toEqual({ values: ["a.ts"], truncated: false });
+  expect(chain.cumulativeWorkspaceDiff).toEqual({
+    standing: "available",
+    added: { values: ["a.ts", "b.ts"], truncated: false },
+    changed: { values: ["a.ts", "b.ts"], truncated: false },
+    removed: { values: ["old.ts"], truncated: false },
+  });
+});
+
+test("continuation chain projection fails closed when the head has no canonical attempt id", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-chain-invalid-head-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  // The fixture head family carries no attempt id, so no lineage can be
+  // anchored: the chain is unavailable, never a guessed head member.
+  const chain = attemptContinuationChainProjection(root, {
+    standing: "available",
+    attempt: {
+      taskId: "task-1",
+      taskRevision: 1,
+      sourceRevision: 0,
+      driver: "ai-sdk-v7",
+      model: "deepseek-v4-flash",
+      startedAt: "2026-08-21T00:00:00.000Z",
+    },
+    refs: {
+      inputRef: "state/input.json",
+      attemptRef: "state/attempt.json",
+      finalRecordRef: "state/final.json",
+      settlementRef: "state/settlement.json",
+    },
+    controlRef: "state/control.json",
+  } as unknown as StrictTaskAttemptEvidence);
+  expect(chain).toEqual({
+    standing: "unavailable",
+    reason: "invalid-head",
+    bound: OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS,
+    memberCount: 0,
+    members: [],
+    cumulativeWorkspaceDiff: { standing: "uncertain", reason: "invalid-head" },
+  });
+});
+
+test("continuation chain projection stays uncertain when a member retains no final record", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-chain-missing-final-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  const head = chainAttemptId(0);
+  const started = chainAttemptId(1);
+  writeChainEvidenceFamily(root, head, {
+    continuation: {
+      continuedFromAttemptId: started,
+      workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+  });
+  // A started-only member: strict-valid attempt + input without a retained
+  // Work Cell final record, so its per-round diff is unknown.
+  writeChainEvidenceFamily(root, started, {
+    omitFinalRecord: true,
+    omitSettlement: true,
+    workspaceDiff: { added: ["started.ts"], changed: [], removed: [] },
+  });
+
+  const evidence = readStrictTaskAttemptEvidence(root, head);
+  expect(evidence.standing).toBe("available");
+  if (evidence.standing !== "available") return;
+  const chain = attemptContinuationChainProjection(root, evidence);
+  expect(chain.standing).toBe("uncertain");
+  expect(chain.reason).toBe("missing-final-record");
+  expect(chain.members.map((member) => [member.attemptId, member.standing])).toEqual([
+    [head, "available"],
+    [started, "available"],
+  ]);
+  expect(chain.members[1]?.finalRecordPresent).toBe(false);
+  expect(chain.members[1]?.workspaceDiff).toBeUndefined();
+  // The cumulative union is uncertain and carries no fabricated path lists.
+  expect(chain.cumulativeWorkspaceDiff).toEqual({ standing: "uncertain", reason: "missing-final-record" });
+  expect(chain.cumulativeWorkspaceDiff).not.toHaveProperty("added");
+});
+
+test("continuation chain projection marks a malformed predecessor member invalid and never follows it", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-chain-invalid-member-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  const head = chainAttemptId(0);
+  const broken = chainAttemptId(1);
+  const foreign = chainAttemptId(2);
+  writeChainEvidenceFamily(root, head, {
+    continuation: {
+      continuedFromAttemptId: broken,
+      workspaceDiff: { added: [], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+  });
+  writeChainEvidenceFamily(root, broken, {
+    continuation: {
+      continuedFromAttemptId: foreign,
+      workspaceDiff: { added: [], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["broken.ts"], changed: [], removed: [] },
+  });
+  // The broken member's retained settlement is malformed: its family is
+  // invalid, and its own continuation is never followed.
+  writeFileSync(join(root, `state/task-attempts/${broken}/settlement.json`), "not json");
+
+  const evidence = readStrictTaskAttemptEvidence(root, head);
+  expect(evidence.standing).toBe("available");
+  if (evidence.standing !== "available") return;
+  const chain = attemptContinuationChainProjection(root, evidence);
+  expect(chain.standing).toBe("uncertain");
+  expect(chain.reason).toBe("invalid");
+  expect(chain.members.map((member) => [member.attemptId, member.standing])).toEqual([
+    [head, "available"],
+    [broken, "invalid"],
+  ]);
+  expect(chain.members[1]?.finalRecordPresent).toBe(false);
+  expect(chain.cumulativeWorkspaceDiff).toEqual({ standing: "uncertain", reason: "invalid" });
+});
+
+test("workflow observer context includes the bounded continuation chain block", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-chain-context-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  const head = chainAttemptId(0);
+  const p1 = chainAttemptId(1);
+  writeChainEvidenceFamily(root, p1, {
+    taskRevision: 1,
+    sourceRevision: 0,
+    workspaceDiff: { added: ["p1.ts"], changed: [], removed: [] },
+  });
+  writeChainEvidenceFamily(root, head, {
+    taskRevision: 2,
+    sourceRevision: 1,
+    continuation: {
+      continuedFromAttemptId: p1,
+      workspaceDiff: { added: ["p1.ts"], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+  });
+
+  const evidence = readStrictTaskAttemptEvidence(root, head);
+  expect(evidence.standing).toBe("available");
+  if (evidence.standing !== "available") return;
+  const context = JSON.parse(workflowObserverContext(
+    evidence,
+    undefined,
+    attemptContinuationChainProjection(root, evidence),
+  ));
+  expect(context.continuationChain).toMatchObject({
+    standing: "available",
+    taskId: "task-1",
+    headAttemptId: head,
+    memberCount: 2,
+  });
+  expect(context.continuationChain.members[0].attemptId).toBe(head);
+  expect(context.continuationChain.members[1].workspaceDiff.added.values).toEqual(["p1.ts"]);
+  expect(context.continuationChain.cumulativeWorkspaceDiff).toEqual({
+    standing: "available",
+    added: { values: ["head.ts", "p1.ts"], truncated: false },
+    changed: { values: [], truncated: false },
+    removed: { values: [], truncated: false },
+  });
+  expect(JSON.stringify(context)).not.toContain('"rawSteps"');
+  expect(JSON.stringify(context)).not.toContain('"finalText"');
 });

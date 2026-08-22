@@ -162,6 +162,82 @@ function writeEvidenceFamily(
   }
 }
 
+/** Deterministic canonical UUID of one chain fixture attempt index. */
+function chainAttemptId(index: number): string {
+  return `22222222-2222-4222-8222-${index.toString(16).padStart(12, "0")}`;
+}
+
+/**
+ * Write one strict-read-compatible attempt evidence family for a
+ * continuation chain fixture: the same worker-bound CellInput/final-record
+ * shapes as `writeEvidenceFamily` but with per-attempt identity, revisions,
+ * an optional retained continuation lineage, and a per-round workspace diff.
+ */
+function writeChainEvidenceFamily(
+  home: string,
+  attemptId: string,
+  options: {
+    taskId?: string;
+    taskRevision?: number;
+    sourceRevision?: number;
+    continuation?: {
+      continuedFromAttemptId: string;
+      workspaceDiff: { added: string[]; changed: string[]; removed: string[] };
+    };
+    workspaceDiff?: { added: string[]; changed: string[]; removed: string[] };
+    runId?: string;
+  } = {},
+): void {
+  const taskId = options.taskId ?? "task-1";
+  const directory = join(home, "state", "task-attempts", attemptId);
+  mkdirSync(directory, { recursive: true });
+  const inputRef = `state/task-attempts/${attemptId}/cell-input.json`;
+  const attemptRef = `state/task-attempts/${attemptId}/attempt.json`;
+  const finalRecordRef = `state/task-attempts/${attemptId}/cell-input.run.json`;
+  const settlementRef = `state/task-attempts/${attemptId}/settlement.json`;
+  const input = {
+    ...familyInput("goal text"),
+    id: `workbench-task-${taskId}-attempt-${attemptId}`,
+  };
+  writeFileSync(join(home, inputRef), JSON.stringify(input));
+  const runId = options.runId ?? `run-${attemptId}`;
+  writeFileSync(join(home, finalRecordRef), JSON.stringify({
+    ...familyFinalRecord(),
+    runId,
+    cellId: `workbench-task-${taskId}-attempt-${attemptId}`,
+    input,
+    workspaceDiff: options.workspaceDiff ?? { added: [], changed: [], removed: [] },
+  }));
+  writeFileSync(join(home, attemptRef), JSON.stringify({
+    version: "rosso.task-run-attempt.v1",
+    taskId,
+    taskRevision: options.taskRevision ?? 1,
+    sourceRevision: options.sourceRevision ?? 0,
+    attemptId,
+    inputRef,
+    finalRecordRef,
+    workerId: "deepseek-flash",
+    driver: "ai-sdk-v7",
+    model: "deepseek-v4-flash",
+    ...(options.continuation === undefined ? {} : { continuation: options.continuation }),
+    status: "started",
+    startedAt: "2026-08-21T00:00:00.000Z",
+  }));
+  writeFileSync(join(home, settlementRef), JSON.stringify({
+    version: "rosso.task-run-settlement.v1",
+    taskId,
+    taskRevision: options.taskRevision ?? 1,
+    attemptId,
+    inputRef,
+    finalRecordRef,
+    status: "recorded",
+    semanticAcceptance: "not-evaluated",
+    settledAt: "2026-08-21T00:02:00.000Z",
+    workCellRunId: runId,
+    cellStatus: "passed",
+  }));
+}
+
 test("GET attempt evidence returns the bounded read-only projection by attempt id", async () => {
   const { home, origin, handler } = fixture();
   writeEvidenceFamily(home);
@@ -318,4 +394,296 @@ test("attempt evidence endpoint never mutates review state or retained evidence 
   }
   // Write attempts leave the retained evidence family untouched.
   expect(readdirSync(attemptDirectory).sort()).toEqual(expectedEntries);
+});
+
+test("attempt evidence replays the same-Task continuation lineage with per-round diffs and a bounded cumulative summary", async () => {
+  const { home, origin, handler } = fixture();
+  const p0 = chainAttemptId(0);
+  const p1 = chainAttemptId(1);
+  const head = chainAttemptId(2);
+  writeChainEvidenceFamily(home, p0, {
+    taskRevision: 1,
+    sourceRevision: 0,
+    workspaceDiff: { added: ["p0.ts"], changed: [], removed: [] },
+  });
+  writeChainEvidenceFamily(home, p1, {
+    taskRevision: 2,
+    sourceRevision: 1,
+    continuation: {
+      continuedFromAttemptId: p0,
+      workspaceDiff: { added: ["p0.ts"], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["p1.ts"], changed: ["p0.ts"], removed: [] },
+  });
+  writeChainEvidenceFamily(home, head, {
+    taskRevision: 3,
+    sourceRevision: 2,
+    continuation: {
+      continuedFromAttemptId: p1,
+      workspaceDiff: { added: ["p0.ts", "p1.ts"], changed: ["p0.ts"], removed: [] },
+    },
+    workspaceDiff: { added: [], changed: ["p1.ts"], removed: ["old.ts"] },
+  });
+
+  const response = await handler(new Request(`${origin}/api/attempts/${head}/evidence`));
+  expect(response.status).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  expect(body.standing).toBe("available");
+  const projection = body.projection as Record<string, any>;
+  // The chain replays the exact same-Task lineage newest-first with the
+  // head's taskId and every member's revisions and continuation anchor.
+  expect(projection.continuationChain).toMatchObject({
+    standing: "available",
+    taskId: "task-1",
+    headAttemptId: head,
+    bound: 16,
+    memberCount: 3,
+  });
+  expect(projection.continuationChain.members.map((member: { attemptId: string }) => member.attemptId))
+    .toEqual([head, p1, p0]);
+  expect(projection.continuationChain.members[0]).toMatchObject({
+    attemptId: head,
+    standing: "available",
+    taskId: "task-1",
+    taskRevision: 3,
+    sourceRevision: 2,
+    continuedFromAttemptId: p1,
+    finalRecordPresent: true,
+  });
+  // Each member carries its own per-round workspace diff from its retained
+  // final record.
+  expect(projection.continuationChain.members[0].workspaceDiff).toEqual({
+    added: { values: [], truncated: false },
+    changed: { values: ["p1.ts"], truncated: false },
+    removed: { values: ["old.ts"], truncated: false },
+  });
+  expect(projection.continuationChain.members[1]).toMatchObject({
+    attemptId: p1,
+    standing: "available",
+    taskRevision: 2,
+    sourceRevision: 1,
+    continuedFromAttemptId: p0,
+  });
+  expect(projection.continuationChain.members[1].workspaceDiff.added)
+    .toEqual({ values: ["p1.ts"], truncated: false });
+  expect(projection.continuationChain.members[2]).toMatchObject({
+    attemptId: p0,
+    standing: "available",
+    taskRevision: 1,
+    sourceRevision: 0,
+    finalRecordPresent: true,
+  });
+  expect(projection.continuationChain.members[2].continuedFromAttemptId).toBeUndefined();
+  // The cumulative summary is the bounded union of every member's diff.
+  expect(projection.continuationChain.cumulativeWorkspaceDiff).toEqual({
+    standing: "available",
+    added: { values: ["p0.ts", "p1.ts"], truncated: false },
+    changed: { values: ["p0.ts", "p1.ts"], truncated: false },
+    removed: { values: ["old.ts"], truncated: false },
+  });
+  // The chain replay is read-only: every attempt directory keeps exactly its
+  // retained family files, and raw provider steps or untruncated payloads
+  // never appear anywhere in the response.
+  for (const attemptId of [p0, p1, head]) {
+    expect(readdirSync(join(home, "state", "task-attempts", attemptId)).sort()).toEqual([
+      "attempt.json",
+      "cell-input.json",
+      "cell-input.run.json",
+      "settlement.json",
+    ]);
+  }
+  const serialized = JSON.stringify(body);
+  expect(serialized).not.toContain('"rawSteps"');
+  expect(serialized).not.toContain('"finalText"');
+});
+
+test("a single attempt without a continuation replays as a one-member available chain", async () => {
+  const { home, origin, handler } = fixture();
+  writeEvidenceFamily(home);
+
+  const response = await handler(new Request(`${origin}/api/attempts/${EVIDENCE_ATTEMPT_ID}/evidence`));
+  expect(response.status).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  const projection = body.projection as Record<string, any>;
+  expect(projection.continuationChain).toMatchObject({
+    standing: "available",
+    taskId: "task-1",
+    headAttemptId: EVIDENCE_ATTEMPT_ID,
+    bound: 16,
+    memberCount: 1,
+  });
+  expect(projection.continuationChain.members).toEqual([{
+    attemptId: EVIDENCE_ATTEMPT_ID,
+    standing: "available",
+    taskId: "task-1",
+    taskRevision: 1,
+    sourceRevision: 0,
+    finalRecordPresent: true,
+    workspaceDiff: {
+      added: { values: [], truncated: false },
+      changed: { values: [], truncated: false },
+      removed: { values: [], truncated: false },
+    },
+  }]);
+  expect(projection.continuationChain.cumulativeWorkspaceDiff).toEqual({
+    standing: "available",
+    added: { values: [], truncated: false },
+    changed: { values: [], truncated: false },
+    removed: { values: [], truncated: false },
+  });
+});
+
+test("a missing continuation predecessor fails the chain closed as uncertain without fabricating a cumulative diff", async () => {
+  const { home, origin, handler } = fixture();
+  const head = chainAttemptId(0);
+  const missing = chainAttemptId(1);
+  writeChainEvidenceFamily(home, head, {
+    continuation: {
+      continuedFromAttemptId: missing,
+      workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+  });
+
+  const response = await handler(new Request(`${origin}/api/attempts/${head}/evidence`));
+  expect(response.status).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  const projection = body.projection as Record<string, any>;
+  const chain = projection.continuationChain;
+  expect(chain).toMatchObject({
+    standing: "uncertain",
+    reason: "missing",
+    taskId: "task-1",
+    headAttemptId: head,
+    memberCount: 2,
+  });
+  expect(chain.members[0].standing).toBe("available");
+  expect(chain.members[1]).toEqual({
+    attemptId: missing,
+    standing: "missing",
+    finalRecordPresent: false,
+  });
+  // The cumulative union is explicitly uncertain and carries no path lists:
+  // a partial union over an incomplete lineage would be fabricated.
+  expect(chain.cumulativeWorkspaceDiff).toEqual({ standing: "uncertain", reason: "missing" });
+  expect(chain.cumulativeWorkspaceDiff).not.toHaveProperty("added");
+  expect(chain.cumulativeWorkspaceDiff).not.toHaveProperty("changed");
+  expect(chain.cumulativeWorkspaceDiff).not.toHaveProperty("removed");
+});
+
+test("a continuation link to a different Task fails closed as foreign and is never followed", async () => {
+  const { home, origin, handler } = fixture();
+  const head = chainAttemptId(0);
+  const foreign = chainAttemptId(1);
+  writeChainEvidenceFamily(home, head, {
+    continuation: {
+      continuedFromAttemptId: foreign,
+      workspaceDiff: { added: [], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+  });
+  // The linked attempt is a valid family of a DIFFERENT Task: same-Task
+  // identity fails closed and the foreign member's own lineage is never
+  // followed.
+  writeChainEvidenceFamily(home, foreign, {
+    taskId: "task-2",
+    taskRevision: 7,
+    sourceRevision: 4,
+    workspaceDiff: { added: ["foreign.ts"], changed: [], removed: [] },
+  });
+
+  const response = await handler(new Request(`${origin}/api/attempts/${head}/evidence`));
+  expect(response.status).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  const chain = (body.projection as Record<string, any>).continuationChain;
+  expect(chain).toMatchObject({
+    standing: "uncertain",
+    reason: "foreign",
+    taskId: "task-1",
+    memberCount: 2,
+  });
+  expect(chain.members[1]).toMatchObject({
+    attemptId: foreign,
+    standing: "foreign",
+    taskId: "task-2",
+    taskRevision: 7,
+    sourceRevision: 4,
+    finalRecordPresent: true,
+  });
+  expect(chain.members[1].workspaceDiff.added).toEqual({ values: ["foreign.ts"], truncated: false });
+  expect(chain.cumulativeWorkspaceDiff).toEqual({ standing: "uncertain", reason: "foreign" });
+});
+
+test("a cyclic continuation lineage fails closed as cyclic without a cumulative diff", async () => {
+  const { home, origin, handler } = fixture();
+  const head = chainAttemptId(0);
+  const p1 = chainAttemptId(1);
+  writeChainEvidenceFamily(home, head, {
+    continuation: {
+      continuedFromAttemptId: p1,
+      workspaceDiff: { added: [], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+  });
+  writeChainEvidenceFamily(home, p1, {
+    continuation: {
+      continuedFromAttemptId: head,
+      workspaceDiff: { added: ["head.ts"], changed: [], removed: [] },
+    },
+    workspaceDiff: { added: ["p1.ts"], changed: [], removed: [] },
+  });
+
+  const response = await handler(new Request(`${origin}/api/attempts/${head}/evidence`));
+  expect(response.status).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  const chain = (body.projection as Record<string, any>).continuationChain;
+  expect(chain).toMatchObject({
+    standing: "uncertain",
+    reason: "cyclic",
+    memberCount: 2,
+  });
+  expect(chain.members.map((member: { attemptId: string }) => member.attemptId)).toEqual([head, p1]);
+  expect(chain.cumulativeWorkspaceDiff).toEqual({ standing: "uncertain", reason: "cyclic" });
+});
+
+test("a continuation lineage above the bound fails closed as over-limit with the bounded verified prefix", async () => {
+  const { home, origin, handler } = fixture();
+  // 18 attempts: attempt 17 (head) continues from 16 down to the root 0.
+  for (let index = 0; index < 18; index += 1) {
+    writeChainEvidenceFamily(home, chainAttemptId(index), {
+      taskRevision: index + 1,
+      sourceRevision: index,
+      ...(index === 0
+        ? {}
+        : {
+            continuation: {
+              continuedFromAttemptId: chainAttemptId(index - 1),
+              workspaceDiff: { added: [], changed: [], removed: [] },
+            },
+          }),
+      workspaceDiff: { added: [`file-${index}.ts`], changed: [], removed: [] },
+    });
+  }
+  const head = chainAttemptId(17);
+
+  const response = await handler(new Request(`${origin}/api/attempts/${head}/evidence`));
+  expect(response.status).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  const chain = (body.projection as Record<string, any>).continuationChain;
+  // The chain is explicitly uncertain at the bound: only the bounded
+  // verified prefix is projected and the cumulative union is never
+  // fabricated for a lineage that may extend beyond it.
+  expect(chain).toMatchObject({
+    standing: "uncertain",
+    reason: "over-limit",
+    bound: 16,
+    memberCount: 16,
+  });
+  expect(chain.members).toHaveLength(16);
+  expect(chain.members[0].attemptId).toBe(head);
+  expect(chain.members[15].attemptId).toBe(chainAttemptId(2));
+  expect(chain.cumulativeWorkspaceDiff).toEqual({ standing: "uncertain", reason: "over-limit" });
+  const serialized = JSON.stringify(body);
+  expect(serialized).not.toContain('"rawSteps"');
+  expect(serialized).not.toContain('"finalText"');
 });
