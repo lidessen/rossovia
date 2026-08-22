@@ -279,7 +279,7 @@ const delegateFileTool = tool({
 
 const workerSpawnTool = tool({
   description:
-    "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId. Optional imagePaths are workspace-relative local images for a vision worker. Listing is optional; the host validates and binds the worker before dispatch.",
+    "Spawn one already task-shaped semantic contribution on an explicitly selected runnable workerId; the host validates and binds your exact selection and never replaces it. When the deepseek-flash worker is available, prefer it for ordinary engineering work (its profile executes with reasoning=max) and select another worker only when the work explicitly requires an architecture/high-difficulty review or visual input exception. Optional imagePaths are workspace-relative local images for a vision worker. Listing via worker_list is optional; call it first when you are uncertain whether a worker is available or matches the capability need.",
   inputSchema: WorkerSpawnCallSchema,
   outputSchema: DelegateToolResultSchema,
 });
@@ -887,7 +887,7 @@ function inputWorkerBoundary(
   _input: DelegateLoopInput,
   _state: { readonly delegationOpen: boolean },
 ): string {
-  return "Use the worker tools exposed in this turn. In catalog mode, inspect runnable cards with `worker_list` when useful, then explicitly choose `workerId` in `worker_spawn`; listing is not required before spawning. Card descriptions are evidence for your semantic choice, not host routing policy. In legacy mode, use `delegate` or `delegate_file` as described by their tools. A role label, confident wording, schema validity, or protocol completion is not capability evidence. If the work is still `transform` or `unsupported-escalate`, do not spawn it as an ordinary Cell.";
+  return "Use the worker tools exposed in this turn. In catalog mode, when the deepseek-flash worker is available, prefer it for ordinary engineering work: it is the explicit default and its profile executes with reasoning=max; select another worker only when the work explicitly requires an architecture/high-difficulty review or visual input exception. The host validates and binds the explicit `workerId` you choose and never replaces it. Call `worker_list` first whenever you are uncertain whether a worker is available or matches the capability need; listing is not required before spawning. Card descriptions are evidence for your semantic choice, not host routing policy. In legacy mode, use `delegate` or `delegate_file` as described by their tools. A role label, confident wording, schema validity, or protocol completion is not capability evidence. If the work is still `transform` or `unsupported-escalate`, do not spawn it as an ordinary Cell.";
 }
 
 function finish(
