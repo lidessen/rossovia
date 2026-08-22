@@ -1596,15 +1596,23 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
           binding,
         });
         if (binding.kind === "unbound") {
-          complete = false;
-          attention.push({
-            priority: "warning",
-            code: "runner-unbound",
-            summary: `Runner ${status.runnerId} cannot be bound by Mission ID '${status.missionId}' (${binding.reason})`,
-            runnerId: status.runnerId,
-            missionId: status.missionId,
-            source: path,
-          });
+          // Deliberately stopped carriers remain retained cached observations
+          // but do not fail the projection: a stopped runner cannot act on a
+          // Mission, so its unresolved binding is historical, not active.
+          // Every other unbound state stays fail-closed.
+          const deliberatelyStopped = status.state === "stopped"
+            || status.state === "mission-stopped";
+          if (!deliberatelyStopped) {
+            complete = false;
+            attention.push({
+              priority: "warning",
+              code: "runner-unbound",
+              summary: `Runner ${status.runnerId} cannot be bound by Mission ID '${status.missionId}' (${binding.reason})`,
+              runnerId: status.runnerId,
+              missionId: status.missionId,
+              source: path,
+            });
+          }
         }
         if (status.state === "anchor-pending") {
           attention.push({

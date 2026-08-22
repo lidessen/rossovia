@@ -1099,6 +1099,76 @@ describe("Principal Workbench operational projection", () => {
     expect(snapshot).not.toHaveProperty("health");
   });
 
+  test("retains stopped and mission-stopped unbound runners without failing the projection", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-ui-stopped-unbound-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "registered");
+    const remote = "https://example.test/lidessen/stopped-unbound.git";
+    createRepository(repository, remote);
+    writeJson(join(repository, "apps", "missions", "bound.json"), mission("bound", "mainline"));
+    git(repository, "add", "apps/missions/bound.json");
+    git(repository, "commit", "-m", "add mission");
+    const home = makeHome(root, remote, repository);
+    writeJson(join(home, "missions", "stopped-cache", "runner-status.json"), {
+      ...runnerStatus("stopped-run", "stopped"),
+      stopReason: "runner-shutdown",
+    });
+    writeJson(join(home, "missions", "mission-stopped-cache", "runner-status.json"), {
+      ...runnerStatus("mission-stopped-run", "mission-stopped"),
+      stopReason: "mission-stop",
+    });
+
+    const stoppedOnly = buildWorkbenchSnapshot({
+      home,
+      now: () => "2026-07-26T11:00:00Z",
+    });
+
+    expect(stoppedOnly.complete).toBe(true);
+    expect(stoppedOnly.errors).toEqual([]);
+    expect(stoppedOnly.attention.map((item) => item.code)).not.toContain("runner-unbound");
+    expect(stoppedOnly.runners).toHaveLength(2);
+    expect(stoppedOnly.runners.map((runner) => runner.status.state).sort()).toEqual([
+      "mission-stopped",
+      "stopped",
+    ]);
+    for (const runner of stoppedOnly.runners) {
+      expect(runner.binding).toEqual({
+        kind: "unbound",
+        reason: "no-explicit-mission-id-match",
+      });
+    }
+
+    writeJson(join(home, "missions", "running-cache", "runner-status.json"), {
+      ...runnerStatus("running-run", "running"),
+    });
+    const withRunning = buildWorkbenchSnapshot({
+      home,
+      now: () => "2026-07-26T11:00:00Z",
+    });
+
+    expect(withRunning.complete).toBe(false);
+    expect(withRunning.runners).toHaveLength(3);
+    expect(withRunning.runners.map((runner) => runner.status.runnerId).sort()).toEqual([
+      "runner-mission-stopped-run",
+      "runner-running-run",
+      "runner-stopped-run",
+    ]);
+    const unboundAttention = withRunning.attention.filter(
+      (item) => item.code === "runner-unbound",
+    );
+    expect(unboundAttention).toHaveLength(1);
+    expect(unboundAttention[0]).toMatchObject({
+      runnerId: "runner-running-run",
+      missionId: "running-run",
+    });
+    expect(withRunning.runners.find(
+      (runner) => runner.status.state === "running",
+    )?.binding).toEqual({
+      kind: "unbound",
+      reason: "no-explicit-mission-id-match",
+    });
+  });
+
   test("projects anchor migration and no-runtime idle as distinct truthful attention states", () => {
     const root = mkdtempSync(join(tmpdir(), "rossovia-ui-anchor-carriers-"));
     temporaryRoots.push(root);
