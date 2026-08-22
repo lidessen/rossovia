@@ -3453,6 +3453,150 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   padding-top: 0.65rem;
 }
 
+/* First-screen attention path: latest-record banner, then the actionable /
+   observe-only partitions. Pure presentation of the existing group
+   projection; no state is added and nothing auto-processes. */
+.observer-attention-note {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 920px;
+}
+
+.observer-latest-banner {
+  background: var(--paper-deep);
+  border: 1px solid var(--ink);
+  display: grid;
+  gap: 0.5rem;
+  max-width: 920px;
+  padding: 0.85rem 0.95rem;
+}
+
+.observer-latest-banner > header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+.observer-latest-kicker {
+  color: var(--green-dark);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.observer-latest-banner time {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.62rem;
+}
+
+.observer-latest-summary {
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.observer-latest-facts {
+  display: grid;
+  gap: 0.3rem 1.2rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  margin: 0;
+}
+
+.observer-latest-facts > div {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.observer-latest-facts dt {
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  text-transform: uppercase;
+}
+
+.observer-latest-facts dd {
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.observer-partition {
+  max-width: 920px;
+}
+
+.observer-partition-heading {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ink);
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  padding: 0.6rem 0.15rem 0.45rem;
+}
+
+.observer-partition-heading span {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.observer-partition-heading small {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.observer-partition[data-partition="observe-only"] .observer-partition-heading {
+  border-bottom-color: var(--line);
+}
+
+.observer-partition[data-partition="observe-only"] .observer-partition-heading span {
+  color: var(--ink-soft);
+}
+
+.observer-partition-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.85rem;
+}
+
+.observer-review-meta {
+  border-top: 1px solid var(--line-light);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  line-height: 1.5;
+  margin: 0.7rem 0 0;
+  overflow-wrap: anywhere;
+  padding-top: 0.55rem;
+}
+
+.observer-group-no-process {
+  color: var(--ink-faint);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.observer-review-correlation small.observer-correlation-unknown {
+  color: var(--ink-faint);
+}
+
+.observer-review-correlation small.observer-correlation-unknown[data-standing="missing"],
+.observer-review-correlation small.observer-correlation-unknown[data-standing="absent"] {
+  color: var(--ochre);
+}
+
 .system-empty {
   border: 1px dashed var(--line);
   color: var(--ink-soft);
