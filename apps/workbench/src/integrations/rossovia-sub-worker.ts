@@ -138,6 +138,15 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
   const availableWorkers = context.catalog.list();
   const snapshot = formatWorkerSnapshot(availableWorkers);
   const availableIds = availableWorkers.map((card) => card.id);
+  // The receiver-facing routing guidance names the policy's explicit default
+  // worker only while that worker is truly available AND its full execution
+  // profile is the exact deepseek/deepseek-v4-flash/reasoning=max default.
+  // An id-only match on a custom catalog never fabricates the default.
+  const flashDefaultGuidance = availableWorkers.some(isExplicitFlashMaxDefault)
+    ? "Select the deepseek-flash worker (reasoning=max) by default for ordinary engineering work; "
+      + "select another worker only when the child task explicitly requires visual input "
+      + "or an architecture/high-difficulty review exception. "
+    : "";
   // Caller-owned hard cap: one read-only child Run per parent Run. The
   // admission envelope seeds a closure-local counter that is consumed
   // synchronously at the tool boundary before any asynchronous child
@@ -147,7 +156,10 @@ export function createRossoviaSubWorkerTool(context: RossoviaSubWorkerContext): 
     description:
       "Delegate one bounded read-only sub-task to a single available Work Cell worker. "
       + "Provide the exact workerId and the complete receiver-facing prompt. "
-      + "The child Run is read-only: it cannot write files or run commands. "
+      + flashDefaultGuidance
+      + "The child Run is read-only: it cannot write files or run commands, and it receives no tools, "
+      + "so it cannot derive or invoke any further sub-worker; never instruct the child to delegate or "
+      + "self-select a different worker. "
       + "Available workers:\n"
       + snapshot,
     inputSchema: {
@@ -330,6 +342,19 @@ function resolveWorkerCard(catalog: WorkerCatalog, workerId: string): WorkerCard
     throw new Error(`sub_worker worker ${workerId} is unavailable: ${card.availability.reason}`);
   }
   return card;
+}
+
+/**
+ * The policy's explicit default identity is the full execution profile, not
+ * the worker id alone: provider deepseek, model deepseek-v4-flash, and
+ * reasoningEffort=max must all match before the default guidance is shown.
+ */
+function isExplicitFlashMaxDefault(card: WorkerCard): boolean {
+  const profile = card.executionProfile;
+  return card.id === "deepseek-flash"
+    && profile.provider === "deepseek"
+    && profile.model === "deepseek-v4-flash"
+    && profile.reasoningEffort === "max";
 }
 
 function digestText(value: string): string {
