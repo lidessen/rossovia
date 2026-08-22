@@ -238,6 +238,19 @@ describe("Workbench responsive layout", () => {
     );
     expect(mobile).toContain('body[data-active-view="conversation"] .conversation-standing');
     expect(html).toContain("Enter 发送，Shift+Enter 换行");
+    // The composer connection text stays visible at 390px: it is plain copy
+    // in the title row (never display:none) and the heading wraps instead of
+    // clipping the state label away from the input.
+    expect(html).toContain('id="conversation-composer-connection"');
+    expect(html).not.toContain(
+      'id="conversation-composer-connection" aria-hidden',
+    );
+    expect(styles).toMatch(
+      /\.composer-heading\s*\{[^}]*flex-wrap:\s*wrap;/s,
+    );
+    expect(mobile).not.toMatch(
+      /\.composer-connection[^}]*display:\s*none/s,
+    );
   });
 
   test("keeps full worktree identities inside the mobile viewport", () => {

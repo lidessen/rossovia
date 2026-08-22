@@ -308,6 +308,72 @@ describe("conversation composer standing projection", () => {
   });
 });
 
+describe("conversation composer connection text", () => {
+  test("states the conversation connection in readable text next to the composer title on mobile and desktop", () => {
+    // The composer title row carries a text label mirroring
+    // conversationState.connection; the decorative dot never carries the
+    // meaning alone, and the same element is shared by mobile and desktop.
+    expect(html).toContain(
+      '<span class="composer-connection" id="conversation-composer-connection" data-connection="unavailable">对话连接：不可用</span>',
+    );
+    expect(html.indexOf('class="composer-live"')).toBeLessThan(
+      html.indexOf('id="conversation-composer-connection"'),
+    );
+    expect(html.indexOf('id="conversation-composer-connection"')).toBeLessThan(
+      html.indexOf('class="composer-hint"'),
+    );
+    // The live dot stays decorative/aria-hidden while the text span is
+    // ordinary visible copy exposed to assistive technology.
+    expect(html).toContain(
+      'class="composer-live" id="conversation-composer-live" aria-hidden="true"',
+    );
+    expect(app).toContain('"#conversation-composer-connection"');
+    expect(app).toContain(
+      "connection.dataset.connection = conversationState.connection",
+    );
+    expect(app).toContain("对话连接：");
+  });
+
+  test("reuses the existing connection vocabulary for all four conversation states", () => {
+    const copyStart = app.indexOf("const conversationConnectionCopy = {");
+    const copyBlock = app.slice(copyStart, app.indexOf("};", copyStart));
+    expect(copyBlock).toContain('live: "已连接 · 实时"');
+    expect(copyBlock).toContain('connecting: "正在连接"');
+    expect(copyBlock).toContain('disconnected: "已断开 · 正在重连"');
+    expect(copyBlock).toContain('unavailable: "不可用"');
+    // The composer renderer drives the label from the same connection state
+    // field as the header/context renderers: no new connection, retry,
+    // persistence, or protocol mechanism.
+    const composerBlock = app.slice(
+      app.indexOf("function renderConversationComposer"),
+      app.indexOf("function conversationNextStep"),
+    );
+    expect(composerBlock).toContain(
+      "conversationConnectionCopy[conversationState.connection]",
+    );
+    expect(composerBlock).not.toContain("new WebSocket");
+    expect(composerBlock).not.toContain("setInterval");
+    expect(composerBlock).not.toContain("localStorage");
+  });
+
+  test("keeps the composer connection text visible and wrapping on desktop and narrow mobile", () => {
+    expect(styles).toMatch(
+      /\.composer-heading\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap;/s,
+    );
+    expect(styles).toMatch(
+      /\.composer-connection\s*\{[^}]*font-size:[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+    // The text label is never display:none at any width; the dot's color is
+    // only a supplement, never the sole carrier of the connection meaning.
+    expect(styles).not.toMatch(
+      /\.composer-connection\s*\{[^}]*display:\s*none;/s,
+    );
+    expect(styles).not.toMatch(
+      /@media[\s\S]*?\.composer-connection\s*\{[^}]*display:\s*none;/s,
+    );
+  });
+});
+
 describe("conversation evidence links", () => {
   test("links a task receipt ref only when the task is present in the current snapshot", () => {
     const workItems = [

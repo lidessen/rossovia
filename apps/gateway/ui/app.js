@@ -6101,6 +6101,12 @@ export function taskLocatorEmptySummary(locator, context) {
     renderConversationSurface();
   }
 
+  const conversationConnectionCopy = {
+    live: "已连接 · 实时",
+    connecting: "正在连接",
+    disconnected: "已断开 · 正在重连",
+    unavailable: "不可用",
+  };
   const conversationActionKindCopy = {
     task_create: "创建任务",
     task_correct: "纠正任务",
@@ -6536,13 +6542,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = $("#conversation-connection-mark");
     const id = $("#conversation-id");
     id.textContent = shortConversationId(conversationState.conversationId);
-    const copy = {
-      connecting: "正在连接",
-      live: "已连接 · 实时",
-      disconnected: "已断开 · 正在重连",
-      unavailable: "不可用",
-    };
-    label.textContent = copy[conversationState.connection] || "未连接";
+    label.textContent = conversationConnectionCopy[conversationState.connection] || "未连接";
     mark.dataset.connection = conversationState.connection;
     const reconnect = $("#conversation-reconnect");
     reconnect.hidden = conversationState.connection !== "disconnected";
@@ -6565,6 +6565,13 @@ export function taskLocatorEmptySummary(locator, context) {
     const live = $("#conversation-composer-live");
     form.dataset.connection = conversationState.connection;
     live.dataset.connection = conversationState.connection;
+    const connection = $("#conversation-composer-connection");
+    if (connection !== null) {
+      connection.dataset.connection = conversationState.connection;
+      connection.textContent = `对话连接：${
+        conversationConnectionCopy[conversationState.connection] || "状态未知"
+      }`;
+    }
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
     const status = $("#conversation-composer-status");
@@ -6615,16 +6622,10 @@ export function taskLocatorEmptySummary(locator, context) {
     const context = $("#conversation-context");
     if (context === null) return;
     const connection = conversationState.connection;
-    const copy = {
-      connecting: "正在连接",
-      live: "已连接 · 实时",
-      disconnected: "已断开 · 正在重连",
-      unavailable: "不可用",
-    };
     const mark = context.querySelector("[data-conversation-context-mark]");
     if (mark) mark.dataset.connection = connection;
     const label = context.querySelector("[data-conversation-context-label]");
-    if (label) label.textContent = copy[connection] || "未连接";
+    if (label) label.textContent = conversationConnectionCopy[connection] || "未连接";
     const id = context.querySelector("[data-conversation-context-id]");
     if (id) id.textContent = shortConversationId(conversationState.conversationId);
     const supervisor = $("#conversation-context-supervisor");

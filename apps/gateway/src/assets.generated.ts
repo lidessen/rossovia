@@ -293,6 +293,7 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
           <div class="composer-heading">
             <span class="composer-live" id="conversation-composer-live" aria-hidden="true"></span>
             <label for="conversation-composer-text">发给 Agent 系统</label>
+            <span class="composer-connection" id="conversation-composer-connection" data-connection="unavailable">对话连接：不可用</span>
             <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
           </div>
           <textarea
@@ -7566,7 +7567,8 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 .composer-heading {
   align-items: center;
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
 }
 
 .composer-live {
@@ -7586,6 +7588,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 .composer-live[data-connection="disconnected"],
 .composer-live[data-connection="unavailable"] {
   background: var(--red);
+}
+
+.composer-connection {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  overflow-wrap: anywhere;
 }
 
 .conversation-composer textarea {
@@ -14947,6 +14955,12 @@ export function taskLocatorEmptySummary(locator, context) {
     renderConversationSurface();
   }
 
+  const conversationConnectionCopy = {
+    live: "已连接 · 实时",
+    connecting: "正在连接",
+    disconnected: "已断开 · 正在重连",
+    unavailable: "不可用",
+  };
   const conversationActionKindCopy = {
     task_create: "创建任务",
     task_correct: "纠正任务",
@@ -15382,13 +15396,7 @@ export function taskLocatorEmptySummary(locator, context) {
     const mark = $("#conversation-connection-mark");
     const id = $("#conversation-id");
     id.textContent = shortConversationId(conversationState.conversationId);
-    const copy = {
-      connecting: "正在连接",
-      live: "已连接 · 实时",
-      disconnected: "已断开 · 正在重连",
-      unavailable: "不可用",
-    };
-    label.textContent = copy[conversationState.connection] || "未连接";
+    label.textContent = conversationConnectionCopy[conversationState.connection] || "未连接";
     mark.dataset.connection = conversationState.connection;
     const reconnect = $("#conversation-reconnect");
     reconnect.hidden = conversationState.connection !== "disconnected";
@@ -15411,6 +15419,13 @@ export function taskLocatorEmptySummary(locator, context) {
     const live = $("#conversation-composer-live");
     form.dataset.connection = conversationState.connection;
     live.dataset.connection = conversationState.connection;
+    const connection = $("#conversation-composer-connection");
+    if (connection !== null) {
+      connection.dataset.connection = conversationState.connection;
+      connection.textContent = \`对话连接：\${
+        conversationConnectionCopy[conversationState.connection] || "状态未知"
+      }\`;
+    }
     const textarea = $("#conversation-composer-text");
     const submit = $("#conversation-composer-submit");
     const status = $("#conversation-composer-status");
@@ -15461,16 +15476,10 @@ export function taskLocatorEmptySummary(locator, context) {
     const context = $("#conversation-context");
     if (context === null) return;
     const connection = conversationState.connection;
-    const copy = {
-      connecting: "正在连接",
-      live: "已连接 · 实时",
-      disconnected: "已断开 · 正在重连",
-      unavailable: "不可用",
-    };
     const mark = context.querySelector("[data-conversation-context-mark]");
     if (mark) mark.dataset.connection = connection;
     const label = context.querySelector("[data-conversation-context-label]");
-    if (label) label.textContent = copy[connection] || "未连接";
+    if (label) label.textContent = conversationConnectionCopy[connection] || "未连接";
     const id = context.querySelector("[data-conversation-context-id]");
     if (id) id.textContent = shortConversationId(conversationState.conversationId);
     const supervisor = $("#conversation-context-supervisor");

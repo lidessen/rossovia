@@ -5948,7 +5948,8 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 .composer-heading {
   align-items: center;
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
 }
 
 .composer-live {
@@ -5968,6 +5969,12 @@ body[data-peek-context="task-create"] .action-surface > :not(.peek-bar):not(.pee
 .composer-live[data-connection="disconnected"],
 .composer-live[data-connection="unavailable"] {
   background: var(--red);
+}
+
+.composer-connection {
+  color: var(--ink-soft);
+  font-size: 0.66rem;
+  overflow-wrap: anywhere;
 }
 
 .conversation-composer textarea {
