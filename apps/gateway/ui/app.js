@@ -1148,6 +1148,10 @@ export function taskLocatorEmptySummary(locator, context) {
     actionReceipt: null,
     taskActionPending: false,
     taskActionReceipt: null,
+    taskDetails: {},
+    taskDetailRequests: {},
+    taskDetailErrors: {},
+    taskDetailErrorUpdatedAt: {},
     authorizationPending: false,
     authorizationDraft: null,
     authorizationSubmission: null,
@@ -1823,12 +1827,106 @@ export function taskLocatorEmptySummary(locator, context) {
   }
 
   function isWorkbenchTask(item) {
-    return first(first(item, ["binding"], {}), ["kind"]) === "workbench-task"
-      && first(first(item, ["taskDetail"], {}), ["ownership"]) === "workbench-local";
+    if (first(first(item, ["binding"], {}), ["kind"]) !== "workbench-task") {
+      return false;
+    }
+    const detail = taskDetail(item);
+    return detail === null
+      || first(detail, ["ownership"]) === "workbench-local";
   }
 
   function taskDetail(item = selectedWorkItem()) {
-    return isWorkbenchTask(item) ? first(item, ["taskDetail"]) : null;
+    if (first(first(item, ["binding"], {}), ["kind"]) !== "workbench-task") {
+      return null;
+    }
+    const projected = first(item, ["taskDetail"]);
+    if (projected !== undefined && projected !== null) return projected;
+    return first(state.taskDetails, [item?.id]) || null;
+  }
+
+  /**
+   * One full task detail is fetched only for the selected principal task.
+   * The initial snapshot carries the compact navigation summary; this route
+   * re-reads the same canonical sources and returns the exact current
+   * sourceRevision and task revision so the mutation forms stay exact.
+   */
+  function loadTaskDetail(id) {
+    const taskId = id.startsWith("principal-task:")
+      ? id.slice("principal-task:".length)
+      : null;
+    if (taskId === null || taskId === "") {
+      return Promise.reject(new Error("任务详情目标无效"));
+    }
+    return fetch(
+      "/api/tasks/" + encodeURIComponent(taskId) + "/detail",
+      {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      },
+    ).then(async (response) => {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(
+          text(first(body, ["message", "error"]), "HTTP " + response.status),
+        );
+        error.status = response.status;
+        error.code = first(body, ["error"]);
+        throw error;
+      }
+      const workItem = first(body, ["workItem"]);
+      const detail = workItem !== null && typeof workItem === "object"
+        ? first(workItem, ["taskDetail"])
+        : undefined;
+      if (detail === null || detail === undefined || typeof detail !== "object") {
+        throw new Error("任务详情响应缺少完整投影");
+      }
+      return detail;
+    });
+  }
+
+  /**
+   * Keep the selected task's full detail current with the tasks source
+   * revision: fetch when it is missing, and re-fetch only after the source
+   * revision moved. A failed fetch is retried on the next snapshot that
+   * changes the item, or when the user explicitly re-opens the item.
+   */
+  function refreshSelectedTaskDetail() {
+    if (state.source !== "live") return;
+    const item = selectedWorkItem();
+    if (item === null || item === undefined) return;
+    if (first(first(item, ["binding"], {}), ["kind"]) !== "workbench-task") return;
+    if (state.taskDetailRequests[item.id] !== undefined) return;
+    const cached = taskDetail(item);
+    const currentSourceRevision = first(taskSourceCapability(), ["sourceRevision"]);
+    if (
+      cached !== null
+      && Number.isInteger(first(cached, ["sourceRevision"]))
+      && Number.isInteger(currentSourceRevision)
+      && first(cached, ["sourceRevision"]) === currentSourceRevision
+    ) {
+      return;
+    }
+    if (
+      state.taskDetailErrors[item.id] !== undefined
+      && state.taskDetailErrorUpdatedAt[item.id] === item.updatedAt
+    ) {
+      return;
+    }
+    const request = loadTaskDetail(item.id)
+      .then((detail) => {
+        state.taskDetails[item.id] = detail;
+        delete state.taskDetailErrors[item.id];
+        delete state.taskDetailErrorUpdatedAt[item.id];
+      })
+      .catch((error) => {
+        state.taskDetailErrors[item.id] = error instanceof Error ? error.message : text(error);
+        state.taskDetailErrorUpdatedAt[item.id] = item.updatedAt;
+      })
+      .finally(() => {
+        delete state.taskDetailRequests[item.id];
+        render();
+      });
+    state.taskDetailRequests[item.id] = request;
   }
 
   function lines(value) {
@@ -2148,7 +2246,11 @@ export function taskLocatorEmptySummary(locator, context) {
     }
 
     const item = selectedWorkItem();
-    if (item) selectWorkItemContext(item);
+    if (item) {
+      delete state.taskDetailErrors[item.id];
+      delete state.taskDetailErrorUpdatedAt[item.id];
+      selectWorkItemContext(item);
+    }
     writePrincipalLocus({ replace: true });
   }
 
@@ -2484,6 +2586,8 @@ export function taskLocatorEmptySummary(locator, context) {
     state.taskCreateOpen = false;
     state.taskActionReceipt = null;
     state.unavailableLocus = null;
+    delete state.taskDetailErrors[id];
+    delete state.taskDetailErrorUpdatedAt[id];
     selectWorkItemContext(item);
     if (!isWorkbenchTask(item)) ensureSelections();
     render();
@@ -3277,12 +3381,43 @@ export function taskLocatorEmptySummary(locator, context) {
     });
   }
 
+  function renderTaskDetailUnavailable(detailPanel) {
+    const item = selectedWorkItem();
+    const pending = state.taskDetailRequests[item?.id] !== undefined;
+    const error = state.taskDetailErrors[item?.id];
+    $("#local-task-source").textContent = pending
+      ? "正在读取任务详情…"
+      : error
+        ? "任务详情读取失败：" + error
+        : "任务详情来源未返回完整投影";
+    $("#local-task-revision").textContent = pending ? "…" : "不可用";
+    $("#local-task-identity-assurance").textContent = "—";
+    $("#local-task-project-boundary").textContent = "等待任务详情";
+    $("#local-task-mission-boundary").textContent = "等待任务详情";
+    $("#local-task-worktree-boundary").textContent = "等待任务详情";
+    for (const selector of [
+      ".local-task-mission-context",
+      ".local-task-execution-context",
+      ".local-task-requirements",
+      ".local-task-result-evaluation",
+      ".local-task-history",
+      ".local-task-actions",
+    ]) {
+      for (const section of detailPanel.querySelectorAll(selector)) {
+        section.hidden = true;
+      }
+    }
+    $("#local-task-action-result").className = "action-result";
+    $("#local-task-action-result").textContent = "";
+  }
+
   function renderTaskPanels() {
     const createPanel = $("#task-create-panel");
     const detailPanel = $("#local-task-detail");
     const detail = taskDetail();
+    const workbenchTaskSelected = isWorkbenchTask(selectedWorkItem());
     createPanel.hidden = !state.taskCreateOpen;
-    detailPanel.hidden = state.taskCreateOpen || detail === null;
+    detailPanel.hidden = state.taskCreateOpen || !workbenchTaskSelected;
 
     if (state.taskCreateOpen) {
       const projectSelect = $("#task-create-project");
@@ -3312,7 +3447,23 @@ export function taskLocatorEmptySummary(locator, context) {
       return;
     }
 
-    if (detail === null) return;
+    if (!workbenchTaskSelected) return;
+    if (detail === null) {
+      renderTaskDetailUnavailable(detailPanel);
+      return;
+    }
+    for (const selector of [
+      ".local-task-mission-context",
+      ".local-task-execution-context",
+      ".local-task-requirements",
+      ".local-task-result-evaluation",
+      ".local-task-history",
+      ".local-task-actions",
+    ]) {
+      for (const section of detailPanel.querySelectorAll(selector)) {
+        section.hidden = false;
+      }
+    }
     const task = detail.task;
     $("#local-task-source").textContent = detail.sourceRef;
     $("#local-task-revision").textContent =
@@ -6839,6 +6990,7 @@ export function taskLocatorEmptySummary(locator, context) {
     renderCorrectionMovement();
     renderEvidence();
     renderActionForm();
+    refreshSelectedTaskDetail();
     renderPeek();
     renderTaskPanels();
   }
@@ -6877,7 +7029,7 @@ export function taskLocatorEmptySummary(locator, context) {
       }
 
       try {
-        const response = await fetch("/api/snapshot", {
+        const response = await fetch("/api/snapshot?compact=1", {
           headers: { Accept: "application/json" },
           cache: "no-store",
         });

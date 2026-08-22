@@ -1416,9 +1416,11 @@ function principalTaskWorkItems(
   observation: PrincipalTaskSourceObservation,
   home?: string,
   taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
+  taskDetailIds: "all" | ReadonlySet<string> = "all",
 ): WorkItemProjection[] {
   if (observation.standing !== "available") return [];
   return observation.source.tasks.map((task): WorkItemProjection => {
+    const fullDetail = taskDetailIds === "all" || taskDetailIds.has(task.id);
     const projectKey = task.binding.kind === "project-context"
       ? `registered:${task.binding.projectId}`
       : null;
@@ -1891,12 +1893,14 @@ function principalTaskWorkItems(
       && task.lifecycle !== "verifying"
         ? verifiedCurrentExecution
         : null;
-    const attemptResultCandidate = attemptResultCandidateFor(
-      home,
-      task,
-      expectedWorktreePath,
-      taskAttempts?.[task.id],
-    );
+    const attemptResultCandidate = fullDetail
+      ? attemptResultCandidateFor(
+        home,
+        task,
+        expectedWorktreePath,
+        taskAttempts?.[task.id],
+      )
+      : null;
     const worktreeObserved =
       expectedWorktreePath !== undefined
       && project !== undefined
@@ -1984,7 +1988,8 @@ function principalTaskWorkItems(
           };
     const latestClaim = task.resultClaims.at(-1);
     const attemptClaimVerification =
-      latestClaim !== undefined
+      fullDetail
+      && latestClaim !== undefined
       && latestClaim.evidence.kind === "runtime-verified-attempt"
         ? attemptClaimVerificationFor(
           home,
@@ -2159,7 +2164,9 @@ function principalTaskWorkItems(
         : "查看任务",
       consequence: "normal",
       attentionCode: null,
-      taskDetail: {
+      ...(fullDetail
+        ? {
+          taskDetail: {
         sourceRevision: observation.source.sourceRevision,
         sourceRef: observation.sourceRef,
         ownership: "workbench-local",
@@ -2229,8 +2236,10 @@ function principalTaskWorkItems(
               reason: "task attempt source was not observed",
             },
           }),
-        task,
-      },
+            task,
+          },
+        }
+        : {}),
     };
   });
 }
@@ -2631,6 +2640,20 @@ function runnerTargetState(
   return undefined;
 }
 
+export interface WorkItemProjectionOptions {
+  /**
+   * Which principal tasks receive the full taskDetail projection. "all"
+   * (the default) keeps every principal task detailed exactly as the
+   * canonical Task source and its evidence are read. An empty set keeps
+   * every principal task as its compact navigation summary; a set of task
+   * ids projects full details only for exactly those tasks. Compact items
+   * keep every shell field the list, counts, search, and observer locating
+   * already consume, and the canonical Task file, lifecycle, project,
+   * Mission, evidence, and persistence semantics are unchanged either way.
+   */
+  readonly taskDetailIds?: "all" | ReadonlySet<string>;
+}
+
 export function buildWorkItemProjection(
   snapshot: WorkItemSnapshot,
   taskSource: PrincipalTaskSourceObservation = {
@@ -2640,6 +2663,7 @@ export function buildWorkItemProjection(
   },
   taskAttempts?: Readonly<Record<string, TaskAttemptSourceObservation>>,
   home?: string,
+  options: WorkItemProjectionOptions = {},
 ): WorkItemSetProjection {
   const attention = attentionWorkItems(snapshot);
   const runners = runnerWorkItems(snapshot);
@@ -2668,7 +2692,13 @@ export function buildWorkItemProjection(
   const items = [
     ...attention,
     ...runnersFiltered,
-    ...principalTaskWorkItems(snapshot, taskSource, home, taskAttempts),
+    ...principalTaskWorkItems(
+      snapshot,
+      taskSource,
+      home,
+      taskAttempts,
+      options.taskDetailIds ?? "all",
+    ),
     ...missionWorkItems(snapshot, activeMissionKeys),
   ].sort((left, right) => {
     const attentionRank = {

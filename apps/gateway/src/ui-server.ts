@@ -205,6 +205,60 @@ export function createWorkbenchRequestHandler(
     return tracked;
   };
 
+  // The initial browser projection is served compact: principal tasks carry
+  // only their navigation summary until one is selected, so the first paint
+  // never reads per-task attempt evidence nor serializes full task details.
+  // The detail route re-reads the same canonical sources for exactly one
+  // task and returns its full work item with the exact current revision.
+  const noTaskDetails = new Set<string>();
+  let compactSnapshotBodyInFlight: Promise<string> | undefined;
+  const readCompactSnapshotBody = (): Promise<string> => {
+    if (compactSnapshotBodyInFlight !== undefined) return compactSnapshotBodyInFlight;
+    const body = (async () => {
+      await Bun.sleep(0);
+      const snapshot = await buildLiveSnapshot(options, client, noTaskDetails);
+      return JSON.stringify({
+        ...snapshot,
+        ...(options.startupGate === undefined ? {} : { startup: options.startupGate }),
+      });
+    })();
+    const tracked = body.finally(() => {
+      if (compactSnapshotBodyInFlight === tracked) compactSnapshotBodyInFlight = undefined;
+    });
+    compactSnapshotBodyInFlight = tracked;
+    return tracked;
+  };
+  const taskDetailBodiesInFlight = new Map<string, Promise<string>>();
+  const readTaskDetailBody = (taskId: string): Promise<string> => {
+    const existing = taskDetailBodiesInFlight.get(taskId);
+    if (existing !== undefined) return existing;
+    const body = (async () => {
+      await Bun.sleep(0);
+      const snapshot = await buildLiveSnapshot(options, client, new Set([taskId]));
+      const item = snapshot.workItems.items.find(
+        (candidate) =>
+          candidate.id === `principal-task:${taskId}`
+          && candidate.kind === "principal-task"
+          && candidate.taskDetail !== undefined,
+      );
+      if (item === undefined) {
+        throw new TaskActionError(
+          404,
+          "task-not-found",
+          `Principal task not found: ${taskId}`,
+        );
+      }
+      return JSON.stringify({ ok: true, workItem: item });
+    })();
+    const tracked = body.finally(() => {
+      if (taskDetailBodiesInFlight.get(taskId) === tracked) {
+        taskDetailBodiesInFlight.delete(taskId);
+      }
+    });
+    taskDetailBodiesInFlight.set(taskId, tracked);
+    return tracked;
+  };
+
   return async (request: Request, server?: Bun.Server<ConversationSocketData>): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -266,12 +320,30 @@ export function createWorkbenchRequestHandler(
 
     if (request.method === "GET" && url.pathname === "/api/snapshot") {
       try {
+        if (url.searchParams.get("compact") === "1") {
+          return jsonText(await readCompactSnapshotBody(), 200);
+        }
         return jsonText(await readLiveSnapshotBody(), 200);
       } catch (error: unknown) {
         return json({
           error: "snapshot-failed",
           message: error instanceof Error ? error.message : String(error),
           ...(options.startupGate === undefined ? {} : { startup: options.startupGate }),
+        }, 500);
+      }
+    }
+
+    const taskDetailId = taskDetailIdFromPath(url.pathname);
+    if (request.method === "GET" && taskDetailId !== null) {
+      try {
+        return jsonText(await readTaskDetailBody(taskDetailId), 200);
+      } catch (error: unknown) {
+        if (error instanceof TaskActionError) {
+          return json({ error: error.code, message: error.message }, error.status);
+        }
+        return json({
+          error: "task-detail-failed",
+          message: error instanceof Error ? error.message : String(error),
         }, 500);
       }
     }
@@ -538,6 +610,7 @@ export function startWorkbenchUi(options: ServerOptions): void {
 async function buildLiveSnapshot(
   options: ServerOptions,
   client: AutonomyClient,
+  taskDetailIds: "all" | ReadonlySet<string> = "all",
 ) {
   const snapshot = buildWorkbenchSnapshot({
     ...(options.home === undefined ? {} : { home: options.home }),
@@ -674,7 +747,11 @@ async function buildLiveSnapshot(
       summary: taskSource.reason,
       source: taskSource.sourceRef,
     }];
-  const taskAttempts = await readTaskAttemptsProjections(options.home, taskSource);
+  const taskAttempts = taskDetailIds === "all"
+    ? await readTaskAttemptsProjections(options.home, taskSource)
+    : taskDetailIds.size === 0
+      ? {}
+      : await readTaskAttemptsProjections(options.home, taskSource, taskDetailIds);
   const observerReviews = readObserverReviews(options.home, options.observerWorkerId);
   const settings = readSettingsProjection(options, observerReviews);
   // The aggregate runner freshness must describe the snapshot actually served:
@@ -707,7 +784,13 @@ async function buildLiveSnapshot(
   };
   return {
     ...liveSnapshot,
-    workItems: buildWorkItemProjection(liveSnapshot, taskSource, taskAttempts, options.home),
+    workItems: buildWorkItemProjection(
+      liveSnapshot,
+      taskSource,
+      taskAttempts,
+      options.home,
+      { taskDetailIds },
+    ),
     observerReviews,
     settings,
   };
@@ -842,10 +925,15 @@ function readSettingsProjection(
 async function readTaskAttemptsProjections(
   home: string | undefined,
   taskSource: PrincipalTaskSourceObservation,
+  requestedTaskIds?: ReadonlySet<string>,
 ): Promise<Readonly<Record<string, TaskAttemptSourceObservation>>> {
   if (taskSource.standing !== "available") return {};
   const projections: Record<string, TaskAttemptSourceObservation> = {};
-  const taskIds = taskSource.source.tasks.map((task) => task.id);
+  const taskIds = requestedTaskIds === undefined
+    ? taskSource.source.tasks.map((task) => task.id)
+    : taskSource.source.tasks
+      .map((task) => task.id)
+      .filter((id) => requestedTaskIds.has(id));
   let attemptsByTask: ReturnType<typeof showPrincipalTaskAttemptsForTasks>;
   try {
     attemptsByTask = showPrincipalTaskAttemptsForTasks(home, taskIds);
@@ -862,6 +950,7 @@ async function readTaskAttemptsProjections(
   }
   await Bun.sleep(0);
   for (const task of taskSource.source.tasks) {
+    if (requestedTaskIds !== undefined && !requestedTaskIds.has(task.id)) continue;
     try {
       projections[task.id] = {
         standing: "available",
@@ -1324,6 +1413,16 @@ async function readJsonRequest(request: Request, label: string): Promise<unknown
 
 function taskActionIdFromPath(pathname: string): string | null {
   const match = /^\/api\/tasks\/([^/]+)\/actions$/u.exec(pathname);
+  if (match === null) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return "";
+  }
+}
+
+function taskDetailIdFromPath(pathname: string): string | null {
+  const match = /^\/api\/tasks\/([^/]+)\/detail$/u.exec(pathname);
   if (match === null) return null;
   try {
     return decodeURIComponent(match[1]!);
