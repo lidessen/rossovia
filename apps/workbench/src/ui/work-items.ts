@@ -229,13 +229,16 @@ export interface WorkItemProjection {
   readonly attentionCode: AttentionItem["code"] | null;
   /**
    * The bounded projection search text for the shell locator: only the deep
-   * keyword text the locator already searches (task objective, acceptance,
-   * todos, the latest correction statement, and the latest result-claim
-   * summary) is mirrored here so compact initial items stay findable and
-   * selectable without carrying the canonical Task record, attempts,
-   * reviews, or the historical corrections/claims that the on-demand detail
-   * route re-reads in full. It never invents text and never replaces the
-   * canonical detail sources.
+   * keyword text the locator already searches (task objective, the first
+   * acceptance criteria and todos, the latest correction statement, and the
+   * latest result-claim summary) is mirrored here so compact initial items
+   * stay findable and selectable without carrying the canonical Task record,
+   * attempts, reviews, or the historical corrections/claims that the
+   * on-demand detail route re-reads in full. Every mirrored field is
+   * prefix-truncated to a fixed UTF-8 byte budget and the acceptance/todo
+   * lists are count-limited, so one item's searchText has the provable
+   * finite upper bound PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES. It never
+   * invents text and never replaces the canonical detail sources.
    */
   readonly searchText?: string;
   /**
@@ -1423,22 +1426,87 @@ function missionWorkItems(
 }
 
 /**
+ * The first-screen search mirror budget, in UTF-8 bytes. Every mirrored field
+ * is prefix-truncated to at most this many UTF-8 bytes (never splitting a
+ * multi-byte character), so the bound is expressed in exactly the units the
+ * served JSON payload is measured in.
+ */
+export const PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP = 512;
+/** The number of acceptance criteria (in canonical order) the first-screen search mirror carries. */
+export const PRINCIPAL_TASK_SEARCH_TEXT_ACCEPTANCE_LIMIT = 3;
+/** The number of todos (in canonical order) the first-screen search mirror carries. */
+export const PRINCIPAL_TASK_SEARCH_TEXT_TODOS_LIMIT = 3;
+/**
+ * The exact number of mirrored fields: objective (1) + acceptance (≤3) +
+ * todos (≤3) + latest correction statement (1) + latest result-claim
+ * summary (1).
+ */
+export const PRINCIPAL_TASK_SEARCH_TEXT_FIELD_COUNT =
+  1
+  + PRINCIPAL_TASK_SEARCH_TEXT_ACCEPTANCE_LIMIT
+  + PRINCIPAL_TASK_SEARCH_TEXT_TODOS_LIMIT
+  + 1
+  + 1;
+/**
+ * The provable finite upper bound of one item's first-screen search mirror,
+ * in UTF-8 bytes: FIELD_COUNT fields of at most FIELD_BYTE_CAP bytes each,
+ * joined by at most FIELD_COUNT − 1 single-byte space separators. The bound
+ * holds for every Task regardless of how long the canonical objective,
+ * acceptance, todos, correction, or result-claim texts grow.
+ */
+export const PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES =
+  PRINCIPAL_TASK_SEARCH_TEXT_FIELD_COUNT * PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP
+  + PRINCIPAL_TASK_SEARCH_TEXT_FIELD_COUNT - 1;
+
+/**
+ * A UTF-8-prefix truncation that never splits a multi-byte character: the
+ * returned string is a whole-character prefix of `value` whose UTF-8 byte
+ * length is at most `byteCap`, or `value` itself when it already fits.
+ */
+function truncateSearchTextField(value: string, byteCap: number): string {
+  const bytes = new TextEncoder().encode(value);
+  if (bytes.byteLength <= byteCap) return value;
+  let end = byteCap;
+  // The byte right after the cut is a continuation byte exactly when the cut
+  // landed inside a multi-byte UTF-8 sequence; back up over it so the prefix
+  // always ends on a character boundary and never yields a replacement char.
+  while (end > 0 && (bytes[end]! & 0b1100_0000) === 0b1000_0000) {
+    end -= 1;
+  }
+  return new TextDecoder().decode(bytes.subarray(0, end));
+}
+
+/**
  * The bounded deep search text mirrored onto every principal-task shell item,
  * compact or full. It contains only the fields the shell locator already
- * searches beyond title/summary/context — the task objective, acceptance,
- * todos, the latest correction statement, and the latest result-claim
- * summary — never the canonical task, attempt, review, or correction
- * payloads, and never the superseded historical corrections or claims that
- * the on-demand detail route re-reads in full.
+ * searches beyond title/summary/context — the task objective, the first
+ * ACCEPTANCE_LIMIT acceptance criteria, the first TODOS_LIMIT todos, the
+ * latest correction statement, and the latest result-claim summary, each
+ * prefix-truncated to FIELD_BYTE_CAP UTF-8 bytes — never the canonical task,
+ * attempt, review, or correction payloads, and never the superseded
+ * historical corrections or claims that the on-demand detail route re-reads
+ * in full. Its byte length is provably bounded by
+ * PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES.
  */
 function principalTaskSearchText(task: PrincipalTask): string {
   const texts: string[] = [];
   const push = (value: string): void => {
-    if (value !== "") texts.push(value);
+    const bounded = truncateSearchTextField(
+      value,
+      PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP,
+    );
+    if (bounded !== "") texts.push(bounded);
   };
   push(task.objective);
-  for (const criterion of task.acceptance) push(criterion);
-  for (const todo of task.todos) push(todo);
+  for (const criterion of task.acceptance.slice(
+    0,
+    PRINCIPAL_TASK_SEARCH_TEXT_ACCEPTANCE_LIMIT,
+  )) {
+    push(criterion);
+  }
+  for (const todo of task.todos.slice(0, PRINCIPAL_TASK_SEARCH_TEXT_TODOS_LIMIT)) {
+    push(todo);
+  }
   const latestCorrection = task.corrections.at(-1);
   if (latestCorrection !== undefined) push(latestCorrection.statement);
   const latestClaim = task.resultClaims.at(-1);
@@ -2687,9 +2755,13 @@ export interface WorkItemProjectionOptions {
    * already consume, and also mirror the bounded search text (objective,
    * acceptance, todos, and only the latest correction statement and
    * result-claim summary) so deep locator keywords stay findable without
-   * the canonical payloads or their history; the canonical Task file,
-   * lifecycle, project, Mission, evidence, and persistence semantics are
-   * unchanged either way.
+   * the canonical payloads or their history; the mirror fields are
+   * prefix-truncated to PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP UTF-8
+   * bytes with the acceptance/todo lists limited to the first
+   * ACCEPTANCE_LIMIT/TODOS_LIMIT entries, so one item's searchText never
+   * exceeds the provable PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES. The
+   * canonical Task file, lifecycle, project, Mission, evidence, and
+   * persistence semantics are unchanged either way.
    */
   readonly taskDetailIds?: "all" | ReadonlySet<string>;
 }

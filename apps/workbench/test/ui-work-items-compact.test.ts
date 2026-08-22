@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildWorkItemProjection } from "../src/ui/work-items";
+import {
+  buildWorkItemProjection,
+  PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP,
+  PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES,
+} from "../src/ui/work-items";
 
 const snapshot = {
   generatedAt: "2026-08-21T10:00:00Z",
@@ -229,5 +233,166 @@ describe("compact principal-task work-item projection", () => {
     expect(compactItem?.searchText).not.toContain("sourceRef");
     expect(compactItem?.searchText).not.toMatch(/workbench-task:/u);
     expect(compactItem?.searchText).not.toMatch(/\{/u);
+  });
+
+  test("the search mirror has a provable finite byte bound even with arbitrarily long current correction and claim text", () => {
+    const acceptance = Array.from({ length: 8 }, (_, index) =>
+      `ACCEPT-${index}-` + "criterion ".repeat(20),
+    );
+    const todos = Array.from({ length: 8 }, (_, index) =>
+      `TODO-${index}-` + "item ".repeat(20),
+    );
+    const currentCorrection =
+      "CURRENT-CORRECTION-HEAD " + "长指导文本 ".repeat(4000) + " CURRENT-CORRECTION-TAIL";
+    const currentClaim =
+      "CURRENT-CLAIM-HEAD " + "claim ".repeat(8000) + " CURRENT-CLAIM-TAIL";
+    const task = {
+      ...compactTask("task-bound"),
+      objective: "OBJECTIVE-HEAD " + "objective ".repeat(120) + " OBJECTIVE-TAIL",
+      acceptance,
+      todos,
+      corrections: [
+        {
+          id: "correction-historical",
+          at: "2026-08-21T08:00:00Z",
+          statement: "HISTORICAL-CORRECTION superseded guidance",
+          sourceRef: "workbench-task:task-bound/correction:correction-historical",
+          deliveries: [],
+        },
+        {
+          id: "correction-current",
+          at: "2026-08-21T09:00:00Z",
+          statement: currentCorrection,
+          sourceRef: "workbench-task:task-bound/correction:correction-current",
+          deliveries: [],
+        },
+      ],
+      resultClaims: [
+        {
+          id: "claim-historical",
+          submittedAt: "2026-08-21T08:30:00Z",
+          summary: "HISTORICAL-CLAIM superseded result",
+          evidenceRefs: ["test:bound"],
+          sourceRef: "workbench-task:task-bound/claim:claim-historical",
+          standing: "superseded",
+          reviews: [],
+          resolution: {
+            kind: "superseded",
+            at: "2026-08-21T09:00:00Z",
+            reason: "correction",
+          },
+        },
+        {
+          id: "claim-current",
+          submittedAt: "2026-08-21T09:30:00Z",
+          summary: currentClaim,
+          evidenceRefs: ["test:bound"],
+          evidence: { kind: "agent-references-unverified" as const },
+          sourceRef: "workbench-task:task-bound/claim:claim-current",
+          standing: "submitted",
+          reviews: [],
+          resolution: null,
+        },
+      ],
+    };
+    const source = taskSource([task]);
+    const compact = buildWorkItemProjection(
+      snapshot as never,
+      source as never,
+      undefined,
+      undefined,
+      { taskDetailIds: new Set<string>() },
+    );
+    const full = buildWorkItemProjection(snapshot as never, source as never);
+    const compactItem = compact.items.find(
+      (candidate) => candidate.id === "principal-task:task-bound",
+    );
+    const fullItem = full.items.find(
+      (candidate) => candidate.id === "principal-task:task-bound",
+    );
+    const searchText = compactItem?.searchText ?? "";
+    const searchTextBytes = new TextEncoder().encode(searchText).byteLength;
+
+    expect(compactItem?.taskDetail).toBeUndefined();
+    expect(fullItem?.taskDetail).toBeDefined();
+    // The documented arithmetic locks the exact bound: 9 fields × 512 bytes
+    // plus 8 single-byte separators.
+    expect(PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES).toBe(
+      9 * PRINCIPAL_TASK_SEARCH_TEXT_FIELD_BYTE_CAP + 8,
+    );
+    expect(PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES).toBe(4616);
+    // The long canonical texts are far larger than the first-screen bound, so
+    // the bound is actually exercised by this fixture.
+    expect(new TextEncoder().encode(currentCorrection).byteLength)
+      .toBeGreaterThan(PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES);
+    expect(new TextEncoder().encode(currentClaim).byteLength)
+      .toBeGreaterThan(PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES);
+    // The provable bound holds on the compact first screen.
+    expect(searchTextBytes).toBeLessThanOrEqual(PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES);
+    // The objective head stays findable; its tail never enters the mirror.
+    expect(searchText).toContain("OBJECTIVE-HEAD");
+    expect(searchText).not.toContain("OBJECTIVE-TAIL");
+    // Acceptance and todos are count-limited to the first three entries.
+    expect(searchText).toContain("ACCEPT-0-");
+    expect(searchText).toContain("ACCEPT-2-");
+    expect(searchText).not.toContain("ACCEPT-3-");
+    expect(searchText).not.toContain("ACCEPT-7-");
+    expect(searchText).toContain("TODO-0-");
+    expect(searchText).toContain("TODO-2-");
+    expect(searchText).not.toContain("TODO-3-");
+    expect(searchText).not.toContain("TODO-7-");
+    // The heads of the current correction and claim stay findable; their
+    // tails and the superseded history never enter the first screen.
+    expect(searchText).toContain("CURRENT-CORRECTION-HEAD");
+    expect(searchText).not.toContain("CURRENT-CORRECTION-TAIL");
+    expect(searchText).toContain("CURRENT-CLAIM-HEAD");
+    expect(searchText).not.toContain("CURRENT-CLAIM-TAIL");
+    expect(searchText).not.toContain("HISTORICAL-CORRECTION");
+    expect(searchText).not.toContain("HISTORICAL-CLAIM");
+    // The mirror is identical on the compact and full projections, and the
+    // detail still re-reads every canonical text verbatim.
+    expect(fullItem?.searchText).toBe(searchText);
+    const detail = fullItem?.taskDetail;
+    expect(detail?.task.corrections.at(-1)?.statement).toBe(currentCorrection);
+    expect(detail?.task.resultClaims.at(-1)?.summary).toBe(currentClaim);
+    expect(detail?.task.acceptance).toHaveLength(acceptance.length);
+    expect(detail?.task.todos).toHaveLength(todos.length);
+  });
+
+  test("the mirror truncation never splits a multi-byte character at the byte cap", () => {
+    const task = {
+      ...compactTask("task-boundary"),
+      objective: "OBJECTIVE",
+      acceptance: ["ACCEPT"],
+      todos: [],
+      corrections: [{
+        id: "correction-boundary",
+        at: "2026-08-21T09:00:00Z",
+        // 600 UTF-8 bytes: the 512-byte cap lands two bytes into the 171st
+        // character, so the truncation must back up to the 170th boundary.
+        statement: "中".repeat(200),
+        sourceRef: "workbench-task:task-boundary/correction:correction-boundary",
+        deliveries: [],
+      }],
+      resultClaims: [],
+    };
+    const compact = buildWorkItemProjection(
+      snapshot as never,
+      taskSource([task]) as never,
+      undefined,
+      undefined,
+      { taskDetailIds: new Set<string>() },
+    );
+    const item = compact.items.find(
+      (candidate) => candidate.id === "principal-task:task-boundary",
+    );
+    const searchText = item?.searchText ?? "";
+    // No split character leaks a replacement char into the first screen.
+    expect(searchText).not.toContain("\uFFFD");
+    // The correction is the last mirrored field, so the mirror ends with the
+    // first 170 whole characters (510 bytes ≤ the 512-byte field cap).
+    expect(searchText.endsWith("中".repeat(170))).toBeTrue();
+    expect(new TextEncoder().encode(searchText).byteLength)
+      .toBeLessThanOrEqual(PRINCIPAL_TASK_SEARCH_TEXT_MAX_BYTES);
   });
 });
