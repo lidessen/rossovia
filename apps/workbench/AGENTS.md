@@ -174,6 +174,17 @@ Workbench home has a task source.
   bare `git`, bare `bun`, install, stash, or a shell.
   The 30-minute run ceiling is only an emergency ceiling; it is not an approval
   or budget mechanism.
+  For an ordinary engineering sub-task that does not otherwise select a worker,
+  prefer the `deepseek-flash` sub-worker: its execution profile resolves to
+  provider `deepseek`, model `deepseek-v4-flash`, with `reasoning=max`. This
+  default is a replaceable preference, never a forced route: it does not
+  override the vision-input exception (visual tasks must select a
+  vision-capable worker), the architecture/high-difficulty exception (which
+  may select `deepseek-pro` or another explicitly justified worker), or any
+  explicit user choice, project constraint, or current instruction. It also
+  never bypasses host policy validation: admission, capability labels, and
+  availability are still verified by the host before any worker is used, and
+  the default changes neither the Task schema nor runtime policy.
   A fresh run remains Git-clean-only. An explicit continuation may retain a
   dirty Worktree only when every currently staged, unstaged, or non-ignored
   untracked path is present in the cumulative `workspaceDiff` union walked from
