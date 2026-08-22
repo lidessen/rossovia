@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { incompleteProjectionCopy } from "../ui/app.js";
+import { incompleteProjectionCopy, orderWorkItemsForTaskEntry, taskEntryDefaultFilter, taskEntryLifecyclePriority, workItemUpdatedLabel } from "../ui/app.js";
 
 describe("incomplete projection status copy", () => {
   test("explains an unbound cached runner and gives the recovery direction", () => {
@@ -495,5 +495,67 @@ describe("incomplete projection status copy", () => {
     expect(copy.detail).toContain("历史缓存待处置");
     expect(copy.detail).not.toContain("Runner 未绑定");
     expect(copy.detail).not.toContain("等待授权");
+  });
+});
+
+describe("task entry first-screen projection", () => {
+  test("sorts open/waiting above verifying while every item stays in the list", () => {
+    const verifying = { id: "verify-1", lifecycle: "verifying" };
+    const open = { id: "open-1", lifecycle: "open" };
+    const waiting = { id: "wait-1", lifecycle: "waiting" };
+    const settled = { id: "done-1", lifecycle: "settled" };
+    const ordered = orderWorkItemsForTaskEntry([verifying, settled, open, waiting]);
+    expect(ordered.map((item: { id: string }) => item.id)).toEqual(["open-1", "wait-1", "done-1", "verify-1"]);
+    // 排序只改变呈现顺序：成员完整保留（verifying 后置但不丢失）。
+    expect(ordered).toHaveLength(4);
+    expect(ordered).toContain(verifying);
+  });
+
+  test("keeps the received order inside the same lifecycle priority (stable)", () => {
+    const first = { id: "verify-a", lifecycle: "verifying", updatedAt: "2026-08-22T09:00:00Z" };
+    const second = { id: "verify-b", lifecycle: "verifying", updatedAt: "2026-08-22T10:00:00Z" };
+    const open = { id: "open-a", lifecycle: "open" };
+    expect(orderWorkItemsForTaskEntry([first, second, open]).map((item: { id: string }) => item.id))
+      .toEqual(["open-a", "verify-a", "verify-b"]);
+  });
+
+  test("lifecycle priorities keep every non-open/waiting lifecycle between the two entry buckets", () => {
+    expect(taskEntryLifecyclePriority({ lifecycle: "open" })).toBe(0);
+    expect(taskEntryLifecyclePriority({ lifecycle: "waiting" })).toBe(0);
+    expect(taskEntryLifecyclePriority({ lifecycle: "in-progress" })).toBe(1);
+    expect(taskEntryLifecyclePriority({ lifecycle: "paused" })).toBe(1);
+    expect(taskEntryLifecyclePriority({ lifecycle: "blocked" })).toBe(1);
+    expect(taskEntryLifecyclePriority({ lifecycle: "settled" })).toBe(1);
+    expect(taskEntryLifecyclePriority({ lifecycle: "invalidated" })).toBe(1);
+    expect(taskEntryLifecyclePriority({ lifecycle: "verifying" })).toBe(2);
+    // 缺失或未识别生命周期落在中间桶，绝不会排到 open/waiting 之前或 verifying 之后。
+    expect(taskEntryLifecyclePriority({})).toBe(1);
+    expect(taskEntryLifecyclePriority(null)).toBe(1);
+  });
+
+  test("projects a short updatedAt label only from a real timestamp and fails closed otherwise", () => {
+    const source = "2026-08-22T14:05:00.000Z";
+    const date = new Date(source);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const expected =
+      pad(date.getMonth() + 1) + "-" + pad(date.getDate())
+      + " " + pad(date.getHours()) + ":" + pad(date.getMinutes());
+    expect(workItemUpdatedLabel({ updatedAt: source })).toBe(expected);
+    // 来源缺失、为空或不可解析：fail-closed，绝不猜测时间。
+    expect(workItemUpdatedLabel({})).toBeNull();
+    expect(workItemUpdatedLabel(null)).toBeNull();
+    expect(workItemUpdatedLabel({ updatedAt: "" })).toBeNull();
+    expect(workItemUpdatedLabel({ updatedAt: "not-a-time" })).toBeNull();
+    expect(workItemUpdatedLabel({ updatedAt: 42 })).toBeNull();
+  });
+
+  test("task entry defaults to the existing principal filter unless the user already chose another", () => {
+    // 首次进入 tasks（没有 URL/locus 显式 filter，也没有点过筛选按钮）：
+    // 入口默认落到已有 principal filter（待我行动视图）。
+    expect(taskEntryDefaultFilter({ filterExplicit: false })).toBe("principal");
+    expect(taskEntryDefaultFilter({})).toBe("principal");
+    expect(taskEntryDefaultFilter(null)).toBe("principal");
+    // URL/locus 的显式 filter 或用户已明确选择的其他 filter：入口不覆盖。
+    expect(taskEntryDefaultFilter({ filterExplicit: true })).toBeNull();
   });
 });

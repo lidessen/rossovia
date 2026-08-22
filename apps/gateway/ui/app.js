@@ -1889,6 +1889,84 @@ export function taskLocatorEmptySummary(locator, context) {
   };
 }
 
+/**
+ * 任务入口首屏的生命周期优先级（纯展示投影）。open/waiting 是当前可行动的
+ * 事项，优先呈现；verifying 是等待验证的历史事项，默认后置但不丢失；其它
+ * 生命周期保持原有相对顺序。只改变呈现顺序，不改变成员、计数、过滤或任何
+ * 后端状态；全部视图仍显式呈现完整库存。
+ */
+const TASK_ENTRY_LIFECYCLE_PRIORITY = {
+  open: 0,
+  waiting: 0,
+  "in-progress": 1,
+  paused: 1,
+  blocked: 1,
+  settled: 1,
+  invalidated: 1,
+  verifying: 2,
+};
+
+export function taskEntryLifecyclePriority(item) {
+  const lifecycle = item !== null
+    && typeof item === "object"
+    && typeof item.lifecycle === "string"
+    ? item.lifecycle
+    : "";
+  return Object.prototype.hasOwnProperty.call(
+    TASK_ENTRY_LIFECYCLE_PRIORITY,
+    lifecycle,
+  )
+    ? TASK_ENTRY_LIFECYCLE_PRIORITY[lifecycle]
+    : 1;
+}
+
+/**
+ * 任务入口列表的默认呈现顺序（纯展示投影）：在服务端投影顺序（attention
+ * 权重 → updatedAt 降序）之上做一次稳定排序，只把 open/waiting 提到
+ * verifying 之前；同优先级内保持接收顺序，verifying 事项仍然完整保留在
+ * 列表中。桌面与移动共用同一路径，不新增任何过滤或后台机制。
+ */
+export function orderWorkItemsForTaskEntry(items) {
+  const ordered = Array.isArray(items) ? [...items] : [];
+  ordered.sort((left, right) =>
+    taskEntryLifecyclePriority(left) - taskEntryLifecyclePriority(right));
+  return ordered;
+}
+
+/**
+ * 一行任务项的简短更新时间（纯展示投影）：只读取投影已有的 updatedAt，
+ * 输出 MM-DD HH:mm；来源缺失、为空或不可解析时一律 fail-closed 返回
+ * null，绝不猜测时间。
+ */
+export function workItemUpdatedLabel(item) {
+  const raw = item !== null && typeof item === "object" && typeof item.updatedAt === "string"
+    ? item.updatedAt.trim()
+    : "";
+  if (raw === "") return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = (value) => String(value).padStart(2, "0");
+  return (
+    pad(date.getMonth() + 1) + "-" + pad(date.getDate())
+    + " " + pad(date.getHours()) + ":" + pad(date.getMinutes())
+  );
+}
+
+/**
+ * 任务入口首屏的默认 filter（纯展示投影，桌面与移动共用同一路径）：首次
+ * 进入 tasks 视图且用户尚未明确选择其它 filter（URL/locus 的显式 filter
+ * 或任务筛选按钮）时，返回已有 principal filter（待我行动视图）；用户已
+ * 明确选择时返回 null，入口事件不得覆盖当前选择。全部视图仍为显式库存
+ * 入口：默认首屏只是呈现顺序与筛选起点，不隐藏任何可通过过滤访问的任务，
+ * 也不改变后端、schema 或 Task lifecycle。
+ */
+export function taskEntryDefaultFilter(input) {
+  const explicit = input !== null
+    && typeof input === "object"
+    && input.filterExplicit === true;
+  return explicit ? null : "principal";
+}
+
 (() => {
   "use strict";
 
@@ -1906,6 +1984,9 @@ export function taskLocatorEmptySummary(locator, context) {
     selectedWorkItemId: null,
     activeView: "conversation",
     taskFilter: "all",
+    // 用户或 URL/locus 是否已明确选择任务 filter：明确选择后，任务入口
+    // 事件不再用 principal 默认覆盖；仅「返回当前总览」会重置该标记。
+    taskFilterExplicit: false,
     taskLocator: { keyword: "", project: null, status: null },
     peekOpen: false,
     taskCreateOpen: false,
@@ -2989,6 +3070,8 @@ export function taskLocatorEmptySummary(locator, context) {
         activeView: request.view ?? "overview",
         taskFilter: request.filter ?? "all",
       }));
+      // URL/locus 的显式 filter 记为用户已明确选择：入口事件不覆盖它。
+      if (request.filter !== null) state.taskFilterExplicit = true;
       state.unavailableLocus = {
         kind: "projection",
         requestedId: request.workItemId ?? request.projectId,
@@ -3003,6 +3086,8 @@ export function taskLocatorEmptySummary(locator, context) {
       principalLocusProjection(),
     );
     Object.assign(state, restoredPrincipalLocusState(resolved));
+    // URL/locus 的显式 filter 记为用户已明确选择：入口事件不覆盖它。
+    if (request.filter !== null) state.taskFilterExplicit = true;
     if (resolved.standing === "unavailable") {
       state.unavailableLocus = {
         kind: resolved.kind,
@@ -3293,6 +3378,20 @@ export function taskLocatorEmptySummary(locator, context) {
     render();
   }
 
+  /**
+   * 任务入口的默认 filter 应用（桌面与移动共用同一路径）：仅在入口事件
+   * 进入 tasks 时生效，且只在用户尚未明确选择其它 filter 时把首屏设为
+   * 已有 principal filter（待我行动视图）。URL/locus 的显式 filter 或
+   * 任务筛选按钮的明确选择一律不覆盖；全部视图仍为显式库存入口。
+   */
+  function applyTaskEntryDefaultFilter() {
+    if (state.activeView !== "tasks") return;
+    const entryFilter = taskEntryDefaultFilter({
+      filterExplicit: state.taskFilterExplicit,
+    });
+    if (entryFilter !== null) state.taskFilter = entryFilter;
+  }
+
   function workItemRow(item) {
     const project = projects().find(
       (candidate, index) => identifier(candidate, `project-${index}`) === item.projectKey,
@@ -3317,7 +3416,7 @@ export function taskLocatorEmptySummary(locator, context) {
           <small>${escapeHtml(context)} · 下一步 ${escapeHtml(actor)}${anomalyContext ? ` · ${escapeHtml(anomalyContext)}` : ""}</small>
         </span>
         <span class="work-item-meta">
-          <small>${escapeHtml(workItemFreshnessLabel(item))}</small>
+          <small>${escapeHtml(workItemFreshnessLabel(item))} · 更新 ${escapeHtml(workItemUpdatedLabel(item) ?? "未知")}</small>
           <b>${escapeHtml(item.actionLabel)}</b>
         </span>
       </button>
@@ -3427,10 +3526,10 @@ export function taskLocatorEmptySummary(locator, context) {
 
     container.innerHTML = snapshotProjects.map((project, index) => {
       const summary = projectWorkSummary(project, index);
-      const projectItems = workItems().filter(
+      const projectItems = orderWorkItemsForTaskEntry(workItems().filter(
         (item) => item.projectKey === summary.projectKey
           && item.lifecycle !== "settled",
-      );
+      ));
       const worktrees = projectWorktrees(project);
       const primary = summary.primary;
       const completeness = "项目新鲜度未单独声明";
@@ -3573,6 +3672,7 @@ export function taskLocatorEmptySummary(locator, context) {
         };
         state.activeView = "overview";
         state.taskFilter = "all";
+        state.taskFilterExplicit = false;
         state.selectedProjectId = null;
         state.selectedMissionId = null;
         state.selectedWorktreeId = null;
@@ -3700,9 +3800,10 @@ export function taskLocatorEmptySummary(locator, context) {
         $("#overview-attention-list").innerHTML =
           '<p class="empty-note">' + escapeHtml(attentionUnavailable.detail) + "</p>";
       } else {
-        $("#overview-attention-count").textContent = String(attention.principal.length);
-        $("#overview-attention-list").innerHTML = attention.principal.length
-          ? attention.principal.slice(0, 5).map(workItemRow).join("")
+        const principalEntry = orderWorkItemsForTaskEntry(attention.principal);
+        $("#overview-attention-count").textContent = String(principalEntry.length);
+        $("#overview-attention-list").innerHTML = principalEntry.length
+          ? principalEntry.slice(0, 5).map(workItemRow).join("")
           : '<p class="empty-note">当前没有下一责任方是你的事项。</p>';
         bindWorkItemRows($("#overview-attention-list"));
       }
@@ -3715,12 +3816,15 @@ export function taskLocatorEmptySummary(locator, context) {
           count: "—",
           detail: "运行投影尚未形成或已过期：不显示系统异常清单，不冒充当前零异常。",
         };
+      const systemEntry = systemUnavailable === null
+        ? orderWorkItemsForTaskEntry(attention.system)
+        : [];
       $("#overview-system-count").textContent = systemUnavailable === null
-        ? String(attention.system.length)
+        ? String(systemEntry.length)
         : systemUnavailable.count;
       $("#overview-system-list").innerHTML = systemUnavailable === null
-        ? attention.system.length
-          ? attention.system.slice(0, 5).map(workItemRow).join("")
+        ? systemEntry.length
+          ? systemEntry.slice(0, 5).map(workItemRow).join("")
           : '<p class="empty-note">当前没有需要恢复或检查的系统异常。</p>'
         : '<p class="empty-note">' + escapeHtml(systemUnavailable.detail) + "</p>";
       bindWorkItemRows($("#overview-system-list"));
@@ -3729,7 +3833,7 @@ export function taskLocatorEmptySummary(locator, context) {
     if (isOverview || isProjectsView) renderOverviewProjects();
 
     if (!isOverview && !isProjectView && !isProjectsView) {
-      const base = items.filter((item) => workItemMatchesView(item));
+      const base = orderWorkItemsForTaskEntry(items.filter((item) => workItemMatchesView(item)));
       const locatorActive = state.activeView === "tasks";
       const filtered = locatorActive
         ? base.filter((item) => workItemMatchesTaskLocator(item, state.taskLocator))
@@ -5328,7 +5432,7 @@ export function taskLocatorEmptySummary(locator, context) {
         '<li class="empty-note">' + escapeHtml(sourceUnavailable.detail) + "</li>";
       return;
     }
-    const items = classifyWorkbenchAttention(workItems()).principal;
+    const items = orderWorkItemsForTaskEntry(classifyWorkbenchAttention(workItems()).principal);
     const primaryAttention = items[0];
     const primaryAttentionCode = text(first(primaryAttention, ["attentionCode"]), "");
     $("#attention-count").textContent = String(items.length);
@@ -8779,6 +8883,7 @@ export function taskLocatorEmptySummary(locator, context) {
         state.unavailableLocus = null;
         state.locusRestorePending = false;
         state.activeView = button.dataset.view;
+        if (state.activeView === "tasks") applyTaskEntryDefaultFilter();
         state.peekOpen = false;
         state.taskCreateOpen = false;
         render();
@@ -8798,6 +8903,7 @@ export function taskLocatorEmptySummary(locator, context) {
         if (button.dataset.mobileView === "overview") state.activeView = "overview";
         if (button.dataset.mobileView === "tasks") state.activeView = "tasks";
         if (button.dataset.mobileView === "projects") state.activeView = "projects";
+        if (state.activeView === "tasks") applyTaskEntryDefaultFilter();
         state.peekOpen = false;
         state.taskCreateOpen = false;
         render();
@@ -8811,6 +8917,7 @@ export function taskLocatorEmptySummary(locator, context) {
         state.locusRestorePending = false;
         state.activeView = "tasks";
         state.taskFilter = button.dataset.taskFilter;
+        state.taskFilterExplicit = true;
         render();
         writePrincipalLocus();
       });
