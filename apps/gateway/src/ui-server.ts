@@ -53,6 +53,7 @@ import { listPrincipalTaskWorkers } from "../../workbench/src/task-run";
 import { currentSkillSourceProjection } from "../../workbench/src/skill-sources";
 import {
   OBSERVER_EVIDENCE_PROJECTION_VERSION,
+  observerAttemptCorrelationProjection,
   observerEvidenceProjection,
   readWorkflowReviews,
   workflowReviewLogPath,
@@ -824,7 +825,7 @@ async function buildLiveSnapshot(
   };
 }
 
-function readObserverReviews(home: string | undefined, observerWorkerId?: string) {
+export function readObserverReviews(home: string | undefined, observerWorkerId?: string) {
   const sourcePaths = workflowReviewReadPaths(home);
   const sourceRef = sourcePaths.length === 0
     ? workflowReviewLogPath(home)
@@ -834,6 +835,14 @@ function readObserverReviews(home: string | undefined, observerWorkerId?: string
     const reviews = readWorkflowReviews(home).map((review) => ({
       ...review,
       relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
+      // The observed execution's conversation correlation, projected strictly
+      // from the canonical attempt evidence of this review's subject attempt:
+      // available only when the immutable attempt record retained the exact
+      // conversation/turn/action/sourceRef, and explicitly invisible when the
+      // correlation is absent or the attempt evidence is unreadable, invalid,
+      // or not a canonical attempt id. The review log schema is unchanged;
+      // this is a read-only projection field, never a review state.
+      correlation: observerAttemptCorrelationProjection(home, review.subject.attemptId),
     }));
     const recordState = reviews.length > 0
       ? "recorded"

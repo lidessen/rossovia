@@ -23,6 +23,7 @@ import {
   EVIDENCE_FILE_DIGEST_LIMIT_BYTES,
   legacyDogfoodReviewLogPath,
   OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS,
+  observerAttemptCorrelationProjection,
   openPinnedEvidenceFile,
   observerCellInput,
   observerEvidenceProjection,
@@ -880,6 +881,12 @@ function writeStrictObserverFamily(
     settlementAsSymlink?: boolean;
     omitSettlement?: boolean;
     danglingControlSymlink?: boolean;
+    correlation?: {
+      conversationId: string;
+      turnId: string;
+      actionId: string;
+      sourceRef: string;
+    };
   } = {},
 ): { attemptId: string } {
   const attemptId = FAMILY_ATTEMPT_ID;
@@ -897,6 +904,7 @@ function writeStrictObserverFamily(
     ...familyAttempt(),
     inputRef: refs.inputRef,
     finalRecordRef: refs.finalRecordRef,
+    ...(options.correlation === undefined ? {} : { correlation: options.correlation }),
   }));
   const settlement = JSON.stringify({
     ...familySettlement(),
@@ -1557,6 +1565,81 @@ test("observer evidence projection fails closed for invalid, incomplete, and unv
   initializeHome(unverifiableRoot);
   writeStrictObserverFamily(unverifiableRoot, { settlementAsSymlink: true });
   expect(observerEvidenceProjection(unverifiableRoot, FAMILY_ATTEMPT_ID)).toEqual({ standing: "unverifiable" });
+});
+
+test("attempt correlation projection returns the exact canonical correlation bound to the same attempt evidence", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-attempt-correlation-available-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  const correlation = {
+    conversationId: "11111111-1111-4111-8111-111111111111",
+    turnId: "22222222-2222-4222-8222-222222222222",
+    actionId: "33333333-3333-4333-8333-333333333333",
+    sourceRef: "conversation:11111111-1111-4111-8111-111111111111:action:33333333-3333-4333-8333-333333333333",
+  };
+  writeStrictObserverFamily(root, { correlation });
+
+  const outcome = observerAttemptCorrelationProjection(root, FAMILY_ATTEMPT_ID);
+  expect(outcome).toEqual({
+    standing: "available",
+    attemptId: FAMILY_ATTEMPT_ID,
+    correlation,
+  });
+  // The projection is the strict reader's view of exactly this attempt
+  // directory: the immutable attempt record's retained correlation, field
+  // for field, never a copy from another attempt or a guessed conversation.
+  const evidence = readStrictTaskAttemptEvidence(root, FAMILY_ATTEMPT_ID);
+  expect(evidence.standing).toBe("available");
+  expect(evidence.attempt?.correlation).toEqual(correlation);
+  // The projection is read-only: the retained family stays byte-identical.
+  expect(readFileSync(join(root, `state/task-attempts/${FAMILY_ATTEMPT_ID}/attempt.json`), "utf8"))
+    .toContain(JSON.stringify(correlation).slice(1, -1));
+});
+
+test("attempt correlation projection is explicitly invisible when the attempt retained no correlation", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-attempt-correlation-missing-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  // A strict-valid family WITHOUT the optional correlation: the review can
+  // still be projected, but its observed source is explicitly invisible —
+  // the UI must not guess the nearest conversation.
+  writeStrictObserverFamily(root);
+  expect(observerAttemptCorrelationProjection(root, FAMILY_ATTEMPT_ID)).toEqual({
+    standing: "missing",
+  });
+});
+
+test("attempt correlation projection fails closed for missing, invalid, and non-canonical attempt evidence", () => {
+  const missingRoot = mkdtempSync(join(tmpdir(), "rossovia-attempt-correlation-missing-evidence-"));
+  temporaryRoots.push(missingRoot);
+  initializeHome(missingRoot);
+  expect(observerAttemptCorrelationProjection(
+    missingRoot,
+    "00000000-0000-4000-8000-000000000000",
+  )).toEqual({ standing: "unavailable" });
+
+  const invalidRoot = mkdtempSync(join(tmpdir(), "rossovia-attempt-correlation-invalid-"));
+  temporaryRoots.push(invalidRoot);
+  initializeHome(invalidRoot);
+  writeStrictObserverFamily(invalidRoot);
+  writeFileSync(join(invalidRoot, `state/task-attempts/${FAMILY_ATTEMPT_ID}/settlement.json`), "not json");
+  expect(observerAttemptCorrelationProjection(invalidRoot, FAMILY_ATTEMPT_ID)).toEqual({
+    standing: "invalid",
+  });
+
+  // Non-canonical ids — including path-traversal-shaped and absolute paths —
+  // are rejected at the boundary before any reader or filesystem access, so
+  // no arbitrary file can be opened through the review's subject attempt id.
+  expect(observerAttemptCorrelationProjection(missingRoot, "not-a-uuid")).toEqual({
+    standing: "invalid-attempt-id",
+  });
+  expect(observerAttemptCorrelationProjection(missingRoot, "../../../outside-home")).toEqual({
+    standing: "invalid-attempt-id",
+  });
+  expect(observerAttemptCorrelationProjection(
+    missingRoot,
+    join(missingRoot, "state", "task-attempts", "x"),
+  )).toEqual({ standing: "invalid-attempt-id" });
 });
 
 test("observer evidence projection continues under the bounded policy when a source is over the digest cap", () => {

@@ -2,9 +2,135 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error The browser UI is intentionally JavaScript and embedded as a static asset.
-import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId } from "../ui/app.js";
+import { conversationSocketCanReuse, groupObserverReviews, observerConversationEvidenceLabels, observerReviewCorrelationProjection, observerReviewGroupKey, observerReviewGroupNextStep, observerReviewStatusProjection, observerReviewSubjectAcceptanceProjection, observerReviewSummary, observerReviewTaskLocator, observerReviewWorkerId } from "../ui/app.js";
 
 const uiRoot = join(import.meta.dir, "../ui");
+
+test("observer review projects the canonical attempt correlation with exact ids or explicit invisibility", () => {
+  const conversationId = "11111111-1111-4111-8111-111111111111";
+  const turnId = "22222222-2222-4222-8222-222222222222";
+  const actionId = "33333333-3333-4333-8333-333333333333";
+  const sourceRef = `conversation:${conversationId}:action:${actionId}`;
+  // A review whose subject attempt retains the canonical correlation shows
+  // the exact conversation/turn/action/sourceRef, still bound to the same
+  // attempt evidence.
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: { conversationId, turnId, actionId, sourceRef },
+    },
+  })).toEqual({
+    standing: "available",
+    attemptId: "attempt-1",
+    conversationId,
+    turnId,
+    actionId,
+    sourceRef,
+    label: "canonical correlation 已记录",
+  });
+  // Missing correlation is explicitly invisible: the review never guesses
+  // the nearest conversation.
+  expect(observerReviewCorrelationProjection({ correlation: { standing: "missing" } })).toEqual({
+    standing: "missing",
+    label: "未记录 canonical correlation",
+    detail: expect.stringContaining("不猜测最近对话"),
+  });
+  // Unreadable or invalid attempt evidence is explicitly invisible too.
+  expect(observerReviewCorrelationProjection({ correlation: { standing: "unavailable" } })).toEqual({
+    standing: "unavailable",
+    label: "attempt evidence 不可读",
+    detail: expect.stringContaining("不猜测来源"),
+  });
+  expect(observerReviewCorrelationProjection({ correlation: { standing: "invalid" } })).toEqual({
+    standing: "invalid",
+    label: "attempt evidence 无效",
+    detail: expect.stringContaining("不猜测来源"),
+  });
+  expect(observerReviewCorrelationProjection({ correlation: { standing: "invalid-attempt-id" } })).toEqual({
+    standing: "invalid-attempt-id",
+    label: "attempt 标识非 canonical",
+    detail: expect.stringContaining("不猜测来源"),
+  });
+  // A review without a server correlation projection stays explicitly absent.
+  expect(observerReviewCorrelationProjection({})).toEqual({
+    standing: "absent",
+    label: "未提供 correlation 投影",
+  });
+  // The rendered surface carries the correlation facts and the explicit
+  // invisible copy, and never fabricates a conversation link.
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).toContain("observerReviewCorrelationProjection(review)");
+  expect(app).toContain("被观察来源");
+  expect(app).toContain("未记录 canonical correlation");
+  expect(app).toContain("不猜测最近对话");
+  expect(app).toContain("只准备对话草稿，不标记为已处理");
+  expect(app).toContain("data-observer-process");
+});
+
+test("observer correlation projection fails closed when an available standing carries a malformed nested correlation", () => {
+  // A server projection that claims available must still carry the complete
+  // canonical correlation: a missing or malformed nested payload never
+  // renders partial or fabricated ids and never throws.
+  const invalidProjection = {
+    standing: "invalid",
+    label: "attempt evidence 无效",
+    detail: expect.stringContaining("不猜测来源"),
+  };
+  // The nested correlation object is missing entirely.
+  expect(observerReviewCorrelationProjection({
+    correlation: { standing: "available", attemptId: "attempt-1" },
+  })).toEqual(invalidProjection);
+  // The nested correlation is present but its fields are not non-empty
+  // strings (non-string and empty-string variants).
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: { conversationId: 123, turnId: "turn", actionId: "action", sourceRef: "ref" },
+    },
+  })).toEqual(invalidProjection);
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: {
+        conversationId: "11111111-1111-4111-8111-111111111111",
+        turnId: "   ",
+        actionId: "action",
+        sourceRef: "ref",
+      },
+    },
+  })).toEqual(invalidProjection);
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: { conversationId: "conv", turnId: "turn", actionId: "action", sourceRef: null },
+    },
+  })).toEqual(invalidProjection);
+  // A well-formed nested correlation still projects the exact ids.
+  expect(observerReviewCorrelationProjection({
+    correlation: {
+      standing: "available",
+      attemptId: "attempt-1",
+      correlation: {
+        conversationId: "11111111-1111-4111-8111-111111111111",
+        turnId: "22222222-2222-4222-8222-222222222222",
+        actionId: "33333333-3333-4333-8333-333333333333",
+        sourceRef: "conversation:11111111-1111-4111-8111-111111111111:action:33333333-3333-4333-8333-333333333333",
+      },
+    },
+  })).toEqual({
+    standing: "available",
+    attemptId: "attempt-1",
+    conversationId: "11111111-1111-4111-8111-111111111111",
+    turnId: "22222222-2222-4222-8222-222222222222",
+    actionId: "33333333-3333-4333-8333-333333333333",
+    sourceRef: "conversation:11111111-1111-4111-8111-111111111111:action:33333333-3333-4333-8333-333333333333",
+    label: "canonical correlation 已记录",
+  });
+});
 
 test("observer review projects the nested worker identity as a scalar", () => {
   expect(observerReviewWorkerId({ observer: { workerId: " deepseek-flash " } })).toBe("deepseek-flash");
@@ -130,13 +256,15 @@ test("observer group next step stays mechanical and never claims processing", ()
   });
   expect(recorded.standing).toBe("recorded");
   expect(recorded.label).toBe("意见已记录");
-  expect(recorded.nextStep).toContain("处理状态不可推断");
+  expect(recorded.nextStep).toContain("未记录 canonical handling evidence");
+  expect(recorded.nextStep).toContain("不构成处理事实");
   const gap = observerReviewGroupNextStep({
     key: "task:task-b",
     reviews: [{ reviewId: "g1", standing: "query-gap", recordedAt: "2026-08-01T00:00:00.000Z" }],
     latestRecorded: null,
   });
   expect(gap.standing).toBe("query-gap");
+  expect(gap.nextStep).toContain("未记录 canonical handling evidence");
   expect(gap.nextStep).toContain("不可推断");
   const failed = observerReviewGroupNextStep({
     key: "task:task-c",
@@ -144,6 +272,7 @@ test("observer group next step stays mechanical and never claims processing", ()
     latestRecorded: null,
   });
   expect(failed.standing).toBe("runner-failed");
+  expect(failed.nextStep).toContain("未记录 canonical handling evidence");
   expect(failed.nextStep).toContain("不可推断");
 });
 
@@ -156,7 +285,8 @@ test("observer surface renders grouped themes with raw counts and no static proc
   expect(app).toContain("条原始记录");
   expect(app).toContain("最新已记录意见");
   expect(app).toContain("全部原始记录 · ");
-  expect(app).toContain("处理状态不可推断");
+  expect(app).toContain("未记录 canonical handling evidence");
+  expect(app).toContain("不构成处理事实");
   expect(app).toContain("机械下一步");
   // The static "尚未处理" claim is gone; every raw record stays expandable.
   expect(app).not.toContain("尚未处理；通过普通对话 Task");
