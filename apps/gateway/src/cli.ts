@@ -522,7 +522,7 @@ async function dispatchTaskCommand(
         "--worktree",
         "--mission",
       ]),
-      new Set(["--accept", "--todo"]),
+      new Set(["--accept", "--todo", "--capability-required"]),
     );
     return controlPlane.execute({
       kind: "create",
@@ -531,6 +531,9 @@ async function dispatchTaskCommand(
         objective: taskOption(parsed, "--objective"),
         acceptance: taskOptions(parsed, "--accept"),
         ...(parsed.values.has("--todo") ? { todos: taskOptions(parsed, "--todo") } : {}),
+        ...(parsed.values.has("--capability-required")
+          ? { capabilitiesRequired: taskOptions(parsed, "--capability-required") }
+          : {}),
         nextActor: taskActor(parsed),
         sourceRef: taskOption(parsed, "--source-ref"),
         expectedSourceRevision: taskRevision(parsed, "--expected-source-revision", true),

@@ -341,13 +341,59 @@ describe("Principal-created local task source", () => {
     expect(created.task.capabilitiesRequired).toEqual(["vision"]);
     expect(showPrincipalTask(taskHome, created.task.id).task.capabilitiesRequired).toEqual(["vision"]);
 
+    const cliCreated = taskCli(
+      taskHome,
+      "create",
+      "--title",
+      "CLI capability requirements",
+      "--objective",
+      "Pass repeated WorkerCatalog labels through the CLI",
+      "--capability-required",
+      "vision",
+      "--capability-required",
+      "architecture",
+      "--accept",
+      "The labels persist verbatim in task show",
+      "--next-actor",
+      "agent",
+      "--source-ref",
+      "test:cli-capability-required",
+      "--expected-source-revision",
+      "1",
+    );
+    expect(cliCreated.exitCode, cliCreated.stderr).toBe(0);
+    const cliTask = JSON.parse(cliCreated.stdout).task;
+    expect(cliTask.capabilitiesRequired).toEqual(["vision", "architecture"]);
+    const cliShown = taskCli(taskHome, "show", cliTask.id);
+    expect(cliShown.exitCode, cliShown.stderr).toBe(0);
+    expect(JSON.parse(cliShown.stdout).task.capabilitiesRequired).toEqual(["vision", "architecture"]);
+
+    const cliPlain = taskCli(
+      taskHome,
+      "create",
+      "--title",
+      "CLI without capability requirements",
+      "--objective",
+      "Omitting the option must default to an empty list",
+      "--accept",
+      "The requirements default to an empty list",
+      "--next-actor",
+      "agent",
+      "--source-ref",
+      "test:cli-capability-less",
+      "--expected-source-revision",
+      "2",
+    );
+    expect(cliPlain.exitCode, cliPlain.stderr).toBe(0);
+    expect(JSON.parse(cliPlain.stdout).task.capabilitiesRequired).toEqual([]);
+
     const plain = createPrincipalTask(taskHome, {
       title: "No capability requirements",
       objective: "A task without supplied requirements",
       acceptance: ["The requirements default to an empty list"],
       nextActor: "agent",
       sourceRef: "conversation:capability-less",
-      expectedSourceRevision: 1,
+      expectedSourceRevision: 3,
     });
     expect(plain.task.capabilitiesRequired).toEqual([]);
 
@@ -356,6 +402,59 @@ describe("Principal-created local task source", () => {
     delete source.tasks[0].capabilitiesRequired;
     writeFileSync(path, `${JSON.stringify(source, null, 2)}\n`);
     expect(listPrincipalTasks(taskHome).tasks[0]!.capabilitiesRequired).toEqual([]);
+  });
+
+  test("rejects invalid or duplicate capability labels before any task state write", () => {
+    const taskHome = home();
+    const path = join(taskHome, "state", "tasks.json");
+    const baseline = readFileSync(path, "utf8");
+
+    const invalid = taskCli(
+      taskHome,
+      "create",
+      "--title",
+      "Invalid capability",
+      "--objective",
+      "Must fail before any write",
+      "--capability-required",
+      "Vision",
+      "--accept",
+      "The write is rejected",
+      "--next-actor",
+      "agent",
+      "--source-ref",
+      "test:invalid-capability",
+      "--expected-source-revision",
+      "0",
+    );
+    expect(invalid.exitCode, invalid.stderr).not.toBe(0);
+    expect(invalid.stderr).toContain("worker capability labels use lowercase letters, digits, and hyphens");
+    expect(readFileSync(path, "utf8")).toBe(baseline);
+
+    const duplicate = taskCli(
+      taskHome,
+      "create",
+      "--title",
+      "Duplicate capability",
+      "--objective",
+      "Must fail before any write",
+      "--capability-required",
+      "vision",
+      "--capability-required",
+      "vision",
+      "--accept",
+      "The write is rejected",
+      "--next-actor",
+      "agent",
+      "--source-ref",
+      "test:duplicate-capability",
+      "--expected-source-revision",
+      "0",
+    );
+    expect(duplicate.exitCode, duplicate.stderr).not.toBe(0);
+    expect(duplicate.stderr).toContain("worker capability labels must be unique");
+    expect(readFileSync(path, "utf8")).toBe(baseline);
+    expect(listPrincipalTasks(taskHome).sourceRevision).toBe(0);
   });
 
   test("parses legacy result claims with no review array unchanged", () => {
