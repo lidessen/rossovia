@@ -68,6 +68,13 @@ test("observer review projects the canonical attempt correlation with exact ids 
   expect(app).toContain("data-observer-process");
 });
 
+test("conversation carrier recorded copy does not imply semantic acceptance", () => {
+  const app = readFileSync(join(uiRoot, "app.js"), "utf8");
+  expect(app).toContain('recorded: "recorded · 已记录（机械结算）"');
+  expect(app).not.toContain('recorded: "recorded · 已记录（passed）"');
+  expect(app).toContain("语义验收未评估");
+});
+
 test("observer correlation projection fails closed when an available standing carries a malformed nested correlation", () => {
   // A server projection that claims available must still carry the complete
   // canonical correlation: a missing or malformed nested payload never
