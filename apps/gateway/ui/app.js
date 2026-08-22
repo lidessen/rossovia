@@ -122,9 +122,15 @@ export function classifyWorkbenchAttention(items) {
 
 /**
  * Keep an incomplete live projection truthful and useful at the first glance.
- * The browser already receives the attention and freshness evidence that
- * explains why completeness is false; this copy only makes that evidence
- * legible in the masthead and rail without inventing another status source.
+ * The browser already receives the attention, errors, freshness, and runner
+ * projections that explain why completeness is false; this copy only makes
+ * that evidence legible in the masthead and rail without inventing another
+ * status source. Binding and cached-freshness facts come from the served
+ * runner projection (runners[].binding.reason, runners[].freshness) plus the
+ * attention codes the projection already deduplicates by runner. Only the two
+ * known structured reasons get their exact guidance; an unrecognized reason
+ * renders an explicit unknown-reason fallback instead of borrowing either
+ * known guidance, and free-text attention summaries never become a reason.
  */
 export function incompleteProjectionCopy(snapshot) {
   const attention = Array.isArray(snapshot?.attention) ? snapshot.attention : [];
@@ -134,9 +140,33 @@ export function incompleteProjectionCopy(snapshot) {
       .filter(Boolean),
   );
   const errors = Array.isArray(snapshot?.errors) ? snapshot.errors : [];
+  const runners = Array.isArray(snapshot?.runners) ? snapshot.runners : [];
   const cachedRunners = snapshot?.freshness?.runners === "cached-status-files";
   const hasUnboundRunner = codes.has("runner-unbound");
   const hasUnreachableRunner = codes.has("runner-unreachable");
+  const unboundRunner = runners.find((runner) => {
+    if (runner === null || typeof runner !== "object") return false;
+    const binding = runner.binding;
+    return binding !== null && typeof binding === "object" && binding.kind === "unbound";
+  });
+  const hasCachedRunnerEvidence = runners.some((runner) => {
+    if (runner === null || typeof runner !== "object") return false;
+    const freshness = runner.freshness;
+    return freshness !== null && typeof freshness === "object" && freshness.kind === "cached";
+  });
+  const unboundReason = (() => {
+    if (unboundRunner !== undefined) {
+      const binding = unboundRunner.binding;
+      if (
+        binding !== null
+        && typeof binding === "object"
+        && typeof binding.reason === "string"
+      ) {
+        return binding.reason;
+      }
+    }
+    return null;
+  })();
 
   if (errors.length > 0) {
     const firstError = errors.find((error) => {
@@ -159,19 +189,43 @@ export function incompleteProjectionCopy(snapshot) {
     };
   }
 
-  if (hasUnboundRunner) {
+  if (hasUnboundRunner || unboundRunner !== undefined) {
+    if (unboundReason === null) {
+      return {
+        label: "实时 · Runner 未绑定",
+        detail: cachedRunners || hasUnreachableRunner
+          ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
+          : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
+      };
+    }
+    const reasonCopy = unboundReason === "ambiguous-mission-id"
+      ? {
+        reason: "Runner 的 Mission ID 同时命中多个项目的 Mission 记录，绑定不唯一",
+        direction: "刷新投影，先在项目注册或 Mission 记录中消除 Mission ID 歧义，使其唯一命中后再控制。",
+      }
+      : unboundReason === "no-explicit-mission-id-match"
+        ? {
+          reason: "Runner 的 Mission ID 未命中任何已观察 Mission 记录",
+          direction: "刷新投影，核对 Mission 记录与 runner 归属，恢复精确匹配后再控制。",
+        }
+        : {
+          reason: "Runner 的 Mission 绑定原因未被当前投影识别，无法给出精确指引",
+          direction: "刷新投影，核对 runner 归属与 Mission 绑定来源后再控制。",
+        };
     return {
       label: "实时 · Runner 未绑定",
       detail: cachedRunners || hasUnreachableRunner
-        ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
-        : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
+        ? `运行投影不完整 · ${reasonCopy.reason}，运行状态仅来自缓存；${reasonCopy.direction}`
+        : `运行投影不完整 · ${reasonCopy.reason}；${reasonCopy.direction}`,
     };
   }
 
-  if (hasUnreachableRunner || cachedRunners) {
+  if (hasUnreachableRunner || (cachedRunners && hasCachedRunnerEvidence)) {
     return {
       label: "实时 · Runner 仅缓存",
-      detail: "运行投影不完整 · Runner 当前不可达，运行状态仅来自缓存；刷新投影，先恢复或处置 Runner 后再控制。",
+      detail: hasUnreachableRunner
+        ? "运行投影不完整 · Runner 当前不可达，运行状态仅来自缓存；刷新投影，先恢复或处置 Runner 后再控制。"
+        : "运行投影不完整 · Runner 运行状态仅来自缓存，来源新鲜度不足以证明当前执行；刷新投影，先恢复或处置 Runner（或等待 live 探测确认）后再控制。",
     };
   }
 
