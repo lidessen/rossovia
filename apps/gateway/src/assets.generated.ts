@@ -8985,6 +8985,9 @@ export function classifyWorkbenchAttention(items) {
  * known structured reasons get their exact guidance; an unrecognized reason
  * renders an explicit unknown-reason fallback instead of borrowing either
  * known guidance, and free-text attention summaries never become a reason.
+ * The runner-unbound standing labels the masthead "投影可读 · Runner 未绑定":
+ * the HTTP projection itself is still readable, so no 实时 claim implies the
+ * Runner is running live, while the recovery guidance stays in the detail.
  */
 export function incompleteProjectionCopy(snapshot) {
   const attention = Array.isArray(snapshot?.attention) ? snapshot.attention : [];
@@ -9046,7 +9049,7 @@ export function incompleteProjectionCopy(snapshot) {
   if (hasUnboundRunner || unboundRunner !== undefined) {
     if (unboundReason === null) {
       return {
-        label: "实时 · Runner 未绑定",
+        label: "投影可读 · Runner 未绑定",
         detail: cachedRunners || hasUnreachableRunner
           ? "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。"
           : "运行投影不完整 · Runner 未绑定，当前没有精确的 Mission 目标；刷新投影并修正 Mission 绑定后再控制。",
@@ -9067,7 +9070,7 @@ export function incompleteProjectionCopy(snapshot) {
           direction: "刷新投影，核对 runner 归属与 Mission 绑定来源后再控制。",
         };
     return {
-      label: "实时 · Runner 未绑定",
+      label: "投影可读 · Runner 未绑定",
       detail: cachedRunners || hasUnreachableRunner
         ? \`运行投影不完整 · \${reasonCopy.reason}，运行状态仅来自缓存；\${reasonCopy.direction}\`
         : \`运行投影不完整 · \${reasonCopy.reason}；\${reasonCopy.direction}\`,
