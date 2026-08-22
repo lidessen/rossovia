@@ -23,6 +23,7 @@ import {
   legacyDogfoodReviewLogPath,
   openPinnedEvidenceFile,
   observerCellInput,
+  observerEvidenceProjection,
   readWorkflowReviews,
   runWorkflowObserver,
   workflowObserverContext,
@@ -1440,4 +1441,150 @@ test("attempt source digests degrade to changed when attempt, settlement, or con
   expect(attemptSourceDigests(root, withoutControl)).toEqual({ standing: "changed" });
   rmSync(join(root, controlRef), { force: true });
   expect(attemptSourceDigests(root, withoutControl)).toMatchObject({ standing: "available" });
+});
+
+test("observer evidence projection replays the bounded attempt family by attempt id", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-observer-evidence-project-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  writeStrictObserverFamily(root);
+
+  const outcome = observerEvidenceProjection(root, FAMILY_ATTEMPT_ID);
+  expect(outcome.standing).toBe("available");
+  if (outcome.standing !== "available") return;
+  const projection = JSON.parse(JSON.stringify(outcome.projection));
+
+  // The reviewer replays exactly the bounded projection the observer cell
+  // sees: goal, instructions, acceptance, final result, workspace diff,
+  // trace summary, refs, digests, and the constant review-only framing.
+  expect(projection.reviewProtocol).toMatchObject({
+    role: "read-only observer",
+    standing: "review-only",
+  });
+  expect(projection.input).toMatchObject({
+    intentPresent: true,
+    goal: {
+      present: true,
+      text: "goal text",
+      truncated: false,
+      characterCount: 9,
+      digest: sha256Hex("goal text"),
+    },
+    instructionCount: 1,
+    instructions: { values: ["instr"], truncated: false },
+    acceptanceCount: 1,
+    acceptance: { values: ["acc"], truncated: false },
+  });
+  expect(projection.final).toMatchObject({
+    runId: "run-1",
+    status: "passed",
+    result: {
+      present: true,
+      text: "result text",
+      truncated: false,
+      characterCount: 11,
+      lineCount: 1,
+      digest: sha256Hex("result text"),
+    },
+    workspaceDiff: {
+      added: { values: [], truncated: false },
+      changed: { values: [], truncated: false },
+      removed: { values: [], truncated: false },
+    },
+    verification: {
+      passed: true,
+      terminal: { passed: true, required: { values: [] }, called: { values: [] } },
+    },
+    trace: { eventCount: 0, typeCounts: {}, typeCountsTruncated: false },
+    rawStepCount: 0,
+    errorPresent: false,
+  });
+  expect(projection.evidence).toMatchObject({
+    inputRef: `state/task-attempts/${FAMILY_ATTEMPT_ID}/cell-input.json`,
+    attemptRef: `state/task-attempts/${FAMILY_ATTEMPT_ID}/attempt.json`,
+    finalRecordRef: `state/task-attempts/${FAMILY_ATTEMPT_ID}/cell-input.run.json`,
+    settlementRef: `state/task-attempts/${FAMILY_ATTEMPT_ID}/settlement.json`,
+    digestAlgorithm: "sha256",
+    textSnippetLimit: 2048,
+  });
+  // The file-byte digest binds the exact retained source bytes on disk.
+  const inputBytes = readFileSync(join(root, `state/task-attempts/${FAMILY_ATTEMPT_ID}/cell-input.json`));
+  expect(projection.evidence.inputFileDigest).toBe(sha256Hex(inputBytes));
+  // Raw provider steps, trace payloads, and untruncated payloads never
+  // appear in the replay.
+  const serialized = JSON.stringify(projection);
+  expect(serialized).not.toContain('"rawSteps"');
+  expect(serialized).not.toContain('"finalText"');
+  expect(serialized).not.toContain('"private"');
+});
+
+test("observer evidence projection rejects non-canonical and out-of-home attempt ids at the boundary", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-observer-evidence-boundary-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  // Non-canonical ids — including path-traversal-shaped and absolute paths —
+  // are rejected before the canonical reader is called, so no arbitrary file
+  // can be opened through the attempt id.
+  expect(observerEvidenceProjection(root, "not-a-uuid")).toEqual({ standing: "invalid-attempt-id" });
+  expect(observerEvidenceProjection(root, "../../../outside-home")).toEqual({ standing: "invalid-attempt-id" });
+  expect(observerEvidenceProjection(root, join(root, "state", "task-attempts", "x"))).toEqual({
+    standing: "invalid-attempt-id",
+  });
+  // A missing attempt with a canonical id is a distinct fail-closed standing.
+  expect(observerEvidenceProjection(root, "00000000-0000-4000-8000-000000000000")).toEqual({
+    standing: "unavailable",
+  });
+});
+
+test("observer evidence projection fails closed for invalid, incomplete, and unverifiable families", () => {
+  const invalidRoot = mkdtempSync(join(tmpdir(), "rossovia-observer-evidence-invalid-"));
+  temporaryRoots.push(invalidRoot);
+  initializeHome(invalidRoot);
+  writeStrictObserverFamily(invalidRoot);
+  writeFileSync(join(invalidRoot, `state/task-attempts/${FAMILY_ATTEMPT_ID}/settlement.json`), "not json");
+  expect(observerEvidenceProjection(invalidRoot, FAMILY_ATTEMPT_ID)).toEqual({ standing: "invalid" });
+
+  const incompleteRoot = mkdtempSync(join(tmpdir(), "rossovia-observer-evidence-incomplete-"));
+  temporaryRoots.push(incompleteRoot);
+  initializeHome(incompleteRoot);
+  writeStrictObserverFamily(incompleteRoot, { omitSettlement: true });
+  expect(observerEvidenceProjection(incompleteRoot, FAMILY_ATTEMPT_ID)).toEqual({ standing: "incomplete" });
+
+  const unverifiableRoot = mkdtempSync(join(tmpdir(), "rossovia-observer-evidence-unverifiable-"));
+  temporaryRoots.push(unverifiableRoot);
+  initializeHome(unverifiableRoot);
+  writeStrictObserverFamily(unverifiableRoot, { settlementAsSymlink: true });
+  expect(observerEvidenceProjection(unverifiableRoot, FAMILY_ATTEMPT_ID)).toEqual({ standing: "unverifiable" });
+});
+
+test("observer evidence projection continues under the bounded policy when a source is over the digest cap", () => {
+  const root = mkdtempSync(join(tmpdir(), "rossovia-observer-evidence-cap-"));
+  temporaryRoots.push(root);
+  initializeHome(root);
+  writeStrictObserverFamily(root);
+  const oversizedIntent = "a".repeat(EVIDENCE_FILE_DIGEST_LIMIT_BYTES + 1);
+  // Both the immutable input and the retained final record embed the same
+  // oversized goal, so the family stays strict-valid while every input file
+  // exceeds the digest cap.
+  const oversizedInput = { ...strictFamilyInput(), intent: oversizedIntent };
+  writeFileSync(
+    join(root, `state/task-attempts/${FAMILY_ATTEMPT_ID}/cell-input.json`),
+    JSON.stringify(oversizedInput),
+  );
+  writeFileSync(
+    join(root, `state/task-attempts/${FAMILY_ATTEMPT_ID}/cell-input.run.json`),
+    JSON.stringify({ ...strictFamilyFinalRecord(), input: oversizedInput }),
+  );
+  const outcome = observerEvidenceProjection(root, FAMILY_ATTEMPT_ID);
+  expect(outcome.standing).toBe("available");
+  if (outcome.standing !== "available") return;
+  const projection = JSON.parse(JSON.stringify(outcome.projection));
+  // The projection is served without file-byte digests (over-cap), while the
+  // full-text goal digest still covers the complete retained goal text.
+  expect(projection.evidence.inputFileDigest).toBeUndefined();
+  expect(projection.input.goal).toMatchObject({
+    truncated: true,
+    characterCount: EVIDENCE_FILE_DIGEST_LIMIT_BYTES + 1,
+    digest: sha256Hex(oversizedIntent),
+  });
 });
