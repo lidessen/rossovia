@@ -15,7 +15,7 @@ describe("incomplete projection status copy", () => {
     });
 
     expect(copy).toEqual({
-      label: "投影可读 · Runner 未绑定",
+      label: "运行投影可读 · Runner 未绑定",
       detail:
         "运行投影不完整 · Runner 未绑定，运行状态仅来自缓存；刷新投影，修正 Mission 绑定并恢复或处置 Runner 后再控制。",
     });
@@ -69,7 +69,7 @@ describe("incomplete projection status copy", () => {
       ],
     });
 
-    expect(copy.label).toBe("投影可读 · Runner 未绑定");
+    expect(copy.label).toBe("运行投影可读 · Runner 未绑定");
     expect(copy.detail).toContain("同时命中多个项目");
     // The visible guidance names the exact disambiguation target; the bare
     // phrase would silently diverge from the served copy.
@@ -154,7 +154,7 @@ describe("incomplete projection status copy", () => {
 
     // Without a structured runners[].binding.reason the copy stays generic:
     // prose that happens to mention a reason code is not binding evidence.
-    expect(copy.label).toBe("投影可读 · Runner 未绑定");
+    expect(copy.label).toBe("运行投影可读 · Runner 未绑定");
     expect(copy.detail).not.toContain("消除 Mission ID 歧义");
     expect(copy.detail).not.toContain("同时命中多个项目");
     expect(copy.detail).toContain("修正 Mission 绑定");
@@ -181,7 +181,7 @@ describe("incomplete projection status copy", () => {
       ],
     });
 
-    expect(copy.label).toBe("投影可读 · Runner 未绑定");
+    expect(copy.label).toBe("运行投影可读 · Runner 未绑定");
     expect(copy.detail).toContain("未命中任何已观察 Mission 记录");
     expect(copy.detail).toContain("运行状态仅来自缓存");
     expect(copy.detail).not.toContain("消除 Mission ID 歧义");
@@ -208,7 +208,7 @@ describe("incomplete projection status copy", () => {
       ],
     });
 
-    expect(copy.label).toBe("投影可读 · Runner 未绑定");
+    expect(copy.label).toBe("运行投影可读 · Runner 未绑定");
     // An unrecognized reason must not be mapped onto the no-match guidance.
     expect(copy.detail).toContain("绑定原因未被当前投影识别");
     expect(copy.detail).toContain("核对 runner 归属与 Mission 绑定来源");
@@ -216,7 +216,7 @@ describe("incomplete projection status copy", () => {
     expect(copy.detail).not.toContain("消除 Mission ID 歧义");
   });
 
-  test("labels the unbound standing 投影可读 without implying a live Runner", () => {
+  test("labels the unbound standing 运行投影可读 without implying a live Runner", () => {
     const copy = incompleteProjectionCopy({
       complete: false,
       errors: [],
@@ -227,14 +227,14 @@ describe("incomplete projection status copy", () => {
     // The HTTP projection is still readable; only the Runner attribution is
     // missing. The masthead must not use 实时 for a Runner-attribution
     // problem, and the detailed recovery guidance stays intact.
-    expect(copy.label).toBe("投影可读 · Runner 未绑定");
+    expect(copy.label).toBe("运行投影可读 · Runner 未绑定");
     expect(copy.label).not.toContain("实时");
     expect(copy.detail).toContain("运行投影不完整 · Runner 未绑定");
     expect(copy.detail).toContain("刷新投影，修正 Mission 绑定");
     expect(copy.detail).toContain("恢复或处置 Runner 后再控制");
   });
 
-  test("keeps 投影可读 scoped to the unbound standing and the 实时 labels of the other incomplete branches", () => {
+  test("keeps 运行投影可读 scoped to the unbound standing and the 实时 labels of the other incomplete branches", () => {
     // Counter-examples: source errors and cached-only runners keep their
     // existing 实时 labels; the projection-readable prefix is not a blanket
     // replacement for every incomplete projection.
