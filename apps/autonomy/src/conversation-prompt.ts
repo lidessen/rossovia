@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v10" as const;
+export const CONVERSATION_PROMPT_REVISION = "rosso.conversation-prompt.v11" as const;
 
 const BOUNDED_ORIENTATION_CONTENT_LIMIT = 4096;
 const BOUNDED_RECEIVED_INPUT_CONTENT_LIMIT = 4096;
@@ -187,6 +187,42 @@ export const TaskCardProjectionSchema = z.object({
 export type TaskCardProjection = z.infer<typeof TaskCardProjectionSchema>;
 
 /**
+ * One bounded runtime status observation carried by the compact projection.
+ * It is injected by the serving gateway startup entry from its exact startup
+ * gate and bound options — never guessed from the environment or the model —
+ * and it is a read-only observation from this turn's preparation, not an
+ * operation authorization. It discloses only the bounded package version
+ * label, the startup gate's mode/readiness/status, the unique loopback
+ * endpoint, and the observed source head/dirty standing; it never copies
+ * local paths, secrets, or any raw snapshot/transcript/provider payload.
+ * Absent mechanical source facts stay absent, and an absent `runtime` keeps
+ * the existing projection fully compatible.
+ */
+export const RuntimeStatusProjectionSchema = z.object({
+  /** The exact gateway package version label observed at this turn's preparation. */
+  version: z.string().min(1),
+  /**
+   * The bounded self-check startup gate standing observed at boot: the exact
+   * mode, readiness, and status. It claims boot only — never the later full
+   * snapshot completeness.
+   */
+  startup: z.object({
+    mode: z.enum(["normal", "safe-diagnostic"]),
+    readiness: z.enum(["boot-ready", "boot-attention"]),
+    status: z.enum(["healthy", "attention", "degraded"]),
+  }).strict(),
+  /** The unique loopback endpoint this conversation is served from. */
+  endpoint: z.string().min(1),
+  /** The source repository head observed at boot, when the boot observation read it. */
+  sourceHead: GitObjectSchema.optional(),
+  /** The source repository dirty standing observed at boot, when the boot observation read it. */
+  sourceDirty: z.boolean().optional(),
+  /** The boot observation time. */
+  checkedAt: z.string().min(1).optional(),
+}).strict();
+export type RuntimeStatusProjection = z.infer<typeof RuntimeStatusProjectionSchema>;
+
+/**
  * The explicit completeness standing of the conversation-attributed Task card
  * collection. `complete` means every settled Task action lineage identity was
  * re-read from the current Task source and disclosed within the bound.
@@ -210,6 +246,13 @@ export const TaskCardCollectionStandingSchema = z.object({
 export type TaskCardCollectionStanding = z.infer<typeof TaskCardCollectionStandingSchema>;
 
 export const CompactProjectionSchema = z.object({
+  /**
+   * The bounded runtime status observation injected by the serving gateway
+   * startup entry; absent keeps the existing projection compatible. It is a
+   * read-only observation from this turn's preparation, never an operation
+   * authorization, and it never carries local paths or raw payloads.
+   */
+  runtime: RuntimeStatusProjectionSchema.optional(),
   task: TaskProjectionSchema.optional(),
   /**
    * The bounded collection of conversation-attributed current Task cards,
@@ -527,6 +570,28 @@ function renderProjection(
       `contribution ${contribution.batchId}/${contribution.key}`
       + ` worker=${contribution.workerId} effect=${contribution.effectKind} state=${contribution.state}`
       + `${contribution.status === undefined ? "" : ` status=${contribution.status}`}`,
+    );
+  }
+
+  if (projection?.runtime !== undefined) {
+    const runtime = projection.runtime;
+    lines.push("runtime status (read-only observation from this turn's preparation, not an operation authorization):");
+    lines.push(`  package version: ${runtime.version}`);
+    lines.push(
+      `  startup: mode=${runtime.startup.mode} readiness=${runtime.startup.readiness} status=${runtime.startup.status}`
+      + `${runtime.checkedAt === undefined ? "" : ` (checked at ${runtime.checkedAt})`}`,
+    );
+    lines.push(`  loopback endpoint: ${runtime.endpoint}`);
+    if (runtime.sourceHead !== undefined || runtime.sourceDirty !== undefined) {
+      lines.push(
+        `  source: ${runtime.sourceHead === undefined ? "head unknown" : `head ${runtime.sourceHead}`}`
+        + `, ${runtime.sourceDirty === undefined ? "dirty standing unknown" : runtime.sourceDirty ? "dirty" : "clean"}`,
+      );
+    }
+    lines.push(
+      "  These fields are the standard read-only runtime observation for this turn: answer startup, version, loopback-endpoint,"
+      + " and source head/dirty questions truthfully from them. They authorize no operation and disclose no other runtime"
+      + " surface, local path, or payload.",
     );
   }
 

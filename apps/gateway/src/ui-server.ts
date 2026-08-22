@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { resolveHome } from "../../workbench/src/home";
+import { packageVersionLabel } from "./help";
 import { gitRoot } from "../../workbench/src/workspace";
 import { WorkbenchActionError, executeWorkbenchAction } from "../../workbench/src/ui/actions";
 import { AutonomyCliClient, type AutonomyClient } from "../../workbench/src/ui/autonomy-client";
@@ -67,6 +68,7 @@ import {
 } from "../../workbench/src/conversation/transport";
 import { createCoordinatorTurnOwner } from "../../workbench/src/conversation/turn-owner";
 import { createConversationContextProvider } from "../../workbench/src/conversation/context";
+import { RuntimeStatusProjectionSchema, type RuntimeStatusProjection } from "../../autonomy/src/conversation-prompt";
 import { createConversationTaskOperationHost } from "../../workbench/src/conversation/operations";
 import { createConversationExecutionCarrierRegistry } from "../../workbench/src/conversation/execution-carrier";
 import { createConversationContributionRegistry } from "../../workbench/src/conversation/contributions";
@@ -84,6 +86,37 @@ export interface ServerOptions {
   readonly observerWorkerId?: string;
   /** Set only by the production startup entry after its mechanical gate. */
   readonly startupGate?: SelfCheckStartupGate;
+}
+
+/**
+ * The bounded runtime status observation injected into every conversation
+ * projection from the existing gateway startup gate and bound server options:
+ * the exact package version label, the gate's mode/readiness/status, the
+ * unique loopback endpoint, and the observed source head/dirty standing. Only
+ * these bounded facts are projected — never the gate's cwd, root, status
+ * lines, or any raw snapshot/transcript/provider payload — and absent
+ * mechanical source facts stay absent; nothing is guessed from the
+ * environment or the model.
+ */
+export function runtimeStatusProjection(
+  options: Pick<ServerOptions, "port">,
+  startupGate: SelfCheckStartupGate,
+): RuntimeStatusProjection {
+  const source = startupGate.mechanical.source;
+  return RuntimeStatusProjectionSchema.parse({
+    version: packageVersionLabel(),
+    startup: {
+      mode: startupGate.mode,
+      readiness: startupGate.readiness,
+      status: startupGate.startupStatus,
+    },
+    endpoint: `http://127.0.0.1:${options.port}`,
+    ...(source === undefined ? {} : {
+      ...(/^[0-9a-f]{40}$/u.test(source.head) ? { sourceHead: source.head } : {}),
+      sourceDirty: source.dirty,
+    }),
+    checkedAt: startupGate.checkedAt,
+  });
 }
 
 export interface WorkbenchRequestHandlerDependencies {
@@ -473,7 +506,11 @@ export function startWorkbenchUi(options: ServerOptions): void {
   const contributionRegistry = createConversationContributionRegistry(home);
   const conversationSocket = new ConversationSocketRuntime(home, {
     turnOwner: createCoordinatorTurnOwner(),
-    projectionProvider: createConversationContextProvider(home, { carrierRegistry, contributionRegistry }),
+    projectionProvider: createConversationContextProvider(home, {
+      carrierRegistry,
+      contributionRegistry,
+      runtime: runtimeStatusProjection(options, startupGate),
+    }),
     operationHost: createConversationTaskOperationHost(home, { carrierRegistry, contributionRegistry }),
     carrierRegistry,
     contributionRegistry,

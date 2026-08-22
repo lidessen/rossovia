@@ -8,6 +8,7 @@ import {
   type ChildSummary,
   type CompactProjection,
   type ContributionProjection,
+  type RuntimeStatusProjection,
   type TaskCardCollectionStanding,
   type TaskCardProjection,
   type WorkerCardProjection,
@@ -75,6 +76,13 @@ export interface ConversationContextProviderOptions {
   readonly carrierRegistry?: ConversationExecutionCarrierRegistry;
   /** The exact retained temporary contribution runtime. */
   readonly contributionRegistry?: ConversationContributionRegistry;
+  /**
+   * The exact bounded runtime status observation injected by the gateway
+   * startup entry from its startup gate and bound options — never guessed
+   * from the environment or the model. Absent means no runtime status is
+   * projected and the existing projection stays compatible.
+   */
+  readonly runtime?: RuntimeStatusProjection;
   /** Test seam: the exact catalog whose cards the projection discloses. */
   readonly catalog?: WorkerCatalog;
   /** Test seam: the bounded card cap; the default is the production policy cap. */
@@ -97,6 +105,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
   private readonly contributionRegistry: ConversationContributionRegistry | undefined;
   private readonly catalog: WorkerCatalog | undefined;
   private readonly maxTaskCards: number;
+  private readonly runtime: RuntimeStatusProjection | undefined;
 
   constructor(home: string, options: ConversationContextProviderOptions) {
     this.home = home;
@@ -107,6 +116,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
     this.contributionRegistry = options.contributionRegistry;
     this.catalog = options.catalog;
     this.maxTaskCards = options.maxTaskCards ?? DEFAULT_TASK_CARD_CAP;
+    this.runtime = options.runtime;
   }
 
   async buildProjection(conversationId: string): Promise<CompactProjection> {
@@ -124,6 +134,7 @@ class WorkbenchConversationContextProvider implements ConversationContextProvide
     const workers = this.workerCardProjections();
     const contributions = await this.contributionProjections(conversationId);
     return {
+      ...(this.runtime === undefined ? {} : { runtime: this.runtime }),
       ...(task === undefined ? {} : { task }),
       ...(cards.cards.length === 0 ? {} : { taskCards: cards.cards }),
       taskCardStanding: cards.standing,
