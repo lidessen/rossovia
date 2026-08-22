@@ -135,10 +135,14 @@ implemented, so use the active `rossovia` help and report any mismatch rather
 than assuming the design is already shipped.
 
 When Rossovia starts locally through the Workbench UI, it enables one ordinary
-read-only background worker per settled conversation Run by default. Explicit
-observer entries (`task run --enable-observer`, `observer --attempt`) can
-observe other settled Tasks/Runs. The default worker is the host-policy
-`deepseek-flash` card. Choose another worker or turn
+read-only background worker per settled Task attempt by default — a
+conversation-carrier `task_continue` settles exactly one such attempt (its
+attemptId is the committed action UUID), and the explicit observer entries
+(`task run --enable-observer`, `observer --attempt`) observe any settled Task
+attempt through the same standard evidence path. A plain conversation Run
+settles only the conversation journal/turn and never creates Task attempt
+evidence, so it does not trigger the observer (current query gap). The default
+worker is the host-policy `deepseek-flash` card. Choose another worker or turn
 the local default off at startup:
 
 ```text

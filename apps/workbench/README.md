@@ -106,10 +106,14 @@ Run the current UI with:
 ```
 
 Open `http://127.0.0.1:4317`. Local UI startup enables the `deepseek-flash`
-observer by default per settled conversation Run; the explicit observer entries
-(`task run --enable-observer`, `observer --attempt`) can observe other settled
-Tasks/Runs. Choose another worker with `--observer <worker-id>` or disable the
-local default with `--disable-observer`. Add another explicitly selected local
+observer by default per settled Task attempt — the conversation carrier's
+`task_continue` settles exactly one such attempt — and the explicit observer
+entries (`task run --enable-observer`, `observer --attempt`) observe any
+settled Task attempt through the same read-only evidence path. A plain
+conversation Run settles only the conversation journal/turn: it produces no
+Task attempt evidence, so it never triggers the observer (current query gap).
+Choose another worker with `--observer <worker-id>` or disable the local
+default with `--disable-observer`. Add another explicitly selected local
 repository with
 `./apps/gateway/rossovia ui --root <git-root>` or select another port with
 `--port <port>`. The equivalent development entry

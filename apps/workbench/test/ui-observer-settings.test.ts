@@ -34,7 +34,7 @@ test("snapshot exposes observer reviews and safe settings projections", async ()
   expect(snapshot.observerReviews.recordState).toBe("waiting");
   expect(snapshot.observerReviews.enabled).toBe(true);
   expect(snapshot.observerReviews.workerId).toBe("deepseek-flash");
-  expect(snapshot.observerReviews.trigger.kind).toBe("conversation-run-settled");
+  expect(snapshot.observerReviews.trigger.kind).toBe("task-attempt-settled");
   expect(snapshot.observerReviews.lastRecordedAt).toBeNull();
   expect(snapshot.settings.version).toBe("rossovia.settings-projection.v1");
   expect(snapshot.settings.standing).toBe("available");
