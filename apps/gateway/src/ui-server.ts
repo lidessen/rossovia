@@ -52,9 +52,12 @@ import { listPreferences } from "../../workbench/src/preferences";
 import { listPrincipalTaskWorkers } from "../../workbench/src/task-run";
 import { currentSkillSourceProjection } from "../../workbench/src/skill-sources";
 import {
+  OBSERVER_EVIDENCE_PROJECTION_VERSION,
+  observerEvidenceProjection,
   readWorkflowReviews,
   workflowReviewLogPath,
   workflowReviewReadPaths,
+  type ObserverEvidenceProjectionStanding,
 } from "../../workbench/src/workflow-observer";
 import { showPrincipalTaskAttemptsForTasks } from "../../workbench/src/task-attempts";
 import {
@@ -346,6 +349,31 @@ export function createWorkbenchRequestHandler(
           message: error instanceof Error ? error.message : String(error),
         }, 500);
       }
+    }
+
+    // Standard GET-only attempt evidence projection: the canonical strict
+    // reader and the family-pinned digest phase run behind the same bounded
+    // projection the observer cell sees. The route carries no write, command,
+    // Task-mutation, or review-state surface; every non-available standing
+    // fails closed with a fixed reason and never a projection, echoed id, or
+    // raw path/payload.
+    const attemptEvidenceId = attemptEvidenceIdFromPath(url.pathname);
+    if (request.method === "GET" && attemptEvidenceId !== null) {
+      const outcome = observerEvidenceProjection(options.home, attemptEvidenceId);
+      if (outcome.standing === "available") {
+        return json({
+          version: OBSERVER_EVIDENCE_PROJECTION_VERSION,
+          standing: "available",
+          attemptId: attemptEvidenceId,
+          projection: outcome.projection,
+        }, 200);
+      }
+      return json({
+        version: OBSERVER_EVIDENCE_PROJECTION_VERSION,
+        standing: outcome.standing,
+        projection: null,
+        reason: observerEvidenceFailureReason(outcome.standing),
+      }, observerEvidenceFailureStatus(outcome.standing));
     }
 
     if (request.method === "POST" && url.pathname === "/api/tasks") {
@@ -1429,6 +1457,55 @@ function taskDetailIdFromPath(pathname: string): string | null {
   } catch {
     return "";
   }
+}
+
+/**
+ * The only route of the read-only attempt evidence projection:
+ * `/api/attempts/<attemptId>/evidence`. A malformed percent-encoding
+ * resolves to an empty id that fails the canonical-UUID gate in
+ * `observerEvidenceProjection`, so every non-canonical path fails closed
+ * with `invalid-attempt-id` and never reaches the filesystem.
+ */
+function attemptEvidenceIdFromPath(pathname: string): string | null {
+  const match = /^\/api\/attempts\/([^/]+)\/evidence$/u.exec(pathname);
+  if (match === null) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return "";
+  }
+}
+
+/** Fail-closed HTTP status of one non-available attempt evidence projection standing. */
+function observerEvidenceFailureStatus(
+  standing: Exclude<ObserverEvidenceProjectionStanding, "available">,
+): number {
+  if (standing === "invalid-attempt-id") return 400;
+  if (standing === "unavailable") return 404;
+  return 422;
+}
+
+/**
+ * Fixed, data-free failure reason of one non-available attempt evidence
+ * projection standing. No reader exception text, raw id, or retained path
+ * content ever reaches the response.
+ */
+function observerEvidenceFailureReason(
+  standing: Exclude<ObserverEvidenceProjectionStanding, "available">,
+): string {
+  if (standing === "invalid-attempt-id") {
+    return "attempt id must be a canonical UUID";
+  }
+  if (standing === "unavailable") {
+    return "no attempt evidence is retained for this attempt id";
+  }
+  if (standing === "invalid") {
+    return "retained attempt evidence is malformed or inconsistent and cannot be projected";
+  }
+  if (standing === "incomplete") {
+    return "retained attempt evidence is missing a terminal member (immutable input, final record, or settlement)";
+  }
+  return "retained attempt evidence changed or became unreadable while it was being verified";
 }
 
 function taskActionErrorResponse(error: unknown): Response {
