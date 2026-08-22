@@ -22,6 +22,7 @@ import {
   EVIDENCE_FILE_DIGEST_LIMIT_BYTES,
   legacyDogfoodReviewLogPath,
   openPinnedEvidenceFile,
+  observerCellInput,
   readWorkflowReviews,
   runWorkflowObserver,
   workflowObserverContext,
@@ -957,6 +958,12 @@ function observerEvidenceFixture(overrides: {
   acceptance?: readonly string[];
   finalText?: string;
   capabilities?: readonly string[];
+  workspace?: {
+    root: string;
+    readPaths: readonly string[];
+    writePaths: readonly string[];
+    allowedCommands: readonly string[];
+  };
 } = {}): StrictTaskAttemptEvidence {
   return {
     standing: "available",
@@ -975,11 +982,13 @@ function observerEvidenceFixture(overrides: {
       capabilities: [...(overrides.capabilities ?? [])],
       capabilitiesRequired: [],
       workspace: {
-        root: "/wt",
-        readPaths: [],
-        writePaths: [],
         excludePaths: [],
-        allowedCommands: [],
+        ...(overrides.workspace ?? {
+          root: "/wt",
+          readPaths: [],
+          writePaths: [],
+          allowedCommands: [],
+        }),
       },
     },
     settlement: {
@@ -1095,7 +1104,7 @@ test("workflow observer context isolates evidence-only texts from observer instr
   // The boundary declaration names the exact isolated fields and scope.
   expect(context.dataBoundary).toMatchObject({
     scope: "untrusted-task-evidence",
-    fields: ["input.goal", "input.instructions", "input.acceptance", "final.result"],
+    fields: ["input.goal", "input.instructions", "input.acceptance", "input.workspace", "final.result"],
   });
   // A constant review-only framing leads the context, built from no evidence
   // field: adversarial text can never overwrite it, it lands after the
@@ -1117,7 +1126,8 @@ test("workflow observer context isolates evidence-only texts from observer instr
   }
   expect(JSON.stringify(context)).toContain("reviewProtocol");
   // Every occurrence of the adversarial text sits inside an evidenceOnly
-  // marked projection: exactly four markers for the four isolated fields.
+  // marked projection: exactly five markers for the four isolated text
+  // fields plus the subject workspace policy projection.
   const serialized = JSON.stringify(context);
   for (const adversarial of [
     adversarialGoal,
@@ -1127,7 +1137,126 @@ test("workflow observer context isolates evidence-only texts from observer instr
   ]) {
     expect(serialized).toContain(adversarial);
   }
-  expect(serialized.split('"evidenceOnly":true').length - 1).toBe(4);
+  expect(serialized.split('"evidenceOnly":true').length - 1).toBe(5);
+});
+
+test("workflow observer context marks the subject workspace policy as subject evidence, not an observer grant", () => {
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({
+    workspace: {
+      root: "/private/worktree",
+      readPaths: ["src"],
+      writePaths: ["src", "docs"],
+      allowedCommands: ["bun"],
+    },
+  })));
+
+  // The reviewed task's own workspace policy stays visible for review ...
+  expect(context.input.workspace.subjectPolicy).toMatchObject({
+    rootPresent: true,
+    readPathCount: 1,
+    writePathCount: 2,
+    allowedCommandCount: 1,
+    allowedCommands: { values: ["bun"], truncated: false },
+  });
+  // ... but is structurally marked as untrusted subject evidence from the
+  // reviewed task's CellInput — never an instruction and never a grant to
+  // the observer.
+  expect(context.input.workspace.subjectPolicy).toMatchObject({
+    evidenceOnly: true,
+    boundary: "untrusted-task-evidence",
+    sourceLabel: "input.workspace",
+  });
+  // The observer's own execution policy is explicitly read-only with empty
+  // grants, so the subject counts above can never be read as observer
+  // write or command authority.
+  expect(context.input.workspace.observerExecution).toEqual({
+    readOnly: true,
+    writePathCount: 0,
+    allowedCommandCount: 0,
+    capabilityCount: 0,
+  });
+  // The boundary declaration names the workspace policy field, and each
+  // framing section states the subject/observer distinction.
+  expect(context.dataBoundary.fields).toContain("input.workspace");
+  expect(context.dataBoundary.meaning).toContain("never a grant to the observer");
+  expect(context.reviewProtocol.framing).toContain("subject evidence");
+  expect(context.reviewProtocol.framing).toContain("never an authority granted to the observer");
+  expect(context.limitation).toContain("no write paths, no allowed commands, and no capabilities");
+  // The subject's write and command grants are evidence, not observer
+  // authority: the marker sits on the subject projection, and the
+  // serialized context still exposes the counts for review.
+  const serialized = JSON.stringify(context);
+  expect(serialized).toContain('"writePathCount":2');
+  expect(serialized).toContain('"allowedCommandCount":1');
+});
+
+test("observer cell input stays read-only with empty write paths, commands, and capabilities", () => {
+  // A readonly ref list exercises the exact CellInput boundary: the observer
+  // copies the caller's readonly evidence refs into the mutable `sources`
+  // array the Cell contract requires, never passing its own array through.
+  const evidenceRefs: readonly string[] = ["state/attempt.json", "state/input.json"];
+  const input = observerCellInput({
+    reviewId: "review-1",
+    worker: {
+      id: "deepseek-flash",
+      executionProfile: {
+        id: "deepseek-flash",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek-v4-flash",
+        parallelism: "serial",
+      },
+    },
+    worktree: "/private/worktree",
+    context: "bounded observer evidence",
+    evidenceRefs,
+  });
+
+  // The observer's own execution policy is read-only: the worktree root is
+  // visible, but there are no read or write paths, no allowed commands, and
+  // no capabilities or capability requirements — the reviewed task's
+  // workspace policy is never copied into this CellInput.
+  expect(input.workspace).toEqual({
+    root: "/private/worktree",
+    readPaths: [],
+    writePaths: [],
+    excludePaths: [],
+    allowedCommands: [],
+  });
+  expect(input.capabilities).toEqual([]);
+  expect(input.capabilitiesRequired).toEqual([]);
+  // The single bounded context channel carries the observer evidence with
+  // its exact retained refs, and the input identity ties the run to the
+  // review and the selected worker.
+  expect(input.id).toBe("workflow-observer-review-1");
+  expect(input.workerId).toBe("deepseek-flash");
+  expect(input.executionProfile).toEqual({
+    id: "deepseek-flash",
+    version: "execution-profile.v1",
+    provider: "deepseek",
+    model: "deepseek-v4-flash",
+    parallelism: "serial",
+  });
+  expect(input.context).toEqual([{
+    id: "workflow-attempt-evidence",
+    title: "Settled project task evidence",
+    content: "bounded observer evidence",
+    sources: [...evidenceRefs],
+  }]);
+  // The CellInput owns its mutable copy of the refs: the caller's readonly
+  // array is never aliased into the produced CellInput.
+  expect(input.context[0]!.sources).toEqual([...evidenceRefs]);
+  expect(input.context[0]!.sources).not.toBe(evidenceRefs);
+  // The review-only boundary is part of the CellInput itself.
+  expect(input.intent).toContain("do not edit or accept work");
+  expect(input.instructions).toEqual([
+    "Use only the supplied standard API evidence context.",
+    "Separate observed facts, interpretation, and uncertainty.",
+    "Report only defects, regressions, friction, or observability gaps that could change the next practice.",
+    "Do not edit files, retry the task, accept or merge anything, roll back the runtime, or create another task.",
+  ]);
+  expect(input.acceptance).toEqual(["Return a concise review with evidence references and explicit limitations."]);
+  expect(input.budget).toEqual({ maxDurationMs: 300_000, maxCommandOutputBytes: 64_000 });
 });
 
 test("attempt source digests reject out-of-home refs, symlinks, and mid-read replacement", () => {
