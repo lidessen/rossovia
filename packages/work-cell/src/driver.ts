@@ -6,7 +6,7 @@ import type {
   TraceEvent,
 } from "./contracts";
 import type { HostWorkspace } from "./host-port";
-import type { CellToolSurface } from "./tool-port";
+import type { CellToolSurface, CellToolSettledOutcome } from "./tool-port";
 
 export interface DriverContext {
   workspace: HostWorkspace;
@@ -22,6 +22,25 @@ export interface DriverContext {
    * evidence and rejects after the Cell admission gate closes.
    */
   cellTools?: CellToolSurface;
+  /**
+   * Core-owned tool-surface observation channel. The driver reports the
+   * exact model-visible tool names it actually presents, once, before any
+   * provider dispatch. For an injected-tool run the core projects these
+   * names together with the caller-injected names in the single
+   * `cell.tools.projected` event; reports are ignored for runs without
+   * injected tools. Names only — never schemas, inputs, or results.
+   */
+  observeToolSurface?(names: readonly string[]): void;
+  /**
+   * Core-owned whitelisted settlement channel. The driver reports one real
+   * model-visible tool invocation — host, task, terminal, or injected — by
+   * its exact provider-generated toolCallId and a bounded outcome. The core
+   * retains only the bounded `{ name, toolCallId, outcome }` triplet for
+   * injected-tool runs and never input, result, or provider payload; an
+   * invocation never projected in the surface, or already settled by the
+   * caller-injected gate, is dropped.
+   */
+  observeToolSettled?(name: string, toolCallId: string, outcome: CellToolSettledOutcome): void;
 }
 
 export interface DriverResult {

@@ -117,9 +117,32 @@ receiving the full transcript or raw provider steps.
   × 512 chars; existing capability/path/command lists keep their ≤64 × 256
   bound. Worst-case context stays well under 32 KB.
 - Never projected: `rawSteps` (only `rawStepCount`), `preparation.rawSteps`,
-  trace event `data` (only type tallies), the untruncated `intent`/`finalText`,
-  and the full `CellInput`/`CellRunRecord` payloads. Digests are 64-char hex
-  references, not content copies.
+  raw trace event payloads beyond the bounded whitelisted shapes below, the
+  untruncated `intent`/`finalText`, and the full `CellInput`/`CellRunRecord`
+  payloads. Digests are 64-char hex references, not content copies.
+- Trace events (`final.trace`): `eventCount`/`typeCounts` keep covering the
+  full retained trace, and a bounded chronological summary
+  (`final.trace.events`) adds at most `OBSERVER_TRACE_EVENT_LIMIT` (64)
+  retained events in observation order that also fit the
+  `OBSERVER_TRACE_EVENTS_MAX_BYTES` (12 KiB) rendered-UTF-8 byte budget of
+  the list. Each entry projects only its retained index, bounded timestamp,
+  and bounded event type, plus — when the payload exactly matches a
+  core-owned whitelisted shape — the authorized tool names of a
+  `cell.tools.projected` event (exactly the single `tools` array) or the
+  exact `{ name, toolCallId, outcome }` triplet of a `cell.tool.settled`
+  event. Every other payload — all no-tool driver events, extra fields that
+  could carry tool inputs or results, unknown outcomes, oversized
+  identifiers — fails closed to timestamp and type, and an over-limit or
+  over-budget trace is disclosed with `eventsTruncated` instead of being
+  fabricated or carried past the caps.
+- Core-owned emit boundary: an injected-tool run retains only core-owned
+  trace events (`cell.started`, `cell.prepared`, `cell.tools.projected`,
+  `cell.tool.settled`, `cell.capability_mismatch`, `cell.error`, and
+  `cell.finished`); every Integration-originated driver event is dropped at
+  the core boundary, the driver execution steps are omitted from the final
+  `rawSteps`, and provider metadata is recorded as explicitly unavailable —
+  so tool inputs, results, and provider payloads cannot re-enter the
+  retained evidence through the driver path (section 14).
 
 ## 5. Verification
 
@@ -489,3 +512,106 @@ cap and the vanished/unreadable vs over-cap distinction are unchanged, raw
 provider steps and trace event payloads are still never copied, no queue,
 lifecycle, enumeration, or permission mechanism was introduced, and only the
 bound Worktree changed.
+
+## 14. Observer tool-settlement evidence: whitelisted settled tool actions and the core-owned emit boundary
+
+The bounded chronological trace summary (section 4) reconstructs the real
+tool actions of an injected-tool run from two core-owned retained events —
+`cell.tools.projected` and `cell.tool.settled` — without ever copying tool
+inputs, results, or provider payloads. Sections 1–13 remain the source-linked
+historical record; this section documents the tool-settlement evidence
+mechanism implemented after them. No mechanism, test, schema, cache,
+lifecycle, Task, or observer state was changed for this documentation pass.
+
+### 14.1 Observed symptom
+
+The motivating dogfood attempt `b73ffd7e-13e8-4935-8222-8c9f8d1edadf`
+claimed in its final text that it executed `list_files`/`read_file`, but its
+retained final trace held only `cell.started`,
+`cell.tools.projected: [sub_worker]`, and `cell.finished` — no
+`cell.tool.settled` event at all. The standard observer could not
+reconstruct any real tool action from the retained trace, and a worker's
+self-report is not evidence: the review could not distinguish a real
+invocation from an unverifiable claim.
+
+### 14.2 Core-owned emit boundary and the retained settled evidence
+
+In the Work Cell core (`packages/work-cell/src/run-cell.ts`), a nonempty
+caller-injected tool set (`RunCellOptions.tools`; for example the parent
+Run's `sub_worker` tool) switches the run to the core-owned retained-
+evidence projection:
+
+- One `cell.tools.projected` event is emitted once, before any provider
+dispatch and before the first settlement or the immutable final, carrying
+the sorted union of the caller-injected names and the exact model-visible
+surface the driver reports (`observeToolSurface`). A driver that never
+reports its surface still gets the caller-injected names projected — the
+projection is the truthful minimal surface, never a fabricated one.
+- Every real invocation — caller-injected, host workspace, host task, or
+declared terminal — is retained exactly once as `cell.tool.settled` with
+exactly `{ name, toolCallId, outcome }` where outcome is `fulfilled`,
+`rejected`, or `refused`; the gate's own settlements and the driver-reported
+settlements share one deduplicated emitter, and an invocation refused after
+the action phase closes keeps its bounded `refused` triplet without ever
+invoking the caller implementation.
+- A name outside the projected surface fails closed: no settled evidence is
+retained for a tool that was not part of the model-visible set.
+- Every Integration-originated driver event is dropped at the core boundary
+for an injected-tool run (the `context.emit` wrapper), the driver execution
+steps are omitted from the final `rawSteps`, and provider metadata (session
+id, provider fingerprint) is recorded as explicitly unavailable — so tool
+inputs, results, and provider payloads cannot re-enter retained evidence
+through the driver path.
+
+Both drivers that can carry injected tools — the AI SDK v7 driver
+(`ai-sdk-v7`) and the Pi harness driver (`ai-sdk-harness-pi-v1`) — report
+the exact model-visible surface before dispatch and report every real
+invocation's bounded triplet through the core-owned channel, so host tools
+such as `list_files`/`read_file` are projected and settled exactly like the
+injected tool. A run without an injected tool set keeps the historical
+driver-originated trace; those events never match the whitelisted shapes, so
+the observer summary projects timestamp and type only and claims no tool
+action.
+
+### 14.3 The observer side
+
+`apps/workbench/src/workflow-observer.ts`'s `final.trace` block keeps
+`eventCount`/`typeCounts` over the full retained trace and adds the bounded
+chronological summary: each of the first at most 64 retained events that
+also fit the 12 KiB rendered-UTF-8 budget of the list projects its retained
+index, bounded timestamp, and bounded event type, plus the whitelisted
+payload only when the payload exactly matches a core-owned shape —
+`cell.tools.projected` with exactly the single `tools` array, or
+`cell.tool.settled` with exactly the `{ name, toolCallId, outcome }`
+triplet. Every other payload (all no-tool driver events, extra fields,
+unknown outcomes, oversized identifiers) fails closed, and over-limit or
+over-budget traces are disclosed as `eventsTruncated`. `firstAt`/`lastAt`
+and every event timestamp apply the same bounded timestamp rule.
+
+### 14.4 Truthfulness boundary
+
+Nothing is fabricated. A run with no real invocation retains the projection
+and zero `cell.tool.settled` events; a refused call retains its bounded
+`refused` triplet; a worker claim about a tool that never appears in the
+projected surface or the settled evidence is exactly that — a claim — and
+the observer reports the visibility gap instead of treating the self-report
+as evidence. When the claimed tool was genuinely part of the model-visible
+surface but no invocation evidence is retained, the fix is the input/routing
+(ensuring the worker is granted and routed to the capability it claims),
+never the fabrication of a settled event.
+
+### 14.5 Verification
+
+Core side (`packages/work-cell/test/host-tools.test.ts`): an injected-tool
+run retains one bounded settled triplet per real host and injected
+invocation and projects the actual model-visible surface (including
+`list_files`/`read_file`), so the worker's real invocations are
+reconstructable from the retained trace while paths, contents, and results
+never enter any retained surface; an injected-tool run with no real
+invocation retains the projection and zero settled evidence; host tool
+settlements keep exactly the whitelisted triplet keys. Observer side
+(`apps/workbench/test/workflow-observer.test.ts`): the bounded chronological
+summary replays the retained observation order with the whitelisted tool
+names and triplets, fails closed for enriched or malformed payloads and for
+all no-tool driver events, explicitly truncates over-limit traces, and
+enforces the real UTF-8 byte budget on the rendered list.

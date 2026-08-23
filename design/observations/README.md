@@ -64,8 +64,33 @@ untruncated sources at the refs. Every task/result text field is structurally
 marked `evidenceOnly` (declared in the `dataBoundary` section) as untrusted
 review data — never an instruction to the observer. The projection never
 copies the full transcript, raw provider steps, or trace event payloads;
-`rawSteps` and trace event `data` remain summaries (counts and type tallies)
-only. A review record may retain the same digests as optional
+`rawSteps` stays a count, and `final.trace` keeps `eventCount`/`typeCounts`
+over the full retained trace while adding a bounded chronological event
+summary (`final.trace.events`): at most 64 retained events in observation
+order within a 12 KiB rendered-UTF-8 byte budget, each projecting only its
+retained index, bounded timestamp, and bounded event type plus — when the
+payload exactly matches a core-owned whitelisted shape — the authorized
+tool names of `cell.tools.projected` (exactly the single `tools` array) or
+the exact `{ name, toolCallId, outcome }` triplet of `cell.tool.settled`.
+Every other payload (all no-tool driver events, extra fields, unknown
+outcomes, oversized identifiers) fails closed to timestamp and type,
+over-limit or over-budget traces are disclosed with `eventsTruncated`, and
+raw tool inputs, results, and provider payloads never enter the summary.
+The whitelisted settled evidence comes from the core-owned emit boundary
+(`packages/work-cell/src/run-cell.ts`): for an injected-tool run (for
+example a parent Run with a caller-injected `sub_worker` tool) the core
+retains exactly one `cell.tools.projected` event with the sorted authorized
+names — caller-injected plus the exact model-visible surface the driver
+reports — and exactly one `cell.tool.settled` per real invocation
+(caller-injected, host, task, or terminal), deduplicated and fail-closed for
+names outside the projected surface; every driver-originated event is
+dropped at the core boundary, driver execution steps are omitted from the
+final `rawSteps`, and provider metadata is recorded as explicitly
+unavailable. A worker's claim of tool actions is never evidence by itself:
+the bounded summary shows whether any real invocation was retained, and an
+unverifiable claim is reported as a visibility gap instead of being accepted
+as fact (see the audit's section 14). A review record may retain the same
+digests as optional
 `evidenceDigests` so the record itself stays source-traceable without copying
 any payload; digest reads re-verify each ref against the canonical home tree
 and the pinned inode so out-of-home refs, symlinks, and mid-read replacement
@@ -84,6 +109,7 @@ rossovia observer                # run one detached workflow review
 
 - Intervention source and local projection: [`apps/workbench/src/interventions.ts`](../../apps/workbench/src/interventions.ts)
 - Workflow observer source and append-only log: [`apps/workbench/src/workflow-observer.ts`](../../apps/workbench/src/workflow-observer.ts)
+- Observer tool-settlement evidence and core-owned emit boundary: [`packages/work-cell/src/run-cell.ts`](../../packages/work-cell/src/run-cell.ts) (see [section 14](workflow-observer-query-gap-audit.md#14-observer-tool-settlement-evidence-whitelisted-settled-tool-actions-and-the-core-owned-emit-boundary) of the audit)
 - Observer query-gap audit and evidence projection: [`workflow-observer-query-gap-audit.md`](workflow-observer-query-gap-audit.md)
 - Canonical Task correction: [`apps/workbench/src/tasks.ts`](../../apps/workbench/src/tasks.ts)
 - Secondary workflow-review surface: [`apps/gateway/src/ui-server.ts`](../../apps/gateway/src/ui-server.ts)

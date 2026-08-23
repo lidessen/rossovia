@@ -19,6 +19,7 @@ import { compileAiSdkOutputSchema } from "./output-schema";
 import { normalizeAiSdkUsage as normalizeUsage } from "./ai-sdk-usage";
 import { settleStructuredOutput, type StructuredSettlementResult } from "./structured-settlement";
 import { TaskStore } from "../../task-store";
+import type { CellToolSettledOutcome } from "../../tool-port";
 import {
   createCellToolDefinitions,
   createHostTools,
@@ -130,6 +131,12 @@ export class AiSdkValidationDriver implements CellDriver {
       () => terminalOnly,
       tasks,
     );
+    // The exact model-visible surface is reported once, before any provider
+    // dispatch: for an injected-tool run the core projects these names with
+    // the caller-injected names in the single core-owned
+    // cell.tools.projected event. The report carries names only — never
+    // schemas, inputs, or results.
+    context.observeToolSurface?.(Object.keys(tools));
     const terminalNames = input.terminalTools?.map((terminal) => terminal.name) ?? [];
     const hasTerminalTools = (input.terminalTools?.length ?? 0) > 0;
     const terminalSatisfied = () => terminalNames.some((name) => terminalToolsCalled.has(name));
@@ -231,6 +238,17 @@ export class AiSdkValidationDriver implements CellDriver {
             durationMs: toolExecutionMs,
             outcome: toolOutput.type,
           });
+          // One core-owned whitelisted settlement for every real
+          // model-visible invocation: only the bounded
+          // name/toolCallId/outcome triplet crosses the observation channel,
+          // never the tool input, result, or provider payload. The core
+          // deduplicates against the gate settlements of caller-injected
+          // calls and drops names outside the projected surface.
+          context.observeToolSettled?.(
+            toolCall.toolName,
+            toolCall.toolCallId,
+            toolSettlementOutcome(toolOutput),
+          );
         },
         onStepEnd: ({ usage, finishReason, performance, providerMetadata, toolCalls, toolResults }) => {
           const stepUsage = normalizeUsage(usage, providerMetadata);
@@ -655,6 +673,20 @@ function terminalToolChoice(names: string[]) {
   return names.length === 1
     ? { type: "tool" as const, toolName: names[0]! }
     : "required" as const;
+}
+
+/**
+ * One bounded settlement outcome for a real model-visible tool invocation.
+ * A provider execution error is `rejected`; the exact blocked observation
+ * the host tools return after the action phase closes is `refused`; any
+ * other settled invocation is `fulfilled`. Only this bounded outcome — never
+ * the tool input, result, or provider metadata — crosses the core-owned
+ * settlement channel.
+ */
+function toolSettlementOutcome(toolOutput: { readonly type: string; readonly output?: unknown }): CellToolSettledOutcome {
+  if (toolOutput.type === "tool-error") return "rejected";
+  const output = asRecord(toolOutput.output);
+  return output.accepted === false ? "refused" : "fulfilled";
 }
 
 function finalOutputStep(
