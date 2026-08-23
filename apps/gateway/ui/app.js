@@ -4924,8 +4924,11 @@ export function taskEntryDefaultFilter(input) {
         (worktree) =>
           text(first(worktree, ["path", "worktreePath"]), "")
             !== currentWorktreePath,
+      // The compact first paint carries no dirty claim, so only a worktree
+      // with an explicit dirty === false observation is a safe rebind
+      // candidate; a missing dirty (compact) or a dirty worktree never is.
       ).filter(
-        (worktree) => first(worktree, ["dirty"]) !== true,
+        (worktree) => first(worktree, ["dirty"]) === false,
       );
     rebindForm.hidden =
       settled
@@ -5724,7 +5727,8 @@ export function taskEntryDefaultFilter(input) {
         const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
         const head = text(first(worktree, ["head", "headSha", "sha"]), "?");
         const primary = first(worktree, ["registeredPrimary"]) === true;
-        const dirty = first(worktree, ["dirty"]) === true;
+        const dirty = first(worktree, ["dirty"]);
+        const dirtyLabel = dirty === true ? "dirty" : dirty === false ? "clean" : "unknown";
         return `
           <button
             class="inventory-worktree ${id === state.selectedWorktreeId ? "is-selected" : ""}"
@@ -5732,7 +5736,7 @@ export function taskEntryDefaultFilter(input) {
             data-inventory-worktree="${escapeHtml(id)}"
           >
             <strong>${escapeHtml(branch)} @ ${escapeHtml(head)}</strong>
-            <span>${primary ? "registered primary" : "additional worktree"} · ${dirty ? "dirty" : "clean"}</span>
+            <span>${primary ? "registered primary" : "additional worktree"} · ${dirtyLabel}</span>
             <span>${escapeHtml(first(worktree, ["path"], "位置未知"))}</span>
           </button>
         `;

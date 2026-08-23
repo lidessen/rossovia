@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
@@ -596,5 +596,90 @@ describe("compact initial snapshot and on-demand task detail", () => {
     ));
     expect(missing.status).toBe(404);
     expect(await missing.json()).toMatchObject({ error: "task-not-found" });
+  });
+
+  test("the compact snapshot defers the per-worktree dirty observation while the full route keeps it", async () => {
+    const { root, home, origin } = fixture();
+    // A registered Git project with one dirty primary worktree and one clean
+    // linked worktree exercises exactly the per-worktree `git status` scans
+    // the compact first paint must not pay for.
+    const repository = join(root, "repository");
+    const repositoryRemote = "https://example.test/lidessen/compact.git";
+    mkdirSync(repository, { recursive: true });
+    const gitRun = (cwd: string, ...arguments_: string[]): string => {
+      const result = Bun.spawnSync(["git", ...arguments_], {
+        cwd,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+      return result.stdout.toString().trim();
+    };
+    gitRun(repository, "init", "-b", "main");
+    gitRun(repository, "config", "user.name", "Compact Snapshot Test");
+    gitRun(repository, "config", "user.email", "compact-snapshot@example.test");
+    gitRun(repository, "remote", "add", "origin", repositoryRemote);
+    writeFileSync(join(repository, "README.md"), "# Fixture\n");
+    gitRun(repository, "add", "README.md");
+    gitRun(repository, "commit", "-m", "initial");
+    writeFileSync(join(repository, "UNCOMMITTED.md"), "visible dirt\n");
+    const linked = join(root, "linked-worktree");
+    gitRun(repository, "worktree", "add", "-b", "linked", linked);
+    mkdirSync(join(home, "config"), { recursive: true });
+    mkdirSync(join(home, "state"), { recursive: true });
+    writeFileSync(join(home, "config", "projects.json"), JSON.stringify({
+      version: "rosso.projects.v1",
+      projects: [{
+        id: "repository:compact",
+        repository: repositoryRemote,
+        aliases: ["compact"],
+      }],
+    }));
+    writeFileSync(join(home, "state", "workspaces.json"), JSON.stringify({
+      version: "rosso.workspaces.v1",
+      workspaces: [{ projectId: "repository:compact", path: repository }],
+    }));
+    const handler = createWorkbenchRequestHandler({
+      home,
+      port: 4317,
+      roots: [repository],
+    }, {} as AutonomyClient);
+
+    const compact = await compactSnapshot(handler, origin);
+    expect(compact.complete).toBeTrue();
+    const compactProject = compact.projects.find(
+      (project: { projectKey: string }) =>
+        project.projectKey === "registered:repository:compact",
+    );
+    expect(compactProject).toBeDefined();
+    expect(compactProject.worktrees).toHaveLength(2);
+    for (const worktree of compactProject.worktrees) {
+      // The compact first paint never claims a dirty standing; every other
+      // `git worktree list` fact (path/HEAD/branch/registeredPrimary) stays.
+      expect(Object.prototype.hasOwnProperty.call(worktree, "dirty")).toBeFalse();
+      expect(typeof worktree.path).toBe("string");
+      expect(worktree.head).toMatch(/^[0-9a-f]{40}$/u);
+      expect(["main", "linked"]).toContain(worktree.gitBranch);
+    }
+
+    const full = await fullSnapshot(handler, origin);
+    expect(full.complete).toBeTrue();
+    const fullProject = full.projects.find(
+      (project: { projectKey: string }) =>
+        project.projectKey === "registered:repository:compact",
+    );
+    expect(fullProject.worktrees).toHaveLength(2);
+    const fullPrimary = fullProject.worktrees.find(
+      (worktree: { path: string }) => worktree.path === realpathSync(repository),
+    );
+    const fullLinked = fullProject.worktrees.find(
+      (worktree: { path: string }) => worktree.path === realpathSync(linked),
+    );
+    // The full snapshot keeps the exact dirty facts the compact body
+    // deferred: primary dirty, linked clean, primary registration exact.
+    expect(fullPrimary.dirty).toBeTrue();
+    expect(fullLinked.dirty).toBeFalse();
+    expect(fullPrimary.registeredPrimary).toBeTrue();
+    expect(fullLinked.registeredPrimary).toBeFalse();
   });
 });

@@ -650,6 +650,17 @@ async function buildLiveSnapshot(
   const snapshot = buildWorkbenchSnapshot({
     ...(options.home === undefined ? {} : { home: options.home }),
     localRepositoryRoots: options.roots,
+    // The compact first paint (an empty taskDetailIds set) defers the
+    // per-worktree `git status` dirty observation — the dominant non-essential
+    // synchronous worktree/Git scan for the navigation-grade first paint. Its
+    // worktree records keep every `git worktree list`-derived fact but carry
+    // no dirty claim; the full snapshot and the on-demand task-detail route
+    // rebuild with the default and always project the exact dirty standing.
+    // Authority, source, error, attention, and persistence semantics of the
+    // compact payload are unchanged.
+    ...(taskDetailIds !== "all" && taskDetailIds.size === 0
+      ? { observeWorktreeDirty: false }
+      : {}),
   });
   const taskSourceRef = principalTasksPath(options.home);
   let taskSource: PrincipalTaskSourceObservation;
