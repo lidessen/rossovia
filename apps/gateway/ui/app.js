@@ -2041,6 +2041,10 @@ export function taskEntryDefaultFilter(input) {
     lastSubmittedClientMessageId: null,
   };
 
+  // 页面会话内按 reviewId 缓存已读取的完整 review 渲染结果；记录源是
+  // append-only，同一 reviewId 的全文永不变化，缓存不会过期失真。
+  const observerReviewFullCache = new Map();
+
   const demoSnapshot = {
     version: "demo-1",
     generatedAt: new Date().toISOString(),
@@ -3925,6 +3929,26 @@ export function taskEntryDefaultFilter(input) {
     return '<small class="observer-correlation-unknown" data-standing="' + escapeHtml(correlation.standing) + '">未知 · ' + escapeHtml(correlation.label) + "</small>";
   }
 
+  /**
+   * 完整 review 的展开体：full snapshot 已携带 reviewText 时直接渲染；compact
+   * 首屏不携带全文（fullTextAvailable / findingTruncated 为诚实标记），渲染占位
+   * 体并由卡片 toggle 时按 reviewId 从同一 append-only 记录源读取；无全文可读
+   * 时保持原 fallback（查询缺口 / observer 失败只显示 finding）。摘要与截断
+   * 永远不冒充全文。
+   */
+  function observerReviewFullBodyHtml(review, storedFullText, fullTextDeferred) {
+    const reviewId = text(first(review, ["reviewId"]), "");
+    if (fullTextDeferred && reviewId !== "") {
+      return '<details class="observer-review-full" data-review-full="' + escapeHtml(reviewId) + '">' +
+        "<summary>展开完整 review · 按需读取记录源</summary>" +
+        '<div class="observer-review-full-body"><p class="observer-review-full-pending">正在从记录源读取完整 review…</p></div></details>';
+    }
+    const fullHtml = storedFullText !== ""
+      ? renderConversationMarkdown(storedFullText)
+      : renderConversationMarkdown(text(first(review, ["finding"]), "未返回 review 文本"));
+    return '<details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">' + fullHtml + "</div></details>";
+  }
+
   function observerReviewCardHtml(review, options = {}) {
     const historical = options.historical === true;
     const refs = list(first(review, ["evidenceRefs"], []));
@@ -3932,7 +3956,16 @@ export function taskEntryDefaultFilter(input) {
     const statusProjection = observerReviewStatusProjection(review);
     const subjectStanding = observerReviewSubjectAcceptanceProjection(review);
     const correlation = observerReviewCorrelationProjection(review);
-    const reviewText = text(first(review, ["reviewText", "finding"]), "未返回 review 文本");
+    const storedFullText = typeof review?.reviewText === "string" && review.reviewText !== ""
+      ? review.reviewText
+      : "";
+    // compact 首屏不携带全文：fullTextAvailable / findingTruncated 是诚实标记，
+    // 说明完整文本仍存在并可经 review detail 路由按需读取；摘要或截断绝不冒充全文。
+    const fullTextDeferred = storedFullText === ""
+      && (review?.fullTextAvailable === true || review?.findingTruncated === true);
+    const reviewText = storedFullText !== ""
+      ? storedFullText
+      : text(first(review, ["finding"]), "未返回 review 文本");
     const subject = first(review, ["subject"], {});
     const taskId = text(first(subject, ["taskId"]), "").trim();
     const attemptId = text(first(subject, ["attemptId"]), "").trim();
@@ -3954,7 +3987,7 @@ export function taskEntryDefaultFilter(input) {
           <time>${escapeHtml(formatTime(recordedAt, "时间未知"))}</time>
         </header>
         <p class="observer-review-meta">${escapeHtml(meta)}</p>
-        <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论 · 摘要</p><p class="observer-review-summary">${escapeHtml(observerReviewSummary(reviewText))}</p><details class="observer-review-full"><summary>展开完整 review</summary><div class="observer-review-full-body">${renderConversationMarkdown(reviewText)}</div></details></div>
+        <div class="observer-review-finding"><p class="observer-review-finding-label">首要结论 · 摘要</p><p class="observer-review-summary">${escapeHtml(observerReviewSummary(reviewText))}</p>${observerReviewFullBodyHtml(review, storedFullText, fullTextDeferred)}</div>
         <div class="observer-review-correlation" data-standing="${escapeHtml(correlation.standing)}">
           <span>被观察来源</span>
           ${observerReviewCorrelationHtml(correlation)}
@@ -4107,6 +4140,33 @@ export function taskEntryDefaultFilter(input) {
       </article>`;
   }
 
+  /**
+   * 按需读取一条 review 的完整文本：GET /api/reviews/<reviewId> 从同一
+   * append-only 记录源返回精确存储记录；只接受完整 reviewText 或 finding
+   * 文本，失败（HTTP 非 2xx / 无文本 / 记录缺失）一律 fail-closed 抛错，
+   * 由调用方显示固定原因，绝不用摘要冒充全文。
+   */
+  async function loadObserverReviewDetail(reviewId) {
+    const response = await fetch(
+      "/api/reviews/" + encodeURIComponent(reviewId),
+      { headers: { Accept: "application/json" }, cache: "no-store" },
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        text(first(body, ["message", "reason"]), "HTTP " + response.status),
+      );
+    }
+    const review = first(body, ["review"]);
+    const full = review !== null && typeof review === "object"
+      ? first(review, ["reviewText", "finding"])
+      : null;
+    if (typeof full !== "string" || full === "") {
+      throw new Error("记录源未返回完整 review 文本");
+    }
+    return renderConversationMarkdown(full);
+  }
+
   function renderObserverSurface() {
     const projection = first(state.snapshot, ["observerReviews"], {});
     const sourceState = $("#observer-source-state");
@@ -4219,6 +4279,35 @@ export function taskEntryDefaultFilter(input) {
         render();
         writePrincipalLocus();
         $("#conversation-composer-text")?.focus({ preventScroll: true });
+      });
+    });
+    // 完整 review 按需读取：compact 首屏不携带 reviewText；展开卡片时从同一
+    // append-only 记录源按 reviewId 读取，失败时 fail-closed 显示原因，绝不
+    // 用摘要或截断冒充全文。缓存只存在于本页面会话，keyed by reviewId。
+    listRoot.querySelectorAll("[data-review-full]").forEach((details) => {
+      const reviewId = details.dataset.reviewFull;
+      if (!reviewId) return;
+      const body = details.querySelector(".observer-review-full-body");
+      if (!body) return;
+      details.addEventListener("toggle", () => {
+        if (!details.open) return;
+        const cached = observerReviewFullCache.get(reviewId);
+        if (typeof cached === "string") {
+          body.innerHTML = cached;
+          return;
+        }
+        // null 表示读取中：保留占位体，由在途请求回填，避免重复请求。
+        if (cached !== undefined) return;
+        observerReviewFullCache.set(reviewId, null);
+        loadObserverReviewDetail(reviewId).then((html) => {
+          observerReviewFullCache.set(reviewId, html);
+          if (body.isConnected) body.innerHTML = html;
+        }).catch((error) => {
+          const message = error instanceof Error ? error.message : text(error);
+          body.innerHTML = '<p class="observer-review-full-error">完整 review 读取失败（fail-closed）：'
+            + escapeHtml(message)
+            + "。记录源仍保留原记录；摘要与截断不冒充全文。</p>";
+        });
       });
     });
   }

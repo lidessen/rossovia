@@ -53,13 +53,16 @@ import { listPrincipalTaskWorkers } from "../../workbench/src/task-run";
 import { currentSkillSourceProjection } from "../../workbench/src/skill-sources";
 import {
   OBSERVER_EVIDENCE_PROJECTION_VERSION,
+  OBSERVER_REVIEW_DETAIL_PROJECTION_VERSION,
   observerAttemptCorrelationProjection,
   observerEvidenceProjection,
+  observerReviewDetailProjection,
   readWorkflowReviews,
   workflowReviewLogPath,
   workflowReviewReadPaths,
   type ObserverAttemptCorrelationProjection,
   type ObserverEvidenceProjectionStanding,
+  type ObserverReviewDetailProjectionStanding,
 } from "../../workbench/src/workflow-observer";
 import { showPrincipalTaskAttemptsForTasks } from "../../workbench/src/task-attempts";
 import {
@@ -137,6 +140,16 @@ export interface WorkbenchRequestHandlerDependencies {
 const repositoryRoot = resolve(import.meta.dir, "../../..");
 const autonomyCliSource = resolve(import.meta.dir, "../../autonomy/src/cli.ts");
 const maximumRequestBytes = 64 * 1024;
+
+/**
+ * Upper bound on one compact review summary (`finding`) so the observer
+ * first screen stays bounded. The full text is never lost or faked: the
+ * read-only review detail route re-reads the exact stored record from the
+ * same append-only review source, and `findingTruncated`/`fullTextAvailable`
+ * markers keep the boundary honest — a truncated snippet is never presented
+ * as the full review.
+ */
+export const OBSERVER_COMPACT_FINDING_MAX_CHARS = 512 as const;
 
 /**
  * The compile-time default observation root is meaningful only while the UI
@@ -381,6 +394,32 @@ export function createWorkbenchRequestHandler(
         projection: null,
         reason: observerEvidenceFailureReason(outcome.standing),
       }, observerEvidenceFailureStatus(outcome.standing));
+    }
+
+    // Standard GET-only observer review detail projection: the exact stored
+    // review record (full reviewText included) re-read from the same
+    // append-only review source the compact first screen summarizes. The
+    // route carries no write, command, Task-mutation, or review-state
+    // surface; every non-available standing fails closed with a fixed reason
+    // and never a projection, echoed id, or raw path/payload.
+    const reviewDetailId = reviewDetailIdFromPath(url.pathname);
+    if (request.method === "GET" && reviewDetailId !== null) {
+      const outcome = observerReviewDetailProjection(options.home, reviewDetailId);
+      if (outcome.standing === "available") {
+        return json({
+          version: OBSERVER_REVIEW_DETAIL_PROJECTION_VERSION,
+          standing: "available",
+          reviewId: reviewDetailId,
+          review: outcome.review,
+        }, 200);
+      }
+      return json({
+        version: OBSERVER_REVIEW_DETAIL_PROJECTION_VERSION,
+        standing: outcome.standing,
+        reviewId: null,
+        review: null,
+        reason: observerReviewDetailFailureReason(outcome.standing),
+      }, observerReviewDetailFailureStatus(outcome.standing));
     }
 
     if (request.method === "POST" && url.pathname === "/api/tasks") {
@@ -798,7 +837,17 @@ async function buildLiveSnapshot(
     : taskDetailIds.size === 0
       ? {}
       : await readTaskAttemptsProjections(options.home, taskSource, taskDetailIds);
-  const observerReviews = readObserverReviews(options.home, options.observerWorkerId);
+  // The compact first paint also defers every observer review's full
+  // reviewText: each compact review keeps its bounded summary, reviewId,
+  // subject, standing, evidence refs, correlation, and processing facts, and
+  // marks the deferred full text for the on-demand review detail route,
+  // which re-reads the same append-only review source. The full snapshot and
+  // the task-detail rebuild keep the exact reviewText authority unchanged.
+  const observerReviews = readObserverReviews(
+    options.home,
+    options.observerWorkerId,
+    taskDetailIds !== "all" && taskDetailIds.size === 0 ? { compact: true } : undefined,
+  );
   const settings = readSettingsProjection(options, observerReviews);
   // The aggregate runner freshness must describe the snapshot actually served:
   // with at least one live runner the projection no longer reads runners only
@@ -842,7 +891,11 @@ async function buildLiveSnapshot(
   };
 }
 
-export function readObserverReviews(home: string | undefined, observerWorkerId?: string) {
+export function readObserverReviews(
+  home: string | undefined,
+  observerWorkerId?: string,
+  options: { compact?: boolean } = {},
+) {
   const sourcePaths = workflowReviewReadPaths(home);
   const sourceRef = sourcePaths.length === 0
     ? workflowReviewLogPath(home)
@@ -867,18 +920,45 @@ export function readObserverReviews(home: string | undefined, observerWorkerId?:
       correlationByAttemptId.set(attemptId, projection);
       return projection;
     };
-    const reviews = readWorkflowReviews(home).map((review) => ({
-      ...review,
-      relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
-      // The observed execution's conversation correlation, projected strictly
-      // from the canonical attempt evidence of this review's subject attempt:
-      // available only when the immutable attempt record retained the exact
-      // conversation/turn/action/sourceRef, and explicitly invisible when the
-      // correlation is absent or the attempt evidence is unreadable, invalid,
-      // or not a canonical attempt id. The review log schema is unchanged;
-      // this is a read-only projection field, never a review state.
-      correlation: correlationForAttempt(review.subject.attemptId),
-    }));
+    const reviews = readWorkflowReviews(home).map((review) => {
+      const projected = {
+        ...review,
+        relatedConversationRefs: review.evidenceRefs.filter((ref) => ref.startsWith("conversation:")),
+        // The observed execution's conversation correlation, projected strictly
+        // from the canonical attempt evidence of this review's subject attempt:
+        // available only when the immutable attempt record retained the exact
+        // conversation/turn/action/sourceRef, and explicitly invisible when the
+        // correlation is absent or the attempt evidence is unreadable, invalid,
+        // or not a canonical attempt id. The review log schema is unchanged;
+        // this is a read-only projection field, never a review state.
+        correlation: correlationForAttempt(review.subject.attemptId),
+      };
+      // Compact first-screen projection: the full reviewText (and any finding
+      // beyond the bounded summary cap) is deferred to the read-only review
+      // detail route, which re-reads the same append-only source; the first
+      // screen keeps the bounded summary plus every grouping/locating/
+      // processing fact (reviewId, subject, standing, evidence refs,
+      // correlation, subjectOutcome, observerRun). `fullTextAvailable` and
+      // `findingTruncated` are the honest markers that the full text still
+      // exists at the detail route — a truncated snippet is never presented
+      // as the full review.
+      if (options.compact !== true) return projected;
+      const { reviewText: _reviewText, ...withoutReviewText } = projected;
+      const finding = typeof projected.finding === "string" ? projected.finding : "";
+      const findingTruncated = finding.length > OBSERVER_COMPACT_FINDING_MAX_CHARS;
+      return {
+        ...withoutReviewText,
+        ...(findingTruncated
+          ? {
+            finding: finding.slice(0, OBSERVER_COMPACT_FINDING_MAX_CHARS),
+            findingTruncated: true,
+          }
+          : {}),
+        ...(typeof projected.reviewText === "string" && projected.reviewText !== ""
+          ? { fullTextAvailable: true }
+          : {}),
+      };
+    });
     const recordState = reviews.length > 0
       ? "recorded"
       : sourcePaths.length > 0
@@ -1518,6 +1598,49 @@ function attemptEvidenceIdFromPath(pathname: string): string | null {
   } catch {
     return "";
   }
+}
+
+/**
+ * The only route of the read-only observer review detail projection:
+ * `/api/reviews/<reviewId>`. A malformed percent-encoding resolves to an
+ * empty id that fails the boundary gate in
+ * `observerReviewDetailProjection`, so every non-valid path fails closed
+ * with `invalid-review-id` and never reaches the review store reader.
+ */
+function reviewDetailIdFromPath(pathname: string): string | null {
+  const match = /^\/api\/reviews\/([^/]+)$/u.exec(pathname);
+  if (match === null) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return "";
+  }
+}
+
+/** Fail-closed HTTP status of one non-available review detail projection standing. */
+function observerReviewDetailFailureStatus(
+  standing: Exclude<ObserverReviewDetailProjectionStanding, "available">,
+): number {
+  if (standing === "invalid-review-id") return 400;
+  if (standing === "not-found") return 404;
+  return 503;
+}
+
+/**
+ * Fixed, data-free failure reason of one non-available review detail
+ * projection standing. No reader exception text, raw id, or retained path
+ * content ever reaches the response.
+ */
+function observerReviewDetailFailureReason(
+  standing: Exclude<ObserverReviewDetailProjectionStanding, "available">,
+): string {
+  if (standing === "invalid-review-id") {
+    return "review id must be a non-empty bounded id without control characters";
+  }
+  if (standing === "not-found") {
+    return "the review store retains no record with this review id";
+  }
+  return "the review store could not be read; no record is projected";
 }
 
 /** Fail-closed HTTP status of one non-available attempt evidence projection standing. */
