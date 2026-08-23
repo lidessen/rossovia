@@ -549,9 +549,16 @@ async function dispatchTaskCommand(
       1,
       new Set(["--worker", "--continue", "--max-steps", "--observer"]),
       new Set(),
-      new Set(["--enable-observer"]),
+      new Set(["--enable-observer", "--read-only"]),
     );
-    assertTaskOptions(parsed, new Set(["--worker", "--continue", "--max-steps", "--observer", "--enable-observer"]));
+    assertTaskOptions(parsed, new Set([
+      "--worker",
+      "--continue",
+      "--max-steps",
+      "--observer",
+      "--enable-observer",
+      "--read-only",
+    ]));
     const maxSteps = parsePositiveIntegerOption(parsed, "--max-steps");
     const observerEnabled = parsed.values.has("--enable-observer");
     const observerWorker = parsed.values.has("--observer")
@@ -576,6 +583,11 @@ async function dispatchTaskCommand(
           ? { continueFromAttemptId: taskOption(parsed, "--continue") }
           : {}),
         ...(maxSteps !== undefined ? { maxSteps } : {}),
+        // The explicit read-only entry: the accepted Run request carries
+        // `access: "read-only"`, its digest binds that access, the immutable
+        // CellInput lowers no write paths and no allowed commands, and no O3
+        // writer claim is acquired. The omitted default stays ordinary.
+        ...(parsed.values.has("--read-only") ? { readOnly: true } : {}),
       }, {
         controlBundle: adapter.controlBundle,
       });
