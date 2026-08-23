@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { incompleteProjectionCopy, orderWorkItemsForTaskEntry, parsePrincipalLocus, resolvePrincipalLocus, restoredPrincipalLocusState, taskEntryDefaultFilter, taskEntryLifecyclePriority, workItemUpdatedLabel } from "../ui/app.js";
+import { backlogTriageProjection, incompleteProjectionCopy, orderWorkItemsForTaskEntry, parsePrincipalLocus, resolvePrincipalLocus, restoredPrincipalLocusState, taskEntryDefaultFilter, taskEntryLifecyclePriority, workItemUpdatedLabel } from "../ui/app.js";
 
 describe("incomplete projection status copy", () => {
   test("explains an unbound cached runner and gives the recovery direction", () => {
@@ -644,5 +644,191 @@ describe("task entry first-screen projection", () => {
       // 显式 filter 已明确：初始化/入口的默认投影必须放行。
       expect(taskEntryDefaultFilter({ filterExplicit: true })).toBeNull();
     }
+  });
+});
+
+describe("backlog triage layered entry", () => {
+  const principalPending = {
+    id: "principal-task:11111111-1111-4111-8111-111111111111",
+    kind: "principal-task",
+    lifecycle: "open",
+    nextActor: "principal",
+    updatedAt: "2026-08-22T08:00:00Z",
+  };
+  const verifyingPrincipal = {
+    id: "principal-task:22222222-2222-4222-8222-222222222222",
+    kind: "principal-task",
+    lifecycle: "verifying",
+    nextActor: "principal",
+    updatedAt: "2026-08-22T08:01:00Z",
+  };
+  const agentEligible = {
+    id: "principal-task:33333333-3333-4333-8333-333333333333",
+    kind: "principal-task",
+    lifecycle: "open",
+    nextActor: "agent",
+    agentEligibility: {
+      standing: "eligible",
+      worktreePath: "/workspace/skills-wt",
+      sourceRefs: [],
+    },
+    updatedAt: "2026-08-22T08:02:00Z",
+  };
+  const orphanedMissing = {
+    id: "principal-task:44444444-4444-4444-8444-444444444444",
+    kind: "principal-task",
+    lifecycle: "open",
+    nextActor: "agent",
+    agentEligibility: {
+      standing: "orphaned",
+      reason: "missing-worktree",
+      worktreePath: "/workspace/gone-wt",
+      sourceRefs: [],
+    },
+    updatedAt: "2026-08-22T08:03:00Z",
+  };
+  const orphanedNoProject = {
+    id: "principal-task:55555555-5555-4555-8555-555555555555",
+    kind: "principal-task",
+    lifecycle: "open",
+    nextActor: "agent",
+    agentEligibility: {
+      standing: "orphaned",
+      reason: "no-project-binding",
+      worktreePath: null,
+      sourceRefs: [],
+    },
+    updatedAt: "2026-08-22T08:04:00Z",
+  };
+  const completed = {
+    id: "principal-task:66666666-6666-4666-8666-666666666666",
+    kind: "principal-task",
+    lifecycle: "settled",
+    nextActor: "none",
+    updatedAt: "2026-08-22T08:05:00Z",
+  };
+  const settledMission = {
+    id: "mission:registered:p:m-settled:/workspace/m.json",
+    kind: "mission",
+    lifecycle: "settled",
+    nextActor: "none",
+    updatedAt: "2026-08-22T08:06:00Z",
+  };
+  const runnerDecision = {
+    id: "attention:runner-interrupted:registered:p:mission-a",
+    kind: "decision",
+    lifecycle: "blocked",
+    nextActor: "principal",
+    runnerId: "runner-a",
+    attentionCode: "runner-interrupted",
+    evidence: { freshness: { kind: "live", observedAt: "2026-08-22T08:07:00Z" } },
+    updatedAt: "2026-08-22T08:07:00Z",
+  };
+  const liveAgentWork = {
+    id: "runner:runner-b",
+    kind: "agent-work",
+    lifecycle: "in-progress",
+    nextActor: "agent",
+    evidence: { freshness: { kind: "live", observedAt: "2026-08-22T08:08:00Z" } },
+    updatedAt: "2026-08-22T08:08:00Z",
+  };
+
+  test("healthy backlog: four layers show counts, next steps, and the available standing", () => {
+    const projection = backlogTriageProjection({
+      items: [
+        principalPending,
+        verifyingPrincipal,
+        agentEligible,
+        orphanedMissing,
+        orphanedNoProject,
+        completed,
+        settledMission,
+        runnerDecision,
+        liveAgentWork,
+      ],
+      sourceStanding: "complete",
+    });
+    expect(projection.standing).toBe("available");
+    expect(projection.sourceStanding).toBe("complete");
+    expect(projection.total).toBe(6);
+    expect(projection.layers.principalPending.count).toBe(2);
+    expect(projection.layers.agentTakeover.count).toBe(1);
+    expect(projection.layers.orphanedHistory.count).toBe(2);
+    expect(projection.layers.completed.count).toBe(1);
+    // 每层下一步复用既有视图入口，不建立第二套状态。
+    expect(projection.layers.principalPending.nextStep).toEqual({
+      label: "下一步：打开「待我处理」处理下一项",
+      view: "principal",
+    });
+    expect(projection.layers.agentTakeover.nextStep.view).toBe("agent-pending");
+    expect(projection.layers.orphanedHistory.nextStep.view).toBe("agent-orphaned");
+    expect(projection.layers.completed.nextStep.view).toBe("completed");
+    expect(projection.note).toContain("不提供删除任务操作");
+  });
+
+  test("zero-safe-cleanup: every layer reports 0 reclaim candidates with a traceable reason", () => {
+    const projection = backlogTriageProjection({
+      items: [principalPending, verifyingPrincipal, agentEligible, orphanedMissing, completed],
+      sourceStanding: "complete",
+    });
+    for (const key of ["principalPending", "agentTakeover", "orphanedHistory", "completed"]) {
+      const cleanup = projection.layers[key].cleanup;
+      expect(cleanup.candidates).toBe(0);
+      expect(cleanup.reason).toContain("0 个可安全清理候选");
+      expect(cleanup.reason).toContain("Workbench 不提供删除任务操作");
+    }
+    // 可行动分层：不可安全清理；失联/历史与已完成：无法确证安全清理，绝不表达可直接删除。
+    expect(projection.layers.principalPending.cleanup.standing).toBe("no");
+    expect(projection.layers.principalPending.cleanup.label).toBe("不可安全清理");
+    expect(projection.layers.agentTakeover.cleanup.standing).toBe("no");
+    expect(projection.layers.orphanedHistory.cleanup.standing).toBe("uncertain");
+    expect(projection.layers.orphanedHistory.cleanup.label).toBe("无法确证安全清理");
+    expect(projection.layers.completed.cleanup.standing).toBe("uncertain");
+    // 零候选的原因可追溯：来自 agentEligibility.reason（worktree 投影）而非猜测。
+    expect(projection.layers.orphanedHistory.cleanup.reason).toContain("missing-worktree");
+    expect(projection.layers.orphanedHistory.cleanup.reason).toContain("绑定 Worktree 已不在当前投影");
+    expect(projection.layers.orphanedHistory.cleanup.reason).not.toContain("可直接删除");
+  });
+
+  test("mixed responsibility: every item lands in exactly one layer with no leakage", () => {
+    const projection = backlogTriageProjection({
+      items: [
+        principalPending,
+        agentEligible,
+        orphanedNoProject,
+        completed,
+        settledMission,
+        runnerDecision,
+        liveAgentWork,
+      ],
+      sourceStanding: "complete",
+    });
+    expect(projection.total).toBe(4);
+    const layerCounts = [
+      projection.layers.principalPending.count,
+      projection.layers.agentTakeover.count,
+      projection.layers.orphanedHistory.count,
+      projection.layers.completed.count,
+    ];
+    expect(layerCounts.reduce((sum: number, count: number) => sum + count, 0)).toBe(projection.total);
+    expect(projection.layers.principalPending.count).toBe(1);
+    expect(projection.layers.agentTakeover.count).toBe(1);
+    expect(projection.layers.orphanedHistory.count).toBe(1);
+    expect(projection.layers.completed.count).toBe(1);
+    // 已结算 Mission、runner 决策与 live agent-work 都不进入分层（分层只覆盖 principal-task 待办）。
+    expect(projection.layers.completed.count).toBe(1);
+  });
+
+  test("fail-closed unknown: an unavailable task source never reads as a factual zero", () => {
+    const projection = backlogTriageProjection({
+      items: [principalPending, agentEligible],
+      sourceStanding: "partial",
+    });
+    expect(projection.standing).toBe("unavailable");
+    expect(projection.total).toBeNull();
+    expect(projection.layers.principalPending.count).toBeNull();
+    expect(projection.layers.agentTakeover.cleanup.candidates).toBeNull();
+    expect(projection.layers.agentTakeover.cleanup.standing).toBe("unavailable");
+    expect(projection.note).toContain("不冒充零");
   });
 });
