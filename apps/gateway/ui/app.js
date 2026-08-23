@@ -258,6 +258,22 @@ export function classifyWorkbenchAttention(items) {
  * projection is still readable while the recovery guidance stays in the
  * detail.
  */
+
+/**
+ * Only a live-probe-confirmed runner (live === true, mirrored by a live
+ * per-runner freshness) is a current controllable carrier. Cached status
+ * files, unreachable probes, and unverified reachability are retained
+ * records — history, not a current executor.
+ */
+function runnerIsCurrentCarrier(runner) {
+  if (runner === null || typeof runner !== "object") return false;
+  if (runner.live === true) return true;
+  const freshness = runner.freshness;
+  return freshness !== null
+    && typeof freshness === "object"
+    && freshness.kind === "live";
+}
+
 export function incompleteProjectionCopy(snapshot) {
   const attention = Array.isArray(snapshot?.attention) ? snapshot.attention : [];
   const codes = new Set(
@@ -272,19 +288,7 @@ export function incompleteProjectionCopy(snapshot) {
   const aggregateClaimsLive = snapshot?.freshness?.runners === "live";
   const hasUnboundRunner = codes.has("runner-unbound");
   const hasUnreachableRunner = codes.has("runner-unreachable");
-  // Only a live-probe-confirmed runner (live === true, mirrored by a live
-  // per-runner freshness) is a current controllable carrier. Cached status
-  // files, unreachable probes, and unverified reachability are retained
-  // records — history, not a current executor.
-  const runnerIsCurrent = (runner) => {
-    if (runner === null || typeof runner !== "object") return false;
-    if (runner.live === true) return true;
-    const freshness = runner.freshness;
-    return freshness !== null
-      && typeof freshness === "object"
-      && freshness.kind === "live";
-  };
-  const hasCurrentLiveRunner = runners.some(runnerIsCurrent);
+  const hasCurrentLiveRunner = runners.some(runnerIsCurrentCarrier);
   const unboundRunner = runners.find((runner) => {
     if (runner === null || typeof runner !== "object") return false;
     const binding = runner.binding;
@@ -332,7 +336,9 @@ export function incompleteProjectionCopy(snapshot) {
   const noCurrentCarrierCopy = {
     label: "实时 · 当前无控制载体",
     detail:
-      "运行投影不完整 · 当前没有可控制的运行载体；cached / 不可达 / 未绑定 记录均为历史缓存待处置，不代表当前执行；刷新投影，修正 Mission 绑定、恢复或处置 Runner 后再控制。",
+      "运行投影不完整 · 投影异常：cached / 不可达 / 未绑定 记录均为历史缓存待处置，不代表当前执行；"
+      + "载体状态：当前没有可控制的运行载体；"
+      + "刷新投影，修正 Mission 绑定、恢复或处置 Runner 后再控制。",
   };
 
   if (errors.length > 0) {
@@ -357,7 +363,7 @@ export function incompleteProjectionCopy(snapshot) {
   }
 
   if (hasUnboundRunner || unboundRunner !== undefined) {
-    if (unboundRunner !== undefined && runnerIsCurrent(unboundRunner)) {
+    if (unboundRunner !== undefined && runnerIsCurrentCarrier(unboundRunner)) {
       // An active Runner exists but is unbound: the exact binding-reason
       // guidance stays a current warning and the control gate stays closed.
       // The live-proven record never reads as 仅来自缓存.
@@ -438,6 +444,56 @@ export function conversationConnectionLabel(connection) {
 }
 
 /**
+ * The healthy no-carrier standing of the running-projection layer. Only a
+ * boot startup gate that is healthy (mode normal with startupStatus healthy)
+ * with a clean mechanical source observation, and a live projection whose
+ * runner records carry no live-probe evidence, may state 当前无运行中的
+ * Agent. Every missing, malformed, or contradicting fact fails closed to
+ * null: the caller keeps the existing running-carrier label instead of
+ * inventing a no-agent claim, and the projection anomaly branches (source
+ * errors / incomplete) are decided before this standing is considered.
+ */
+function noLiveCarrierStanding(snapshot) {
+  if (snapshot === null || typeof snapshot !== "object") return null;
+  if (snapshot.complete !== true && snapshot.isComplete !== true) return null;
+  const startupGate = snapshot.startup;
+  if (startupGate === null || typeof startupGate !== "object") return null;
+  if (
+    startupGate.mode !== "normal"
+    || startupGate.startupStatus !== "healthy"
+  ) {
+    return null;
+  }
+  const mechanical = startupGate.mechanical;
+  const source = mechanical !== null && typeof mechanical === "object"
+    ? mechanical.source
+    : null;
+  if (
+    source === null
+    || typeof source !== "object"
+    || source.dirty !== false
+  ) {
+    return null;
+  }
+  const freshness = snapshot.freshness;
+  if (
+    freshness !== null
+    && typeof freshness === "object"
+    && freshness.runners === "live"
+  ) {
+    // An aggregate live claim without a live-proven runner is a
+    // contradiction; never claim the absence of an Agent under it.
+    return null;
+  }
+  const runners = Array.isArray(snapshot.runners) ? snapshot.runners : [];
+  if (runners.some(runnerIsCurrentCarrier)) return null;
+  return {
+    label: "当前无运行中的 Agent · 可正常浏览与创建任务",
+    mark: "live",
+  };
+}
+
+/**
  * The masthead standing for the running-projection layer only. Snapshot
  * attention/errors/freshness and the conversation socket standing are the
  * only inputs; every live-state label names the 运行投影 layer explicitly,
@@ -483,6 +539,8 @@ export function projectionMastheadLabel(input) {
     ) {
       return { label: incompleteProjectionCopy(snapshot).label, mark: "warning" };
     }
+    const noLiveCarrier = noLiveCarrierStanding(snapshot);
+    if (noLiveCarrier !== null) return noLiveCarrier;
     return { label: "运行投影实时 · 已连接", mark: "live" };
   }
   if (source === "stale") return { label: "上次实时 · 已过期", mark: "error" };
