@@ -45,6 +45,17 @@ export const DEFAULT_WORKFLOW_OBSERVER_WORKER = "deepseek-flash" as const;
 export const OBSERVER_CONTEXT_MAX_BYTES = 32 * 1024;
 /** Version of the read-only attempt evidence projection served by the gateway endpoint. */
 export const OBSERVER_EVIDENCE_PROJECTION_VERSION = "rossovia.observer-evidence-projection.v1" as const;
+/** Version of the read-only observer review detail projection served by the gateway endpoint. */
+export const OBSERVER_REVIEW_DETAIL_PROJECTION_VERSION = "rossovia.observer-review-detail-projection.v1" as const;
+
+/**
+ * Hard upper bound on one review id accepted by the read-only review detail
+ * projection. Review ids are opaque record identifiers — never filesystem
+ * paths — but the boundary still rejects empty, oversized, or
+ * control-character ids before any store read, so a malformed query never
+ * reaches the review source reader.
+ */
+export const OBSERVER_REVIEW_ID_MAX_CHARS = 512 as const;
 
 /**
  * Hard upper bound on one same-Task continuation lineage replay inside the
@@ -1472,6 +1483,79 @@ export function observerAttemptCorrelationProjection(
   const correlation = evidence.attempt?.correlation;
   if (correlation === undefined) return { standing: "missing" };
   return { standing: "available", attemptId, correlation };
+}
+
+/**
+ * The fail-closed standing of one read-only observer review detail query.
+ * `available` is the only standing that carries a projection:
+ *
+ * - `invalid-review-id`: the query is not a bounded id without control
+ *   characters, so it is rejected at the boundary before any store read —
+ *   the id is never echoed back.
+ * - `not-found`: the readable append-only review store retains no record
+ *   with that review id.
+ * - `unavailable`: the review store could not be read at all (for example
+ *   an unresolvable home or an unreadable/malformed log); no reader
+ *   exception text is echoed, because it can carry retained path content.
+ */
+export type ObserverReviewDetailProjectionStanding =
+  | "available"
+  | "invalid-review-id"
+  | "not-found"
+  | "unavailable";
+
+export type ObserverReviewDetailProjectionOutcome =
+  | { readonly standing: "available"; readonly review: WorkflowReviewLogRecord }
+  | { readonly standing: Exclude<ObserverReviewDetailProjectionStanding, "available"> };
+
+/**
+ * One strictly read-only review detail query: re-reads the append-only
+ * workflow review store and returns the exact stored record — full
+ * reviewText, evidence refs, correlation-bound subject, and processing
+ * facts — for one review id. It performs no file writes, no command
+ * execution, no Task mutation, and no review-log append or review-state
+ * change. `available` carries the exact stored record; every other standing
+ * fails closed with no projection and no echoed id, path, or raw payload.
+ * This is the on-demand full-text owner behind the compact first screen,
+ * which defers every review's full reviewText to this same authoritative
+ * append-only source.
+ */
+export function observerReviewDetailProjection(
+  homeArgument: string | undefined,
+  reviewId: string,
+): ObserverReviewDetailProjectionOutcome {
+  if (!isReviewIdBoundaryValid(reviewId)) {
+    return { standing: "invalid-review-id" };
+  }
+  let home: string;
+  try {
+    home = resolveHome(homeArgument);
+  } catch {
+    return { standing: "unavailable" };
+  }
+  let reviews: WorkflowReviewLogRecord[];
+  try {
+    reviews = readWorkflowReviews(home);
+  } catch {
+    // Fail closed without echoing exception text, which can carry retained
+    // path content.
+    return { standing: "unavailable" };
+  }
+  const review = reviews.find((candidate) => candidate.reviewId === reviewId);
+  if (review === undefined) return { standing: "not-found" };
+  return { standing: "available", review };
+}
+
+/**
+ * Boundary validation of one review id before any store read: non-empty,
+ * within the bounded length, and free of control characters. The id is an
+ * opaque record identifier compared only against parsed records — it never
+ * names a file — but the boundary still fails closed before the reader.
+ */
+function isReviewIdBoundaryValid(reviewId: string): boolean {
+  return reviewId.length > 0
+    && reviewId.length <= OBSERVER_REVIEW_ID_MAX_CHARS
+    && !/[\u0000-\u001f\u007f]/u.test(reviewId);
 }
 
 const OBSERVER_CONTEXT_LIST_LIMIT = 64;
