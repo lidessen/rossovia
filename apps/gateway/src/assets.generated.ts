@@ -130,6 +130,10 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <span>待 Agent 接手</span>
             <strong id="agent-pending-task-count">—</strong>
           </button>
+          <button class="view-button" type="button" data-view="agent-orphaned">
+            <span>待 Agent · 失联现场</span>
+            <strong id="agent-orphaned-task-count">—</strong>
+          </button>
         </nav>
 
         <section class="rail-section principal-position">
@@ -354,6 +358,10 @@ export const UI_ASSETS: Readonly<Record<string, string>> = {
             <button class="task-filter" type="button" data-task-filter="agent-pending">
               <span>待 Agent 接手</span>
               <strong id="task-filter-agent-pending-count">—</strong>
+            </button>
+            <button class="task-filter" type="button" data-task-filter="agent-orphaned">
+              <span>失联现场</span>
+              <strong id="task-filter-agent-orphaned-count">—</strong>
             </button>
             <button class="task-filter" type="button" data-task-filter="independent">独立</button>
             <button class="task-filter" type="button" data-task-filter="verification">待验证</button>
@@ -9233,6 +9241,7 @@ const principalLocusViews = new Set([
   "principal",
   "agent",
   "agent-pending",
+  "agent-orphaned",
   "projects",
   "project",
   "independent",
@@ -9245,6 +9254,7 @@ const principalLocusFilters = new Set([
   "principal",
   "agent",
   "agent-pending",
+  "agent-orphaned",
   "independent",
   "verification",
   "completed",
@@ -9705,8 +9715,34 @@ export function isExactLiveAgentWork(item) {
     && item?.evidence?.freshness?.kind === "live";
 }
 
+/**
+ * Agent-eligible triage predicates, derived only from the structured facts
+ * the projection already carries (lifecycle, nextActor, kind, and the
+ * explainable agentEligibility standing the Workbench projects for open
+ * Agent-owned Tasks). Only an eligible Task — lifecycle=open, nextActor=agent,
+ * and a currently observed bound Worktree — awaits Agent takeover
+ * ("待 Agent 接手"). An open Agent-owned Task whose Worktree is missing or
+ * whose binding is absent projects agentEligibility.standing="orphaned" and
+ * is presented separately as orphaned/history with its locating and evidence
+ * entries retained; verifying / principal-owned / settled Tasks are never
+ * included in either partition.
+ */
+export function isAgentEligibleWorkItem(item) {
+  return item?.kind === "principal-task"
+    && item?.lifecycle === "open"
+    && item?.nextActor === "agent"
+    && item?.agentEligibility?.standing === "eligible";
+}
+
+export function isOrphanedAgentWorkItem(item) {
+  return item?.kind === "principal-task"
+    && item?.lifecycle === "open"
+    && item?.nextActor === "agent"
+    && item?.agentEligibility?.standing === "orphaned";
+}
+
 export function isPendingAgentWork(item) {
-  return item?.nextActor === "agent" && !isExactLiveAgentWork(item);
+  return isAgentEligibleWorkItem(item) && !isExactLiveAgentWork(item);
 }
 
 export function classifyAgentResponsibility(items) {
@@ -12030,13 +12066,46 @@ export function taskEntryDefaultFilter(input) {
       first(binding, ["reason"]) || first(detail, ["reason"]) || first(item, ["reason"]),
       "",
     );
-    if (item?.kind !== "observation" && item?.anomalyDetail === undefined) return "";
+    // Explainable agent-eligible triage: an orphaned open Agent-owned Task
+    // (missing Worktree / no binding) shows its exact reason and retained
+    // path on the row and in the peek, while remaining fully locatable with
+    // its detail and evidence entries intact.
+    const eligibility = first(item, ["agentEligibility"]);
+    const eligibilityContext =
+      eligibility !== null
+      && eligibility !== undefined
+      && eligibility.standing === "orphaned"
+        ? agentEligibilityContextCopy(eligibility)
+        : "";
+    if (item?.kind !== "observation" && item?.anomalyDetail === undefined) {
+      return eligibilityContext;
+    }
     return [
       runnerId ? \`Runner \${runnerId}\` : "Runner 身份未投影",
       bindingStanding ? \`绑定 \${bindingStanding}\` : "绑定状态未知",
       standing ? \`状态 \${standing}\` : "状态未知",
       reason,
+      eligibilityContext,
     ].filter(Boolean).join(" · ");
+  }
+
+  /**
+   * One orphaned open Agent-owned Task's explainable context line: the
+   * missing/absent binding reason plus the retained Worktree path when one
+   * was declared. It never invents a live executor and never hides the Task
+   * from locating or detail routes.
+   */
+  function agentEligibilityContextCopy(eligibility) {
+    const reason = text(first(eligibility, ["reason"]), "");
+    const path = first(eligibility, ["worktreePath"]);
+    const label = {
+      "missing-worktree": "Agent 接手不可用 · 绑定 Worktree 缺失",
+      "no-worktree-binding": "Agent 接手不可用 · 未声明 Worktree 绑定",
+      "no-project-binding": "Agent 接手不可用 · 无项目绑定",
+    }[reason] || "Agent 接手不可用 · 原因未识别";
+    return typeof path === "string" && path !== ""
+      ? label + " · " + path
+      : label;
   }
 
   function projectWorkSummary(project, index) {
@@ -12514,6 +12583,7 @@ export function taskEntryDefaultFilter(input) {
     if (view === "principal") return isPrincipalNeedsYouWorkItem(item);
     if (view === "agent") return isExactLiveAgentWork(item);
     if (view === "agent-pending") return isPendingAgentWork(item);
+    if (view === "agent-orphaned") return isOrphanedAgentWorkItem(item);
     if (view === "independent") return isIndependentWorkbenchTask(item);
     if (view === "completed") return item.lifecycle === "settled";
     if (view === "tasks") {
@@ -12521,6 +12591,9 @@ export function taskEntryDefaultFilter(input) {
       if (state.taskFilter === "agent") return isExactLiveAgentWork(item);
       if (state.taskFilter === "agent-pending") {
         return isPendingAgentWork(item);
+      }
+      if (state.taskFilter === "agent-orphaned") {
+        return isOrphanedAgentWorkItem(item);
       }
       if (state.taskFilter === "independent") {
         return isIndependentWorkbenchTask(item);
@@ -12682,6 +12755,7 @@ export function taskEntryDefaultFilter(input) {
       principal: items.filter(isPrincipalNeedsYouWorkItem).length,
       agent: agentResponsibility.live.length,
       agentPending: agentResponsibility.pending.length,
+      agentOrphaned: items.filter(isOrphanedAgentWorkItem).length,
       independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
@@ -12694,8 +12768,10 @@ export function taskEntryDefaultFilter(input) {
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
     $("#agent-pending-task-count").textContent = String(counts.agentPending);
+    $("#agent-orphaned-task-count").textContent = String(counts.agentOrphaned);
     $("#task-filter-agent-count").textContent = String(counts.agent);
     $("#task-filter-agent-pending-count").textContent = String(counts.agentPending);
+    $("#task-filter-agent-orphaned-count").textContent = String(counts.agentOrphaned);
     const independentCapability = taskSourceCapability();
     $("#independent-task-count").textContent =
       first(independentCapability, ["standing"]) !== "available"
@@ -12722,7 +12798,7 @@ export function taskEntryDefaultFilter(input) {
         : mobileView === "overview"
           ? state.activeView === "overview"
           : mobileView === "tasks"
-            ? ["tasks", "principal", "agent", "agent-pending", "independent", "completed"].includes(state.activeView)
+            ? ["tasks", "principal", "agent", "agent-pending", "agent-orphaned", "independent", "completed"].includes(state.activeView)
             : state.activeView === "projects" || state.activeView === "project";
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-current", active ? "page" : "false");
@@ -12970,6 +13046,7 @@ export function taskEntryDefaultFilter(input) {
       principal: ["Needs you", "待我处理", "显示完整的待我处理队列；列表只用于定位，决策证据在详情中查看。"],
       agent: ["Agent live", "Agent 运行中", "只显示有实时载体证据的当前 Agent 运行。"],
       "agent-pending": ["Agent queue", "待 Agent 接手", "只显示下一责任方为 Agent、但尚无精确实时执行证据的事项。"],
+      "agent-orphaned": ["Orphaned agent queue", "待 Agent · 失联现场", "只显示 open 且下一责任方为 Agent、但绑定 Worktree 缺失或未声明的历史事项；定位与证据入口保留，不进入待 Agent 接手。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
       tasks: ["Tasks", "任务", "按筛选定位全量任务；状态、责任方和来源先行，长证据在详情中查看。"],

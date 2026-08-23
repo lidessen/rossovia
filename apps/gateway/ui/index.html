@@ -127,6 +127,10 @@
             <span>待 Agent 接手</span>
             <strong id="agent-pending-task-count">—</strong>
           </button>
+          <button class="view-button" type="button" data-view="agent-orphaned">
+            <span>待 Agent · 失联现场</span>
+            <strong id="agent-orphaned-task-count">—</strong>
+          </button>
         </nav>
 
         <section class="rail-section principal-position">
@@ -351,6 +355,10 @@
             <button class="task-filter" type="button" data-task-filter="agent-pending">
               <span>待 Agent 接手</span>
               <strong id="task-filter-agent-pending-count">—</strong>
+            </button>
+            <button class="task-filter" type="button" data-task-filter="agent-orphaned">
+              <span>失联现场</span>
+              <strong id="task-filter-agent-orphaned-count">—</strong>
             </button>
             <button class="task-filter" type="button" data-task-filter="independent">独立</button>
             <button class="task-filter" type="button" data-task-filter="verification">待验证</button>

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildWorkItemProjection,
   taskAttemptsSourceRef,
+  type AgentEligibilityReason,
+  type WorkItemSetProjection,
 } from "../src/ui/work-items";
 import {
   workbenchTaskCorrectionGuidanceRefs,
@@ -9,6 +11,7 @@ import {
   workbenchTaskExecutionContextRef,
   type WorkbenchTaskExecutionContextRef,
 } from "../src/ui/task-execution-context";
+import type { PrincipalTask } from "../src/contracts";
 
 const executionAuthorizationId = "11111111-1111-4111-8111-111111111111";
 const executionProposalDigest = "a".repeat(64);
@@ -2757,5 +2760,312 @@ describe("Workbench overview raw source-error projection", () => {
     expect(rawError.normalized).toBe(
       "该错误没有可识别的规范模式；投影保留原文，不推断阶段语义。",
     );
+  });
+});
+
+describe("Workbench agent-eligible triage projection", () => {
+  const triageSnapshot = {
+    generatedAt: "2026-08-23T10:00:00Z",
+    complete: true,
+    projects: [{
+      projectKey: "registered:skills",
+      identity: { id: "skills", aliases: ["skills"] },
+      worktrees: [
+        { path: "/workspace/skills" },
+        { path: "/workspace/skills-ui" },
+      ],
+      missions: [],
+    }],
+    runners: [],
+    attention: [],
+    errors: [],
+  };
+
+  type TriageBinding =
+    | { kind: "independent" }
+    | {
+      kind: "project-context";
+      projectId: string;
+      worktreePath?: string;
+      missionId?: string;
+    };
+
+  function triageTask(
+    id: string,
+    binding: TriageBinding,
+    lifecycle: PrincipalTask["lifecycle"] = "open",
+    nextActor: PrincipalTask["nextActor"] = "agent",
+  ): PrincipalTask {
+    return {
+      id,
+      title: `Triage ${id}`,
+      objective: "Partition open Agent Tasks by observed Worktree binding",
+      acceptance: ["The triage stays explainable"],
+      todos: [],
+      capabilitiesRequired: [],
+      origin: {
+        kind: "principal-explicit",
+        sourceRef: `conversation:${id}`,
+      },
+      binding,
+      lifecycle,
+      nextActor,
+      revision: 1,
+      corrections: [],
+      executionLinks: [],
+      resultClaims: [],
+      createdAt: "2026-08-23T08:00:00Z",
+      updatedAt: "2026-08-23T09:00:00Z",
+    };
+  }
+
+  function projectFor(
+    tasks: PrincipalTask[],
+    worktrees = triageSnapshot.projects[0]!.worktrees,
+  ): WorkItemSetProjection {
+    return buildWorkItemProjection({
+      ...triageSnapshot,
+      projects: [{
+        ...triageSnapshot.projects[0],
+        worktrees,
+      }],
+    } as never, {
+      standing: "available" as const,
+      sourceRef: "/home/state/tasks.json",
+      source: {
+        version: "rosso.principal-tasks.v1" as const,
+        sourceRevision: tasks.length,
+        tasks,
+      },
+    });
+  }
+
+  test("projects eligible only for an open Agent Task whose bound Worktree is currently observed", () => {
+    const task = triageTask("task-eligible", {
+      kind: "project-context" as const,
+      projectId: "skills",
+      worktreePath: "/workspace/skills-ui",
+      missionId: "agent-run",
+    });
+    const projection = projectFor([task]);
+    const item = projection.items.find(
+      (candidate) => candidate.id === "principal-task:task-eligible",
+    )!;
+
+    expect(item.agentEligibility).toEqual({
+      standing: "eligible",
+      worktreePath: "/workspace/skills-ui",
+      sourceRefs: [
+        "/home/state/tasks.json",
+        "conversation:task-eligible",
+        "worktree:/workspace/skills-ui",
+      ],
+    });
+    expect(item.taskDetail?.worktreeStanding).toBe("observed");
+    expect(projection.capabilities.agentEligibility).toEqual({
+      standing: "available",
+      eligibleCount: 1,
+      orphanedCount: 0,
+      sourceRef: "/home/state/tasks.json",
+    });
+  });
+
+  test("projects orphaned missing-worktree when the bound Worktree is no longer observed, retaining path and refs", () => {
+    const task = triageTask("task-missing", {
+      kind: "project-context" as const,
+      projectId: "skills",
+      worktreePath: "/workspace/skills-gone",
+      missionId: "agent-run",
+    });
+    const projection = projectFor([task]);
+    const item = projection.items.find(
+      (candidate) => candidate.id === "principal-task:task-missing",
+    )!;
+
+    expect(item.agentEligibility).toEqual({
+      standing: "orphaned",
+      reason: "missing-worktree",
+      worktreePath: "/workspace/skills-gone",
+      sourceRefs: [
+        "/home/state/tasks.json",
+        "conversation:task-missing",
+        "worktree:/workspace/skills-gone",
+      ],
+    });
+    // The Task stays fully locatable with its expected-context detail and
+    // evidence refs: only the Agent-takeover partition changes.
+    expect(item.worktreeContext).toMatchObject({
+      path: "/workspace/skills-gone",
+      standing: "unavailable",
+    });
+    expect(item.evidence.sourceRefs).toContain("worktree:/workspace/skills-gone");
+    expect(item.taskDetail?.worktreeStanding).toBe("unavailable");
+  });
+
+  test("projects orphaned no-worktree-binding for project context without a Worktree declaration", () => {
+    const task = triageTask("task-no-worktree", {
+      kind: "project-context" as const,
+      projectId: "skills",
+      missionId: "agent-run",
+    });
+    const projection = projectFor([task]);
+    const item = projection.items.find(
+      (candidate) => candidate.id === "principal-task:task-no-worktree",
+    )!;
+
+    expect(item.agentEligibility).toEqual({
+      standing: "orphaned",
+      reason: "no-worktree-binding",
+      worktreePath: null,
+      sourceRefs: [
+        "/home/state/tasks.json",
+        "conversation:task-no-worktree",
+      ],
+    });
+  });
+
+  test("projects orphaned no-project-binding for an independent Task", () => {
+    const task = triageTask("task-independent", { kind: "independent" as const });
+    const projection = projectFor([task]);
+    const item = projection.items.find(
+      (candidate) => candidate.id === "principal-task:task-independent",
+    )!;
+
+    expect(item.agentEligibility).toEqual({
+      standing: "orphaned",
+      reason: "no-project-binding",
+      worktreePath: null,
+      sourceRefs: [
+        "/home/state/tasks.json",
+        "conversation:task-independent",
+      ],
+    });
+  });
+
+  test("carries no agentEligibility for verifying, principal-owned, or settled Tasks", () => {
+    const verifying = triageTask(
+      "task-verifying",
+      {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-ui",
+      },
+      "verifying",
+      "principal",
+    );
+    const settled = triageTask(
+      "task-settled",
+      { kind: "independent" as const },
+      "settled",
+      "none",
+    );
+    const projection = projectFor([verifying, settled]);
+    const verifyingItem = projection.items.find(
+      (candidate) => candidate.id === "principal-task:task-verifying",
+    )!;
+    const settledItem = projection.items.find(
+      (candidate) => candidate.id === "principal-task:task-settled",
+    )!;
+
+    expect(verifyingItem.agentEligibility).toBeUndefined();
+    expect(settledItem.agentEligibility).toBeUndefined();
+    // Their detail semantics are unchanged.
+    expect(verifyingItem.taskDetail?.worktreeStanding).toBe("observed");
+    expect(settledItem.lifecycle).toBe("settled");
+  });
+
+  test("counts 109 open Agent Tasks as 57 eligible and 52 orphaned with the exact partition", () => {
+    const tasks: PrincipalTask[] = [];
+    // 57 eligible: bound to one of the two currently observed Worktrees.
+    for (let index = 0; index < 57; index += 1) {
+      tasks.push(triageTask(`task-eligible-${index}`, {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: index % 2 === 0
+          ? "/workspace/skills"
+          : "/workspace/skills-ui",
+        missionId: "agent-run",
+      }));
+    }
+    // 22 orphaned with a missing Worktree (declared path no longer observed).
+    for (let index = 0; index < 22; index += 1) {
+      tasks.push(triageTask(`task-missing-${index}`, {
+        kind: "project-context" as const,
+        projectId: "skills",
+        worktreePath: "/workspace/skills-gone",
+        missionId: "agent-run",
+      }));
+    }
+    // 20 orphaned with project context but no Worktree binding.
+    for (let index = 0; index < 20; index += 1) {
+      tasks.push(triageTask(`task-no-worktree-${index}`, {
+        kind: "project-context" as const,
+        projectId: "skills",
+        missionId: "agent-run",
+      }));
+    }
+    // 10 orphaned with no project binding (independent).
+    for (let index = 0; index < 10; index += 1) {
+      tasks.push(triageTask(`task-independent-${index}`, {
+        kind: "independent" as const,
+      }));
+    }
+    expect(tasks).toHaveLength(109);
+
+    const projection = projectFor(tasks);
+    const items = projection.items.filter(
+      (item) => item.kind === "principal-task",
+    );
+    expect(items).toHaveLength(109);
+    expect(projection.capabilities.agentEligibility).toEqual({
+      standing: "available",
+      eligibleCount: 57,
+      orphanedCount: 52,
+      sourceRef: "/home/state/tasks.json",
+    });
+    // The capability shape keeps nullable counts until the source standing is
+    // confirmed; narrow them explicitly for the exact partition sum.
+    const agentEligibility = projection.capabilities.agentEligibility;
+    expect(agentEligibility.standing).toBe("available");
+    expect((agentEligibility.eligibleCount ?? 0)
+      + (agentEligibility.orphanedCount ?? 0)).toBe(109);
+    const eligible = items.filter(
+      (item) => item.agentEligibility?.standing === "eligible",
+    );
+    const orphaned = items.filter(
+      (item) => item.agentEligibility?.standing === "orphaned",
+    );
+    expect(eligible).toHaveLength(57);
+    expect(orphaned).toHaveLength(52);
+    // Every orphaned item keeps its explainable reason, and every eligible
+    // item keeps its observed Worktree path. The literal reason list is typed
+    // against the projection's own AgentEligibilityReason union, so an
+    // unexpected standing is an explicit test failure, never a silent string.
+    const orphanedReasons: AgentEligibilityReason[] = orphaned.map((item) => {
+      const triage = item.agentEligibility;
+      if (triage === undefined || triage.standing !== "orphaned") {
+        throw new Error(`unexpected agentEligibility standing for ${item.id}`);
+      }
+      return triage.reason;
+    });
+    expect(orphanedReasons).toEqual([
+      ...Array.from({ length: 22 }, () => "missing-worktree" as const),
+      ...Array.from({ length: 20 }, () => "no-worktree-binding" as const),
+      ...Array.from({ length: 10 }, () => "no-project-binding" as const),
+    ] satisfies AgentEligibilityReason[]);
+    expect(eligible.every((item) =>
+      item.agentEligibility!.standing === "eligible"
+      && typeof item.agentEligibility!.worktreePath === "string"
+    )).toBeTrue();
+  });
+
+  test("an unavailable Task source reports null triage counts instead of a factual zero", () => {
+    const projection = buildWorkItemProjection(triageSnapshot as never);
+    expect(projection.capabilities.agentEligibility).toEqual({
+      standing: "unavailable",
+      eligibleCount: null,
+      orphanedCount: null,
+      sourceRef: "unavailable",
+    });
   });
 });

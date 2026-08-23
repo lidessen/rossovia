@@ -129,6 +129,40 @@ export interface ResultReviewProjection {
   readonly freshness: ResultReviewFreshness;
 }
 
+export type AgentEligibilityReason =
+  | "missing-worktree"
+  | "no-worktree-binding"
+  | "no-project-binding";
+
+/**
+ * Explainable agent-eligible triage for one open Agent-owned principal Task
+ * (lifecycle=open and nextActor=agent). It is projected only for exactly
+ * those Tasks; every other Task (verifying / principal-owned / settled /
+ * system-owned) carries no agentEligibility field and keeps its existing
+ * detail semantics unchanged.
+ *
+ * - `eligible`: the Task declares a Worktree binding and that Worktree is
+ *   present in the current observed Worktree inventory of its registered
+ *   project. Only these Tasks enter the "待 Agent 接手" queue.
+ * - `orphaned`: the Task declares no project binding (independent), no
+ *   Worktree binding, or a Worktree that is no longer observed. These stay
+ *   fully locatable and detailed (same item, same detail route, same
+ *   evidence refs) but are presented separately as orphaned/history instead
+ *   of awaiting Agent takeover.
+ */
+export type AgentEligibilityProjection =
+  | {
+    readonly standing: "eligible";
+    readonly worktreePath: string;
+    readonly sourceRefs: readonly string[];
+  }
+  | {
+    readonly standing: "orphaned";
+    readonly reason: AgentEligibilityReason;
+    readonly worktreePath: string | null;
+    readonly sourceRefs: readonly string[];
+  };
+
 export interface WorkItemProjection {
   readonly id: string;
   readonly kind:
@@ -196,6 +230,15 @@ export interface WorkItemProjection {
     readonly standing?: "observed" | "unavailable";
     readonly reason?: string;
   };
+  /**
+   * Explainable agent-eligible triage, present only for an open Agent-owned
+   * principal Task. `eligible` means the Task's bound Worktree is currently
+   * observed; `orphaned` means the Worktree is missing or no binding exists
+   * (see AgentEligibilityProjection). Absence means not-applicable: the
+   * Task's lifecycle/nextActor already excludes Agent takeover, and its
+   * verifying / settled / principal semantics are unchanged.
+   */
+  readonly agentEligibility?: AgentEligibilityProjection;
   readonly evidence: {
     readonly freshness:
       | {
@@ -406,6 +449,20 @@ export interface WorkItemSetProjection {
       readonly count: number | null;
       readonly sourceRevision: number | null;
       readonly reason?: string;
+    };
+    /**
+     * The open Agent-owned principal Task partition: eligible (bound
+     * Worktree currently observed, the only Tasks awaiting Agent takeover)
+     * vs orphaned (missing Worktree / no binding, displayed as history with
+     * locating and detail entries retained). With an unavailable Task source
+     * the counts are null and the standing is "unavailable", so a missing
+     * source never reads as a factual zero.
+     */
+    readonly agentEligibility: {
+      readonly standing: "available" | "unavailable";
+      readonly eligibleCount: number | null;
+      readonly orphanedCount: number | null;
+      readonly sourceRef: string;
     };
   };
 }
@@ -2026,6 +2083,12 @@ function principalTaskWorkItems(
       && project.worktrees.some(
         (worktree) => worktree.path === expectedWorktreePath,
       );
+    const agentEligibility = agentEligibilityFor(
+      task,
+      worktreeObserved,
+      expectedWorktreePath,
+      observation.sourceRef,
+    );
     const worktreeReason = expectedWorktreePath === undefined || worktreeObserved
       ? undefined
       : project === undefined
@@ -2202,6 +2265,16 @@ function principalTaskWorkItems(
     const sourceRefs = [
       observation.sourceRef,
       task.origin.sourceRef,
+      // The orphaned missing-worktree locator is preserved on the item's own
+      // evidence refs: only an open Agent-owned Task whose declared Worktree
+      // is no longer observed adds `worktree:<path>` here, so locating and
+      // evidence entry survive while eligible Tasks and every other Task
+      // keep the existing ref list unchanged.
+      ...(agentEligibility?.standing === "orphaned"
+        && agentEligibility.reason === "missing-worktree"
+        && expectedWorktreePath !== undefined
+        ? [`worktree:${expectedWorktreePath}`]
+        : []),
       ...task.corrections.map((correction) => correction.sourceRef),
       ...(task.worktreeRebindings ?? []).map((rebinding) => rebinding.sourceRef),
       ...task.executionLinks.flatMap((link) => [
@@ -2267,6 +2340,7 @@ function principalTaskWorkItems(
           },
         }
         : {}),
+      ...(agentEligibility === undefined ? {} : { agentEligibility }),
       evidence: {
         freshness: expectedWorktreePath !== undefined && !worktreeObserved
           ? {
@@ -2365,6 +2439,61 @@ function principalTaskWorkItems(
         : {}),
     };
   });
+}
+
+/**
+ * The explainable agent-eligible triage of one principal Task. Only an open
+ * Agent-owned Task participates: its bound Worktree must currently exist in
+ * the observed Worktree inventory to be `eligible`; a missing Worktree or a
+ * Task without a project/Worktree binding is `orphaned` (reason and the
+ * retained path/refs stay visible so locating and evidence entry survive).
+ * Every other Task (verifying / principal / settled / …) projects no field:
+ * its existing semantics are unchanged.
+ */
+function agentEligibilityFor(
+  task: PrincipalTask,
+  worktreeObserved: boolean,
+  expectedWorktreePath: string | undefined,
+  taskSourceRef: string,
+): AgentEligibilityProjection | undefined {
+  if (task.lifecycle !== "open" || task.nextActor !== "agent") return undefined;
+  if (task.binding.kind === "independent") {
+    return {
+      standing: "orphaned",
+      reason: "no-project-binding",
+      worktreePath: null,
+      sourceRefs: [taskSourceRef, task.origin.sourceRef],
+    };
+  }
+  if (expectedWorktreePath === undefined) {
+    return {
+      standing: "orphaned",
+      reason: "no-worktree-binding",
+      worktreePath: null,
+      sourceRefs: [taskSourceRef, task.origin.sourceRef],
+    };
+  }
+  if (!worktreeObserved) {
+    return {
+      standing: "orphaned",
+      reason: "missing-worktree",
+      worktreePath: expectedWorktreePath,
+      sourceRefs: [
+        taskSourceRef,
+        task.origin.sourceRef,
+        `worktree:${expectedWorktreePath}`,
+      ],
+    };
+  }
+  return {
+    standing: "eligible",
+    worktreePath: expectedWorktreePath,
+    sourceRefs: [
+      taskSourceRef,
+      task.origin.sourceRef,
+      `worktree:${expectedWorktreePath}`,
+    ],
+  };
 }
 
 function taskExecutionAnchorSeed(
@@ -2847,6 +2976,15 @@ export function buildWorkItemProjection(
       ? delta
       : (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "");
   });
+  const principalTaskItems = items.filter(
+    (item) => item.kind === "principal-task",
+  );
+  const eligibleCount = principalTaskItems.filter(
+    (item) => item.agentEligibility?.standing === "eligible",
+  ).length;
+  const orphanedCount = principalTaskItems.filter(
+    (item) => item.agentEligibility?.standing === "orphaned",
+  ).length;
   return {
     items,
     capabilities: {
@@ -2863,6 +3001,19 @@ export function buildWorkItemProjection(
           count: null,
           sourceRevision: null,
           reason: taskSource.reason,
+        },
+      agentEligibility: taskSource.standing === "available"
+        ? {
+          standing: "available",
+          eligibleCount,
+          orphanedCount,
+          sourceRef: taskSource.sourceRef,
+        }
+        : {
+          standing: "unavailable",
+          eligibleCount: null,
+          orphanedCount: null,
+          sourceRef: taskSource.sourceRef,
         },
     },
   };
