@@ -101,6 +101,13 @@ export interface TaskRunArguments {
   continueFromAttemptId?: string;
   /** Optional explicit positive per-run step cap, lowered into the CellInput budget. */
   maxSteps?: number;
+  /**
+   * Explicit read-only entry: the Run request carries `access: "read-only"`,
+   * the request digest binds that access, the immutable CellInput lowers no
+   * write paths and no allowed commands, and the O2 owner never acquires an
+   * O3 writer claim. The omitted default stays the ordinary effectful run.
+   */
+  readOnly?: boolean;
 }
 
 interface TaskRunDependencies {
@@ -728,6 +735,7 @@ export async function runPrincipalTask(
     worktree,
     ...(continuation === undefined ? {} : { continuation }),
     ...(arguments_.maxSteps === undefined ? {} : { maxSteps: arguments_.maxSteps }),
+    ...(arguments_.readOnly ? { access: "read-only" } : {}),
   };
   const parentCellTools = (() => {
     if (dependencies.controlBundle === undefined) return undefined;
@@ -785,7 +793,13 @@ export async function runPrincipalTask(
         verifyCleanStatus(worktree);
       }
     },
-    lowerCellInput: () => buildTaskCellInput(task, worktree, card.id, card, request.requestId, request.maxSteps),
+    // The explicit read-only entry lowers the immutable CellInput through the
+    // shared read-only workspace policy (no write paths, no allowed commands)
+    // before the O2 owner validates it and skips O3 acquisition; the ordinary
+    // default keeps the effectful workspace lowering unchanged.
+    lowerCellInput: () => arguments_.readOnly
+      ? buildReadOnlyTaskCellInput(task, worktree, card.id, card, request.requestId, request.maxSteps)
+      : buildTaskCellInput(task, worktree, card.id, card, request.requestId, request.maxSteps),
     execute: async (cellInput, options) => {
       const executor = dependencies.executeTaskCell ?? defaultTaskCellExecutor;
       return executor({
@@ -1240,6 +1254,36 @@ export function buildTaskCellInput(
 }
 
 /**
+ * The explicit read-only ordinary lowering of one accepted Task snapshot:
+ * everything the ordinary lowering retains — exact worker identity and
+ * execution profile, objective, corrections, acceptance, todos, capabilities,
+ * capabilitiesRequired, the exact Worktree root with whole-Worktree reads,
+ * and the emergency duration envelope — but with no write paths and no
+ * allowed commands. The O2 owner skips O3 acquisition for the read-only Run
+ * and its shared lowering validation refuses any read-only CellInput that
+ * carries write or command authority before it is persisted or executed.
+ */
+export function buildReadOnlyTaskCellInput(
+  task: ReturnType<typeof showPrincipalTask>["task"],
+  worktree: string,
+  workerId: string,
+  worker: WorkerCard,
+  attemptId: string,
+  maxSteps?: number,
+): CellInput {
+  const cellInput = taskCellInputObject(
+    task,
+    worktree,
+    workerId,
+    worker,
+    attemptId,
+    maxSteps,
+    "read-only",
+  );
+  return workCellContracts().CellInputSchema.parse(cellInput) as CellInput;
+}
+
+/**
  * Lower one read-only sub_worker child Run into an immutable CellInput. The
  * child reuses the parent Task identity and revisions/worktree, but runs with
  * the model-selected worker card's execution profile, the complete receiver
@@ -1292,6 +1336,7 @@ function taskCellInputObject(
   worker: WorkerCard,
   attemptId: string,
   maxSteps?: number,
+  access: "ordinary" | "read-only" = "ordinary",
 ): Record<string, unknown> {
   return {
     id: `workbench-task-${task.id}-attempt-${attemptId}`,
@@ -1301,9 +1346,12 @@ function taskCellInputObject(
     workspace: {
       root: worktree,
       readPaths: ["."],
-      writePaths: ["."],
+      // The explicit read-only lowering carries no write paths and no
+      // allowed commands; the ordinary default keeps the effectful
+      // workspace policy unchanged.
+      writePaths: access === "read-only" ? [] : ["."],
       excludePaths: ordinaryOpenCodeExcludes(worktree),
-      allowedCommands: [...ORDINARY_TASK_ALLOWED_COMMANDS],
+      allowedCommands: access === "read-only" ? [] : [...ORDINARY_TASK_ALLOWED_COMMANDS],
     },
     instructions: [
       "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
