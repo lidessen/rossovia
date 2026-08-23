@@ -481,6 +481,10 @@
             </div>
             <p>选择只改变查看现场；不自动建立 Mission 绑定。</p>
           </div>
+          <div class="worktree-inventory-summary" id="worktree-inventory-summary" data-standing="unknown">—</div>
+          <p class="worktree-inventory-note" id="worktree-inventory-note" data-standing="deferred" role="status">
+            首屏未扫描；进入项目或创建任务表单时按需读取真实状态。
+          </p>
           <div class="worktree-inventory-list" id="worktree-inventory-list">
             <p class="empty-note">尚未观察到 Git worktree。</p>
           </div>
@@ -715,6 +719,8 @@
               Worktree 上下文
               <select id="task-create-worktree" name="worktree"></select>
             </label>
+
+            <p class="task-create-worktree-status" id="task-create-worktree-status" data-standing="unknown" hidden></p>
 
             <p class="task-boundary-note">
               Project、Worktree 与 Mission 都只提供上下文。分配给 Agent

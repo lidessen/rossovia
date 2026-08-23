@@ -251,6 +251,30 @@ export function createWorkbenchRequestHandler(
     compactSnapshotBodyInFlight = tracked;
     return tracked;
   };
+
+  // The on-demand project Worktree status route re-reads the canonical full
+  // snapshot (the same per-worktree dirty scans the compact first paint
+  // defers). Several tabs or rapid re-entries can request it at once; keep
+  // one serialized build for the handler and let every waiter reuse its
+  // snapshot, exactly like the compact/full snapshot bodies, so the route
+  // never runs duplicate project scans and every response describes the
+  // same single observation.
+  let worktreeStatusSnapshotInFlight: Promise<ReturnType<typeof buildWorkbenchSnapshot>> | undefined;
+  const readWorktreeStatusSnapshot = (): Promise<ReturnType<typeof buildWorkbenchSnapshot>> => {
+    if (worktreeStatusSnapshotInFlight !== undefined) return worktreeStatusSnapshotInFlight;
+    const build = (async () => {
+      await Bun.sleep(0);
+      return buildWorkbenchSnapshot({
+        ...(options.home === undefined ? {} : { home: options.home }),
+        localRepositoryRoots: options.roots,
+      });
+    })();
+    const tracked = build.finally(() => {
+      if (worktreeStatusSnapshotInFlight === tracked) worktreeStatusSnapshotInFlight = undefined;
+    });
+    worktreeStatusSnapshotInFlight = tracked;
+    return tracked;
+  };
   const taskDetailBodiesInFlight = new Map<string, Promise<string>>();
   const readTaskDetailBody = (taskId: string): Promise<string> => {
     const existing = taskDetailBodiesInFlight.get(taskId);
@@ -366,6 +390,31 @@ export function createWorkbenchRequestHandler(
         }
         return json({
           error: "task-detail-failed",
+          message: error instanceof Error ? error.message : String(error),
+        }, 500);
+      }
+    }
+
+    // The project page and the create-task form need the real per-worktree
+    // dirty standing, which the compact first paint deliberately defers.
+    // This read-only on-demand route rebuilds the canonical full snapshot
+    // (the same observeWorktreeDirty default the full snapshot and the
+    // task-detail route use) and projects only the requested project's
+    // worktrees plus the total/dirty/clean/unknown summary. It carries no
+    // write, persistence, or delete surface; a per-worktree dirty scan
+    // failure keeps that worktree observable with an explicit unknown
+    // standing (dirtyReason) and never infers clean.
+    const projectWorktreeKey = projectWorktreeKeyFromPath(url.pathname);
+    if (request.method === "GET" && projectWorktreeKey !== null) {
+      try {
+        const snapshot = await readWorktreeStatusSnapshot();
+        return json(projectWorktreeStatusProjection(snapshot, projectWorktreeKey), 200);
+      } catch (error: unknown) {
+        if (error instanceof ProjectWorktreeStatusError) {
+          return json({ error: error.code, message: error.message }, error.status);
+        }
+        return json({
+          error: "worktree-status-failed",
           message: error instanceof Error ? error.message : String(error),
         }, 500);
       }
@@ -1582,6 +1631,132 @@ function taskDetailIdFromPath(pathname: string): string | null {
     return "";
   }
 }
+
+/**
+ * The only route of the read-only project Worktree status projection:
+ * `/api/projects/<projectKey>/worktrees`. A malformed percent-encoding
+ * resolves to an empty key that fails the project lookup, so every
+ * non-observable key fails closed with `project-not-found` and never
+ * fabricates a project.
+ */
+function projectWorktreeKeyFromPath(pathname: string): string | null {
+  const match = /^\/api\/projects\/([^/]+)\/worktrees$/u.exec(pathname);
+  if (match === null) return null;
+  try {
+    return decodeURIComponent(match[1]!);
+  } catch {
+    return "";
+  }
+}
+
+class ProjectWorktreeStatusError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: "project-not-found" | "worktree-status-failed",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * The minimal on-demand Worktree status projection for one project key,
+ * built from the handler's shared canonical full-snapshot build (the same
+ * default `observeWorktreeDirty` the full snapshot and the task-detail
+ * route use — never the compact deferral). It returns only the requested
+ * project's Worktree inventory, the total/dirty/clean/unknown summary, and
+ * only that project's attributable git/project errors and observation
+ * source refs: another project's failed scan or repository root never
+ * leaks into this projection. A per-Worktree dirty scan failure is
+ * projected on that Worktree as an explicit unknown standing (dirtyReason)
+ * with the error retained; the projection never infers clean from a failed
+ * scan. No runner probe, task, review, or observer source is read here:
+ * this route answers only the project/Worktree question the project page
+ * and create-task form need.
+ */
+function projectWorktreeStatusProjection(
+  snapshot: ReturnType<typeof buildWorkbenchSnapshot>,
+  projectKey: string,
+) {
+  if (projectKey === "") {
+    throw new ProjectWorktreeStatusError(
+      404,
+      "project-not-found",
+      "The requested project key is invalid or not observed.",
+    );
+  }
+  const project = snapshot.projects.find(
+    (candidate) => candidate.projectKey === projectKey,
+  );
+  if (project === undefined) {
+    throw new ProjectWorktreeStatusError(
+      404,
+      "project-not-found",
+      "The requested project is not present in the current projection.",
+    );
+  }
+  const worktrees = project.worktrees.map((worktree) => ({
+    path: worktree.path,
+    head: worktree.head,
+    gitBranch: worktree.gitBranch,
+    registeredPrimary: worktree.registeredPrimary,
+    locked: worktree.locked,
+    prunable: worktree.prunable,
+    ...(Object.prototype.hasOwnProperty.call(worktree, "dirty")
+      ? { dirty: worktree.dirty }
+      : {}),
+    ...(worktree.dirtyReason === undefined
+      ? {}
+      : { dirtyReason: worktree.dirtyReason }),
+  }));
+  let dirty = 0;
+  let clean = 0;
+  let unknown = 0;
+  for (const worktree of project.worktrees) {
+    if (worktree.dirty === true) dirty += 1;
+    else if (worktree.dirty === false) clean += 1;
+    else unknown += 1;
+  }
+  const projectSources = new Set([
+    ...(project.primaryWorkspace === null ? [] : [project.primaryWorkspace]),
+    ...project.worktrees.map((worktree) => worktree.path),
+  ]);
+  return {
+    version: "rosso.project-worktree-status.v1" as const,
+    standing: "available" as const,
+    projectKey,
+    observedAt: snapshot.generatedAt,
+    worktrees,
+    summary: {
+      total: worktrees.length,
+      dirty,
+      clean,
+      unknown,
+    },
+    // Only the requested project's own observation sources and failures
+    // are projected: its primary workspace root and every worktree path it
+    // observed. Another project's failed git scan or repository root never
+    // leaks into this project's status read, and the project's exact
+    // workspace-mapping failure (shared workspaces.json source) stays
+    // attributable by the project id the error names.
+    sourceRefs: snapshot.sourceBoundaries
+      .filter((boundary) =>
+        (boundary.kind === "git-worktree-observation"
+          && projectSources.has(boundary.source))
+        || boundary.kind === "registered-project-identity"
+        || boundary.kind === "workspace-mapping"
+      )
+      .map((boundary) => boundary.source),
+    errors: snapshot.errors.filter((error) => {
+      if (error.scope !== "git" && error.scope !== "project") return false;
+      if (projectSources.has(error.source)) return true;
+      return error.scope === "project"
+        && typeof project.identity.id === "string"
+        && error.message.endsWith(` for ${project.identity.id}`);
+    }),
+  };
+}
+
 
 /**
  * The only route of the read-only attempt evidence projection:

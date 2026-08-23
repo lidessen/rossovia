@@ -862,6 +862,64 @@ body[data-projection-state="loading"] .workbench-shell > .conversation-surface {
   margin-top: 0.18rem;
 }
 
+.worktree-inventory-summary {
+  border-top: 1px solid var(--line-light);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  margin-top: 0.55rem;
+  padding-top: 0.4rem;
+}
+
+.worktree-inventory-summary[data-standing="observed"] {
+  color: var(--green-dark);
+}
+
+.worktree-inventory-note {
+  color: var(--ink-faint);
+  font-size: 0.58rem;
+  line-height: 1.45;
+  margin: 0.25rem 0 0;
+}
+
+.worktree-inventory-note[data-standing="loading"],
+.worktree-inventory-note[data-standing="unavailable"],
+.worktree-inventory-note[data-standing="partial"] {
+  color: var(--ochre);
+}
+
+.inventory-worktree[data-dirty-standing="dirty"] span {
+  color: var(--red);
+}
+
+.inventory-worktree[data-dirty-standing="unknown"] span {
+  color: var(--ochre);
+}
+
+.task-create-worktree-status {
+  border-left: 3px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 0.6rem;
+  line-height: 1.45;
+  margin: 0.3rem 0 0.1rem;
+  padding: 0.3rem 0.45rem;
+}
+
+.task-create-worktree-status[data-standing="dirty"] {
+  border-left-color: var(--red);
+  color: var(--red-dark);
+}
+
+.task-create-worktree-status[data-standing="clean"] {
+  border-left-color: var(--green);
+  color: var(--green-dark);
+}
+
+.task-create-worktree-status[data-standing="unknown"] {
+  border-left-color: var(--ochre);
+  color: var(--ochre);
+}
+
 .candidate-evidence {
   background: color-mix(in srgb, var(--paper-light) 82%, var(--green) 18%);
   border-bottom: 1px solid var(--green-dark);
