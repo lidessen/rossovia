@@ -27,6 +27,77 @@ const healthySnapshot = {
   attention: [],
 };
 
+/**
+ * One healthy boot startup gate shaped like the production entry serves on
+ * every snapshot body (see SelfCheckStartupGate). Only this exact shape with
+ * a clean mechanical source observation may open the no-agent standing.
+ */
+const healthyStartupGate = {
+  version: "rossovia.self-check.v1",
+  scope: "boot",
+  mode: "normal",
+  readiness: "boot-ready",
+  projection: "not-checked",
+  startupStatus: "healthy",
+  mechanical: {
+    status: "healthy",
+    checks: [],
+    source: {
+      cwd: "/home/principal/rossovia",
+      root: "/home/principal/rossovia",
+      head: "1".repeat(40),
+      dirty: false,
+      changedAfterStart: false,
+      freshness: "current",
+      statusLines: [],
+    },
+  },
+  checkedAt: "2026-08-21T12:00:00Z",
+};
+
+/** One live-probe-confirmed runner: a current controllable carrier. */
+const liveRunner = {
+  sourcePath: "/home/rossovia/missions/mission-a/runner-status.json",
+  status: { runnerId: "runner-a", missionId: "mission-a", state: "running" },
+  binding: {
+    kind: "project-mission",
+    projectKey: "registered:p",
+    registeredProjectId: "p",
+    missionId: "mission-a",
+  },
+  freshness: { kind: "live", observedAt: "2026-08-22T10:30:00Z" },
+  live: true,
+};
+
+/** One retained cached record that is bound and deliberately stopped: history, not a carrier. */
+const cachedStoppedRunner = {
+  sourcePath: "/home/rossovia/missions/mission-a/runner-status.json",
+  status: { runnerId: "runner-a", missionId: "mission-a", state: "stopped" },
+  binding: {
+    kind: "project-mission",
+    projectKey: "registered:p",
+    registeredProjectId: "p",
+    missionId: "mission-a",
+  },
+  freshness: {
+    kind: "cached",
+    sourceUpdatedAt: "2026-07-26T10:30:00Z",
+    ageMs: 3_600_000,
+  },
+};
+
+/** One retained cached record that is unbound: a real incomplete-source fault. */
+const cachedUnboundRunner = {
+  sourcePath: "/home/rossovia/missions/mission-x/runner-status.json",
+  status: { runnerId: "runner-7", missionId: "mission-x", state: "running" },
+  binding: { kind: "unbound", reason: "no-explicit-mission-id-match" },
+  freshness: {
+    kind: "cached",
+    sourceUpdatedAt: "2026-07-26T10:30:00Z",
+    ageMs: 1_800_000,
+  },
+};
+
 describe("running-projection layer copy (story 1)", () => {
   test("the unbound standing labels the masthead 运行投影可读 and keeps the incomplete facts, reason, and recovery direction", () => {
     const copy = incompleteProjectionCopy(unboundSnapshot);
@@ -136,5 +207,134 @@ describe("live/healthy, unbound, and disconnected comparison surface (story 3)",
     expect(projection.label).not.toContain("Runner");
     expect(conversationConnectionLabel("disconnected")).toBe("已断开 · 正在重连");
     expect(conversationConnectionLabel("disconnected")).not.toContain("运行投影");
+  });
+});
+
+describe("healthy no-carrier, incomplete-source, and active-carrier standing (story 4)", () => {
+  const noCarrierBase = {
+    source: "live",
+    snapshot: {
+      complete: true,
+      errors: [],
+      freshness: { runners: "cached-status-files", runnerUpdatedAtRange: null },
+      attention: [],
+      runners: [],
+      startup: healthyStartupGate,
+    },
+    conversationConnection: "live",
+    conversationView: true,
+  };
+
+  test("startup healthy with a clean source and no live carrier states 当前无运行中的 Agent without any projection anomaly", () => {
+    expect(projectionMastheadLabel(noCarrierBase)).toEqual({
+      label: "当前无运行中的 Agent · 可正常浏览与创建任务",
+      mark: "live",
+    });
+  });
+
+  test("retained cached runner records do not turn the healthy no-carrier state into a projection anomaly", () => {
+    // A bound, deliberately stopped cached record is history, not a current
+    // fault and not a live carrier: the no-agent standing stays and the
+    // anomaly copy never appears under it.
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: { ...noCarrierBase.snapshot, runners: [cachedStoppedRunner] },
+    })).toEqual({
+      label: "当前无运行中的 Agent · 可正常浏览与创建任务",
+      mark: "live",
+    });
+  });
+
+  test("an active control carrier keeps the running-carrier status and never reports no running Agent", () => {
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: { ...noCarrierBase.snapshot, runners: [liveRunner] },
+    })).toEqual({ label: "运行投影实时 · 已连接", mark: "live" });
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: { ...noCarrierBase.snapshot, runners: [liveRunner] },
+    }).label).not.toContain("无运行中的 Agent");
+  });
+
+  test("a real source error keeps 部分来源不可用 ahead of any no-agent claim", () => {
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: {
+        ...noCarrierBase.snapshot,
+        complete: false,
+        errors: [{ summary: "runner status read failed" }],
+      },
+    })).toEqual({ label: "实时 · 部分来源不可用", mark: "warning" });
+  });
+
+  test("a source-incomplete projection keeps its anomaly copy even with cached runner records", () => {
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: {
+        ...noCarrierBase.snapshot,
+        complete: false,
+        attention: [
+          { code: "runner-unbound", runnerId: "runner-7", missionId: "mission-x" },
+        ],
+        runners: [cachedUnboundRunner],
+      },
+    })).toEqual({ label: "实时 · 当前无控制载体", mark: "warning" });
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: {
+        ...noCarrierBase.snapshot,
+        complete: false,
+        attention: [
+          { code: "runner-unbound", runnerId: "runner-7", missionId: "mission-x" },
+        ],
+        runners: [cachedUnboundRunner],
+      },
+    }).label).not.toContain("可正常浏览");
+  });
+
+  test("fails closed: absent, non-healthy, or dirty startup evidence never allows the no-agent copy", () => {
+    // No startup gate in the snapshot: boot health is unknown, so the carrier
+    // claim stays on the existing running label instead of being invented.
+    const { startup: _startup, ...withoutStartup } = noCarrierBase.snapshot;
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: withoutStartup,
+    })).toEqual({ label: "运行投影实时 · 已连接", mark: "live" });
+    // A diagnostic startup gate fails closed the same way.
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: {
+        ...noCarrierBase.snapshot,
+        startup: {
+          ...healthyStartupGate,
+          mode: "safe-diagnostic",
+          startupStatus: "attention",
+        },
+      },
+    })).toEqual({ label: "运行投影实时 · 已连接", mark: "live" });
+    // A healthy gate whose mechanical source observation is dirty is not
+    // source clean; the no-agent claim stays withheld.
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: {
+        ...noCarrierBase.snapshot,
+        startup: {
+          ...healthyStartupGate,
+          mechanical: {
+            ...healthyStartupGate.mechanical,
+            source: { ...healthyStartupGate.mechanical.source, dirty: true },
+          },
+        },
+      },
+    })).toEqual({ label: "运行投影实时 · 已连接", mark: "live" });
+    // An aggregate live claim without a live-proven runner is a contradiction:
+    // the absence of an Agent is never claimed under it.
+    expect(projectionMastheadLabel({
+      ...noCarrierBase,
+      snapshot: {
+        ...noCarrierBase.snapshot,
+        freshness: { runners: "live", runnerUpdatedAtRange: null },
+      },
+    })).toEqual({ label: "运行投影实时 · 已连接", mark: "live" });
   });
 });

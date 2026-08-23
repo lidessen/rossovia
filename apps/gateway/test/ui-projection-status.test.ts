@@ -496,6 +496,43 @@ describe("incomplete projection status copy", () => {
     expect(copy.detail).not.toContain("Runner 未绑定");
     expect(copy.detail).not.toContain("等待授权");
   });
+
+  test("splits the projection anomaly from the carrier state into two non-confusable segments", () => {
+    const copy = incompleteProjectionCopy({
+      complete: false,
+      errors: [],
+      freshness: { runners: "cached-status-files" },
+      attention: [{ code: "runner-unreachable" }],
+      runners: [
+        {
+          status: { runnerId: "runner-9", missionId: "mission-a", state: "running" },
+          binding: {
+            kind: "project-mission",
+            projectKey: "registered:p",
+            registeredProjectId: "p",
+            missionId: "mission-a",
+          },
+          freshness: {
+            kind: "cached",
+            sourceUpdatedAt: "2026-07-26T10:30:00Z",
+            ageMs: 3_600_000,
+          },
+        },
+      ],
+    });
+
+    // 投影段 names the anomaly (incomplete projection / historical cache
+    // pending disposition); 载体段 names the carrier absence. Neither segment
+    // may read as the other, and the anomaly copy never borrows the healthy
+    // no-agent standing.
+    expect(copy.label).toBe("实时 · 当前无控制载体");
+    expect(copy.detail).toContain("运行投影不完整 · 投影异常");
+    expect(copy.detail).toContain("历史缓存待处置");
+    expect(copy.detail).toContain("载体状态：当前没有可控制的运行载体");
+    expect(copy.detail).toContain("不代表当前执行；载体状态：");
+    expect(copy.detail).not.toContain("可正常浏览");
+    expect(copy.detail).not.toContain("无运行中的 Agent");
+  });
 });
 
 describe("task entry first-screen projection", () => {
