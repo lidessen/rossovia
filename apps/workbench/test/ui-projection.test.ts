@@ -1379,4 +1379,106 @@ describe("Principal Workbench operational projection", () => {
       (boundary) => boundary.kind === "mission-semantic-source",
     )).toHaveLength(1);
   });
+
+  test("the compact deferral skips per-worktree dirty observation while keeping every other git fact", () => {
+    const root = mkdtempSync(join(tmpdir(), "rossovia-ui-compact-dirty-deferral-"));
+    temporaryRoots.push(root);
+    const repository = join(root, "registered");
+    const remote = "https://example.test/lidessen/deferral.git";
+    createRepository(repository, remote);
+    writeJson(join(repository, "apps", "missions", "defer.json"), mission("defer", "mainline"));
+    git(repository, "add", "apps/missions/defer.json");
+    git(repository, "commit", "-m", "add mission");
+    writeFileSync(join(repository, "UNCOMMITTED.md"), "visible dirt\n");
+    const linked = join(root, "linked-worktree");
+    git(repository, "worktree", "add", "-b", "linked", linked);
+
+    const home = makeHome(root, remote, repository);
+    const full = buildWorkbenchSnapshot({
+      home,
+      localRepositoryRoots: [repository],
+      now: () => "2026-07-26T11:00:00Z",
+    });
+    const compact = buildWorkbenchSnapshot({
+      home,
+      localRepositoryRoots: [repository],
+      observeWorktreeDirty: false,
+      now: () => "2026-07-26T11:00:00Z",
+    });
+
+    // Both builds observe the same canonical worktrees with the same
+    // `git worktree list` facts, and neither fails: the deferral is silent,
+    // never an error.
+    expect(full.complete).toBe(true);
+    expect(full.errors).toEqual([]);
+    expect(compact.complete).toBe(true);
+    expect(compact.errors).toEqual([]);
+    const fullProject = full.projects[0]!;
+    const compactProject = compact.projects[0]!;
+    // Worktree paths are projected sorted by path, so the deferred compact
+    // build and the full build must each match the same sorted set: the
+    // linked worktree sorts before the registered primary path here.
+    expect(fullProject.worktrees.map((worktree) => worktree.path).sort()).toEqual([
+      realpathSync(linked),
+      realpathSync(repository),
+    ]);
+    expect(compactProject.worktrees.map((worktree) => worktree.path).sort()).toEqual([
+      realpathSync(linked),
+      realpathSync(repository),
+    ]);
+    expect(fullProject.worktrees.map((worktree) => worktree.gitBranch).sort()).toEqual([
+      "linked",
+      "main",
+    ]);
+    expect(compactProject.worktrees.map((worktree) => worktree.gitBranch).sort()).toEqual([
+      "linked",
+      "main",
+    ]);
+    // The full build scans and projects the exact per-worktree dirty
+    // standing: the primary worktree is dirty (untracked file), the linked
+    // worktree is clean.
+    const fullPrimary = fullProject.worktrees.find(
+      (worktree) => worktree.path === realpathSync(repository),
+    )!;
+    const fullLinked = fullProject.worktrees.find(
+      (worktree) => worktree.path === realpathSync(linked),
+    )!;
+    expect(fullPrimary.dirty).toBe(true);
+    expect(fullLinked.dirty).toBe(false);
+    expect(fullPrimary.registeredPrimary).toBe(true);
+    expect(fullLinked.registeredPrimary).toBe(false);
+    // The compact build never runs the per-worktree `git status` scan and
+    // therefore makes no dirty claim at all, while every other worktree fact
+    // stays exact.
+    for (const worktree of compactProject.worktrees) {
+      expect(Object.prototype.hasOwnProperty.call(worktree, "dirty")).toBeFalse();
+      expect(worktree.head).toEqual(expect.stringMatching(/^[0-9a-f]{40}$/));
+      expect(worktree.locked).toBeNull();
+      expect(worktree.prunable).toBeNull();
+    }
+    const compactPrimary = compactProject.worktrees.find(
+      (worktree) => worktree.path === realpathSync(repository),
+    )!;
+    const compactLinked = compactProject.worktrees.find(
+      (worktree) => worktree.path === realpathSync(linked),
+    )!;
+    expect(compactPrimary.registeredPrimary).toBe(true);
+    expect(compactLinked.registeredPrimary).toBe(false);
+    // The compact record is the full record minus only the dirty claim.
+    expect(compactPrimary.path).toBe(fullPrimary.path);
+    expect(compactPrimary.head).toBe(fullPrimary.head);
+    expect(compactPrimary.gitBranch).toBe(fullPrimary.gitBranch);
+    expect(compactPrimary.registeredPrimary).toBe(fullPrimary.registeredPrimary);
+    expect(compactPrimary.locked).toBe(fullPrimary.locked);
+    expect(compactPrimary.prunable).toBe(fullPrimary.prunable);
+    expect(compactLinked.head).toBe(fullLinked.head);
+    expect(compactLinked.gitBranch).toBe(fullLinked.gitBranch);
+    // Missions, attention, errors, and source boundaries stay identical: the
+    // deferral changes only the per-worktree dirty claim, never the
+    // Mission/authorization facts the first-paint attention depends on.
+    expect(compactProject.missions).toEqual(fullProject.missions);
+    expect(compact.attention).toEqual(full.attention);
+    expect(compact.errors).toEqual(full.errors);
+    expect(compact.sourceBoundaries).toEqual(full.sourceBoundaries);
+  });
 });

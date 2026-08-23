@@ -45,6 +45,19 @@ export interface WorkbenchSnapshotOptions {
    * to include. Workbench registrations remain the authority for identity.
    */
   readonly localRepositoryRoots?: readonly string[];
+  /**
+   * Whether the per-worktree dirty standing is observed with one synchronous
+   * `git status --porcelain` scan per worktree (the default). The compact
+   * first-paint snapshot sets this to false: those scans are the dominant
+   * non-essential synchronous worktree/Git cost for the navigation-grade
+   * first paint, so the compact build defers them and its worktree records
+   * carry no dirty claim (see WorktreeProjection.dirty). Every other
+   * worktree/Git observation — root identity, origin, and the exact
+   * `git worktree list --porcelain` facts — is unchanged, and the full
+   * snapshot plus the task-detail route keep the default and always project
+   * the exact dirty standing.
+   */
+  readonly observeWorktreeDirty?: boolean;
   readonly now?: () => string;
 }
 
@@ -52,7 +65,14 @@ export interface WorktreeProjection {
   readonly path: string;
   readonly head: string | null;
   readonly gitBranch: string | null;
-  readonly dirty: boolean;
+  /**
+   * Whether the worktree has uncommitted working-tree changes. Absent only
+   * for a snapshot built with `observeWorktreeDirty: false` (the compact
+   * first paint), which never runs the per-worktree `git status` scan and
+   * therefore makes no dirty claim; the full snapshot and the task-detail
+   * route always observe and project the exact boolean standing.
+   */
+  readonly dirty?: boolean;
   readonly registeredPrimary: boolean;
   readonly locked: string | null;
   readonly prunable: string | null;
@@ -1077,6 +1097,15 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
   const generatedAt = options.now?.() ?? new Date().toISOString();
   const generatedAtMs = Date.parse(generatedAt);
   const home = resolveHome(options.home);
+  // The compact first paint defers the per-worktree dirty observation: the
+  // per-worktree `git status --porcelain` scans are the dominant non-essential
+  // synchronous worktree/Git cost for the navigation-grade first paint, so a
+  // build with observeWorktreeDirty: false never runs them and its worktree
+  // projections carry no dirty claim. Everything else — root identity, origin,
+  // the `git worktree list --porcelain` facts, Mission committed-HEAD checks,
+  // runner cache, attention, errors, and source boundaries — is unchanged, and
+  // the full snapshot plus the task-detail route always observe dirty.
+  const observeWorktreeDirty = options.observeWorktreeDirty !== false;
   const projectsByKey = new Map<string, MutableProject>();
   const registeredById = new Map<string, MutableProject>();
   const errors: ProjectionError[] = [];
@@ -1207,7 +1236,7 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
       path: root,
       head: optionalGit(["rev-parse", "HEAD"], root),
       gitBranch: optionalGit(["branch", "--show-current"], root),
-      dirty: false,
+      ...(observeWorktreeDirty ? { dirty: false } : {}),
       registeredPrimary: false,
       locked: null,
       prunable: null,
@@ -1491,11 +1520,17 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
         try {
           const isPrimary = registeredPrimary && record.path === root;
           const prior = project.worktrees.get(record.path);
-          project.worktrees.set(record.path, {
+          const projection = {
             ...record,
-            dirty: observeDirty(record.path),
             registeredPrimary: isPrimary || prior?.registeredPrimary === true,
-          });
+          };
+          // The compact first paint skips the per-worktree `git status`
+          // scan: its worktree records keep every `git worktree list` fact
+          // but make no dirty claim. The full snapshot and the task-detail
+          // route observe the exact dirty standing.
+          project.worktrees.set(record.path, observeWorktreeDirty
+            ? { ...projection, dirty: observeDirty(record.path) }
+            : projection);
         } catch (error: unknown) {
           recordError("git", record.path, error, project.projectKey);
         }
