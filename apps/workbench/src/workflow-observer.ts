@@ -970,7 +970,13 @@ export function workflowObserverContext(
  * taskRevision/sourceRevision, continuedFromAttemptId, per-round workspace
  * diff, and the bounded cumulative changed-path union — and stays explicitly
  * uncertain (never fabricating the cumulative diff) when any member is
- * missing, invalid, foreign-Task, cyclic, or over the chain bound. Provider
+ * missing, invalid, foreign-Task, cyclic, or over the chain bound. The
+ * bounded attempt summary keeps the canonical run access retained by the
+ * immutable attempt record: `attempt.access` is projected explicitly only
+ * as `read-only`, so the observer always sees when the attempt held no
+ * write/command authority, while `ordinary` — including the omitted legacy
+ * value, which the record schema defines as `ordinary` — stays omitted.
+ * Provider
  * steps, trace event payloads, and the untruncated source payloads are never
  * projected; the bounded chronological trace event summary
  * (`final.trace.events`) projects only whitelisted fields — retained index,
@@ -1014,6 +1020,12 @@ export function buildObserverEvidenceProjection(
       driver: evidence.attempt?.driver,
       model: evidence.attempt?.model,
       startedAt: evidence.attempt?.startedAt,
+      // The canonical run access from the immutable attempt record:
+      // `read-only` is projected explicitly (the observer must always see
+      // that this attempt held no write/command authority); `ordinary` —
+      // including the omitted legacy value, which the record schema defines
+      // as `ordinary` — stays omitted.
+      ...(evidence.attempt?.access === "read-only" ? { access: "read-only" } : {}),
       settlement: settlementSummary(evidence.settlement),
     },
     input: {
