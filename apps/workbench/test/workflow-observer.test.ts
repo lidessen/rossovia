@@ -22,7 +22,9 @@ import {
   confirmPinnedEvidenceFile,
   EVIDENCE_FILE_DIGEST_LIMIT_BYTES,
   legacyDogfoodReviewLogPath,
+  OBSERVER_CONTEXT_STRING_LIMIT,
   OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS,
+  OBSERVER_TRACE_EVENTS_MAX_BYTES,
   OBSERVER_TRACE_EVENT_LIMIT,
   observerAttemptCorrelationProjection,
   openPinnedEvidenceFile,
@@ -2249,4 +2251,107 @@ test("workflow observer context explicitly truncates an over-limit trace without
   expect(serialized).not.toContain(`secret-provider-${OBSERVER_TRACE_EVENT_LIMIT}`);
   expect(serialized).not.toContain(`call-${OBSERVER_TRACE_EVENT_LIMIT + 1}`);
   expect(serialized).not.toContain(`tool-${OBSERVER_TRACE_EVENT_LIMIT + 1}`);
+});
+
+test("workflow observer context bounds firstAt/lastAt with the same bounded timestamp rule as event entries", () => {
+  const longFirstAt = "t".repeat(2000);
+  const longLastAt = "u".repeat(2000);
+  const trace = [
+    { at: longFirstAt, type: "cell.started", data: {} },
+    {
+      at: "2026-08-21T00:00:05.000Z",
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: "call-1", outcome: "fulfilled" },
+    },
+    { at: longLastAt, type: "cell.finished", data: {} },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace })));
+  const summary = context.final.trace;
+  // firstAt/lastAt apply exactly the same bounded timestamp rule as every
+  // event entry's `at`: sliced to the shared string limit, never raw.
+  expect(summary.firstAt).toBe(longFirstAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  expect(summary.lastAt).toBe(longLastAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  expect(summary.events[0].at).toBe(longFirstAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  expect(summary.events[2].at).toBe(longLastAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  // A normal timestamp passes through unchanged, and the small trace stays
+  // comfortably inside the byte budget.
+  expect(summary.events[1].at).toBe("2026-08-21T00:00:05.000Z");
+  expect(summary.eventsTruncated).toBe(false);
+  expect(summary.eventsByteLimit).toBe(OBSERVER_TRACE_EVENTS_MAX_BYTES);
+  // The untruncated timestamps never reach the context.
+  const serialized = JSON.stringify(context);
+  expect(serialized).not.toContain("t".repeat(2000));
+  expect(serialized).not.toContain("u".repeat(2000));
+});
+
+test("workflow observer context enforces a real UTF-8 byte budget on the rendered trace event list", () => {
+  // A maximal whitelisted payload — a projected tools surface at the list
+  // and string limits (64 names of 256 characters each) — renders ~17 KiB
+  // alone, larger than the whole events byte budget, so a trace made of it
+  // cannot be projected at all: the list is honestly empty and truncated,
+  // never a payload past the documented context cap.
+  const maximalTools = Array.from({ length: 64 }, () => "t".repeat(OBSERVER_CONTEXT_STRING_LIMIT));
+  const oversizedTrace = [
+    {
+      at: "2026-08-21T00:00:00.000Z",
+      type: "cell.tools.projected",
+      data: { tools: maximalTools },
+    },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: oversizedTrace })));
+  const summary = context.final.trace;
+  // eventCount/typeCounts still cover the full retained trace ...
+  expect(summary.eventCount).toBe(1);
+  expect(summary.typeCounts).toEqual({ "cell.tools.projected": 1 });
+  expect(summary.typeCountsTruncated).toBe(false);
+  // ... while the rendered list is honestly cut at the byte budget: the
+  // single oversized event does not fit, so the list is empty and
+  // explicitly truncated instead of carrying a payload past the cap.
+  expect(summary.eventLimit).toBe(OBSERVER_TRACE_EVENT_LIMIT);
+  expect(summary.eventsByteLimit).toBe(OBSERVER_TRACE_EVENTS_MAX_BYTES);
+  expect(summary.eventsTruncated).toBe(true);
+  expect(summary.events).toEqual([]);
+  expect(JSON.stringify(context)).not.toContain("t".repeat(OBSERVER_CONTEXT_STRING_LIMIT));
+
+  // A mixed trace: small events fit within the budget, and the list is cut
+  // exactly before the first event that would push the rendered list past
+  // the byte budget — a bounded truthful prefix, never a fabricated trace.
+  const mixedTrace = [
+    { at: "2026-08-21T00:00:00.000Z", type: "cell.started", data: {} },
+    {
+      at: "2026-08-21T00:00:01.000Z",
+      type: "cell.tool.settled",
+      data: {
+        name: "n".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+        toolCallId: "c".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+        outcome: "fulfilled",
+      },
+    },
+    {
+      at: "2026-08-21T00:00:02.000Z",
+      type: "cell.tools.projected",
+      data: { tools: maximalTools },
+    },
+  ];
+  const mixedContext = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: mixedTrace })));
+  const mixedSummary = mixedContext.final.trace;
+  expect(mixedSummary.eventCount).toBe(3);
+  expect(mixedSummary.eventsTruncated).toBe(true);
+  expect(mixedSummary.events.map((event: { index: number }) => event.index)).toEqual([0, 1]);
+  expect(mixedSummary.events[1]).toMatchObject({
+    name: "n".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+    toolCallId: "c".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+    outcome: "fulfilled",
+  });
+  // The rendered list in the actual context never exceeds the advertised
+  // byte budget: the events array is rendered at the exact final.trace
+  // indent depth and measured as real UTF-8 bytes.
+  const rendered = JSON.stringify({ final: { trace: { events: mixedSummary.events } } }, null, 2);
+  const start = rendered.indexOf("[");
+  const end = rendered.lastIndexOf("]");
+  expect(Buffer.byteLength(rendered.slice(start, end + 1), "utf8")).toBeLessThanOrEqual(
+    OBSERVER_TRACE_EVENTS_MAX_BYTES,
+  );
+  // The dropped maximal surface never enters the summary.
+  expect(JSON.stringify(mixedContext)).not.toContain("t".repeat(OBSERVER_CONTEXT_STRING_LIMIT));
 });
