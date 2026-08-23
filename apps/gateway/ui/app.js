@@ -2053,6 +2053,231 @@ export function taskEntryDefaultFilter(input) {
   return explicit ? null : "principal";
 }
 
+/**
+ * Backlog triage layered entry (UI-only). The four actionable layers —
+ * Principal 待处理, Agent 可接手, 失联 / 历史, 已完成 — are derived only from
+ * the existing projected facts (lifecycle, nextActor, agentEligibility, and
+ * the settled/worktree standings those predicates already carry). No
+ * Task/Mission lifecycle, filter, API, schema, cache, or second state system
+ * is introduced: each layer's membership reuses the existing view predicate
+ * (scoped to principal-task items), its next step navigates to the existing
+ * view/filter entry, and its 安全清理 explanation is a yes/no/uncertain
+ * standing with a traceable reason. Workbench offers no task delete
+ * operation, so the safe-reclaim candidate count is always 0 and the reason
+ * is always shown: no layer can ever read as directly deletable, and a
+ * missing/incomplete task source fails closed to unknown counts instead of
+ * a factual zero.
+ */
+export function isPrincipalPendingTaskWorkItem(item) {
+  return item !== null
+    && typeof item === "object"
+    && item.kind === "principal-task"
+    && isPrincipalNeedsYouWorkItem(item);
+}
+
+/** Layer 2 membership reuses the existing 待 Agent 接手 predicate unchanged. */
+export function isAgentTakeoverWorkItem(item) {
+  return isPendingAgentWork(item);
+}
+
+/** Layer 3 membership reuses the existing 失联现场 predicate unchanged. */
+export function isOrphanedHistoryWorkItem(item) {
+  return isOrphanedAgentWorkItem(item);
+}
+
+/** Layer 4 membership: a settled principal-task backlog item. */
+export function isCompletedTaskWorkItem(item) {
+  return item !== null
+    && typeof item === "object"
+    && item.kind === "principal-task"
+    && item.lifecycle === "settled";
+}
+
+const BACKLOG_TRIAGE_LAYER_DEFINITIONS = [
+  {
+    key: "principalPending",
+    label: "Principal 待处理",
+    description: "open/principal 与 verifying/principal 的待办任务",
+    nextStep: {
+      label: "下一步：打开「待我处理」处理下一项",
+      view: "principal",
+    },
+  },
+  {
+    key: "agentTakeover",
+    label: "Agent 可接手",
+    description: "open/agent 且 agentEligibility=eligible（现有待 Agent 接手）",
+    nextStep: {
+      label: "下一步：打开「待 Agent 接手」确认接手条件",
+      view: "agent-pending",
+    },
+  },
+  {
+    key: "orphanedHistory",
+    label: "失联 / 历史",
+    description: "open/agent 但 agentEligibility=orphaned（现有失联现场）",
+    nextStep: {
+      label: "下一步：打开「待 Agent · 失联现场」核对原因与证据",
+      view: "agent-orphaned",
+    },
+  },
+  {
+    key: "completed",
+    label: "已完成",
+    description: "lifecycle=settled 的已结算任务",
+    nextStep: {
+      label: "下一步：打开「已完成」查看已结算任务与证据",
+      view: "completed",
+    },
+  },
+];
+
+const TRIAGE_CLEANUP_LABELS = {
+  no: "不可安全清理",
+  uncertain: "无法确证安全清理",
+};
+
+function orphanedReasonLabel(reason) {
+  if (reason === "missing-worktree") {
+    return "missing-worktree（绑定 Worktree 已不在当前投影）";
+  }
+  if (reason === "no-worktree-binding") {
+    return "no-worktree-binding（未声明 Worktree 绑定）";
+  }
+  if (reason === "no-project-binding") {
+    return "no-project-binding（无项目绑定）";
+  }
+  return reason;
+}
+
+/**
+ * One layer's safe-reclaim (安全清理) explanation. candidates is always 0:
+ * Workbench retains every task record and offers no delete operation, so no
+ * layer is ever "可直接删除"; the reason states why the zero holds for this
+ * layer and stays traceable to the projected facts. With an unavailable
+ * source the standing is "unavailable" and candidates is null, so a missing
+ * source never reads as a factual zero.
+ */
+function triageCleanupProjection(layerKey, items, sourceAvailable) {
+  if (!sourceAvailable) {
+    return {
+      standing: "unavailable",
+      label: "来源不可用",
+      candidates: null,
+      reason:
+        "任务来源不可用或投影不完整：不投影安全清理候选数，不冒充零；请刷新投影后重试。",
+    };
+  }
+  if (layerKey === "principalPending") {
+    return {
+      standing: "no",
+      label: TRIAGE_CLEANUP_LABELS.no,
+      candidates: 0,
+      reason:
+        "0 个可安全清理候选：本层任务仍等待你处理（lifecycle=open/verifying 且 nextActor=principal）；"
+        + "清理会丢弃待处理责任。Workbench 不提供删除任务操作，回收只能经任务自身流程（接受 / 纠正 / 重新打开）发生。",
+    };
+  }
+  if (layerKey === "agentTakeover") {
+    return {
+      standing: "no",
+      label: TRIAGE_CLEANUP_LABELS.no,
+      candidates: 0,
+      reason:
+        "0 个可安全清理候选：本层任务等待 Agent 在已观察 Worktree 上接手（agentEligibility=eligible，无 live 执行证据）；"
+        + "清理会丢弃可行动项。Workbench 不提供删除任务操作。",
+    };
+  }
+  if (layerKey === "orphanedHistory") {
+    const reasons = [
+      ...new Set(items.map((item) => {
+        const eligibility = item !== null && typeof item === "object"
+          ? item.agentEligibility
+          : null;
+        return eligibility !== null
+            && eligibility !== undefined
+            && typeof eligibility.reason === "string"
+          ? eligibility.reason
+          : "unrecognized";
+      })),
+    ];
+    const semantics = reasons.length === 0
+      ? "本层当前没有失联/历史任务；即使出现，其失联原因也只解释为何不可接手，不代表可删除"
+      : "失联/历史任务保留定位与证据入口（sourceRefs 与 worktreeContext），失联原因只解释为何不可接手，不代表可删除；"
+        + "本层失联原因：" + reasons.map(orphanedReasonLabel).join(" / ");
+    return {
+      standing: "uncertain",
+      label: TRIAGE_CLEANUP_LABELS.uncertain,
+      candidates: 0,
+      reason:
+        "0 个可安全清理候选：" + semantics
+        + "。Workbench 不提供删除任务操作，无法确证清理安全。",
+    };
+  }
+  return {
+    standing: "uncertain",
+    label: TRIAGE_CLEANUP_LABELS.uncertain,
+    candidates: 0,
+    reason:
+      "0 个可安全清理候选：settled 任务保留 result claims、reviews、execution links 与 attempts 等可追溯证据；"
+      + "清理会丢弃证据链。Workbench 不提供删除任务操作，无法确证清理安全。",
+  };
+}
+
+/**
+ * The read-only backlog triage projection. `sourceStanding` mirrors the
+ * existing taskLocatorSourceStanding gate ("complete" only for a live,
+ * complete snapshot with an available task source); anything else fails
+ * closed to unavailable counts so a missing source never reads as a factual
+ * zero. The four layers are disjoint (nextActor/lifecycle partition the
+ * principal-task backlog), so total is the exact sum of the four layer
+ * counts.
+ */
+export function backlogTriageProjection(input) {
+  const items = Array.isArray(input?.items) ? input.items : [];
+  const sourceAvailable = input?.sourceStanding === "complete";
+  const members = {
+    principalPending: items.filter(isPrincipalPendingTaskWorkItem),
+    agentTakeover: items.filter(isAgentTakeoverWorkItem),
+    orphanedHistory: items.filter(isOrphanedHistoryWorkItem),
+    completed: items.filter(isCompletedTaskWorkItem),
+  };
+  const layers = {};
+  for (const definition of BACKLOG_TRIAGE_LAYER_DEFINITIONS) {
+    const layerItems = members[definition.key];
+    layers[definition.key] = {
+      key: definition.key,
+      label: definition.label,
+      description: definition.description,
+      count: sourceAvailable ? layerItems.length : null,
+      nextStep: definition.nextStep,
+      cleanup: triageCleanupProjection(
+        definition.key,
+        layerItems,
+        sourceAvailable,
+      ),
+    };
+  }
+  const total = sourceAvailable
+    ? layers.principalPending.count
+      + layers.agentTakeover.count
+      + layers.orphanedHistory.count
+      + layers.completed.count
+    : null;
+  return {
+    version: "rosso.ui-backlog-triage.v1",
+    standing: sourceAvailable ? "available" : "unavailable",
+    sourceStanding: sourceAvailable ? "complete" : "partial",
+    total,
+    note: sourceAvailable
+      ? "任何一层都不会显示“可直接删除”：Workbench 不提供删除任务操作；"
+        + "安全清理候选恒为 0 且按层展示原因。分层只由现有 lifecycle、nextActor、"
+        + "agentEligibility 与 settled/worktree 投影推导，不新增状态；点击层卡进入既有视图。"
+      : "任务来源不可用或投影不完整：不显示分层计数，不冒充零；请刷新投影后重试。",
+    layers,
+  };
+}
+
 (() => {
   "use strict";
 
@@ -3509,6 +3734,82 @@ export function taskEntryDefaultFilter(input) {
     $("#task-locator-project").value = "";
     $("#task-locator-status").value = "";
     render();
+  }
+
+  /**
+   * Backlog triage layered entry (tasks view only): a read-only four-layer
+   * projection — Principal 待处理 / Agent 可接手 / 失联·历史 / 已完成 — with
+   * count, next step, and a per-layer safe-reclaim (安全清理) explanation.
+   * It reuses the existing view predicates and navigates to the existing
+   * views (principal / agent-pending / agent-orphaned / completed); it adds
+   * no filter, state, or backend surface. When the task source is
+   * unavailable or the projection is incomplete the counts fail closed to
+   * “—” with a note instead of reading as factual zeros.
+   */
+  function renderTaskTriagePanel() {
+    const panel = $("#task-triage-panel");
+    if (panel === null) return;
+    const active = state.activeView === "tasks";
+    panel.hidden = !active;
+    if (!active) return;
+    const sourceStanding = taskLocatorSourceStanding({
+      source: state.source,
+      complete: first(state.snapshot, ["complete"]),
+      taskSourceStanding: first(taskSourceCapability(), ["standing"]),
+    });
+    const projection = backlogTriageProjection({
+      items: workItems(),
+      sourceStanding,
+    });
+    const layerKeys = [
+      "principalPending",
+      "agentTakeover",
+      "orphanedHistory",
+      "completed",
+    ];
+    const cards = layerKeys.map((key) => {
+      const layer = projection.layers[key];
+      const count = layer.count === null ? "—" : String(layer.count);
+      return '<article class="task-triage-layer" data-triage-layer="'
+        + escapeHtml(layer.key)
+        + '" data-standing="' + escapeHtml(projection.standing) + '">'
+        + '<button type="button" class="task-triage-layer-link" data-task-triage-view="'
+        + escapeHtml(layer.nextStep.view) + '">'
+        + '<span class="task-triage-layer-count">' + escapeHtml(count) + "</span>"
+        + '<span class="task-triage-layer-copy">'
+        + "<strong>" + escapeHtml(layer.label) + "</strong>"
+        + "<small>" + escapeHtml(layer.description) + "</small>"
+        + "<em>" + escapeHtml(layer.nextStep.label) + "</em>"
+        + "</span>"
+        + "</button>"
+        + '<p class="task-triage-cleanup" data-cleanup-standing="'
+        + escapeHtml(layer.cleanup.standing) + '">'
+        + "<b>安全清理 · " + escapeHtml(layer.cleanup.label) + "</b>"
+        + "<span>" + escapeHtml(layer.cleanup.reason) + "</span>"
+        + "</p>"
+        + "</article>";
+    }).join("");
+    $("#task-triage-layers").innerHTML = cards;
+    const note = $("#task-triage-note");
+    note.textContent = projection.note;
+    note.dataset.standing = projection.standing;
+    panel.querySelectorAll("[data-task-triage-view]").forEach((button) => {
+      button.addEventListener("click", () => {
+        openTaskTriageView(button.dataset.taskTriageView);
+      });
+    });
+  }
+
+  /** Layer cards navigate to the existing principal views; no second state. */
+  function openTaskTriageView(view) {
+    if (!principalLocusViews.has(view)) return;
+    state.unavailableLocus = null;
+    state.locusRestorePending = false;
+    state.activeView = view;
+    state.peekOpen = false;
+    state.taskCreateOpen = false;
+    render();
+    writePrincipalLocus();
   }
 
   /**
@@ -8403,6 +8704,7 @@ export function taskEntryDefaultFilter(input) {
     renderProjects();
     renderViewNavigation();
     renderUnifiedSurface();
+    renderTaskTriagePanel();
     renderObserverSurface();
     renderSettingsSurface();
     renderProjectSurface();

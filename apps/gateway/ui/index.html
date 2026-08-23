@@ -406,6 +406,17 @@
               </div>
               <strong id="task-view-count">—</strong>
             </div>
+            <section class="task-triage-panel" id="task-triage-panel" aria-labelledby="task-triage-heading" hidden>
+              <div class="surface-section-heading">
+                <div>
+                  <span>Backlog triage · 只读</span>
+                  <h4 id="task-triage-heading">待办分层</h4>
+                  <p>四层只读分层：数量、下一步与安全清理说明。只由现有 lifecycle / nextActor / agentEligibility / settled 投影推导；不接受、不关闭、不删除任何任务。</p>
+                </div>
+              </div>
+              <div class="task-triage-layers" id="task-triage-layers"></div>
+              <p class="task-triage-note" id="task-triage-note" role="status"></p>
+            </section>
             <div class="task-locator" id="task-locator" hidden>
               <label class="task-locator-field">
                 <span>关键词</span>
