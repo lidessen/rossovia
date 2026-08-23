@@ -132,6 +132,8 @@ function writeEvidenceFamily(
       actionId: string;
       sourceRef: string;
     };
+    /** Canonical run access retained by the attempt record; omitted = legacy ordinary. */
+    access?: "ordinary" | "read-only";
   } = {},
 ): void {
   const directory = join(home, "state", "task-attempts", EVIDENCE_ATTEMPT_ID);
@@ -151,6 +153,7 @@ function writeEvidenceFamily(
     driver: "ai-sdk-v7",
     model: "deepseek-v4-flash",
     ...(options.correlation === undefined ? {} : { correlation: options.correlation }),
+    ...(options.access === undefined ? {} : { access: options.access }),
     status: "started",
     startedAt: "2026-08-21T00:00:00.000Z",
   }));
@@ -317,6 +320,64 @@ test("GET attempt evidence returns the bounded read-only projection by attempt i
   // Raw provider steps, trace payloads, and untruncated payloads never
   // appear in the response.
   const serialized = JSON.stringify(body);
+  expect(serialized).not.toContain('"rawSteps"');
+  expect(serialized).not.toContain('"finalText"');
+  expect(serialized).not.toContain('"private"');
+});
+
+test("attempt evidence projection keeps the canonical access: read-only is explicit, ordinary and legacy stay omitted without leaking raw payloads", async () => {
+  // A real read-only attempt: the immutable attempt record retains
+  // access=read-only and the strict reader verifies its CellInput carries
+  // no write paths and no allowed commands (the fixture input already
+  // satisfies the read-only cross-link). The standard observer evidence
+  // projection must show the canonical access=read-only directly.
+  const readOnly = fixture();
+  writeEvidenceFamily(readOnly.home, { access: "read-only" });
+  const readOnlyResponse = await readOnly.handler(new Request(
+    `${readOnly.origin}/api/attempts/${EVIDENCE_ATTEMPT_ID}/evidence`,
+  ));
+  expect(readOnlyResponse.status).toBe(200);
+  const readOnlyBody = await readOnlyResponse.json() as Record<string, unknown>;
+  expect(readOnlyBody.standing).toBe("available");
+  const readOnlyProjection = readOnlyBody.projection as Record<string, any>;
+  expect(readOnlyProjection.attempt).toMatchObject({
+    access: "read-only",
+    workerId: "deepseek-flash",
+    driver: "ai-sdk-v7",
+    model: "deepseek-v4-flash",
+  });
+
+  // An explicitly ordinary attempt stays visible without an access marker:
+  // the record schema defines the omitted value as `ordinary`, so the
+  // canonical projection is truthful with the field omitted.
+  const ordinary = fixture();
+  writeEvidenceFamily(ordinary.home, { access: "ordinary" });
+  const ordinaryResponse = await ordinary.handler(new Request(
+    `${ordinary.origin}/api/attempts/${EVIDENCE_ATTEMPT_ID}/evidence`,
+  ));
+  expect(ordinaryResponse.status).toBe(200);
+  const ordinaryBody = await ordinaryResponse.json() as Record<string, unknown>;
+  expect(ordinaryBody.standing).toBe("available");
+  expect((ordinaryBody.projection as Record<string, any>).attempt)
+    .not.toHaveProperty("access");
+
+  // A legacy attempt retaining no access field (the historical ordinary
+  // default) projects the same bounded summary without any access field.
+  const legacy = fixture();
+  writeEvidenceFamily(legacy.home);
+  const legacyResponse = await legacy.handler(new Request(
+    `${legacy.origin}/api/attempts/${EVIDENCE_ATTEMPT_ID}/evidence`,
+  ));
+  expect(legacyResponse.status).toBe(200);
+  const legacyBody = await legacyResponse.json() as Record<string, unknown>;
+  expect(legacyBody.standing).toBe("available");
+  expect((legacyBody.projection as Record<string, any>).attempt)
+    .not.toHaveProperty("access");
+
+  // The read-only projection still never copies raw payloads: no provider
+  // steps, untruncated result text, or private fields anywhere in the
+  // response.
+  const serialized = JSON.stringify(readOnlyBody);
   expect(serialized).not.toContain('"rawSteps"');
   expect(serialized).not.toContain('"finalText"');
   expect(serialized).not.toContain('"private"');
