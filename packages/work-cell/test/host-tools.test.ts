@@ -1318,12 +1318,21 @@ describe("caller-injected cell tool translation", () => {
    * retained runId UUID) can never trip it. The allowed events are first
    * asserted by exact structure, so no sentinel can hide in an unexpected
    * position inside them.
+   *
+   * `projectedNames` names the exact sorted tool list the single
+   * cell.tools.projected event must carry (defaults to the injected names):
+   * a driver that reports its model-visible surface (observeToolSurface)
+   * projects the union with the host/task/terminal tools, so settled host
+   * invocations stay cross-referenceable. The settled-name assertion uses
+   * the same projected set, and an injected call's exact toolCallId must
+   * still appear only in its settled triplet.
    */
   function expectBoundedInjectedRetention(
     record: CellRunRecord,
     injectedNames: string[],
     injectedCallIds: string[],
     injectedPayloads: string[],
+    projectedNames?: string[],
   ): void {
     const coreOwnedTraceTypes = new Set([
       "cell.started",
@@ -1368,6 +1377,7 @@ describe("caller-injected cell tool translation", () => {
     };
 
     const settledOutcomes = new Set(["fulfilled", "rejected", "refused"]);
+    const projectedNameSet = new Set(projectedNames ?? injectedNames);
     let projectedEvents = 0;
     for (const event of record.trace) {
       // The retained trace boundary is structural, not payload-sensitive:
@@ -1377,17 +1387,25 @@ describe("caller-injected cell tool translation", () => {
       if (event.type === "cell.tools.projected") {
         projectedEvents += 1;
         // Exact structure: the retained projection is exactly the sorted
-        // granted names and nothing else.
-        expect(event.data).toEqual({ tools: [...injectedNames].sort() });
+        // projected surface (caller-injected plus any driver-reported
+        // host/task/terminal names) and nothing else.
+        expect(event.data).toEqual({ tools: [...(projectedNames ?? injectedNames)].sort() });
         continue;
       }
       if (event.type === "cell.tool.settled") {
         // Exact structure: per invocation only name, exact toolCallId, and
-        // settled outcome — never input, result, or an extra key.
+        // settled outcome — never input, result, or an extra key. The name
+        // must belong to the projected surface; an injected call's exact
+        // toolCallId must still be one of the injected call ids (a
+        // host/task/terminal call id is driver-generated and appears only
+        // in its own settled triplet, which the walk below still confines
+        // to this event shape).
         const data = event.data as Record<string, unknown>;
         expect(Object.keys(data).sort()).toEqual(["name", "outcome", "toolCallId"]);
-        expect(nameSet.has(data.name as string)).toBeTrue();
-        expect(callIdSet.has(data.toolCallId as string)).toBeTrue();
+        expect(projectedNameSet.has(data.name as string)).toBeTrue();
+        if (nameSet.has(data.name as string)) {
+          expect(callIdSet.has(data.toolCallId as string)).toBeTrue();
+        }
         expect(settledOutcomes.has(data.outcome as string)).toBeTrue();
         continue;
       }
@@ -1533,10 +1551,13 @@ describe("caller-injected cell tool translation", () => {
     });
 
     expect(aiSdkRecord.status).toBe("passed");
-    // Sorted authorized names, projected before dispatch.
+    // Sorted authorized names, projected before dispatch: the single
+    // core-owned projection carries the caller-injected names plus the
+    // host/task surface the driver actually presents, so settled host
+    // invocations stay cross-referenceable.
     expect(aiSdkRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tools.projected",
-      data: { tools: ["alpha_marker", "invert_fixture", "write_file"] },
+      data: { tools: ["alpha_marker", "invert_fixture", "task_create", "task_get", "task_list", "task_update", "write_file"] },
     }));
     // The translated model-facing schema is the neutral fixture schema.
     const translated = (translatedTools as Array<{ name: string; inputSchema?: unknown }> | undefined)
@@ -1609,6 +1630,7 @@ describe("caller-injected cell tool translation", () => {
         INPUT_SENTINEL,
         RESULT_SENTINEL,
       ],
+      ["alpha_marker", "invert_fixture", "task_create", "task_get", "task_list", "task_update", "write_file"],
     );
 
     // Core observer isolation: caller observation receives an independent
@@ -1758,6 +1780,7 @@ describe("caller-injected cell tool translation", () => {
       ["invert_fixture"],
       [AI_SDK_CALL_ID, SETTLE_CALL_ID],
       [INPUT_SENTINEL, RESULT_SENTINEL, SETTLE_OUTPUT_SENTINEL, "echoedInput", "echoedResult", "echoedCallId"],
+      ["invert_fixture", "task_create", "task_get", "task_list", "task_update"],
     );
 
     // Provider-error sentinel: a provider failure whose message carries the
@@ -1807,6 +1830,7 @@ describe("caller-injected cell tool translation", () => {
       ["invert_fixture"],
       [AI_SDK_CALL_ID],
       [INPUT_SENTINEL, RESULT_SENTINEL],
+      ["invert_fixture", "task_create", "task_get", "task_list", "task_update"],
     );
 
     // Pi half: the same neutral fixture through the harness driver, with the
@@ -1826,6 +1850,14 @@ describe("caller-injected cell tool translation", () => {
         providerExecuted: false,
       });
       await waitForToolResult(1);
+      // The pinned adapter emits one tool-result chunk per executed call;
+      // the driver's bounded settlement observation consumes it.
+      emit({
+        type: "tool-result",
+        toolCallId: PI_CALL_ID,
+        toolName: "invert_fixture",
+        isError: false,
+      });
       emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
       emit({
         type: "tool-call",
@@ -1835,6 +1867,12 @@ describe("caller-injected cell tool translation", () => {
         providerExecuted: false,
       });
       await waitForToolResult(2);
+      emit({
+        type: "tool-result",
+        toolCallId: "terminal-pi",
+        toolName: "finish_work",
+        isError: false,
+      });
       emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
       emit({
         type: "tool-call",
@@ -1844,6 +1882,12 @@ describe("caller-injected cell tool translation", () => {
         providerExecuted: false,
       });
       await waitForToolResult(3);
+      emit({
+        type: "tool-result",
+        toolCallId: PI_LATE_CALL_ID,
+        toolName: "invert_fixture",
+        isError: false,
+      });
       emit({ type: "finish-step", finishReason: STOP_REASON, usage: V4_USAGE });
       emit({
         type: "finish",
@@ -1892,7 +1936,7 @@ describe("caller-injected cell tool translation", () => {
     }));
     expect(piRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tools.projected",
-      data: { tools: ["invert_fixture"] },
+      data: { tools: ["finish_work", "invert_fixture", "task_create", "task_get", "task_list", "task_update"] },
     }));
     // The action closure refused the late post-terminal call before the
     // caller implementation could run: an invocation refused is retained as
@@ -1920,6 +1964,23 @@ describe("caller-injected cell tool translation", () => {
     expect(piRecord.trace.some((event) => event.type.startsWith("agent."))).toBe(false);
     expect(piRecord.trace.some((event) => event.type.startsWith("harness."))).toBe(false);
     expect(piRecord.trace.some((event) => event.type === "terminal.tool.called")).toBe(false);
+    // Every real invocation settles exactly once through the core-owned
+    // projection: the driver-reported triplet of a gate-settled injected
+    // call is dropped as a duplicate, the refused late call keeps exactly
+    // its refused triplet, and the declared terminal call is retained once
+    // like any other real host invocation.
+    const settledByCallId = new Map<string, { name: string; outcome: string }>();
+    for (const event of piRecord.trace) {
+      if (event.type !== "cell.tool.settled") continue;
+      const data = event.data as { name: string; toolCallId: string; outcome: string };
+      expect(settledByCallId.has(data.toolCallId)).toBeFalse();
+      settledByCallId.set(data.toolCallId, { name: data.name, outcome: data.outcome });
+    }
+    expect([...settledByCallId.entries()].sort(([left], [right]) => left.localeCompare(right))).toEqual([
+      [PI_LATE_CALL_ID, { name: "invert_fixture", outcome: "refused" }],
+      [PI_CALL_ID, { name: "invert_fixture", outcome: "fulfilled" }],
+      ["terminal-pi", { name: "finish_work", outcome: "fulfilled" }],
+    ]);
     expect(piRecord.rawSteps).toEqual([]);
     expect(piRecord.usage).toMatchObject({ inputTokens: 3, outputTokens: 3, totalTokens: 6 });
 
@@ -2001,6 +2062,7 @@ describe("caller-injected cell tool translation", () => {
       ["invert_fixture"],
       [PI_CALL_ID, SETTLE_CALL_ID],
       [INPUT_SENTINEL, RESULT_SENTINEL, SETTLE_OUTPUT_SENTINEL, "echoedInput", "echoedResult", "echoedCallId"],
+      ["invert_fixture", "task_create", "task_get", "task_list", "task_update"],
     );
 
     // The whole allowed retained surface, asserted mechanically: no injected
@@ -2012,6 +2074,7 @@ describe("caller-injected cell tool translation", () => {
       ["invert_fixture"],
       [PI_CALL_ID, PI_LATE_CALL_ID],
       [INPUT_SENTINEL, RESULT_SENTINEL, "injectedEcho"],
+      ["finish_work", "invert_fixture", "task_create", "task_get", "task_list", "task_update"],
     );
   });
 
@@ -2276,7 +2339,7 @@ describe("caller-injected cell tool translation", () => {
     // added after the run began never reached the driver.
     expect(mutableRecord.trace).toContainEqual(expect.objectContaining({
       type: "cell.tools.projected",
-      data: { tools: ["mutable_probe"] },
+      data: { tools: ["mutable_probe", "task_create", "task_get", "task_list", "task_update"] },
     }));
     // The model-visible schema is the frozen bound copy: the caller's later
     // schema rewrite never reached the translation.
@@ -2428,5 +2491,185 @@ describe("caller-injected cell tool translation", () => {
       [VALID_REFUSE_CALL_ID],
       [FORGED_REFUSE_NAME, FORGED_REFUSE_CALL_ID],
     );
+  });
+
+  test("an injected-tool run retains one bounded settled triplet per real host and injected invocation and projects the actual model-visible surface", async () => {
+    const { root } = await fixture();
+    writeFileSync(join(root, "notes.md"), "note\n");
+    const input = cellToolCell(root, {
+      workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    });
+    const LIST_CALL_ID = "host-list-call-a1b2c3d4e5f6g7h8";
+    const READ_CALL_ID = "host-read-call-h8g7f6e5d4c3b2a1";
+    const INJECTED_CALL_ID = "injected-call-q1w2e3r4t5y6u7i8";
+    const injectedLog: Array<{ input: unknown; context: CellToolExecutionContext }> = [];
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: LIST_CALL_ID,
+            toolName: "list_files",
+            input: JSON.stringify({ path: "." }),
+          }], "tool-calls");
+        }
+        if (calls === 2) {
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: READ_CALL_ID,
+            toolName: "read_file",
+            input: JSON.stringify({ path: "notes.md" }),
+          }], "tool-calls");
+        }
+        if (calls === 3) {
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: INJECTED_CALL_ID,
+            toolName: "invert_fixture",
+            input: JSON.stringify({ text: "abc" }),
+          }], "tool-calls");
+        }
+        return modelResponse([{ type: "text", text: "The reads and inversion completed." }], "stop");
+      },
+    });
+
+    const record = await runCell(input, aiSdkDriver(model, "mock-host-settled-surface"), {
+      host: createLocalHost(),
+      tools: { invert_fixture: neutralFixtureTool(injectedLog) },
+    });
+
+    expect(record.status).toBe("passed");
+    expect(calls).toBe(4);
+    // The single projection names the actual model-visible surface: the
+    // caller-injected tool, the host workspace tools, and the host task
+    // tools — exactly what the observer can cross-reference against settled
+    // names.
+    expect(record.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["invert_fixture", "list_files", "read_file", "task_create", "task_get", "task_list", "task_update"] },
+    }));
+    // Every real invocation — host workspace and caller-injected alike —
+    // settles exactly once with its exact provider toolCallId: the
+    // driver-reported host triplets are retained, and the driver report of
+    // the gate-settled injected call is dropped as a duplicate.
+    const settled = record.trace.filter((event) => event.type === "cell.tool.settled");
+    expect(settled).toHaveLength(3);
+    expect(settled).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "list_files", toolCallId: LIST_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(settled).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: READ_CALL_ID, outcome: "fulfilled" },
+    }));
+    expect(settled).toContainEqual(expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "invert_fixture", toolCallId: INJECTED_CALL_ID, outcome: "fulfilled" },
+    }));
+    // The worker's real list_files/read_file invocations are now
+    // reconstructable from the retained trace: projected names and settled
+    // triplets cross-reference without any input path or result payload.
+    expect(JSON.stringify(record.trace)).not.toContain("notes.md");
+    expect(injectedLog).toHaveLength(1);
+    expectBoundedInjectedRetention(
+      record,
+      ["invert_fixture"],
+      [INJECTED_CALL_ID],
+      ["abc"],
+      ["invert_fixture", "list_files", "read_file", "task_create", "task_get", "task_list", "task_update"],
+    );
+  });
+
+  test("an injected-tool run with no real invocation retains the projection and zero settled evidence instead of fabricating any", async () => {
+    const { root } = await fixture();
+    const input = cellToolCell(root);
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        calls += 1;
+        return modelResponse([{ type: "text", text: "No tool was needed for this answer." }], "stop");
+      },
+    });
+
+    const record = await runCell(input, aiSdkDriver(model, "mock-no-tool-invocation"), {
+      host: createLocalHost(),
+      tools: {
+        invert_fixture: {
+          description: "Never invoked.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => ({ value: "never" }),
+        },
+      },
+    });
+
+    expect(record.status).toBe("passed");
+    expect(calls).toBe(1);
+    // The surface is projected, but the retained trace truthfully retains
+    // zero cell.tool.settled events: a worker's later claim of tool actions
+    // can never be mistaken for retained evidence, and nothing is
+    // fabricated.
+    expect(record.trace).toContainEqual(expect.objectContaining({
+      type: "cell.tools.projected",
+      data: { tools: ["invert_fixture", "task_create", "task_get", "task_list", "task_update"] },
+    }));
+    expect(record.trace.filter((event) => event.type === "cell.tool.settled")).toEqual([]);
+  });
+
+  test("host tool settlements retain only the whitelisted triplet: paths, content, and results never enter the retained evidence", async () => {
+    const { root } = await fixture();
+    const SECRET_PATH = "sensitive-notes-x7k2m9q4v1.md";
+    const SECRET_CONTENT = "SECRET_FILE_CONTENT_q1w2e3r4t5y6";
+    writeFileSync(join(root, SECRET_PATH), `${SECRET_CONTENT}\n`);
+    const input = cellToolCell(root, {
+      workspace: { root, readPaths: ["."], writePaths: [], excludePaths: [], allowedCommands: [] },
+    });
+    const READ_CALL_ID = "secret-read-call-z9x8c7v6b5n4";
+    let calls = 0;
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => {
+        calls += 1;
+        if (calls === 1) {
+          return modelResponse([{
+            type: "tool-call",
+            toolCallId: READ_CALL_ID,
+            toolName: "read_file",
+            input: JSON.stringify({ path: SECRET_PATH }),
+          }], "tool-calls");
+        }
+        return modelResponse([{ type: "text", text: "The sensitive read settled." }], "stop");
+      },
+    });
+
+    const record = await runCell(input, aiSdkDriver(model, "mock-sensitive-settled"), {
+      host: createLocalHost(),
+      tools: {
+        invert_fixture: {
+          description: "Declared but never invoked.",
+          inputSchema: { type: "object", properties: {}, additionalProperties: false },
+          execute: async () => ({ value: "never" }),
+        },
+      },
+    });
+
+    expect(record.status).toBe("passed");
+    expect(calls).toBe(2);
+    // The exact settled triplet is retained with exactly the whitelisted
+    // keys and no extra field ...
+    const settled = record.trace.filter((event) => event.type === "cell.tool.settled");
+    expect(settled).toEqual([expect.objectContaining({
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: READ_CALL_ID, outcome: "fulfilled" },
+    })]);
+    expect(Object.keys(settled[0]!.data as Record<string, unknown>).sort())
+      .toEqual(["name", "outcome", "toolCallId"]);
+    // ... and the tool input path, the read content, and the file result
+    // never enter any retained surface: trace, rawSteps, or the whole
+    // record.
+    const serialized = JSON.stringify(record);
+    expect(serialized).not.toContain(SECRET_PATH);
+    expect(serialized).not.toContain(SECRET_CONTENT);
+    expect(record.rawSteps).toEqual([]);
   });
 });

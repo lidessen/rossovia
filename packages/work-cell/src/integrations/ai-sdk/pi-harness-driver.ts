@@ -327,6 +327,12 @@ export class PiHarnessCellDriver implements CellDriver {
         `terminal tool names conflict with AI SDK execution tools: ${conflictingTerminalNames.join(", ")}`,
       );
     }
+    // The exact model-visible surface is reported once, before any provider
+    // dispatch: for an injected-tool run the core projects these names with
+    // the caller-injected names in the single core-owned
+    // cell.tools.projected event. The report carries names only — never
+    // schemas, inputs, or results.
+    context.observeToolSurface?.(Object.keys(mergedTools));
 
     // Every Pi built-in is excluded from the model-visible surface; only the
     // host-executed Work Cell tools are allowed. The filtering is forwarded
@@ -683,6 +689,20 @@ function createHarnessStreamObserver(options: {
         name,
         outcome: value.isError === true ? "tool-error" : "tool-result",
       });
+      // One core-owned whitelisted settlement for every real model-visible
+      // invocation: only the bounded name/toolCallId/outcome triplet
+      // crosses the observation channel, never the tool input or result
+      // payload. The core deduplicates against the gate settlements of
+      // caller-injected calls and drops names outside the projected
+      // surface.
+      const toolCallId = typeof value.toolCallId === "string" ? value.toolCallId : undefined;
+      if (toolCallId !== undefined) {
+        context.observeToolSettled?.(
+          name,
+          toolCallId,
+          value.isError === true ? "rejected" : "fulfilled",
+        );
+      }
       return;
     }
     if (type === "finish-step") {

@@ -143,8 +143,43 @@ export async function runCell(
   // synchronously bound immutable snapshot is validated, projected, and
   // dispatched.
   const injectedCellTools = boundCellTools ?? {};
+  // One core-owned settled-invocation projection for an injected-tool run:
+  // every real model-visible tool invocation — caller-injected, host, task,
+  // or terminal — is retained exactly once as the bounded
+  // { name, toolCallId, outcome } triplet. The gate's own settlements and
+  // the driver-reported settlements share this single deduplicated emitter,
+  // so an invocation reported by both paths (a driver that observes its own
+  // tool loop) never duplicates evidence. The single cell.tools.projected
+  // event is emitted lazily: the driver reports the exact model-visible
+  // surface before any dispatch (observeToolSurface), and a driver that
+  // never reports still gets the caller-injected names projected before the
+  // first settlement or the immutable final.
+  const projectedToolNames = new Set<string>(Object.keys(injectedCellTools));
+  let projectionEmitted = false;
+  const ensureProjected = (): void => {
+    if (projectionEmitted || cellToolGate === undefined) return;
+    projectionEmitted = true;
+    emit("cell.tools.projected", { tools: [...projectedToolNames].sort() });
+  };
+  const settledInvocations = new Set<string>();
+  const emitSettled = (name: string, toolCallId: string, outcome: CellToolSettledOutcome): void => {
+    if (cellToolGate === undefined) return;
+    const key = `${name}\u0000${toolCallId}`;
+    if (settledInvocations.has(key)) return;
+    settledInvocations.add(key);
+    ensureProjected();
+    emit("cell.tool.settled", { name, toolCallId, outcome });
+  };
+  const gateEmit = (type: string, data: unknown): void => {
+    if (type === "cell.tool.settled") {
+      const settled = data as { name: string; toolCallId: string; outcome: CellToolSettledOutcome };
+      emitSettled(settled.name, settled.toolCallId, settled.outcome);
+      return;
+    }
+    emit(type, data);
+  };
   const cellToolGate = hasInjectedCellTools
-    ? gateCellTools(injectedCellTools, emit, signal)
+    ? gateCellTools(injectedCellTools, gateEmit, signal)
     : undefined;
   // Close the host-effect admission gate synchronously from an abort
   // listener registered before the driver starts: during synchronous
@@ -170,6 +205,7 @@ export async function runCell(
   let failureSettlementUsage: CellUsage | undefined;
   let observedExecutionUsage = emptyUsage();
   let observedSettlementUsage: CellUsage | undefined;
+  let executionStarted = false;
   let verification = { passed: false, terminal: { passed: false, required: [] as string[], called: [] as string[] } };
   let outputVerification: OutputVerification | undefined;
   let artifactVerification: ArtifactVerification | undefined;
@@ -205,6 +241,9 @@ export async function runCell(
       if (cellToolErrors.length > 0) {
         throw new Error(cellToolErrors.join("; "));
       }
+      // From here the driver about to be dispatched is the actual surface
+      // owner: a failure may still retain the single core-owned projection.
+      executionStarted = true;
       const context = {
         workspace: admission.workspace,
         signal,
@@ -215,6 +254,34 @@ export async function runCell(
           if (phase === "settlement") {
             observedSettlementUsage = addUsage(observedSettlementUsage ?? emptyUsage(), usage);
           }
+        },
+        observeToolSurface(names: readonly string[]) {
+          // The driver reports the exact model-visible surface it actually
+          // presents, once, before any provider dispatch. For an injected
+          // tool run the core projects the union with the caller-injected
+          // names in the single cell.tools.projected event; reports are
+          // ignored otherwise (no-tool runs keep their historical surface
+          // events). Names only — never schemas, inputs, or results.
+          if (cellToolGate === undefined) return;
+          for (const name of names) {
+            if (typeof name === "string" && name.length > 0) projectedToolNames.add(name);
+          }
+          ensureProjected();
+        },
+        observeToolSettled(name: string, toolCallId: string, outcome: CellToolSettledOutcome) {
+          // One core-owned whitelisted retention: only the bounded
+          // name/toolCallId/outcome triplet of a real invocation may cross
+          // this channel; input, result, and provider payloads never do.
+          // Injected invocations are settled by the gate itself; a driver
+          // report that duplicates a gate settlement is dropped. A name
+          // never projected in the surface fails closed: no evidence is
+          // retained for a tool that was not part of the model-visible set.
+          if (cellToolGate === undefined) return;
+          if (typeof name !== "string" || name.length === 0) return;
+          if (typeof toolCallId !== "string" || toolCallId.length === 0) return;
+          if (outcome !== "fulfilled" && outcome !== "rejected" && outcome !== "refused") return;
+          if (!projectedToolNames.has(name)) return;
+          emitSettled(name, toolCallId, outcome);
         },
         emit(type: string, data: unknown) {
           // One core-owned retained-evidence projection for an injected-tool
@@ -233,13 +300,6 @@ export async function runCell(
         emit("cell.prepared", {
           adapter: options.preparation.adapter,
           usage: options.preparation.usage,
-        });
-      }
-      if (cellToolGate) {
-        // The actually authorized caller-injected tool surface, projected
-        // before dispatch with sorted names.
-        emit("cell.tools.projected", {
-          tools: Object.keys(cellToolGate.surface.tools).sort(),
         });
       }
       // One canonical pre-driver CellInput is the caller contract. Terminal,
@@ -334,6 +394,11 @@ export async function runCell(
       error = hasInjectedCellTools
         ? stableCellFailureMessage(status)
         : caught instanceof Error ? caught.message : String(caught);
+      // A driver that started dispatch (or failed after dispatch) still
+      // retains the single core-owned projection before the error and the
+      // immutable final: an injected-tool run never loses the projected
+      // names it was granted.
+      if (executionStarted) ensureProjected();
       emit("cell.error", { status, error });
     }
   }
@@ -362,6 +427,12 @@ export async function runCell(
     ? subtractUsage(aggregateDriverUsage, settlementUsage)
     : aggregateDriverUsage;
   const estimate = estimateCost(usage, retainedDriverDescriptor.pricing);
+  // The single core-owned projection is retained even when the driver never
+  // reported its exact surface (a provider-neutral driver): the
+  // caller-injected names alone are truthful projected evidence, and a run
+  // with no real invocation keeps the projection without any fabricated
+  // settlement.
+  if (executionStarted) ensureProjected();
   // Observation is sealed as the terminal event is appended, before its
   // observer runs: neither a stray tool completion nor a late driver
   // callback can append to the retained trace after cell.finished.
