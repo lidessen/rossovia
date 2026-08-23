@@ -46,7 +46,7 @@ import {
   WorkerCatalog,
   type WorkerCard,
 } from "../../../packages/work-cell/src/worker-catalog";
-import { RunControlRegistry, stopRun } from "../src/orchestration/run";
+import { RunControlRegistry, runOrdinaryTaskRun, runRequestDigest, stopRun } from "../src/orchestration/run";
 import { worktreeWriterLeasePath } from "../src/orchestration/worktree-writer";
 import { readStrictTaskAttemptEvidence, showPrincipalTaskAttempts } from "../src/task-attempts";
 
@@ -121,6 +121,8 @@ interface TestRunArguments {
   model: string;
   reasoningEffort?: string;
   maxSteps?: number;
+  /** Explicit read-only entry: access read-only, no write/command authority, no O3 claim. */
+  readOnly?: boolean;
   expectedSourceRevision: number;
   expectedRevision: number;
 }
@@ -167,6 +169,7 @@ function runTestTask(
         ? { continueFromAttemptId: arguments_.continueFromAttemptId }
         : {}),
       ...(arguments_.maxSteps !== undefined ? { maxSteps: arguments_.maxSteps } : {}),
+      ...(arguments_.readOnly ? { readOnly: true } : {}),
     },
     {
       ...dependencies,
@@ -2511,6 +2514,225 @@ describe("task run --max-steps option", () => {
     expect(missing.exitCode).toBe(2);
     expect(missing.stderr).toContain("invalid task option sequence");
     expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(0);
+  });
+});
+
+describe("task run --read-only explicit entry", () => {
+  test("lowers a read-only run with no write paths or allowed commands, no O3 claim, and an access-bound digest", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    let leaseHeldDuringExecution = false;
+    const executor: TaskCellExecutor = async ({ cellInput }) => {
+      // The read-only CellInput reaches the executor with no write paths and
+      // no allowed commands, and the O3 writer claim is never acquired.
+      expect(cellInput.workspace.writePaths).toEqual([]);
+      expect(cellInput.workspace.allowedCommands).toEqual([]);
+      leaseHeldDuringExecution = existsSync(
+        worktreeWriterLeasePath(realpathSync(current.worktree)),
+      );
+      return validWorkCellRecord(cellInput, { runId: "read-only-run" });
+    };
+
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      readOnly: true,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor);
+    expect(leaseHeldDuringExecution).toBeFalse();
+
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.workspace).toMatchObject({
+      root: realpathSync(current.worktree),
+      readPaths: ["."],
+      writePaths: [],
+      allowedCommands: [],
+      excludePaths: [".git", "node_modules", "dist", "build", "target", "coverage", ".next", "outputs", ".work-cell", ".reasonix"],
+    });
+    // Everything except the workspace authority is the ordinary lowering: the
+    // exact objective, acceptance, worker identity, and execution profile.
+    expect(input).toMatchObject({
+      intent: "Implement the exact bounded change",
+      acceptance: ["The requested behavior is observable", "Named checks pass"],
+      workerId: "test-worker",
+      executionProfile: { provider: "opencode", model: "opencode/go" },
+    });
+    expect(input.instructions).toEqual([
+      "Complete the current Workbench Task in the bound worktree. Do not claim semantic acceptance.",
+    ]);
+
+    // The durable Run request retains the access mode and its digest binds it:
+    // the identical request body without `access: "read-only"` digests differently.
+    const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+    expect(attemptRecord.access).toBe("read-only");
+    const readOnlyRequest = {
+      requestId: result.attemptId,
+      taskId: created.task.id,
+      taskRevision: 1,
+      sourceRevision: 1,
+      workerId: "test-worker",
+      execution: { driver: "ai-sdk-v7", model: "opencode/go" },
+      worktree: realpathSync(current.worktree),
+      access: "read-only" as const,
+    };
+    expect(attemptRecord.requestDigest).toBe(runRequestDigest(readOnlyRequest));
+    const { access: _access, ...ordinaryRequest } = readOnlyRequest;
+    expect(runRequestDigest(ordinaryRequest)).not.toBe(attemptRecord.requestDigest);
+
+    // No O3 writer claim exists before or after, the canonical evidence family
+    // is retained, and the normal settlement derives from the passed final.
+    expect(existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)))).toBeFalse();
+    expect(attemptLeaseStanding(current.home, created.task.id, result.attemptId)).toBe("released");
+    const finalRecord = JSON.parse(readFileSync(join(current.home, result.finalRecordRef), "utf8"));
+    expect(finalRecord.input).toEqual(input);
+    const settlement = JSON.parse(readFileSync(join(current.home, result.settlementRef), "utf8"));
+    expect(settlement).toMatchObject({
+      status: "recorded",
+      workCellRunId: "read-only-run",
+      cellStatus: "passed",
+      semanticAcceptance: "not-evaluated",
+    });
+    expect(showPrincipalTaskAttempts(current.home, created.task.id)).toHaveLength(1);
+  });
+
+  test("keeps the ordinary default task run effectful with the O3 claim and unchanged workspace authority", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+    let leaseHeldDuringExecution = false;
+    const executor: TaskCellExecutor = async ({ cellInput }) => {
+      // The ordinary default keeps the effectful workspace policy and holds
+      // the exact O3 writer claim during execution.
+      expect(cellInput.workspace.writePaths).toEqual(["."]);
+      expect(cellInput.workspace.allowedCommands).toEqual([...ORDINARY_TASK_ALLOWED_COMMANDS]);
+      leaseHeldDuringExecution = existsSync(
+        worktreeWriterLeasePath(realpathSync(current.worktree)),
+      );
+      return validWorkCellRecord(cellInput, { runId: "ordinary-run" });
+    };
+
+    const result = await runTestTask(current.home, {
+      id: created.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, executor);
+    expect(leaseHeldDuringExecution).toBeTrue();
+
+    const attemptRecord = JSON.parse(readFileSync(join(current.home, result.attemptRef), "utf8"));
+    expect(attemptRecord).not.toHaveProperty("access");
+    const input = JSON.parse(readFileSync(join(current.home, result.inputRef), "utf8"));
+    expect(input.workspace.writePaths).toEqual(["."]);
+    expect(input.workspace.allowedCommands).toEqual([...ORDINARY_TASK_ALLOWED_COMMANDS]);
+    // The exact claim is released after the terminal settlement.
+    expect(attemptLeaseStanding(current.home, created.task.id, result.attemptId)).toBe("released");
+    expect(existsSync(worktreeWriterLeasePath(realpathSync(current.worktree)))).toBeFalse();
+    expect(result.cellStatus).toBe("passed");
+  });
+
+  test("fails closed on invalid read-only lowering and dirty-attempt boundaries, and accepts --read-only at the CLI", async () => {
+    const current = fixture();
+    const created = agentTask(current);
+
+    // (a) The shared lowering validation refuses a read-only Run whose lowered
+    // CellInput carries write authority BEFORE any Cell invocation, retaining
+    // one truthful runner-failed attempt with no claim and no invented final.
+    const runId = randomUUID();
+    const effectfulLowering = CellInputSchema.parse({
+      id: `workbench-task-${created.task.id}-attempt-${runId}`,
+      workerId: "test-worker",
+      intent: "Implement the exact bounded change",
+      workspace: {
+        root: realpathSync(current.worktree),
+        readPaths: ["."],
+        writePaths: ["."],
+        excludePaths: [],
+        allowedCommands: [],
+      },
+      instructions: [
+        "Complete the current WorkBench Task in the bound worktree. Do not claim semantic acceptance.",
+      ],
+      capabilities: [],
+      context: [],
+      capabilitiesRequired: [],
+      acceptance: ["The requested behavior is observable"],
+      budget: { maxDurationMs: 1_800_000 },
+      executionProfile: {
+        id: "test-worker",
+        version: "execution-profile.v1",
+        provider: "opencode",
+        model: "opencode/go",
+        parallelism: "serial",
+      },
+    });
+    let cellInvocations = 0;
+    await expect(runOrdinaryTaskRun(current.home, {
+      requestId: runId,
+      taskId: created.task.id,
+      taskRevision: 1,
+      sourceRevision: 1,
+      workerId: "test-worker",
+      execution: { driver: "ai-sdk-v7", model: "opencode/go" },
+      worktree: realpathSync(current.worktree),
+      access: "read-only",
+    }, {
+      lowerCellInput: () => effectfulLowering as CellInput,
+      execute: async () => {
+        cellInvocations += 1;
+        throw new Error("must not be reached");
+      },
+    })).rejects.toThrow("read-only Run lowered CellInput must have no write paths");
+    expect(cellInvocations).toBe(0);
+    const refusedProjection = showPrincipalTaskAttempts(current.home, created.task.id);
+    expect(refusedProjection).toHaveLength(1);
+    expect(refusedProjection[0]).toMatchObject({ attemptId: runId, status: "runner-failed" });
+    expect(refusedProjection[0]).not.toHaveProperty("cellStatus");
+    expect(existsSync(join(current.home, refusedProjection[0]!.inputRef))).toBeFalse();
+    const refusedSettlement = JSON.parse(
+      readFileSync(join(current.home, refusedProjection[0]!.settlementRef), "utf8"),
+    );
+    expect(refusedSettlement).toMatchObject({
+      status: "runner-failed",
+      error: "read-only Run lowered CellInput must have no write paths",
+    });
+    // The read-only path skipped O3, so no claim was ever acquired; the
+    // refused lowering was never persisted, so the immutable attempt
+    // evidence relation cannot be re-read and the standing is uninspectable.
+    expect(attemptLeaseStanding(current.home, created.task.id, runId)).toBe("uninspectable");
+
+    // (b) The read-only entry keeps the same attempt boundary as ordinary: a
+    // dirty Worktree is refused before any Cell invocation, settling a truthful
+    // runner-failed attempt with no claim.
+    const dirty = fixture();
+    const dirtyTask = agentTask(dirty);
+    writeFileSync(join(dirty.worktree, "dirty.txt"), "dirty\n");
+    let dirtyInvocations = 0;
+    await expect(runTestTask(dirty.home, {
+      id: dirtyTask.task.id,
+      provider: "opencode",
+      model: "opencode/go",
+      readOnly: true,
+      expectedSourceRevision: 1,
+      expectedRevision: 1,
+    }, async () => {
+      dirtyInvocations += 1;
+      throw new Error("must not be reached");
+    })).rejects.toThrow("task Worktree is not clean");
+    expect(dirtyInvocations).toBe(0);
+    const dirtyProjections = showPrincipalTaskAttempts(dirty.home, dirtyTask.task.id);
+    expect(dirtyProjections).toHaveLength(1);
+    expect(dirtyProjections[0]).toMatchObject({ status: "runner-failed" });
+    expect(dirtyProjections[0]).not.toHaveProperty("cellStatus");
+    expect(attemptLeaseStanding(dirty.home, dirtyTask.task.id, dirtyProjections[0]!.attemptId)).toBe("released");
+
+    // (c) The CLI parses --read-only as a boolean flag: the invocation reaches
+    // dispatch (unknown task fails in state, not as a usage error).
+    const missing = taskCli(current.home, "run", "unused", "--worker", "deepseek-flash", "--read-only");
+    expect(missing.exitCode).toBe(STATE_FAILURE_EXIT_CODE);
+    expect(missing.stderr).toContain("rossovia: Principal task not found");
+    expect(missing.stderr).not.toContain("for usage");
   });
 });
 
