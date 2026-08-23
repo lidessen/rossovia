@@ -22,6 +22,7 @@ import {
   type CellInput,
   type CellRunRecord,
   type ExecutionProfile,
+  type TraceEvent,
 } from "../../../packages/work-cell/src/contracts";
 import { resolveHome } from "./home";
 import {
@@ -65,6 +66,35 @@ export const OBSERVER_REVIEW_ID_MAX_CHARS = 512 as const;
  * projected, and the cumulative changed-path union is never fabricated.
  */
 export const OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS = 16 as const;
+
+/**
+ * Hard upper bound on one bounded chronological trace event summary list
+ * (`final.trace.events`) inside the read-only observer evidence projection.
+ * A retained trace longer than the bound is disclosed as explicitly
+ * truncated (`eventsTruncated`) while `eventCount`/`typeCounts` keep
+ * covering the full retained trace; the bounded prefix is projected in the
+ * retained observation order and the dropped tail is never fabricated.
+ */
+export const OBSERVER_TRACE_EVENT_LIMIT = 64 as const;
+
+/**
+ * Hard upper bound on the rendered UTF-8 byte size of the bounded
+ * chronological trace event summary list (`final.trace.events`) inside the
+ * read-only observer evidence projection/context, measured exactly as the
+ * observer context renders the list (the events array under `final.trace` of
+ * the `JSON.stringify(..., null, 2)` projection). The count bound alone does
+ * not bound the worst case: one maximal whitelisted payload (for example a
+ * projected tools surface at the string and list limits) renders far larger
+ * than a typical event, so the projection stops appending events before the
+ * rendered list would exceed this budget and discloses the cut with
+ * `eventsTruncated` while `eventCount`/`typeCounts` keep covering the full
+ * retained trace. The budget is a documented share of the 32 KiB observer
+ * context hard cap (`OBSERVER_CONTEXT_MAX_BYTES`): it still fits the full
+ * `OBSERVER_TRACE_EVENT_LIMIT`-entry prefix of ordinary minimal events and
+ * leaves the rest of the cap to the constant framing and the other bounded
+ * evidence fields.
+ */
+export const OBSERVER_TRACE_EVENTS_MAX_BYTES = 12 * 1024;
 
 export interface WorkflowObserverArguments {
   readonly home?: string;
@@ -942,7 +972,15 @@ export function workflowObserverContext(
  * uncertain (never fabricating the cumulative diff) when any member is
  * missing, invalid, foreign-Task, cyclic, or over the chain bound. Provider
  * steps, trace event payloads, and the untruncated source payloads are never
- * projected; the refs and digests remain the route for a later ordinary Task
+ * projected; the bounded chronological trace event summary
+ * (`final.trace.events`) projects only whitelisted fields — retained index,
+ * timestamp, event type, and, for the core-owned `cell.tools.projected` and
+ * `cell.tool.settled` shapes, authorized tool names and the exact
+ * name/toolCallId/outcome triplet — and every other payload (all no-tool
+ * driver events, extra fields, unknown outcomes, oversized identifiers)
+ * fails closed to timestamp and type, with an over-limit trace explicitly
+ * truncated (to the count bound and the rendered UTF-8 byte budget). The
+ * refs and digests remain the route for a later ordinary Task
  * to verify and inspect full evidence.
  */
 export function buildObserverEvidenceProjection(
@@ -1065,6 +1103,7 @@ export function buildObserverEvidenceProjection(
     },
     limitation:
       "Raw provider steps, trace event payloads, and the untruncated original input/result text are not copied into the observer context. "
+      + `The final.trace block preserves eventCount/typeCounts and adds a bounded chronological summary of the first ${OBSERVER_TRACE_EVENT_LIMIT} retained events that also fit the ${OBSERVER_TRACE_EVENTS_MAX_BYTES}-byte UTF-8 budget of the rendered list (final.trace.events with eventLimit/eventsByteLimit; explicitly eventsTruncated when the trace is longer or the rendered list would exceed the byte budget). firstAt/lastAt and every event timestamp use the same bounded timestamp rule. Each event summary projects only its retained index, bounded timestamp, and bounded event type; a cell.tools.projected payload with exactly the single tools array projects the bounded authorized tool names, and a cell.tool.settled payload with exactly the whitelisted { name, toolCallId, outcome } triplet projects that triplet — every other payload, including all no-tool driver events, extra fields, unknown outcomes, and oversized identifiers, is omitted and the event stays timestamp/type-only, so no tool input, result, or provider metadata ever enters the summary. `
       + "The bounded input goal and final result snippets are exact leading prefixes as retained; their digests cover the full retained text, and the exact refs let a later ordinary Task verify the digests and read untruncated text when review needs it. "
       + `File-byte digests are computed from one pinned snapshot of the whole retained evidence family (cell input, attempt record, final record, settlement, and control receipt when retained) with bounded streaming reads that never read more than ${EVIDENCE_FILE_DIGEST_LIMIT_BYTES} bytes per file (evidence.fileDigestLimitBytes); any family member rewritten, appearing, vanishing, or becoming uncheckable during the review degrades the review to a query gap, because the family can no longer be verified at its pinned refs. Only a source above the digest cap proceeds under the bounded policy: the review continues and honestly records no file digests; an over-cap file is read up to the cap and stopped — never fully read. `
       + "The reviewed task's workspace policy is subject evidence about that task's own grants, not an observer grant: "
@@ -1559,7 +1598,13 @@ function isReviewIdBoundaryValid(reviewId: string): boolean {
 }
 
 const OBSERVER_CONTEXT_LIST_LIMIT = 64;
-const OBSERVER_CONTEXT_STRING_LIMIT = 256;
+/**
+ * Upper bound on one projected string field: event timestamps (each event
+ * entry's `at`, plus `firstAt`/`lastAt`), event types, tool names, tool call
+ * ids, and every other bounded string. `firstAt`/`lastAt` and every event
+ * timestamp apply this same rule, so no raw timestamp can exceed the bound.
+ */
+export const OBSERVER_CONTEXT_STRING_LIMIT = 256;
 const OBSERVER_CONTEXT_TEXT_LIMIT = 2048;
 const OBSERVER_CONTEXT_GOAL_LIST_LIMIT = 16;
 const OBSERVER_CONTEXT_GOAL_STRING_LIMIT = 512;
@@ -1694,7 +1739,25 @@ function settlementSummary(settlement: StrictTaskAttemptEvidence["settlement"]):
   };
 }
 
-function traceSummary(trace: readonly { at: string; type: string }[]): Record<string, unknown> {
+/**
+ * One bounded, chronological, fail-closed summary of the retained trace
+ * events for the observer evidence projection. `eventCount`/`typeCounts`
+ * keep covering the full retained trace; the `events` list adds a bounded
+ * prefix (at most `OBSERVER_TRACE_EVENT_LIMIT`) projected in the retained
+ * observation order, each entry carrying only whitelisted fields: its
+ * retained index, bounded timestamp, bounded event type, and — when the
+ * payload exactly matches a core-owned whitelisted shape — the authorized
+ * tool names (`cell.tools.projected`) or the name/toolCallId/outcome
+ * triplet (`cell.tool.settled`). Any other payload — every no-tool driver
+ * event, extra fields that could carry tool inputs or results, unknown
+ * outcomes, or oversized identifiers — fails closed to timestamp and type
+ * and never enters the summary. `firstAt`/`lastAt` use the same bounded
+ * timestamp rule as every event entry's `at`. An over-limit trace (longer
+ * than the count bound, or larger than the byte budget once rendered) is
+ * explicitly disclosed (`eventsTruncated`, with `eventLimit`/
+ * `eventsByteLimit` naming both bounds) and never fabricated.
+ */
+function traceSummary(trace: readonly TraceEvent[]): Record<string, unknown> {
   const typeCounts = new Map<string, number>();
   for (const event of trace) typeCounts.set(event.type, (typeCounts.get(event.type) ?? 0) + 1);
   const typeEntries = [...typeCounts.entries()].sort(([left], [right]) => left.localeCompare(right));
@@ -1702,13 +1765,145 @@ function traceSummary(trace: readonly { at: string; type: string }[]): Record<st
     type.slice(0, OBSERVER_CONTEXT_STRING_LIMIT),
     count,
   ] as const);
+  const events: Record<string, unknown>[] = [];
+  let byteTruncated = false;
+  for (const [index, event] of trace.entries()) {
+    if (index >= OBSERVER_TRACE_EVENT_LIMIT) break;
+    const summary = traceEventSummary(event, index);
+    const candidate = [...events, summary];
+    // The byte budget is enforced on the list exactly as the observer
+    // context renders it: the candidate event that would push the rendered
+    // events array past `OBSERVER_TRACE_EVENTS_MAX_BYTES` is not appended,
+    // and the cut is disclosed instead of silently carrying a payload past
+    // the documented context cap.
+    if (renderedTraceEventsBytes(candidate) > OBSERVER_TRACE_EVENTS_MAX_BYTES) {
+      byteTruncated = true;
+      break;
+    }
+    events.push(summary);
+  }
   return {
     eventCount: trace.length,
     typeCounts: Object.fromEntries(boundedTypeEntries),
     typeCountsTruncated: typeEntries.length > boundedTypeEntries.length,
-    firstAt: trace[0]?.at,
-    lastAt: trace.at(-1)?.at,
+    firstAt: boundedTimestamp(trace[0]?.at),
+    lastAt: boundedTimestamp(trace.at(-1)?.at),
+    eventLimit: OBSERVER_TRACE_EVENT_LIMIT,
+    eventsByteLimit: OBSERVER_TRACE_EVENTS_MAX_BYTES,
+    events,
+    eventsTruncated: trace.length > OBSERVER_TRACE_EVENT_LIMIT || byteTruncated,
   };
+}
+
+/**
+ * One bounded timestamp projection: the exact leading prefix of the
+ * retained timestamp within the shared string limit. `firstAt`/`lastAt`
+ * and every event entry's `at` apply this same rule, so no raw timestamp
+ * can exceed the bound.
+ */
+function boundedTimestamp(value: string | undefined): string | undefined {
+  return value === undefined ? undefined : value.slice(0, OBSERVER_CONTEXT_STRING_LIMIT);
+}
+
+/**
+ * Exact rendered UTF-8 byte length of one bounded trace event summary list
+ * as the observer context renders it: the events array under `final.trace`
+ * of the `JSON.stringify(..., null, 2)` projection, reproduced at the same
+ * indent depth and measured byte for byte (the array portion from its
+ * opening `[` to its closing `]`), so the byte budget is the true rendered
+ * size of `final.trace.events`, never an estimate.
+ */
+function renderedTraceEventsBytes(events: readonly Record<string, unknown>[]): number {
+  const rendered = JSON.stringify({ final: { trace: { events } } }, null, 2);
+  const start = rendered.indexOf("[");
+  const end = rendered.lastIndexOf("]");
+  return Buffer.byteLength(rendered.slice(start, end + 1), "utf8");
+}
+
+/**
+ * One whitelisted summary of a single retained trace event: only the
+ * retained index (position in the trace array, i.e. the observation order),
+ * the bounded timestamp, and the bounded event type are always projected.
+ * The event payload is projected only when it exactly matches a core-owned
+ * whitelisted shape — `cell.tool.settled` (name/toolCallId/outcome triplet,
+ * see `whitelistedToolSettlement`) or `cell.tools.projected` (bounded
+ * authorized tool names, see `whitelistedProjectedToolNames`); every other
+ * payload, including all no-tool driver events and any malformed or
+ * enriched core event, fails closed and contributes nothing beyond
+ * timestamp and type, so tool inputs, results, provider metadata, and raw
+ * payloads never reach the summary.
+ */
+function traceEventSummary(event: TraceEvent, index: number): Record<string, unknown> {
+  const summary: Record<string, unknown> = {
+    index,
+    at: boundedTimestamp(event.at),
+    type: event.type.slice(0, OBSERVER_CONTEXT_STRING_LIMIT),
+  };
+  if (event.type === "cell.tool.settled") {
+    const settled = whitelistedToolSettlement(event.data);
+    if (settled !== undefined) {
+      summary.name = settled.name;
+      summary.toolCallId = settled.toolCallId;
+      summary.outcome = settled.outcome;
+    }
+  } else if (event.type === "cell.tools.projected") {
+    const projected = whitelistedProjectedToolNames(event.data);
+    if (projected !== undefined) summary.tools = projected;
+  }
+  return summary;
+}
+
+/**
+ * Strict whitelist parse of one `cell.tool.settled` trace event payload.
+ * The triplet is returned only when the payload is a plain object with
+ * exactly the three whitelisted keys `name`, `toolCallId`, `outcome`, whose
+ * name and toolCallId are non-empty strings within the bounded string limit
+ * (so the projected correspondence stays exact) and whose outcome is one of
+ * the three core-owned settlement outcomes (fulfilled, rejected, refused).
+ * Anything else — extra keys that could carry tool inputs or results,
+ * missing or non-string values, unknown outcomes, oversized identifiers —
+ * fails closed and projects nothing from the payload.
+ */
+function whitelistedToolSettlement(data: unknown): {
+  readonly name: string;
+  readonly toolCallId: string;
+  readonly outcome: "fulfilled" | "rejected" | "refused";
+} | undefined {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
+  const record = data as Record<string, unknown>;
+  if (Object.keys(record).length !== 3) return undefined;
+  const { name, toolCallId, outcome } = record;
+  if (typeof name !== "string" || name.length === 0 || name.length > OBSERVER_CONTEXT_STRING_LIMIT) {
+    return undefined;
+  }
+  if (
+    typeof toolCallId !== "string"
+    || toolCallId.length === 0
+    || toolCallId.length > OBSERVER_CONTEXT_STRING_LIMIT
+  ) {
+    return undefined;
+  }
+  if (outcome !== "fulfilled" && outcome !== "rejected" && outcome !== "refused") return undefined;
+  return { name, toolCallId, outcome };
+}
+
+/**
+ * Strict whitelist parse of one `cell.tools.projected` trace event payload:
+ * a plain object with exactly the single `tools` key holding an array of
+ * non-empty strings (the bounded authorized tool names, projected through
+ * the standard bounded list shape). Any other shape — extra keys, non-array
+ * values, non-string or empty names — fails closed and projects nothing
+ * from the payload.
+ */
+function whitelistedProjectedToolNames(data: unknown): { values: string[]; truncated: boolean } | undefined {
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return undefined;
+  const record = data as Record<string, unknown>;
+  if (Object.keys(record).length !== 1) return undefined;
+  const tools = record.tools;
+  if (!Array.isArray(tools) || tools.some((name) => typeof name !== "string" || name.length === 0)) {
+    return undefined;
+  }
+  return boundedStrings(tools as string[]);
 }
 
 function safeExcludes(worktree: string): string[] {

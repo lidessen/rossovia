@@ -22,7 +22,10 @@ import {
   confirmPinnedEvidenceFile,
   EVIDENCE_FILE_DIGEST_LIMIT_BYTES,
   legacyDogfoodReviewLogPath,
+  OBSERVER_CONTEXT_STRING_LIMIT,
   OBSERVER_EVIDENCE_CHAIN_MAX_ATTEMPTS,
+  OBSERVER_TRACE_EVENTS_MAX_BYTES,
+  OBSERVER_TRACE_EVENT_LIMIT,
   observerAttemptCorrelationProjection,
   openPinnedEvidenceFile,
   observerCellInput,
@@ -975,6 +978,7 @@ function observerEvidenceFixture(overrides: {
     writePaths: readonly string[];
     allowedCommands: readonly string[];
   };
+  trace?: readonly { at: string; type: string; data: unknown }[];
 } = {}): StrictTaskAttemptEvidence {
   return {
     standing: "available",
@@ -1017,7 +1021,7 @@ function observerEvidenceFixture(overrides: {
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0 },
       verification: { passed: true, terminal: { passed: true, required: [], called: [] } },
       executionObservation: {},
-      trace: [],
+      trace: [...(overrides.trace ?? [])],
     },
     refs: {
       inputRef: "state/input.json",
@@ -1960,4 +1964,394 @@ test("workflow observer context includes the bounded continuation chain block", 
   });
   expect(JSON.stringify(context)).not.toContain('"rawSteps"');
   expect(JSON.stringify(context)).not.toContain('"finalText"');
+});
+
+test("workflow observer context projects a bounded chronological safe action order from an injected-tool trace", () => {
+  // The retained trace of one injected-tool run: core-owned events only, with
+  // `cell.tool.settled` carrying exactly the whitelisted name/toolCallId/
+  // outcome triplet and `cell.tools.projected` carrying the authorized tool
+  // surface; every other event payload is provider metadata, error text, or
+  // usage that must never enter the summary.
+  const injectedToolTrace = [
+    {
+      at: "2026-08-21T00:00:00.100Z",
+      type: "cell.started",
+      data: {
+        runId: "run-1",
+        cellId: "cell-1",
+        driver: { adapter: "ai-sdk-v7", provider: "secret-provider", model: "secret-model" },
+      },
+    },
+    {
+      at: "2026-08-21T00:00:00.200Z",
+      type: "cell.tools.projected",
+      data: { tools: ["read_file", "write_file"] },
+    },
+    {
+      at: "2026-08-21T00:00:01.000Z",
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: "call-1", outcome: "fulfilled" },
+    },
+    {
+      at: "2026-08-21T00:00:02.000Z",
+      type: "cell.tool.settled",
+      data: { name: "write_file", toolCallId: "call-2", outcome: "rejected" },
+    },
+    {
+      at: "2026-08-21T00:00:03.000Z",
+      type: "cell.tool.settled",
+      data: { name: "write_file", toolCallId: "call-3", outcome: "refused" },
+    },
+    {
+      at: "2026-08-21T00:00:04.000Z",
+      type: "cell.error",
+      data: { status: "failed", error: "private provider error text" },
+    },
+    {
+      at: "2026-08-21T00:00:05.000Z",
+      type: "cell.finished",
+      data: { status: "failed", usage: { inputTokens: 777, outputTokens: 0, totalTokens: 777, cachedInputTokens: 0 } },
+    },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: injectedToolTrace })));
+  const summary = context.final.trace;
+
+  // The full retained trace is still summarized by count and type ...
+  expect(summary.eventCount).toBe(7);
+  expect(summary.typeCounts).toEqual({
+    "cell.error": 1,
+    "cell.finished": 1,
+    "cell.started": 1,
+    "cell.tool.settled": 3,
+    "cell.tools.projected": 1,
+  });
+  expect(summary.typeCountsTruncated).toBe(false);
+  expect(summary.firstAt).toBe("2026-08-21T00:00:00.100Z");
+  expect(summary.lastAt).toBe("2026-08-21T00:00:05.000Z");
+  // ... and the bounded chronological safe summary replays the retained
+  // observation order, one whitelisted entry per event.
+  expect(summary.eventLimit).toBe(OBSERVER_TRACE_EVENT_LIMIT);
+  expect(summary.eventsTruncated).toBe(false);
+  expect(summary.events.map((event: { index: number }) => event.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  expect(summary.events.map((event: { type: string }) => event.type)).toEqual([
+    "cell.started",
+    "cell.tools.projected",
+    "cell.tool.settled",
+    "cell.tool.settled",
+    "cell.tool.settled",
+    "cell.error",
+    "cell.finished",
+  ]);
+  // The authorized tool surface is projected from the core-owned
+  // cell.tools.projected payload ...
+  expect(summary.events[1]).toEqual({
+    index: 1,
+    at: "2026-08-21T00:00:00.200Z",
+    type: "cell.tools.projected",
+    tools: { values: ["read_file", "write_file"], truncated: false },
+  });
+  // ... and each settled call projects exactly the whitelisted
+  // name/toolCallId/outcome correspondence.
+  expect(summary.events[2]).toEqual({
+    index: 2,
+    at: "2026-08-21T00:00:01.000Z",
+    type: "cell.tool.settled",
+    name: "read_file",
+    toolCallId: "call-1",
+    outcome: "fulfilled",
+  });
+  expect(summary.events[3]).toMatchObject({ name: "write_file", toolCallId: "call-2", outcome: "rejected" });
+  expect(summary.events[4]).toMatchObject({ name: "write_file", toolCallId: "call-3", outcome: "refused" });
+  // Non-whitelisted payloads never enter the summary: cell.started's
+  // provider metadata, cell.error's raw error text, and the per-event usage
+  // payload are all absent, leaving only timestamp and type.
+  expect(summary.events[0]).toEqual({ index: 0, at: "2026-08-21T00:00:00.100Z", type: "cell.started" });
+  expect(summary.events[5]).toEqual({ index: 5, at: "2026-08-21T00:00:04.000Z", type: "cell.error" });
+  expect(summary.events[6]).toEqual({ index: 6, at: "2026-08-21T00:00:05.000Z", type: "cell.finished" });
+  const serialized = JSON.stringify(context);
+  expect(serialized).not.toContain("secret-provider");
+  expect(serialized).not.toContain("secret-model");
+  expect(serialized).not.toContain("private provider error text");
+  expect(serialized).not.toContain('"inputTokens":777');
+  expect(serialized).not.toContain('"data"');
+});
+
+test("workflow observer context fails closed when tool-settlement payloads do not exactly match the whitelisted shapes", () => {
+  const enrichedInput = "private tool input text";
+  const hostileTrace = [
+    {
+      // Extra keys that carry tool input and result: the whole triplet fails
+      // closed, never a partial projection of the whitelisted fields.
+      at: "2026-08-21T00:00:00.000Z",
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: "call-1", outcome: "fulfilled", input: enrichedInput, result: "private tool result text" },
+    },
+    {
+      // An outcome outside the three core-owned settlement outcomes.
+      at: "2026-08-21T00:00:01.000Z",
+      type: "cell.tool.settled",
+      data: { name: "write_file", toolCallId: "call-2", outcome: "succeeded" },
+    },
+    {
+      // An extra key on an otherwise exact triplet.
+      at: "2026-08-21T00:00:02.000Z",
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: "call-3", outcome: "fulfilled", extra: "x" },
+    },
+    {
+      // An oversized tool name: the projected correspondence would no longer
+      // be exact, so the triplet fails closed instead of truncating it.
+      at: "2026-08-21T00:00:03.000Z",
+      type: "cell.tool.settled",
+      data: { name: "x".repeat(600), toolCallId: "call-4", outcome: "fulfilled" },
+    },
+    {
+      // An enriched projected surface: the single-tools-key whitelist fails
+      // closed too.
+      at: "2026-08-21T00:00:04.000Z",
+      type: "cell.tools.projected",
+      data: { tools: ["read_file"], extra: "z" },
+    },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: hostileTrace })));
+  const summary = context.final.trace;
+  expect(summary.eventCount).toBe(5);
+  expect(summary.eventsTruncated).toBe(false);
+  // Every non-whitelisted payload fails closed to timestamp and type: no
+  // name, toolCallId, outcome, or tools field enters any event summary.
+  for (const event of summary.events) {
+    expect(Object.keys(event).sort()).toEqual(["at", "index", "type"]);
+  }
+  const serialized = JSON.stringify(context);
+  expect(serialized).not.toContain("read_file");
+  expect(serialized).not.toContain("write_file");
+  expect(serialized).not.toContain("call-");
+  expect(serialized).not.toContain(enrichedInput);
+  expect(serialized).not.toContain("private tool result text");
+  expect(serialized).not.toContain("succeeded");
+});
+
+test("workflow observer context fails closed for no-tool driver trace events, projecting only timestamp and type", () => {
+  // The retained trace of one no-tool run: driver events forwarded unchanged,
+  // carrying tool-like fields (name, id, outcome), provider metadata, tool
+  // inputs, and results — none of them match the core-owned whitelisted
+  // shapes, so the whole payload fails closed.
+  const driverTrace = [
+    {
+      at: "2026-08-21T00:00:00.000Z",
+      type: "task.tools.projected",
+      data: { taskToolSet: "manage", tools: ["task_edit", "task_accept"] },
+    },
+    {
+      at: "2026-08-21T00:00:01.000Z",
+      type: "agent.step.started",
+      data: { callId: "step-1", provider: "secret-provider", model: "secret-model", stepNumber: 1, activeTools: ["read_file"] },
+    },
+    {
+      at: "2026-08-21T00:00:02.000Z",
+      type: "agent.tool.started",
+      data: { callId: "step-1", id: "call-1", name: "read_file", path: "/private/secret/path" },
+    },
+    {
+      at: "2026-08-21T00:00:03.000Z",
+      type: "agent.tool.finished",
+      data: { callId: "step-1", id: "call-1", name: "read_file", durationMs: 5, outcome: "success" },
+    },
+    {
+      at: "2026-08-21T00:00:04.000Z",
+      type: "agent.step.finished",
+      data: {
+        finishReason: "stop",
+        providerMetadata: { systemFingerprint: "secret-fingerprint" },
+        usage: { inputTokens: 777 },
+        toolCalls: ["private-call"],
+        toolResults: ["private-result"],
+      },
+    },
+    {
+      at: "2026-08-21T00:00:05.000Z",
+      type: "cell.finished",
+      data: { status: "passed", usage: { inputTokens: 777 } },
+    },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: driverTrace })));
+  const summary = context.final.trace;
+  expect(summary.eventCount).toBe(6);
+  expect(summary.typeCounts).toEqual({
+    "agent.step.finished": 1,
+    "agent.step.started": 1,
+    "agent.tool.finished": 1,
+    "agent.tool.started": 1,
+    "cell.finished": 1,
+    "task.tools.projected": 1,
+  });
+  expect(summary.eventsTruncated).toBe(false);
+  expect(summary.events.map((event: { type: string }) => event.type)).toEqual([
+    "task.tools.projected",
+    "agent.step.started",
+    "agent.tool.started",
+    "agent.tool.finished",
+    "agent.step.finished",
+    "cell.finished",
+  ]);
+  // Driver events carry tool-like fields (name, id, outcome) and provider
+  // metadata, but none of them match the core-owned whitelisted shapes: the
+  // no-tool path fails closed and every summary is timestamp/type-only.
+  for (const event of summary.events) {
+    expect(Object.keys(event).sort()).toEqual(["at", "index", "type"]);
+  }
+  const serialized = JSON.stringify(context);
+  expect(serialized).not.toContain("secret-provider");
+  expect(serialized).not.toContain("secret-model");
+  expect(serialized).not.toContain("secret-fingerprint");
+  expect(serialized).not.toContain("/private/secret/path");
+  expect(serialized).not.toContain("private-call");
+  expect(serialized).not.toContain("private-result");
+  expect(serialized).not.toContain("task_edit");
+  expect(serialized).not.toContain("task_accept");
+  expect(serialized).not.toContain("call-1");
+  expect(serialized).not.toContain("read_file");
+  expect(serialized).not.toContain('"inputTokens":777');
+});
+
+test("workflow observer context explicitly truncates an over-limit trace without fabricating the dropped tail", () => {
+  const at = "2026-08-21T00:00:00.000Z";
+  const overLimitTrace = Array.from({ length: OBSERVER_TRACE_EVENT_LIMIT + 3 }, (_, index) => ({
+    at,
+    type: index % 2 === 0 ? "cell.started" : "cell.tool.settled",
+    data: index % 2 === 0
+      ? { runId: `run-${index}`, cellId: `cell-${index}`, driver: { provider: `secret-provider-${index}` } }
+      : { name: `tool-${index}`, toolCallId: `call-${index}`, outcome: "fulfilled" },
+  }));
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: overLimitTrace })));
+  const summary = context.final.trace;
+  // The full retained trace is still summarized by count and type ...
+  expect(summary.eventCount).toBe(OBSERVER_TRACE_EVENT_LIMIT + 3);
+  expect(summary.typeCounts).toEqual({
+    "cell.started": 34,
+    "cell.tool.settled": 33,
+  });
+  // ... while the bounded chronological summary holds exactly the bounded
+  // prefix in retained order and is explicitly marked truncated.
+  expect(summary.eventLimit).toBe(OBSERVER_TRACE_EVENT_LIMIT);
+  expect(summary.events).toHaveLength(OBSERVER_TRACE_EVENT_LIMIT);
+  expect(summary.eventsTruncated).toBe(true);
+  expect(summary.events.map((event: { index: number }) => event.index))
+    .toEqual(Array.from({ length: OBSERVER_TRACE_EVENT_LIMIT }, (_, index) => index));
+  // The bounded prefix is truthful, not a fabricated full trace: the last
+  // projected event is the last retained event inside the bound ...
+  const lastProjected = summary.events.at(-1);
+  expect(lastProjected.type).toBe("cell.tool.settled");
+  expect(lastProjected.name).toBe(`tool-${OBSERVER_TRACE_EVENT_LIMIT - 1}`);
+  expect(lastProjected.toolCallId).toBe(`call-${OBSERVER_TRACE_EVENT_LIMIT - 1}`);
+  // ... and the dropped tail never enters the summary: neither the first
+  // dropped started-event payload nor the first dropped settled call.
+  const serialized = JSON.stringify(context);
+  expect(serialized).not.toContain(`run-${OBSERVER_TRACE_EVENT_LIMIT}`);
+  expect(serialized).not.toContain(`secret-provider-${OBSERVER_TRACE_EVENT_LIMIT}`);
+  expect(serialized).not.toContain(`call-${OBSERVER_TRACE_EVENT_LIMIT + 1}`);
+  expect(serialized).not.toContain(`tool-${OBSERVER_TRACE_EVENT_LIMIT + 1}`);
+});
+
+test("workflow observer context bounds firstAt/lastAt with the same bounded timestamp rule as event entries", () => {
+  const longFirstAt = "t".repeat(2000);
+  const longLastAt = "u".repeat(2000);
+  const trace = [
+    { at: longFirstAt, type: "cell.started", data: {} },
+    {
+      at: "2026-08-21T00:00:05.000Z",
+      type: "cell.tool.settled",
+      data: { name: "read_file", toolCallId: "call-1", outcome: "fulfilled" },
+    },
+    { at: longLastAt, type: "cell.finished", data: {} },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace })));
+  const summary = context.final.trace;
+  // firstAt/lastAt apply exactly the same bounded timestamp rule as every
+  // event entry's `at`: sliced to the shared string limit, never raw.
+  expect(summary.firstAt).toBe(longFirstAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  expect(summary.lastAt).toBe(longLastAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  expect(summary.events[0].at).toBe(longFirstAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  expect(summary.events[2].at).toBe(longLastAt.slice(0, OBSERVER_CONTEXT_STRING_LIMIT));
+  // A normal timestamp passes through unchanged, and the small trace stays
+  // comfortably inside the byte budget.
+  expect(summary.events[1].at).toBe("2026-08-21T00:00:05.000Z");
+  expect(summary.eventsTruncated).toBe(false);
+  expect(summary.eventsByteLimit).toBe(OBSERVER_TRACE_EVENTS_MAX_BYTES);
+  // The untruncated timestamps never reach the context.
+  const serialized = JSON.stringify(context);
+  expect(serialized).not.toContain("t".repeat(2000));
+  expect(serialized).not.toContain("u".repeat(2000));
+});
+
+test("workflow observer context enforces a real UTF-8 byte budget on the rendered trace event list", () => {
+  // A maximal whitelisted payload — a projected tools surface at the list
+  // and string limits (64 names of 256 characters each) — renders ~17 KiB
+  // alone, larger than the whole events byte budget, so a trace made of it
+  // cannot be projected at all: the list is honestly empty and truncated,
+  // never a payload past the documented context cap.
+  const maximalTools = Array.from({ length: 64 }, () => "t".repeat(OBSERVER_CONTEXT_STRING_LIMIT));
+  const oversizedTrace = [
+    {
+      at: "2026-08-21T00:00:00.000Z",
+      type: "cell.tools.projected",
+      data: { tools: maximalTools },
+    },
+  ];
+  const context = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: oversizedTrace })));
+  const summary = context.final.trace;
+  // eventCount/typeCounts still cover the full retained trace ...
+  expect(summary.eventCount).toBe(1);
+  expect(summary.typeCounts).toEqual({ "cell.tools.projected": 1 });
+  expect(summary.typeCountsTruncated).toBe(false);
+  // ... while the rendered list is honestly cut at the byte budget: the
+  // single oversized event does not fit, so the list is empty and
+  // explicitly truncated instead of carrying a payload past the cap.
+  expect(summary.eventLimit).toBe(OBSERVER_TRACE_EVENT_LIMIT);
+  expect(summary.eventsByteLimit).toBe(OBSERVER_TRACE_EVENTS_MAX_BYTES);
+  expect(summary.eventsTruncated).toBe(true);
+  expect(summary.events).toEqual([]);
+  expect(JSON.stringify(context)).not.toContain("t".repeat(OBSERVER_CONTEXT_STRING_LIMIT));
+
+  // A mixed trace: small events fit within the budget, and the list is cut
+  // exactly before the first event that would push the rendered list past
+  // the byte budget — a bounded truthful prefix, never a fabricated trace.
+  const mixedTrace = [
+    { at: "2026-08-21T00:00:00.000Z", type: "cell.started", data: {} },
+    {
+      at: "2026-08-21T00:00:01.000Z",
+      type: "cell.tool.settled",
+      data: {
+        name: "n".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+        toolCallId: "c".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+        outcome: "fulfilled",
+      },
+    },
+    {
+      at: "2026-08-21T00:00:02.000Z",
+      type: "cell.tools.projected",
+      data: { tools: maximalTools },
+    },
+  ];
+  const mixedContext = JSON.parse(workflowObserverContext(observerEvidenceFixture({ trace: mixedTrace })));
+  const mixedSummary = mixedContext.final.trace;
+  expect(mixedSummary.eventCount).toBe(3);
+  expect(mixedSummary.eventsTruncated).toBe(true);
+  expect(mixedSummary.events.map((event: { index: number }) => event.index)).toEqual([0, 1]);
+  expect(mixedSummary.events[1]).toMatchObject({
+    name: "n".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+    toolCallId: "c".repeat(OBSERVER_CONTEXT_STRING_LIMIT),
+    outcome: "fulfilled",
+  });
+  // The rendered list in the actual context never exceeds the advertised
+  // byte budget: the events array is rendered at the exact final.trace
+  // indent depth and measured as real UTF-8 bytes.
+  const rendered = JSON.stringify({ final: { trace: { events: mixedSummary.events } } }, null, 2);
+  const start = rendered.indexOf("[");
+  const end = rendered.lastIndexOf("]");
+  expect(Buffer.byteLength(rendered.slice(start, end + 1), "utf8")).toBeLessThanOrEqual(
+    OBSERVER_TRACE_EVENTS_MAX_BYTES,
+  );
+  // The dropped maximal surface never enters the summary.
+  expect(JSON.stringify(mixedContext)).not.toContain("t".repeat(OBSERVER_CONTEXT_STRING_LIMIT));
 });
