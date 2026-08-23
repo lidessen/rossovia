@@ -181,6 +181,16 @@ function workItems(
         count: 0,
         sourceRevision: 3,
       },
+      // The projection fixture is one open Agent-owned Task whose project
+      // context declares no Worktree binding: the explainable triage
+      // capability keeps it in the orphaned partition (eligible 0 /
+      // orphaned 1), never in the Agent-takeover queue.
+      agentEligibility: {
+        standing: "available",
+        eligibleCount: 0,
+        orphanedCount: 1,
+        sourceRef: "state/tasks.json",
+      },
     },
   };
 }

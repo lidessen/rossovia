@@ -154,6 +154,27 @@ describe("compact initial snapshot and on-demand task detail", () => {
       count: 2,
       sourceRevision: 2,
     });
+    // The open Agent-owned Tasks created above are independent (no project
+    // binding), so the explainable agent-eligible partition counts them all
+    // as orphaned history — none awaits Agent takeover, and the counts are
+    // served on both the compact and full routes with their source ref.
+    expect(compact.workItems.capabilities.agentEligibility).toMatchObject({
+      standing: "available",
+      eligibleCount: 0,
+      orphanedCount: 2,
+    });
+    expect(typeof compact.workItems.capabilities.agentEligibility.sourceRef)
+      .toBe("string");
+    expect(full.workItems.capabilities.agentEligibility).toEqual(
+      compact.workItems.capabilities.agentEligibility,
+    );
+    // Every principal-task shell carries the explainable triage (orphaned
+    // with its reason) while remaining locatable by id.
+    expect(compactItems.every((item: any) =>
+      item.agentEligibility?.standing === "orphaned"
+      && item.agentEligibility?.reason === "no-project-binding"
+      && typeof item.id === "string"
+    )).toBeTrue();
     expect(compact.workItems.items.every(
       (item: { id: string }) => typeof item.id === "string" && item.id !== "",
     )).toBeTrue();
