@@ -1923,6 +1923,30 @@ export function taskLocatorSourceStanding(input) {
 }
 
 /**
+ * The backlog triage count gate (UI-only), deliberately narrower than the
+ * task locator gate: the triage layers are counted from the same task-source
+ * work items the rail counts already show, so only the task source's own
+ * readability gates the numbers. A live projection with an available task
+ * source is treated as read — counts show even when the project/Worktree
+ * projection is still incomplete (dirty project, runner source errors, …),
+ * and `projectionNeedsCheck` keeps that incomplete standing explicit so the
+ * panel never reads as a healthy full projection. A non-live source, an
+ * explicit source error/unknown, or an unavailable task source stays
+ * fail-closed partial: no counts, never a factual zero.
+ */
+export function taskTriageSourceStanding(input) {
+  if (
+    input?.source !== "live"
+    || input?.taskSourceStanding !== "available"
+  ) {
+    return { standing: "partial", projectionNeedsCheck: null };
+  }
+  return input?.complete === true
+    ? { standing: "complete", projectionNeedsCheck: false }
+    : { standing: "task-source-read", projectionNeedsCheck: true };
+}
+
+/**
  * The empty-state summary for the current locator. It separates three cases:
  * an unavailable/incomplete source (must not read as zero), a genuine
  * no-match under explicit conditions, and a factual empty complete source.
@@ -2226,16 +2250,21 @@ function triageCleanupProjection(layerKey, items, sourceAvailable) {
 
 /**
  * The read-only backlog triage projection. `sourceStanding` mirrors the
- * existing taskLocatorSourceStanding gate ("complete" only for a live,
- * complete snapshot with an available task source); anything else fails
- * closed to unavailable counts so a missing source never reads as a factual
- * zero. The four layers are disjoint (nextActor/lifecycle partition the
- * principal-task backlog), so total is the exact sum of the four layer
- * counts.
+ * triage gate taskTriageSourceStanding: "complete" for a live, complete
+ * snapshot with an available task source, and "task-source-read" when a
+ * live projection's task source is available while the project/Worktree
+ * projection still needs checking (`projectionNeedsCheck` keeps that
+ * standing explicit in the note). Anything else fails closed to unavailable
+ * counts so a missing or non-live source never reads as a factual zero. The
+ * four layers are disjoint (nextActor/lifecycle partition the principal-task
+ * backlog), so total is the exact sum of the four layer counts.
  */
 export function backlogTriageProjection(input) {
   const items = Array.isArray(input?.items) ? input.items : [];
-  const sourceAvailable = input?.sourceStanding === "complete";
+  const sourceAvailable =
+    input?.sourceStanding === "complete"
+    || input?.sourceStanding === "task-source-read";
+  const projectionNeedsCheck = input?.projectionNeedsCheck === true;
   const members = {
     principalPending: items.filter(isPrincipalPendingTaskWorkItem),
     agentTakeover: items.filter(isAgentTakeoverWorkItem),
@@ -2267,12 +2296,16 @@ export function backlogTriageProjection(input) {
   return {
     version: "rosso.ui-backlog-triage.v1",
     standing: sourceAvailable ? "available" : "unavailable",
-    sourceStanding: sourceAvailable ? "complete" : "partial",
+    sourceStanding: sourceAvailable ? input.sourceStanding : "partial",
+    projectionNeedsCheck: sourceAvailable ? projectionNeedsCheck : null,
     total,
     note: sourceAvailable
       ? "任何一层都不会显示“可直接删除”：Workbench 不提供删除任务操作；"
         + "安全清理候选恒为 0 且按层展示原因。分层只由现有 lifecycle、nextActor、"
         + "agentEligibility 与 settled/worktree 投影推导，不新增状态；点击层卡进入既有视图。"
+        + (projectionNeedsCheck
+          ? "任务来源已读，分层计数与任务列表一致；项目 / Worktree 投影仍不完整，请同时核查运行投影状态。"
+          : "")
       : "任务来源不可用或投影不完整：不显示分层计数，不冒充零；请刷新投影后重试。",
     layers,
   };
@@ -3742,9 +3775,12 @@ export function backlogTriageProjection(input) {
    * count, next step, and a per-layer safe-reclaim (安全清理) explanation.
    * It reuses the existing view predicates and navigates to the existing
    * views (principal / agent-pending / agent-orphaned / completed); it adds
-   * no filter, state, or backend surface. When the task source is
-   * unavailable or the projection is incomplete the counts fail closed to
-   * “—” with a note instead of reading as factual zeros.
+   * no filter, state, or backend surface. Counts are gated only on the task
+   * source's own readability: a live projection with an available task
+   * source shows the counts even when the project/Worktree projection is
+   * still incomplete, with an explicit check-needed note; a non-live source
+   * or an unavailable task source fails closed to “—” instead of reading as
+   * factual zeros.
    */
   function renderTaskTriagePanel() {
     const panel = $("#task-triage-panel");
@@ -3752,14 +3788,15 @@ export function backlogTriageProjection(input) {
     const active = state.activeView === "tasks";
     panel.hidden = !active;
     if (!active) return;
-    const sourceStanding = taskLocatorSourceStanding({
+    const triageSource = taskTriageSourceStanding({
       source: state.source,
       complete: first(state.snapshot, ["complete"]),
       taskSourceStanding: first(taskSourceCapability(), ["standing"]),
     });
     const projection = backlogTriageProjection({
       items: workItems(),
-      sourceStanding,
+      sourceStanding: triageSource.standing,
+      projectionNeedsCheck: triageSource.projectionNeedsCheck,
     });
     const layerKeys = [
       "principalPending",
@@ -3792,7 +3829,7 @@ export function backlogTriageProjection(input) {
     $("#task-triage-layers").innerHTML = cards;
     const note = $("#task-triage-note");
     note.textContent = projection.note;
-    note.dataset.standing = projection.standing;
+    note.dataset.standing = projection.sourceStanding;
     panel.querySelectorAll("[data-task-triage-view]").forEach((button) => {
       button.addEventListener("click", () => {
         openTaskTriageView(button.dataset.taskTriageView);

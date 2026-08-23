@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { backlogTriageProjection, incompleteProjectionCopy, orderWorkItemsForTaskEntry, parsePrincipalLocus, resolvePrincipalLocus, restoredPrincipalLocusState, taskEntryDefaultFilter, taskEntryLifecyclePriority, workItemUpdatedLabel } from "../ui/app.js";
+import { backlogTriageProjection, incompleteProjectionCopy, orderWorkItemsForTaskEntry, parsePrincipalLocus, resolvePrincipalLocus, restoredPrincipalLocusState, taskEntryDefaultFilter, taskEntryLifecyclePriority, taskTriageSourceStanding, workItemUpdatedLabel } from "../ui/app.js";
 
 describe("incomplete projection status copy", () => {
   test("explains an unbound cached runner and gives the recovery direction", () => {
@@ -830,5 +830,114 @@ describe("backlog triage layered entry", () => {
     expect(projection.layers.agentTakeover.cleanup.candidates).toBeNull();
     expect(projection.layers.agentTakeover.cleanup.standing).toBe("unavailable");
     expect(projection.note).toContain("不冒充零");
+  });
+});
+
+describe("backlog triage source gate", () => {
+  const principalPending = {
+    id: "principal-task:11111111-1111-4111-8111-111111111111",
+    kind: "principal-task",
+    lifecycle: "open",
+    nextActor: "principal",
+    updatedAt: "2026-08-22T08:00:00Z",
+  };
+  const agentEligible = {
+    id: "principal-task:33333333-3333-4333-8333-333333333333",
+    kind: "principal-task",
+    lifecycle: "open",
+    nextActor: "agent",
+    agentEligibility: {
+      standing: "eligible",
+      worktreePath: "/workspace/skills-wt",
+      sourceRefs: [],
+    },
+    updatedAt: "2026-08-22T08:02:00Z",
+  };
+
+  test("healthy backlog: a live complete projection with an available task source is read and counted", () => {
+    const gate = taskTriageSourceStanding({
+      source: "live",
+      complete: true,
+      taskSourceStanding: "available",
+    });
+    expect(gate).toEqual({ standing: "complete", projectionNeedsCheck: false });
+    const projection = backlogTriageProjection({
+      items: [principalPending, agentEligible],
+      sourceStanding: gate.standing,
+      projectionNeedsCheck: gate.projectionNeedsCheck,
+    });
+    expect(projection.standing).toBe("available");
+    expect(projection.sourceStanding).toBe("complete");
+    expect(projection.projectionNeedsCheck).toBe(false);
+    expect(projection.total).toBe(2);
+    expect(projection.layers.principalPending.count).toBe(1);
+    expect(projection.layers.agentTakeover.count).toBe(1);
+    expect(projection.note).not.toContain("项目 / Worktree 投影仍不完整");
+  });
+
+  test("live task source read while the project/Worktree projection still needs checking: counts show with an explicit note", () => {
+    // The merged browser evidence: the same task list reliably shows counts
+    // while the snapshot is incomplete (dirty project / runner source
+    // errors), so the triage panel must not fail closed to “—” when the task
+    // source itself was read.
+    const gate = taskTriageSourceStanding({
+      source: "live",
+      complete: false,
+      taskSourceStanding: "available",
+    });
+    expect(gate).toEqual({ standing: "task-source-read", projectionNeedsCheck: true });
+    const projection = backlogTriageProjection({
+      items: [principalPending, agentEligible],
+      sourceStanding: gate.standing,
+      projectionNeedsCheck: gate.projectionNeedsCheck,
+    });
+    expect(projection.standing).toBe("available");
+    expect(projection.sourceStanding).toBe("task-source-read");
+    expect(projection.projectionNeedsCheck).toBe(true);
+    expect(projection.total).toBe(2);
+    expect(projection.layers.principalPending.count).toBe(1);
+    expect(projection.layers.agentTakeover.count).toBe(1);
+    expect(projection.layers.agentTakeover.cleanup.candidates).toBe(0);
+    expect(projection.note).toContain("任务来源已读，分层计数与任务列表一致");
+    expect(projection.note).toContain("项目 / Worktree 投影仍不完整");
+    expect(projection.note).toContain("不提供删除任务操作");
+  });
+
+  test("mixed responsibility stays fail-closed: non-live source, explicit source error/unknown, or unavailable task source never reads as a factual zero", () => {
+    for (const source of ["loading", "stale", "demo", "error", "unknown"]) {
+      const gate = taskTriageSourceStanding({
+        source,
+        complete: false,
+        taskSourceStanding: "available",
+      });
+      expect(gate).toEqual({ standing: "partial", projectionNeedsCheck: null });
+      const projection = backlogTriageProjection({
+        items: [principalPending, agentEligible],
+        sourceStanding: gate.standing,
+      });
+      expect(projection.standing).toBe("unavailable");
+      expect(projection.sourceStanding).toBe("partial");
+      expect(projection.projectionNeedsCheck).toBeNull();
+      expect(projection.total).toBeNull();
+      expect(projection.layers.principalPending.count).toBeNull();
+      expect(projection.layers.agentTakeover.cleanup.candidates).toBeNull();
+      expect(projection.note).toContain("不冒充零");
+    }
+    for (const taskSourceStanding of ["unavailable", "error", "unknown"]) {
+      const gate = taskTriageSourceStanding({
+        source: "live",
+        complete: false,
+        taskSourceStanding,
+      });
+      expect(gate).toEqual({ standing: "partial", projectionNeedsCheck: null });
+      const projection = backlogTriageProjection({
+        items: [principalPending, agentEligible],
+        sourceStanding: gate.standing,
+      });
+      expect(projection.standing).toBe("unavailable");
+      expect(projection.total).toBeNull();
+      expect(projection.layers.principalPending.count).toBeNull();
+      expect(projection.note).toContain("不冒充零");
+    }
   });
 });

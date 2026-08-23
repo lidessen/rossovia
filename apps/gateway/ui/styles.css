@@ -7737,7 +7737,9 @@ body[data-active-view="conversation"] .conversation-standing {
   max-width: 92ch;
 }
 
-.task-triage-note[data-standing="unavailable"] {
+.task-triage-note[data-standing="unavailable"],
+.task-triage-note[data-standing="partial"],
+.task-triage-note[data-standing="task-source-read"] {
   color: var(--ochre);
 }
 
