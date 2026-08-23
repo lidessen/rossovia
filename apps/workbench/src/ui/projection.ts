@@ -73,6 +73,16 @@ export interface WorktreeProjection {
    * route always observe and project the exact boolean standing.
    */
   readonly dirty?: boolean;
+  /**
+   * Present only when the per-worktree dirty observation was attempted and
+   * failed in a full-snapshot build. The standing is then explicitly
+   * unknown (dirty stays absent) with this attributable reason — the
+   * projection never infers clean from a failed scan — and the worktree
+   * record stays observable instead of being dropped from the inventory.
+   * The compact first paint never runs the scan, so its records carry
+   * neither dirty nor dirtyReason.
+   */
+  readonly dirtyReason?: string;
   readonly registeredPrimary: boolean;
   readonly locked: string | null;
   readonly prunable: string | null;
@@ -1517,21 +1527,34 @@ export function buildWorkbenchSnapshot(options: WorkbenchSnapshotOptions = {}): 
         freshness: "observed-at-build",
       });
       for (const record of records) {
+        const isPrimary = registeredPrimary && record.path === root;
+        const prior = project.worktrees.get(record.path);
+        const projection = {
+          ...record,
+          registeredPrimary: isPrimary || prior?.registeredPrimary === true,
+        };
+        // The compact first paint skips the per-worktree `git status`
+        // scan: its worktree records keep every `git worktree list` fact
+        // but make no dirty claim. The full snapshot and the task-detail
+        // route observe the exact dirty standing.
+        if (!observeWorktreeDirty) {
+          project.worktrees.set(record.path, projection);
+          continue;
+        }
         try {
-          const isPrimary = registeredPrimary && record.path === root;
-          const prior = project.worktrees.get(record.path);
-          const projection = {
-            ...record,
-            registeredPrimary: isPrimary || prior?.registeredPrimary === true,
-          };
-          // The compact first paint skips the per-worktree `git status`
-          // scan: its worktree records keep every `git worktree list` fact
-          // but make no dirty claim. The full snapshot and the task-detail
-          // route observe the exact dirty standing.
-          project.worktrees.set(record.path, observeWorktreeDirty
-            ? { ...projection, dirty: observeDirty(record.path) }
-            : projection);
+          project.worktrees.set(record.path, {
+            ...projection,
+            dirty: observeDirty(record.path),
+          });
         } catch (error: unknown) {
+          // Fail closed with the worktree still observable: a failed dirty
+          // scan never infers clean, and the record keeps its explicit
+          // unknown standing (dirtyReason) with the attributable error so
+          // the project page can show it instead of losing the site.
+          project.worktrees.set(record.path, {
+            ...projection,
+            dirtyReason: errorMessage(error),
+          });
           recordError("git", record.path, error, project.projectKey);
         }
       }

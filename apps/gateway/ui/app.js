@@ -2311,6 +2311,70 @@ export function backlogTriageProjection(input) {
   };
 }
 
+/**
+ * One worktree's dirty standing, derived strictly from the projected fields:
+ * an explicit `dirty` boolean is dirty/clean; an absent dirty with a
+ * dirtyReason is a failed on-demand read (unknown, never inferred clean); an
+ * absent dirty without a reason is an unobserved compact first-paint record
+ * (unknown). The projection never turns a missing or failed scan into clean.
+ */
+export function worktreeDirtyStanding(worktree) {
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  if (object.dirty === true) {
+    return { code: "dirty", label: "dirty", detail: "有未提交改动" };
+  }
+  if (object.dirty === false) {
+    return { code: "clean", label: "clean", detail: "工作区干净" };
+  }
+  const reason = typeof object.dirtyReason === "string" ? object.dirtyReason : "";
+  return reason === ""
+    ? { code: "unknown", label: "unknown", detail: "状态未观察" }
+    : {
+      code: "unknown",
+      label: "unknown",
+      detail: "读取失败 · 不推断 clean",
+      reason,
+    };
+}
+
+/**
+ * The total/dirty/clean/unknown summary of one worktree inventory. `unknown`
+ * counts both unobserved compact records and failed reads: a missing or
+ * failed scan is never counted as clean.
+ */
+export function projectWorktreeSummary(worktrees) {
+  const all = Array.isArray(worktrees) ? worktrees : [];
+  const summary = { total: all.length, dirty: 0, clean: 0, unknown: 0 };
+  for (const worktree of all) {
+    const standing = worktreeDirtyStanding(worktree);
+    summary[standing.code] += 1;
+  }
+  return summary;
+}
+
+/**
+ * One create-form / rebind Worktree option label: branch @ HEAD ·
+ * dirty/clean/unknown · 主线 when the worktree is the registered primary.
+ * Unknown stands are shown explicitly so an option never reads as a clean
+ * executable scene.
+ */
+export function worktreeCreateOptionLabel(worktree) {
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  const scalar = (key, fallback) => {
+    const value = object[key];
+    return value === undefined || value === null || value === ""
+      ? fallback
+      : String(value);
+  };
+  const path = scalar("path", "位置未知");
+  const branch = scalar("gitBranch", "detached");
+  const head = scalar("head", "?");
+  const standing = worktreeDirtyStanding(object);
+  const primary = object.registeredPrimary === true;
+  return branch + " @ " + head + " · " + standing.label
+    + (primary ? " · 主线" : "") + " · " + path;
+}
+
 (() => {
   "use strict";
 
@@ -2351,6 +2415,18 @@ export function backlogTriageProjection(input) {
     taskDetailRequests: {},
     taskDetailErrors: {},
     taskDetailErrorUpdatedAt: {},
+    // 项目页 / 创建任务表单的按需 Worktree 状态补读：首屏 compact 不扫描
+    // dirty；进入项目或需要 Worktree 选择时才从 canonical full snapshot
+    // 重建并读取真实 dirty/clean，读取失败保持 unknown，绝不推断 clean。
+    worktreeStatus: {
+      standing: "idle",
+      projectKey: null,
+      observedAt: null,
+      worktrees: [],
+      summary: null,
+      errors: [],
+      reason: null,
+    },
     authorizationPending: false,
     authorizationDraft: null,
     authorizationSubmission: null,
@@ -3232,8 +3308,18 @@ export function backlogTriageProjection(input) {
     return list(first(project, ["missions", "missionRecords", "branches"], []));
   }
 
+  /**
+   * The worktree inventory for one project. After the on-demand
+   * project-Worktree status read succeeds for this project, its worktrees
+   * (with the real dirty/clean standing) replace the compact first-paint
+   * records; before that read, the compact records (no dirty claim) stay
+   * and the UI shows unknown rather than guessing clean. The first screen
+   * never triggers the read itself, so its speed semantics are unchanged.
+   */
   function projectWorktrees(project) {
-    return list(first(project, ["worktrees", "workingTrees"], []));
+    const snapshotList = list(first(project, ["worktrees", "workingTrees"], []));
+    const onDemand = projectWorktreeStatusFor(identifier(project, ""));
+    return onDemand !== null ? onDemand.worktrees : snapshotList;
   }
 
   function missionWorktrees(project, mission) {
@@ -4074,6 +4160,7 @@ export function backlogTriageProjection(input) {
         ensureSelections();
         render();
         writePrincipalLocus();
+        requestWorktreeStatusForCurrentContext(true);
       });
     });
     container.querySelectorAll("[data-overview-worktree]").forEach((button) => {
@@ -4088,6 +4175,7 @@ export function backlogTriageProjection(input) {
         state.selectedWorktreeId = button.dataset.overviewWorktree;
         render();
         writePrincipalLocus();
+        requestWorktreeStatusForCurrentContext(true);
       });
     });
   }
@@ -5492,8 +5580,8 @@ export function backlogTriageProjection(input) {
       '<option value="" selected disabled>选择新的 Worktree…</option>',
       ...rebindCandidates.map((worktree) => {
         const path = text(first(worktree, ["path", "worktreePath"]), "");
-        const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
-        return `<option value="${escapeHtml(path)}">${escapeHtml(branch)} · ${escapeHtml(path)}</option>`;
+        return '<option value="' + escapeHtml(path) + '">'
+          + escapeHtml(worktreeCreateOptionLabel(worktree)) + "</option>";
       }),
     ].join("");
     $("#task-assign-form").hidden = settled || verifying;
@@ -5881,6 +5969,114 @@ export function backlogTriageProjection(input) {
     return `整体 ${standing(passed)} · terminal ${standing(terminal)}`;
   }
 
+  /**
+   * 项目页与创建任务表单需要真实的逐 Worktree dirty 状态，而首屏 compact
+   * 刻意不扫描。此按需读取重建 canonical full snapshot（与 full snapshot、
+   * task-detail 路由相同的 observeWorktreeDirty 默认值），只投影请求项目的
+   * Worktree 与 dirty/clean/unknown 摘要。失败 fail-closed：读取失败保持
+   * unknown（绝不推断 clean），由显式刷新或再次进入时重试。
+   */
+  function loadProjectWorktreeStatus(projectKey) {
+    return fetch(
+      "/api/projects/" + encodeURIComponent(projectKey) + "/worktrees",
+      { headers: { Accept: "application/json" }, cache: "no-store" },
+    ).then(async (response) => {
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(
+          text(first(body, ["message", "error"]), "HTTP " + response.status),
+        );
+        error.status = response.status;
+        error.code = first(body, ["error"]);
+        throw error;
+      }
+      if (first(body, ["standing"]) !== "available") {
+        throw new Error(text(first(body, ["reason"]), "项目 Worktree 状态读取失败"));
+      }
+      return body;
+    });
+  }
+
+  function requestProjectWorktreeStatus(projectKey, { force = false } = {}) {
+    if (typeof projectKey !== "string" || projectKey === "") return;
+    const current = state.worktreeStatus;
+    if (
+      !force
+      && current.projectKey === projectKey
+      && current.standing !== "idle"
+      && current.standing !== "loading"
+    ) {
+      return;
+    }
+    state.worktreeStatus = {
+      standing: "loading",
+      projectKey,
+      observedAt: null,
+      worktrees: [],
+      summary: null,
+      errors: [],
+      reason: null,
+    };
+    render();
+    loadProjectWorktreeStatus(projectKey).then((body) => {
+      state.worktreeStatus = {
+        standing: "available",
+        projectKey,
+        observedAt: text(first(body, ["observedAt"]), "") || null,
+        worktrees: list(first(body, ["worktrees"], [])),
+        summary: first(body, ["summary"], null),
+        errors: list(first(body, ["errors"], [])),
+        reason: null,
+      };
+      render();
+    }).catch((error) => {
+      state.worktreeStatus = {
+        standing: "unavailable",
+        projectKey,
+        observedAt: null,
+        worktrees: [],
+        summary: null,
+        errors: [],
+        reason: error instanceof Error ? error.message : text(error),
+      };
+      render();
+    });
+  }
+
+  /** The on-demand worktree inventory for one project, or null before it is read. */
+  function projectWorktreeStatusFor(projectKey) {
+    const status = state.worktreeStatus;
+    if (status.standing !== "available" || status.projectKey !== projectKey) {
+      return null;
+    }
+    return status;
+  }
+
+  /**
+   * The current Worktree-selection context that needs the on-demand read:
+   * the open create-task form's selected project, or the selected project on
+   * the project page. Returns null when no Worktree choice is on screen, so
+   * the first paint never triggers the read.
+   */
+  function currentWorktreeStatusTarget() {
+    if (state.taskCreateOpen) {
+      const projectId = $("#task-create-project").value;
+      const project = projects().find(
+        (candidate) =>
+          text(first(first(candidate, ["identity"], {}), ["id"]), "") === projectId,
+      );
+      return project ? identifier(project, "") : null;
+    }
+    return state.activeView === "project" ? state.selectedProjectId : null;
+  }
+
+  function requestWorktreeStatusForCurrentContext(force = false) {
+    const projectKey = currentWorktreeStatusTarget();
+    if (projectKey !== null) {
+      requestProjectWorktreeStatus(projectKey, { force });
+    }
+  }
+
   function renderTaskCreateWorktrees() {
     const projectId = $("#task-create-project").value;
     const label = $("#task-create-worktree-label");
@@ -5896,12 +6092,59 @@ export function backlogTriageProjection(input) {
       '<option value="">仅关联项目</option>',
       ...worktrees.map((worktree) => {
         const path = text(first(worktree, ["path"]), "");
-        const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
-        return `<option value="${escapeHtml(path)}">${escapeHtml(branch)} · ${escapeHtml(path)}</option>`;
+        return '<option value="' + escapeHtml(path) + '">'
+          + escapeHtml(worktreeCreateOptionLabel(worktree)) + "</option>";
       }),
     ].join("");
     if ([...select.options].some((option) => option.value === retained)) {
       select.value = retained;
+    }
+    renderTaskCreateWorktreeStatus();
+  }
+
+  /**
+   * The create-form Worktree status line. It shows the selected Worktree's
+   * real dirty/clean standing and never presents an unknown standing as an
+   * executable scene: an unknown or unobserved Worktree stays context-only
+   * and is explicitly not inferred clean.
+   */
+  function renderTaskCreateWorktreeStatus() {
+    const root = $("#task-create-worktree-status");
+    if (root === null) return;
+    const projectId = $("#task-create-project").value;
+    const path = $("#task-create-worktree").value;
+    if (projectId === "" || path === "") {
+      root.hidden = true;
+      return;
+    }
+    const project = projects().find(
+      (candidate) =>
+        text(first(first(candidate, ["identity"], {}), ["id"]), "") === projectId,
+    );
+    const status = projectWorktreeStatusFor(identifier(project, ""));
+    const worktree = status === null
+      ? undefined
+      : status.worktrees.find(
+        (candidate) => text(first(candidate, ["path"]), "") === path,
+      );
+    const unknownCopy =
+      "该 Worktree 状态未知（unknown）：只作为任务上下文，不作为可执行现场；不推断 clean。";
+    root.hidden = false;
+    if (worktree === undefined) {
+      root.dataset.standing = "unknown";
+      root.textContent = unknownCopy;
+      return;
+    }
+    const standing = worktreeDirtyStanding(worktree);
+    root.dataset.standing = standing.code;
+    if (standing.code === "dirty") {
+      root.textContent =
+        "该 Worktree 有未提交改动（dirty）：作为任务上下文可以，但不是可执行现场。";
+    } else if (standing.code === "clean") {
+      root.textContent =
+        "该 Worktree 工作区干净（clean）· " + text(first(worktree, ["path"]), "");
+    } else {
+      root.textContent = unknownCopy;
     }
   }
 
@@ -6089,6 +6332,7 @@ export function backlogTriageProjection(input) {
         ensureSelections();
         render();
         writePrincipalLocus();
+        requestWorktreeStatusForCurrentContext(true);
       });
     });
   }
@@ -6270,30 +6514,83 @@ export function backlogTriageProjection(input) {
 
   function renderWorktreeInventory(project) {
     const container = $("#worktree-inventory-list");
+    const summaryRoot = $("#worktree-inventory-summary");
+    const noteRoot = $("#worktree-inventory-note");
+    const projectKey = identifier(project, "");
+    const status = projectWorktreeStatusFor(projectKey);
     const worktrees = projectWorktrees(project);
+    const summary = projectWorktreeSummary(worktrees);
+    if (summaryRoot !== null) {
+      const readFailed = status !== null
+        && worktrees.length === 0
+        && status.errors.length > 0;
+      summaryRoot.dataset.standing = status !== null
+        ? readFailed ? "unavailable" : "observed"
+        : "unknown";
+      summaryRoot.textContent = status !== null
+        ? readFailed
+          ? "共 0 个 · 清单读取失败 · 状态未知"
+          : "共 " + summary.total + " 个 · dirty " + summary.dirty
+            + " · clean " + summary.clean + " · unknown " + summary.unknown
+        : "共 " + summary.total + " 个 · 状态未按需读取";
+    }
+    if (noteRoot !== null) {
+      const readState = state.worktreeStatus;
+      const loading = readState.standing === "loading"
+        && readState.projectKey === projectKey;
+      const failed = readState.standing === "unavailable"
+        && readState.projectKey === projectKey;
+      if (loading) {
+        noteRoot.dataset.standing = "loading";
+        noteRoot.textContent = "正在按需读取 Worktree 状态…";
+      } else if (failed) {
+        noteRoot.dataset.standing = "unavailable";
+        noteRoot.textContent =
+          "按需读取失败：Worktree 状态保持 unknown，不推断 clean。"
+          + (readState.reason ? " " + readState.reason : "");
+      } else if (status !== null && summary.unknown > 0) {
+        noteRoot.dataset.standing = "partial";
+        noteRoot.textContent =
+          "部分 Worktree 状态读取失败：保持 unknown，不推断 clean。";
+      } else if (status !== null && worktrees.length === 0 && status.errors.length > 0) {
+        // 项目级 Git 观察失败：空清单是读取失败，不是“零个”事实。
+        noteRoot.dataset.standing = "unavailable";
+        noteRoot.textContent =
+          "Worktree 清单读取失败：不显示为“零个”事实；状态保持 unknown，不推断 clean。";
+      } else if (status !== null) {
+        noteRoot.dataset.standing = "observed";
+        noteRoot.textContent =
+          "已按需读取真实 dirty/clean（canonical full snapshot）。";
+      } else {
+        noteRoot.dataset.standing = "deferred";
+        noteRoot.textContent =
+          "首屏未扫描；进入项目或创建任务表单时按需读取真实状态。";
+      }
+    }
     if (!worktrees.length) {
       container.innerHTML = '<p class="empty-note">尚未观察到 Git worktree。</p>';
       return;
     }
     container.innerHTML = worktrees
       .map((worktree, index) => {
-        const id = identifier(worktree, `worktree-${index}`);
+        const id = identifier(worktree, "worktree-" + index);
         const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
         const head = text(first(worktree, ["head", "headSha", "sha"]), "?");
         const primary = first(worktree, ["registeredPrimary"]) === true;
-        const dirty = first(worktree, ["dirty"]);
-        const dirtyLabel = dirty === true ? "dirty" : dirty === false ? "clean" : "unknown";
-        return `
-          <button
-            class="inventory-worktree ${id === state.selectedWorktreeId ? "is-selected" : ""}"
-            type="button"
-            data-inventory-worktree="${escapeHtml(id)}"
-          >
-            <strong>${escapeHtml(branch)} @ ${escapeHtml(head)}</strong>
-            <span>${primary ? "registered primary" : "additional worktree"} · ${dirtyLabel}</span>
-            <span>${escapeHtml(first(worktree, ["path"], "位置未知"))}</span>
-          </button>
-        `;
+        const standing = worktreeDirtyStanding(worktree);
+        const statusLine = (primary ? "主线主现场" : "附加 Worktree")
+          + " · " + standing.label
+          + (standing.reason ? " · " + standing.detail : "");
+        return '<button class="inventory-worktree '
+          + (id === state.selectedWorktreeId ? 'is-selected' : '')
+          + '" type="button" data-inventory-worktree="' + escapeHtml(id) + '"'
+          + ' data-dirty-standing="' + escapeHtml(standing.code) + '"'
+          + (standing.reason ? ' title="' + escapeHtml(standing.reason) + '"' : '')
+          + '>'
+          + '<strong>' + escapeHtml(branch) + ' @ ' + escapeHtml(head) + '</strong>'
+          + '<span>' + escapeHtml(statusLine) + '</span>'
+          + '<span>' + escapeHtml(first(worktree, ['path'], '位置未知')) + '</span>'
+          + '</button>';
       })
       .join("");
     $$("[data-inventory-worktree]").forEach((button) => {
@@ -8735,6 +9032,7 @@ export function backlogTriageProjection(input) {
 
   function render() {
     ensureSelections();
+    requestWorktreeStatusForCurrentContext();
     renderConnection();
     renderSupervision();
     renderAttention();
@@ -9258,6 +9556,8 @@ export function backlogTriageProjection(input) {
         render();
       }
       loadSnapshot({ manual: true, ensure: true });
+      // 显式刷新也强制重读当前项目/表单的 Worktree 状态（失败后重试入口）。
+      requestWorktreeStatusForCurrentContext(true);
     };
     $("#refresh-button").addEventListener("click", refreshFromCurrentLocation);
     $("#retry-button").addEventListener("click", refreshFromCurrentLocation);
@@ -9299,6 +9599,11 @@ export function backlogTriageProjection(input) {
       $("#task-create-mission").value = "";
       renderTaskCreateWorktrees();
       renderTaskCreateMissions();
+      // 显式选择项目：强制重读该项目 Worktree 状态（含失败后重试）。
+      requestWorktreeStatusForCurrentContext(true);
+    });
+    $("#task-create-worktree").addEventListener("change", () => {
+      renderTaskCreateWorktreeStatus();
     });
     $("#task-create-form").addEventListener("submit", (event) => {
       event.preventDefault();
