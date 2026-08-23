@@ -6,7 +6,7 @@ import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import { initializeHome } from "../../workbench/src/home";
 import { createWorkbenchRequestHandler } from "../src/ui-server";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { projectWorktreeSummary, worktreeCreateOptionLabel, worktreeDirtyStanding } from "../ui/app.js";
+import { missionWorktreeBindingRows, projectWorktreeSummary, worktreeCreateOptionLabel, worktreeDirtyStanding, worktreeStatusStaleAfterRefresh } from "../ui/app.js";
 
 const temporaryRoots: string[] = [];
 
@@ -241,6 +241,78 @@ describe("project Worktree on-demand status read", () => {
     ));
     expect(malformed.status).toBe(404);
   });
+
+  test("concurrent on-demand reads share one snapshot observation and never duplicate the project scan", async () => {
+    const fixture = worktreeStatusFixture();
+    const [first, second] = await Promise.all([
+      onDemandWorktrees(fixture),
+      onDemandWorktrees(fixture),
+    ]);
+    expect(first.standing).toBe("available");
+    expect(second.standing).toBe("available");
+    // Both responses describe the exact same single observation: the
+    // handler's shared in-flight build is reused, so no second per-worktree
+    // dirty scan ran and no response can race ahead of the other.
+    expect(first.observedAt).toBe(second.observedAt);
+    expect(first.worktrees).toEqual(second.worktrees);
+    expect(first.summary).toEqual(second.summary);
+    expect(first.errors).toEqual(second.errors);
+  });
+
+  test("the on-demand route returns only the requested project's errors and source refs", async () => {
+    const fixture = worktreeStatusFixture();
+    // A second registered project whose workspace is a plain directory (not
+    // a Git repository): its per-root git observation fails. The healthy
+    // project's projection must never carry that unrelated failure or its
+    // source ref.
+    const broken = join(fixture.home, "..", "broken-workspace");
+    mkdirSync(broken, { recursive: true });
+    writeFileSync(join(broken, "not-a-repo.txt"), "plain directory\n");
+    writeFileSync(join(fixture.home, "config", "projects.json"), JSON.stringify({
+      version: "rosso.projects.v1",
+      projects: [
+        {
+          id: "repository:worktree-status",
+          repository: "https://example.test/lidessen/worktree-status.git",
+          aliases: ["worktree-status"],
+        },
+        {
+          id: "repository:broken",
+          repository: "https://example.test/lidessen/broken.git",
+          aliases: ["broken"],
+        },
+      ],
+    }));
+    writeFileSync(join(fixture.home, "state", "workspaces.json"), JSON.stringify({
+      version: "rosso.workspaces.v1",
+      workspaces: [
+        { projectId: "repository:worktree-status", path: fixture.repository },
+        { projectId: "repository:broken", path: broken },
+      ],
+    }));
+
+    const healthy = await onDemandWorktrees(fixture);
+    expect(healthy.standing).toBe("available");
+    expect(healthy.errors).toEqual([]);
+    expect(healthy.sourceRefs).toContain(realpathSync(fixture.repository));
+    expect(healthy.sourceRefs).not.toContain(realpathSync(broken));
+
+    const brokenResponse = await fixture.handler(new Request(
+      `${fixture.origin}/api/projects/${encodeURIComponent("registered:repository:broken")}/worktrees`,
+    ));
+    expect(brokenResponse.status).toBe(200);
+    const brokenBody = await brokenResponse.json() as Record<string, any>;
+    // The broken project fails closed with its own attributable git error
+    // (never a fabricated project), and the healthy project's observation
+    // sources stay out of its projection.
+    expect(brokenBody.worktrees).toEqual([]);
+    expect(brokenBody.summary).toEqual({ total: 0, dirty: 0, clean: 0, unknown: 0 });
+    expect(brokenBody.errors.some(
+      (error: { scope: string; source: string }) =>
+        error.scope === "git" && error.source === realpathSync(broken),
+    )).toBeTrue();
+    expect(brokenBody.sourceRefs).not.toContain(realpathSync(fixture.repository));
+  });
 });
 
 describe("Worktree status presentation projection", () => {
@@ -310,5 +382,103 @@ describe("Worktree status presentation projection", () => {
     });
     expect(unknown).toBe(`feature/y @ ${"2".repeat(40)} · unknown · /sites/c`);
     expect(unknown).not.toContain("clean");
+  });
+
+  test("worktreeStatusStaleAfterRefresh keeps the cached read only while the refreshed compact inventory is identical", () => {
+    const cachedStatus = {
+      standing: "available",
+      projectKey: "registered:repository:worktree-status",
+      observedAt: "2026-08-23T00:00:00.000Z",
+      worktrees: [
+        { path: "/sites/a", head: "0".repeat(40), gitBranch: "main" },
+        { path: "/sites/b", head: "1".repeat(40), gitBranch: "linked" },
+      ],
+      summary: { total: 2, dirty: 1, clean: 1, unknown: 0 },
+      errors: [],
+    };
+    const compactProject = {
+      worktrees: [
+        { path: "/sites/a", head: "0".repeat(40), gitBranch: "main" },
+        { path: "/sites/b", head: "1".repeat(40), gitBranch: "linked" },
+      ],
+    };
+    // Identical worktree identity: the cached on-demand read stays fresh and
+    // the poll refresh never repeats the per-worktree scan.
+    expect(worktreeStatusStaleAfterRefresh(cachedStatus, compactProject)).toBeFalse();
+    // The compact refresh removed a worktree: the cached status is stale.
+    expect(worktreeStatusStaleAfterRefresh(cachedStatus, {
+      worktrees: compactProject.worktrees.slice(0, 1),
+    })).toBeTrue();
+    // The compact refresh added a worktree: stale.
+    expect(worktreeStatusStaleAfterRefresh(cachedStatus, {
+      worktrees: [
+        ...compactProject.worktrees,
+        { path: "/sites/c", head: "2".repeat(40), gitBranch: "feature/x" },
+      ],
+    })).toBeTrue();
+    // HEAD moved while the user watched the project page: the cached
+    // dirty/HEAD facts are stale and must be re-read.
+    expect(worktreeStatusStaleAfterRefresh(cachedStatus, {
+      worktrees: [
+        { path: "/sites/a", head: "9".repeat(40), gitBranch: "main" },
+        { path: "/sites/b", head: "1".repeat(40), gitBranch: "linked" },
+      ],
+    })).toBeTrue();
+    // The project disappeared from the refreshed snapshot: stale.
+    expect(worktreeStatusStaleAfterRefresh(cachedStatus, null)).toBeTrue();
+  });
+
+  test("Mission binding rows resolve only from the canonical inventory once the on-demand status read succeeded", () => {
+    const canonical = [
+      {
+        path: "/sites/a",
+        gitBranch: "main",
+        head: "0".repeat(40),
+        dirty: false,
+        registeredPrimary: true,
+      },
+      {
+        path: "/sites/b",
+        gitBranch: "linked",
+        head: "1".repeat(40),
+        dirty: true,
+        registeredPrimary: false,
+      },
+    ];
+    // After the on-demand read, the binding rows come from the canonical
+    // inventory with its real dirty/clean standing and the observation-only
+    // binding marker; a nested mission-record list never bypasses it.
+    expect(missionWorktreeBindingRows({
+      canonicalWorktrees: canonical,
+      onDemandAvailable: true,
+      missionId: "mission-1",
+      observedPath: "/sites/a",
+      nestedWorktrees: [{ path: "/sites/legacy", dirty: false }],
+    })).toEqual([{ ...canonical[0], binding: "observation-only" }]);
+    expect(missionWorktreeBindingRows({
+      canonicalWorktrees: canonical,
+      onDemandAvailable: true,
+      missionId: "mission-1",
+      observedPath: "/sites/nowhere",
+      nestedWorktrees: [{ path: "/sites/legacy", dirty: false }],
+    })).toEqual([]);
+    // Before the on-demand read (compact first paint), the nested records
+    // stay the unobserved fallback and never read as clean.
+    expect(missionWorktreeBindingRows({
+      canonicalWorktrees: canonical,
+      onDemandAvailable: false,
+      missionId: "mission-1",
+      observedPath: "/sites/nowhere",
+      nestedWorktrees: [{ path: "/sites/legacy" }],
+    })).toEqual([{ path: "/sites/legacy" }]);
+    // An explicit mission-linked canonical worktree wins over the
+    // observed-path fallback.
+    expect(missionWorktreeBindingRows({
+      canonicalWorktrees: [{ ...canonical[1], missionId: "mission-1" }],
+      onDemandAvailable: true,
+      missionId: "mission-1",
+      observedPath: "/sites/a",
+      nestedWorktrees: [],
+    })).toEqual([{ ...canonical[1], missionId: "mission-1" }]);
   });
 });

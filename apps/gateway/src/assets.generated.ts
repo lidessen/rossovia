@@ -11828,6 +11828,95 @@ export function worktreeCreateOptionLabel(worktree) {
     + (primary ? " · 主线" : "") + " · " + path;
 }
 
+/**
+ * Whether a cached on-demand Worktree status is still fresh for a refreshed
+ * compact snapshot. The compact first paint carries every 'git worktree
+ * list' fact (path, HEAD, branch) without dirty claims, so the identity sets
+ * of the two inventories are directly comparable: any worktree added,
+ * removed, or moved (path/HEAD/branch changed) makes the cached on-demand
+ * status stale and forces a re-read; an identical inventory keeps the cached
+ * read so the poll refresh never repeats the scan while the facts are
+ * unchanged. A project that disappeared from the refreshed snapshot is stale
+ * by definition.
+ */
+export function worktreeStatusStaleAfterRefresh(cachedStatus, project) {
+  const cachedWorktrees = Array.isArray(cachedStatus?.worktrees)
+    ? cachedStatus.worktrees
+    : [];
+  const compactWorktrees =
+    project !== null && typeof project === "object"
+      ? Array.isArray(project.worktrees) ? project.worktrees : []
+      : null;
+  if (compactWorktrees === null) return true;
+  const identityKey = (worktree) => {
+    const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+    return [
+      object.path ?? "",
+      object.head ?? "",
+      object.gitBranch ?? "",
+    ].join(String.fromCharCode(0));
+  };
+  const cachedKeys = new Set(cachedWorktrees.map(identityKey));
+  const compactKeys = new Set(compactWorktrees.map(identityKey));
+  if (cachedKeys.size !== compactKeys.size) return true;
+  for (const key of cachedKeys) {
+    if (!compactKeys.has(key)) return true;
+  }
+  return false;
+}
+
+function firstPresentKey(object, keys, fallback) {
+  if (object !== null && typeof object === "object") {
+    for (const key of keys) {
+      const value = object[key];
+      if (value !== undefined && value !== null) return value;
+    }
+  }
+  return fallback;
+}
+
+/**
+ * One Mission's binding rows, resolved strictly against the canonical
+ * Worktree inventory: the on-demand project status read when available,
+ * otherwise the compact records. Once the on-demand read succeeded, nested
+ * mission-record worktree lists never bypass it (they cannot carry the real
+ * dirty/clean standing); before the read, the nested records stay the
+ * unobserved compact fallback and never read as clean. The observed-Git
+ * context path match keeps the observation-only binding marker so a binding
+ * row never implies an execution binding.
+ */
+export function missionWorktreeBindingRows(input) {
+  const source = input !== null && typeof input === "object" ? input : {};
+  const canonical = Array.isArray(source.canonicalWorktrees)
+    ? source.canonicalWorktrees
+    : [];
+  const missionId = typeof source.missionId === "string" ? source.missionId : "";
+  const observedPath = typeof source.observedPath === "string" ? source.observedPath : "";
+  const explicit = canonical.filter((worktree) => {
+    const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+    const linked = String(
+      firstPresentKey(object, ["missionId", "mission", "missionRef"], null) ?? "",
+    );
+    return linked !== "" && linked === missionId;
+  });
+  if (explicit.length > 0) return explicit;
+  if (observedPath !== "") {
+    const observed = canonical.filter((worktree) => {
+      const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+      return (
+        String(firstPresentKey(object, ["path", "worktreePath"], null) ?? "")
+        === observedPath
+      );
+    });
+    if (observed.length > 0) {
+      return observed.map((worktree) => ({ ...worktree, binding: "observation-only" }));
+    }
+  }
+  if (source.onDemandAvailable === true) return [];
+  const nested = Array.isArray(source.nestedWorktrees) ? source.nestedWorktrees : [];
+  return nested;
+}
+
 (() => {
   "use strict";
 
@@ -11887,6 +11976,17 @@ export function worktreeCreateOptionLabel(worktree) {
     locusRestorePending: initialLocusRequested,
     unavailableLocus: null,
   };
+
+  /**
+   * One in-flight on-demand Worktree status read per project key plus a
+   * monotonic request sequence: repeated render() passes while a read is in
+   * flight never start a duplicate project scan, and a response for a
+   * superseded request (the user switched projects or force-refreshed while
+   * it was in flight) is dropped instead of overwriting the current status
+   * with stale data.
+   */
+  const worktreeStatusRequests = new Map();
+  let worktreeStatusRequestSequence = 0;
 
   /**
    * Browser-local conversation state. Exactly the retained surface named by
@@ -12776,20 +12876,18 @@ export function worktreeCreateOptionLabel(worktree) {
   }
 
   function missionWorktrees(project, mission) {
-    const nested = list(first(mission, ["worktrees", "workingTrees"], []));
-    if (nested.length) return nested;
-    const missionId = identifier(mission, "");
-    const explicit = projectWorktrees(project).filter((worktree) => {
-      const linked = text(first(worktree, ["missionId", "mission", "missionRef"]), "");
-      return linked && linked === missionId;
+    const projectKey = identifier(project, "");
+    const observedPath = text(
+      first(first(mission, ["observedGitContext"], {}), ["worktreePath", "path"]),
+      "",
+    );
+    return missionWorktreeBindingRows({
+      canonicalWorktrees: projectWorktrees(project),
+      onDemandAvailable: projectWorktreeStatusFor(projectKey) !== null,
+      missionId: identifier(mission, ""),
+      observedPath,
+      nestedWorktrees: list(first(mission, ["worktrees", "workingTrees"], [])),
     });
-    if (explicit.length) return explicit;
-    const observation = first(mission, ["observedGitContext"], {});
-    const observedPath = text(first(observation, ["worktreePath", "path"]), "");
-    if (!observedPath) return [];
-    return projectWorktrees(project)
-      .filter((worktree) => text(first(worktree, ["path", "worktreePath"]), "") === observedPath)
-      .map((worktree) => ({ ...worktree, binding: "observation-only" }));
   }
 
   function runners() {
@@ -15453,6 +15551,10 @@ export function worktreeCreateOptionLabel(worktree) {
   function requestProjectWorktreeStatus(projectKey, { force = false } = {}) {
     if (typeof projectKey !== "string" || projectKey === "") return;
     const current = state.worktreeStatus;
+    // One read per project key: a same-key request already in flight (a
+    // render() pass, a duplicate entry event, or a force refresh while the
+    // read runs) shares it instead of starting a second project scan.
+    if (worktreeStatusRequests.has(projectKey)) return;
     if (
       !force
       && current.projectKey === projectKey
@@ -15461,6 +15563,7 @@ export function worktreeCreateOptionLabel(worktree) {
     ) {
       return;
     }
+    const requestId = ++worktreeStatusRequestSequence;
     state.worktreeStatus = {
       standing: "loading",
       projectKey,
@@ -15470,8 +15573,10 @@ export function worktreeCreateOptionLabel(worktree) {
       errors: [],
       reason: null,
     };
-    render();
-    loadProjectWorktreeStatus(projectKey).then((body) => {
+    const request = loadProjectWorktreeStatus(projectKey).then((body) => {
+      // A superseded response (the user switched projects or force-refreshed
+      // while this read was in flight) never overwrites the current status.
+      if (requestId !== worktreeStatusRequestSequence) return;
       state.worktreeStatus = {
         standing: "available",
         projectKey,
@@ -15481,8 +15586,10 @@ export function worktreeCreateOptionLabel(worktree) {
         errors: list(first(body, ["errors"], [])),
         reason: null,
       };
+      reconcileWorktreeStatusWithSnapshot();
       render();
     }).catch((error) => {
+      if (requestId !== worktreeStatusRequestSequence) return;
       state.worktreeStatus = {
         standing: "unavailable",
         projectKey,
@@ -15493,7 +15600,43 @@ export function worktreeCreateOptionLabel(worktree) {
         reason: error instanceof Error ? error.message : text(error),
       };
       render();
+    }).finally(() => {
+      if (worktreeStatusRequests.get(projectKey) === request) {
+        worktreeStatusRequests.delete(projectKey);
+      }
     });
+    worktreeStatusRequests.set(projectKey, request);
+    render();
+  }
+
+  /**
+   * After a compact snapshot refresh, the cached on-demand Worktree status
+   * stays valid only while the refreshed inventory has the identical
+   * worktree identity (same paths, HEADs, and branches). Any added, removed,
+   * or moved worktree — or the project disappearing from the snapshot —
+   * invalidates the cached status back to idle, so the next render re-reads
+   * the canonical status for the currently open project or form instead of
+   * showing the previous observation against the new snapshot. An identical
+   * inventory keeps the cached read: the poll refresh never repeats the
+   * per-worktree scan while the facts are unchanged.
+   */
+  function reconcileWorktreeStatusWithSnapshot() {
+    const cached = state.worktreeStatus;
+    if (cached.standing !== "available") return;
+    const project = projects().find(
+      (candidate, index) => identifier(candidate, "project-" + index) === cached.projectKey,
+    );
+    if (worktreeStatusStaleAfterRefresh(cached, project ?? null)) {
+      state.worktreeStatus = {
+        standing: "idle",
+        projectKey: null,
+        observedAt: null,
+        worktrees: [],
+        summary: null,
+        errors: [],
+        reason: null,
+      };
+    }
   }
 
   /** The on-demand worktree inventory for one project, or null before it is read. */
@@ -18559,6 +18702,9 @@ export function worktreeCreateOptionLabel(worktree) {
         state.snapshotError = null;
         state.source = "live";
         markActionObserved(snapshot);
+        // A compact refresh may have changed the observed Worktree
+        // inventory; the cached on-demand status is revalidated against it.
+        reconcileWorktreeStatusWithSnapshot();
       } catch (error) {
         state.snapshotError = error instanceof Error ? error.message : text(error);
         if (conversationSocketNeedsConvergence()) {

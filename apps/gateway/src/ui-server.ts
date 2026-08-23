@@ -251,6 +251,30 @@ export function createWorkbenchRequestHandler(
     compactSnapshotBodyInFlight = tracked;
     return tracked;
   };
+
+  // The on-demand project Worktree status route re-reads the canonical full
+  // snapshot (the same per-worktree dirty scans the compact first paint
+  // defers). Several tabs or rapid re-entries can request it at once; keep
+  // one serialized build for the handler and let every waiter reuse its
+  // snapshot, exactly like the compact/full snapshot bodies, so the route
+  // never runs duplicate project scans and every response describes the
+  // same single observation.
+  let worktreeStatusSnapshotInFlight: Promise<ReturnType<typeof buildWorkbenchSnapshot>> | undefined;
+  const readWorktreeStatusSnapshot = (): Promise<ReturnType<typeof buildWorkbenchSnapshot>> => {
+    if (worktreeStatusSnapshotInFlight !== undefined) return worktreeStatusSnapshotInFlight;
+    const build = (async () => {
+      await Bun.sleep(0);
+      return buildWorkbenchSnapshot({
+        ...(options.home === undefined ? {} : { home: options.home }),
+        localRepositoryRoots: options.roots,
+      });
+    })();
+    const tracked = build.finally(() => {
+      if (worktreeStatusSnapshotInFlight === tracked) worktreeStatusSnapshotInFlight = undefined;
+    });
+    worktreeStatusSnapshotInFlight = tracked;
+    return tracked;
+  };
   const taskDetailBodiesInFlight = new Map<string, Promise<string>>();
   const readTaskDetailBody = (taskId: string): Promise<string> => {
     const existing = taskDetailBodiesInFlight.get(taskId);
@@ -383,7 +407,8 @@ export function createWorkbenchRequestHandler(
     const projectWorktreeKey = projectWorktreeKeyFromPath(url.pathname);
     if (request.method === "GET" && projectWorktreeKey !== null) {
       try {
-        return json(projectWorktreeStatusProjection(options, projectWorktreeKey), 200);
+        const snapshot = await readWorktreeStatusSnapshot();
+        return json(projectWorktreeStatusProjection(snapshot, projectWorktreeKey), 200);
       } catch (error: unknown) {
         if (error instanceof ProjectWorktreeStatusError) {
           return json({ error: error.code, message: error.message }, error.status);
@@ -1635,21 +1660,22 @@ class ProjectWorktreeStatusError extends Error {
 }
 
 /**
- * The minimal on-demand Worktree status projection for one project key.
- * It rebuilds the canonical full snapshot with the default
- * `observeWorktreeDirty` (the exact same dirty observation the full
- * snapshot and the task-detail route use — never the compact deferral) and
- * returns only the requested project's Worktree inventory, the
- * total/dirty/clean/unknown summary, and the attributable git/project
- * errors. A per-Worktree dirty scan failure is projected on that Worktree
- * as an explicit unknown standing (dirtyReason) with the error retained;
- * the projection never infers clean from a failed scan. No runner probe,
- * task, review, or observer source is read here: this route answers only
- * the project/Worktree question the project page and create-task form
- * need.
+ * The minimal on-demand Worktree status projection for one project key,
+ * built from the handler's shared canonical full-snapshot build (the same
+ * default `observeWorktreeDirty` the full snapshot and the task-detail
+ * route use — never the compact deferral). It returns only the requested
+ * project's Worktree inventory, the total/dirty/clean/unknown summary, and
+ * only that project's attributable git/project errors and observation
+ * source refs: another project's failed scan or repository root never
+ * leaks into this projection. A per-Worktree dirty scan failure is
+ * projected on that Worktree as an explicit unknown standing (dirtyReason)
+ * with the error retained; the projection never infers clean from a failed
+ * scan. No runner probe, task, review, or observer source is read here:
+ * this route answers only the project/Worktree question the project page
+ * and create-task form need.
  */
 function projectWorktreeStatusProjection(
-  options: ServerOptions,
+  snapshot: ReturnType<typeof buildWorkbenchSnapshot>,
   projectKey: string,
 ) {
   if (projectKey === "") {
@@ -1657,19 +1683,6 @@ function projectWorktreeStatusProjection(
       404,
       "project-not-found",
       "The requested project key is invalid or not observed.",
-    );
-  }
-  let snapshot: ReturnType<typeof buildWorkbenchSnapshot>;
-  try {
-    snapshot = buildWorkbenchSnapshot({
-      ...(options.home === undefined ? {} : { home: options.home }),
-      localRepositoryRoots: options.roots,
-    });
-  } catch (error: unknown) {
-    throw new ProjectWorktreeStatusError(
-      500,
-      "worktree-status-failed",
-      error instanceof Error ? error.message : String(error),
     );
   }
   const project = snapshot.projects.find(
@@ -1704,6 +1717,10 @@ function projectWorktreeStatusProjection(
     else if (worktree.dirty === false) clean += 1;
     else unknown += 1;
   }
+  const projectSources = new Set([
+    ...(project.primaryWorkspace === null ? [] : [project.primaryWorkspace]),
+    ...project.worktrees.map((worktree) => worktree.path),
+  ]);
   return {
     version: "rosso.project-worktree-status.v1" as const,
     standing: "available" as const,
@@ -1716,16 +1733,27 @@ function projectWorktreeStatusProjection(
       clean,
       unknown,
     },
+    // Only the requested project's own observation sources and failures
+    // are projected: its primary workspace root and every worktree path it
+    // observed. Another project's failed git scan or repository root never
+    // leaks into this project's status read, and the project's exact
+    // workspace-mapping failure (shared workspaces.json source) stays
+    // attributable by the project id the error names.
     sourceRefs: snapshot.sourceBoundaries
       .filter((boundary) =>
-        boundary.kind === "git-worktree-observation"
+        (boundary.kind === "git-worktree-observation"
+          && projectSources.has(boundary.source))
         || boundary.kind === "registered-project-identity"
         || boundary.kind === "workspace-mapping"
       )
       .map((boundary) => boundary.source),
-    errors: snapshot.errors.filter(
-      (error) => error.scope === "git" || error.scope === "project",
-    ),
+    errors: snapshot.errors.filter((error) => {
+      if (error.scope !== "git" && error.scope !== "project") return false;
+      if (projectSources.has(error.source)) return true;
+      return error.scope === "project"
+        && typeof project.identity.id === "string"
+        && error.message.endsWith(` for ${project.identity.id}`);
+    }),
   };
 }
 
