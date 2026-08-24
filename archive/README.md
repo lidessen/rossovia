@@ -19,6 +19,6 @@ Still here, waiting to move or to stay as evidence:
 - `legacy/` — the previous top-level `archive/`
 - `apps/`, `packages/`, `site/` — markdown that sat next to code (READMEs, Workbench AGENTS, fixture docs)
 - `.github/PULL_REQUEST_TEMPLATE.md`, `.codex/README.md`
-- root notes: `CHANGELOG.md`, `CLAUDE.md`, `README.zh-CN.md`, `ROSSOVIA.md`
+- root notes: `AGENTS.md`, `CHANGELOG.md`, `CLAUDE.md`, `README.v0.5.md` (freeze `README.md`; this folder's `README.md` is the dump index), `README.zh-CN.md`, `ROSSOVIA.md`
 
 The complete previous tree, including code, remains on branch `archive/v0.5`.
