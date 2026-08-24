@@ -1,18 +1,23 @@
 # Roadmap
 
-Ordinary people can use an open, inspectable, replaceable system for bounded production work, without depending on an opaque platform. Agents may propose and execute inside accepted bounds; they do not grant themselves purpose, fact, or acceptance. Capability is shown on real tasks with evidence and cost, not claimed from a demonstration.
+从理论重新生长下一版，而不是把现在的运行时迁完。基座和 harness 都可以大改；现在最值钱的是理论，系统要在理论和 skills 齐了之后再设计。
 
-This project stays a principle-centered working surface: a compact philosophy source as the semantic root, methods that can leave the repository, and a harness that can be redesigned when the current base is wrong.
+## 要长成的形状
 
-## Protected
+- **理论与设计。** 原则源、解读、harness 理论、研究记录，以及仍约束下一版的成形文件。
+- **方法。** `skills/` 放可独立使用的抽象方法；`.agents/` 放本项目自己的 skills。
+- **基座。** 1+N：一个入口，N 个模块，例如任务、git/worktree，可以基于 DeepSeek Harness。
+- **软件层。** 相对基座的 harness 方法层（当时说的后训练）：skills、prompt、任务表达骑在基座上，不靠改权重。
+- **整合。** 入口把基座和软件层收成一次能用的整体。这一层还没有想好。
 
-- Purpose and value stay with the human mandate: commons rather than capture, replaceability, evidenced claims, and human acceptance.
-- The philosophy source stays a compact, human-revised list. Readings do not become a second canon.
-- Methods meant for other projects stay installable without this repository's runtime.
-- A coding harness can be swapped. It does not own task meaning or acceptance.
-- A convenient record, view, or todo is not a fact.
+## 仍开放
+
+- N 具体是哪些模块
+- DeepSeek Harness 是载体还是内核
+- 基座和软件层怎么合成，而不另造一套平行系统
 
 ## Replan when
 
-- The mandate itself is revised.
-- Practice shows that common, replaceable, evidenced capability is no longer the destination, or that a protected boundary cannot be kept.
+- 理论不再是生长源
+- 基座被规定必须继承当前运行时
+- 1+N 或「基座 + 软件层」不再是目标形状
