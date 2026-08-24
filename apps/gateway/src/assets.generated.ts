@@ -11930,6 +11930,49 @@ function effectWorkspaceRoot(runner) {
 }
 
 /**
+ * The path separator the served projection was built with (git worktree
+ * paths carry the platform separator). The browser derives it from the
+ * projected path itself instead of hardcoding one separator, so Mission
+ * roots and their attribution boundaries hold on every platform the
+ * snapshot was built on.
+ */
+function projectedPathSeparator(path) {
+  return typeof path === "string" && path.includes("\\\\") ? "\\\\" : "/";
+}
+
+/**
+ * Whether a projected source path lies under a root: an exact match, or a
+ * prefix followed by a path separator. Either separator ('/' or '\\\\') is
+ * accepted as the boundary — never a hardcoded forward slash — so Mission
+ * failure attribution matches the platform boundary the server projected
+ * the paths with.
+ */
+function projectedPathWithin(root, sourcePath) {
+  if (sourcePath === root) return true;
+  if (!sourcePath.startsWith(root)) return false;
+  const boundary = sourcePath[root.length];
+  return boundary === "/" || boundary === "\\\\";
+}
+
+/**
+ * A definitive live-effect standing for one project runner: a non-live
+ * (live === false) runner is definitive; a live-proven runner (live ===
+ * true) is definitive only while its activity probe actually answered. The
+ * unavailable activity fallback carries an "error" field, and a live runner
+ * with an unavailable or errored probe never contributes a yes/no — its
+ * effect workspace is unknown, so the retention marker must fail closed to
+ * null instead of reading as "no live effect here".
+ */
+function liveRunnerStandingDefinitive(runner) {
+  if (runner === null || typeof runner !== "object") return false;
+  if (runner.live === false) return true;
+  if (runner.live !== true) return false;
+  const activity = runner.activity;
+  if (activity === null || typeof activity !== "object") return false;
+  return typeof activity.error !== "string";
+}
+
+/**
  * The bounded read-only retention hint of one worktree, projected only from
  * the existing snapshot sources (workItems, missions, runners) with the
  * same fail-closed standing as every other Workbench projection:
@@ -11941,8 +11984,10 @@ function effectWorkspaceRoot(runner) {
  *   binding); null when the Mission source is unreadable for this project.
  * - liveEffectRunner is true when a live-proven runner's current effect
  *   workspace is exactly this worktree; null when the runner source has no
- *   definitive live standing (no project runner record or a failed probe),
- *   so a missing probe never reads as "no live effect".
+ *   definitive live standing (no project runner record, a probe that could
+ *   not verify reachability, or a live runner whose activity probe is
+ *   unavailable/errored), so a missing or failed probe never reads as "no
+ *   live effect".
  * The hint never implies merged, deletable, or clean-reclaimable state.
  */
 export function worktreeRetentionHint(worktree, input) {
@@ -11979,7 +12024,8 @@ export function worktreeRetentionHint(worktree, input) {
     if (typeof sourcePath !== "string") return false;
     return missionRoots.some((root) =>
       typeof root === "string"
-      && (sourcePath === root || sourcePath.startsWith(root + "/"))
+      && root !== ""
+      && projectedPathWithin(root, sourcePath)
     );
   });
   const missionObservationOnly = missionSourceUnavailable
@@ -12004,9 +12050,7 @@ export function worktreeRetentionHint(worktree, input) {
   });
   let liveEffectRunner = null;
   if (projectRunners.length > 0) {
-    const definitive = projectRunners.every(
-      (runner) => runner.live === true || runner.live === false,
-    );
+    const definitive = projectRunners.every(liveRunnerStandingDefinitive);
     liveEffectRunner = definitive
       ? projectRunners.some(
         (runner) => runner.live === true && effectWorkspaceRoot(runner) === path,
@@ -13037,7 +13081,7 @@ export function worktreeRetentionBoundaryNote() {
     const projectKey = identifier(project, "");
     const missionRoots = projectWorktrees(project).map((worktree) => {
       const path = text(first(worktree, ["path"]), "");
-      return path === "" ? "" : path + "/apps/missions";
+      return path === "" ? "" : path + projectedPathSeparator(path) + "apps/missions";
     });
     return {
       workItems: workItems(),

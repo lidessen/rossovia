@@ -1682,8 +1682,10 @@ type WorktreeStatusSnapshot = Awaited<ReturnType<typeof buildLiveSnapshot>>;
  *   binding); null when the Mission source is unreadable for this project.
  * - liveEffectRunner is true when a live-proven runner's current effect
  *   workspace is exactly this Worktree; null when the runner source has no
- *   definitive live standing (no project runner record or a failed probe),
- *   so a missing probe never reads as "no live effect".
+ *   definitive live standing (no project runner record, a probe that could
+ *   not verify reachability, or a live runner whose activity probe is
+ *   unavailable/errored), so a missing or failed probe never reads as "no
+ *   live effect".
  * The hint never implies merged, deletable, or clean-reclaimable state.
  */
 interface WorktreeRetentionProjection {
@@ -1703,6 +1705,26 @@ function effectWorkspaceRoot(runner: { readonly activity?: unknown }): string | 
   if (workspace === null || typeof workspace !== "object") return null;
   const root = (workspace as { root?: unknown }).root;
   return typeof root === "string" ? root : null;
+}
+
+/**
+ * A definitive live-effect standing for one project runner: a non-live
+ * (live === false) runner is definitive; a live-proven runner (live ===
+ * true) is definitive only while its activity probe actually answered. The
+ * unavailable activity fallback carries an `error` field, and a live runner
+ * with an unavailable or errored probe never contributes a yes/no — its
+ * effect workspace is unknown, so the retention marker must fail closed to
+ * null instead of reading as "no live effect here".
+ */
+function liveRunnerStandingDefinitive(runner: {
+  readonly live?: boolean | null;
+  readonly activity?: unknown;
+}): boolean {
+  if (runner.live === false) return true;
+  if (runner.live !== true) return false;
+  const activity = runner.activity;
+  if (activity === null || typeof activity !== "object") return false;
+  return typeof (activity as { error?: unknown }).error !== "string";
 }
 
 function worktreeRetentionHint(
@@ -1756,9 +1778,7 @@ function worktreeRetentionHint(
   );
   const liveEffectRunner = (() => {
     if (projectRunners.length === 0) return null;
-    const definitive = projectRunners.every(
-      (runner) => runner.live === true || runner.live === false,
-    );
+    const definitive = projectRunners.every(liveRunnerStandingDefinitive);
     if (!definitive) return null;
     return projectRunners.some(
       (runner) => runner.live === true && effectWorkspaceRoot(runner) === worktreePath,

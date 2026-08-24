@@ -30,9 +30,14 @@ interface RetentionFixture {
  * worktree, one open and one verifying principal Task bound to the primary
  * worktree, one cached runner for the Mission, and a live-probe client whose
  * current effect workspace is the linked worktree. This exercises exactly
- * the bounded retention sources the on-demand route projects from.
+ * the bounded retention sources the on-demand route projects from. With
+ * errorProbeRunner the fixture adds a second committed Mission whose live
+ * runner's activity probe is unavailable, so the route must fail closed to
+ * unknown live-effect markers.
  */
-function retentionFixture(): RetentionFixture {
+function retentionFixture(
+  options: { errorProbeRunner?: boolean } = {},
+): RetentionFixture {
   const root = mkdtempSync(join(tmpdir(), "rossovia-worktree-retention-"));
   temporaryRoots.push(root);
   const home = join(root, "home");
@@ -76,6 +81,44 @@ function retentionFixture(): RetentionFixture {
   const head = gitRun(repository, "rev-parse", "HEAD");
   const linked = join(root, "linked-worktree");
   gitRun(repository, "worktree", "add", "-b", "linked", linked);
+  if (options.errorProbeRunner === true) {
+    // A second committed Mission whose live runner's activity probe is
+    // unavailable: the retention projection must fail closed to unknown
+    // live-effect markers instead of reading "no live effect" from the
+    // missing probe.
+    writeFileSync(join(repository, "apps", "missions", "retention-mission-error.json"), `${JSON.stringify({
+      version: "mission-record.v1",
+      id: "retention-mission-error",
+      title: "Retention error-probe mission",
+      sources: ["apps/missions/retention-mission-error.json"],
+      createdAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T00:00:00Z",
+      mainline: {
+        contradiction: "Unavailable activity probes must fail closed to unknown live markers",
+        acceptance: ["The live marker stays unknown on an errored probe"],
+        status: "active",
+      },
+      branches: [],
+      currentFocus: "mainline",
+    }, null, 2)}\n`);
+    gitRun(repository, "add", "apps/missions/retention-mission-error.json");
+    gitRun(repository, "commit", "-m", "add error-probe mission");
+    const errorRunnerDirectory = join(home, "missions", "runner-retention-error");
+    mkdirSync(errorRunnerDirectory, { recursive: true });
+    writeFileSync(join(errorRunnerDirectory, "runner-status.json"), `${JSON.stringify({
+      version: "rosso.mission-runner.v1",
+      runnerId: "runner-retention-error",
+      missionId: "retention-mission-error",
+      pid: 4243,
+      state: "running",
+      startedAt: "2026-08-23T00:00:00Z",
+      updatedAt: "2026-08-23T00:00:00Z",
+      inputWatermark: 0,
+      reconciledWatermark: 0,
+      socketPath: "/tmp/retention-error.sock",
+      stopReason: null,
+    }, null, 2)}\n`);
+  }
   const primaryPath = realpathSync(repository);
   mkdirSync(join(home, "config"), { recursive: true });
   mkdirSync(join(home, "state"), { recursive: true });
@@ -177,47 +220,75 @@ function retentionFixture(): RetentionFixture {
     status: async (missionId: string): Promise<RunnerStatusProof> => ({
       live: true,
       missionId,
-      runnerId: "runner-retention",
+      runnerId: missionId === "retention-mission-error"
+        ? "runner-retention-error"
+        : "runner-retention",
       state: "running",
     }),
-    activity: async (): Promise<unknown> => ({
-      source: "mission-timeline",
-      observedAt: "2026-08-23T00:00:00.000Z",
-      eventCount: 0,
-      intentLineage: { standing: "uninitialized", activeAnchor: null },
-      anchorMigrationProposal: null,
-      reconciliationAction: null,
-      currentEffect: {
-        effectId: "effect-retention",
-        phase: "writing",
-        writer: { cellId: "cell-retention", runId: "run-retention" },
-        workspace: {
-          root: realpathSync(linked),
-          baseHead: head,
-          baselineClean: false,
+    activity: async (missionId: string): Promise<unknown> => {
+      if (options.errorProbeRunner === true && missionId === "retention-mission-error") {
+        // The unavailable activity fallback: the live status probe answers
+        // (live === true) but the activity probe reports an error with no
+        // current effect, so the retention marker must stay unknown.
+        return {
+          source: "mission-timeline",
+          observedAt: "2026-08-23T00:00:00.000Z",
+          eventCount: 0,
+          intentLineage: {
+            standing: "unavailable",
+            reason: "activity read failed",
+            activeAnchor: null,
+          },
+          anchorMigrationProposal: null,
+          reconciliationAction: null,
+          currentEffect: null,
+          currentCorrection: null,
+          recentCorrections: [],
+          currentTurn: null,
+          lastEvent: null,
+          recentEvents: [],
+          error: "activity read failed",
+        };
+      }
+      return {
+        source: "mission-timeline",
+        observedAt: "2026-08-23T00:00:00.000Z",
+        eventCount: 0,
+        intentLineage: { standing: "uninitialized", activeAnchor: null },
+        anchorMigrationProposal: null,
+        reconciliationAction: null,
+        currentEffect: {
+          effectId: "effect-retention",
+          phase: "writing",
+          writer: { cellId: "cell-retention", runId: "run-retention" },
+          workspace: {
+            root: realpathSync(linked),
+            baseHead: head,
+            baselineClean: false,
+          },
+          scope: { writePaths: ["README.md"], allowedCommands: ["edit_file"] },
+          currentTool: null,
+          recentTools: [],
+          diff: {
+            changed: [],
+            added: [],
+            removed: [],
+            patchRef: null,
+            patchDigest: null,
+            outsideScope: [],
+          },
+          verification: { mechanical: null, independent: null, principal: null },
+          authority: { commit: "withheld", merge: "withheld", publish: "withheld" },
+          stale: false,
+          uncertain: false,
         },
-        scope: { writePaths: ["README.md"], allowedCommands: ["edit_file"] },
-        currentTool: null,
-        recentTools: [],
-        diff: {
-          changed: [],
-          added: [],
-          removed: [],
-          patchRef: null,
-          patchDigest: null,
-          outsideScope: [],
-        },
-        verification: { mechanical: null, independent: null, principal: null },
-        authority: { commit: "withheld", merge: "withheld", publish: "withheld" },
-        stale: false,
-        uncertain: false,
-      },
-      currentCorrection: null,
-      recentCorrections: [],
-      currentTurn: null,
-      lastEvent: null,
-      recentEvents: [],
-    }),
+        currentCorrection: null,
+        recentCorrections: [],
+        currentTurn: null,
+        lastEvent: null,
+        recentEvents: [],
+      };
+    },
   } as unknown as AutonomyClient;
   const handler = createWorkbenchRequestHandler({
     home,
@@ -288,16 +359,17 @@ describe("Worktree retention hint projection", () => {
     }
   });
 
-  test("an unavailable task source fails closed to unknown bindings and the UI never pushes clean as deletable", async () => {
-    const fixture = retentionFixture();
+  test("unavailable task and activity-probe sources fail closed to unknown bindings and live markers; the UI never pushes clean as deletable", async () => {
+    const fixture = retentionFixture({ errorProbeRunner: true });
     rmSync(join(fixture.home, "state", "tasks.json"));
 
     const body = await onDemandWorktrees(fixture);
     expect(body.standing).toBe("available");
     // The task source cannot be read: every worktree's binding counts are
     // unknown with no count declaration, while the Mission observation-only
-    // marker and the live effect runner marker (their own sources are still
-    // readable) stay projected.
+    // marker (its source is still readable) stays projected. The live
+    // effect runner marker fails closed to unknown because the second live
+    // runner's activity probe is unavailable.
     for (const worktree of body.worktrees) {
       expect(worktree.retention.taskBindings).toEqual({ standing: "unknown" });
       expect(Object.prototype.hasOwnProperty.call(
@@ -312,7 +384,11 @@ describe("Worktree retention hint projection", () => {
       (worktree: { path: string }) => worktree.path === realpathSync(fixture.linked),
     );
     expect(primary.retention.missionObservationOnly).toBeTrue();
-    expect(linked.retention.liveEffectRunner).toBeTrue();
+    // A second live-proven runner's activity probe is unavailable: the live
+    // effect runner marker fails closed to unknown for every worktree — a
+    // missing probe never reads as "no live effect".
+    expect(primary.retention.liveEffectRunner).toBeNull();
+    expect(linked.retention.liveEffectRunner).toBeNull();
 
     // The browser-side projection has the same fail-closed standing: an
     // unavailable task source declares no counts, and a clean worktree's
@@ -421,6 +497,32 @@ describe("Worktree retention hint projection", () => {
     });
     expect(failedMission.missionObservationOnly).toBeNull();
 
+    // Mission failure attribution accepts either platform separator as the
+    // path boundary (here a backslash path) — never a hardcoded forward
+    // slash — while a sibling path that merely shares the prefix does not
+    // count as a boundary.
+    const windowsBase = {
+      ...baseInput,
+      missions: [],
+      missionRoots: ["C:\\sites\\a\\apps\\missions"],
+    };
+    expect(worktreeRetentionHint({ path: "C:\\sites\\a" }, {
+      ...windowsBase,
+      errors: [{
+        scope: "mission",
+        source: "C:\\sites\\a\\apps\\missions\\retention-mission.json",
+        message: "read failed",
+      }],
+    }).missionObservationOnly).toBeNull();
+    expect(worktreeRetentionHint({ path: "C:\\sites\\a" }, {
+      ...windowsBase,
+      errors: [{
+        scope: "mission",
+        source: "C:\\sites\\ab\\apps\\missions\\other.json",
+        message: "read failed",
+      }],
+    }).missionObservationOnly).toBeFalse();
+
     // Live effect runner markers: true only for the exact live effect
     // workspace; false when a definitive live runner has no effect here; and
     // unknown when the probe could not verify reachability, when the record
@@ -462,6 +564,33 @@ describe("Worktree retention hint projection", () => {
     }).liveEffectRunner).toBeNull();
     expect(worktreeRetentionHint({ path: "/sites/a" }, baseInput).liveEffectRunner)
       .toBeNull();
+
+    // A live-proven runner whose activity probe is unavailable (errored)
+    // never contributes a definitive yes/no: the marker fails closed to
+    // unknown — even when another live runner's readable effect matches
+    // this worktree — instead of reading as "no live effect here". A
+    // readable probe with no current effect is a definitive false.
+    const erroredProbe = {
+      binding: { kind: "project-mission", projectKey: "registered:p", missionId: "m-4" },
+      live: true,
+      activity: { error: "activity read failed", currentEffect: null },
+    };
+    expect(worktreeRetentionHint({ path: "/sites/a" }, {
+      ...baseInput,
+      runners: [erroredProbe],
+    }).liveEffectRunner).toBeNull();
+    expect(worktreeRetentionHint({ path: "/sites/a" }, {
+      ...baseInput,
+      runners: [liveRunner, erroredProbe],
+    }).liveEffectRunner).toBeNull();
+    expect(worktreeRetentionHint({ path: "/sites/a" }, {
+      ...baseInput,
+      runners: [{
+        binding: { kind: "project-mission", projectKey: "registered:p", missionId: "m-5" },
+        live: true,
+        activity: { currentEffect: null },
+      }],
+    }).liveEffectRunner).toBeFalse();
 
     // The chips are fixed labels only: the observed counts and the live
     // marker render; an unknown live standing and locked/prunable markers
