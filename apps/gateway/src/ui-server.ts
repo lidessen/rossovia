@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { resolveHome } from "../../workbench/src/home";
 import { packageVersionLabel } from "./help";
 import { gitRoot } from "../../workbench/src/workspace";
@@ -252,22 +252,27 @@ export function createWorkbenchRequestHandler(
     return tracked;
   };
 
-  // The on-demand project Worktree status route re-reads the canonical full
+  // The on-demand project Worktree status route re-reads the canonical live
   // snapshot (the same per-worktree dirty scans the compact first paint
-  // defers). Several tabs or rapid re-entries can request it at once; keep
-  // one serialized build for the handler and let every waiter reuse its
-  // snapshot, exactly like the compact/full snapshot bodies, so the route
-  // never runs duplicate project scans and every response describes the
-  // same single observation.
-  let worktreeStatusSnapshotInFlight: Promise<ReturnType<typeof buildWorkbenchSnapshot>> | undefined;
-  const readWorktreeStatusSnapshot = (): Promise<ReturnType<typeof buildWorkbenchSnapshot>> => {
+  // defers, plus the existing task/Mission/runner sources the retention
+  // hints project from). Several tabs or rapid re-entries can request it at
+  // once; keep one serialized build for the handler and let every waiter
+  // reuse its snapshot, exactly like the compact/full snapshot bodies, so
+  // the route never runs duplicate project scans and every response
+  // describes the same single observation.
+  let worktreeStatusSnapshotInFlight: Promise<WorktreeStatusSnapshot> | undefined;
+  const readWorktreeStatusSnapshot = (): Promise<WorktreeStatusSnapshot> => {
     if (worktreeStatusSnapshotInFlight !== undefined) return worktreeStatusSnapshotInFlight;
     const build = (async () => {
       await Bun.sleep(0);
-      return buildWorkbenchSnapshot({
-        ...(options.home === undefined ? {} : { home: options.home }),
-        localRepositoryRoots: options.roots,
-      });
+      // The route builds the canonical live snapshot — the same existing
+      // sources (worktree/Git scan, tasks, Missions, runner cache plus live
+      // probes, work items, reviews, settings) the project page already
+      // shows — and projects only the requested project's Worktree
+      // inventory plus its bounded retention hints. The per-worktree dirty
+      // observation stays the full-snapshot default, never the compact
+      // deferral.
+      return buildLiveSnapshot(options, client);
     })();
     const tracked = build.finally(() => {
       if (worktreeStatusSnapshotInFlight === tracked) worktreeStatusSnapshotInFlight = undefined;
@@ -1660,8 +1665,112 @@ class ProjectWorktreeStatusError extends Error {
 }
 
 /**
+ * The snapshot build the on-demand Worktree route reads: the canonical live
+ * snapshot (worktree/Git scan, tasks, Missions, runner cache plus live
+ * probes, work items, reviews, settings) the project page already shows.
+ */
+type WorktreeStatusSnapshot = Awaited<ReturnType<typeof buildLiveSnapshot>>;
+
+/**
+ * The bounded read-only retention hint of one Worktree, projected only from
+ * existing snapshot sources with fail-closed standing:
+ * - taskBindings counts the open/verifying principal-task work items bound
+ *   to this Worktree path, and only when the task source is available; an
+ *   unavailable task source is `unknown` with no count declaration.
+ * - missionObservationOnly is true when at least one Mission's observed-Git
+ *   context names this Worktree (observation-only, never an execution
+ *   binding); null when the Mission source is unreadable for this project.
+ * - liveEffectRunner is true when a live-proven runner's current effect
+ *   workspace is exactly this Worktree; null when the runner source has no
+ *   definitive live standing (no project runner record or a failed probe),
+ *   so a missing probe never reads as "no live effect".
+ * The hint never implies merged, deletable, or clean-reclaimable state.
+ */
+interface WorktreeRetentionProjection {
+  readonly taskBindings:
+    | { readonly standing: "observed"; readonly open: number; readonly verifying: number }
+    | { readonly standing: "unknown" };
+  readonly missionObservationOnly: boolean | null;
+  readonly liveEffectRunner: boolean | null;
+}
+
+function effectWorkspaceRoot(runner: { readonly activity?: unknown }): string | null {
+  const activity = runner.activity;
+  if (activity === null || typeof activity !== "object") return null;
+  const currentEffect = (activity as { currentEffect?: unknown }).currentEffect;
+  if (currentEffect === null || typeof currentEffect !== "object") return null;
+  const workspace = (currentEffect as { workspace?: unknown }).workspace;
+  if (workspace === null || typeof workspace !== "object") return null;
+  const root = (workspace as { root?: unknown }).root;
+  return typeof root === "string" ? root : null;
+}
+
+function worktreeRetentionHint(
+  snapshot: WorktreeStatusSnapshot,
+  project: WorktreeStatusSnapshot["projects"][number],
+  worktreePath: string,
+): WorktreeRetentionProjection {
+  // Tasks: only the available task source declares per-Worktree binding
+  // counts; an unavailable source fails closed to unknown with no count.
+  const taskSourceStanding =
+    snapshot.workItems?.capabilities?.independentTasks?.standing;
+  const taskBindings = taskSourceStanding === "available"
+    ? (() => {
+      const bound = (snapshot.workItems?.items ?? []).filter((item) =>
+        item.kind === "principal-task"
+        && item.worktreeContext?.path === worktreePath
+        && (item.lifecycle === "open" || item.lifecycle === "verifying")
+      );
+      return {
+        standing: "observed" as const,
+        open: bound.filter((item) => item.lifecycle === "open").length,
+        verifying: bound.filter((item) => item.lifecycle === "verifying").length,
+      };
+    })()
+    : { standing: "unknown" as const };
+
+  // Missions: the observation-only marker is declared only while the
+  // project's Mission sources were readable; a failed Mission read leaves
+  // the standing unknown instead of declaring an absence.
+  const missionRoots = project.worktrees.map((worktree) =>
+    join(worktree.path, "apps", "missions"));
+  const missionSourceUnavailable = snapshot.errors.some((error) =>
+    error.scope === "mission"
+    && missionRoots.some((root) =>
+      error.source === root || error.source.startsWith(root + sep)
+    )
+  );
+  const missionObservationOnly = missionSourceUnavailable
+    ? null
+    : project.missions.some((mission) =>
+      mission.observedGitContext.worktreePath === worktreePath
+      && mission.observedGitContext.binding === "observation-only"
+    );
+
+  // Runners: only a definitive live standing declares yes/no. No project
+  // runner record, or a probe that could not verify reachability, leaves
+  // the marker unknown — a missing probe never reads as "no live effect".
+  const projectRunners = snapshot.runners.filter((runner) =>
+    runner.binding.kind === "project-mission"
+    && runner.binding.projectKey === project.projectKey
+  );
+  const liveEffectRunner = (() => {
+    if (projectRunners.length === 0) return null;
+    const definitive = projectRunners.every(
+      (runner) => runner.live === true || runner.live === false,
+    );
+    if (!definitive) return null;
+    return projectRunners.some(
+      (runner) => runner.live === true && effectWorkspaceRoot(runner) === worktreePath,
+    );
+  })();
+
+  return { taskBindings, missionObservationOnly, liveEffectRunner };
+}
+
+/**
  * The minimal on-demand Worktree status projection for one project key,
- * built from the handler's shared canonical full-snapshot build (the same
+ * built from the handler's shared canonical live-snapshot build (the same
  * default `observeWorktreeDirty` the full snapshot and the task-detail
  * route use — never the compact deferral). It returns only the requested
  * project's Worktree inventory, the total/dirty/clean/unknown summary, and
@@ -1670,12 +1779,15 @@ class ProjectWorktreeStatusError extends Error {
  * leaks into this projection. A per-Worktree dirty scan failure is
  * projected on that Worktree as an explicit unknown standing (dirtyReason)
  * with the error retained; the projection never infers clean from a failed
- * scan. No runner probe, task, review, or observer source is read here:
- * this route answers only the project/Worktree question the project page
- * and create-task form need.
+ * scan. Every Worktree additionally carries its bounded read-only
+ * retention hint (open/verifying Task binding counts, Mission
+ * observation-only, live effect runner), projected only from the existing
+ * snapshot sources and failing closed to unknown/no declaration whenever a
+ * source is unavailable; locked/prunable stay Git management markers and
+ * never imply merged, deletable, or a delete action.
  */
 function projectWorktreeStatusProjection(
-  snapshot: ReturnType<typeof buildWorkbenchSnapshot>,
+  snapshot: WorktreeStatusSnapshot,
   projectKey: string,
 ) {
   if (projectKey === "") {
@@ -1708,6 +1820,11 @@ function projectWorktreeStatusProjection(
     ...(worktree.dirtyReason === undefined
       ? {}
       : { dirtyReason: worktree.dirtyReason }),
+    // The bounded retention hint: open/verifying Task binding counts,
+    // Mission observation-only, and the live effect runner marker, projected
+    // only from the existing snapshot sources and fail-closed to
+    // unknown/no declaration when a source is unavailable.
+    retention: worktreeRetentionHint(snapshot, project, worktree.path),
   }));
   let dirty = 0;
   let clean = 0;
