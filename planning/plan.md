@@ -43,11 +43,11 @@
 - 冻 `archive/v0.5`
 - 清掉活树上的旧目录
 - 建立 `planning/roadmap.md` 和本文件
+- 迁入 `theory/philosophy.md`、`theory/philosophy/Pxx.md` 和 `draft/`
+- `README.md` / `AGENTS.md` 指向哲学基础
 
 ## 还要做
 
-- 迁入 `theory/philosophy.md` 和 `theory/philosophy/Pxx.md`；未采纳候选进 `draft/`
 - 迁入 harness 理论到 `theory/harness/`
 - 按 keep/archive 门迁仍要用的成形文件到 `design/`，其余留在归档分支或进 `archive/`
 - 可移植 skills 进 `skills/`，本项目 skills 进 `.agents/skills/`
-- 写 `AGENTS.md`，并让 `README.md` 指向哲学基础
