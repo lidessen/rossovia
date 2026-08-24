@@ -1,26 +1,26 @@
 # Roadmap
 
-This file is a long-direction projection. It is not a task queue, and it does not authorize implementation, merge, or a change to `theory/philosophy.md`.
+Long-direction projection. It is not a schedule, not this version's migration order, and not authorization to implement, merge, or change the principle source.
 
-## Direction
+## Destination
 
-Grow the next version from theory: a compact principle source, independently installable methods, then a system design for the harness base. The previous repository remains reference evidence, not the trunk to finish migrating.
+Ordinary people can use an open, inspectable, replaceable system for bounded production work, without depending on an opaque platform. Agents may propose and execute inside accepted bounds; they do not grant themselves purpose, fact, or acceptance. Capability is shown on real tasks with evidence and cost, not claimed from a demonstration.
 
-## Protected boundaries
+This project stays a principle-centered working surface: a compact philosophy source as the semantic root, methods that can leave the repository, and a harness that can be redesigned when the current base is wrong.
 
-- `theory/philosophy.md` stays one line per principle, with no commentary or citations in the source file.
-- Portable skills remain installable on their own.
-- An imported coding harness may carry a model/tool loop; it does not own task meaning, effect acceptance, or Principal acceptance.
-- Completing a todo does not accept design or change the principle source.
+## Protected
 
-## Horizons
+- Purpose and value stay with the human mandate: commons rather than capture, replaceability, evidenced claims, and human acceptance.
+- The philosophy source stays a compact, human-revised list. Readings do not become a second canon.
+- Methods meant for other projects stay installable without this repository's runtime.
+- A coding harness can be swapped. It does not own task meaning or acceptance.
+- A convenient record, view, or todo is not a fact.
 
-- **Long:** a principle-centered working surface that can grow a replaceable 1+N base without inheriting the previous runtime as doctrine.
-- **Medium:** living theory (`philosophy`, harness theory) and selected portable skills that still express the source after a carrier change.
-- **Short:** the current entry in `plan.md`.
+## Not this file
 
-## Replan when
+How this version is incubated — freeze the previous tree, move philosophy, then skills, then design the base — belongs in `plan.md`. The current checklist belongs in `todo.md`.
 
-- Work starts on a runtime base before the principle source and its readings are in this tree.
-- `todo.md` starts accumulating items outside the current focus.
-- A folder is treated as current design merely because it lives under `archive/`.
+## Replan this roadmap when
+
+- The mandate itself is revised.
+- Practice shows that common, replaceable, evidenced capability is no longer the destination, or that a protected boundary cannot be kept.

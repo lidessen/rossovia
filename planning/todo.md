@@ -2,8 +2,7 @@
 
 Items for the current focus in `plan.md` only. When the focus changes, rewrite this list. Finishing an item does not accept design or change the principle source.
 
-- [x] Freeze the previous concrete as `archive/v0.5` and push it
-- [x] Clean this branch of the previous tree
-- [x] Add `planning/roadmap.md`, `plan.md`, and `todo.md`
-
-Current focus is complete. Rewrite this file when the philosophy-source focus starts.
+- [ ] Add `theory/philosophy.md` from `archive/v0.5:principles/SEQUENCE.md` (one line per principle, no commentary)
+- [ ] Add `theory/philosophy/P01.md`–`P16.md` from the frozen interpretations
+- [ ] Put unadopted sequence candidates in `theory/philosophy/draft/`
+- [ ] Point `README.md` at `theory/philosophy.md` once it exists
