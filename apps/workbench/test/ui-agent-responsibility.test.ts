@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-// @ts-expect-error app.js is the browser entrypoint; this test imports pure responsibility exports.
 import * as agentResponsibility from "../../gateway/ui/app.js";
 
 const {
