@@ -110,12 +110,13 @@ describe("compact principal-task work-item projection", () => {
     expect(item?.searchText).not.toContain("conversation:");
     expect(item?.searchText).not.toMatch(/workbench-task:/u);
     expect(item?.searchText).not.toMatch(/\{/u);
-    // Evidence source refs stay attributable to the canonical Task source.
+    // Compact evidence keeps only the canonical locator refs. Historical
+    // correction refs stay on the full item/detail route.
     expect(item?.evidence).toMatchObject({
-      sourceRefs: expect.arrayContaining([
+      sourceRefs: [
         "/home/state/tasks.json",
-        `workbench-task:task-compact/correction:correction-compact`,
-      ]),
+        "conversation:task-compact",
+      ],
     });
     // Capabilities and counts remain available for the list and observer.
     expect(projection.capabilities.independentTasks).toEqual({
@@ -188,7 +189,14 @@ describe("compact principal-task work-item projection", () => {
       if (value !== null && typeof value === "object") {
         return Object.fromEntries(
           Object.entries(value).map(
-            ([key, entry]): [string, unknown] => [key, normalizeTaskIdentity(entry)],
+            ([key, entry]): [string, unknown] => [
+              key,
+              key === "sourceRefs" && Array.isArray(entry)
+                ? entry.filter((ref) =>
+                  typeof ref !== "string" || !ref.startsWith("workbench-task:"),
+                ).map(normalizeTaskIdentity)
+                : normalizeTaskIdentity(entry),
+            ],
           ),
         );
       }
