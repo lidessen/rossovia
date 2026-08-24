@@ -4,7 +4,7 @@
 
 ## 要长成的形状
 
-- **理论与设计。** 原则源、解读、harness 理论、研究记录，以及仍约束下一版的成形文件。
+- **理论与设计。** 哲学基础（philosophical foundations：`theory/philosophy.md` 与解读）、harness 理论、研究记录，以及仍约束下一版的成形文件。
 - **方法。** `skills/` 放可独立使用的抽象方法；`.agents/` 放本项目自己的 skills。
 - **基座。** 1+N：一个入口，N 个模块，例如任务、git/worktree，可以基于 DeepSeek Harness。
 - **软件层。** 相对基座的 harness 方法层（当时说的后训练）：skills、prompt、任务表达骑在基座上，不靠改权重。
