@@ -4201,6 +4201,17 @@ export function worktreeRetentionBoundaryNote() {
       sourceStanding: triageSource.standing,
       projectionNeedsCheck: triageSource.projectionNeedsCheck,
     });
+    // The heading total is the Principal-task subset count (the four-layer
+    // sum over principal-task items only), explicitly distinct from the
+    // navigation「全部工作事项」badge that counts every work item including
+    // decisions, Missions and observations. An unavailable source fails
+    // closed to "—" instead of a factual zero.
+    const total = $("#task-triage-total");
+    if (total !== null) {
+      total.textContent = projection.total === null
+        ? "—"
+        : String(projection.total);
+    }
     const layerKeys = [
       "principalPending",
       "agentTakeover",
@@ -4340,11 +4351,9 @@ export function worktreeRetentionBoundaryNote() {
       independent: items.filter(isIndependentWorkbenchTask).length,
       completed: items.filter((item) => item.lifecycle === "settled").length,
     };
-    if (state.activeView === "tasks") {
-      counts.all = items.filter(
-        (item) => workItemMatchesView(item) && workItemMatchesTaskLocator(item, state.taskLocator),
-      ).length;
-    }
+    // 「全部工作事项」badge 恒为全部工作事项数：进入 tasks 视图后不随筛选
+    // 或 locator 收窄，使导航总数与待办分层的 Principal 任务子集计数保持
+    // 可区分，而不是在进入视图后悄悄变成同一个数。
     $("#all-task-count").textContent = String(counts.all);
     $("#principal-task-count").textContent = String(counts.principal);
     $("#agent-task-count").textContent = String(counts.agent);
@@ -4632,7 +4641,7 @@ export function worktreeRetentionBoundaryNote() {
       "agent-orphaned": ["Orphaned agent queue", "待 Agent · 失联现场", "只显示 open 且下一责任方为 Agent、但绑定 Worktree 缺失或未声明的历史事项；定位与证据入口保留，不进入待 Agent 接手。"],
       independent: ["Independent", "独立任务", "只显示来源明确声明为独立的任务。"],
       completed: ["Completed", "已完成", "任务完成不自动代表 Mission 结案、验证通过或已集成。"],
-      tasks: ["Tasks", "任务", "按筛选定位全量任务；状态、责任方和来源先行，长证据在详情中查看。"],
+      tasks: ["All work items", "全部工作事项", "定位全部工作事项（Principal 任务、决策、Mission 与观察）；Principal 任务子集由下方「待办分层」单独计数。"],
       observer: ["Observation", "观察记录", "查看 observer 对最近执行留下的意见、证据引用与可处理的缺口。"],
       settings: ["Settings", "设置", "查看当前生效的 Worker、Provider、凭据状态与用户偏好。"],
     };
@@ -4719,7 +4728,9 @@ export function worktreeRetentionBoundaryNote() {
         ? base.filter((item) => workItemMatchesTaskLocator(item, state.taskLocator))
         : base;
       $("#task-view-heading").textContent = title;
-      $("#task-view-count").textContent = String(filtered.length);
+      // tasks 入口的标题计数恒为全部工作事项数（与导航「全部工作事项」badge
+      // 一致）；列表行数仍随当前筛选变化，Principal 任务子集由待办分层显式计数。
+      $("#task-view-count").textContent = String(locatorActive ? items.length : filtered.length);
       $("#task-locator").hidden = !locatorActive;
       if (locatorActive) renderTaskLocatorControls(base);
       const empty = locatorActive

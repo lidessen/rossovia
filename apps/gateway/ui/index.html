@@ -112,7 +112,7 @@
             <small>项目与当前工作</small>
           </button>
           <button class="view-button" type="button" data-view="tasks">
-            <span>任务</span>
+            <span>全部工作事项</span>
             <strong id="all-task-count">—</strong>
           </button>
           <button class="view-button" type="button" data-view="principal">
@@ -401,7 +401,7 @@
           <section class="task-view" id="task-view" aria-labelledby="task-view-heading" hidden>
             <div class="surface-section-heading">
               <div>
-                <span>任务</span>
+                <span>全部工作事项</span>
                 <h3 id="task-view-heading">当前视图</h3>
               </div>
               <strong id="task-view-count">—</strong>
@@ -410,9 +410,10 @@
               <div class="surface-section-heading">
                 <div>
                   <span>Backlog triage · 只读</span>
-                  <h4 id="task-triage-heading">待办分层</h4>
-                  <p>四层只读分层：数量、下一步与安全清理说明。只由现有 lifecycle / nextActor / agentEligibility / settled 投影推导；不接受、不关闭、不删除任何任务。</p>
+                  <h4 id="task-triage-heading">Principal 任务 · 待办分层</h4>
+                  <p>只统计 Workbench 本地 Principal 任务（不含决策、Mission、观察等其它工作事项）：四层只读分层给出数量、下一步与安全清理说明，只由现有 lifecycle / nextActor / agentEligibility / settled 投影推导；不接受、不关闭、不删除任何任务。</p>
                 </div>
+                <strong id="task-triage-total" aria-label="Principal 任务总数" title="只统计 Principal 任务，不含决策、Mission、观察等其它工作事项">—</strong>
               </div>
               <div class="task-triage-layers" id="task-triage-layers"></div>
               <p class="task-triage-note" id="task-triage-note" role="status"></p>
@@ -1624,7 +1625,7 @@
     <nav class="mobile-tab-bar" aria-label="移动端主导航">
       <button class="mobile-tab is-active" type="button" data-mobile-view="conversation">对话</button>
       <button class="mobile-tab" type="button" data-mobile-view="overview">总览</button>
-      <button class="mobile-tab" type="button" data-mobile-view="tasks">任务</button>
+      <button class="mobile-tab" type="button" data-mobile-view="tasks">全部工作事项</button>
       <button class="mobile-tab" type="button" data-mobile-view="projects">项目</button>
     </nav>
 
