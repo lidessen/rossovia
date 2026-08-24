@@ -2464,6 +2464,200 @@ export function missionWorktreeBindingRows(input) {
   return nested;
 }
 
+function effectWorkspaceRoot(runner) {
+  if (runner === null || typeof runner !== "object") return null;
+  const activity = runner.activity;
+  if (activity === null || typeof activity !== "object") return null;
+  const currentEffect = activity.currentEffect;
+  if (currentEffect === null || typeof currentEffect !== "object") return null;
+  const workspace = currentEffect.workspace;
+  if (workspace === null || typeof workspace !== "object") return null;
+  const root = workspace.root;
+  return typeof root === "string" ? root : null;
+}
+
+/**
+ * The path separator the served projection was built with (git worktree
+ * paths carry the platform separator). The browser derives it from the
+ * projected path itself instead of hardcoding one separator, so Mission
+ * roots and their attribution boundaries hold on every platform the
+ * snapshot was built on.
+ */
+function projectedPathSeparator(path) {
+  return typeof path === "string" && path.includes("\\") ? "\\" : "/";
+}
+
+/**
+ * Whether a projected source path lies under a root: an exact match, or a
+ * prefix followed by a path separator. Either separator ('/' or '\\') is
+ * accepted as the boundary — never a hardcoded forward slash — so Mission
+ * failure attribution matches the platform boundary the server projected
+ * the paths with.
+ */
+function projectedPathWithin(root, sourcePath) {
+  if (sourcePath === root) return true;
+  if (!sourcePath.startsWith(root)) return false;
+  const boundary = sourcePath[root.length];
+  return boundary === "/" || boundary === "\\";
+}
+
+/**
+ * A definitive live-effect standing for one project runner: a non-live
+ * (live === false) runner is definitive; a live-proven runner (live ===
+ * true) is definitive only while its activity probe actually answered. The
+ * unavailable activity fallback carries an "error" field, and a live runner
+ * with an unavailable or errored probe never contributes a yes/no — its
+ * effect workspace is unknown, so the retention marker must fail closed to
+ * null instead of reading as "no live effect here".
+ */
+function liveRunnerStandingDefinitive(runner) {
+  if (runner === null || typeof runner !== "object") return false;
+  if (runner.live === false) return true;
+  if (runner.live !== true) return false;
+  const activity = runner.activity;
+  if (activity === null || typeof activity !== "object") return false;
+  return typeof activity.error !== "string";
+}
+
+/**
+ * The bounded read-only retention hint of one worktree, projected only from
+ * the existing snapshot sources (workItems, missions, runners) with the
+ * same fail-closed standing as every other Workbench projection:
+ * - taskBindings counts the open/verifying principal-task items bound to
+ *   this worktree path, and only when the task source is available; an
+ *   unavailable task source is `unknown` with no count declaration.
+ * - missionObservationOnly is true when at least one Mission's observed-Git
+ *   context names this worktree (observation-only, never an execution
+ *   binding); null when the Mission source is unreadable for this project.
+ * - liveEffectRunner is true when a live-proven runner's current effect
+ *   workspace is exactly this worktree; null when the runner source has no
+ *   definitive live standing (no project runner record, a probe that could
+ *   not verify reachability, or a live runner whose activity probe is
+ *   unavailable/errored), so a missing or failed probe never reads as "no
+ *   live effect".
+ * The hint never implies merged, deletable, or clean-reclaimable state.
+ */
+export function worktreeRetentionHint(worktree, input) {
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  const path = typeof object.path === "string" ? object.path : "";
+  const source = input !== null && typeof input === "object" ? input : {};
+  const workItems = Array.isArray(source.workItems) ? source.workItems : [];
+  const taskSourceStanding = source.taskSourceStanding;
+  const taskBindings = taskSourceStanding === "available"
+    ? (() => {
+      const bound = workItems.filter((item) =>
+        item !== null
+        && typeof item === "object"
+        && item.kind === "principal-task"
+        && item.worktreeContext !== null
+        && typeof item.worktreeContext === "object"
+        && item.worktreeContext.path === path
+        && (item.lifecycle === "open" || item.lifecycle === "verifying")
+      );
+      return {
+        standing: "observed",
+        open: bound.filter((item) => item.lifecycle === "open").length,
+        verifying: bound.filter((item) => item.lifecycle === "verifying").length,
+      };
+    })()
+    : { standing: "unknown" };
+  const missions = Array.isArray(source.missions) ? source.missions : [];
+  const errors = Array.isArray(source.errors) ? source.errors : [];
+  const missionRoots = Array.isArray(source.missionRoots) ? source.missionRoots : [];
+  const missionSourceUnavailable = errors.some((error) => {
+    if (error === null || typeof error !== "object") return false;
+    if (error.scope !== "mission") return false;
+    const sourcePath = error.source;
+    if (typeof sourcePath !== "string") return false;
+    return missionRoots.some((root) =>
+      typeof root === "string"
+      && root !== ""
+      && projectedPathWithin(root, sourcePath)
+    );
+  });
+  const missionObservationOnly = missionSourceUnavailable
+    ? null
+    : missions.some((mission) => {
+      if (mission === null || typeof mission !== "object") return false;
+      const context = mission.observedGitContext;
+      return context !== null
+        && typeof context === "object"
+        && context.worktreePath === path
+        && context.binding === "observation-only";
+    });
+  const runners = Array.isArray(source.runners) ? source.runners : [];
+  const projectKey = typeof source.projectKey === "string" ? source.projectKey : "";
+  const projectRunners = runners.filter((runner) => {
+    if (runner === null || typeof runner !== "object") return false;
+    const binding = runner.binding;
+    return binding !== null
+      && typeof binding === "object"
+      && binding.kind === "project-mission"
+      && binding.projectKey === projectKey;
+  });
+  let liveEffectRunner = null;
+  if (projectRunners.length > 0) {
+    const definitive = projectRunners.every(liveRunnerStandingDefinitive);
+    liveEffectRunner = definitive
+      ? projectRunners.some(
+        (runner) => runner.live === true && effectWorkspaceRoot(runner) === path,
+      )
+      : null;
+  }
+  return { taskBindings, missionObservationOnly, liveEffectRunner };
+}
+
+/**
+ * The bounded presentation chips of one worktree retention hint. Every chip
+ * is a fixed label derived only from the hint fields; none of the copy
+ * implies merged, deletable, or a delete action — locked/prunable are named
+ * Git management markers only, and a clean standing never reads as
+ * deletable.
+ */
+export function worktreeRetentionHintCopy(hint, worktree) {
+  const value = hint !== null && typeof hint === "object" ? hint : {};
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  const chips = [];
+  if (typeof object.locked === "string" && object.locked !== "") {
+    chips.push("locked · Git 管理标记 · 不代表可删除");
+  }
+  if (typeof object.prunable === "string" && object.prunable !== "") {
+    chips.push("prunable · Git 管理标记 · 不代表可删除");
+  }
+  const taskBindings = value.taskBindings;
+  if (taskBindings !== null && typeof taskBindings === "object") {
+    if (taskBindings.standing === "observed") {
+      const open = typeof taskBindings.open === "number" ? taskBindings.open : 0;
+      const verifying = typeof taskBindings.verifying === "number"
+        ? taskBindings.verifying
+        : 0;
+      chips.push(
+        "任务绑定 open " + String(open) + " · verifying " + String(verifying),
+      );
+    } else if (taskBindings.standing === "unknown") {
+      chips.push("任务绑定数未知");
+    }
+  }
+  if (value.missionObservationOnly === true) {
+    chips.push("Mission 仅观察");
+  }
+  if (value.liveEffectRunner === true) {
+    chips.push("live effect runner");
+  } else if (value.liveEffectRunner === null) {
+    chips.push("live effect runner 未知");
+  }
+  return chips;
+}
+
+/**
+ * The inventory-level retention boundary copy: locked/prunable are Git
+ * management markers only (never merged, deletable, or a delete action),
+ * and a clean standing never implies deletable.
+ */
+export function worktreeRetentionBoundaryNote() {
+  return "locked/prunable 只是 Git 管理标记，不代表已合入、可删除或 delete action；clean 不代表可安全删除。";
+}
+
 (() => {
   "use strict";
 
@@ -3420,6 +3614,31 @@ export function missionWorktreeBindingRows(input) {
     const snapshotList = list(first(project, ["worktrees", "workingTrees"], []));
     const onDemand = projectWorktreeStatusFor(identifier(project, ""));
     return onDemand !== null ? onDemand.worktrees : snapshotList;
+  }
+
+  /**
+   * The bounded retention sources for one project, read strictly from the
+   * existing snapshot projections the browser already holds (workItems,
+   * missions, runners, errors). The task source standing gates every
+   * binding count; the project's Mission roots attribute Mission source
+   * failures so a failed read never declares a false observation-only
+   * absence.
+   */
+  function worktreeRetentionInput(project) {
+    const projectKey = identifier(project, "");
+    const missionRoots = projectWorktrees(project).map((worktree) => {
+      const path = text(first(worktree, ["path"]), "");
+      return path === "" ? "" : path + projectedPathSeparator(path) + "apps/missions";
+    });
+    return {
+      workItems: workItems(),
+      taskSourceStanding: first(taskSourceCapability(), ["standing"]),
+      missions: projectMissions(project),
+      runners: runners(),
+      errors: list(first(state.snapshot, ["errors"], [])),
+      missionRoots,
+      projectKey,
+    };
   }
 
   function missionWorktrees(project, mission) {
@@ -6703,7 +6922,8 @@ export function missionWorktreeBindingRows(input) {
       } else if (status !== null) {
         noteRoot.dataset.standing = "observed";
         noteRoot.textContent =
-          "已按需读取真实 dirty/clean（canonical full snapshot）。";
+          "已按需读取真实 dirty/clean（canonical full snapshot）。"
+          + worktreeRetentionBoundaryNote();
       } else {
         noteRoot.dataset.standing = "deferred";
         noteRoot.textContent =
@@ -6721,6 +6941,17 @@ export function missionWorktreeBindingRows(input) {
         const head = text(first(worktree, ["head", "headSha", "sha"]), "?");
         const primary = first(worktree, ["registeredPrimary"]) === true;
         const standing = worktreeDirtyStanding(worktree);
+        // The bounded retention hint is projected from the existing snapshot
+        // sources (workItems / missions / runners) with the same fail-closed
+        // standing as dirty: an unavailable task source stays unknown with
+        // no count, a failed Mission read declares no observation-only
+        // claim, and a missing or failed runner probe never reads as "no
+        // live effect". locked/prunable stay Git management markers only.
+        const retention = worktreeRetentionHint(
+          worktree,
+          worktreeRetentionInput(project),
+        );
+        const chips = worktreeRetentionHintCopy(retention, worktree);
         const statusLine = (primary ? "主线主现场" : "附加 Worktree")
           + " · " + standing.label
           + (standing.reason ? " · " + standing.detail : "");
@@ -6733,6 +6964,11 @@ export function missionWorktreeBindingRows(input) {
           + '<strong>' + escapeHtml(branch) + ' @ ' + escapeHtml(head) + '</strong>'
           + '<span>' + escapeHtml(statusLine) + '</span>'
           + '<span>' + escapeHtml(first(worktree, ['path'], '位置未知')) + '</span>'
+          + (chips.length
+            ? '<span class="worktree-retention">'
+              + chips.map(escapeHtml).join(" · ")
+              + '</span>'
+            : '')
           + '</button>';
       })
       .join("");
