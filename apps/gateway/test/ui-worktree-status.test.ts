@@ -6,7 +6,7 @@ import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import { initializeHome } from "../../workbench/src/home";
 import { createWorkbenchRequestHandler } from "../src/ui-server";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { missionWorktreeBindingRows, orderWorktreesForInventory, projectWorktreeSummary, worktreeCreateOptionLabel, worktreeDirtyStanding, worktreeInventoryStatusLine, worktreeStatusStaleAfterRefresh } from "../ui/app.js";
+import { missionWorktreeBindingRows, orderWorktreesForInventory, projectWorktreeSummary, selectedWorktreeFromInventory, worktreeCreateOptionLabel, worktreeDirtyStanding, worktreeIdentity, worktreeInventoryStatusLine, worktreeStatusStaleAfterRefresh } from "../ui/app.js";
 
 const temporaryRoots: string[] = [];
 
@@ -481,6 +481,73 @@ describe("Worktree status presentation projection", () => {
     });
     expect(unknown).toBe(`feature/y @ ${"2".repeat(40)} · unknown · /sites/c`);
     expect(unknown).not.toContain("clean");
+  });
+
+  test("worktreeIdentity is the stable canonical path, never a sorted array index", () => {
+    const clean = { path: "/sites/clean", gitBranch: "main", dirty: false };
+    const dirty = { path: "/sites/dirty", gitBranch: "feature/x", dirty: true };
+    expect(worktreeIdentity(clean)).toBe("/sites/clean");
+    expect(worktreeIdentity(dirty)).toBe("/sites/dirty");
+    // The canonical path wins over the explicit id fields of legacy
+    // mission-nested records, and the id/name fields are the fallback when
+    // no path exists — never an array position.
+    expect(worktreeIdentity({ id: "wt-ui", path: "/sites/ui" })).toBe("/sites/ui");
+    expect(worktreeIdentity({ id: "wt-ui" })).toBe("wt-ui");
+    expect(worktreeIdentity({ name: "principal-workbench" })).toBe("principal-workbench");
+    expect(worktreeIdentity({ worktreeId: "wt-7" })).toBe("wt-7");
+    expect(worktreeIdentity(null)).toBeNull();
+    expect(worktreeIdentity({})).toBeNull();
+    // Identities are order-independent: the same records in a different
+    // array position keep the exact same identity.
+    expect([dirty, clean].map(worktreeIdentity)).toEqual([
+      "/sites/dirty",
+      "/sites/clean",
+    ]);
+  });
+
+  test("selecting a row in the attention-sorted inventory still resolves to the original Worktree", () => {
+    // Canonical inventory: clean A first, dirty B second. Attention ordering
+    // puts dirty B before clean A, so the sorted row indexes no longer match
+    // the canonical array positions — the exact identity bug a stable path
+    // identity must repair.
+    const canonical = [
+      { path: "/sites/a", gitBranch: "main", head: "0".repeat(40), dirty: false },
+      { path: "/sites/b", gitBranch: "feature/x", head: "1".repeat(40), dirty: true },
+    ];
+    const sorted = orderWorktreesForInventory(canonical);
+    expect(sorted.map((worktree: { path: string }) => worktree.path)).toEqual(["/sites/b", "/sites/a"]);
+    // The sorted row's identity is the canonical path, not the sorted index.
+    const clicked = sorted[0];
+    expect(worktreeIdentity(clicked)).toBe("/sites/b");
+    // The same identity resolves against the sorted rows and against the
+    // canonical unsorted inventory to the exact same original Worktree
+    // record: clicking B after reorder selects B, never the position-0
+    // neighbor A.
+    expect(selectedWorktreeFromInventory(sorted, worktreeIdentity(clicked))).toBe(clicked);
+    const resolved = selectedWorktreeFromInventory(canonical, worktreeIdentity(clicked));
+    expect(resolved).toBe(canonical[1]);
+    expect(resolved).toEqual(clicked);
+    expect(resolved.gitBranch).toBe("feature/x");
+    expect(resolved.dirty).toBeTrue();
+    expect(resolved.path).not.toBe("/sites/a");
+  });
+
+  test("an absent or unresolvable selected Worktree identity fails closed to no selection", () => {
+    const canonical = [
+      { path: "/sites/a", gitBranch: "main", dirty: false },
+      { path: "/sites/b", gitBranch: "feature/x", dirty: true },
+    ];
+    // Empty, missing, and unresolvable selections never fall back to the
+    // first array element by position.
+    expect(selectedWorktreeFromInventory(canonical, null)).toBeNull();
+    expect(selectedWorktreeFromInventory(canonical, "")).toBeNull();
+    expect(selectedWorktreeFromInventory(canonical, undefined)).toBeNull();
+    expect(selectedWorktreeFromInventory(canonical, "/sites/missing")).toBeNull();
+    // A legacy positional index id is not a stable identity and never
+    // resolves.
+    expect(selectedWorktreeFromInventory(canonical, "worktree-1")).toBeNull();
+    expect(selectedWorktreeFromInventory(null, "/sites/a")).toBeNull();
+    expect(selectedWorktreeFromInventory([], "/sites/a")).toBeNull();
   });
 
   test("worktreeStatusStaleAfterRefresh keeps the cached read only while the refreshed compact inventory is identical", () => {
