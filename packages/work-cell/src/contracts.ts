@@ -411,3 +411,23 @@ export const CellRunRecordSchema = z.object({
   rawSteps: z.array(z.unknown()),
   error: z.string().min(1).optional(),
 }).strict();
+
+/**
+ * The canonical empty-return predicate for one retained Work Cell final
+ * record: a run that produced no final text (up to whitespace), retained no
+ * raw step payload, and changed no workspace path. Such a final is process
+ * evidence of a mechanically passed run but carries no produced result; it
+ * is never a verified Task result and never a failure. Verified-result
+ * projection and submission fail closed on it without reclassifying the
+ * attempt: the recorded evidence and Task lifecycle stay untouched. The
+ * predicate inspects only the payload lengths — it never copies raw step
+ * data — and applies to any terminal status; the verified-result boundary
+ * invokes it only on an already passed final.
+ */
+export function isEmptyWorkCellFinalResult(record: CellRunRecord): boolean {
+  return record.finalText.trim() === ""
+    && record.rawSteps.length === 0
+    && record.workspaceDiff.added.length === 0
+    && record.workspaceDiff.changed.length === 0
+    && record.workspaceDiff.removed.length === 0;
+}

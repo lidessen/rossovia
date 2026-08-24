@@ -13,6 +13,8 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   CellInputSchema,
   CellRunRecordSchema,
+  isEmptyWorkCellFinalResult,
+  type CellInput,
   type CellRunRecord,
 } from "../../../packages/work-cell/src/contracts";
 import { PI_HARNESS_DRIVER_ADAPTER } from "../../../packages/work-cell/src/integrations/ai-sdk";
@@ -160,6 +162,78 @@ function retainedAttemptExecutor(): TaskCellExecutor {
       rawSteps: [],
     }) as unknown as CellRunRecord;
   };
+}
+
+/**
+ * The retained Work Cell final record of a deterministic mechanically passed
+ * run that produced no result at all: empty final text, no raw steps, and an
+ * empty workspace diff. The run settles recorded exactly like any passed
+ * run, but the verified-result boundary must never project or submit it as a
+ * verified Task result — and must not reclassify it as a failure.
+ */
+function emptyReturnAttemptRecord(input: CellInput): CellRunRecord {
+  return CellRunRecordSchema.parse({
+    version: "work-cell.run.v4",
+    runId: "ui-empty-attempt-run",
+    cellId: input.id,
+    driver: {
+      adapter: PI_HARNESS_DRIVER_ADAPTER,
+      provider: "deepseek",
+      model: input.executionProfile?.model ?? "deepseek/deepseek-v4-flash",
+    },
+    startedAt: "2026-08-12T18:01:00.000Z",
+    finishedAt: "2026-08-12T18:02:00.000Z",
+    durationMs: 60_000,
+    status: "passed",
+    input,
+    finalText: "",
+    artifacts: [],
+    verification: {
+      passed: true,
+      terminal: { passed: true, required: [], called: [] },
+      artifacts: { passed: true, errors: [] },
+    },
+    workspaceDiff: { added: [], changed: [], removed: [] },
+    usage: {
+      inputTokens: 120,
+      outputTokens: 40,
+      totalTokens: 160,
+      cachedInputTokens: 20,
+    },
+    usageByPhase: {
+      preparation: {
+        inputTokens: 20,
+        outputTokens: 0,
+        totalTokens: 20,
+        cachedInputTokens: 20,
+      },
+      execution: {
+        inputTokens: 100,
+        outputTokens: 40,
+        totalTokens: 140,
+        cachedInputTokens: 0,
+      },
+    },
+    executionObservation: {
+      sessionId: "session-ui-empty-attempt",
+      providerFingerprintStanding: {
+        standing: "unavailable",
+        reason: "deterministic UI projection fixture executor retains no provider metadata",
+      },
+    },
+    trace: [],
+    rawSteps: [],
+  }) as unknown as CellRunRecord;
+}
+
+/**
+ * A deterministic mechanically passed executor whose retained Work Cell final
+ * record is an empty return: the exact counterexample the verified-result
+ * boundary must withhold from candidate and submission while keeping the
+ * recorded passed attempt evidence untouched.
+ */
+function emptyReturnAttemptExecutor(): TaskCellExecutor {
+  return async ({ cellInput }) => emptyReturnAttemptRecord(cellInput);
 }
 
 /**
@@ -2955,6 +3029,151 @@ describe("Workbench task UI actions", () => {
       ],
     });
     expect(detail.latestResultVerification).toEqual({ standing: "none" });
+  });
+
+  test("withholds candidate and submission for a mechanically passed but empty Work Cell final result without reclassifying the attempt", async () => {
+    const { handler, home, origin, root } = fixture();
+    const project = projectWithMission(root);
+    const worktree = join(root, "empty-result-worktree");
+    git(project, "worktree", "add", "--detach", worktree);
+    registerProject(home, {
+      path: project,
+      id: "repository:task-ui-fixture",
+      aliases: ["fixture"],
+    });
+    const created = await post(handler, origin, "/api/tasks", {
+      title: "Return an empty ordinary attempt result",
+      objective: "Keep an empty return distinct from a real success and from a failure",
+      acceptance: ["The empty return yields no verified candidate and no claim"],
+      nextActor: "agent",
+      expectedSourceRevision: 0,
+      project: "fixture",
+      worktree,
+    });
+    const taskId = (await created.json()).result.task.id as string;
+    const worker: WorkerCard = {
+      version: "work-cell.worker-card.v1",
+      id: "deepseek-flash-test",
+      labels: ["coding", "text", "write"],
+      description: "Empty-return fixture worker.",
+      executionProfile: {
+        id: "deepseek-flash-test",
+        version: "execution-profile.v1",
+        provider: "deepseek",
+        model: "deepseek/deepseek-v4-flash",
+        reasoningEffort: "low",
+        parallelism: "serial",
+      },
+      availability: { status: "available" },
+    };
+    const dependencies = {
+      resolveWorkerCard: () => worker,
+    };
+    const detailFor = async () => {
+      const snapshot = await (
+        await handler(new Request(`${origin}/api/snapshot`))
+      ).json();
+      return snapshot.workItems.items.find(
+        (item: { id: string }) => item.id === `principal-task:${taskId}`,
+      ).taskDetail;
+    };
+
+    // Story 1: a mechanically passed run whose retained final record carries
+    // no final text, no raw steps, and no workspace diff. The run settles
+    // recorded and the attempt evidence stays observed exactly as recorded —
+    // the empty return is never reclassified as a failure — but it yields no
+    // verified result candidate, and submission fails closed with no claim
+    // and no lifecycle change.
+    const empty = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      ...dependencies,
+      executeTaskCell: emptyReturnAttemptExecutor(),
+    });
+    const retainedEmptyFinal = CellRunRecordSchema.parse(
+      JSON.parse(readFileSync(join(home, empty.finalRecordRef), "utf8")),
+    ) as unknown as CellRunRecord;
+    expect(isEmptyWorkCellFinalResult(retainedEmptyFinal)).toBe(true);
+    const emptyDetail = await detailFor();
+    expect(emptyDetail.attempts.attempts.at(-1)).toMatchObject({
+      attemptId: empty.attemptId,
+      cellStatus: "passed",
+      status: "recorded",
+      verification: { passed: true, terminal: { passed: true } },
+      workspaceDiff: { added: [], changed: [], removed: [] },
+    });
+    expect(emptyDetail.executionContext.attemptResultCandidate).toBeNull();
+    expect(emptyDetail.latestResultVerification).toEqual({ standing: "none" });
+    const head = git(worktree, "rev-parse", "HEAD");
+    const submitted = await post(
+      handler,
+      origin,
+      `/api/tasks/${taskId}/actions`,
+      {
+        kind: "submit-verified-execution",
+        summary: "The empty attempt must never submit.",
+        selector: {
+          kind: "ordinary-attempt-result.v1",
+          attemptId: empty.attemptId,
+          expectedWorktreeHead: head,
+        },
+        expectedSourceRevision: 1,
+        expectedRevision: 1,
+      },
+    );
+    expect(submitted.status).toBe(409);
+    expect(await submitted.json()).toMatchObject({ error: "task-drift" });
+    expect(
+      JSON.parse(readFileSync(principalTasksPath(home), "utf8")).tasks.find(
+        (task: { id: string }) => task.id === taskId,
+      ),
+    ).toMatchObject({
+      lifecycle: "open",
+      nextActor: "agent",
+      resultClaims: [],
+    });
+
+    // Story 2: the same Task's next run with real non-empty output keeps the
+    // existing candidate semantics unchanged.
+    const passed = await runPrincipalTask(home, {
+      id: taskId,
+      workerId: "deepseek-flash-test",
+    }, {
+      ...dependencies,
+      executeTaskCell: retainedAttemptExecutor(),
+    });
+    const retainedPassedFinal = CellRunRecordSchema.parse(
+      JSON.parse(readFileSync(join(home, passed.finalRecordRef), "utf8")),
+    ) as unknown as CellRunRecord;
+    expect(isEmptyWorkCellFinalResult(retainedPassedFinal)).toBe(false);
+    const passedDetail = await detailFor();
+    expect(passedDetail.executionContext.attemptResultCandidate).toMatchObject({
+      attemptId: passed.attemptId,
+      cellStatus: "passed",
+      workspaceDiff: {
+        added: ["evidence/new.txt"],
+        changed: ["src/existing.ts"],
+        removed: [],
+      },
+      verification: { passed: true, terminalPassed: true },
+    });
+
+    // Story 3: a runner/provider failure stays a failure — runner-failed
+    // with a non-passed final — and is never reclassified as an empty return
+    // or a verified candidate.
+    await expect(
+      runPrincipalTask(home, { id: taskId, workerId: "deepseek-flash-test" }, {
+        ...dependencies,
+        executeTaskCell: failingAttemptExecutor(),
+      }),
+    ).rejects.toThrow();
+    const failedDetail = await detailFor();
+    expect(failedDetail.attempts.attempts.at(-1)).toMatchObject({
+      cellStatus: "failed",
+      status: "runner-failed",
+    });
+    expect(failedDetail.executionContext.attemptResultCandidate).toBeNull();
   });
 
   test("withholds the attempt result candidate for stopped, failed, stale, malformed, and unavailable evidence", async () => {
