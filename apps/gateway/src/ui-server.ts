@@ -252,27 +252,38 @@ export function createWorkbenchRequestHandler(
     return tracked;
   };
 
-  // The on-demand project Worktree status route re-reads the canonical live
-  // snapshot (the same per-worktree dirty scans the compact first paint
-  // defers, plus the existing task/Mission/runner sources the retention
-  // hints project from). Several tabs or rapid re-entries can request it at
-  // once; keep one serialized build for the handler and let every waiter
-  // reuse its snapshot, exactly like the compact/full snapshot bodies, so
-  // the route never runs duplicate project scans and every response
-  // describes the same single observation.
+  // The on-demand project Worktree status route reads the reduced live
+  // observation its projection actually consumes: the canonical worktree/Git
+  // scan with the full-snapshot dirty default (the same per-worktree dirty
+  // scans the compact first paint defers), the task source, Missions, runner
+  // cache plus live probes, and principal-task shell work items —
+  // buildWorktreeStatusSnapshot. This replaces the route's previous
+  // full-snapshot build: buildLiveSnapshot(options, client) with the default
+  // taskDetailIds="all" re-ran the same per-runner live probes the compact
+  // first paint already spawned (ui-server.ts buildLiveObservation
+  // missionProbes → autonomy-client.ts AutonomyCliClient activity/status
+  // child CLI processes) and additionally read the full-detail-only sources
+  // the Worktree projection never consumes — every task's attempt evidence
+  // (task-attempts.ts showPrincipalTaskAttemptsForTasks and the strict
+  // per-task re-reads in work-items.ts attemptResultEvidenceFor), the full
+  // observer review projection (workflow-observer.ts readWorkflowReviews),
+  // and settings (readSettingsProjection). Several tabs or rapid re-entries
+  // can request it at once; keep one serialized build for the handler and
+  // let every waiter reuse its snapshot, exactly like the compact/full
+  // snapshot bodies, so the route never runs duplicate project scans and
+  // every response describes the same single observation.
   let worktreeStatusSnapshotInFlight: Promise<WorktreeStatusSnapshot> | undefined;
   const readWorktreeStatusSnapshot = (): Promise<WorktreeStatusSnapshot> => {
     if (worktreeStatusSnapshotInFlight !== undefined) return worktreeStatusSnapshotInFlight;
     const build = (async () => {
       await Bun.sleep(0);
-      // The route builds the canonical live snapshot — the same existing
-      // sources (worktree/Git scan, tasks, Missions, runner cache plus live
-      // probes, work items, reviews, settings) the project page already
-      // shows — and projects only the requested project's Worktree
-      // inventory plus its bounded retention hints. The per-worktree dirty
-      // observation stays the full-snapshot default, never the compact
-      // deferral.
-      return buildLiveSnapshot(options, client);
+      // The route builds the reduced live observation (see
+      // buildWorktreeStatusSnapshot): real per-worktree dirty standing from
+      // the full-snapshot default, never the compact deferral, plus exactly
+      // the Mission/runner/task-shell sources the route's projection and
+      // retention hints read — never the full-detail-only attempt, review,
+      // or settings sources of the full live snapshot.
+      return buildWorktreeStatusSnapshot(options, client);
     })();
     const tracked = build.finally(() => {
       if (worktreeStatusSnapshotInFlight === tracked) worktreeStatusSnapshotInFlight = undefined;
@@ -402,13 +413,15 @@ export function createWorkbenchRequestHandler(
 
     // The project page and the create-task form need the real per-worktree
     // dirty standing, which the compact first paint deliberately defers.
-    // This read-only on-demand route rebuilds the canonical full snapshot
-    // (the same observeWorktreeDirty default the full snapshot and the
-    // task-detail route use) and projects only the requested project's
-    // worktrees plus the total/dirty/clean/unknown summary. It carries no
-    // write, persistence, or delete surface; a per-worktree dirty scan
-    // failure keeps that worktree observable with an explicit unknown
-    // standing (dirtyReason) and never infers clean.
+    // This read-only on-demand route reads exactly the sources its
+    // projection consumes — the worktree/Git scan with the full-snapshot
+    // dirty default, Missions, runner cache plus live probes, the task
+    // source, and principal-task shells (buildWorktreeStatusSnapshot) — and
+    // projects only the requested project's worktrees plus the
+    // total/dirty/clean/unknown summary and bounded retention hints. It
+    // carries no write, persistence, or delete surface; a per-worktree
+    // dirty scan failure keeps that worktree observable with an explicit
+    // unknown standing (dirtyReason) and never infers clean.
     const projectWorktreeKey = projectWorktreeKeyFromPath(url.pathname);
     if (request.method === "GET" && projectWorktreeKey !== null) {
       try {
@@ -735,25 +748,47 @@ export function startWorkbenchUi(options: ServerOptions): void {
   console.log(`Supervision: Codex supervises Rossovia Workbench; unsupervised operation is unavailable.`);
 }
 
-async function buildLiveSnapshot(
+interface LiveSnapshotObservationOptions {
+  /**
+   * Which principal tasks receive the full taskDetail work-item projection.
+   * "all" (the default) keeps every principal task detailed; an empty set
+   * keeps every principal task as its compact navigation shell (the compact
+   * first paint and the on-demand Worktree route).
+   */
+  readonly taskDetailIds?: "all" | ReadonlySet<string>;
+  /**
+   * Whether the per-worktree dirty standing is observed. The default keeps
+   * the full-snapshot default (observe) and lets the compact first paint (an
+   * empty taskDetailIds set) opt out; the on-demand Worktree route forces
+   * observation even for its shell-only build, because the route exists to
+   * serve the real dirty/clean standing.
+   */
+  readonly observeWorktreeDirty?: boolean;
+}
+
+/**
+ * The shared read-only live observation every snapshot route builds: the
+ * canonical base snapshot (worktree/Git scan, Missions, runner cache), the
+ * principal-task source, and one live probe set per runner (activity +
+ * status). The compact first paint defers the per-worktree `git status`
+ * dirty observation (an empty taskDetailIds set): its worktree records keep
+ * every `git worktree list`-derived fact but carry no dirty claim; the full
+ * snapshot, the task-detail route, and the on-demand Worktree route observe
+ * with the default. Authority, source, error, attention, and persistence
+ * semantics of every payload are unchanged.
+ */
+async function buildLiveObservation(
   options: ServerOptions,
   client: AutonomyClient,
-  taskDetailIds: "all" | ReadonlySet<string> = "all",
+  buildOptions: LiveSnapshotObservationOptions = {},
 ) {
+  const taskDetailIds = buildOptions.taskDetailIds ?? "all";
+  const compact = taskDetailIds !== "all" && taskDetailIds.size === 0;
+  const observeWorktreeDirty = buildOptions.observeWorktreeDirty ?? !compact;
   const snapshot = buildWorkbenchSnapshot({
     ...(options.home === undefined ? {} : { home: options.home }),
     localRepositoryRoots: options.roots,
-    // The compact first paint (an empty taskDetailIds set) defers the
-    // per-worktree `git status` dirty observation — the dominant non-essential
-    // synchronous worktree/Git scan for the navigation-grade first paint. Its
-    // worktree records keep every `git worktree list`-derived fact but carry
-    // no dirty claim; the full snapshot and the on-demand task-detail route
-    // rebuild with the default and always project the exact dirty standing.
-    // Authority, source, error, attention, and persistence semantics of the
-    // compact payload are unchanged.
-    ...(taskDetailIds !== "all" && taskDetailIds.size === 0
-      ? { observeWorktreeDirty: false }
-      : {}),
+    ...(observeWorktreeDirty ? {} : { observeWorktreeDirty: false }),
   });
   const taskSourceRef = principalTasksPath(options.home);
   let taskSource: PrincipalTaskSourceObservation;
@@ -886,23 +921,6 @@ async function buildLiveSnapshot(
       summary: taskSource.reason,
       source: taskSource.sourceRef,
     }];
-  const taskAttempts = taskDetailIds === "all"
-    ? await readTaskAttemptsProjections(options.home, taskSource)
-    : taskDetailIds.size === 0
-      ? {}
-      : await readTaskAttemptsProjections(options.home, taskSource, taskDetailIds);
-  // The compact first paint also defers every observer review's full
-  // reviewText: each compact review keeps its bounded summary, reviewId,
-  // subject, standing, evidence refs, correlation, and processing facts, and
-  // marks the deferred full text for the on-demand review detail route,
-  // which re-reads the same append-only review source. The full snapshot and
-  // the task-detail rebuild keep the exact reviewText authority unchanged.
-  const observerReviews = readObserverReviews(
-    options.home,
-    options.observerWorkerId,
-    taskDetailIds !== "all" && taskDetailIds.size === 0 ? { compact: true } : undefined,
-  );
-  const settings = readSettingsProjection(options, observerReviews);
   // The aggregate runner freshness must describe the snapshot actually served:
   // with at least one live runner the projection no longer reads runners only
   // from cached status files, so the cached-only claim and the cached update
@@ -931,6 +949,40 @@ async function buildLiveSnapshot(
       }
       : {}),
   };
+  return { liveSnapshot, taskSource };
+}
+
+/**
+ * The canonical live snapshot body: the shared live observation plus the
+ * full-detail-only sources the overview and Task surfaces read — every
+ * task's attempt projections, the observer review projection (compact for
+ * the compact first paint), settings, and the full work-item projection.
+ * The served body, fields, errors, and semantics are unchanged; the shared
+ * observation is buildLiveObservation.
+ */
+async function buildLiveSnapshot(
+  options: ServerOptions,
+  client: AutonomyClient,
+  taskDetailIds: "all" | ReadonlySet<string> = "all",
+) {
+  const { liveSnapshot, taskSource } = await buildLiveObservation(options, client, { taskDetailIds });
+  const taskAttempts = taskDetailIds === "all"
+    ? await readTaskAttemptsProjections(options.home, taskSource)
+    : taskDetailIds.size === 0
+      ? {}
+      : await readTaskAttemptsProjections(options.home, taskSource, taskDetailIds);
+  // The compact first paint also defers every observer review's full
+  // reviewText: each compact review keeps its bounded summary, reviewId,
+  // subject, standing, evidence refs, correlation, and processing facts, and
+  // marks the deferred full text for the on-demand review detail route,
+  // which re-reads the same append-only review source. The full snapshot and
+  // the task-detail rebuild keep the exact reviewText authority unchanged.
+  const observerReviews = readObserverReviews(
+    options.home,
+    options.observerWorkerId,
+    taskDetailIds !== "all" && taskDetailIds.size === 0 ? { compact: true } : undefined,
+  );
+  const settings = readSettingsProjection(options, observerReviews);
   return {
     ...liveSnapshot,
     workItems: buildWorkItemProjection(
@@ -942,6 +994,55 @@ async function buildLiveSnapshot(
     ),
     observerReviews,
     settings,
+  };
+}
+
+/**
+ * The read-only snapshot build of the on-demand project Worktree status
+ * route. It reads exactly the sources the route's projection and retention
+ * hints consume: the canonical base snapshot with the full-snapshot dirty
+ * default (never the compact deferral), Missions, the runner cache plus one
+ * live probe set per runner (the liveEffectRunner retention marker needs
+ * the definitive live standing), the principal-task source, and principal-
+ * task shell work items. It deliberately skips the full-detail-only sources
+ * the full snapshot and task-detail route read: per-task attempt evidence
+ * (task-attempts.ts showPrincipalTaskAttemptsForTasks and the strict
+ * per-task re-reads in work-items.ts attemptResultEvidenceFor),
+ * observer reviews, and settings — the Worktree projection never consumes
+ * any of them, so this route no longer performs the duplicate full live-
+ * snapshot build (buildLiveSnapshot with taskDetailIds="all") that repeated
+ * the compact first paint's per-runner probes and then re-read all attempt
+ * evidence, reviews, and settings. The returned worktrees, summary,
+ * sourceRefs, errors, and every retention standing are exactly the values
+ * the canonical full snapshot would project for the same sources.
+ */
+export async function buildWorktreeStatusSnapshot(
+  options: ServerOptions,
+  client: AutonomyClient,
+) {
+  const shellTaskDetails = new Set<string>();
+  const { liveSnapshot, taskSource } = await buildLiveObservation(options, client, {
+    // Principal-task shells only: the route's retention hint reads exactly
+    // the shell fields (kind, lifecycle, worktreeContext) and the
+    // independent-task source standing — never per-task attempt evidence or
+    // taskDetail payloads.
+    taskDetailIds: shellTaskDetails,
+    // The route exists for the real per-worktree dirty observation: always
+    // the full-snapshot default, never the compact first-paint deferral.
+    observeWorktreeDirty: true,
+  });
+  return {
+    ...liveSnapshot,
+    // The reduced work-item projection consumes no task attempts (the
+    // compact shells never read them) and carries no taskDetail; the route's
+    // response fields, errors, and retention standing are unchanged.
+    workItems: buildWorkItemProjection(
+      liveSnapshot,
+      taskSource,
+      {},
+      options.home,
+      { taskDetailIds: shellTaskDetails },
+    ),
   };
 }
 
@@ -1665,11 +1766,14 @@ class ProjectWorktreeStatusError extends Error {
 }
 
 /**
- * The snapshot build the on-demand Worktree route reads: the canonical live
- * snapshot (worktree/Git scan, tasks, Missions, runner cache plus live
- * probes, work items, reviews, settings) the project page already shows.
+ * The snapshot build the on-demand Worktree route reads: the shared live
+ * observation (worktree/Git scan with the full-snapshot dirty default,
+ * Missions, runner cache plus live probes, task source) with principal-task
+ * shell work items — the reduced read path documented on
+ * buildWorktreeStatusSnapshot, never the full live snapshot with its
+ * full-detail-only sources (per-task attempt evidence, reviews, settings).
  */
-type WorktreeStatusSnapshot = Awaited<ReturnType<typeof buildLiveSnapshot>>;
+type WorktreeStatusSnapshot = Awaited<ReturnType<typeof buildWorktreeStatusSnapshot>>;
 
 /**
  * The bounded read-only retention hint of one Worktree, projected only from
@@ -1790,9 +1894,11 @@ function worktreeRetentionHint(
 
 /**
  * The minimal on-demand Worktree status projection for one project key,
- * built from the handler's shared canonical live-snapshot build (the same
- * default `observeWorktreeDirty` the full snapshot and the task-detail
- * route use — never the compact deferral). It returns only the requested
+ * built from the handler's shared reduced live-observation build
+ * (buildWorktreeStatusSnapshot: the worktree/Git scan with the same default
+ * `observeWorktreeDirty` the full snapshot and the task-detail route use —
+ * never the compact deferral — plus Missions, runner probes, the task
+ * source, and principal-task shells). It returns only the requested
  * project's Worktree inventory, the total/dirty/clean/unknown summary, and
  * only that project's attributable git/project errors and observation
  * source refs: another project's failed scan or repository root never
