@@ -2317,39 +2317,102 @@ export function backlogTriageProjection(input) {
  * dirtyReason is a failed on-demand read (unknown, never inferred clean); an
  * absent dirty without a reason is an unobserved compact first-paint record
  * (unknown). The projection never turns a missing or failed scan into clean.
+ * attention is the triage standing: dirty and unknown sites need a human
+ * look; only an observed clean site does not.
  */
 export function worktreeDirtyStanding(worktree) {
   const object = worktree !== null && typeof worktree === "object" ? worktree : {};
   if (object.dirty === true) {
-    return { code: "dirty", label: "dirty", detail: "有未提交改动" };
+    return {
+      code: "dirty",
+      label: "dirty",
+      detail: "有未提交改动",
+      attention: true,
+    };
   }
   if (object.dirty === false) {
-    return { code: "clean", label: "clean", detail: "工作区干净" };
+    return {
+      code: "clean",
+      label: "clean",
+      detail: "工作区干净",
+      attention: false,
+    };
   }
   const reason = typeof object.dirtyReason === "string" ? object.dirtyReason : "";
   return reason === ""
-    ? { code: "unknown", label: "unknown", detail: "状态未观察" }
+    ? { code: "unknown", label: "unknown", detail: "状态未观察", attention: true }
     : {
       code: "unknown",
       label: "unknown",
       detail: "读取失败 · 不推断 clean",
       reason,
+      attention: true,
     };
 }
 
 /**
- * The total/dirty/clean/unknown summary of one worktree inventory. `unknown`
- * counts both unobserved compact records and failed reads: a missing or
- * failed scan is never counted as clean.
+ * The total/dirty/clean/unknown/attention summary of one worktree inventory.
+ * unknown counts both unobserved compact records and failed reads: a missing
+ * or failed scan is never counted as clean, and attention (dirty plus
+ * unknown) is the actionable triage count.
  */
 export function projectWorktreeSummary(worktrees) {
   const all = Array.isArray(worktrees) ? worktrees : [];
-  const summary = { total: all.length, dirty: 0, clean: 0, unknown: 0 };
+  const summary = {
+    total: all.length,
+    dirty: 0,
+    clean: 0,
+    unknown: 0,
+    attention: 0,
+  };
   for (const worktree of all) {
     const standing = worktreeDirtyStanding(worktree);
     summary[standing.code] += 1;
+    if (standing.attention) summary.attention += 1;
   }
   return summary;
+}
+
+/**
+ * One worktree's inventory triage rank: attention-needed sites (dirty, then
+ * unknown) come before observed-clean sites, so the default list surfaces
+ * what a human must triage first. The rank is presentation-only: the
+ * canonical inventory order is preserved inside each rank (stable sort) and
+ * every site is retained.
+ */
+export function worktreeInventoryAttentionRank(worktree) {
+  const standing = worktreeDirtyStanding(worktree);
+  return standing.code === "dirty" ? 0
+    : standing.code === "unknown" ? 1
+      : 2;
+}
+
+/**
+ * The default Worktree inventory order (pure presentation): attention-needed
+ * sites (dirty and unknown) first, observed-clean sites after, stable within
+ * each group, and every site retained. Never drops, filters, or archives a
+ * worktree; each row's fail-closed standing is untouched.
+ */
+export function orderWorktreesForInventory(worktrees) {
+  const ordered = Array.isArray(worktrees) ? [...worktrees] : [];
+  ordered.sort((left, right) =>
+    worktreeInventoryAttentionRank(left) - worktreeInventoryAttentionRank(right));
+  return ordered;
+}
+
+/**
+ * The row status line of one Worktree inventory entry: the relationship
+ * marker (registered primary / additional worktree), the standing label with
+ * an explicit 需关注 attention marker, and the fail-closed detail when the
+ * read failed. The label never implies deletion, archival, or reclaimability.
+ */
+export function worktreeInventoryStatusLine(worktree) {
+  const object = worktree !== null && typeof worktree === "object" ? worktree : {};
+  const primary = object.registeredPrimary === true;
+  const standing = worktreeDirtyStanding(object);
+  return (primary ? "主线主现场" : "附加 Worktree")
+    + " · " + (standing.attention ? "需关注 · " : "") + standing.label
+    + (standing.reason ? " · " + standing.detail : "");
 }
 
 /**
@@ -6891,7 +6954,7 @@ export function worktreeRetentionBoundaryNote() {
     const noteRoot = $("#worktree-inventory-note");
     const projectKey = identifier(project, "");
     const status = projectWorktreeStatusFor(projectKey);
-    const worktrees = projectWorktrees(project);
+    const worktrees = orderWorktreesForInventory(projectWorktrees(project));
     const summary = projectWorktreeSummary(worktrees);
     if (summaryRoot !== null) {
       const readFailed = status !== null
@@ -6903,8 +6966,9 @@ export function worktreeRetentionBoundaryNote() {
       summaryRoot.textContent = status !== null
         ? readFailed
           ? "共 0 个 · 清单读取失败 · 状态未知"
-          : "共 " + summary.total + " 个 · dirty " + summary.dirty
-            + " · clean " + summary.clean + " · unknown " + summary.unknown
+          : "共 " + summary.total + " 个 · 需关注 " + summary.attention
+            + "（dirty " + summary.dirty + " · unknown " + summary.unknown + "）"
+            + " · clean " + summary.clean
         : "共 " + summary.total + " 个 · 状态未按需读取";
     }
     if (noteRoot !== null) {
@@ -6950,7 +7014,6 @@ export function worktreeRetentionBoundaryNote() {
         const id = identifier(worktree, "worktree-" + index);
         const branch = text(first(worktree, ["gitBranch", "branch"]), "detached");
         const head = text(first(worktree, ["head", "headSha", "sha"]), "?");
-        const primary = first(worktree, ["registeredPrimary"]) === true;
         const standing = worktreeDirtyStanding(worktree);
         // The bounded retention hint is projected from the existing snapshot
         // sources (workItems / missions / runners) with the same fail-closed
@@ -6963,13 +7026,12 @@ export function worktreeRetentionBoundaryNote() {
           worktreeRetentionInput(project),
         );
         const chips = worktreeRetentionHintCopy(retention, worktree);
-        const statusLine = (primary ? "主线主现场" : "附加 Worktree")
-          + " · " + standing.label
-          + (standing.reason ? " · " + standing.detail : "");
+        const statusLine = worktreeInventoryStatusLine(worktree);
         return '<button class="inventory-worktree '
           + (id === state.selectedWorktreeId ? 'is-selected' : '')
           + '" type="button" data-inventory-worktree="' + escapeHtml(id) + '"'
           + ' data-dirty-standing="' + escapeHtml(standing.code) + '"'
+          + ' data-attention="' + (standing.attention ? 'true' : 'false') + '"'
           + (standing.reason ? ' title="' + escapeHtml(standing.reason) + '"' : '')
           + '>'
           + '<strong>' + escapeHtml(branch) + ' @ ' + escapeHtml(head) + '</strong>'

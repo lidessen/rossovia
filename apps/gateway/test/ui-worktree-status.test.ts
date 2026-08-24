@@ -6,7 +6,7 @@ import type { AutonomyClient } from "../../workbench/src/ui/autonomy-client";
 import { initializeHome } from "../../workbench/src/home";
 import { createWorkbenchRequestHandler } from "../src/ui-server";
 // @ts-expect-error app.js is the browser entrypoint; this test imports its pure projection copy.
-import { missionWorktreeBindingRows, projectWorktreeSummary, worktreeCreateOptionLabel, worktreeDirtyStanding, worktreeStatusStaleAfterRefresh } from "../ui/app.js";
+import { missionWorktreeBindingRows, orderWorktreesForInventory, projectWorktreeSummary, worktreeCreateOptionLabel, worktreeDirtyStanding, worktreeInventoryStatusLine, worktreeStatusStaleAfterRefresh } from "../ui/app.js";
 
 const temporaryRoots: string[] = [];
 
@@ -321,17 +321,21 @@ describe("Worktree status presentation projection", () => {
       code: "dirty",
       label: "dirty",
       detail: "有未提交改动",
+      attention: true,
     });
     expect(worktreeDirtyStanding({ dirty: false })).toEqual({
       code: "clean",
       label: "clean",
       detail: "工作区干净",
+      attention: false,
     });
-    // Compact first paint: no scan ran, no dirty claim, no reason.
+    // Compact first paint: no scan ran, no dirty claim, no reason. The
+    // unobserved site still needs a human look (attention), never clean.
     expect(worktreeDirtyStanding({ path: "/sites/a" })).toEqual({
       code: "unknown",
       label: "unknown",
       detail: "状态未观察",
+      attention: true,
     });
     // Failed on-demand read: explicit unknown with the attributable reason.
     expect(worktreeDirtyStanding({ path: "/sites/a", dirtyReason: "git status failed" })).toEqual({
@@ -339,24 +343,119 @@ describe("Worktree status presentation projection", () => {
       label: "unknown",
       detail: "读取失败 · 不推断 clean",
       reason: "git status failed",
+      attention: true,
     });
     expect(worktreeDirtyStanding(null)).toEqual({
       code: "unknown",
       label: "unknown",
       detail: "状态未观察",
+      attention: true,
     });
   });
 
   test("projectWorktreeSummary counts dirty/clean/unknown and never counts unknown as clean", () => {
-    expect(projectWorktreeSummary([])).toEqual({ total: 0, dirty: 0, clean: 0, unknown: 0 });
+    expect(projectWorktreeSummary([])).toEqual({ total: 0, dirty: 0, clean: 0, unknown: 0, attention: 0 });
     expect(projectWorktreeSummary([
       { dirty: true },
       { dirty: false },
       { dirty: false },
       { path: "/sites/a" },
       { dirtyReason: "read failed" },
-    ])).toEqual({ total: 5, dirty: 1, clean: 2, unknown: 2 });
-    expect(projectWorktreeSummary(null)).toEqual({ total: 0, dirty: 0, clean: 0, unknown: 0 });
+    ])).toEqual({ total: 5, dirty: 1, clean: 2, unknown: 2, attention: 3 });
+    expect(projectWorktreeSummary(null)).toEqual({ total: 0, dirty: 0, clean: 0, unknown: 0, attention: 0 });
+  });
+
+  test("projectWorktreeSummary separates total, dirty, unknown, and actionable attention; unknown is never clean", () => {
+    const summary = projectWorktreeSummary([
+      { dirty: true },
+      { dirty: true },
+      { dirty: false },
+      { path: "/sites/unobserved" },
+      { dirtyReason: "read failed" },
+    ]);
+    expect(summary).toEqual({
+      total: 5,
+      dirty: 2,
+      clean: 1,
+      unknown: 2,
+      attention: 4,
+    });
+    // Actionable attention is exactly dirty + unknown: the sites a human
+    // must triage. Clean is never part of it, and a missing or failed scan
+    // is never counted as clean.
+    expect(summary.attention).toBe(summary.dirty + summary.unknown);
+    expect(summary.dirty + summary.clean + summary.unknown).toBe(summary.total);
+    expect(projectWorktreeSummary([
+      { dirty: false },
+      { dirty: false },
+    ])).toEqual({ total: 2, dirty: 0, clean: 2, unknown: 0, attention: 0 });
+  });
+
+  test("orderWorktreesForInventory puts attention-needed sites first while retaining every site", () => {
+    const clean = { path: "/sites/clean", gitBranch: "main", dirty: false };
+    const dirty = { path: "/sites/dirty", gitBranch: "feature/x", dirty: true };
+    const unobserved = { path: "/sites/unobserved", gitBranch: "feature/y" };
+    const failed = { path: "/sites/failed", gitBranch: "feature/z", dirtyReason: "read failed" };
+    // Attention-needed sites (dirty, then unknown) come first; clean last.
+    expect(orderWorktreesForInventory([clean, dirty, unobserved, failed])).toEqual([
+      dirty,
+      unobserved,
+      failed,
+      clean,
+    ]);
+    // Every site is retained: ordering never drops, filters, or archives.
+    const ordered = orderWorktreesForInventory([clean, dirty, unobserved, failed]);
+    expect(ordered).toHaveLength(4);
+    expect(new Set(ordered.map((item: { path: string }) => item.path))).toEqual(new Set([
+      "/sites/clean",
+      "/sites/dirty",
+      "/sites/unobserved",
+      "/sites/failed",
+    ]));
+    // Stable inside each rank: the canonical order survives inside the group.
+    expect(orderWorktreesForInventory([unobserved, dirty, clean, failed])).toEqual([
+      dirty,
+      unobserved,
+      failed,
+      clean,
+    ]);
+    expect(orderWorktreesForInventory([])).toEqual([]);
+    expect(orderWorktreesForInventory(null)).toEqual([]);
+  });
+
+  test("worktreeInventoryStatusLine exposes relationship, attention, and fail-closed standing without implying deletion", () => {
+    expect(worktreeInventoryStatusLine({
+      path: "/sites/a",
+      gitBranch: "main",
+      dirty: true,
+      registeredPrimary: true,
+    })).toBe("主线主现场 · 需关注 · dirty");
+    expect(worktreeInventoryStatusLine({
+      path: "/sites/b",
+      gitBranch: "linked",
+      dirty: false,
+      registeredPrimary: false,
+    })).toBe("附加 Worktree · clean");
+    // Unobserved compact records and failed reads are attention-needed and
+    // never read as clean.
+    expect(worktreeInventoryStatusLine({
+      path: "/sites/c",
+      gitBranch: "feature/y",
+    })).toBe("附加 Worktree · 需关注 · unknown");
+    const failed = worktreeInventoryStatusLine({
+      path: "/sites/d",
+      gitBranch: "feature/z",
+      dirtyReason: "git status failed",
+    });
+    expect(failed).toBe("附加 Worktree · 需关注 · unknown · 读取失败 · 不推断 clean");
+    // The labels are attention/triage vocabulary only: no deletion, archival,
+    // or reclaimability claim ever enters a row line.
+    for (const line of [failed, "主线主现场 · 需关注 · dirty"]) {
+      expect(line).not.toContain("可删除");
+      expect(line).not.toContain("deletable");
+      expect(line).not.toContain("归档");
+      expect(line).not.toContain("archive");
+    }
   });
 
   test("worktreeCreateOptionLabel shows branch, HEAD, status, and the mainline marker; unknown never reads as clean", () => {
